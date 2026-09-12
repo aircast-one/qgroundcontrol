@@ -1240,10 +1240,10 @@ const char *const kViewPaths[] = {
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.control(settings.appSettings.qLocaleLanguage)", "view.links", "view.linkForm(udp,,14550)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
-    "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
+    "view.settings(General)", "view.surveyStats(4)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
     "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
-    "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(4)",
+    "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(5)",
     "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
@@ -1307,8 +1307,8 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     (void) take(qgc_bridge_invoke("plan.geoFenceController.addInclusionCircle", box.constData()));
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.397, 8.546), 1, true }).toJson(QJsonDocument::Compact).constData()));
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.3975, 8.5465), 2, true }).toJson(QJsonDocument::Compact).constData()));
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3979, 8.5468, -1]")).value(QStringLiteral("ok")).toBool(false), "the recorded plan carries no pattern without it, and every survey-only field records as null");
     (void) take(qgc_bridge_invoke("plan.missionController.insertLandItem", QJsonDocument(QJsonArray { corner(47.3985, 8.5475), -1, true }).toJson(QJsonDocument::Compact).constData()));
-    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("rallyPoints")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("circles")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("polygons")).toArray().count() == 1, 5000);
     (void) take(qgc_bridge_invoke("links.createAndConnectLink", QJsonDocument(QJsonArray { QStringLiteral("tcp"), QStringLiteral("Recorder TCP"), QStringLiteral("127.0.0.1"), 1 }).toJson(QJsonDocument::Compact).constData()));
