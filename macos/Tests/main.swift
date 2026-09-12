@@ -2593,6 +2593,26 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkCentringTwiceMovesTheMapTwice() {
+    let frame = MapFrame(latitudes: [47.4, 47.41], longitudes: [8.5, 8.51])
+    let first = MapFocus.next(after: nil, to: frame)
+    let again = MapFocus.next(after: first, to: frame)
+
+    expect(first != again,
+           "pressing the SAME Centre choice twice must ask the map twice. MissionMap re-centres "
+           + "only when the value it is handed CHANGES -- `focus != lastFocus` -- and the choice "
+           + "builds an IDENTICAL MapFrame each time, so after the operator panned away the second "
+           + "press did nothing at all. A control that works once and then looks broken is worse "
+           + "than one that is disabled, because the operator cannot tell which it is")
+    expect(first.frame == again.frame,
+           "and both still ask for the same REGION, so the serial changes what the map is told "
+           + "without changing where it goes")
+    expect(again.serial == first.serial + 1 && first.serial == 1,
+           "the serial counts requests from one, so it is a request number rather than a hash of "
+           + "the frame -- two different choices that happen to frame the same region are still "
+           + "two presses")
+}
+
 func checkAPlacedPatternIsFoundByKind() {
     func item(_ kind: String, command: String, sequence: Int) -> MissionItem? {
         MissionItem(view: ["index": sequence as NSNumber, "sequence": sequence as NSNumber,
@@ -2944,6 +2964,7 @@ checkAWarnedRoutineIsNotTruncated()
 checkAClickPlacesWhatThePageArms()
 checkAFenceCircleIsDrawnInMetres()
 checkAPlacedPatternIsFoundByKind()
+checkCentringTwiceMovesTheMapTwice()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

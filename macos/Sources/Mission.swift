@@ -53,7 +53,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var upload = PlanUpload.unknown
     @Published var uploadWarning: PlanUpload?
     @Published var writeFailure: String?
-    @Published var focus: MapFrame?
+    @Published var focus: MapFocus?
     @Published var centreMenuOpen = false
     @Published private(set) var scaleBar = MapScaleBar.none
     @Published private(set) var terrain = TerrainProfile.empty
@@ -740,13 +740,13 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     func centre(_ choice: MapCentre, fence: [GeoPoint], rally: [GeoPoint]) {
         centreMenuOpen = false
         guard let built = choice.frame(in: centreState(fence: fence, rally: rally)) else { return }
-        focus = built
+        focus = MapFocus.next(after: focus, to: built)
     }
 
     func centre(latitude: Double, longitude: Double) {
         centreMenuOpen = false
         guard let built = MapCentre.frame(latitude: latitude, longitude: longitude) else { return }
-        focus = built
+        focus = MapFocus.next(after: focus, to: built)
     }
 
     var mapCentre: GeoPoint? {

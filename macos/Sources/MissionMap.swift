@@ -130,7 +130,7 @@ struct MissionMap: NSViewRepresentable {
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
     var transects: [[GeoPoint]] = []
-    var focus: MapFrame?
+    var focus: MapFocus?
     var polygons: [EditablePolygon] = []
     var moveVertex: (Int, Int, Double, Double) -> Void = { _, _, _, _ in }
     var removeVertexAt: (Int, Int) -> Void = { _, _ in }
@@ -323,8 +323,8 @@ struct MissionMap: NSViewRepresentable {
 
         if let focus, focus != context.coordinator.lastFocus {
             context.coordinator.lastFocus = focus
-            context.coordinator.lastFrame = focus
-            map.setRegion(MissionMap.region(focus, padding: padding, in: map.bounds.size),
+            context.coordinator.lastFrame = focus.frame
+            map.setRegion(MissionMap.region(focus.frame, padding: padding, in: map.bounds.size),
                           animated: false)
             MissionMap.recordCentre(owner: owner, map: map)
             return
@@ -446,7 +446,7 @@ struct MissionMap: NSViewRepresentable {
         var secondary: ((Double, Double, CGPoint) -> Void)?
         private var secondaryClick: NSClickGestureRecognizer?
         var lastFrame: MapFrame?
-        var lastFocus: MapFrame?
+        var lastFocus: MapFocus?
         private var placer: NSClickGestureRecognizer?
 
         init(select: @escaping (Int) -> Void) {

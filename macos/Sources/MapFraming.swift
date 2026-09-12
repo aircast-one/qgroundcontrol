@@ -1,5 +1,18 @@
 import Foundation
 
+// Pressing the same Centre choice twice builds an IDENTICAL MapFrame, and the map re-centres only
+// when the value it is handed CHANGES -- so after the operator panned away, a second press of the
+// same choice did nothing at all. The serial makes every request distinct without the map having
+// to know why.
+struct MapFocus: Equatable {
+    let frame: MapFrame
+    let serial: Int
+
+    static func next(after previous: MapFocus?, to frame: MapFrame) -> MapFocus {
+        MapFocus(frame: frame, serial: (previous?.serial ?? 0) + 1)
+    }
+}
+
 struct MapFrame: Equatable {
     let centreLatitude: Double
     let centreLongitude: Double
