@@ -624,29 +624,25 @@ func checkTheCapabilityKeepsItsThirdState() {
 checkTheCapabilityKeepsItsThirdState()
 
 func checkAMeasureNeverReadsMinusZero() {
-    expect(Measure.format(-0.04, "m"), "0.0 m",
-           "the core strips the sign when every digit it printed is a zero -- read.rs wraps its "
-           + "number in settled() -- and this head's copy did not, while its own comment claimed "
-           + "it \"spells a number the way core-rs read.rs format_measure does\". A vehicle "
-           + "sitting on the ground reports a relative altitude a hair below zero, so a rally "
-           + "point or a launch altitude read \"-0.0 m\" here and \"0.0 m\" from the core. On an "
-           + "altitude that reads as BELOW THE LAUNCH POINT at a glance")
-    expect(Measure.format(-0.0, "m"), "0.0 m", "and negative zero itself is not a place")
-    expect(Measure.format(-12.5, "m"), "-12.5 m", "while a real negative keeps its sign")
-    expect(Measure.format(-150.0, "m"), "-150 m", "at any precision")
+    expect(Measure.settled("-0.0"), "0.0",
+           "the core strips the sign when every printed digit is a zero -- read.rs wraps its "
+           + "number in settled() -- and this head's copy of format_measure did not. A vehicle "
+           + "on the ground reports a relative altitude a hair below zero, so a rally point or a "
+           + "launch altitude read \"-0.0 m\" here and \"0.0 m\" from the core. On an altitude "
+           + "that reads as BELOW THE LAUNCH POINT at a glance")
     expect(Measure.settled("-0"), "0", "the guard is on the printed digits, not the input")
     expect(Measure.settled("-0.00"), "0.00", "at any number of places")
     expect(Measure.settled("-1.0"), "-1.0",
-           "and a number with a non-zero digit anywhere keeps its sign, which is what stops the guard from eating a real reading")
+           "and a number with a non-zero digit anywhere keeps its sign, which is what stops the "
+           + "guard from eating a real reading")
 
     let range = GuidedRange(["available": true as NSNumber, "minimum": -5.0 as NSNumber,
                              "maximum": 100.0 as NSNumber, "initial": 0.0 as NSNumber,
                              "label": "Height", "unit": "m"])
     expect(range?.text(-0.04) ?? "", "0.0 m",
-           "the guided slider shares the guard. It keeps its OWN precision rule -- a decimal "
-           + "below ten, none above -- because it spells a value the operator is dragging and "
-           + "two existing assertions pin that as deliberate, while Measure follows the core's "
-           + "hundred. Two rules, one guard")
+           "the guided slider is the ONE place this head still spells a measurement, because "
+           + "the value is DRAGGED and the core spells no guided reading. It keeps its own "
+           + "precision rule -- a decimal below ten, none above -- and shares the guard")
 }
 
 checkAMeasureNeverReadsMinusZero()
@@ -1354,19 +1350,29 @@ func checkRallyAndBreach() {
     let listed = RallyPointRow.list([
         ["index": 0 as NSNumber, "path": "plan.rallyPointController.points.0",
          "latitude": -35.3628 as NSNumber, "longitude": 149.1665 as NSNumber,
-         "altitude": 30.0 as NSNumber, "altitudeUnits": "m",
+         "altitude": 30.0 as NSNumber, "altitudeUnits": "m", "altitudeText": "30.0 m",
          "altitudePath": "plan.rallyPointController.points.0.textFieldFacts.2"],
         ["index": 1 as NSNumber, "path": "plan.rallyPointController.points.1",
          "latitude": -35.36 as NSNumber, "longitude": 149.16 as NSNumber,
-         "altitude": 164.0 as NSNumber, "altitudeUnits": "ft",
+         "altitude": 164.0 as NSNumber, "altitudeUnits": "ft", "altitudeText": "164 ft",
          "altitudePath": "plan.rallyPointController.points.1.textFieldFacts.2"],
     ])
     expect(listed.count == 2, "each rally point the core lists is carried across")
     expect(listed[0].positionText, "-35.362800, 149.166500", "with its position to six places")
     expect(listed[0].altitudeText, "30.0 m",
-           "and its height in the operator's units, which the core cooked")
+           "and its height is the string the CORE spelled -- cf5ab9407 added altitudeText to a "
+           + "rally point, so this head no longer runs the number back through its own copy of "
+           + "format_measure. That copy was missing settled() until this evening and drew "
+           + "\"-0.0 m\" for a station at field level")
     expect(listed[1].altitudeText, "164 ft",
            "so a station in feet reads in feet rather than being converted twice")
+    expect(listed[0].altitude == 30.0,
+           "and the RAW number and unit stay, because a rally altitude is TYPED: the row hands "
+           + "them to an editor through altitudePath. The core owns what is read; the head needs "
+           + "the number for what is edited")
+    expect(RallyPointRow.list([["index": 0 as NSNumber]]).first?.altitudeText ?? "",
+           Measure.unreported,
+           "a point the core spelled no altitude for reads as absent rather than as a zero")
     expect(listed[1].altitudePath, "plan.rallyPointController.points.1.textFieldFacts.2",
            "the core names the fact to write, so the head no longer hunts the textFieldFacts "
            + "array for one called RelativeAltitude")
@@ -1988,17 +1994,14 @@ func checkSurveyStats() {
 }
 
 func checkMeasure() {
-    expect(Measure.format(99.4, "m"), "99.4 m", "below a hundred a measure keeps a tenth")
-    expect(Measure.format(100, "m"), "100 m", "at a hundred QGC drops to whole numbers")
-    expect(Measure.format(89999.17, "m^2"), "89999 m\u{00B2}", "and squares render as a superscript")
-    expect(Measure.format(.nan, "m"), "\u{2014}", "a measure that is not a number is not shown as one")
-
-    expect(Measure.defaultUnits, "m",
-           "the unit an item falls back to when the core names none. Measure used to be a STRUCT "
-           + "with a factor and a convert() that crossed a metric value into the operator's "
-           + "units -- and nothing in macos/Sources ever built one. The core converts; five "
-           + "assertions were the only thing keeping the machinery alive, the same shape as "
-           + "FlyTelemetry.measure one file over")
+    expect(Measure.defaultUnits, "m", "the unit an item falls back to when the core names none")
+    expect(Measure.unreported, "\u{2014}",
+           "and what a measure the core did not spell reads as. Measure used to carry the "
+           + "FORMATTER too -- reading(), format(), pretty() and a hundred-metre threshold "
+           + "mirroring read.rs -- and every one now has no caller in macos/Sources. The "
+           + "battery, the launch altitude and the rally altitude each took the core's own "
+           + "string this evening, and the copy of the core's algorithm went with the last of "
+           + "them")
 }
 
 checkMeasure()
@@ -2654,40 +2657,9 @@ func checkReadOnlyProbe() {
 
 checkReadOnlyProbe()
 
-func checkPlanMeasuresMatchTheCore() {
-    expect(Measure.format(40, "m"), "40.0 m", "the shared formatter keeps a tenth under a hundred")
-    expect(Measure.format(120, "m"), "120 m", "and drops it at a hundred and above")
 
-    expect(Measure.reading(120, "m"), "120 m",
-           "an item's altitude reads the same as the terrain sheet under it, which the core "
-           + "spells 120 m; the head used to write 120.0 m beside it")
-    expect(Measure.reading(45.26, "m"), "45.3 m", "and a low one keeps its tenth")
-    expect(Measure.reading(0, "m"), "0.0 m",
-           "zero is a real altitude, not a missing one, so it is not dashed away")
-    expect(Measure.reading(nil, "m"), "\u{2014}", "but an absent one is")
-    expect(Measure.format(40, ""), "40.0",
-           "a fact with no units reads as a bare number rather than one with a space stranded "
-           + "on the end of it")
-}
 
-checkPlanMeasuresMatchTheCore()
 
-func checkMeasureMatchesTheCoresOwnCases() {
-    expect(Measure.format(45.26, "m^2"), "45.3 m\u{00B2}", "a tenth under a hundred, squared unit")
-    expect(Measure.format(89999.4, "m^2"), "89999 m\u{00B2}", "whole above it, squared unit")
-    expect(Measure.format(100.0, "ft"), "100 ft", "the threshold itself is whole")
-    expect(Measure.format(99.96, "m"), "100.0 m",
-           "and just under it keeps its tenth even when rounding carries it to the threshold, "
-           + "because the digit count is chosen from the value before it is rounded")
-    expect(Measure.format(40.0, "m"), "40.0 m", "a plain low measurement")
-
-    expect(Measure.wholeNumberFrom == 100.0,
-           "the threshold is core-rs read.rs WHOLE_NUMBER_FROM; nothing else pinned it, so the "
-           + "head could have drifted back to spelling the same altitude differently from the "
-           + "terrain sheet beside it")
-}
-
-checkMeasureMatchesTheCoresOwnCases()
 
 func checkCameraControlMatchesTheCore() {
     let recording = CameraControl([

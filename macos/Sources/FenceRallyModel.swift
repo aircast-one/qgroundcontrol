@@ -127,6 +127,7 @@ struct RallyPointRow: Identifiable, Equatable {
     let altitude: Double?
     let altitudeUnits: String
     let altitudePath: String
+    let altitudeText: String
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
@@ -138,6 +139,7 @@ struct RallyPointRow: Identifiable, Equatable {
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
         altitudeUnits = (json["altitudeUnits"] as? String) ?? ""
         altitudePath = (json["altitudePath"] as? String) ?? ""
+        altitudeText = (json["altitudeText"] as? String) ?? Measure.unreported
     }
 
     init(coordinate: [String: Any]?) {
@@ -148,6 +150,7 @@ struct RallyPointRow: Identifiable, Equatable {
         altitude = nil
         altitudeUnits = ""
         altitudePath = ""
+        altitudeText = Measure.unreported
     }
 
     static func list(_ json: Any?) -> [RallyPointRow] {
@@ -155,10 +158,6 @@ struct RallyPointRow: Identifiable, Equatable {
     }
 
     var positionText: String { GeoPoint.text(latitude, longitude) }
-
-    var altitudeText: String {
-        Measure.reading(altitude, altitudeUnits)
-    }
 }
 
 // What an empty Fence or Rally tab tells the operator. It lived in the view as a three-way
