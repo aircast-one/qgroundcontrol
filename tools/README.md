@@ -12,7 +12,7 @@ copy there.
 |---|---|
 | `handset-ip.sh` | The handset's Wi-Fi address, from `adb`. |
 | `ui.sh` | `front`, `tap`, `swipe`, `text`, `key`, `shot`. Every input checks `topResumedActivity` first and refuses rather than guess: `am start` returns before the window is up, and a tap sent into that gap lands in whatever the user had open. |
-| `apmvehicle.py` | An ArduCopter-shaped MAVLink vehicle: heartbeats, GPS, battery, RC, vibration, two camera components, log download, and a print for every command it receives. `RC_RSSI`, `BATT_PCT`, `BATT_STATE`, `NOFIX` and `VIBRATION` are environment knobs. |
+| `apmvehicle.py` | An ArduPilot-shaped MAVLink vehicle: heartbeats, GPS, battery, RC, vibration, two camera components, log download, and a print for every command it receives. Its environment knobs are the point of it — see the table below. |
 | `device-lock.sh` | `take`/`drop` around `/tmp/aircast-device.lock`, and stops the handset dozing while held. |
 | `regress.sh` | Drives Fly, the Actions sheet, Vibration, Log Download and Settings, captures each, and fails a capture under 100 000 bytes because a sleeping screen photographs as a small black rectangle. |
 | `detrig.sh` | `up`/`down` for the detection overlay: an SSE feed on 8099 and a TCP video stream on 8100, both through `adb reverse`, with the device ini pointed at `127.0.0.1`. |
@@ -20,6 +20,32 @@ copy there.
 | `whatsunder.py` | What flight control, if any, sits under a point. `ui.sh tap` refuses rather than guess, and refuses when this cannot answer — it failed open for six hours on 2026-09-11 because its own pattern would not parse. |
 | `whatsunder_test.py` | `python3 tools/whatsunder_test.py`. No device needed. Pins both quote styles, the planning-screen exemptions, that unreadable input exits non-zero, and that `PLAN_ITEMS_HEADING` in the Kotlin still matches the literal the guard looks for. |
 | `watchprobe.py` | `on`/`off` around timing instrumentation in `Watcher::_poll`. It asserts the poll body is in the shape it expects, so it fails loudly when the bridge changes rather than patching the wrong thing. |
+
+## What `apmvehicle.py` can pretend to be
+
+Every knob here exists because a screen rendered one way and nothing could
+falsify it. The ones marked *found something* are in the commit log for
+2026-09-13.
+
+| knob | the state it produces | |
+|---|---|---|
+| `VEHICLE=copter\|plane\|vtol` | the airframe in every heartbeat | *found something* |
+| `SECOND_PORT=14551` | the same vehicle heard on two links, which is a packet radio beside an LTE modem | *found something* |
+| `STICKS_FILE` | eight pwm values to hold. Zero leaves a channel to its own sweep, **negative reports it as carrying no signal** | *found something* |
+| `SENSOR_FAULT=1` | a sensor present and enabled but unhealthy, which is failing rather than absent | confirmed a claim |
+| `NOFIX=1`, `NOFIX_SECONDS` | no GPS fix, optionally for a while and then a fix | |
+| `RC_RSSI`, `BATT_PCT`, `BATT_STATE` | signal and battery readings | |
+| `FIRMWARE` | the version string in `AUTOPILOT_VERSION` | |
+| `NO_FENCE=1` | a vehicle without fence and rally capability bits | |
+| `NO_RCMAP=1`, `ACCEL_UNCAL=1`, `ARMING_CHECK`, `TRAILING_PARAM` | parameter-shaped edge cases | |
+| `SIM_LAT`, `SIM_LON`, `FENCE_RADIUS` | where it flies and how far it may go | |
+| `STILL_STICKS=1` | sticks that do not sweep, for a screenshot that does not change under you | |
+| `STATUS_AT`, `STATUS_EVERY` | when STATUSTEXT messages arrive | |
+
+The rule they came from: before auditing a screen, ask which of its inputs this
+rig has only ever produced one value for, and make it produce a second. Four of
+the five added on 2026-09-13 were under ten lines.
+
 
 The rule these were built to serve: an empty screen is not evidence that a screen works. Every
 one of them reports what the vehicle received or what the screen actually showed, not that a
