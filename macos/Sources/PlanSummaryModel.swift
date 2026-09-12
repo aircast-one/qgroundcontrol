@@ -7,7 +7,11 @@ struct PlanReadiness: Equatable {
     let ready: Bool
     let reason: String
 
-    static let unknown = PlanReadiness(ready: true, reason: "")
+    // Mission.swift takes this when the core served no readiness object at all. The decoder one
+    // line up refuses to call a missing object ready; this constant used to say ready: true and
+    // undo that at the call site. Nothing drawn changes -- the banner keys on the reason being
+    // non-empty -- but a later control gated on `ready` would have opened on an unread view.
+    static let unknown = PlanReadiness(ready: false, reason: "")
 
     init(ready: Bool, reason: String) {
         self.ready = ready

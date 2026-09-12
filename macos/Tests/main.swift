@@ -4506,6 +4506,12 @@ func checkPlanViewState() {
     expect(upload?.proceedTitle ?? "", "Pause and upload", "and the button says the pause out loud")
 
     expect(PlanReadiness(nil) == nil, "a missing object is not silently a ready plan")
+    expect(PlanReadiness.unknown.ready == false,
+           "and the fallback the call site substitutes for that nil must agree with it. It said "
+           + "ready: true, so the decoder refused to call an unread view ready and Mission.swift "
+           + "called it ready one line later. Nothing drawn changes -- PlanWindow shows the "
+           + "banner only when the REASON is non-empty -- but the next control gated on this "
+           + "would have opened on a view that never answered")
     expect(PlanUpload("not an object") == nil, "nor is a shape the core never sends")
 
     expect(PlanReadiness(["reason": "unset"])?.ready == false,
