@@ -413,8 +413,8 @@ internal fun MapSpikeScreen(
                             say(refusal)
                         } else {
                             scope.launch {
-                                val gate = withContext(Dispatchers.Default) { freshUploadGate() }
-                                when (val step = uploadStep(gate)) {
+                                val view = withContext(Dispatchers.Default) { freshPlanView() }
+                                when (val step = uploadStep(uploadGate(view), notReadyToSend(view))) {
                                     is UploadStep.Refuse -> say(step.reason)
                                     is UploadStep.Confirm -> uploadAsk = step.gate
                                     UploadStep.Send -> sendPlan(scope, say = { busy = it }, done = { busy = null })

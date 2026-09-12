@@ -23,6 +23,11 @@ data class UploadGate(
     val proceedTitle: String,
 )
 
+fun notReadyToSend(view: org.json.JSONObject?): String? =
+    view?.optJSONObject("readiness")
+        ?.takeIf { !it.optBoolean("ready") }
+        ?.let { it.optText("reason").ifBlank { "The plan is not ready to send." } }
+
 fun uploadGate(view: org.json.JSONObject?): UploadGate? =
     view?.optJSONObject("upload")?.let {
         UploadGate(
@@ -41,7 +46,8 @@ sealed interface UploadStep {
     data class Refuse(val reason: String) : UploadStep
 }
 
-fun uploadStep(gate: UploadGate?): UploadStep = when {
+fun uploadStep(gate: UploadGate?, notReady: String? = null): UploadStep = when {
+    notReady != null -> UploadStep.Refuse(notReady)
     gate == null -> UploadStep.Refuse("The plan could not be checked against the vehicle.")
     gate.canSend -> UploadStep.Send
     gate.canProceed -> UploadStep.Confirm(gate)
@@ -51,7 +57,5 @@ fun uploadStep(gate: UploadGate?): UploadStep = when {
 // Read at the moment of the attempt, not from a watched copy. The precheck answers "should
 // this plan go to this vehicle right now", and a vehicle can begin flying the mission between
 // one poll and the operator's tap - which is exactly the case that must pause first.
-fun freshUploadGate(): UploadGate? =
-    runCatching {
-        uploadGate(org.json.JSONObject(org.mavlink.qgroundcontrol.QGCBridge.get("view.plan")))
-    }.getOrNull()
+fun freshPlanView(): org.json.JSONObject? =
+    runCatching { org.json.JSONObject(org.mavlink.qgroundcontrol.QGCBridge.get("view.plan")) }.getOrNull()
