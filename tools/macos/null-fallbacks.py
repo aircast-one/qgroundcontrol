@@ -42,6 +42,14 @@ PORT = 8777
 # and a gate that moves has to move this line with it. Without this table the steady
 # state is four hits nobody reads, which is how an instrument stops being believed.
 ACCEPTED = {
+    ("MissionItem", "altitudeEditUnits"): "MEASURED against the running app: the ONLY item in a "
+        "live plan that sends this null is the SURVEY, and it sends altitudeText null beside it "
+        "-- a complex item has no single altitude. altitudeEditUnits is spent only on "
+        "altitudeFieldUnits, which labels the EDITABLE altitude field, and that field is drawn "
+        "only where specifiesAltitude is true. So the empty string this falls back to reaches no "
+        "label. The key exists because 8110770d3 fixed an editable altitude wearing the unit of a "
+        "different fact; the fallback merges \"this item has no altitude\" with \"no unit\", "
+        "which for that one consumer are the same statement",
     ("Detections", "error"): "MEASURED: the core sends null when there is no error and a "
         "sentence when there is -- detections.rs carries self.error straight through, and its "
         "own test pins \"connection refused\" against a null in the quiet case. Null and the "

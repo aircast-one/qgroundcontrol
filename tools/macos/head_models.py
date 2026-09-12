@@ -28,6 +28,7 @@ MODELS = {
     "LogEntry": "view.logs",
     "GcsFix": "view.gcsPosition",
     "GuidedOffer": "view.guidedActions",
+    "VehicleLink": "view.vehicleLinks",
     "MavlinkMessage": "view.inspector",
     "MissionItem": "view.missionItems",
     "MissionItemKind": "view.missionKinds",
