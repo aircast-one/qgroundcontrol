@@ -4963,3 +4963,33 @@ away.**
 **Both are the core's arithmetic, both reported rather than edited.** Three cycles running, the
 sweep's leads have been right that something is wrong and wrong about where — **a finding names a
 symptom; only the re-measurement names the cause.**
+
+### My own armed-setup gate works in English and silently does nothing elsewhere
+
+**`0bb52d657` disabled a setup page while the vehicle is armed, and the join it uses is a
+translated string.** `blockedSentence(for page:in:)` matches `$0.name == page` — the component's
+`name` against the page's name. **`SensorsComponent.cc:16` initialises `_name(tr("Sensors"))`, so
+the component name is TRANSLATED, while the core's `PAGES` are hardcoded English literals**
+(`"Sensors"`, `"Radio"`, `"Flight Modes"`). In German the component is "Sensoren" and the page is
+"Sensors": no match, no sentence, **and the page stays live with its calibration Start buttons
+while the vehicle is armed.**
+
+**This is the third instance of the same class tonight** — after the survey-geometry lookup keyed
+on `commandName` and Android's "Delete survey" label — and the first one I wrote MYSELF, an hour
+after fixing the other. **Knowing the rule did not stop me applying the same join.**
+
+**It is not fixable head-side without inventing a mapping.** The component carries a locale-safe
+`className` (`SensorsComponent`), and the page carries an English literal, and **no rule turns one
+into the other** — `FlightModesComponent` against `"Flight Modes"` needs a space the class name
+does not have. A page→class table in the head would be the head re-deriving a join the core
+already holds both halves of, which is the duplicated-derivation class I have spent the session
+removing.
+
+**So it is the core's to serve, and it has been asked**: either the page each component gates, or
+`openable`/`blockedReason` keyed by page rather than by component.
+
+**Recorded rather than papered over.** The gate is NOT a regression — before tonight there was no
+gate at all — but it is an INCOMPLETE fix, and a safety gate that works in one locale is worth
+saying out loud rather than leaving as a green commit message. **A test pinning the current
+behaviour would pin the defect**, so there is none; this entry is the record until the core serves
+the join.
