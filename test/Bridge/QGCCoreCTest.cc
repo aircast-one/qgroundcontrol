@@ -1244,6 +1244,9 @@ const char *const kViewPaths[] = {
     "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
     "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(4)",
+    "view.missionSummary(verify)", "view.missionKinds(1)", "view.instruments(vehicle/altitudeRelative)",
+    "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
+    "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
 };
 
 } // namespace
@@ -1325,6 +1328,36 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     for (const char *path : kViewPaths) {
         const QString key = QString::fromUtf8(path);
         recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
+    }
+
+    static const QMap<QString, QString> kArgumentsNotRecorded = {
+        { QStringLiteral("view.tlog"), QStringLiteral("needs a telemetry log on disk") },
+        { QStringLiteral("view.planFile"), QStringLiteral("needs a plan file on disk") },
+        { QStringLiteral("view.waypointsFile"), QStringLiteral("needs a waypoints file on disk") },
+        { QStringLiteral("view.planFromWaypoints"), QStringLiteral("needs a waypoints file on disk") },
+        { QStringLiteral("view.missionFile"), QStringLiteral("needs a mission file on disk") },
+        { QStringLiteral("view.kmlFile"), QStringLiteral("needs a KML file on disk") },
+        { QStringLiteral("view.shapeFile"), QStringLiteral("needs a shapefile on disk") },
+        { QStringLiteral("view.terrainTile"), QStringLiteral("needs a terrain tile on disk") },
+        { QStringLiteral("view.coreVehicle"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
+        { QStringLiteral("view.coreGuided"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
+        { QStringLiteral("view.coreParameter"), QStringLiteral("takes a vehicle id and a parameter name") },
+        { QStringLiteral("view.coreParameters"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
+        { QStringLiteral("view.coreMission"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
+        { QStringLiteral("view.coreRemoteId"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
+        { QStringLiteral("view.coreCalibration"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
+    };
+    const QJsonArray argumentModes = take(qgc_bridge_get("view.dependencies")).value(QStringLiteral("argumentModes")).toArray();
+    QVERIFY2(argumentModes.count() > 20, "the registry parsed, so an empty answer below would mean nothing");
+    for (const QJsonValue &mode : argumentModes) {
+        const QString path = mode.toObject().value(QStringLiteral("path")).toString();
+        bool argued = false;
+        for (const char *candidate : kViewPaths) {
+            argued = argued || QString::fromUtf8(candidate).startsWith(path + QLatin1Char('('));
+        }
+        const bool accepted = kArgumentsNotRecorded.contains(path);
+        QVERIFY2(argued || accepted, qPrintable(QStringLiteral("%1 takes arguments and every recording of it passes none, so whatever those arguments unlock is pinned by nothing - record it with arguments, or name it in kArgumentsNotRecorded with the reason it cannot be").arg(path)));
+        QVERIFY2(!(argued && accepted), qPrintable(QStringLiteral("%1 is recorded with arguments and still named in kArgumentsNotRecorded as \"%2\" - an acceptance that has come true reads as a decision somebody still stands behind").arg(path, kArgumentsNotRecorded.value(path))));
     }
 
     for (auto it = recorded.begin(); it != recorded.end(); ++it) {

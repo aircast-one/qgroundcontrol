@@ -434,6 +434,17 @@
         "view.flyState.kind",
         "view.flyState.landing",
         "view.flyState.staleNotice",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).class",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).kind",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).x",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).y",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).z",
+        "view.geoToUtm(47.397,8.546).class",
+        "view.geoToUtm(47.397,8.546).easting",
+        "view.geoToUtm(47.397,8.546).kind",
+        "view.geoToUtm(47.397,8.546).northing",
+        "view.geoToUtm(47.397,8.546).southern",
+        "view.geoToUtm(47.397,8.546).zone",
         "view.guidedActions.actions.#",
         "view.guidedActions.actions.0.carriesValue",
         "view.guidedActions.actions.0.destructive",
@@ -611,6 +622,12 @@
         "view.inspector.rateChoices.8.title",
         "view.inspector.rateChoices.9.rate",
         "view.inspector.rateChoices.9.title",
+        "view.instruments(vehicle/altitudeRelative).class",
+        "view.instruments(vehicle/altitudeRelative).items.#",
+        "view.instruments(vehicle/altitudeRelative).items.0.group",
+        "view.instruments(vehicle/altitudeRelative).items.0.id",
+        "view.instruments(vehicle/altitudeRelative).items.0.name",
+        "view.instruments(vehicle/altitudeRelative).kind",
         "view.instruments.class",
         "view.instruments.items.#",
         "view.instruments.items.0.group",
@@ -784,6 +801,7 @@
         "view.missionItems.items.0.speedChange",
         "view.missionItems.items.0.speedChangeText",
         "view.missionItems.kind",
+        "view.missionKinds(1).kind",
         "view.missionKinds.class",
         "view.missionKinds.kind",
         "view.missionKinds.kinds.#",
@@ -879,6 +897,18 @@
         "view.missionSeed(survey,47,8).points.3.latitude",
         "view.missionSeed(survey,47,8).points.3.longitude",
         "view.missionSeed(survey,47,8).property",
+        "view.missionSummary(verify).altitudeBandMetres.#",
+        "view.missionSummary(verify).class",
+        "view.missionSummary(verify).durationInputs.ascent",
+        "view.missionSummary(verify).durationInputs.cruise",
+        "view.missionSummary(verify).durationInputs.hover",
+        "view.missionSummary(verify).imperial",
+        "view.missionSummary(verify).kind",
+        "view.missionSummary(verify).rows.#",
+        "view.missionSummary(verify).rows.0.label",
+        "view.missionSummary(verify).rows.1.label",
+        "view.missionSummary(verify).rows.2.label",
+        "view.missionSummary(verify).rows.4.label",
         "view.missionSummary.altitudeBandComputed",
         "view.missionSummary.altitudeBandMetres",
         "view.missionSummary.class",
@@ -903,6 +933,11 @@
         "view.modeSlots.kind",
         "view.modeSlots.liveSlot",
         "view.modeSlots.slots.#",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).altitude",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).kind",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).latitude",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).longitude",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).valid",
         "view.obstacle.available",
         "view.obstacle.class",
         "view.obstacle.enabled",
@@ -2247,6 +2282,11 @@
         "view.track.order",
         "view.track.points.#",
         "view.track.recording",
+        "view.utmToGeo(465000,5248000,32).altitude",
+        "view.utmToGeo(465000,5248000,32).kind",
+        "view.utmToGeo(465000,5248000,32).latitude",
+        "view.utmToGeo(465000,5248000,32).longitude",
+        "view.utmToGeo(465000,5248000,32).valid",
         "view.vehicles.ambiguous",
         "view.vehicles.class",
         "view.vehicles.kind",
@@ -2786,6 +2826,17 @@
         "view.flyState.staleNotice",
         "view.flyState.state",
         "view.flyState.stateText",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).class",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).kind",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).x",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).y",
+        "view.geoToNed(47.397,8.546,500,47.396,8.545,490).z",
+        "view.geoToUtm(47.397,8.546).class",
+        "view.geoToUtm(47.397,8.546).easting",
+        "view.geoToUtm(47.397,8.546).kind",
+        "view.geoToUtm(47.397,8.546).northing",
+        "view.geoToUtm(47.397,8.546).southern",
+        "view.geoToUtm(47.397,8.546).zone",
         "view.guidedActions.actions.#",
         "view.guidedActions.actions.0.carriesValue",
         "view.guidedActions.actions.0.destructive",
@@ -3218,6 +3269,17 @@
         "view.inspector.rateChoices.8.title",
         "view.inspector.rateChoices.9.rate",
         "view.inspector.rateChoices.9.title",
+        "view.instruments(vehicle/altitudeRelative).available",
+        "view.instruments(vehicle/altitudeRelative).class",
+        "view.instruments(vehicle/altitudeRelative).items.#",
+        "view.instruments(vehicle/altitudeRelative).items.0.group",
+        "view.instruments(vehicle/altitudeRelative).items.0.id",
+        "view.instruments(vehicle/altitudeRelative).items.0.label",
+        "view.instruments(vehicle/altitudeRelative).items.0.missing",
+        "view.instruments(vehicle/altitudeRelative).items.0.name",
+        "view.instruments(vehicle/altitudeRelative).items.0.units",
+        "view.instruments(vehicle/altitudeRelative).items.0.value",
+        "view.instruments(vehicle/altitudeRelative).kind",
         "view.instruments.available",
         "view.instruments.class",
         "view.instruments.items.#",
@@ -4166,6 +4228,7 @@
         "view.missionItems.kind",
         "view.missionItems.reason",
         "view.missionItems.selected",
+        "view.missionKinds(1).kind",
         "view.missionKinds.class",
         "view.missionKinds.kind",
         "view.missionKinds.kinds.#",
@@ -4277,6 +4340,58 @@
         "view.missionSeed(survey,47,8).points.3.latitude",
         "view.missionSeed(survey,47,8).points.3.longitude",
         "view.missionSeed(survey,47,8).property",
+        "view.missionSummary(verify).altitudeBandComputed",
+        "view.missionSummary(verify).altitudeBandComputed.#",
+        "view.missionSummary(verify).altitudeBandComputed.0",
+        "view.missionSummary(verify).altitudeBandComputed.1",
+        "view.missionSummary(verify).altitudeBandMetres.#",
+        "view.missionSummary(verify).altitudeBandMetres.0",
+        "view.missionSummary(verify).altitudeBandMetres.1",
+        "view.missionSummary(verify).altitudeRange",
+        "view.missionSummary(verify).altitudeRange.highest",
+        "view.missionSummary(verify).altitudeRange.lowest",
+        "view.missionSummary(verify).altitudeRange.text",
+        "view.missionSummary(verify).available",
+        "view.missionSummary(verify).class",
+        "view.missionSummary(verify).distanceComputedMetres",
+        "view.missionSummary(verify).distanceInputs.endsRouteAt",
+        "view.missionSummary(verify).distanceInputs.legs",
+        "view.missionSummary(verify).distanceInputs.total",
+        "view.missionSummary(verify).distanceMetres",
+        "view.missionSummary(verify).durationComputedSeconds",
+        "view.missionSummary(verify).durationInputs.ascent",
+        "view.missionSummary(verify).durationInputs.cruise",
+        "view.missionSummary(verify).durationInputs.distance",
+        "view.missionSummary(verify).durationInputs.hover",
+        "view.missionSummary(verify).durationInputs.multiRotor",
+        "view.missionSummary(verify).durationSeconds",
+        "view.missionSummary(verify).imperial",
+        "view.missionSummary(verify).kind",
+        "view.missionSummary(verify).maxTelemetryComputedMetres",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.#",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.0.fromHome",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.0.sequence",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.0.spanFromExit",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.1.fromHome",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.1.sequence",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.1.spanFromExit",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.2.fromHome",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.2.sequence",
+        "view.missionSummary(verify).maxTelemetryInputs.terms.2.spanFromExit",
+        "view.missionSummary(verify).maxTelemetryMetres",
+        "view.missionSummary(verify).reason",
+        "view.missionSummary(verify).rows.#",
+        "view.missionSummary(verify).rows.0.label",
+        "view.missionSummary(verify).rows.0.value",
+        "view.missionSummary(verify).rows.1.label",
+        "view.missionSummary(verify).rows.1.value",
+        "view.missionSummary(verify).rows.2.label",
+        "view.missionSummary(verify).rows.2.value",
+        "view.missionSummary(verify).rows.3.label",
+        "view.missionSummary(verify).rows.3.value",
+        "view.missionSummary(verify).rows.4.label",
+        "view.missionSummary(verify).rows.4.value",
+        "view.missionSummary(verify).timeSeconds",
         "view.missionSummary.altitudeBandComputed",
         "view.missionSummary.altitudeBandMetres",
         "view.missionSummary.altitudeRange",
@@ -4316,6 +4431,11 @@
         "view.modeSlots.liveSlot",
         "view.modeSlots.reason",
         "view.modeSlots.slots.#",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).altitude",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).kind",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).latitude",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).longitude",
+        "view.nedToGeo(100,50,-10,47.396,8.545,490).valid",
         "view.obstacle.available",
         "view.obstacle.class",
         "view.obstacle.enabled",
@@ -6244,6 +6364,11 @@
         "view.track.points.#",
         "view.track.recording",
         "view.track.vehicleId",
+        "view.utmToGeo(465000,5248000,32).altitude",
+        "view.utmToGeo(465000,5248000,32).kind",
+        "view.utmToGeo(465000,5248000,32).latitude",
+        "view.utmToGeo(465000,5248000,32).longitude",
+        "view.utmToGeo(465000,5248000,32).valid",
         "view.vehicles.activeId",
         "view.vehicles.ambiguous",
         "view.vehicles.class",
@@ -6952,6 +7077,21 @@
         "state": "string",
         "stateText": "string"
     },
+    "view.geoToNed(47.397,8.546,500,47.396,8.545,490)": {
+        "class": "string",
+        "kind": "string",
+        "x": "number",
+        "y": "number",
+        "z": "number"
+    },
+    "view.geoToUtm(47.397,8.546)": {
+        "class": "string",
+        "easting": "number",
+        "kind": "string",
+        "northing": "number",
+        "southern": "bool",
+        "zone": "number"
+    },
     "view.guidedActions": {
         "actions": [
             {
@@ -7078,6 +7218,22 @@
         ]
     },
     "view.instruments": {
+        "available": "bool",
+        "class": "string",
+        "items": [
+            {
+                "group": "string",
+                "id": "string",
+                "label": "string",
+                "missing": "bool",
+                "name": "string",
+                "units": "string",
+                "value": "string"
+            }
+        ],
+        "kind": "string"
+    },
+    "view.instruments(vehicle/altitudeRelative)": {
         "available": "bool",
         "class": "string",
         "items": [
@@ -7360,6 +7516,9 @@
             }
         ]
     },
+    "view.missionKinds(1)": {
+        "kind": "string"
+    },
     "view.missionSeed(survey,47,8)": {
         "class": "string",
         "id": "string",
@@ -7399,6 +7558,52 @@
         ],
         "timeSeconds": "number"
     },
+    "view.missionSummary(verify)": {
+        "altitudeBandComputed": "|null",
+        "altitudeBandMetres": [
+            "null|number"
+        ],
+        "altitudeRange": "|null",
+        "available": "bool",
+        "class": "string",
+        "distanceComputedMetres": "number",
+        "distanceInputs": {
+            "endsRouteAt": "null|number",
+            "legs": "number",
+            "total": "number"
+        },
+        "distanceMetres": "number",
+        "durationComputedSeconds": "number",
+        "durationInputs": {
+            "ascent": "number",
+            "cruise": "number",
+            "distance": "number",
+            "hover": "number",
+            "multiRotor": "bool"
+        },
+        "durationSeconds": "number",
+        "imperial": "bool",
+        "kind": "string",
+        "maxTelemetryComputedMetres": "number",
+        "maxTelemetryInputs": {
+            "terms": [
+                {
+                    "fromHome": "number",
+                    "sequence": "number",
+                    "spanFromExit": "number"
+                }
+            ]
+        },
+        "maxTelemetryMetres": "number",
+        "reason": "string",
+        "rows": [
+            {
+                "label": "string",
+                "value": "string"
+            }
+        ],
+        "timeSeconds": "number"
+    },
     "view.modeSlots": {
         "available": "bool",
         "channel": "number",
@@ -7409,6 +7614,13 @@
         "slots": [
             "empty"
         ]
+    },
+    "view.nedToGeo(100,50,-10,47.396,8.545,490)": {
+        "altitude": "number",
+        "kind": "string",
+        "latitude": "number",
+        "longitude": "number",
+        "valid": "bool"
     },
     "view.obstacle": {
         "available": "bool",
@@ -7771,6 +7983,13 @@
         ],
         "recording": "bool",
         "vehicleId": "null|number"
+    },
+    "view.utmToGeo(465000,5248000,32)": {
+        "altitude": "number",
+        "kind": "string",
+        "latitude": "number",
+        "longitude": "number",
+        "valid": "bool"
     },
     "view.vehicles": {
         "activeId": "null|number",

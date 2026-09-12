@@ -77,10 +77,8 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.setup", "<page>"),
     ("view.surveyStats", "<index>"),
     ("view.label", "<fact name>"),
-    ("view.links", "<filter>"),
     ("view.linkForm", "<type>,<host>,<port>"),
     ("view.missionSeed", "<kind>,<latitude>,<longitude>"),
-    ("view.fences", "<filter>"),
     ("view.tlog", "<file path>"),
     ("view.planFile", "<file path>[,<firmware>]"),
     ("view.waypointsFile", "<file path>"),
@@ -417,14 +415,17 @@ mod argument_modes {
             .lines()
             .filter_map(|line| {
                 let path = line.split("View { path: \"").nth(1)?.split('"').next()?;
-                let compute = line.split("compute: ").nth(1)?.split("::").next()?;
+                let compute = line.split("compute: ").nth(1)?.split(&[',', ' ', '}'][..]).next()?;
                 Some((path.to_string(), compute.to_string()))
             })
             .collect();
         assert!(wired.len() > 40, "the registry parsed, so an empty answer below would mean something");
 
         let declared: Vec<&str> = ARGUMENT_MODES.iter().map(|(path, _)| *path).collect();
-        let reads_arguments = |module: &str| source(module).contains(", args: &[String]");
+        let reads_arguments = |compute: &str| {
+            let (module, function) = compute.split_once("::").unwrap_or(("view", compute));
+            source(module).lines().any(|line| line.contains(&format!("fn {function}(")) && line.contains(", args: &[String]"))
+        };
 
         let undeclared: Vec<&String> = wired.iter().filter(|(path, m)| reads_arguments(m) && !declared.contains(&path.as_str())).map(|(p, _)| p).collect();
         assert!(undeclared.is_empty(), "these views read their arguments and ARGUMENT_MODES does not say so, which is the list both heads' sweeps enumerate from: {undeclared:?}");
