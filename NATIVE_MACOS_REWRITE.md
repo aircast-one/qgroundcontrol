@@ -4153,3 +4153,38 @@ forbidden); `view.adsbTraffic` (available true but connected false — needs a r
 **36 models, and all 68 served views are either read or listed with a reason.** The guard
 that reported these four is the one that found the five unlisted models this morning —
 **it has now caught new views within an hour of their landing, twice.**
+
+### (l) and (rr) answered, (tt) not yet, and a fifth instrument
+
+**(rr) the core closed it.** `aae63bfa3` pins the firmware fence **against a real vehicle**,
+covering all three fields this head decodes: `radiusMetres > 0`, a non-empty `radiusText`
+(*"a head draws the text rather than formatting the metres itself"*), and **the `centre` key
+always present** so a head can tell a fence with no centre from no fence. It also pins
+something this head never knew: **a vehicle carries a fence radius while the fence is
+switched OFF**, and the core answers null for that — so the head needs no rule of its own.
+
+**(tt) has not landed** — `battery.rs` still serves no `currentText`/`percentText`, so the
+power panel still spells those two itself. Unchanged and still asked for.
+
+**(l) answered from the code rather than a gesture.** Markers are draggable exactly when
+`item.canMove`; the write fires only on `DragState.ending`, so a cancelled drag writes
+nothing; and `moveVertex`/`move` are the only paths out. **A pan starting on a marker drags
+it BY DESIGN** — that is the waypoint-move gesture, and undo covers a mis-drag. No defect.
+The gesture could not be scripted anyway: **map markers are not in the accessibility tree.**
+
+**`raw-reads.py`, and it exists because of the gcsPosition defect rather than in spite of
+it.** It reports the narrow case where **a served view names the same subject as a raw Qt
+read** — where the head is most likely to be re-deciding what the core already decided.
+**Control: against `bbf187780^` it reports `positionManager.gcsPosition`.** That is the only
+reason to believe today's zero.
+
+**The matcher was tightened rather than excused.** A first version folded a trailing `s` to
+match more names and reported **`vehicle` against `view.vehicles`** — one aircraft's live
+facts against the list of connected ones, **different subjects entirely.** *Matching names
+is not matching subjects*, and the fold bought one more name at the cost of a false report.
+
+**Three accepted, each checked rather than assumed.** The best of them: `Fly.swift` reads
+`vehicle.batteries` raw **and** `view.battery` ten lines later. That looked like the battery
+defect again — but the raw read takes each Fact's **`valueString`**, the same locale-aware
+string the core builds `voltage_text` from. **A duplicated SOURCE, not a duplicated
+derivation.**
