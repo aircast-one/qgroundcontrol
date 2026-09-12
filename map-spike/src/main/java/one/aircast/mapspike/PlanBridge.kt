@@ -172,7 +172,7 @@ fun moveLandingPlace(index: Int, place: Int, latitude: Double, longitude: Double
     return setOk("$PLAN_ITEMS.$index.$property", settingJson(coordinateJson(latitude, longitude)))
 }
 
-fun placeTakeoffIfUnplaced(index: Int, latitude: Double, longitude: Double): Boolean {
+fun placeTakeoff(index: Int, latitude: Double, longitude: Double): Boolean {
     val placed = setOk(
         "$PLAN_ITEMS.$index.launchCoordinate",
         settingJson(coordinateJson(latitude, longitude)),

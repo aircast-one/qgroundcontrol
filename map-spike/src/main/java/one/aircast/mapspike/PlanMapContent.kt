@@ -160,7 +160,7 @@ internal fun MapSpikeScreen(
                         if (kindId == KIND_LAND) {
                             placeLandingIfUnplaced(added, at.latitude, at.longitude)
                         } else if (kindId == KIND_TAKEOFF) {
-                            placeTakeoffIfUnplaced(added, at.latitude, at.longitude)
+                            placeTakeoff(added, at.latitude, at.longitude)
                         }
                     }
                     selected = MapHit.Waypoint(added)
