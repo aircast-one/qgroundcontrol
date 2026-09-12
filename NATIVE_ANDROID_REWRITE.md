@@ -5652,3 +5652,30 @@ over ground with no terrain data reads `50.0 m`, the core collapsing a span of
 zero to one height rather than `50.0 m to 50.0 m`. The spanning case is
 unit-tested on both sides and still unseen — this rig has no terrain to vary
 over.
+
+### The obstacle distance, demonstrated rather than argued, 2026-09-12
+
+The last of the unit class had been sitting in the gap list since 2026-09-11 as
+a code observation — `ObstacleDistance.kt` builds `"%.1f m"` itself. Turned it
+into an observation.
+
+Set both distance units to Feet on the handset. The Plan tab followed: `2221 ft`,
+`-39 ft to 236 ft AMSL`. The Fly view's proximity warning read **`3.2 m right`**.
+
+**Precisely what is wrong with that, and what is not.** The label is not
+mislabelled — the value and its unit agree. It is the one distance on the screen
+that ignores the operator's setting, standing next to figures in feet, and 3.2
+beside 2221 invites a misread of the scale. A real defect for a proximity
+warning; not a wrong number. (Said carefully because a UX measurement was
+overstated about four-fold earlier tonight and withdrawn.)
+
+The file does more than format, and all of it is vehicle state: it parses the
+raw ring, picks the nearest reading within min..max, converts centimetres,
+spells the unit, maps a bearing to a sector word, and decides "close" (twice the
+sensor minimum) and "stale" (3 s). Asked the core session for a `view.obstacle`
+carrying `distance`, `distanceText`, `bearing` and optionally `sector`, `close`
+and `stale` — noting that the number is the safety issue and the rest can stay
+here if they would rather not own prose.
+
+**Reproducing it needs a sim restart**: the fake stops sending the obstacle ring
+after 45 seconds by design, so the label only exists in that first window.
