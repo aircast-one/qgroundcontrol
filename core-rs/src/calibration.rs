@@ -16,14 +16,16 @@ struct Routine {
     needs_accel_first: bool,
     explanation: &'static str,
     warning: &'static str,
+    spins_propeller: bool,
 }
 
 const ROUTINES: &[Routine] = &[
-    Routine { id: "accelerometer", title: "Accelerometer", method: "calibrateAccel", arguments: &[false], needs_accel_first: false, explanation: "Hold the vehicle in each orientation it asks for.", warning: "" },
-    Routine { id: "compass", title: "Compass", method: "calibrateCompass", arguments: &[], needs_accel_first: true, explanation: "Rotate the vehicle about every axis until each side is done.", warning: "" },
-    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], needs_accel_first: true, explanation: "Place the vehicle in its level flight position", warning: "" },
-    Routine { id: "gyro", title: "Gyro", method: "calibrateGyro", arguments: &[], needs_accel_first: false, explanation: "Leave the vehicle still while the gyros settle.", warning: "" },
-    Routine { id: "pressure", title: "Pressure", method: "calibratePressure", arguments: &[], needs_accel_first: false, explanation: "Zero the barometer at the current altitude.", warning: "" },
+    Routine { id: "accelerometer", title: "Accelerometer", method: "calibrateAccel", arguments: &[false], needs_accel_first: false, explanation: "Hold the vehicle in each orientation it asks for.", warning: "", spins_propeller: false },
+    Routine { id: "compass", title: "Compass", method: "calibrateCompass", arguments: &[], needs_accel_first: true, explanation: "Rotate the vehicle about every axis until each side is done.", warning: "", spins_propeller: false },
+    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], needs_accel_first: true, explanation: "Place the vehicle in its level flight position", warning: "", spins_propeller: false },
+    Routine { id: "gyro", title: "Gyro", method: "calibrateGyro", arguments: &[], needs_accel_first: false, explanation: "Leave the vehicle still while the gyros settle.", warning: "", spins_propeller: false },
+    Routine { id: "pressure", title: "Pressure", method: "calibratePressure", arguments: &[], needs_accel_first: false, explanation: "Zero the barometer at the current altitude.", warning: "", spins_propeller: false },
+    Routine { id: "compassMot", title: "CompassMot", method: "calibrateMotorInterference", arguments: &[], needs_accel_first: false, explanation: "Disconnect your props, flip them over and rotate them one position around the frame. In this configuration they should push the copter down into the ground when the throttle is raised. Secure the copter so that it does not move, turn on your transmitter and keep throttle at zero.", warning: "This spins the motors. CompassMot only works well if you have a battery current monitor, because the magnetic interference is linear with current drawn.", spins_propeller: true },
 ];
 
 pub fn needs_attention(accel: bool, compass: bool) -> &'static str {
@@ -64,6 +66,7 @@ fn routines(connected: bool, busy: bool, accel_needed: bool) -> Vec<Value> {
                 "enabled": connected && !busy && !blocked,
                 "description": if blocked { ACCEL_FIRST } else { r.explanation },
                 "warning": r.warning,
+                "spinsPropeller": r.spins_propeller,
             })
         })
         .collect()
@@ -119,19 +122,24 @@ mod tests {
     fn without_an_apm_vehicle_everything_is_disabled_but_listed() {
         let view = calibration_view(&Fake(json!({ "kind": "null" })), &[]);
         assert_eq!(view["connected"], false);
-        assert_eq!(view["routines"].as_array().unwrap().len(), 5);
+        assert_eq!(view["routines"].as_array().unwrap().len(), ROUTINES.len());
         assert!(view["routines"].as_array().unwrap().iter().all(|r| r["enabled"] == false));
         assert_eq!(view["sides"].as_array().unwrap().len(), 6);
         assert_eq!(view["needsAttention"], "");
     }
 
     #[test]
-    fn nothing_offered_here_spins_a_propeller() {
-        let spins = ["calibrateMotorInterference", "compassMot", "motorTest"];
-        for routine in ROUTINES {
-            assert!(!spins.contains(&routine.method), "{} spins a propeller", routine.method);
+    fn a_routine_that_spins_a_propeller_says_so_and_says_why_it_matters() {
+        let spinning: Vec<&Routine> = ROUTINES.iter().filter(|r| r.spins_propeller).collect();
+        assert_eq!(spinning.len(), 1, "one routine turns the motors today and the flag is what a head gates on - hiding it instead left the core describing a vehicle that does not exist, and a head built the row by hand against an invokable the contract knew nothing about");
+        for routine in &spinning {
+            assert!(!routine.warning.is_empty(), "{} turns the motors and carries no warning", routine.method);
+            assert!(routine.warning.contains("spins the motors"), "the warning has to name what happens rather than counsel care: {}", routine.warning);
         }
-        assert!(spins.contains(&"calibrateMotorInterference"));
+        for routine in ROUTINES.iter().filter(|r| !r.spins_propeller) {
+            assert_ne!(routine.method, "calibrateMotorInterference", "this one turns the motors whatever the flag says");
+        }
+        assert!(spinning[0].explanation.contains("push the copter down into the ground"), "QGC's own instruction, because inverting the props is what makes the test safe and a paraphrase could lose it");
     }
 
     #[test]

@@ -367,7 +367,15 @@ void QGCCoreCTest::_calibrationIsListedWithoutAnApmVehicle()
     const QJsonObject view = take(qgc_bridge_get("view.calibration"));
     QCOMPARE(view.value(QStringLiteral("class")).toString(), QStringLiteral("Calibration"));
     QCOMPARE(view.value(QStringLiteral("connected")).toBool(true), false);
-    QCOMPARE(view.value(QStringLiteral("routines")).toArray().count(), 5);
+    const QJsonArray routines = view.value(QStringLiteral("routines")).toArray();
+    QCOMPARE(routines.count(), 6);
+    const auto spinning = std::count_if(routines.begin(), routines.end(), [](const QJsonValue &r) { return r.toObject().value(QStringLiteral("spinsPropeller")).toBool(); });
+    QCOMPARE(spinning, 1);
+    for (const QJsonValue &routine : routines) {
+        const QJsonObject listed = routine.toObject();
+        QVERIFY2(!listed.value(QStringLiteral("spinsPropeller")).toBool() || !listed.value(QStringLiteral("warning")).toString().isEmpty(),
+                 "a routine that turns the motors reaches a head with no warning beside it");
+    }
     QCOMPARE(view.value(QStringLiteral("sides")).toArray().count(), 6);
 }
 
