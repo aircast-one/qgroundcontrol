@@ -6303,3 +6303,33 @@ sequence ran against `documentsui`. `ui.sh` refuses taps unless the app is in
 front, but the raw `adb shell input` calls used for picker scrolling do not, so
 every step "succeeded" against the wrong window. The guard existed and I had
 stepped around it.
+
+### Checking the configuration I had stopped testing, 2026-09-12
+
+Several ticks of landing-pattern work ran entirely on a plane, while the code
+runs for **every** land item. So: back to the multirotor.
+
+**No regression.** Land still gives `Return To Launch`, the row is clean, and
+the wire carries `cmd=20` and `cmd=178` at 0,0 — both commands that legitimately
+have no coordinate.
+
+**But tracing why it was harmless found a flaw in my own code.** `landingPattern()`
+returned null both for "not a landing pattern" and for "a pattern with no places",
+so the multirotor path worked only because the subsequent write failed harmlessly.
+I split the two with `isLandingPattern` and gated placement on it — **and broke
+the case the tidying was for.** The plane went from 1.56 km back to 677 m.
+
+`landing.rs:37` refuses with "that item is not a landing pattern" whenever
+`landingCoordinate` is not an object, which is exactly the state of a freshly
+added, unplaced pattern. **The core cannot distinguish an unplaced pattern from
+a non-pattern either**, so neither can the head, and the gate could never have
+worked. Reverted; the helper stays because `landingPattern()` genuinely needed
+that test named.
+
+Attempting the write and letting it fail is the right shape here: **the set is
+the test.** On a multirotor land the property does not exist and nothing happens.
+
+The tidying was driven by an assumption about the view's shape that I had not
+read — the same failure as the rest of tonight, this time inside a refactor
+rather than a report. It cost nothing only because the plane case was run
+immediately afterwards.
