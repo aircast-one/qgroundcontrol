@@ -1734,6 +1734,13 @@ func checkSurveyStats() {
     expect(strained.warning.contains("2.00 s"), "and its sentence names what the camera needs")
     expect(strained.warning.contains("0.84 s"), "alongside what the survey asks for")
 
+    expect(SurveyStats(["available": true as NSNumber, "isSurvey": false as NSNumber,
+                        "shotsText": "27", "areaText": "15000 m\u{b2}"]).describes,
+           "a corridor scan describes its camera work too. 647cd7193 stopped the core gating "
+           + "available on is_survey, and this head had the same premise one layer out -- it "
+           + "asked whether the item was a survey before it would even read the view, so a "
+           + "corridor with 27 shots over 15000 m\u{b2} drew nothing. describes reads what the "
+           + "producer decided and never the item's kind")
     expect(SurveyStats([:]).describes == false,
            "a read that returned nothing describes nothing rather than an empty survey")
 }

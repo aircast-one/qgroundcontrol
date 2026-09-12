@@ -48,13 +48,10 @@ struct MissionItem: Identifiable, Equatable {
     }
 
     var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
-    var isSurveyItem: Bool { kind == MissionItem.surveyKind }
-
     var canChangeCommand: Bool { isSimpleItem && sequence > 0 && !isLaunch }
 
     static let settingsKind = "settings"
     static let takeoffKind = "takeoff"
-    static let surveyKind = "survey"
 
     static func routeEnd(_ items: [MissionItem]) -> Int {
         items.firstIndex(where: \.endsRoute) ?? items.count

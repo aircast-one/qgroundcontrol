@@ -347,12 +347,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func loadSurveyStats(for item: MissionItem) {
-        watchSurvey(item.isSurveyItem ? item.index : nil)
-        guard item.isSurveyItem else {
-            if surveyStats != .none { surveyStats = .none }
-            return
-        }
         readSurveyStats(item.index)
+        watchSurvey(surveyStats.describes ? item.index : nil)
     }
 
     @discardableResult
@@ -398,7 +394,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             // position -- measured, the core answered -35.278589, 149.338502 while the row showed
             // a dash until something forced a reload.
             self.readItems()
-            guard let current = self.items.first(where: \.isCurrent), current.isSurveyItem else { return }
+            guard let current = self.items.first(where: \.isCurrent) else { return }
             self.readSurveyStats(current.index)
         }
     }
