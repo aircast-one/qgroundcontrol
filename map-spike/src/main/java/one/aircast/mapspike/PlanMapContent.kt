@@ -41,6 +41,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -136,7 +137,7 @@ internal fun MapSpikeScreen(
     var topOverlayPx by remember { mutableIntStateOf(0) }
 
     val kindsView by mapPath("view.missionKinds")
-    val insertable = missionKinds(kindsView)
+    val insertable by remember { derivedStateOf { missionKinds(kindsView) } }
 
     fun say(message: String) {
         busy = message

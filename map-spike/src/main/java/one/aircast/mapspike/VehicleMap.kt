@@ -10,7 +10,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -218,11 +217,6 @@ fun VehicleMap(
         }
     }
 
-    val liveAdd by rememberUpdatedState(onAdd)
-    val liveMove by rememberUpdatedState(onMove)
-    val liveSelected by rememberUpdatedState(onWaypointSelected)
-    val liveMoved by rememberUpdatedState(onMoved)
-
     DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
@@ -258,10 +252,10 @@ fun VehicleMap(
                 if (editable) {
                     attachMissionEditing(
                         mapView, loaded, loadedStyle,
-                        onAdd = { lat, lon -> liveAdd(lat, lon) },
-                        onMove = { hit, lat, lon -> liveMove(hit, lat, lon) },
-                        onSelected = { hit -> liveSelected(hit) },
-                        onMoved = { hit, lat, lon -> liveMoved(hit, lat, lon) },
+                        onAdd = onAdd,
+                        onMove = onMove,
+                        onSelected = onWaypointSelected,
+                        onMoved = onMoved,
                     )
                 }
                 style = loadedStyle
