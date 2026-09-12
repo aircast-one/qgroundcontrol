@@ -5953,3 +5953,37 @@ from a spot my own check had cleared to 24 px. The app's hit tolerance is wider
 than that, so finding somewhere to add is fiddly at density even with 78% of the
 canvas nominally free. Not the same defect as the drag, and not measured
 carefully enough to file — noted so it is not rediscovered as a mystery.
+
+### The proximity warning was hiding the closest obstacles, 2026-09-12
+
+`view.obstacle` landed (`abeca9f79`) and the head now reads it — but the core
+session caught a defect in my code on the way, by reading
+`VehicleObjectAvoidance.cc` instead of trusting my description of my own file.
+
+`ObstacleDistance.kt` filtered readings to `cm in minCm..maxCm`. The MAVLink
+definition of `distances` says **"A value of 0 is valid and means that the
+obstacle is practically touching the sensor"**, and `min_distance` is documented
+only as "Minimum distance the sensor can measure" — a capability, not a validity
+floor. So that filter dropped every reading below the sensor minimum, including
+zero, and the readout showed **nothing at all** when something was against the
+aircraft. The worst possible failure direction for a proximity warning.
+
+I had listed that filter to them myself, in a message arguing the head does too
+much, and still did not see it. Reading the message definition took one grep.
+
+The head is now a colour and a join: 122 lines out, 45 in. Ring parsing, cm
+conversion, unit spelling, bearing-to-sector and the close and stale rules all
+belong to the core.
+
+Seen in the sensor's 45-second window: `3 m right` in metric, `10 ft right`
+with the app in feet — the defect that started this.
+
+**Their units fix also verified live, for free.** Feet set with the app already
+running, only the sim restarted: the strip read `0.0 ft` and `1422.4 ft` with no
+app restart. `ffb07c116` works.
+
+**One consequence flagged rather than fixed**: `distance_text` rounds to whole
+units at these magnitudes, so 3.20 m reads `3 m`. Right for route distances; for
+a proximity warning 3.4 m and 2.6 m both reading "3 m" loses what the old head
+showed as `3.2 m`. The sensor's resolution is centimetres. Left with the core
+session to weigh.
