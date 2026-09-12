@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{object, refused};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed"];
+pub const DEPS: &[&str] = &["plan.missionController.complexMissionItemNames", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed"];
 const DEFAULT_AREA_METRES: f64 = 150.0;
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -49,6 +49,7 @@ const NEEDS_TAKEOFF_FIRST: &str = "This mission starts from the ground, so a tak
 const ALREADY_TAKES_OFF: &str = "The mission already takes off before this point.";
 const LAND_COMES_LAST: &str = "A landing goes after the takeoff and after every place the vehicle flies through.";
 const NOT_AFTER_LANDING: &str = "The vehicle has already landed at this point in the mission.";
+const NOT_FOR_THIS_VEHICLE: &str = "This kind of vehicle does not fly that pattern.";
 
 pub struct Insertable {
     pub at_sequence: Option<i64>,
@@ -56,12 +57,22 @@ pub struct Insertable {
     pub takeoff: bool,
     pub land: bool,
     pub fly_through: bool,
+    pub patterns: Option<Vec<String>>,
+}
+
+impl Insertable {
+    pub fn offers(&self, kind: &Kind) -> bool {
+        match (kind.complex_name, &self.patterns) {
+            (Some(name), Some(offered)) => offered.iter().any(|held| held == name),
+            _ => true,
+        }
+    }
 }
 
 pub fn insertable(backend: &dyn Backend) -> Insertable {
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        "currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed",
+        "complexMissionItemNames,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed",
     ));
     let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
@@ -70,10 +81,16 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         takeoff: answered("isInsertTakeoffValid", true),
         land: answered("isInsertLandValid", false),
         fly_through: answered("flyThroughCommandsAllowed", true),
+        patterns: mission.get("complexMissionItemNames").and_then(Value::as_array).map(|names| {
+            names.iter().filter_map(Value::as_str).map(str::to_string).collect()
+        }),
     }
 }
 
 pub fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
+    if !insertable.offers(kind) {
+        return Some(NOT_FOR_THIS_VEHICLE);
+    }
     match kind.id {
         "takeoff" if !insertable.takeoff => Some(ALREADY_TAKES_OFF),
         "takeoff" => None,
@@ -120,7 +137,7 @@ pub fn kinds_view(backend: &dyn Backend, args: &[String]) -> Value {
         Some(wanted) => lookup(wanted).map(|kind| offered(kind, &insertable)).unwrap_or_else(|| {
             crate::read::refused(&format!("no mission kind is called {wanted}; this takes a kind id or a complex item name, one of {}", KINDS.iter().map(|kind| kind.id).collect::<Vec<_>>().join(", ")))
         }),
-        None => json!({ "kind": "object", "class": "MissionKinds", "kinds": KINDS.iter().map(|kind| offered(kind, &insertable)).collect::<Vec<_>>() }),
+        None => json!({ "kind": "object", "class": "MissionKinds", "kinds": KINDS.iter().filter(|kind| insertable.offers(kind)).map(|kind| offered(kind, &insertable)).collect::<Vec<_>>() }),
     }
 }
 
@@ -289,8 +306,30 @@ mod offering {
         })
     }
 
+    fn flying(mut state: Value, patterns: &[&str]) -> Value {
+        state["complexMissionItemNames"] = json!(patterns);
+        state
+    }
+
     fn named<'a>(offered: &'a [(String, Option<bool>, String)], id: &str) -> &'a (String, Option<bool>, String) {
         offered.iter().find(|(kind, _, _)| kind == id).unwrap()
+    }
+
+    #[test]
+    fn a_pattern_the_vehicle_cannot_fly_is_not_offered_at_all() {
+        let plane = flying(state(false, false, true, true), &["Survey", "Corridor Scan"]);
+        let offered = offering(plane.clone());
+        assert!(offered.iter().all(|(id, _, _)| id != "structure"), "QGC withholds Structure Scan from anything that is not a multirotor or a VTOL, so a head must not be able to draw one");
+        assert!(offered.iter().any(|(id, _, _)| id == "survey"), "the patterns it does fly stay");
+        let asked = kinds_view(&Mission(plane), &["structure".to_string()]);
+        assert_eq!(asked["enabled"], json!(false));
+        assert_eq!(asked["disabledReason"], json!(NOT_FOR_THIS_VEHICLE), "asking by name has to answer with the reason rather than silently succeeding");
+    }
+
+    #[test]
+    fn a_plan_that_does_not_name_its_patterns_keeps_every_one_of_them() {
+        let offered = offering(state(false, false, true, true));
+        assert!(offered.iter().any(|(id, _, _)| id == "structure"), "a missing list is not a vehicle that flies nothing; it is a plan that has not said, and erasing the catalogue would be a worse answer than the status quo");
     }
 
     #[test]
