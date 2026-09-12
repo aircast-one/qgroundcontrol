@@ -697,6 +697,10 @@ struct PlanInspector: View {
                 GroupRow(title: "Area covered", value: mission.surveyStats.areaText)
                 GroupRow(title: "Distance flown", value: mission.surveyStats.distanceText)
                 GroupRow(title: "Each photo covers", value: mission.surveyStats.footprintText)
+                if !mission.surveyStats.surfaceDistanceText.isEmpty {
+                    GroupRow(title: "Above the ground",
+                             value: mission.surveyStats.surfaceDistanceText)
+                }
             }
             if !mission.surveyStats.warning.isEmpty {
                 Label(mission.surveyStats.warning, systemImage: "exclamationmark.triangle.fill")

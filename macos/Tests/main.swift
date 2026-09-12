@@ -1325,6 +1325,7 @@ func checkMissionItemKinds() {
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
     checkAnItemSaysHowManyCommandsItFolds()
+    checkAPatternSaysHowHighAboveTheGroundItFlies()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
@@ -4300,6 +4301,31 @@ func checkSpeedChangeIsListedNotOnlySelected() {
     expect(item(speed: "12.0 m/s").subtitle(unreached: true), "Never flown to",
            "and so does never being flown to, which says the item is not on the route at all -- "
            + "the speed it would have commanded there is not the point")
+}
+
+func checkAPatternSaysHowHighAboveTheGroundItFlies() {
+    expect(SurveyStats(["available": true as NSNumber, "shotsText": "1043",
+                        "surfaceDistanceText": "50.0 m"]).surfaceDistanceText, "50.0 m",
+           "a survey flies a fixed height above the GROUND, and until the core named it the "
+           + "operator had no way to read it at all: a TransectStyleComplexItem has no altitude "
+           + "fact, so the row's altitude column is an em dash and correctly so")
+    expect(SurveyStats(["available": true as NSNumber,
+                        "surfaceDistanceText": NSNull()]).surfaceDistanceText, "",
+           "an explicit null leaves it empty and the row is not drawn, rather than a labelled "
+           + "blank claiming the survey flies at no height above anything")
+    expect(SurveyStats(["available": true as NSNumber]).surfaceDistanceText, "",
+           "and so does an absent key, which is the other of the three states the bridge carries")
+    let survey = MissionItem(view: ["index": 4 as NSNumber, "sequence": 4 as NSNumber,
+                                    "name": "Survey", "kind": "survey",
+                                    "altitudeText": NSNull(), "altitudeBandText": NSNull()],
+                             selected: -1)
+    expect(survey.altitudeReading, MissionItem.noAltitude,
+           "and the height above the ground must NOT land in the item's altitude column. Those "
+           + "are different quantities -- one measured from the terrain, one from the launch "
+           + "point, and for a terrain-following survey they differ BY the terrain. The Android "
+           + "head drew cameraCalc.distanceToSurface there and the row read 50.0 m as though it "
+           + "were an altitude; 97f05e940 is the core naming the quantity so neither head has to "
+           + "guess. An em dash is the honest answer for a column this item has no value for")
 }
 
 func checkAnItemSaysHowManyCommandsItFolds() {

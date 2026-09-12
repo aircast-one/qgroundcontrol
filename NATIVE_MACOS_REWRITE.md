@@ -2903,3 +2903,33 @@ inflated by exactly what mine filters for free. Source gives the universe, live 
 reachability. Run theirs for candidates and mine to sort them; a key in one and not
 the other is either unreachable or wants a richer plan, and which of those it is, is
 the question worth asking.
+
+### A pattern says how high above the ground it flies, 2026-09-12
+
+The fifth field the sweep found — and **the sweep did not find it**. `97f05e940`
+added `surfaceDistanceText` to `view.surveyStats`, and reading the core's commit
+under rule (i) is what surfaced it. **The sweep had been silently skipping
+`view.surveyStats` for its entire life**, because that view needs an index argument
+and the scratch predicate swallowed the exception and continued. Twenty-two fields
+invisible, and a clean-looking total the whole time. Rule 7 in my own tooling: **a
+checker that cannot read something must say so.** Fixed; the view now reports its
+refusal, and the sweep immediately shows both new keys.
+
+A `TransectStyleComplexItem` has no altitude fact at all, so `altitudeText` is null
+for a survey and always was — **this head's altitude column has been drawing an em
+dash for patterns, which is correct.** The Android head drew
+`cameraCalc.distanceToSurface` there instead and the row read `50.0 m` as though it
+were an altitude. **Those are different quantities: one measured from the terrain,
+one from the launch point, and for a terrain-following survey they differ BY the
+terrain.** So the new figure goes in the survey card as **"Above the ground"**, not
+in the altitude column — and an assertion pins that, with a mutation putting it in
+the column failing two assertions that already existed.
+
+**Observed and NOT fixed, because it is not mine to fix alone.** The altitude column
+already mixes reference frames, and each choice is the core's: the launch row draws
+`altitudeText` = **491 m AMSL** (`f8e16903b`, deliberately), a waypoint draws
+**75.0 m relative to launch**, a survey draws its band = **541 m AMSL**. Scanning the
+column gives 491, 75, 75, 541 with nothing saying which is measured from where. The
+head draws the core's text in every case and is not re-deriving anything, so
+labelling the frame is a contract question for both heads and the core rather than a
+unilateral head change. Raised, not invented.

@@ -9,6 +9,7 @@ struct SurveyStats: Equatable {
     let warning: String
     let areaText: String
     let distanceText: String
+    let surfaceDistanceText: String
 
     static let none = SurveyStats()
 
@@ -21,6 +22,7 @@ struct SurveyStats: Equatable {
         warning = ""
         areaText = ""
         distanceText = ""
+        surfaceDistanceText = ""
     }
 
     init(_ json: [String: Any]) {
@@ -33,6 +35,7 @@ struct SurveyStats: Equatable {
         warning = text("warning")
         areaText = text("areaText")
         distanceText = text("distanceText")
+        surfaceDistanceText = text("surfaceDistanceText")
     }
 
     var describes: Bool { available }
