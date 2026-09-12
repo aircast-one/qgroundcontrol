@@ -6260,12 +6260,21 @@ have drawn, so every one of those pixels comes from the loop. On screen it is a
 closed rectangle offset outward from the shaded polygon, which is what
 `flightPolygon` is: the drawn shape pushed out by the camera distance.
 
-~~**`layers` is read and not drawn.**~~ **Said in words instead** (`573ca49`):
-the detail row reads `2 layers, one drawn` beside the camera line, seen on the
+~~**`layers` is read and not drawn.**~~ **Said in words** (`573ca49`, `1e24448`):
+the detail row reads `2 layers, 62.5 m to 87.5 m, one drawn`, seen on the
 handset. Drawing them would not have worked — the circuits are stacked in
 altitude over one ground track, so three loops are three lines on the same
 pixels. A single layer says nothing, because then the drawn loop is the whole
 mission and there is no discrepancy to explain.
+
+The span took two attempts and the first one is the instructive half. I built it
+from `layerAltitudesMetres`, a raw array, and a failing test showed what that
+meant: the head would hardcode a unit and a precision on a tab where every other
+measurement arrives already spelled, so a feet rig would read metres beside a
+camera line reading feet. I backed out reader, text and tests, told the core the
+array had no consumer here, and it served `layerSpanText`. The array is still
+right for a head that wants individual heights and wrong for one with a flat map
+and a text line.
 
 ### Landing patterns: drawn, then placeable, 2026-09-12
 
