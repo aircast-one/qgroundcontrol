@@ -28,6 +28,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.containsItems",
     "planFly.missionController.missionItemCount",
     "planFly.missionController.currentMissionIndex",
+    "planFly.missionController.resumeMissionIndex",
     "settings.appSettings.useChecklist",
     "settings.appSettings.enforceChecklist",
 ];
@@ -65,6 +66,7 @@ pub struct GuidedState {
     pub mission_available: bool,
     pub mission_item_count: i64,
     pub current_mission_index: i64,
+    pub resume_from_sequence: i64,
 }
 
 impl GuidedState {
@@ -77,6 +79,13 @@ impl GuidedState {
     fn has_more_mission(&self) -> bool {
         self.current_mission_index < self.mission_item_count - 1
     }
+
+    pub fn can_resume(&self) -> bool {
+        !self.armed
+            && self.mission_available
+            && self.resume_from_sequence > 0
+            && self.resume_from_sequence < self.mission_item_count - 2
+    }
 }
 
 #[derive(Serialize, Clone, Copy, PartialEq, Debug)]
@@ -86,6 +95,7 @@ pub enum Action {
     Takeoff,
     StartMission,
     ContinueMission,
+    ResumeMission,
     Pause,
     ChangeAltitude,
     ChangeSpeed,
@@ -106,6 +116,7 @@ pub const ACTIONS: &[Action] = &[
     Action::Takeoff,
     Action::StartMission,
     Action::ContinueMission,
+    Action::ResumeMission,
     Action::Pause,
     Action::ChangeAltitude,
     Action::ChangeSpeed,
@@ -140,6 +151,7 @@ impl Action {
             Action::Takeoff => "Takeoff",
             Action::StartMission => "Start Mission",
             Action::ContinueMission => "Continue Mission",
+            Action::ResumeMission => "Resume Mission",
             Action::Pause => "Pause",
             Action::ChangeAltitude => "Change Altitude",
             Action::ChangeSpeed => "Change Speed",
@@ -162,6 +174,7 @@ impl Action {
             Action::Takeoff => "Take off and climb to the height you set.",
             Action::StartMission => "Fly the mission from the beginning.",
             Action::ContinueMission => "Fly the rest of the mission from the current item.",
+            Action::ResumeMission => "Carry on from the waypoint the vehicle had reached, rather than flying the plan again from the start.",
             Action::Pause => "Hold position, at the height you set.",
             Action::ChangeAltitude => "Climb or descend to a new height.",
             Action::ChangeSpeed => "Fly at a new speed.",
@@ -195,6 +208,7 @@ impl Action {
                 Action::ContinueMission => {
                     s.mission_available && !s.mission_active() && s.armed && s.flying && s.has_more_mission()
                 }
+                Action::ResumeMission => s.can_resume(),
                 Action::Pause => s.armed && s.pause_supported && s.flying && !s.paused && !s.on_approach(),
                 Action::LandAbort => s.flying && s.on_approach(),
                 Action::ChangeAltitude => s.armed && s.guided_supported && s.flying && !s.mission_active(),
@@ -248,6 +262,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "GuidedActions",
         "connected": state.connected,
         "missionActive": state.mission_active(),
+        "resumeFromSequence": (state.resume_from_sequence > 0).then_some(state.resume_from_sequence),
         "forwardFlight": state.forward_flight,
         "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
@@ -276,7 +291,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     ));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
-    let flying = object(&backend.get_fields("planFly.missionController", "missionItemCount,currentMissionIndex"));
+    let flying = object(&backend.get_fields("planFly.missionController", "missionItemCount,currentMissionIndex,resumeMissionIndex"));
     let app = object(&backend.get_fields("settings.appSettings", "useChecklist,enforceChecklist"));
     let mode = text(&vehicle, "flightMode");
     let same_mode = |key: &str| !mode.is_empty() && text(&vehicle, key) == mode;
@@ -319,6 +334,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         mission_available: flag(&mission, "containsItems"),
         mission_item_count: integer(&flying, "missionItemCount").unwrap_or(0),
         current_mission_index: integer(&flying, "currentMissionIndex").unwrap_or(-1),
+        resume_from_sequence: integer(&flying, "resumeMissionIndex").unwrap_or(0),
     }
 }
 
@@ -343,6 +359,40 @@ mod tests {
             can_start_mission: true,
             ..GuidedState::default()
         }
+    }
+
+    #[test]
+    fn resume_is_offered_from_the_waypoint_reached_and_zero_means_it_is_not() {
+        let landed = GuidedState { armed: false, mission_available: true, mission_item_count: 12, resume_from_sequence: 5, ..GuidedState::default() };
+        assert!(landed.can_resume(), "after the vehicle lands part way through - a battery swap or an aborted leg - this is the only offer that carries on from where it got to instead of flying the plan again");
+
+        let unavailable = GuidedState { resume_from_sequence: 0, ..landed.clone() };
+        assert!(!unavailable.can_resume(), "MissionController returns ZERO when a mission cannot be resumed, not -1 - its own header comment says -1, and a core gating on index >= 0 would offer Resume forever");
+
+        let armed = GuidedState { armed: true, ..landed.clone() };
+        assert!(!armed.can_resume(), "resuming is an offer for a vehicle on the ground");
+
+        let near_the_end = GuidedState { resume_from_sequence: 10, ..landed.clone() };
+        assert!(!near_the_end.can_resume(), "QGC stops offering it within two items of the end, where regenerating a truncated plan buys nothing");
+
+        struct Landed(i64);
+        impl Backend for Landed {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    "planFly.missionController" => json!({ "kind": "object", "missionItemCount": 12, "currentMissionIndex": 5, "resumeMissionIndex": self.0 }),
+                    "plan.missionController" => json!({ "kind": "object", "containsItems": true }),
+                    _ => json!({ "kind": "object" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(guided_view(&Landed(5), &[])["resumeFromSequence"], 5, "the head invoking resumeMission needs the number, and reading it off a raw Qt path is a head re-deriving what the core already holds");
+        assert_eq!(guided_view(&Landed(0), &[])["resumeFromSequence"], Value::Null, "zero is not a waypoint to resume from, so it is withheld rather than served as a number a head might pass straight to resumeMission");
     }
 
     #[test]
@@ -513,8 +563,8 @@ mod tests {
         assert_eq!(arm["reason"], "The vehicle's arming checks are failing.");
         assert_eq!(view["actions"][1]["id"], "takeoff");
         assert_eq!(view["actions"][1]["offer"], "ready");
-        assert_eq!(view["actions"][13]["id"], "emergencyStop");
-        assert_eq!(view["actions"][13]["destructive"], true);
+        let named = |id: &str| view["actions"].as_array().unwrap().iter().find(|a| a["id"] == id).cloned().unwrap_or(Value::Null);
+        assert_eq!(named("emergencyStop")["destructive"], true, "keyed by id rather than by position: adding an action to ACTIONS moved this assertion onto a different one, and it still passed its own shape");
         assert_eq!(view["actions"][1]["carriesValue"], true);
         assert!(view["actions"][1].get("carries_value").is_none());
     }
