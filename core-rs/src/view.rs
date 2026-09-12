@@ -16,6 +16,7 @@ use crate::missionsummary;
 use crate::modeslots;
 use crate::flystate;
 use crate::operatorcontrol;
+use crate::orbit;
 use crate::geo;
 use crate::adsb;
 use crate::cameradef;
@@ -169,6 +170,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.altitudeModes", deps: altitudemodes::DEPS, compute: altitudemodes::altitude_modes_view },
     View { path: "view.flyState", deps: flystate::DEPS, compute: flystate::fly_state_view },
     View { path: "view.operatorControl", deps: operatorcontrol::DEPS, compute: operatorcontrol::operator_control_view },
+    View { path: "view.orbit", deps: orbit::DEPS, compute: orbit::orbit_view },
     View { path: "view.coreVehicle", deps: &[], compute: hub::core_vehicle_view },
     View { path: "view.coreGuided", deps: &[], compute: hub::core_guided_view },
     View { path: "view.coreParameter", deps: &[], compute: hub::core_parameter_view },
