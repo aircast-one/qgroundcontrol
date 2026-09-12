@@ -49,6 +49,17 @@ ACCEPTED = {
     "bandText": "the terrain panel draws lowestText and highestText at the plot's two ends "
                 "rather than one sentence between them, so the joined spelling is a display "
                 "choice this head makes and not a figure it fails to show",
+    "layerSpanText": "DUPLICATE, and a SCREENSHOT is what proved it. The core spells the band a "
+                     "structure scan sweeps in metres RELATIVE to launch -- measured "
+                     "\"62.5 m to 87.5 m\" -- and this head already draws the SAME BAND on the "
+                     "item's own row as \"548 m to 572 m AMSL\", from altitudeBandText with "
+                     "altitudeFrameText saying AMSL. Launch sits at 485 m: 485+62.5 is 547.5 and "
+                     "485+87.5 is 572.5, so the two strings are one measurement in two reference "
+                     "frames. I had this filed as a TRUE undrawn finding and left the instrument "
+                     "red on purpose for a cycle; looking at the rendered window is what settled "
+                     "it, because the row's band and the geometry view's span never appear side "
+                     "by side in any payload. Drawing both would put the same figure on screen "
+                     "twice in different units, which is worse than drawing neither",
     "rangeText": "DECLINED, and the core agreed and declined to replace it. The guided slider draws "
                  "its two ends as SEPARATE labels at opposite ends of the track, so a combined "
                  "\"2 m to 150 m\" has nowhere to go without splitting a sentence the core "
