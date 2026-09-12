@@ -191,7 +191,7 @@ struct MissionItem: Identifiable, Equatable {
 
     var positionText: String {
         guard hasPosition, let latitude, let longitude else { return "—" }
-        return String(format: "%.6f, %.6f", latitude, longitude)
+        return GeoPoint.text(latitude, longitude)
     }
 
     static let noAltitude = "\u{2014}"

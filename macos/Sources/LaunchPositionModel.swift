@@ -33,7 +33,7 @@ struct LaunchPosition: Equatable {
 
     var positionText: String {
         guard let coordinate else { return "Not set" }
-        return String(format: "%.6f, %.6f", coordinate.latitude, coordinate.longitude)
+        return GeoPoint.text(coordinate.latitude, coordinate.longitude)
     }
 
     var note: String {

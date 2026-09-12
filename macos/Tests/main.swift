@@ -585,6 +585,26 @@ func checkTheBatteryIsSpelledOnce() {
 
 checkTheBatteryIsSpelledOnce()
 
+func checkACoordinateIsSpelledOneWay() {
+    expect(GeoPoint.text(-35.363262, 149.165237), "-35.363262, 149.165237",
+           "five places in this head spelled a coordinate with their own copy of "
+           + "\"%.6f, %.6f\" -- a rally point, a mission item, the launch position and two "
+           + "rows in the fly view. They agreed, which is why nothing caught it, and they "
+           + "would have drifted the first time one of them changed")
+    expect(GeoPoint.text(47.0, 8.0), "47.000000, 8.000000",
+           "and it matches the string the core already spells for a fence centre, which "
+           + "fences.rs builds with format!(\"{lat:.6}, {lon:.6}\"). Both are "
+           + "locale-independent BY CONSTRUCTION -- Rust's {:.6} and Swift's String(format:) "
+           + "both emit a full stop -- so unlike the battery this was never a disagreement "
+           + "waiting to happen, and the head keeps spelling coordinates rather than asking "
+           + "the core to serve a text for every one")
+    expect(GeoPoint.text(nil, 8.0), "\u{2014}", "a coordinate half missing is not a position")
+    expect(GeoPoint.text(.nan, 8.0), "\u{2014}",
+           "and a nan reads as absent rather than as the word nan on the screen")
+}
+
+checkACoordinateIsSpelledOneWay()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",

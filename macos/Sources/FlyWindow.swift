@@ -622,7 +622,7 @@ struct MapClickMenu: View {
         if let openAt = mapClick.openAt {
             GlassPanel {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(String(format: "%.6f, %.6f", openAt.latitude, openAt.longitude))
+                    Text(GeoPoint.text(openAt.latitude, openAt.longitude))
                         .font(.caption.monospacedDigit())
                         .foregroundColor(.secondary)
                         .padding(.horizontal, Overlay.unit * 0.7)
@@ -667,7 +667,7 @@ struct MapClickConfirm: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(String(format: "%.6f, %.6f", target.latitude, target.longitude))
+                    Text(GeoPoint.text(target.latitude, target.longitude))
                         .font(.caption.monospacedDigit())
                         .foregroundColor(.secondary)
                     SlideToConfirm(title: "Slide to \(target.action.title.lowercased())",

@@ -4,6 +4,15 @@ struct GeoPoint: Equatable {
     let latitude: Double
     let longitude: Double
 
+    static let places = 6
+
+    static func text(_ latitude: Double?, _ longitude: Double?) -> String {
+        guard let latitude, let longitude, latitude.isFinite, longitude.isFinite else {
+            return "\u{2014}"
+        }
+        return String(format: "%.\(places)f, %.\(places)f", latitude, longitude)
+    }
+
     init(latitude: Double, longitude: Double) {
         self.latitude = latitude
         self.longitude = longitude
@@ -145,10 +154,7 @@ struct RallyPointRow: Identifiable, Equatable {
         ((json as? [Any]) ?? []).compactMap(RallyPointRow.init)
     }
 
-    var positionText: String {
-        guard let latitude, let longitude else { return "\u{2014}" }
-        return String(format: "%.6f, %.6f", latitude, longitude)
-    }
+    var positionText: String { GeoPoint.text(latitude, longitude) }
 
     var altitudeText: String {
         Measure.reading(altitude, altitudeUnits)
