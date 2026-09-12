@@ -6586,3 +6586,17 @@ absence of a notice, the summary's independence from what is drawn — is what
 let a peer answer one candidate in a single measurement. A vaguer "fences are
 flaky" would have bought nothing.
 
+
+### Correction: the plan status was never wrong
+
+`c696641`'s message records an observation that "New plan" appears after adding
+a takeoff, implying the core sees `dirty` false. That is false. Re-measured with
+the precondition in the same dump: the header reads **`Unsaved plan`** beside
+`1 item (takeoff)`. The takeoff in the original reading was never added — a File
+menu left open from a previous probe swallowed the tap, and the plan was still
+empty, for which "New plan" is correct.
+
+Third instance today of reading a value without confirming in the same
+observation that the state it describes was reached. The other two were the
+Fence button (disabled by my own gate, not by the plan's contents) and
+`enabled=` on a node that is always enabled. One dump, grep both.
