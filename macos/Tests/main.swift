@@ -1595,6 +1595,7 @@ func checkMissionItemKinds() {
     checkVehicleLinkRows()
     checkSerialLinkInAnyLocale()
     checkLinkEntryRule()
+    checkPowerPagePacks()
     checkSetupGateInAnyLocale()
     checkSummaryOpensInAnyLocale()
     checkModeSlotNaming()
@@ -6473,4 +6474,33 @@ func checkLinkEntryRule() {
     expect(LinkTypes.refusal("0", serial: true) ?? "", "Choose a baud rate.",
            "and a rejected BAUD names the field the operator was actually shown, rather than "
            + "blaming a Port that is not on screen for a serial link")
+}
+
+func checkPowerPagePacks() {
+    let two: [Any] = [
+        ["voltage": 22.1, "voltageText": "22.1 V", "currentText": "3.2 A", "percentText": "78%"],
+        ["voltage": 21.4, "voltageText": "21.4 V", "currentText": "2.9 A", "percentText": "64%"],
+    ]
+    let packs = BatteryReading.list(two)
+    expect(packs.count == 2,
+           "THE CASE THAT MATTERS: the Power page lists the vehicle's calibration parameters per "
+           + "pack -- BATT_* and then BATT2_VOLT_MULT, BATT2_AMP_PERVLT, BATT2_AMP_OFFSET -- and "
+           + "fed its live readings from packs.first alone. Pack 1's voltage sat directly beneath "
+           + "pack 2's multipliers, so an operator putting a meter on pack 2 and correcting until "
+           + "the numbers agreed would have written a wrong BATT2_VOLT_MULT and corrupted pack "
+           + "2's reported voltage, its remaining percentage and BATT2_ARM_VOLT")
+    expect(packs.last?.voltageText ?? "", "21.4 V",
+           "and the second card shows the second pack, which a single-pack fixture cannot check "
+           + "because packs.first and packs.last are the same object there")
+
+    expect(BatteryReading.cardTitle(0, of: 2), "Battery 1",
+           "with more than one pack each card names which battery it is measuring")
+    expect(BatteryReading.cardTitle(1, of: 2), "Battery 2", "and the second is named too")
+    expect(BatteryReading.cardTitle(0, of: 1), "Measured now",
+           "with a single pack there is nothing to disambiguate, so the card keeps the heading it "
+           + "always had rather than growing a number an operator would wonder about")
+
+    expect(BatteryReading.list(nil).isEmpty,
+           "no packs at all yields none, and the page draws its not-reporting state instead of an "
+           + "empty card")
 }

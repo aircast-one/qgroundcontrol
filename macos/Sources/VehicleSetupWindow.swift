@@ -329,16 +329,22 @@ struct PowerView: View {
         SetupPageBody(title: "Power",
                       note: "What the vehicle measures its pack with, and how that measurement is scaled.",
                       connected: store.connected) {
-            VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: "Measured now")
-                GroupCard {
-                    if power.battery.available {
-                        GroupRow(title: "Voltage", value: power.battery.voltageText, showSeparator: false)
-                        GroupRow(title: "Current", value: power.battery.currentText)
-                        GroupRow(title: "Remaining", value: power.battery.percentText)
-                    } else {
+            if power.packs.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: "Measured now")
+                    GroupCard {
                         EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
                             "is not reporting a battery."))
+                    }
+                }
+            }
+            ForEach(Array(power.packs.enumerated()), id: \.offset) { index, pack in
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: BatteryReading.cardTitle(index, of: power.packs.count))
+                    GroupCard {
+                        GroupRow(title: "Voltage", value: pack.voltageText, showSeparator: false)
+                        GroupRow(title: "Current", value: pack.currentText)
+                        GroupRow(title: "Remaining", value: pack.percentText)
                     }
                 }
             }

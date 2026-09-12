@@ -4,6 +4,7 @@ final class PowerStore: ObservableObject, Probeable {
     static let probeID = "power"
 
     @Published private(set) var battery = BatteryReading.unavailable
+    @Published private(set) var packs: [BatteryReading] = []
     @Published private(set) var level = FlyTelemetry.Level.unknown
 
     private var timer: Timer?
@@ -23,16 +24,17 @@ final class PowerStore: ObservableObject, Probeable {
 
     func refresh() {
         let view = Bridge.group("view.battery")
-        guard let first = (view["packs"] as? [[String: Any]])?.first else {
+        let read = BatteryReading.list(view["packs"])
+        if read != packs { packs = read }
+        guard let first = read.first else {
             if battery != .unavailable { battery = .unavailable }
             if level != .unknown { level = .unknown }
             return
         }
 
-        let reading = BatteryReading(first) ?? .unavailable
-        if reading != battery { battery = reading }
-        let read = FlyTelemetry.Level(view["level"] as? String)
-        if read != level { level = read }
+        if first != battery { battery = first }
+        let worst = FlyTelemetry.Level(view["level"] as? String)
+        if worst != level { level = worst }
     }
 
     func probeState() -> [String: Any] {
