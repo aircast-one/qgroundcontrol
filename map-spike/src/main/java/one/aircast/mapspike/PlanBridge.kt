@@ -25,21 +25,28 @@ data class MissionKind(
 // view.missionKinds names every kind, says which are patterns, and says whether
 // the plan will take one right now and why not. Spelling any of that here would
 // be a second opinion that goes stale the day the core adds a fourth pattern.
-fun scanPatterns(view: JSONObject?): List<MissionKind> {
+fun missionKinds(view: JSONObject?): List<MissionKind> {
     val kinds = view?.optJSONArray("kinds") ?: return emptyList()
-    return (0 until kinds.length())
-        .mapNotNull { kinds.optJSONObject(it) }
-        .filterNot { it.optBoolean("simple", true) }
-        .mapNotNull { kind ->
-            val label = kind.optText("complexName").ifBlank { return@mapNotNull null }
-            MissionKind(
-                id = kind.optText("id"),
-                label = label,
-                enabled = kind.optBoolean("enabled", true),
-                disabledReason = kind.optText("disabledReason"),
-            )
-        }
+    return (0 until kinds.length()).mapNotNull { kinds.optJSONObject(it) }.map { kind ->
+        MissionKind(
+            id = kind.optText("id"),
+            label = kind.optText("complexName"),
+            enabled = kind.optBoolean("enabled", true),
+            disabledReason = kind.optText("disabledReason"),
+        )
+    }
 }
+
+fun scanPatterns(view: JSONObject?): List<MissionKind> =
+    missionKinds(view).filter { it.label.isNotBlank() }
+
+// A kind the core has not spoken about is offered, because withholding a
+// control on silence removes something that works - see the fence gate.
+fun kindAllows(kinds: List<MissionKind>, id: String): Boolean =
+    kinds.firstOrNull { it.id == id }?.enabled ?: true
+
+fun blockedReason(kinds: List<MissionKind>): String? =
+    kinds.firstOrNull { !it.enabled && it.disabledReason.isNotBlank() }?.disabledReason
 
 fun missionKindsView(): JSONObject? =
     runCatching { JSONObject(QGCBridge.get("view.missionKinds")) }.getOrNull()

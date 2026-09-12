@@ -199,6 +199,8 @@ internal fun MapSpikeScreen(
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
     val planStatus by mapPath("view.plan")
+    val kindsView by mapPath("view.missionKinds")
+    val insertable = missionKinds(kindsView)
     val support = planSupport(planStatus)
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     var patternWanted by remember { mutableStateOf<List<MissionKind>>(emptyList()) }
@@ -523,7 +525,10 @@ internal fun MapSpikeScreen(
                         GroupBreak()
                     }
 
-                    TextButton(onClick = { patternWanted = scanPatterns(missionKindsView()) }) { Text("Pattern") }
+                    TextButton(
+                        enabled = kindAllows(insertable, KIND_SURVEY),
+                        onClick = { patternWanted = scanPatterns(missionKindsView()) },
+                    ) { Text("Pattern") }
 
                     if (patternWanted.isNotEmpty()) {
                         AlertDialog(
@@ -560,10 +565,13 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    TextButton(onClick = {
-                        val at = placeAt()
-                        addMissionItem(KIND_ROI, "Adding region of interest", at, insertAfter(selected, allItems))
-                    }) { Text("ROI") }
+                    TextButton(
+                        enabled = kindAllows(insertable, KIND_ROI),
+                        onClick = {
+                            val at = placeAt()
+                            addMissionItem(KIND_ROI, "Adding region of interest", at, insertAfter(selected, allItems))
+                        },
+                    ) { Text("ROI") }
 
                     TextButton(onClick = {
                         val at = placeAt()
@@ -597,11 +605,17 @@ internal fun MapSpikeScreen(
                         },
                     ) { Text("Takeoff") }
                     TextButton(
+                        enabled = kindAllows(insertable, KIND_LAND),
                         onClick = {
                             val at = placeAt()
-                            addMissionItem("land", "Adding a landing", at, insertAfter(selected, allItems))
+                            addMissionItem(KIND_LAND, "Adding a landing", at, insertAfter(selected, allItems))
                         },
                     ) { Text("Land") }
+
+                    blockedReason(insertable)?.let {
+                        GroupBreak()
+                        Text(it, style = MaterialTheme.typography.labelSmall)
+                    }
                     GroupBreak()
 
                     TextButton(onClick = {

@@ -3,6 +3,7 @@ package one.aircast.mapspike
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -49,5 +50,38 @@ class ScanPatternsTest {
     fun `no answer offers nothing rather than a list this head remembers`() {
         assertEquals(emptyList<MissionKind>(), scanPatterns(null))
         assertEquals(emptyList<MissionKind>(), scanPatterns(JSONObject("""{"kind":"null"}""")))
+    }
+}
+
+class MissionKindGateTest {
+
+    private val empty = JSONObject(
+        """{"kind":"object","kinds":[
+             {"id":"takeoff","simple":true,"enabled":true,"disabledReason":""},
+             {"id":"land","simple":true,"enabled":false,
+              "disabledReason":"This mission starts from the ground, so a takeoff has to come first."},
+             {"id":"roi","simple":true,"enabled":false,
+              "disabledReason":"This mission starts from the ground, so a takeoff has to come first."}]}""",
+    )
+
+    @Test
+    fun `only the kind the plan will take is offered`() {
+        val kinds = missionKinds(empty)
+
+        assertTrue(kindAllows(kinds, "takeoff"))
+        assertFalse(kindAllows(kinds, "land"))
+        assertFalse(kindAllows(kinds, "roi"))
+    }
+
+    @Test
+    fun `a kind the core never mentioned stays offered rather than disappearing on silence`() {
+        assertTrue(kindAllows(missionKinds(empty), "spiral"))
+        assertTrue(kindAllows(emptyList(), "land"))
+    }
+
+    @Test
+    fun `the reason is shown once, from the core, rather than beside every dead control`() {
+        assertTrue(blockedReason(missionKinds(empty))!!.contains("takeoff has to come"))
+        assertNull(blockedReason(emptyList()))
     }
 }
