@@ -54,6 +54,14 @@ class AltitudeFrameTest {
     }
 
     @Test
+    fun `the field being typed into names its frame, being the furthest thing from the chip`() {
+        assertEquals("Alt m", altitudeFieldLabel(item("launch")))
+        assertEquals("Alt m AMSL", altitudeFieldLabel(item("amsl")))
+        assertEquals("Alt m above ground", altitudeFieldLabel(item("terrain")))
+        assertEquals("Alt m", altitudeFieldLabel(item("")))
+    }
+
+    @Test
     fun `a frame neither head has heard of is shown, not swallowed into the default`() {
         assertEquals("50.0 m SEABED", altitudeWithFrame(item("seabed")))
     }

@@ -30,6 +30,12 @@ internal fun altitudeWithFrame(item: MissionItem): String? {
     }
 }
 
+internal fun altitudeFieldLabel(item: MissionItem): String = when (item.altitudeFrame) {
+    FRAME_AMSL -> "Alt m AMSL"
+    FRAME_TERRAIN -> "Alt m above ground"
+    else -> "Alt m"
+}
+
 internal fun sequenceLabel(item: MissionItem): String = when {
     item.foldedCommands > 0 -> "${item.sequence}\u2013${item.sequence + item.foldedCommands}"
     else -> item.sequence.toString()

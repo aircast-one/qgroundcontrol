@@ -643,7 +643,7 @@ internal fun MapSpikeScreen(
                                 OutlinedTextField(
                                     value = typed,
                                     onValueChange = { typed = it },
-                                    label = { Text("Alt m") },
+                                    label = { Text(altitudeFieldLabel(item)) },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(
                                         keyboardType = KeyboardType.Number,
@@ -661,7 +661,7 @@ internal fun MapSpikeScreen(
                                             }
                                         },
                                     ),
-                                    modifier = Modifier.width(120.dp),
+                                    modifier = Modifier.width(altitudeFieldWidth(item)),
                                     textStyle = MaterialTheme.typography.bodySmall,
                                 )
 
@@ -809,6 +809,9 @@ internal fun MapSpikeScreen(
 }
 
 private const val SURVEY_FIT_INSET = 0.8
+
+private fun altitudeFieldWidth(item: MissionItem) =
+    if (item.altitudeFrame == FRAME_TERRAIN) 180.dp else 120.dp
 
 private val ITEM_NUMBER_WIDTH = 48.dp
 
