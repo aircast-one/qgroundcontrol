@@ -1685,17 +1685,18 @@ checkAltitudeMode()
 func checkPlanSummary() {
     let read = MissionSummary(["available": true as NSNumber, "reason": "",
                                "altitudeRange": ["text": "120 m to 340 m"],
-                               "rows": [["label": "Distance", "value": "7.05 km"],
-                                        ["label": "Time", "value": "12:30"],
-                                        ["label": "Hover", "value": "1.20 km"],
-                                        ["label": "Batteries", "value": "2"],
-                                        ["label": "Furthest from launch", "value": "2.10 km"]]])
+                               "rows": [["id": "distance", "label": "Distance", "value": "7.05 km"],
+                                        ["id": "time", "label": "Time", "value": "12:30"],
+                                        ["id": "hover", "label": "Hover", "value": "1.20 km"],
+                                        ["id": "batteries", "label": "Batteries", "value": "2"],
+                                        ["id": "furthest", "label": "Furthest from launch",
+                                         "value": "2.10 km"]]])
     expect(read.value(MissionSummary.distance) ?? "", "7.05 km",
            "the core spells the distance, crossing into kilometres past a thousand metres. This "
            + "head formatted it and never crossed over, so a seven kilometre mission read as "
            + "7047 m -- and 23120 ft on imperial, where QGC says 4.38 mi")
     expect(read.value(MissionSummary.time) ?? "", "12:30", "and the duration")
-    expect(read.value("Planned") == nil,
+    expect(read.value("planned") == nil,
            "a row the controller could not compute is absent rather than zero: needing no "
            + "batteries and having no battery model are different facts, and both would read 0")
     expect(read.extraRows.map(\.label).joined(separator: ","), "Hover,Batteries",
@@ -1705,11 +1706,15 @@ func checkPlanSummary() {
     expect(read.describes, "a plan with rows has something to summarise")
 
     let multirotor = MissionSummary(["available": true as NSNumber, "reason": "",
-                                     "rows": [["label": "Distance", "value": "14.11 km"],
-                                              ["label": "Planned", "value": "14.11 km"],
-                                              ["label": "Time", "value": "47:27"],
-                                              ["label": "Hover", "value": "14.11 km"],
-                                              ["label": "Furthest from launch",
+                                     "rows": [["id": "distance", "label": "Distance",
+                                               "value": "14.11 km"],
+                                              ["id": "planned", "label": "Planned",
+                                               "value": "14.11 km"],
+                                              ["id": "time", "label": "Time", "value": "47:27"],
+                                              ["id": "hover", "label": "Hover",
+                                               "value": "14.11 km"],
+                                              ["id": "furthest",
+                                               "label": "Furthest from launch",
                                                "value": "14.11 km"]]])
     expect(multirotor.extraRows.isEmpty,
            "a figure already on the strip is not printed again under another name. A multirotor "
@@ -1738,24 +1743,30 @@ checkPlanSummary()
 
 func checkSummaryRowsSurviveALabelChange() {
     let translated = MissionSummary(["available": true as NSNumber, "reason": "",
-                                     "rows": [["label": "Strecke", "value": "7.05 km"],
-                                              ["label": "Zeit", "value": "12:30"],
-                                              ["label": "Am weitesten vom Start",
+                                     "rows": [["id": "distance", "label": "Strecke",
+                                               "value": "7.05 km"],
+                                              ["id": "time", "label": "Zeit", "value": "12:30"],
+                                              ["id": "furthest", "label": "Am weitesten vom Start",
                                                "value": "2.10 km"]]])
-    expect(translated.value(MissionSummary.distance) == nil,
-           "the three curated lookups key on the core's ENGLISH label, so a core that ever "
-           + "localises its rows answers none of them. The core spells them as Rust literals "
-           + "today and this is latent, not live -- the same shape as the survey polygon that "
-           + "went undrawn because a lookup keyed on a translated commandName")
-    expect(translated.timeText, MissionSummary.unknown,
-           "and the duration falls to the em dash while the core is reporting one")
-    expect(translated.extraRows.map(\.value).joined(separator: ","), "7.05 km,12:30,2.10 km",
-           "but NO FIGURE IS LOST: a label the strip does not recognise falls through to the "
-           + "extra rows, so the operator still reads every number the core sent. That is what "
-           + "makes this latent rather than dangerous, and it is the property to keep if the "
-           + "curated three are ever rekeyed")
-}
+    expect(translated.value(MissionSummary.distance) ?? "", "7.05 km",
+           "the curated rows are found by the core's stable id, so a localised label changes "
+           + "nothing. Keyed on the English label instead -- which is what this head did until "
+           + "48ce5fb86 gave every row an id -- all three lookups returned nil the moment the "
+           + "core spelled a label in another language, and the survey polygon that went "
+           + "undrawn for exactly that reason is the precedent")
+    expect(translated.timeText, "12:30", "and the duration is drawn rather than an em dash")
+    expect(translated.extraRows.isEmpty,
+           "and none of the three falls through to the extra rows, which is what a failed "
+           + "lookup looks like from the operator's side: every figure drawn twice over")
 
+    let older = MissionSummary(["available": true as NSNumber, "reason": "",
+                                "rows": [["label": "Distance", "value": "7.05 km"]]])
+    expect(older.value("Distance") ?? "", "7.05 km",
+           "a row with no id at all keeps its label as one. The label WAS the identifier until "
+           + "the core added ids, so falling back to it is the previous behaviour rather than "
+           + "an invented value -- and a row dropped for lacking an id would take a figure off "
+           + "the screen, which is worse than a lookup that misses")
+}
 checkSummaryRowsSurviveALabelChange()
 
 func checkSurveyStats() {
@@ -3487,7 +3498,7 @@ func checkViewContract() {
         ("view.terrainProfile", ["points"],
          ["x", "missionAltitude", "terrainAltitude", "collision"]),
         ("view.missionSummary", [], ["available", "rows", "reason", "altitudeRange"]),
-        ("view.missionSummary", ["rows"], ["label", "value"]),
+        ("view.missionSummary", ["rows"], ["id", "label", "value"]),
         ("view.modeSlots", [], ["available", "channel", "liveSlot", "slots", "reason"]),
         ("view.modeSlots", ["slots"], ["slot", "mode", "live"]),
         ("view.missionKinds", [], ["kinds"]),
@@ -4746,12 +4757,12 @@ func checkUnknownMissionTime() {
         MissionSummary(["available": true as NSNumber, "rows": rows, "reason": ""])
     }
 
-    let known = summary([["label": "Distance", "value": "26.10 km"],
-                         ["label": "Time", "value": "1:27:24"]])
+    let known = summary([["id": "distance", "label": "Distance", "value": "26.10 km"],
+                         ["id": "time", "label": "Time", "value": "1:27:24"]])
     expect(known.timeText, "1:27:24",
            "the controller's own answer is drawn unchanged when it has one")
 
-    let vtol = summary([["label": "Distance", "value": "26.10 km"]])
+    let vtol = summary([["id": "distance", "label": "Distance", "value": "26.10 km"]])
     expect(vtol.describes,
            "the fixture still has rows, without which the strip draws nothing at all and the "
            + "assertion below would pass for the wrong reason")

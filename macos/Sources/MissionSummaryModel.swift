@@ -1,12 +1,12 @@
 import Foundation
 
 struct MissionSummaryRow: Equatable, Identifiable {
+    let id: String
     let label: String
     let value: String
 
-    var id: String { label }
-
-    init(label: String, value: String) {
+    init(id: String = "", label: String, value: String) {
+        self.id = id.isEmpty ? label : id
         self.label = label
         self.value = value
     }
@@ -15,8 +15,7 @@ struct MissionSummaryRow: Equatable, Identifiable {
         guard let json = json as? [String: Any],
               let label = json["label"] as? String, !label.isEmpty,
               let value = json["value"] as? String, !value.isEmpty else { return nil }
-        self.label = label
-        self.value = value
+        self.init(id: (json["id"] as? String) ?? "", label: label, value: value)
     }
 }
 
@@ -42,12 +41,12 @@ struct MissionSummary: Equatable {
         altitudeRange = ((json["altitudeRange"] as? [String: Any])?["text"] as? String) ?? ""
     }
 
-    static let distance = "Distance"
-    static let time = "Time"
-    static let furthest = "Furthest from launch"
+    static let distance = "distance"
+    static let time = "time"
+    static let furthest = "furthest"
 
-    func value(_ label: String) -> String? {
-        rows.first { $0.label == label }?.value
+    func value(_ identifier: String) -> String? {
+        rows.first { $0.id == identifier }?.value
     }
 
     var timeText: String { value(MissionSummary.time) ?? MissionSummary.unknown }
@@ -60,6 +59,6 @@ struct MissionSummary: Equatable {
     var extraRows: [MissionSummaryRow] {
         let shown = [MissionSummary.distance, MissionSummary.time, MissionSummary.furthest]
         let figures = Set(shown.compactMap(value))
-        return rows.filter { !shown.contains($0.label) && !figures.contains($0.value) }
+        return rows.filter { !shown.contains($0.id) && !figures.contains($0.value) }
     }
 }
