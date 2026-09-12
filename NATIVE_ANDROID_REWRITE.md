@@ -6117,3 +6117,31 @@ to being a plane or a VTOL, and reports a ground speed it is actually flying. It
 still orbits whether or not it is armed, its parameters are copter-shaped
 whatever the heartbeat says, and it emits no OBSTACLE_DISTANCE after 45 seconds
 by design.
+
+### Correcting the globalPlanAltitudeMode finding: it is not a defect
+
+The round-trip entry recorded `mission.globalPlanAltitudeMode` going 1 → 0 on
+download as QGC's own asymmetry, and said "the claim is wrong about a plan that
+is uniformly Relative, and a save-after-download writes that wrong default into
+the file". **That framing was too strong and the conclusion is wrong.**
+
+`AltitudeModeMixed` is not a claim that the plan has mixed modes. It is the
+absence of a global assertion, and three lines show it behaves correctly:
+
+- `MissionController.cc:766` — loading a plan file sets Mixed **first**, before
+  the `globalPlanAltitudeMode` key is applied if present. So Mixed is the normal
+  starting state of every load, not a corruption introduced by download.
+- `:323` — when the mode is Mixed, a new item copies the **previous item's**
+  altitude mode instead of taking a global one. That is the better behaviour for
+  a plan whose items carry their own modes.
+- `:2745` — `globalAltitudeModeDefault()` returns **Relative** when the mode is
+  Mixed, which is what that plan was throughout.
+
+So nothing is lost and nothing misbehaves: after a download QGC has not asserted
+a uniform mode, says so, and falls back to exactly the right answer. All 212
+items still round-tripped with `AltitudeMode: 1` and `frame: 3`.
+
+**Why it was worth chasing anyway.** The original entry left a false open item on
+the record, and open items get picked up. The check was three greps. The tell
+that something was worth re-reading: I had described a value as "wrong" without
+ever finding out what consumed it.
