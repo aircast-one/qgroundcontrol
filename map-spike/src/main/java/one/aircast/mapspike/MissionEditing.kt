@@ -96,6 +96,7 @@ fun attachMissionEditing(
     onAdd: (Double, Double) -> Unit,
     onMove: (MapHit, Double, Double) -> Unit,
     onSelected: (MapHit?) -> Unit = {},
+    onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
 ) {
     var dragging: MapHit? = null
     var downX = 0f
@@ -157,7 +158,7 @@ fun attachMissionEditing(
                 } else {
                     if (moved) {
                         val target = map.projection.fromScreenLocation(PointF(event.x, event.y))
-                        onMove(hit, target.latitude, target.longitude)
+                        onMoved(hit, target.latitude, target.longitude)
                     } else {
                         onSelected(hit)
                         view.performClick()

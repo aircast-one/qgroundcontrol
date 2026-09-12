@@ -161,12 +161,16 @@ internal fun MapSpikeScreen(
         }
     }
 
-    fun onBridge(label: String? = null, work: () -> Boolean) {
+    fun onBridge(label: String? = null, done: String? = null, work: () -> Boolean) {
         busy = label
         scope.launch {
             val ok = withContext(Dispatchers.Default) { work() }
             if (ok) {
-                busy = null
+                busy = done
+                if (done != null) {
+                    delay(FAILURE_MESSAGE_MS)
+                    busy = null
+                }
             } else {
                 busy = "${label ?: "That"} did not work"
                 delay(FAILURE_MESSAGE_MS)
@@ -287,18 +291,9 @@ internal fun MapSpikeScreen(
                     insertAfter(selected, allItems),
                 )
             },
-            onMove = { hit, lat, lon ->
-                onBridge {
-                    when (hit) {
-                        is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, lat, lon)
-                        is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, lat, lon)
-                        is MapHit.SurveyVertex -> surveyList.firstOrNull { it.index == hit.item }
-                            ?.let { SurveyBridge.adjustVertex(it, hit.vertex, lat, lon) } == true
-                        is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, lat, lon)
-                        is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, lat, lon)
-                        is MapHit.Circle -> true
-                    }
-                }
+            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList) } },
+            onMoved = { hit, lat, lon ->
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList) }
             },
             onWaypointSelected = { selected = it },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,

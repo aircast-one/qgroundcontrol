@@ -161,6 +161,7 @@ fun VehicleMap(
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
+    onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onCentreChanged: (TrackPoint, Double) -> Unit = { _, _ -> },
     bottomInsetPx: Int = 0,
     topInsetPx: Int = 0,
@@ -240,6 +241,7 @@ fun VehicleMap(
                         onAdd = onAdd,
                         onMove = onMove,
                         onSelected = onWaypointSelected,
+                        onMoved = onMoved,
                     )
                 }
                 style = loadedStyle

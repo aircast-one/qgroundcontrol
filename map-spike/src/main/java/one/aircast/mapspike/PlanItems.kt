@@ -66,3 +66,23 @@ fun legText(item: MissionItem): String? {
         ?.joinToString(" \u00b7 ")
 }
 
+fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
+    is MapHit.Waypoint ->
+        items.firstOrNull { it.index == hit.index }?.let { "Moved #${it.sequence}" } ?: "Moved an item"
+    is MapHit.FenceVertex -> "Moved a fence corner"
+    is MapHit.SurveyVertex -> "Moved a survey corner"
+    is MapHit.Rally -> "Moved a rally point"
+    is MapHit.CircleCentre -> "Moved a fence circle"
+    is MapHit.Circle -> "Changed a fence radius"
+}
+
+fun writeMove(hit: MapHit, latitude: Double, longitude: Double, surveys: List<Survey>): Boolean =
+    when (hit) {
+        is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, latitude, longitude)
+        is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, latitude, longitude)
+        is MapHit.SurveyVertex -> surveys.firstOrNull { it.index == hit.item }
+            ?.let { SurveyBridge.adjustVertex(it, hit.vertex, latitude, longitude) } == true
+        is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, latitude, longitude)
+        is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, latitude, longitude)
+        is MapHit.Circle -> true
+    }
