@@ -7,7 +7,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var rallyPoints: [RallyPointRow] = []
     @Published private(set) var fence = FenceSupport.unread
     var fenceSupported: Bool { fence.offers }
-    @Published private(set) var rallySupported = false
+    @Published private(set) var rally = FenceSupport.unread
+    var rallySupported: Bool { rally.offers }
     @Published private(set) var connected = false
     @Published private(set) var breachReturn: RallyPointRow?
     @Published private(set) var firmwareFence: FirmwareFence?
@@ -46,18 +47,18 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
             set(\.shapes, [])
             set(\.rallyPoints, [])
             set(\.fence, .unread)
-            set(\.rallySupported, false)
+            set(\.rally, .unread)
             return
         }
         set(\.status, "")
 
+        let fences = Bridge.group("view.fences")
         set(\.connected, Bridge.group("vehicle")["kind"] as? String == "object")
-        set(\.fence, .answered((read["supported"] as? NSNumber)?.boolValue ?? false))
-        set(\.rallySupported,
-            (Bridge.group("plan.rallyPointController")["supported"] as? NSNumber)?.boolValue ?? false)
+        set(\.fence, FenceSupport(answer: fences["fenceSupported"]))
+        set(\.rally, FenceSupport(answer: fences["rallySupported"]))
 
         set(\.shapes, FenceRallyStore.readShapes())
-        set(\.firmwareFence, FirmwareFence(read["firmwareFence"]))
+        set(\.firmwareFence, FirmwareFence(fences["firmwareFence"]))
         set(\.rallyPoints, FenceRallyStore.readRally())
 
         set(\.breachReturn, (read["breachReturnPoint"] as? [String: Any])

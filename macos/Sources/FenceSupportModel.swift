@@ -10,6 +10,19 @@ struct FenceSupport: Equatable {
         FenceSupport(read: true, supported: supported)
     }
 
+    init(read: Bool, supported: Bool) {
+        self.read = read
+        self.supported = supported
+    }
+
+    init(answer: Any?) {
+        guard let answered = (answer as? NSNumber)?.boolValue else {
+            self.init(read: false, supported: false)
+            return
+        }
+        self.init(read: true, supported: answered)
+    }
+
     var offers: Bool { read && supported }
 
     var refusal: String? {

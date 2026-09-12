@@ -605,6 +605,24 @@ func checkACoordinateIsSpelledOneWay() {
 
 checkACoordinateIsSpelledOneWay()
 
+func checkTheCapabilityKeepsItsThirdState() {
+    expect(FenceSupport(answer: true as NSNumber).offers,
+           "a vehicle the core says accepts a geofence offers one")
+    expect(FenceSupport(answer: false as NSNumber).refusal ?? "",
+           FenceSupport.unsupportedRefusal, "one that refuses says so")
+    expect(FenceSupport(answer: nil).refusal ?? "", FenceSupport.unreadRefusal,
+           "and a vehicle that has NOT YET ANSWERED is a third state, not a refusal. The core "
+           + "returns null until capabilitiesKnown is true -- QGC's capabilityBits DEFAULT to "
+           + "fence and rally, and its supported() ignores whether they were ever reported, so "
+           + "the raw controller property this head used to read says yes to a vehicle that has "
+           + "said nothing. Collapsing null to false would spell an unanswered vehicle as a "
+           + "refusing one, which is the sentence the core's own test warns about")
+    expect(FenceSupport(answer: nil).offers == false,
+           "an unanswered capability offers nothing either, so nothing is drawn on a guess")
+}
+
+checkTheCapabilityKeepsItsThirdState()
+
 func checkAMeasureNeverReadsMinusZero() {
     expect(Measure.format(-0.04, "m"), "0.0 m",
            "the core strips the sign when every digit it printed is a zero -- read.rs wraps its "
