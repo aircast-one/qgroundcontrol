@@ -33,6 +33,9 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
     if crate::read::flag(&item, "isSimpleItem") {
         return refused("that item draws no landing pattern; only a fixed wing or a VTOL gets one, and a multirotor land is a plain return");
     }
+    if !item.get("landingCoordinate").is_some_and(Value::is_object) {
+        return refused("that item is not a landing pattern; being complex is not the same as being one, and the launch row and every survey are complex too");
+    }
     let (landing, slope_start, approach) = (place(&item, "landingCoordinate"), place(&item, "slopeStartCoordinate"), place(&item, "finalApproachCoordinate"));
     let facts = object(&backend.get(&path));
     let fact = |property: &str| {
@@ -126,8 +129,20 @@ mod tests {
         assert_eq!(refusal["kind"], "null");
         assert!(refusal["reason"].as_str().unwrap().contains("multirotor"), "MissionController::insertLandItem builds a pattern only for a fixed wing or a VTOL, so a rotor's land is a plain return and a head asking for its pattern deserves that answer rather than silence");
 
-        let unplaced = json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": false, "facts": [
-            { "property": "loiterRadius", "value": 75.0 } ] });
+        let settings = json!({ "kind": "object", "sequenceNumber": 0, "isSimpleItem": false, "homePosition": true, "facts": [] });
+        let launch = landing_view(&Plan(settings), &["4".to_string()]);
+        assert_eq!(launch["kind"], "null", "MissionSettingsItem is a ComplexMissionItem, so isSimpleItem is false for the launch row - complex is not the same as being a pattern");
+        assert!(launch["reason"].as_str().unwrap().contains("not a landing pattern"));
+
+        let survey = json!({ "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "isSurveyItem": true, "facts": [] });
+        assert_eq!(landing_view(&Plan(survey), &["4".to_string()])["kind"], "null", "and so is every complex pattern that is not a landing");
+
+        let asked_and_absent = json!({ "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "landingCoordinate": Value::Null, "facts": [] });
+        assert_eq!(landing_view(&Plan(asked_and_absent), &["4".to_string()])["kind"], "null", "get_fields names the fields it wants, so a field the object has not got can come back null rather than missing - presence of the key is not presence of the property");
+
+        let unplaced = json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": false,
+            "landingCoordinate": { "valid": false, "latitude": 0.0, "longitude": 0.0 },
+            "facts": [ { "property": "loiterRadius", "value": 75.0 } ] });
         let fresh = landing_view(&Plan(unplaced), &["4".to_string()]);
         assert_eq!(fresh["kind"], "object", "a pattern whose corners are not placed yet is still a pattern - refusing on absent coordinates alone would blame the airframe for a plan that is merely unfinished");
         assert_eq!(fresh["landing"], Value::Null);
