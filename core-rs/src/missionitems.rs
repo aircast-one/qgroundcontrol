@@ -248,6 +248,17 @@ fn height(read: &Value) -> Option<f64> {
     }
 }
 
+fn layer_altitudes(item: &Value, layers: i64) -> Option<Vec<f64>> {
+    let bottom = number(item, "bottomFlightAlt")?;
+    let top = number(item, "topFlightAlt")?;
+    let steps = (layers - 1).max(0) as f64;
+    let increment = match steps > 0.0 {
+        true => (top - bottom) / steps,
+        false => 0.0,
+    };
+    Some((0..layers.max(1)).map(|layer| bottom + increment * layer as f64).collect())
+}
+
 fn path_at(backend: &dyn Backend, path: &str) -> Vec<Value> {
     object(&backend.get(path))
         .get("value")
@@ -290,6 +301,7 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
     let flown_loop = path_at(backend, &format!("{base}.flightPolygon.path"));
     let item = object(&backend.get(&base));
     let layers = fact_number(&item, "layers").map(|count| count as i64);
+    let stack = layers.and_then(|count| layer_altitudes(&item, count));
     match listed.is_empty() {
         true => Value::Null,
         false => json!({
@@ -299,6 +311,7 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
             "transects": transects,
             "flightLoop": (!flown_loop.is_empty()).then_some(flown_loop),
             "layers": layers,
+            "layerAltitudesMetres": stack,
         }),
     }
 }
@@ -1010,7 +1023,7 @@ mod reported {
                     "plan.missionController.visualItems.4.visualTransectPoints" => json!({ "kind": "value", "value": [at(47.01, 8.01), at(47.01, 8.09)] }),
                     "plan.missionController.visualItems.5.structurePolygon.path" => json!({ "kind": "value", "value": [at(47.2, 8.2), at(47.2, 8.3), at(47.3, 8.3)] }),
                     "plan.missionController.visualItems.5.flightPolygon.path" => json!({ "kind": "value", "value": [at(47.19, 8.19), at(47.19, 8.31), at(47.31, 8.31)] }),
-                    "plan.missionController.visualItems.5" => json!({ "kind": "object", "facts": [ { "property": "layers", "value": 3.0 } ] }),
+                    "plan.missionController.visualItems.5" => json!({ "kind": "object", "bottomFlightAlt": 12.0, "topFlightAlt": 42.0, "facts": [ { "property": "layers", "value": 3.0 } ] }),
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -1031,6 +1044,25 @@ mod reported {
         assert_eq!(structure["transects"].as_array().unwrap().len(), 0, "StructureScanComplexItem is a plain ComplexMissionItem with no visualTransectPoints, so the route was read from a property it does not have and both heads drew a boundary with nothing through it");
         assert_eq!(structure["flightLoop"].as_array().unwrap().len(), 3, "the flown path is flightPolygon, offset outward from the structure by the camera distance");
         assert_eq!(structure["layers"], 3, "and it is flown once per layer, stacked in altitude - a head drawing one loop draws a third of the mission");
+        assert_eq!(structure["layerAltitudesMetres"], json!([12.0, 27.0, 42.0]), "the layer count alone still under-draws the mission, and the spacing is not a head's to invent: QGC puts top at bottom plus (layers - 1) camera footprints in both the start-from-top and start-from-bottom branches, so the layers are evenly spaced between the two ends");
+        assert_eq!(survey["layerAltitudesMetres"], Value::Null);
+
+        struct OneLayer;
+        impl Backend for OneLayer {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.5.structurePolygon.path" => json!({ "kind": "value", "value": [ { "latitude": 47.2, "longitude": 8.2 } ] }),
+                    "plan.missionController.visualItems.5" => json!({ "kind": "object", "bottomFlightAlt": 20.0, "topFlightAlt": 20.0, "facts": [ { "property": "layers", "value": 1.0 } ] }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(geometry_of(&OneLayer, 5, "structure")["layerAltitudesMetres"], json!([20.0]), "a single layer divides by no steps at all, and the default Layers value is 1");
         assert_eq!(survey["flightLoop"], Value::Null, "the absent cases stay absent rather than becoming an empty shape a head would draw");
     }
 
