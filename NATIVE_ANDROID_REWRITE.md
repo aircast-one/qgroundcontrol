@@ -6208,3 +6208,38 @@ label clears. No head-side poll is needed.
 as the core session said; what clears the warning is the bridge re-reading a
 time-dependent property on a timer. That is a weaker guarantee than a signal and
 worth knowing, rather than either "it expires by itself" or "a head must poll".
+
+### Landing patterns: drawn, then placeable, 2026-09-12
+
+The last invisible plan item now draws and can be positioned.
+
+**Drawing** (`view.landingPattern`, core `5ed9c2a2d`). The head renders the
+approach path — final approach, slope start, touchdown — as a dashed line and
+the loiter as a ring around the approach, reusing `circleRing`. Confirmed on the
+OnePlus 6 with `VEHICLE=plane`: 2.35 km where the same plan without the pattern
+read 677 m.
+
+**The core's decision about unset corners earned itself immediately.** A pattern
+added through the Land button has no positions, and because the core returns
+absent rather than `0,0`, the head drew nothing rather than a line and a ring in
+the Gulf of Guinea. That was the first case tried, and it is the first anyone
+will hit.
+
+**Placing it.** Handles on the final approach and the touchdown, writing back
+through `finalApproachCoordinate` and `landingCoordinate`. **The slope start
+gets no handle because QGC derives it** — `LandingComplexItem` declares it
+READ-only while the other two are READ/WRITE, so two handles rather than three.
+Dragging the touchdown took the plan 2.35 km → 2.37 km.
+
+**Adding the `MapHit` variant broke four exhaustive `when` expressions**: the
+move write, the moved notice, the selection summary, and whether a selection
+survives a refresh. Every one was a decision the new hit genuinely needed, and
+the compiler named them all. That is the argument for the sealed interface over
+a string tag, made concretely.
+
+**Seeing it at all needed a hand-built plan**, because a pattern from the button
+has nothing to drag. `VEHICLE=plane`, `vehicleType: 1`, and an `fwLandingPattern`
+complex item with `landingApproachCoordinate`, `landCoordinate`, `loiterRadius`,
+`loiterClockwise`, version 2. Now that the places render, the button's pattern
+can be dragged into position like any other — which is what closes the loop that
+started with "Land on a fixed wing produces something nobody can place".
