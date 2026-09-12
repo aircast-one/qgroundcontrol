@@ -11,12 +11,21 @@ def box(node):
 
 
 def attribute(node, name):
-    found = re.search(r'%s="(\w+)"' % name, node)
+    found = re.search(r'%s="([^"]*)"' % name, node)
     return found.group(1) if found else ""
 
 
+APP = "one.aircast.android"
+
+
+# A dump taken while a file picker or another app is in front still contains
+# labels - "Download" is a folder in documentsui - and reading enabled off one
+# of those is a measurement of the wrong screen.
 def labelled(tree, label):
-    return [n for n in NODE.findall(tree) if re.search(r'text="%s"' % re.escape(label), n)]
+    return [
+        n for n in NODE.findall(tree)
+        if re.search(r'text="%s"' % re.escape(label), n) and attribute(n, "package") == APP
+    ]
 
 
 def button_state(tree, label):
@@ -37,6 +46,9 @@ def button_state(tree, label):
 
 if __name__ == "__main__":
     tree = sys.stdin.read()
+    if APP not in tree:
+        print(f"REFUSED: this dump holds no {APP} nodes, so it is the wrong screen", file=sys.stderr)
+        sys.exit(2)
     for label in sys.argv[1:]:
         state = button_state(tree, label)
         print(f"{label:12} " + ("NOT FOUND" if state is None else f"enabled={str(state).lower()}"))
