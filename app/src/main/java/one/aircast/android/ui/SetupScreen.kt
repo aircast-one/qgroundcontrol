@@ -57,6 +57,7 @@ internal fun firmwareSummary(
 internal data class SetupComponent(
     val index: Int,
     val name: String,
+    val known: String? = null,
     val needsAttention: Boolean,
     val blockedReason: String? = null,
 )
@@ -72,6 +73,7 @@ internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
         SetupComponent(
             index = index,
             name = name,
+            known = element.optText("known").takeIf { !element.isNull("known") && it.isNotBlank() },
             needsAttention = element.optBoolean("needsAttention"),
             blockedReason = element.optText("blockedReason")
                 .takeIf { !element.isNull("blockedReason") && it.isNotBlank() },
@@ -165,11 +167,11 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     "${open.name} cannot be set up while the vehicle is $blocked.",
                     Modifier.weight(1f),
                 )
-                open.name == SENSORS -> SensorsScreen(Modifier.weight(1f))
-                open.name == RADIO -> RadioScreen(Modifier.weight(1f))
-                open.name == REMOTE_SUPPORT -> RemoteSupportScreen(Modifier.weight(1f))
-                open.name == MOTORS -> MotorsScreen(Modifier.weight(1f))
-                open.name == FLIGHT_MODES_PAGE -> FlightModesSetup(Modifier.weight(1f))
+                headPage(open) == SENSORS -> SensorsScreen(Modifier.weight(1f))
+                headPage(open) == RADIO -> RadioScreen(Modifier.weight(1f))
+                headPage(open) == REMOTE_SUPPORT -> RemoteSupportScreen(Modifier.weight(1f))
+                headPage(open) == MOTORS -> MotorsScreen(Modifier.weight(1f))
+                headPage(open) == FLIGHT_MODES_PAGE -> FlightModesSetup(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",
@@ -229,7 +231,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             item(key = "allheader") { SectionHeader("Setup") }
             items(remaining, key = { it.index }) { component ->
                 val page = setupPage(setupJson, component.name)
-                val openable = headCanOpen(page, component.name)
+                val openable = headCanOpen(page, headPage(component))
                 val blocked = component.blockedReason
                 SetupRow(
                     title = component.name,
