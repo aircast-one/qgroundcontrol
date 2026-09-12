@@ -1459,9 +1459,17 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
             neverAnswered.append(field.toString());
         }
     }
+    // The acceptance path for this guard is a re-record, which is its weakness: a field that
+    // lands here is silenced by the next recording, with no reviewer and no reason written
+    // down. So _alwaysNull holds three kinds of entry that look identical - a field with no
+    // vehicle behind it, a field whose PRECONDITION the recorder cannot create (an ROI that
+    // nothing activates), and a field read under a name its producer does not use. Only the
+    // third is a defect, and nothing here tells them apart. Before accepting a new entry by
+    // re-recording, say which of the three it is.
     QVERIFY2(neverAnswered.isEmpty(),
              qPrintable(QStringLiteral("these answered null with no vehicle, with one connected and with a plan on it. A field that is never anything "
-                                       "is usually a field read under a name its producer does not use, which is how two of this week's defects got in: %1")
+                                       "is usually a field read under a name its producer does not use, which is how two of this week's defects got in. "
+                                       "It can also be a field whose precondition this recorder cannot create, and those two look the same from here: %1")
                             .arg(neverAnswered.mid(0, 12).join(QStringLiteral(", ")))));
 
     QVERIFY2(stopped.isEmpty(),
