@@ -35,6 +35,7 @@ struct MissionItem: Identifiable, Equatable {
     let blockedReason: String?
     let speedChangeText: String?
     let extraSeconds: Double?
+    let foldedCommands: Int?
     let awaitingTerrain: Bool
 
     let flownLeg: Bool
@@ -65,9 +66,14 @@ struct MissionItem: Identifiable, Equatable {
             + (whole ? String(format: "%.0f", extraSeconds) : String(extraSeconds)) + " s"
     }
 
+    var foldedReading: String? {
+        guard let foldedCommands, foldedCommands > 0 else { return nil }
+        return "\(foldedCommands) more command" + (foldedCommands == 1 ? "" : "s")
+    }
+
     var doings: String? {
-        let both = [speedReading, holdReading].compactMap { $0 }
-        return both.isEmpty ? nil : both.joined(separator: MissionItem.between)
+        let all = [speedReading, holdReading, foldedReading].compactMap { $0 }
+        return all.isEmpty ? nil : all.joined(separator: MissionItem.between)
     }
 
     func subtitle(unreached: Bool) -> String {
@@ -138,6 +144,7 @@ struct MissionItem: Identifiable, Equatable {
         blockedReason = (json["blockedReason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         speedChangeText = (json["speedChangeText"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         extraSeconds = (json["extraSeconds"] as? NSNumber)?.doubleValue
+        foldedCommands = (json["foldedCommands"] as? NSNumber)?.intValue
         flownLeg = (json["flownLeg"] as? NSNumber)?.boolValue ?? false
         endsRoute = (json["endsRoute"] as? NSNumber)?.boolValue ?? false
 

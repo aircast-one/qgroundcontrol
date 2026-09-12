@@ -1324,6 +1324,7 @@ func checkMissionItemKinds() {
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
+    checkAnItemSaysHowManyCommandsItFolds()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
@@ -4299,6 +4300,32 @@ func checkSpeedChangeIsListedNotOnlySelected() {
     expect(item(speed: "12.0 m/s").subtitle(unreached: true), "Never flown to",
            "and so does never being flown to, which says the item is not on the route at all -- "
            + "the speed it would have commanded there is not the point")
+}
+
+func checkAnItemSaysHowManyCommandsItFolds() {
+    func item(folds: Int?, speed: String? = nil) -> MissionItem {
+        var view: [String: Any] = ["index": 2 as NSNumber, "sequence": 2 as NSNumber,
+                                   "name": "Survey", "kind": "survey"]
+        view["foldedCommands"] = folds.map { $0 as NSNumber }
+        view["speedChangeText"] = speed
+        return MissionItem(view: view, selected: -1)
+    }
+    expect(item(folds: 141).subtitle(unreached: false), "141 more commands",
+           "a survey at sequence 2 is followed by a row numbered 144, and nothing on screen "
+           + "accounted for the 141 in between. Measured: a survey folds 141, a corridor 11. "
+           + "The operator was left to read a hole in the numbering as a defect")
+    expect(item(folds: 0).subtitle(unreached: false), "",
+           "an item that folds nothing says nothing -- every plain waypoint reports zero, and a "
+           + "row saying so under each of them is noise that hides the two rows where it matters")
+    expect(item(folds: nil).subtitle(unreached: false), "",
+           "and an item that never reported a last sequence is silent rather than claiming it "
+           + "folds none: the core sends null there instead of zero, precisely so the two stay "
+           + "distinguishable, and a head collapsing them throws that away")
+    expect(item(folds: 1, speed: "9.0 m/s").subtitle(unreached: false),
+           "Flies at 9.0 m/s \u{00B7} 1 more command",
+           "the singular loses its s. A waypoint that commands a speed folds exactly one -- the "
+           + "DO_CHANGE_SPEED itself -- so this is the case that explains the commonest gap, and "
+           + "it reads alongside the speed rather than instead of it")
 }
 
 func checkARouteLeavesAPatternWhereItEnds() {

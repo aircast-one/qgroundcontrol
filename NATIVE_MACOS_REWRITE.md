@@ -2841,3 +2841,41 @@ instrument: the corpus depends on the plan I happened to build.
 `view.surveyStats`. `altitudeMode` IS used, but read from the controller path rather
 than from the view. `distanceFromStart` has no text sibling at all: it is an input to
 the core's own terrain walk, not a figure built for a screen.
+
+### An item says how many commands it folds, 2026-09-12
+
+The rows numbered 0, 1, 2, **144**, and nothing on screen accounted for the 141 in
+between. `foldedCommands` is `lastSequenceNumber - sequenceNumber`, and the core
+served it (`4457e5ef5`) after watching both heads report the symptom to each other.
+Measured here: a survey folds **141**, a corridor **11**, and a waypoint that
+commands a speed folds **1** — the `DO_CHANGE_SPEED` itself. So one field explains
+every hole, including the commonest one.
+
+Null and zero stay distinct: the core sends null when an item never reported a last
+sequence, rather than claiming it folds none, and the head is silent for both but
+for different reasons.
+
+**The render found the same defect one term further along.** Three doings —
+`Flies at 9.0 m/s · Holds for 20 s · 1 m…` — truncated at two lines, in the selected
+state again. Android hit the identical thing on their own row and put it best: **a
+six-character label failing is the row telling you it is over-full, not the label
+telling you it is over-long.** `descriptionLines: 3`; `fixedSize` keeps every shorter
+row its old height. Rendered again after the fix, not just before it.
+
+**Android drew the same field differently, and theirs may be the better answer.**
+They put the span on the marker — the list reads 0, 1, 2–3, 4, and a survey reads
+4–216 — so there is no hole left to explain rather than a note explaining it. Mine is
+a count in the subtitle because this head's seal is a 22 pt circle that cannot hold
+`2–143`. Recording the divergence deliberately: **two heads need not render a field
+identically, but the reason should be the layout and not an accident.**
+
+**We each asked the other to ask the core for a field that already existed.** The
+sweep found it; reading the core's log did not. That is the third time this cycle
+that running the instrument beat following the conversation.
+
+**Also measured, and NOT changed.** `PolygonEditModel` reads `minimumVertices` with a
+`?? 3` fallback feeding an operator sentence — "A line needs at least 3 corners"
+would be wrong for a corridor, which needs 2. The core serves it correctly for both
+(ring 3, line 2), so the fallback is unreachable and I am not inventing a fix for a
+state I cannot produce. Worth knowing that `EditablePolygon` is decoded inline in a
+store, which is exactly the blind spot `null-fallbacks.py` documents.
