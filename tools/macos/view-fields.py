@@ -67,7 +67,10 @@ LOOKUP = re.compile(r'\w+\??\[\s*"([^"]+)"\s*\]|\b\w+\(\s*"([^"]+)"\s*\)')
 #
 # Comments are stripped first, and that is load-bearing rather than tidiness: missionitems.rs
 # explains the rename in prose that contains the word "current" in quotes, so collecting
-# comments would find the very key whose removal this exists to catch.
+# comments would find the very key whose removal this exists to catch. The head's Swift is
+# stripped for the same reason and the asymmetry was a real hole: a comment inside an
+# initialiser mentioning json["gone"] reads exactly like a line that looks it up, and the
+# checker would report a key the head does not read as one the core dropped.
 # Escape-aware. A pattern like "([^"\\]*)" cannot match a Rust string containing \n or \",
 # so it skips that literal and pairs the NEXT closing quote with the following opening one --
 # the same mis-pairing that made the first version of this report the code between keys as a
@@ -102,7 +105,7 @@ def views_to_modules():
 
 def keys_a_model_reads(name):
     for path in sorted(SOURCES.glob("*.swift")):
-        text = path.read_text()
+        text = COMMENT.sub("", path.read_text())
         declaration = re.search(rf"\n(?:final )?(?:struct|class|enum) {name}\b", text)
         if not declaration:
             continue
