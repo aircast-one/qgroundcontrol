@@ -621,15 +621,14 @@ internal fun MapSpikeScreen(
                                     SurveyBridge.rotateGrid(it.index)
                                 }
                             }) { Text("Rotate") }
+                        }
 
-                            TextButton(
-                                enabled = visible.size == it.area.size,
-                                onClick = {
-                                    onBridge("Fitting the survey", done = "Survey fitted to the map") {
-                                        fitSurveyArea(it, insetRing(visible, SURVEY_FIT_INSET))
-                                    }
-                                },
-                            ) { Text("Fit to map") }
+                        survey?.takeIf { visible.size == it.area.size }?.let {
+                            TextButton(onClick = {
+                                onBridge("Sizing the area", done = "Area sized to the view") {
+                                    fitSurveyArea(it, insetRing(visible, SURVEY_FIT_INSET))
+                                }
+                            }) { Text("Size to view") }
                         }
 
                         waypoint?.let { legText(it) }?.let {
