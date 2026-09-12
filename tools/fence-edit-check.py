@@ -1,41 +1,10 @@
-import json
 import subprocess
 import sys
 import time
 
-TOOLS = "/Users/pavliha/Code/aircast/aircast-android/tools"
+from rig import TOOLS, find, new_plan, sh, tap_label, view
+
 FAILURES = []
-
-
-def sh(command, check=False):
-    return subprocess.run(command, shell=True, capture_output=True, text=True, check=check).stdout.strip()
-
-
-def view(path):
-    raw = sh(f"{TOOLS}/probe.sh get '{path}'")
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        raise SystemExit(f"probe returned no JSON for {path}: {raw[:200]}")
-
-
-def on_plan():
-    if not sh(f"{TOOLS}/ui.sh find text=Fence"):
-        plan = sh(f"{TOOLS}/ui.sh find text=Plan")
-        if plan:
-            sh(f"{TOOLS}/ui.sh tap {plan}")
-            time.sleep(3)
-
-
-def tap_label(label):
-    where = sh(f"{TOOLS}/ui.sh find text='{label}'")
-    if not where:
-        on_plan()
-        where = sh(f"{TOOLS}/ui.sh find text='{label}'")
-    if not where:
-        raise SystemExit(f"PRECONDITION: no control labelled {label} on screen")
-    sh(f"{TOOLS}/ui.sh tap {where}")
-    time.sleep(3)
 
 
 def locate(colour, nth):
@@ -77,20 +46,7 @@ def main():
     print("fence editing, end to end. Every step asserts a change in what the core serves,")
     print("not a change on screen - a tap that misses looks identical to a path that is broken.")
 
-    if "REFUSED" in sh(f"{TOOLS}/ui.sh text 2>&1"):
-        sh("adb shell am start -n one.aircast.android/.MainActivity")
-        time.sleep(7)
-    if sh(f"{TOOLS}/ui.sh find text='Save as…'"):
-        sh("adb shell input keyevent BACK")
-        time.sleep(2)
-    on_plan()
-
-    tap_label("File")
-    tap_label("New plan")
-    discard = sh(f"{TOOLS}/ui.sh find text='Discard and start new'")
-    if discard:
-        sh(f"{TOOLS}/ui.sh tap {discard}")
-        time.sleep(3)
+    new_plan()
 
     tap_label("Circle")
     if len(circles()) != 1:
@@ -102,15 +58,10 @@ def main():
     drag(x, y, x + 150, y)
     check("circle drag writes a new centre", before, circles(), "MapHit.Circle drag reached FenceBridge.moveCircle")
 
-    sh(f"python3 {TOOLS}/onmap.py keep-in --nth 1 --tap")
-    time.sleep(3)
-    delete = sh(f"{TOOLS}/ui.sh find text='Delete circle'")
-    if not delete:
-        raise SystemExit("PRECONDITION: could not select the circle to delete it")
-    sh(f"{TOOLS}/ui.sh tap {delete}")
-    time.sleep(3)
+    new_plan()
     if circles():
-        raise SystemExit("PRECONDITION: the circle is still there; handles would be ambiguous")
+        raise SystemExit("PRECONDITION: a circle survived New plan; its centre handle would be "
+                         "indistinguishable from a polygon vertex handle")
 
     tap_label("Fence")
     tap_label("Fit")
