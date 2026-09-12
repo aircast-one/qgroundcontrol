@@ -66,6 +66,7 @@ data class MissionItem(
     val altitudeChange: Double = Double.NaN,
     val altitudeChangeText: String = "",
     val altitudeBandText: String = "",
+    val blockedReason: String = "",
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -105,6 +106,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             altitudeChange = element.optDouble("altitudeChange", Double.NaN),
             altitudeChangeText = element.optText("altitudeChangeText"),
             altitudeBandText = element.optText("altitudeBandText"),
+            blockedReason = element.optText("blockedReason"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,
@@ -160,4 +162,15 @@ fun moveLandingPlace(index: Int, place: Int, latitude: Double, longitude: Double
         else -> return false
     }
     return setOk("$PLAN_ITEMS.$index.$property", settingJson(coordinateJson(latitude, longitude)))
+}
+
+fun placeLandingIfUnplaced(index: Int, latitude: Double, longitude: Double): Boolean {
+    val pattern = landingPattern(
+        index,
+        runCatching { JSONObject(QGCBridge.get("view.landingPattern($index)")) }.getOrNull(),
+    )
+    if (pattern != null && pattern.landing != null) {
+        return false
+    }
+    return moveLandingPlace(index, LANDING_PLACE_TOUCHDOWN, latitude, longitude)
 }

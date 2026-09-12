@@ -153,7 +153,14 @@ internal fun MapSpikeScreen(
             }
             if (outcome.ok) {
                 busy = null
-                outcome.index?.let { selected = MapHit.Waypoint(it) }
+                outcome.index?.let { added ->
+                    if (kindId == KIND_LAND) {
+                        withContext(Dispatchers.Default) {
+                            placeLandingIfUnplaced(added, at.latitude, at.longitude)
+                        }
+                    }
+                    selected = MapHit.Waypoint(added)
+                }
             } else {
                 busy = outcome.reason
                 delay(FAILURE_MESSAGE_MS)

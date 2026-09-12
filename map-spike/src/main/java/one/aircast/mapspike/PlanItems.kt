@@ -30,6 +30,7 @@ internal fun itemDetail(item: MissionItem): String = listOfNotNull(
         ?: item.altitudeBandText.ifBlank { null }
         ?: NO_POSITION.takeIf { !item.placed && item.specifiesCoordinate },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
+    item.blockedReason.ifBlank { null },
 ).joinToString(" \u00b7 ")
 
 fun worthListing(items: List<MissionItem>): Boolean = items.any { it.index != HOME_ITEM }

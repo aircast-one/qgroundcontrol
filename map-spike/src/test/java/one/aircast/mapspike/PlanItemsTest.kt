@@ -355,3 +355,33 @@ class LegTextTest {
         assertEquals("449 m", legText(item(449.0, azimuthText = "")))
     }
 }
+
+class BlockedReasonTest {
+
+    @Test
+    fun `an item that blocks the save says why, where the operator is looking`() {
+        val item = MissionItem(
+            4, 4, 41.0, 44.0, "Landing pattern", false, Double.NaN, kind = "land",
+            blockedReason = "Landing point not set",
+        )
+
+        assertEquals("Landing point not set", itemDetail(item))
+    }
+
+    @Test
+    fun `a reason joins whatever else the row already says`() {
+        val item = MissionItem(
+            2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint",
+            altitudeText = "50.0 m", blockedReason = "Needs a value",
+        )
+
+        assertEquals("50.0 m · Needs a value", itemDetail(item))
+    }
+
+    @Test
+    fun `an item with nothing wrong says nothing extra`() {
+        val item = MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", altitudeText = "50.0 m")
+
+        assertEquals("50.0 m", itemDetail(item))
+    }
+}
