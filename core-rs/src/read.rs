@@ -104,7 +104,7 @@ impl Unit {
     }
 
     pub fn label(&self, meters: f64) -> String {
-        format!("{:.1} {}", self.show(meters), self.name)
+        format!("{} {}", settled(format!("{:.1}", self.show(meters))), self.name)
     }
 }
 
@@ -148,6 +148,13 @@ pub fn format_measure(value: f64, units: &str) -> String {
 #[cfg(test)]
 mod measure_tests {
     use super::format_measure;
+
+    #[test]
+    fn a_guided_sentence_does_not_offer_to_hold_at_minus_nothing() {
+        let metric = super::Unit { factor: 1.0, name: "m".to_string() };
+        assert_eq!(metric.label(-0.04), "0.0 m", "the guided sentences read this back to the operator - a grounded vehicle would have been described as already at -0.0 m and not moving");
+        assert_eq!(metric.label(-1.5), "-1.5 m", "a real descent keeps its sign here too");
+    }
 
     #[test]
     fn a_vehicle_on_the_ground_does_not_read_as_below_its_launch_point() {
