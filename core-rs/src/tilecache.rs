@@ -502,3 +502,34 @@ mod tests {
         assert_eq!(cache.prune(1_000_000).unwrap(), 128, "the Qt worker prunes a hundred and twenty eight at a time and is called again, rather than holding a write lock over the whole cache");
     }
 }
+
+#[cfg(test)]
+mod real_cache {
+    use super::*;
+
+    #[test]
+    fn a_cache_an_operator_already_has_opens_and_serves_without_downloading() {
+        let Ok(path) = std::env::var("QGC_REAL_TILE_CACHE") else {
+            return;
+        };
+        let cache = Cache::open(Path::new(&path)).expect("an existing qgcMapCache.db opens");
+        let mut listed = cache
+            .connection
+            .prepare("SELECT hash, length(tile) FROM Tiles WHERE tile IS NOT NULL")
+            .expect("the schema is the one Qt writes");
+        let rows: Vec<(String, i64)> = listed
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert!(!rows.is_empty(), "the cache holds tiles, so there is something to serve");
+
+        let served = rows
+            .iter()
+            .filter(|(hash, bytes)| {
+                cache.tile(hash).ok().flatten().is_some_and(|tile| tile.image.len() as i64 == *bytes)
+            })
+            .count();
+        assert_eq!(served, rows.len(), "every tile Qt wrote is one the core reads back under the hash Qt keyed it by, with the same byte count; anything less is a tile the operator would have to download again");
+    }
+}
