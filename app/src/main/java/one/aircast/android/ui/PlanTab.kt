@@ -161,7 +161,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                 }
             }
             Text(
-                text = notice ?: planStatusText(planStatus, files.documentName(), dirty),
+                text = notice ?: planStatusText(planStatus),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = if (notice == null) 1 else 3,

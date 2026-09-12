@@ -80,16 +80,8 @@ internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
     )
 }
 
-// The core spells this too, and knows whether the changes are unsaved or merely
-// not uploaded - which is the offline flag this head used to watch for itself.
-internal fun planStatusText(view: org.json.JSONObject?, name: String?, dirty: Boolean): String =
-    view?.optString("status").orEmpty().ifBlank {
-        when {
-            name == null && !dirty -> "New plan"
-            name == null -> "Unsaved plan"
-            else -> name
-        }
-    }
+internal fun planStatusText(view: org.json.JSONObject?): String =
+    view?.optString("status").orEmpty()
 
 internal val DRAWN_KINDS = setOf(
     "settings", "takeoff", "land", "waypoint", "command", "altitude", "roi",

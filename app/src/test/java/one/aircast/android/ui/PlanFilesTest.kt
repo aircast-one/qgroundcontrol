@@ -46,15 +46,14 @@ class PlanStatusTest {
 
     @Test
     fun `the core spells the status, including whether changes are unsaved or unsent`() {
-        assertEquals("ridge.plan \u00b7 not uploaded", planStatusText(view("ridge.plan \u00b7 not uploaded"), "ridge.plan", dirty = true))
-        assertEquals("ridge.plan \u00b7 unsaved changes", planStatusText(view("ridge.plan \u00b7 unsaved changes"), "ridge.plan", dirty = true))
+        assertEquals("ridge.plan \u00b7 not uploaded", planStatusText(view("ridge.plan \u00b7 not uploaded")))
+        assertEquals("ridge.plan \u00b7 unsaved changes", planStatusText(view("ridge.plan \u00b7 unsaved changes")))
     }
 
     @Test
-    fun `with no answer from the core the name is still shown rather than nothing`() {
-        assertEquals("New plan", planStatusText(null, null, dirty = false))
-        assertEquals("Unsaved plan", planStatusText(null, null, dirty = true))
-        assertEquals("mission.plan", planStatusText(null, "mission.plan", dirty = false))
+    fun `no answer shows nothing, so a silent core is visible rather than papered over`() {
+        assertEquals("", planStatusText(null))
+        assertEquals("", planStatusText(org.json.JSONObject("""{"kind":"null"}""")))
     }
 }
 
