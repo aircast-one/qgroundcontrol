@@ -251,7 +251,6 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     var pending by remember { mutableStateOf<CalibrationRoutine?>(null) }
     var runningName by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
-    var compassMotAsked by remember { mutableStateOf(false) }
     val flyJson by qgcPath(FLY_STATE)
     val aloft = remember(flyJson) { flyState(flyJson)?.state == "flying" }
     val scope = rememberCoroutineScope()
@@ -273,30 +272,6 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     if (state == null) {
         SensorsNotice("Reading the vehicle's calibration state.", modifier)
         return
-    }
-
-    if (compassMotAsked) {
-        AlertDialog(
-            onDismissRequest = { compassMotAsked = false },
-            title = { Text("Run CompassMot?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(COMPASS_MOT_PURPOSE)
-                    COMPASS_MOT_STEPS.forEach { Text("• $it") }
-                    Text(COMPASS_MOT_CURRENT_WARNING)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    compassMotAsked = false
-                    runningName = "CompassMot"
-                    offMainDetached { Qgc.invoke(COMPASS_MOT_INVOCATION) }
-                }) { Text("Start") }
-            },
-            dismissButton = {
-                TextButton(onClick = { compassMotAsked = false }) { Text("Cancel") }
-            },
-        )
     }
 
     pending?.let { calibration ->
@@ -352,27 +327,13 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
             val status = routineStatus(routine, state)
             SetupRow(
                 title = routine.title,
-                status = status,
+                status = if (routine.spinsPropeller) "Spins the motors" else status,
                 state = when (status) {
                     "Not calibrated" -> SetupState.NeedsAttention
                     "Calibrated" -> SetupState.Done
                     else -> SetupState.Neutral
                 },
                 onClick = if (routine.enabled) ({ pending = routine }) else null,
-            )
-        }
-
-        item(key = "compassmot") {
-            val blocked = compassMotBlocked(
-                connected = true,
-                busy = state.inProgress,
-                flying = aloft,
-            )
-            SetupRow(
-                title = "CompassMot",
-                status = blocked ?: "Motor interference",
-                state = SetupState.Neutral,
-                onClick = if (blocked == null) ({ compassMotAsked = true }) else null,
             )
         }
 

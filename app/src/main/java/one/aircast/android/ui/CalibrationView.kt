@@ -22,6 +22,7 @@ internal data class CalibrationRoutine(
     val enabled: Boolean,
     val description: String,
     val warning: String,
+    val spinsPropeller: Boolean,
 )
 
 internal data class CalibrationState(
@@ -80,6 +81,7 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
                 enabled = it.optBoolean("enabled"),
                 description = it.optText("description"),
                 warning = it.optText("warning"),
+                spinsPropeller = it.optBoolean("spinsPropeller"),
             )
         },
     )
