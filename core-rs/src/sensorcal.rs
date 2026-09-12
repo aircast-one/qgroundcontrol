@@ -553,9 +553,6 @@ mod tests {
         cal.on_text("[cal] calibration started: 2 accel", 0);
         assert!(cal.sides.iter().all(|s| s.visible && s.stage == Stage::Waiting));
         assert_eq!(cal.snapshot()["help"], HELP_PLACE);
-        // The wire format carries the prefix - MockLink emits "[cal] calibration started: 2 gyro"
-        // - and SensorsComponentController strips "[cal] " before reading the side off the first
-        // word. This parser does the same, so the fixture is the text a vehicle actually sends.
         cal.on_text("[cal] down orientation detected", 0);
         assert_eq!(stages(&cal), ["inProgress", "waiting", "waiting", "waiting", "waiting", "waiting"]);
         assert!(!cal.sides[0].rotate, "only compass asks to rotate");
@@ -586,8 +583,6 @@ mod tests {
         assert!(cal.sides[2].rotate);
         assert_eq!(cal.snapshot()["help"], HELP_ROTATE);
         assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap());
-        // busy was only ever asserted false, so pinning it to false passed: a panel that never
-        // showed a calibration in progress, on the one screen whose whole job is to show that.
         assert!(cal.snapshot()["busy"].as_bool().unwrap(), "a calibration mid-routine is the definition of busy");
         let cancel = cal.cancel().unwrap();
         assert_eq!(cancel, vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0; 7], show_error: true }]);

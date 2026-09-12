@@ -3,7 +3,6 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-// The group object itself has no notify signal; the four lists this view reads all carry one.
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.sysStatusSensorInfo.sensorNames",
@@ -68,9 +67,6 @@ mod tests {
     #[test]
     fn failing_sensors_come_first_and_disabled_ones_last() {
         let info = json!({
-            // Real names out of QGCMAVLink::mavSysStatusSensorToString's table, not plausible
-            // ones. They are QT_TRANSLATE_NOOP, so the stored string is English and translation
-            // happens at display - nothing here matches on them, it passes them through.
             "sensorNames": ["Geofence", "GPS", "Gyro", "Logging"],
             "sensorEnabled": [false, true, true, false],
             "sensorHealthy": [false, false, true, true],

@@ -3,10 +3,6 @@ use serde_json::{Value, json};
 use crate::read::{object, result_flag, value_number};
 use crate::router::Backend;
 
-// The slot parameters are what this panel is for, and reading them through getParameter meant
-// nothing watched them: changing a mode left the panel showing the old one until something else
-// happened to fire. Both families are listed because the deps are static and the names are chosen
-// from the vehicle; the pair that does not exist binds to nothing and costs a miss on one poll.
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.apmFirmware",
@@ -259,9 +255,6 @@ mod tests {
         assert!(view["slots"].as_array().unwrap().iter().all(|slot| slot["live"] == false), "no slot may be marked live when the channel carrying the selection is not being received");
         assert!(view["reason"].as_str().unwrap().contains("not sending"));
 
-        // A channel parameter of zero puts the index at -1. The guard that used to wrap this read
-        // was redundant - the cast wraps to a value no channel list reaches, so the lookup misses
-        // either way - and removing it must not change the answer.
         let below = slots_view(&copter(0.0, channels(1500, 8)), &[]);
         assert_eq!(below["channelPwm"], Value::Null, "a mode channel of zero names no channel, so there is no reading rather than the last one");
         assert_eq!(below["liveSlot"], 0);

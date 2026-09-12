@@ -168,9 +168,6 @@ mod tests {
             fn watch(&self, _p: &[String]) {}
         }
 
-        // A survey whose camera has not resolved a footprint yet reports zero for both sides, and
-        // "0.0 x 0.0 m" reads as a measured footprint of nothing rather than as no measurement.
-        // Every other measure in this view already says absent at zero; this one was not tested.
         let view = survey_stats_view(&Unmeasured, &["3".to_string()]);
         assert_eq!(view["footprintText"], ABSENT);
         assert_eq!(view["footprintSide"], 0.0, "the raw numbers still travel, so a head that wants to know it is zero can");

@@ -12,9 +12,6 @@ pub struct Kind {
     pub title: &'static str,
     pub invokable: &'static str,
     pub complex_name: Option<&'static str>,
-    // The class the item reports through the bridge. complex_name is what QGC's insert compares
-    // against and is itself a tr() string, so it identifies an existing item only in an English
-    // build; a class name is the same in every locale.
     pub class_name: Option<&'static str>,
     pub geometry: Option<(&'static str, &'static str)>,
     pub placement_hint: &'static str,
@@ -44,10 +41,6 @@ pub fn lookup(id_or_name: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.id == id_or_name || k.complex_name == Some(id_or_name))
 }
 
-// Identify an item the vehicle or the editor built, from the class it reports rather than from a
-// display name. commandName is tr() on every complex item, so matching it named a corridor scan
-// only in an English build and everything else fell through to "complex" - taking its geometry,
-// its title and its placement hint with it.
 pub fn by_class(class: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.class_name == Some(class))
 }
@@ -99,9 +92,6 @@ fn kind_json(kind: &Kind) -> Value {
         "title": kind.title,
         "invokable": kind.invokable,
         "complexName": kind.complex_name,
-        // The class QGC gives this item, which is the same in every locale and the only stable way
-        // a head can tie an item it is looking at back to this catalogue. complexName above is an
-        // English literal and matches the running build only when that build is English.
         "className": kind.class_name,
         "geometry": kind.geometry.map(|(shape, _)| shape),
         "geometryProperty": kind.geometry.map(|(_, property)| property),

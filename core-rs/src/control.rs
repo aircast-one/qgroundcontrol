@@ -116,9 +116,6 @@ mod tests {
         assert_eq!((param["vehicleRebootRequired"].as_bool(), param["applicationRestartRequired"].as_bool()), (Some(true), Some(false)));
         assert_eq!(param["restartNotices"], json!([VEHICLE_REBOOT_NOTICE]));
 
-        // Nothing asserted the ordinary case: pinning rebootRequired to true passed, so a build
-        // where every control demanded a restart was a passing build, and the notice would have
-        // stopped meaning anything long before anyone noticed.
         let ordinary = decode(&json!({ "kind": "fact", "name": "RTL_ALT", "value": 30, "valueString": "30" }), "p");
         assert_eq!(ordinary["rebootRequired"], false, "a parameter that takes effect immediately must not ask for a restart");
         assert_eq!(ordinary["vehicleRebootRequired"], false);

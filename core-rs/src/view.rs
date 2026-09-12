@@ -218,9 +218,6 @@ impl View {
 
 pub const ORDER: &str = "oldestFirst";
 
-// A dep that names no property binds to nothing and falls back to a poll that only runs when the
-// event loop is idle, so a misspelling makes a view quietly stop updating rather than fail. Serving
-// the list is what lets a test resolve every one of them against the real bridge.
 fn dependencies_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
@@ -235,16 +232,12 @@ fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({ "kind": "object", "class": "VehicleMessages", "order": ORDER, "count": items.len(), "items": items })
 }
 
-
 #[cfg(test)]
 mod watch_paths {
     use super::split_paths;
 
     #[test]
     fn a_view_path_carrying_commas_inside_its_arguments_survives_the_list() {
-        // The Fly instrument row is asked for as one path with four comma-separated arguments, and
-        // it travels to the core inside a comma-separated list of paths. Splitting on every comma
-        // would leave four fragments that name no view at all.
         let asked = "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)";
         assert_eq!(split_paths(asked), vec![asked.to_string()]);
         assert_eq!(
@@ -260,10 +253,6 @@ mod watch_paths {
 mod deps_cover_reads {
     use std::collections::BTreeSet;
 
-    // A head that has dropped its own derivation in favour of a view has also dropped the thing
-    // that would have disagreed with it. Before, a missing dep here and a stale watch there had to
-    // line up to show a wrong answer; now one is enough. So a field a view reads and does not watch
-    // is only acceptable when the Qt property cannot change, and that has to be said out loud.
     const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
         "vehicle.flightModeSetAvailable",
         "vehicle.rtlFlightMode",

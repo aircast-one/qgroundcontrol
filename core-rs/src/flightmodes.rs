@@ -134,8 +134,6 @@ mod tests {
         impl Backend for Fake {
             fn get(&self, _p: &str) -> String { String::new() }
             fn get_fields(&self, _p: &str, _f: &str) -> String {
-                // Hold, Position, Acro and Offboard are PX4's own mode names, checked against
-                // PX4FirmwarePlugin.cc rather than chosen for plausibility.
                 json!({ "kind": "object", "flightMode": "Acro", "flightModes": ["Hold", "Position", "Acro", "Offboard"], "advancedFlightModes": ["Acro", "Offboard"], "flying": true, "rtlFlightMode": "Return", "landFlightMode": "Land", "flightModeSetAvailable": true }).to_string()
             }
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
@@ -149,9 +147,6 @@ mod tests {
         assert_eq!(view["folded"].as_array().unwrap().len(), 1);
         assert_eq!(view["folded"][0]["name"], "Offboard");
 
-        // available and canSet were only ever asserted true, so pinning them true passed the
-        // crate: a picker that offered every mode with no vehicle, and offered to set one, would
-        // have shipped. They are the gate on a control that changes what the aircraft is doing.
         struct NoVehicle;
         impl Backend for NoVehicle {
             fn get(&self, _p: &str) -> String { String::new() }
