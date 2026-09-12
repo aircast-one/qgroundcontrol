@@ -515,6 +515,46 @@ func checkAFenceSaysWhichSideIsSafe() {
 
 checkAFenceSaysWhichSideIsSafe()
 
+func checkTheFenceTheFirmwareEnforces() {
+    func enforced(_ overrides: [String: Any]) -> FirmwareFence? {
+        FirmwareFence(["radiusMetres": 300.0 as NSNumber, "radiusText": "300 m"]
+            .merging(overrides) { _, override in override })
+    }
+
+    let placed = enforced(["centre": ["latitude": 47.397 as NSNumber,
+                                      "longitude": 8.546 as NSNumber]])
+    expect(placed?.radiusText ?? "", "300 m",
+           "the vehicle enforces a circular fence from its own parameters -- FENCE_RADIUS on "
+           + "ArduPilot -- and nothing in this head could see it. An operator can draw a two "
+           + "kilometre survey inside a three hundred metre fence, upload it cleanly and find "
+           + "out in the air")
+    expect(placed?.drawable == true, "with a centre it can be drawn on the map")
+
+    let unplaced = enforced([:])
+    expect(unplaced != nil,
+           "a radius with NO centre is still a fence and still reported: the core builds the "
+           + "centre from vehicle.homePosition, so a vehicle that has reported its fence "
+           + "parameter but not yet its home sends a radius and a null centre. Refusing the "
+           + "whole thing there would hide the number the operator most needs")
+    expect(unplaced?.drawable == false,
+           "but it cannot be drawn, and drawing it at a guessed centre would put a circle "
+           + "somewhere the firmware does not enforce one")
+    expect(unplaced?.rowDetail ?? "", FirmwareFence.unplacedDetail,
+           "so the row says the vehicle has not reported where from yet, rather than showing "
+           + "the same sentence as a placed one")
+    expect(placed?.rowDetail ?? "", FirmwareFence.detail,
+           "and a placed one says the vehicle enforces it, which is the whole reason it is "
+           + "drawn differently from a fence someone drew in this plan")
+
+    expect(FirmwareFence(["radiusMetres": 0.0 as NSNumber]) == nil,
+           "a radius of zero is how this reads when no fence is set, and a zero-radius circle "
+           + "would draw a dot the operator would take for a fence")
+    expect(FirmwareFence(["radiusText": "300 m"]) == nil, "and a text with no measure is none")
+    expect(FirmwareFence(nil) == nil, "as is the null the core sends with no vehicle at all")
+}
+
+checkTheFenceTheFirmwareEnforces()
+
 
 func checkTilePyramid() {
     let tile = TileAddress(x: 59492, y: 37374, z: 16)

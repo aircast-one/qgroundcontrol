@@ -49,6 +49,8 @@ final class FenceCircle: MKCircle {
     var inclusion = false
 }
 
+final class FirmwareFenceCircle: MKCircle {}
+
 final class OrbitCircle: MKCircle {}
 
 final class GotoAnnotation: NSObject, MKAnnotation {
@@ -123,6 +125,7 @@ struct MissionMap: NSViewRepresentable {
     let adding: Bool
     let add: (Double, Double) -> Void
     let move: (Int, Double, Double) -> Void
+    var firmwareFence: FirmwareFence?
     var secondary: ((Double, Double, CGPoint) -> Void)?
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
@@ -217,6 +220,8 @@ struct MissionMap: NSViewRepresentable {
         let rally = rallyPoints.filter { $0.latitude != nil && $0.longitude != nil }
         map.addAnnotations(rally.map(RallyAnnotation.init(point:)))
         shapes.compactMap(MissionMap.overlay(for:)).forEach { map.addOverlay($0, level: .aboveLabels) }
+        firmwareFence.flatMap(MissionMap.overlay(for:))
+            .map { map.addOverlay($0, level: .aboveLabels) }
 
         surveys.filter { $0.count >= 3 }.forEach { area in
             var corners = area.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
@@ -367,6 +372,13 @@ struct MissionMap: NSViewRepresentable {
         let bar = scale(of: map)
         lastRender[owner]?["scale"] = bar.text
         lastScale[owner] = bar
+    }
+
+    static func overlay(for enforced: FirmwareFence) -> MKOverlay? {
+        guard let centre = enforced.centre else { return nil }
+        return FirmwareFenceCircle(
+            center: CLLocationCoordinate2D(latitude: centre.latitude, longitude: centre.longitude),
+            radius: enforced.radiusMetres)
     }
 
     static func overlay(for shape: FenceShape) -> MKOverlay? {
@@ -603,6 +615,14 @@ struct MissionMap: NSViewRepresentable {
             if let polygon = overlay as? FencePolygon {
                 return Coordinator.fenceRenderer(MKPolygonRenderer(polygon: polygon),
                                                  inclusion: polygon.inclusion)
+            }
+            if let enforced = overlay as? FirmwareFenceCircle {
+                let renderer = MKCircleRenderer(circle: enforced)
+                renderer.strokeColor = .systemRed
+                renderer.lineWidth = 2
+                renderer.lineDashPattern = [6, 4]
+                renderer.fillColor = NSColor.systemRed.withAlphaComponent(0.05)
+                return renderer
             }
             if let circle = overlay as? FenceCircle {
                 return Coordinator.fenceRenderer(MKCircleRenderer(circle: circle),

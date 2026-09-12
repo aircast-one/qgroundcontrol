@@ -10,6 +10,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var rallySupported = false
     @Published private(set) var connected = false
     @Published private(set) var breachReturn: RallyPointRow?
+    @Published private(set) var firmwareFence: FirmwareFence?
     @Published private(set) var status = ""
     @Published private(set) var syncing = false
     @Published var armingRally = false
@@ -56,6 +57,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
             (Bridge.group("plan.rallyPointController")["supported"] as? NSNumber)?.boolValue ?? false)
 
         set(\.shapes, FenceRallyStore.readShapes())
+        set(\.firmwareFence, FirmwareFence(read["firmwareFence"]))
         set(\.rallyPoints, FenceRallyStore.readRally())
 
         set(\.breachReturn, (read["breachReturnPoint"] as? [String: Any])
@@ -222,6 +224,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func probeState() -> [String: Any] {
         ["shapes": shapes.count, "rallyPoints": rallyPoints.count,
+         "firmwareFence": firmwareFence.map { ["radius": $0.radiusText,
+                                               "drawable": $0.drawable] } ?? [:],
          "reloads": reloads, "publishes": publishes, "watching": watchPoll != nil,
          "fenceSupported": fenceSupported, "rallySupported": rallySupported,
          "connected": connected, "offersDownload": offersDownload,

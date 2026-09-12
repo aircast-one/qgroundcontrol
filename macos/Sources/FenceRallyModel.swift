@@ -19,6 +19,29 @@ struct GeoPoint: Equatable {
     }
 }
 
+struct FirmwareFence: Equatable {
+    let radiusMetres: Double
+    let radiusText: String
+    let centre: GeoPoint?
+
+    static let title = "Firmware fence"
+    static let unplacedDetail = "The vehicle enforces this, and has not reported where from yet"
+    static let detail = "The vehicle enforces this from its own parameters"
+
+    var drawable: Bool { centre != nil }
+
+    var rowDetail: String { drawable ? FirmwareFence.detail : FirmwareFence.unplacedDetail }
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let metres = (json["radiusMetres"] as? NSNumber)?.doubleValue,
+              metres.isFinite, metres > 0 else { return nil }
+        radiusMetres = metres
+        radiusText = (json["radiusText"] as? String) ?? ""
+        centre = GeoPoint(json: json["centre"])
+    }
+}
+
 struct MapWindow: Equatable {
     let topLeft: GeoPoint
     let bottomRight: GeoPoint

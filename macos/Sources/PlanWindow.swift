@@ -847,8 +847,19 @@ struct PlanInspector: View {
 
     private var fence: some View {
         VStack(alignment: .leading, spacing: Overlay.gutter) {
+            if fenceRally.firmwareFence != nil { firmwareFenceRow }
             fenceShapes
             breachReturn
+        }
+    }
+
+    private var firmwareFenceRow: some View {
+        GroupCard {
+            GroupRow(title: FirmwareFence.title,
+                     description: fenceRally.firmwareFence?.rowDetail ?? "",
+                     value: fenceRally.firmwareFence?.radiusText ?? "",
+                     showSeparator: false,
+                     descriptionLines: 2)
         }
     }
 
@@ -1167,6 +1178,7 @@ struct PlanView: View {
                        adding: mission.arming != nil || fenceRally.armingRally,
                        add: place(latitude:longitude:),
                        move: mission.move(sequence:latitude:longitude:),
+                       firmwareFence: fenceRally.firmwareFence,
                        surveys: mission.surveyAreas,
                        corridors: mission.corridorPaths,
                        transects: mission.patternTransects,
