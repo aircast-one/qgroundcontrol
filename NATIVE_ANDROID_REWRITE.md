@@ -593,7 +593,41 @@ convention — and it now takes `int`, the same type everywhere QGC builds. QML 
 same way, so the QML *Set Rate* combo was plausibly broken too; not tested, and worth checking before
 the QML is deleted on the assumption it worked.
 
-**The rate label does not update on this rig, and that is the sim rather than the app.** QGC updates
+### The rate label was broken on every head, and the rig was hiding it, 2026-09-13
+
+The paragraph below was half right and its conclusion was wrong. The rig really
+did not answer, and `tools/apmvehicle.py` now does: it records what
+`SET_MESSAGE_INTERVAL` told it and replies to the follow-up `REQUEST_MESSAGE`
+with a `MESSAGE_INTERVAL` carrying that interval. With the vehicle answering,
+the label still read "Rate: Default", so it was never only the sim.
+
+Traced on the handset. The **Inspector's own message list** is the instrument
+that settled it: `MESSAGE_INTERVAL` appears there, and selecting it shows
+`message_id 30`, `interval_us 100000`. So QGC received and parsed the reply and
+`_handleMessageInterval` emitted `mavlinkMsgIntervalsChanged(1, 30, 10)`. That
+left exactly one hop unaccounted for, the lambda connected in
+`MAVLinkInspectorController::_vehicleAdded` — and `_vehicleAdded` never runs.
+The controller is `Q_APPLICATION_STATIC`, built on first use, which is when a
+head opens the Inspector; `vehicleAdded` fired long before that and the
+constructor never looked at the vehicles already there. The systems you see come
+from `_receiveMessage`, which creates them lazily and makes no such connection.
+
+So the rate could only ever update if you opened the Inspector *before*
+connecting a vehicle. **QML reads the same singleton, so the desktop Set Rate
+combo had this defect too** — which answers the question left open above about
+whether the QML control worked before it is deleted. It did not.
+
+Fixed in `52877674b` by ending the constructor with what the signals would have
+done. That is already the convention: `MAVLinkConsoleController` and
+`LogDownloadController` both call `_setActiveVehicle(activeVehicle())` on the
+line after their `connect`. Verified both directions on the OnePlus 6 — 10 Hz
+gives "Rate: 10 Hz" and `us=100000`, 2 Hz gives "Rate: 2 Hz" and `us=500000`.
+
+`HOME_POSITION` and `EXTENDED_SYS_STATE` still read Default. QGC sets those at
+startup without the ack handler that re-requests the interval; separate thing,
+untouched.
+
+~~**The rate label does not update on this rig, and that is the sim rather than the app.**~~ QGC updates
 `targetRateHz` only from a `MESSAGE_INTERVAL` the vehicle sends after acking the command —
 `_setMessageRateCommandResultHandler` re-requests it on `MAV_RESULT_ACCEPTED`. `apmvehicle.py` answers
 `REQUEST_MESSAGE` for `AUTOPILOT_VERSION` only and never sends `MESSAGE_INTERVAL`. Confirming from the
