@@ -44,6 +44,26 @@ class PlanItemsTest {
     }
 
     @Test
+    fun `a pattern spanning heights shows the band, having no single altitude`() {
+        val survey = MissionItem(
+            4, 4, 41.0, 44.0, "Survey", false, Double.NaN, kind = "survey",
+            altitudeBandText = "585 m to 660 m",
+        )
+
+        assertEquals("585 m to 660 m", itemDetail(survey))
+    }
+
+    @Test
+    fun `an item with its own altitude ignores any band`() {
+        val waypoint = MissionItem(
+            2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint",
+            altitudeText = "50.0 m", altitudeBandText = "nonsense",
+        )
+
+        assertEquals("50.0 m", itemDetail(waypoint))
+    }
+
+    @Test
     fun `an item with no altitude says nothing rather than NaN`() {
         assertEquals("", itemRows(listOf(item(1, 1, "Waypoint", altitude = Double.NaN))).single().detail)
     }

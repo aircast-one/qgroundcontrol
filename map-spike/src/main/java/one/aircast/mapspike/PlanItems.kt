@@ -27,6 +27,7 @@ fun itemRows(items: List<MissionItem>): List<ItemRow> = items.map { item ->
 
 internal fun itemDetail(item: MissionItem): String = listOfNotNull(
     item.altitudeText.ifBlank { null }
+        ?: item.altitudeBandText.ifBlank { null }
         ?: NO_POSITION.takeIf { !item.placed && item.specifiesCoordinate },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
 ).joinToString(" \u00b7 ")
