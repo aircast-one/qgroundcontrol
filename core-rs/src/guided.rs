@@ -10,6 +10,8 @@ pub const DEPS: &[&str] = &[
     "vehicle.parameterManager.parametersReady",
     "vehicle.armed",
     "vehicle.flying",
+    "vehicle.isROIEnabled",
+    "vehicle.roiCoord",
     "vehicle.flightMode",
     "vehicle.landing",
     "vehicle.vtol",
@@ -67,6 +69,8 @@ pub struct GuidedState {
     pub mission_item_count: i64,
     pub current_mission_index: i64,
     pub resume_from_sequence: i64,
+    pub roi_supported: bool,
+    pub roi_active: bool,
 }
 
 impl GuidedState {
@@ -96,6 +100,7 @@ pub enum Action {
     StartMission,
     ContinueMission,
     ResumeMission,
+    CancelRoi,
     Pause,
     ChangeAltitude,
     ChangeSpeed,
@@ -117,6 +122,7 @@ pub const ACTIONS: &[Action] = &[
     Action::StartMission,
     Action::ContinueMission,
     Action::ResumeMission,
+    Action::CancelRoi,
     Action::Pause,
     Action::ChangeAltitude,
     Action::ChangeSpeed,
@@ -152,6 +158,7 @@ impl Action {
             Action::StartMission => "Start Mission",
             Action::ContinueMission => "Continue Mission",
             Action::ResumeMission => "Resume Mission",
+            Action::CancelRoi => "Cancel ROI",
             Action::Pause => "Pause",
             Action::ChangeAltitude => "Change Altitude",
             Action::ChangeSpeed => "Change Speed",
@@ -175,6 +182,7 @@ impl Action {
             Action::StartMission => "Fly the mission from the beginning.",
             Action::ContinueMission => "Fly the rest of the mission from the current item.",
             Action::ResumeMission => "Carry on from the waypoint the vehicle had reached, rather than flying the plan again from the start.",
+            Action::CancelRoi => "Stop pointing the camera at the region of interest and let it follow the vehicle again.",
             Action::Pause => "Hold position, at the height you set.",
             Action::ChangeAltitude => "Climb or descend to a new height.",
             Action::ChangeSpeed => "Fly at a new speed.",
@@ -209,6 +217,7 @@ impl Action {
                     s.mission_available && !s.mission_active() && s.armed && s.flying && s.has_more_mission()
                 }
                 Action::ResumeMission => s.can_resume(),
+                Action::CancelRoi => s.roi_supported && s.roi_active && s.flying,
                 Action::Pause => s.armed && s.pause_supported && s.flying && !s.paused && !s.on_approach(),
                 Action::LandAbort => s.flying && s.on_approach(),
                 Action::ChangeAltitude => s.armed && s.guided_supported && s.flying && !s.mission_active(),
@@ -263,6 +272,11 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "connected": state.connected,
         "missionActive": state.mission_active(),
         "resumeFromSequence": (state.resume_from_sequence > 0).then_some(state.resume_from_sequence),
+        "roiSupported": state.roi_supported,
+        "roiActive": state.roi_active,
+        "roi": state.roi_active.then(|| crate::read::object(&backend.get("vehicle.roiCoord"))).and_then(|at| {
+            Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? }))
+        }),
         "forwardFlight": state.forward_flight,
         "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
@@ -287,7 +301,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = object(&backend.get_fields(
         "vehicle",
-        "armed,flying,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "armed,flying,roiModeSupported,isROIEnabled,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     ));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
@@ -335,6 +349,8 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         mission_item_count: integer(&flying, "missionItemCount").unwrap_or(0),
         current_mission_index: integer(&flying, "currentMissionIndex").unwrap_or(-1),
         resume_from_sequence: integer(&flying, "resumeMissionIndex").unwrap_or(0),
+        roi_supported: flag(&vehicle, "roiModeSupported"),
+        roi_active: flag(&vehicle, "isROIEnabled"),
     }
 }
 
@@ -359,6 +375,45 @@ mod tests {
             can_start_mission: true,
             ..GuidedState::default()
         }
+    }
+
+    #[test]
+    fn a_region_of_interest_can_be_cancelled_only_while_one_is_in_force() {
+        let pointing = GuidedState { connected: true, flying: true, roi_supported: true, roi_active: true, ..GuidedState::default() };
+        assert_eq!(offer_of(&pointing, Action::CancelRoi), "ready", "while an ROI holds, the camera is locked to a point on the ground rather than following the vehicle, and this is the only thing that releases it");
+
+        let released = GuidedState { roi_active: false, ..pointing.clone() };
+        assert_eq!(offer_of(&released, Action::CancelRoi), "hidden", "isROIEnabled is what says one is in force - offering a cancel with nothing to cancel sends a command the vehicle answers with nothing");
+
+        let unsupported = GuidedState { roi_supported: false, ..pointing.clone() };
+        assert_eq!(offer_of(&unsupported, Action::CancelRoi), "hidden");
+
+        let landed = GuidedState { flying: false, ..pointing };
+        assert_eq!(offer_of(&landed, Action::CancelRoi), "hidden");
+
+        struct Pointed(bool);
+        impl Backend for Pointed {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.roiCoord" => json!({ "kind": "coordinate", "latitude": 47.4, "longitude": 8.5, "valid": true }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    "vehicle" => json!({ "kind": "object", "flying": true, "roiModeSupported": true, "isROIEnabled": self.0 }),
+                    _ => json!({ "kind": "object" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(guided_view(&Pointed(true), &[])["roi"]["latitude"], 47.4, "the point the camera is locked to, so a head can draw it rather than only say one exists");
+        assert_eq!(guided_view(&Pointed(false), &[])["roi"], Value::Null, "with no ROI in force the vehicle keeps whatever coordinate it was last given, and serving that would draw a marker for a lock that has been released");
     }
 
     #[test]
