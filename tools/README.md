@@ -83,3 +83,17 @@ gestures; the distance in the summary chip was the only tell.
 Start a pan on empty map, and read the summary chip before and after: if the
 distance moved, the plan moved. Reload the file before trusting any measurement
 taken after a pan.
+
+### VEHICLE=plane / vtol
+
+`apmvehicle.py` heartbeats as a quadrotor by default. `VEHICLE=plane` or
+`VEHICLE=vtol` changes the type, which is the only way to exercise the paths
+QGC gates on airframe — the landing pattern above all, since
+`MissionController::insertLandItem` builds a `FixedWingLandingComplexItem` for a
+plane, a `VTOLLandingComplexItem` for a VTOL, and a plain RTL for anything else.
+
+**Two things cache and will mislead you.** QGC takes the vehicle type from the
+heartbeat at connect, so force-stop the app after changing it or it keeps
+reporting the old airframe. And the *plan* carries its own `vehicleType`: a plan
+file saved as a multirotor makes `insertLandItem` add an RTL even when a plane
+is connected, because the plan controller follows the plan rather than the link.

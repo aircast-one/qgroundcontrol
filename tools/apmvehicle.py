@@ -44,6 +44,12 @@ CENTRE_SHIFT = (SYSID - 1) * 0.01
 CENTRE_LAT = float(os.environ.get("SIM_LAT", "41.7151"))
 CENTRE_LON = float(os.environ.get("SIM_LON", "44.8271"))
 RADIUS_DEG = 0.004
+VEHICLE_TYPES = {
+    "copter": mavlink.MAV_TYPE_QUADROTOR,
+    "plane": mavlink.MAV_TYPE_FIXED_WING,
+    "vtol": mavlink.MAV_TYPE_VTOL_QUADROTOR,
+}
+VEHICLE_TYPE = VEHICLE_TYPES[os.environ.get("VEHICLE", "copter")]
 GROUND_SPEED = 8.0
 AIRSPEED = 7.5
 METRES_PER_DEGREE = 111320.0
@@ -179,7 +185,7 @@ def main():
         if armed:
             base_mode |= mavlink.MAV_MODE_FLAG_SAFETY_ARMED
 
-        link.heartbeat_send(mavlink.MAV_TYPE_QUADROTOR,
+        link.heartbeat_send(VEHICLE_TYPE,
                             mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA,
                             base_mode, mode, mavlink.MAV_STATE_ACTIVE)
         nofix = os.environ.get("NOFIX") == "1" and elapsed < float(os.environ.get("NOFIX_SECONDS", "1e9"))
