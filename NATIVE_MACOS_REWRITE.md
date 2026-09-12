@@ -3762,3 +3762,34 @@ entry was right and the reason was wrong.**
 **Not render-checked.** `osascript` did not open the Settings window and I could not reach
 it another way, so this is verified by the live view value, the model tests and the
 mutation — **not by looking.** Saying so rather than implying a screenshot I did not take.
+
+### (gg) The UNDRAWN audit: two more wrong reasons, one of them silencing seven views
+
+Read all twenty entries against the registry and, where cheap, a live read. **Sixteen are
+accurate.** Two were not, and both failures are ones the table's shape invites.
+
+**`view.transports` was excused as "link creation, which is a transient-handle API and
+QML-only".** That is `view.linkForm`'s reason, sitting directly above it, **copied onto a
+neighbour**. `transports_view` returns a live INVENTORY — `openCount`, `qtOpenCount`, and a
+links array **measured at 141 entries with 1 open** — the core's own transport registry
+joined with the Qt links. The suppression is still correct, because this head draws its
+link list from `view.links` in `Links.swift`, but **nothing in the old reason was true.**
+An adjacent entry is the easiest thing in the world to copy and the hardest to notice.
+
+**`view.core` is a PREFIX, not a path.** `undrawn_reason` matches with `startswith`, so that
+one line silences **seven registered views**: `view.coreVehicle`, `coreGuided`,
+`coreParameter`, `coreParameters`, `coreMission`, `coreRemoteId`, `coreCalibration`. All
+genuinely sit behind `QGC_CORE_LINKS`, so the verdict holds — but **the entry read as one
+view while silencing seven**, a partial enumeration wearing a singular noun. Now named.
+
+**A near-miss in my own audit tooling.** My first pass reported `view.core` AND
+`view.dependencies` as "NOT IN REGISTRY". `view.dependencies` is registered at `view.rs:167`
+— my regex demanded `module::function` and its compute is a bare `dependencies_view`. **A
+scan that cannot match a legitimate form reports it as absent**, which is the same family
+as everything else in this table and would have had me deleting a correct entry.
+
+**Three tables audited this session, three carrying wrong reasons.** ACCEPTED twice, UNDRAWN
+once — six corrections between them, **and not one changed what the tool reports.** Every
+entry was right about whether to suppress and wrong about why. **That is the failure mode of
+a justification written once and never re-read: it cannot fail a test, because nothing tests
+prose.**

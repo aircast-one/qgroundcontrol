@@ -70,7 +70,11 @@ FIELD = re.compile(r"\bpub\s+(\w+)\s*:")
 # someone read the commit. These are the families this head deliberately does not decode, kept
 # as patterns rather than as 26 names so the table does not rot on every new file parser.
 UNDRAWN = [
-    ("view.core", "the core's own link path, behind QGC_CORE_LINKS, which this head must not enable"),
+    ("view.core", "A PREFIX, NOT A PATH -- it silences SEVEN registered views at once: "
+                  "view.coreVehicle, coreGuided, coreParameter, coreParameters, coreMission, "
+                  "coreRemoteId and coreCalibration. All sit behind QGC_CORE_LINKS, which this "
+                  "head must not enable, so the suppression is right; the entry read as one view "
+                  "and silenced seven, which is a partial enumeration wearing a singular noun"),
     ("view.control", "the SAME Control shape arrives NESTED inside the settings and parameter "
                      "page views, which this head does read and decode with SettingsControl. The "
                      "standalone path is for a head that renders one control at a time. Measured: "
@@ -93,7 +97,13 @@ UNDRAWN = [
     ("view.tlog", "a file parser the analyze window reaches through its own action"),
     ("view.terrainTile", "a tile fetch, not a screen"),
     ("view.linkForm", "link creation, which is a transient-handle API and QML-only"),
-    ("view.transports", "link creation, which is a transient-handle API and QML-only"),
+    ("view.transports", "NOT link creation -- that reason belonged to view.linkForm above and was "
+                        "copied here. transports_view returns a live INVENTORY: openCount, "
+                        "qtOpenCount and a links array, measured at 141 entries with 1 open. It is "
+                        "the core's own transport registry joined with the Qt links, and it sits "
+                        "behind QGC_CORE_LINKS for the core half. This head draws its link list "
+                        "from view.links (Links.swift), which is the view that answers the "
+                        "question an operator asks"),
     ("view.vehicles", "built and unverifiable: no second vehicle has ever connected here"),
     ("view.landingPattern", "a fixed-wing or VTOL landing pattern: this SITL is a quadrotor and "
                             "arm(land) places a plain Return To Launch, so every simple item gets "
