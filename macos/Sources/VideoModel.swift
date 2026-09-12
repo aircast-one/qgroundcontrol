@@ -13,8 +13,6 @@ struct SourceSize: Equatable {
         self.height = height
     }
 
-    // VideoLayerView paints the frame with .resizeAspect, so a source whose ratio differs from
-    // the pane is letterboxed and anything normalised to the pane lands in the bars instead.
     func painted(inWidth paneWidth: Double, height paneHeight: Double) -> PaintedPicture? {
         guard paneWidth > 0, paneHeight > 0 else { return nil }
         let scale = min(paneWidth / width, paneHeight / height)
@@ -114,9 +112,6 @@ struct VideoStatus: Equatable {
 
     var activeCamera: VideoCamera? { cameras.first { $0.slot == activeSource } }
 
-    // QGC labels the switch with cameraName(activeVideoSource), which falls back to "Camera N".
-    // The core already applies that fallback when it builds each title, so a slot with no camera
-    // at all means the head has no name to show and does not offer the switch.
     var offersSwitch: Bool { multipleSources && activeCamera != nil }
 
     var activeCameraTitle: String { activeCamera?.title ?? "" }

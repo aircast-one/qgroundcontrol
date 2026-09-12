@@ -5,14 +5,8 @@ struct VehicleComponentInfo: Identifiable, Equatable {
     let className: String
     let needsAttention: Bool
 
-    // The name is QGC's and its constructor runs tr(), so it is translated in the five locales
-    // that translate "Sensors" and is no basis for identity or for recognising a component. The
-    // class is the same in every build. Falls back to the name only so a component the bridge
-    // reports without a class still gets a distinct id rather than colliding on "".
     var id: String { className.isEmpty ? name : className }
 
-    // PX4 and ArduPilot each have their own sensors component and both are the one this window
-    // badges when a sensor is failing.
     static let sensorClasses = ["SensorsComponent", "APMSensorsComponent"]
 
     var isSensors: Bool { VehicleComponentInfo.sensorClasses.contains(className) }

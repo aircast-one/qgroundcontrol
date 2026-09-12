@@ -649,9 +649,6 @@ struct FlightModesView: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     SectionLabel(text: "Switch positions")
-                    // The core says why no position is lit - the transmitter is silent on the
-                    // mode channel, or the switch sits between thresholds. Without it the screen
-                    // looks identical to one where nothing has moved yet.
                     if !modes.slots.reason.isEmpty {
                         GroupCard { EmptyStateRow(text: modes.slots.reason) }
                     }
@@ -902,10 +899,6 @@ struct VehicleSetupView: View {
         case "Sensors": SensorsView(store: sensors)
         case "Summary": SetupSummaryView(store: components, sensors: sensors, selection: selection)
         default:
-            // A page the core lists with parameter sections and this head has no bespoke view for
-            // still has everything it needs to draw. The else below is unreachable from the
-            // sidebar - SetupCatalogue.offered will not list a page with neither - and is left as
-            // the answer to a selection restored from settings for a page that has since gone.
             if SetupCatalogue.page(selection.page, in: components.groups)?.parameterSections == true {
                 ParameterSectionsView(store: parameters, page: selection.page)
             } else {

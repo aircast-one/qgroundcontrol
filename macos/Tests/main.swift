@@ -169,7 +169,6 @@ expect(link(["editing": "somethingNew"])?.editing == .unknown,
        "an editing mode this head does not know edits nothing, rather than falling into the "
        + "host-and-port form and offering fields the link has no use for")
 
-// The core's own cases from links.rs, run against this head so the two cannot drift.
 expect(link(["connected": true as NSNumber, "heardVehicle": false as NSNumber])?.health == .waiting,
        "an open link that has heard nothing is waiting, not connected; binding a UDP socket "
        + "cannot fail, so the head painted a green dot for a port with nothing on it")
@@ -233,8 +232,6 @@ expect(!VibrationReading.unavailable.available, "the unavailable reading reports
 expect(VibrationReading.Severity("molten") == nil,
        "a severity this head does not know is no severity, not the reassuring one")
 
-// QGC appends "Unknown: N" to enumStrings when a value is outside the enum and points
-// enumIndex at it; showing that instead of the number is a regression in readability.
 let outsideEnum = Parameter(name: "ACRO_RP_RATE_TC", componentId: 1, json: [
     "enumIndex": 5, "valueString": "0.00", "units": "s",
     "enumStrings": ["Very Soft", "Soft", "Medium", "Crisp", "Very Crisp", "Unknown: 0"]])
@@ -299,8 +296,6 @@ expect(safetySections[0].controls[0].options.count == 2,
 expect(safetySections[1].controls[0].units, "cm",
        "with the parameter's own units, which the row shows beside the field")
 
-// Page selection is probe-driven because a locked screen cannot deliver a sidebar
-// click; it must reject a page that does not exist rather than blanking the window.
 let nav = PageSelection(owner: "vehicleSetup", pages: ["Sensors", "Safety", "Parameters"])
 expect(nav.page, "Sensors", "selection starts on the first page")
 expect(nav.identifier, "vehicleSetup.pages", "each window gets its own probe key")
@@ -312,15 +307,12 @@ expect((nav.probeInvoke(action: "select", args: ["page": "Nope"])["ok"] as? Bool
 expect(nav.page, "Safety", "a refused selection leaves the page alone")
 expect((nav.probeInvoke(action: "wat", args: [:])["ok"] as? Bool) == false, "unknown actions are refused")
 
-// The PWM bands are firmware constants, not parameters: an operator matching a
-// transmitter switch to a mode cannot see them anywhere else.
 expect(String(FlightModePosition.all.count), "6", "ArduPilot maps six switch positions")
 expect(FlightModePosition.all.first!.pwmRange, "up to 1230", "the first band is open-ended below")
 expect(FlightModePosition.all.last!.pwmRange, "1750 and above", "the last band is open-ended above")
 expect(FlightModePosition.all.map(\.parameter).joined(separator: ","),
        "FLTMODE1,FLTMODE2,FLTMODE3,FLTMODE4,FLTMODE5,FLTMODE6", "positions map to FLTMODE1..6 in order")
 
-// A firmware that names them differently gets nothing rather than six broken rows.
 expect(FlightModePosition.present(in: ["FLTMODE1", "FLTMODE3"]).map(\.index).map(String.init).joined(separator: ","),
        "1,3", "only reported positions appear")
 expect(FlightModePosition.present(in: []).isEmpty, "a vehicle without them shows no positions")
@@ -819,10 +811,6 @@ func checkItemFacts() {
 checkItemFacts()
 
 func checkUnplacedCommands() {
-    // The head used to reject a 0,0 coordinate itself, because a command with no place of its own
-    // still reported one and the Gulf of Guinea ended up in the map's bounding box. The core
-    // decides that now and sends no coordinate at all, so what is checked here is that the head
-    // asks the right question -- is there a coordinate -- and does not second-guess one it got.
     let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)
     expect(!delay.hasPosition, "a command the core gave no place is not placed")
     expect(delay.positionText, "\u{2014}", "and shows nothing rather than the Gulf of Guinea")
@@ -1047,8 +1035,6 @@ func checkVehicleSetupText() {
 
 checkVehicleSetupText()
 
-
-
 func checkCalibrationOrder() {
     func routine(_ id: String, _ blocked: Bool, _ enabled: Bool,
                  _ description: String) -> [String: Any] {
@@ -1227,10 +1213,6 @@ func checkMissionItemKinds() {
 
     expect(catalogue.byComplexName("Corridor Scan")?.id ?? "", "corridor",
            "a pattern the core knows is matched by the name the controller uses")
-    // The four assertions that stood here keyed the geometry lookup on the command name and
-    // used English ones, so they agreed with a rule that only worked in English and pinned the
-    // defect rather than the requirement. checkComplexGeometryInAnyLocale covers both
-    // directions and a translated name.
 
     expect(catalogue.byComplexName("Fixed Wing Landing Pattern") == nil,
            "a Landing Pattern is a real QGC complex item the catalogue does not name, so it is "
@@ -1487,13 +1469,10 @@ func checkClearNamesItsScope() {
 
 checkClearNamesItsScope()
 
-
 func checkVehicleTrack() {
     func point(_ latitude: Double, _ longitude: Double) -> [String: Any] {
         ["latitude": latitude as NSNumber, "longitude": longitude as NSNumber]
     }
-    // The recorded contract has points as ["empty"], so the element shape is unpinned there and
-    // this fixture is the only thing holding it.
     let flying = VehicleTrack(["available": true as NSNumber, "recording": true as NSNumber,
                                "vehicleId": 1 as NSNumber, "generation": 3 as NSNumber,
                                "dropped": 0 as NSNumber, "count": 2 as NSNumber,
@@ -1529,7 +1508,6 @@ func checkVehicleTrack() {
 }
 
 checkVehicleTrack()
-
 
 func checkVehicleMarker() {
     expect(VehicleMarker(latitude: nil, longitude: 149.16, heading: 0) == nil,
@@ -1599,9 +1577,6 @@ func checkCameraChoice() {
 checkCameraChoice()
 
 func checkAltitudeMode() {
-    // QGroundControlQmlGlobal.h AltMode in declaration order: Mixed, Relative, Absolute,
-    // CalcAboveTerrain, TerrainFrame, None. These numbers are written back through
-    // plan.missionController, so a reordering upstream must not pass unnoticed.
     expect([AltitudeMode.mixedRaw, AltitudeMode.relativeRaw, AltitudeMode.absoluteRaw,
             AltitudeMode.calcAboveTerrainRaw, AltitudeMode.terrainFrameRaw,
             AltitudeMode.unrelatedRaw].map(String.init).joined(separator: ","),
@@ -2131,8 +2106,6 @@ func checkMissionVehicle() {
 
 checkMissionVehicle()
 
-
-
 func checkGeoTagJob() {
     var job = GeoTagJob()
     expect(!job.canStart, "with neither a log nor images there is nothing to tag")
@@ -2235,7 +2208,6 @@ func checkMavlinkMessage() {
 
 checkMavlinkMessage()
 
-
 func checkFrameSetup() {
     expect(!FrameSetup.unknown.known, "no vehicle reports no frame")
     let quad = FrameSetup(vehicleType: "Quadrotor", motorCount: 4)
@@ -2252,8 +2224,6 @@ func checkFrameSetup() {
 }
 
 checkFrameSetup()
-
-
 
 func checkVehicleMessages() {
     func item(_ time: String, _ level: String, _ severity: String, _ text: String,
@@ -2420,16 +2390,8 @@ func checkReadOnlyProbe() {
 checkReadOnlyProbe()
 
 func checkPlanMeasuresMatchTheCore() {
-    // core-rs read.rs format_measure: a tenth under a hundred, whole numbers at or above it.
-    // Measure.format is the head's copy of that rule and its tests pin the same cases; these
-    // check that everything in the Plan window actually goes through it, because the terrain
-    // sheet and the survey stats on the same screen are the core's own strings.
     expect(Measure.format(40, "m"), "40.0 m", "the shared formatter keeps a tenth under a hundred")
     expect(Measure.format(120, "m"), "120 m", "and drops it at a hundred and above")
-
-    // The plan summary no longer formats anything: view.missionSummary spells every row, so
-    // there is nothing left here to check goes through the shared formatter. What remains are
-    // the item altitudes and the map scale, which do.
 
     expect(Measure.reading(120, "m"), "120 m",
            "an item's altitude reads the same as the terrain sheet under it, which the core "
@@ -2446,11 +2408,6 @@ func checkPlanMeasuresMatchTheCore() {
 checkPlanMeasuresMatchTheCore()
 
 func checkMeasureMatchesTheCoresOwnCases() {
-    // These are the exact assertions in core-rs read.rs measure_tests, run against this head's
-    // copy of the rule. Measure.format and format_measure are two implementations of one
-    // decision, and the Plan window puts their output side by side -- the terrain sheet is the
-    // core's string, the item altitude is this one. Reading them and agreeing is not enough;
-    // if either moves, this fails with the number that moved.
     expect(Measure.format(45.26, "m^2"), "45.3 m\u{00B2}", "a tenth under a hundred, squared unit")
     expect(Measure.format(89999.4, "m^2"), "89999 m\u{00B2}", "whole above it, squared unit")
     expect(Measure.format(100.0, "ft"), "100 ft", "the threshold itself is whole")
@@ -2468,9 +2425,6 @@ func checkMeasureMatchesTheCoresOwnCases() {
 checkMeasureMatchesTheCoresOwnCases()
 
 func checkCameraControlMatchesTheCore() {
-    // The case in core-rs video.rs the_camera_control_reads_like_the_swift_model: a ZR30 in
-    // video mode, recording. Its assertions run against this head so the two cannot drift, and
-    // the two that matter are the gates the Fly view's shutter and record buttons obey.
     let recording = CameraControl([
         "present": true as NSNumber, "title": "ZR30", "modeText": "Video",
         "stateText": "Recording 00:01:15", "clockText": "00:01:15",
@@ -2493,10 +2447,6 @@ func checkCameraControlMatchesTheCore() {
            "and one property decides that for both the store's guard and the view's condition, "
            + "so a press cannot reach a camera the core says cannot take it")
 
-    // Every other assertion about offersShutter says it is false. Mutating it to a constant false
-    // fired none of them: nothing showed the shutter is ever offered at all, so a head that could
-    // never take a photo passed the suite. offersRecord beside it was asserted true and caught,
-    // and its coverage read as covering both.
     let photographing = CameraControl(["present": true as NSNumber, "title": "Camera",
                                        "canPhoto": true as NSNumber,
                                        "canRecord": false as NSNumber])
@@ -2513,9 +2463,6 @@ func checkCameraControlMatchesTheCore() {
     expect(!absent.offersShutter && !absent.offersRecord,
            "so neither control is reachable at all")
 
-    // The core computes canPhoto and canRecord from present, so it cannot send this today. The
-    // buttons command a camera, and an actuator does not lean on another component staying
-    // self-consistent to stay unreachable.
     let inconsistent = CameraControl(["present": false as NSNumber,
                                       "canPhoto": true as NSNumber,
                                       "canRecord": true as NSNumber])
@@ -2787,7 +2734,6 @@ func checkInstrumentStorage() {
 
 checkInstrumentStorage()
 
-
 checkGuidedOffers()
 checkViewContract()
 checkMotorTest()
@@ -2869,8 +2815,6 @@ func checkLaunchAltitudeIsNotListedTwice() {
     expect(facts.first?.title ?? "", "<Hold>", "the item's own facts are still listed")
 }
 
-
-
 func checkMotorTest() {
     let apm = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: false)
     expect(apm.names.joined(separator: ","), "A,B,C,D",
@@ -2934,8 +2878,6 @@ func checkRemoteSupport() {
 }
 
 func checkSetupPages() {
-    // The page names now come from the recorded contract, asserted both ways in the contract
-    // check. This file kept its own copy of the core's list and compared it against itself.
     expect(SetupPage.symbol(for: "Anything Unknown"), SetupPage.unknownSymbol,
            "and a page added to the core tomorrow draws as unknown rather than as something else")
 
@@ -3314,7 +3256,6 @@ func checkMyLocation() {
     expect(MapCentre.usable(["latitude": 51.5 as NSNumber, "longitude": -0.1 as NSNumber]) != nil,
            "a coordinate with no valid key at all is judged on its numbers rather than discarded")
 }
-
 
 func checkViewContract() {
     let root = ProcessInfo.processInfo.environment["QGC_ROOT"] ?? "."
@@ -3708,10 +3649,6 @@ func checkGuidedOffers() {
 
     let arm = list[0]
     expect(arm.blocked, "a blocked action is disabled")
-    // Every other assertion about blocked says it is true. Pinning it to a constant true fired
-    // none of them: nothing showed a guided action that can be commanded, so a head where arm,
-    // takeoff and return were permanently disabled passed the suite. A guard that never opens
-    // looks exactly like a careful guard, and every assertion about it passes.
     expect(!list[1].blocked,
            "and one the core says is ready is not, or nothing could ever be commanded at all")
     expect(arm.explanation, "The vehicle's arming checks are failing.",
@@ -3863,8 +3800,6 @@ func checkPolygonEdit() {
     expect(EditablePolygon(nil) == nil, "and no answer is no polygon")
 }
 
-
-
 func checkPlanViewState() {
     let json: [String: Any] = [
         "readiness": ["ready": false, "reason": "Waiting for terrain heights before the plan can be saved or sent."],
@@ -3894,11 +3829,6 @@ func checkPlanViewState() {
     expect(PlanUpload(["refusal": "unset"])?.canProceed == false,
            "nor can the operator wave it through")
 
-    // The button used to compose its own answer -- syncing, connected, items, readyToSave -- and
-    // then explain itself with the plan's READINESS sentence. Those are two different questions.
-    // Measured with a half-drawn takeoff and no vehicle: readiness said "An item is still being
-    // drawn" while the refusal was "No vehicle is connected". An operator hovering Upload went and
-    // finished the item, and the button stayed disabled.
     let noVehicle = PlanUpload(["canSend": false as NSNumber,
                                 "refusal": "No vehicle is connected, so there is nowhere to send this plan."])
     expect(noVehicle?.refusal ?? "", "No vehicle is connected, so there is nowhere to send this plan.",
@@ -3945,7 +3875,6 @@ func checkCentreNotes() {
     expect(MapCentre.myLocation.note(in: state) == "",
            "an enabled option carries no note at all")
 }
-
 
 func checkMenuPlacement() {
     let width = 220.0, screen = 1000.0
@@ -4176,10 +4105,6 @@ func checkFlownLeg() {
     expect(!unplaced.flownLeg && !unplaced.hasPosition,
            "an item with no place at all is neither a marker nor a leg")
 
-    // Measured on the running app: takeoff, waypoint, land, waypoint gives a Return To Launch at
-    // index 3 with endsRoute true, and the head drew three legs -- one of them from the waypoint
-    // before the return to the waypoint after it, straight across the map to a place the aircraft
-    // never reaches, because items after a return are uploaded and never flown.
     func leg(_ seq: Int, _ name: String, flown: Bool, ends: Bool = false) -> MissionItem {
         MissionItem(view: ["index": seq, "sequence": seq, "name": name,
                            "flownLeg": flown, "endsRoute": ends,
@@ -4219,8 +4144,6 @@ func checkFlownLeg() {
 }
 
 func checkBatteryReading() {
-    // Nothing reached any of these. Mutating each to an empty string fired no assertion, which
-    // for the three numbers an operator checks before flying is the wrong kind of quiet.
     let live = BatteryReading(voltage: 15.812, current: 3.407, percent: 76.4)
     expect(live.voltageText, "15.81 V", "voltage to two places, because the last one is the one "
            + "that moves as a pack sags")
@@ -4233,8 +4156,6 @@ func checkBatteryReading() {
            "and no reading at all is not a reading of zero, which would draw a flat pack")
     expect(BatteryReading.unavailable.voltageText, "\u{2014}", "it shows a dash")
 
-    // MAVLink sends NaN for a value the vehicle does not have, and a format string will happily
-    // print it as "nan V" beside two real numbers.
     let partial = BatteryReading(voltage: 15.0, current: .nan, percent: nil)
     expect(partial.available, "a pack with a voltage and no current still has a voltage")
     expect(partial.currentText, "\u{2014}", "but its current reads as absent rather than as nan")
@@ -4273,9 +4194,6 @@ func checkSensorsComponentIsFoundByClass() {
         VehicleComponentInfo(["name": name, "className": className,
                               "needsAttention": false as NSNumber])
     }
-    // QGC builds a component's name through tr() in its constructor, after the translators are
-    // installed, so it really is translated -- unlike SurveyComplexItem::name, which is a
-    // file-scope static frozen before main(). These are the shipped ja_JP and ko_KR strings.
     expect(component(name: "センサ", className: "SensorsComponent")?.isSensors ?? false,
            "the sensors component is recognised by its class, because matching its name meant "
            + "the fault badge never appeared in the five locales that translate Sensors")
@@ -4299,10 +4217,6 @@ func checkComplexGeometryInAnyLocale() {
         MissionItem(view: ["index": 1 as NSNumber, "sequence": 1 as NSNumber,
                            "name": named, "kind": kind], selected: -1)
     }
-    // Real strings from translations/qgc_source_ja_JP.ts, not invented ones. Five shipped
-    // locales translate these names -- az_AZ, ja_JP, ko_KR, pt_PT and zh_CN -- and the rest,
-    // German among them, leave them in English, which is why this never showed up in the obvious
-    // place to look. The catalogue's complexName stays the English literal it is compared against.
     expect(catalogue.areaProperty(of: item("survey", named: "調査")) ?? "", "surveyAreaPolygon",
            "a survey draws its area from the item's kind, not from a name that is translated -- "
            + "matching the name found nothing outside an English build and the polygon that "
@@ -4332,9 +4246,6 @@ func checkOnlyAPlacedItemMoves() {
            "an unplaced takeoff is drawn nowhere and must not be moved: writing its coordinate "
            + "leaves it unplaced and relocates the launch point instead, because "
            + "TakeoffMissionItem::setCoordinate also writes the settings item for a multirotor")
-    // The case that separates the core's answer from anything this head could derive from a
-    // position: the settings entry HAS a coordinate and still is not on the map. A rule built on
-    // hasPosition alone says yes here.
     expect(!item(0, "settings", movable: false, placed: true).canMove,
            "the plan's own entry is not dragged even though it reports a coordinate")
     expect(item(3, "waypoint", movable: true, placed: false).canMove,
@@ -4347,10 +4258,6 @@ func checkUnreachedItems() {
         MissionItem(view: ["index": index as NSNumber, "sequence": index as NSNumber,
                            "name": kind, "kind": kind,
                            "endsRoute": ends as NSNumber, "flownLeg": true as NSNumber,
-                           // Nested, because that is the shape the core emits and the only one
-                           // MissionItem reads. Flat keys here left every fixture item without a
-                           // position, so route() filtered them all out and the assertion below
-                           // compared 0 against 0.
                            "coordinate": ["latitude": -35.0 as NSNumber,
                                           "longitude": 149.0 as NSNumber]], selected: -1)
     }
@@ -4696,11 +4603,6 @@ func checkClearanceSentence() {
            + "ground somewhere is not made uncertain by not knowing the rest, and the depth found "
            + "is a floor on the depth there is")
 
-    // The two disagree here, which is the case the head's old derivation got wrong. The core
-    // answers false because it measured no clearance at all; counting unknown points says zero,
-    // because there are no points to be unknown about. The old rule then showed the grey line
-    // with an empty figure -- and an empty figure makes the sentence fall back to its collision
-    // wording, so a mission that clears the ground was labelled as being under it.
     let unmeasured = profile(["hasCollision": false as NSNumber,
                               "clearanceComplete": false as NSNumber,
                               "unknownTerrain": 0 as NSNumber])
@@ -4717,12 +4619,6 @@ func checkClearanceSentence() {
            "a collision the core could not put a depth on still says it collides, rather than "
            + "reading as a sentence with its number dropped out")
 
-    // The case above says the fallback must never be shown for a mission that has not collided,
-    // and then leaves that to a contract: the core is trusted to pair a complete measurement with
-    // a magnitude. Nothing enforces it. Signed complete with the text empty, showsClearance is
-    // true through clearanceComplete and the sentence is the collision wording -- so a mission
-    // that clears the ground is labelled as being under it, in the calm grey the non-collision
-    // branch draws, which reads less like an alarm and more like a fact.
     let completeWithoutFigure = profile(["hasCollision": false as NSNumber,
                                          "clearanceComplete": true as NSNumber,
                                          "clearanceText": ""])
@@ -4781,7 +4677,6 @@ func checkSurveyWatch() {
            + "span two headers -- the shot count is on the transect class, the distance on the "
            + "complex class above it")
 }
-
 
 func checkRemoveOutcome() {
     expect(RemoveOutcome(["ok": true as NSNumber, "removed": 2 as NSNumber,
@@ -5013,9 +4908,6 @@ func checkModeSlots() {
 }
 
 func checkVideoFrame() {
-    // A PADDED stride, because a decoder pads rows to an alignment and an unpadded fixture makes
-    // stride * height and width * 4 * height the same number - which is how the first version of
-    // this could not tell the two apart, and the break that swapped them fired nothing.
     let frame = VideoFrame(width: 1920, height: 1080, stride: 7808)
     expect(frame?.byteCount == 7808 * 1080,
            "a frame is as big as its stride times its height, not its width times its height -- "

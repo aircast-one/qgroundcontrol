@@ -70,8 +70,6 @@ struct LinkConfig: Identifiable, Equatable {
         lastError = (json["lastError"] as? String) ?? ""
     }
 
-    // An open socket is not a working link: binding a UDP port cannot fail, so the head must not
-    // paint a link healthy until the core says a MAVLink packet has actually been decoded on it.
     enum Health {
         case closed
         case waiting

@@ -10,8 +10,6 @@ final class VehicleComponentsStore: ObservableObject, Probeable {
 
     private var watchPoll: Timer?
 
-    // Which pages exist depends on the firmware, so the list this window navigates by changes the
-    // moment a vehicle connects.
     func startWatching() {
         guard watchPoll == nil else { return }
         reload()
