@@ -4792,3 +4792,67 @@ cannot go negative.
 
 **A sweep that comes back mostly negative is a result only if it could have failed.** This one
 could: the same sweep on the same class of code found a real defect on the other head.
+
+### The structure scan drew the building and not the route
+
+**A structure scan drew the polygon the operator dragged round the building and nothing through
+it.** The core's `geometry_of` read `visualTransectPoints` for every complex kind and
+`StructureScanComplexItem` **has no such property**, so it served `transects` as an empty list;
+this head's `flownLines` mapped transects and filtered the empties out. **Neither side was
+wrong about its own half, and the item fell through the gap between them.**
+
+**Measured before the change on the running app: `vertices 4, transects 0, flightLoop 4,
+layers 2`.** The zero is what makes this conclusive rather than plausible — **under the previous
+code nothing could have drawn a route**, so there is no state in which it happened to work.
+After: **`transects [5]`**, and in the full plan **`[80, 8, 5]`** beside the survey and corridor.
+
+**Four corners become five points because a loop is CLOSED.** The core serves the corners only,
+`first != last`. **Drawn open, one side of the building has no route over it — and an operator
+reads a missing side as a side the aircraft does not fly.** That is worse than drawing nothing,
+**because it looks like information.** A survey keeps its transects: it is flown as open sweeps,
+and closing those would draw a leg from the last sweep back to the first that is never flown.
+
+**`layers` was decoded and then deliberately un-decoded.** Two stacked circuits are **one shape
+on a flat map** — drawing the ring twice puts identical points on identical points — and the
+count is already on screen as **`Layers = 2` in the item's own editor facts**, beside
+`DistanceToSurface` and `StructureHeight`, in the panel where the operator sets it.
+
+**But that reasoning is a CONDITIONAL, and I first stated it as a conclusion.** Android reached
+the opposite decision and is also right: **their head shows a structure scan's facts nowhere at
+all** — no Layers, no DistanceToSurface, no StructureHeight — so an operator there can add a
+structure scan and cannot configure the thing that makes it one. **Same field, opposite correct
+decisions, and the difference is a panel one head has and the other does not.** When a decision
+rests on what else is on screen, **say so as a condition the other head must check**, rather than
+shipping the conclusion across the boundary.
+
+### Two negatives, and why each could have failed
+
+**Android found "Delete survey" on a structure scan by enumerating a screen to answer a question
+I asked them.** Their model called all three patterns Survey internally and the labels inherited
+it — the operator was told the wrong kind of thing was about to be removed, **on the control that
+removes it**.
+
+**Swept every drawn string here: clean.** Two hits, both innocent — geotag prose about surveys,
+and a probe key never drawn. **The reason is structural, not care:** pattern titles come from the
+core's catalogue via `byComplexName(name)?.title`, so **this head never held a name to leak**.
+**Hardcode one pattern word in a label and I inherit the bug exactly** — the cleanliness is a
+property of where names live.
+
+**And the core's own sweep is the sharper warning.** They grepped every `format!("{:.N}")` in the
+crate, **matched BOTH offenders**, looked at each, and judged them safe because the call site
+looked like a plain number. **The grep was right; the triage was wrong.** A clean sweep result
+**carries exactly as much weight as the triage behind it** — which is why a negative is only
+worth recording with the reason it was negative.
+
+### Staleness fails in both directions and neither reading looks stale
+
+**My app was 28 minutes behind the core library** — process at 20:24, `libqgc_core.a` at 20:43. I
+read `view.guidedAltitude`, saw no `rangeText`, and **nearly reported the core as having failed
+to ship a field it had shipped.** The view is `available:false` with no vehicle, so **absent keys
+look exactly like a correct unavailable state** — the same shape that cost me the firmware fence.
+
+**Android's fails the other way: twice they have measured a device AHEAD of the source they were
+reading**, because the AAR rebuilt while they reasoned from an open file. **Behind and ahead are
+indistinguishable from the reading itself.** Only the clock on the artifact separates them, so
+the check is a timestamp comparison before trusting any measurement, not a closer look at the
+payload.
