@@ -72,7 +72,6 @@ struct VideoStatus: Equatable {
     let activeSource: Int
     let multipleSources: Bool
     let anyConnecting: Bool
-    let configuredCount: Int
     let summary: String
     let cameras: [VideoCamera]
 
@@ -89,7 +88,6 @@ struct VideoStatus: Equatable {
         activeSource = 0
         multipleSources = false
         anyConnecting = false
-        configuredCount = 0
         summary = ""
         cameras = []
     }
@@ -106,7 +104,6 @@ struct VideoStatus: Equatable {
         activeSource = (json["activeSource"] as? NSNumber)?.intValue ?? 0
         multipleSources = flag("multipleSources")
         anyConnecting = flag("anyConnecting")
-        configuredCount = (json["configuredCount"] as? NSNumber)?.intValue ?? 0
         summary = (json["summary"] as? String) ?? ""
         cameras = ((json["cameras"] as? [Any]) ?? []).compactMap(VideoCamera.init)
     }

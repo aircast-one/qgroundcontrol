@@ -523,20 +523,37 @@ func checkVehicleReadiness() {
            "a nameless component is dropped, because the name is the row and the page it opens")
     expect(VehicleComponentInfo.list(nil).isEmpty, "no answer is no components")
 
-    let ready = VehicleReadiness(["ready": true as NSNumber, "headline": "Ready to fly",
+    let ready = VehicleReadiness(["connected": true as NSNumber,
+                                  "ready": true as NSNumber, "headline": "Ready to fly",
                                   "detail": "Setup complete and all enabled sensors are healthy."])
     expect(ready.ready && ready.headline == "Ready to fly",
            "the summary carries the core's verdict rather than recomputing it")
 
-    let faulty = VehicleReadiness(["ready": false as NSNumber,
+    let faulty = VehicleReadiness(["connected": true as NSNumber, "ready": false as NSNumber,
                                    "headline": "2 sensors reporting a fault",
                                    "detail": "GPS, Pre-Arm Check"])
     expect(!faulty.ready && faulty.detail == "GPS, Pre-Arm Check",
            "including the sensor faults, which the core now folds in itself, so this summary no "
            + "longer has to be handed the sensor list by a store that may not have loaded")
 
-    expect(VehicleReadiness([:]) == VehicleReadiness(ready: false, headline: "", detail: ""),
+    expect(VehicleReadiness([:]) == VehicleReadiness(connected: false, ready: false,
+                                                     headline: "", detail: ""),
            "an empty answer is not ready and says nothing, rather than claiming readiness")
+
+    let none = VehicleReadiness(["connected": false as NSNumber,
+                                 "headline": "No vehicle connected",
+                                 "detail": "Connect a vehicle to check what it needs."])
+    expect(none.verdict == nil,
+           "with no vehicle there is nothing whose readiness could be in question, so no verdict "
+           + "is offered -- the pill read \u{201C}Check\u{201D} beside a sentence saying a vehicle "
+           + "must be connected before anything can be checked, an imperative in the shape of a "
+           + "button that answers nothing when pressed")
+    expect(ready.verdict?.text ?? "", "Ready",
+           "a connected vehicle that is ready still says so")
+    expect(faulty.verdict?.text ?? "", "Check",
+           "and one with a fault still asks to be looked at, which is the case the pill is for")
+    expect(faulty.verdict?.good == false,
+           "drawn as a warning rather than as a confirmation")
 }
 checkVehicleReadiness()
 
@@ -1890,7 +1907,7 @@ func checkVideoStatus() {
     let live = VideoStatus([
         "available": true as NSNumber, "gstreamer": true as NSNumber,
         "decoding": true as NSNumber, "recording": true as NSNumber,
-        "anyConnecting": false as NSNumber, "configuredCount": 2 as NSNumber,
+        "anyConnecting": false as NSNumber,
         "multipleSources": true as NSNumber, "activeSource": 1 as NSNumber,
         "summary": "Streaming and recording.",
         "cameras": [
@@ -1908,8 +1925,6 @@ func checkVideoStatus() {
     expect(live.cameras[0].title, "Camera 1", "with the core's title rather than a slot number plus one")
     expect(live.configuredCameras.map(\.slot) == [0],
            "and the core decides which are configured, from the status text it also owns")
-    expect(live.configuredCount == 2,
-           "configuredCount is the core's own count and is reported separately from the list")
 
     expect(VideoCamera(["title": "Camera 1"]) == nil,
            "a camera with no slot is dropped, because the slot is what the row is keyed by")

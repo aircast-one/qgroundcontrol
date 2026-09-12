@@ -784,7 +784,9 @@ struct SetupSummaryView: View {
                     Text(readiness.detail).font(.callout).foregroundColor(.secondary)
                 }
                 Spacer(minLength: 0)
-                StatusPill(text: readiness.ready ? "Ready" : "Check", good: readiness.ready)
+                if let verdict = readiness.verdict {
+                    StatusPill(text: verdict.text, good: verdict.good)
+                }
             }
             .padding(Overlay.unit)
         }

@@ -31,19 +31,27 @@ struct VehicleComponentInfo: Identifiable, Equatable {
 }
 
 struct VehicleReadiness: Equatable {
+    let connected: Bool
     let ready: Bool
     let headline: String
     let detail: String
 
-    static let unknown = VehicleReadiness(ready: false, headline: "", detail: "")
+    static let unknown = VehicleReadiness(connected: false, ready: false, headline: "", detail: "")
 
-    init(ready: Bool, headline: String, detail: String) {
+    var verdict: (text: String, good: Bool)? {
+        guard connected else { return nil }
+        return ready ? ("Ready", true) : ("Check", false)
+    }
+
+    init(connected: Bool, ready: Bool, headline: String, detail: String) {
+        self.connected = connected
         self.ready = ready
         self.headline = headline
         self.detail = detail
     }
 
     init(_ json: [String: Any]) {
+        connected = (json["connected"] as? NSNumber)?.boolValue ?? false
         ready = (json["ready"] as? NSNumber)?.boolValue ?? false
         headline = (json["headline"] as? String) ?? ""
         detail = (json["detail"] as? String) ?? ""
