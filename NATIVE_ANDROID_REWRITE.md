@@ -647,6 +647,27 @@ behind. It is a map of where the seams are, recorded because the one instance I
 chased by accident - the mode slots - was a real gap an operator would meet in
 the field.
 
+**Worked through, 2026-09-13.**
+
+- `radio` **was a defect and is fixed.** A channel with no signal drew as a pwm
+  of 0 and the header counted channels reported rather than channels alive. The
+  screen now reads `view.radio`; thirteen raw `radioCal` reads became one.
+- `sensors` **is not a gap.** It serves a per-sensor health list, and the fault
+  case already reaches this head through `view.setup`: `setup.rs` builds the
+  headline as "N sensors reporting a fault" and the detail as the failing names
+  joined, both of which the readiness header renders. macOS uses `view.sensors`
+  for a list that also shows the healthy ones.
+- `settings` **is not a gap either, and it sharpens the rule.** The head does
+  keep its own grouping in `SettingsSections.kt` rather than using the core's 15
+  pages - but grouping settings for a phone is presentation, which is a head's
+  business. Unmatched settings fall into an "Other" section rather than
+  disappearing, and there is a test pinning that. Compare `radio`, where the
+  head was re-deriving *what the vehicle is reporting*. **Re-deriving vehicle
+  state is the violation; rearranging presentation is not.**
+
+That leaves `track` as the one confirmed duplication of vehicle state still
+standing, and it needs an armed vehicle to verify.
+
 ### The rate label was broken on every head, and the rig was hiding it, 2026-09-13
 
 The paragraph below was half right and its conclusion was wrong. The rig really
