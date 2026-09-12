@@ -3924,3 +3924,33 @@ start, and the process is now gone with the port free — consistent with a peer
 `build-run.sh` `pkill` during their cycle, which is a known hazard in this tree. **Two
 sources disagreed and I checked both rather than believing the runner's summary.** No
 exposure either way: this head reads neither key.
+
+### The instruments did not run, and I am not inventing their figures
+
+**The app will not stay up.** `/tmp/qgc-app.log` reaches *"DEBUG API ENABLED … listening on
+127.0.0.1:8777"* at 1.458 s, and **twelve seconds later there is no process and nothing
+bound to the port.** Repeated across three starts.
+
+**Attributed rather than guessed.** `tools/macos/build-run.sh:22` is
+`pkill -9 -f 'build-test/Debug/AircastQGC.app'` — **port-blind**. Its own comment reads
+*"Only ever kill our own Debug build; other sessions run the Release build"*, which is a
+**premise about what peers do, not a property of the pattern.** Any session that runs this
+script kills **every** Debug instance regardless of `QGC_PORT`, and the peers have been
+committing every few minutes. **The port lives in the environment (`QGC_DEBUG_API_PORT`),
+so `pkill -f` cannot see it even in principle.**
+
+**This is shared tooling, so I have not changed it** — the boundary is that three sessions
+depend on `tools/macos/`, and a unilateral edit to their restart path is exactly the kind
+of change to coordinate rather than ship. **Proposed to both peers: put the port in argv
+so the kill can be scoped to it.**
+
+**And I nearly mis-attributed it to myself.** `ps aux | grep '[A]ircastQGC'` reported one
+process — **my own shell**, because the command text contains the string I was searching
+for. `pgrep -f 'AircastQGC.app/Contents/MacOS'` reports **zero**. A grep for a process can
+match the grep, and the count reads exactly like a surviving app. **The same shape as the
+`pkill` hazard itself, and already in my notes; I walked into it anyway.**
+
+**So: five instruments NOT run this cycle, and their last figures are two cycles old.**
+Recorded rather than restated, because **a remembered green is not a measurement** and the
+last thing this session needs is a number carried forward on the strength of a tool that
+never executed.
