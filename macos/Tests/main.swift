@@ -19,7 +19,7 @@ func expect(_ condition: Bool, _ label: String) {
 let controlJson: [String: Any] = [
     "path": "settings.appSettings.audioMuted", "name": "audioMuted", "label": "Audio muted",
     "control": "toggle", "value": true as NSNumber, "valueString": "true", "display": "On",
-    "units": "", "readOnly": false as NSNumber, "rebootRequired": false as NSNumber,
+    "units": "", "readOnly": false as NSNumber, "restartNotices": [] as [String],
     "options": [], "decimalPlaces": 0 as NSNumber,
 ]
 guard let toggle = SettingsControl(controlJson) else {
@@ -2546,25 +2546,38 @@ func checkRestartNoticeReachesTheRow() {
         SettingsControl(["path": "settings.appSettings.appFontPointSize",
                          "name": "appFontPointSize", "label": label, "control": "number",
                          "valueString": "13", "units": "pt",
-                         "rebootRequired": reboot as NSNumber])!
+                         "restartNotices": reboot ? ["Application restart required after change"]
+                                                  : []])!
     }
 
-    expect(control(true).rebootRequired,
-           "the core folds vehicleRebootRequired and qgcRebootRequired into one flag")
-    expect(control(true).restartNotice, "Restart required after a change",
-           "which this head can only report plainly, because it is not told which of the two it "
-           + "was; QGC has a separate sentence for each")
+    expect(control(true).restartNotice, "Application restart required after change",
+           "the core names WHICH restart, and this head used to say the plainer "
+           + "\"Restart required after a change\" because view.control once folded "
+           + "vehicleRebootRequired and qgcRebootRequired into one flag. It does not any more, "
+           + "and an operator told only \"restart\" does not know whether to relaunch the "
+           + "application or reboot the aircraft -- two very different acts, one of them on a "
+           + "machine that may be armed. MEASURED on settings.appSettings.qLocaleLanguage")
     expect(control(false).restartNotice, "",
-           "and a setting that takes effect at once says nothing extra")
+           "and a setting that takes effect at once says nothing extra -- measured empty on "
+           + "appFontPointSize, indoorPalette and savePath")
+
+    expect(SettingsControl(["path": "p", "name": "n", "label": "L", "control": "number",
+                            "valueString": "1", "units": "",
+                            "restartNotices": ["Vehicle reboot required after change",
+                                               "Application restart required after change"]])!
+                .restartNotice,
+           "Vehicle reboot required after change \u{00B7} Application restart required after change",
+           "and a fact needing BOTH names both rather than collapsing to one, which is the case "
+           + "the old single flag could not express at all")
 
     expect(control(true).rowDescription(label: "Application font size"),
-           "appFontPointSize \u{00B7} Restart required after a change",
+           "appFontPointSize \u{00B7} Application restart required after change",
            "the row carries the notice beside the setting's own name, on the line an operator is "
            + "already reading; it used to be decoded and then dropped on the floor")
     expect(control(false).rowDescription(label: "Application font size"), "appFontPointSize",
            "and is otherwise the name alone")
     expect(control(true, label: "").rowDescription(label: ""),
-           "Restart required after a change",
+           "Application restart required after change",
            "a control with no label puts its name in the title, so the description is the notice "
            + "by itself rather than the name written twice")
 }

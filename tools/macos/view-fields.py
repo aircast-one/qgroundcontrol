@@ -71,6 +71,14 @@ FIELD = re.compile(r"\bpub\s+(\w+)\s*:")
 # as patterns rather than as 26 names so the table does not rot on every new file parser.
 UNDRAWN = [
     ("view.core", "the core's own link path, behind QGC_CORE_LINKS, which this head must not enable"),
+    ("view.control", "the SAME Control shape arrives NESTED inside the settings and parameter "
+                     "page views, which this head does read and decode with SettingsControl. The "
+                     "standalone path is for a head that renders one control at a time. Measured: "
+                     "a control inside view.settings(General) carries every key view.control "
+                     "serves, restartNotices included. The reason here used to read 'manual "
+                     "control, which needs a joystick this machine does not have', which was "
+                     "simply wrong -- it is a FACT control, and that false reason excused the "
+                     "view from scrutiny for as long as it stood"),
     ("view.contract", "introspection, not a screen"),
     ("view.dependencies", "introspection, not a screen"),
     ("view.geoTo", "a coordinate conversion called as a function, not a view to draw"),
@@ -84,7 +92,6 @@ UNDRAWN = [
     ("view.planFromWaypoints", "a file parser the plan store reaches through its own action"),
     ("view.tlog", "a file parser the analyze window reaches through its own action"),
     ("view.terrainTile", "a tile fetch, not a screen"),
-    ("view.control", "manual control, which needs a joystick this machine does not have"),
     ("view.linkForm", "link creation, which is a transient-handle API and QML-only"),
     ("view.transports", "link creation, which is a transient-handle API and QML-only"),
     ("view.vehicles", "built and unverifiable: no second vehicle has ever connected here"),

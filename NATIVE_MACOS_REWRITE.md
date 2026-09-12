@@ -3718,3 +3718,47 @@ the warning is the *whole* content of its region. The survey card is the only on
 warning shares a container with descriptive statistics — and that is precisely the
 situation where position decides whether it is read. **A warning alone is unmissable; a
 warning among figures has to be placed.**
+
+### (y) The restart sentence needed no write, and my excuse for not reading it was false
+
+**Filed for weeks as needing a forbidden settings write.** The core mentioned in passing
+that the sentence lives in fact METADATA. Measured: `view.control` on
+`settings.appSettings.qLocaleLanguage` answers **`restartNotices: ['Application restart
+required after change']`**, with no write of any kind. `appFontPointSize`, `indoorPalette`
+and `savePath` answer `[]`.
+
+**My head was saying the vaguer thing, and a comment explained why.** `SettingsPages.swift`
+carried: *"The core folds QGC's two cases into one flag … This head can only say which is
+true of both, so it says the plainer thing rather than guessing."* **That premise was true
+when written and is false now** — the core serves `vehicleRebootRequired` and
+`applicationRestartRequired` separately, plus the sentences themselves. **A comment
+explaining an omission reads as a decision, so the next reader stops asking; this one
+stopped me for weeks.**
+
+**Why it matters to an operator: "Restart required after a change" does not say WHICH.**
+Relaunching the application and rebooting the aircraft are different acts, one of them on a
+machine that may be armed. The head now draws the core's own sentence, and a fact needing
+BOTH names both — the case the single folded flag could not express at all.
+`rebootRequired` is gone rather than left beside it. **Mutation: dropping the notices on
+decode fires 4 failures.**
+
+### And the UNDRAWN entry that excused the view was wrong twice over
+
+`view-fields.py` listed `view.control` as **"manual control, which needs a joystick this
+machine does not have."** It is a **FACT control** — label, options, units, value,
+restart notices. There is no joystick view at that path and never was.
+
+**Deleting the entry made the checker report the view as UNREAD, which is how I found the
+real story.** The head genuinely does not read the standalone path: the **same Control
+shape arrives NESTED** inside `view.settings(<page>)`, which `SettingsControl.list` decodes.
+Measured — a nested control carries every key the standalone view serves, `restartNotices`
+included, and Language carries the sentence.
+
+**So a false reason had been suppressing a true report.** The checker was right to flag the
+path; the entry silenced it with a story about joysticks. **An UNDRAWN reason is load-bearing
+in exactly the way an ACCEPTED reason is, and this is the third table this session where the
+entry was right and the reason was wrong.**
+
+**Not render-checked.** `osascript` did not open the Settings window and I could not reach
+it another way, so this is verified by the live view value, the model tests and the
+mutation — **not by looking.** Saying so rather than implying a screenshot I did not take.

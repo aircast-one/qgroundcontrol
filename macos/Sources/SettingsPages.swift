@@ -68,7 +68,7 @@ struct SettingsControl: Identifiable, Equatable {
     let display: String
     let units: String
     let readOnly: Bool
-    let rebootRequired: Bool
+    let restartNotices: [String]
     let options: [ControlOption]
     let bits: [ControlBit]
     let decimalPlaces: Int
@@ -80,13 +80,9 @@ struct SettingsControl: Identifiable, Equatable {
     var boolValue: Bool { (value as? NSNumber)?.boolValue ?? false }
     var intValue: Int { (value as? NSNumber)?.intValue ?? 0 }
 
-    // The core folds QGC's two cases into one flag: ParameterEditorDialog.qml distinguishes
-    // "Vehicle reboot required after change" from "Application restart required after change",
-    // and view.control sends vehicleRebootRequired || qgcRebootRequired. This head can only say
-    // which is true of both, so it says the plainer thing rather than guessing which one.
-    static let restartNotice = "Restart required after a change"
+    var restartNotice: String { restartNotices.joined(separator: SettingsControl.between) }
 
-    var restartNotice: String { rebootRequired ? SettingsControl.restartNotice : "" }
+    static let between = " \u{00B7} "
 
     // The row shows the setting's own name under its label; a setting that needs a restart says
     // so on the same line rather than in a place an operator has to go looking for.
@@ -118,7 +114,7 @@ struct SettingsControl: Identifiable, Equatable {
         display = (json["display"] as? String) ?? ""
         units = (json["units"] as? String) ?? ""
         readOnly = (json["readOnly"] as? NSNumber)?.boolValue ?? false
-        rebootRequired = (json["rebootRequired"] as? NSNumber)?.boolValue ?? false
+        restartNotices = ((json["restartNotices"] as? [Any]) ?? []).compactMap { $0 as? String }
         options = ((json["options"] as? [Any]) ?? []).compactMap(ControlOption.init)
         bits = ((json["bits"] as? [Any]) ?? []).compactMap(ControlBit.init)
         decimalPlaces = (json["decimalPlaces"] as? NSNumber)?.intValue ?? 0
