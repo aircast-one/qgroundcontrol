@@ -5884,3 +5884,37 @@ a point that lands on a marker **drags the marker** instead of panning, silently
 Three pan gestures took the plan from 9.87 km to 10.93 km, and the summary chip
 was the only place it showed. Written into `tools/README.md` — start pans on
 empty map, and re-read the distance before trusting anything measured after one.
+
+### Panning moves waypoints, measured, 2026-09-12
+
+What started as a test-rig annoyance is a defect in the app. A single swipe
+beginning on a waypoint marker **moves that waypoint**, silently:
+
+    before   212 items (takeoff) · 9.87 km · 33:14
+    swipe    from a confirmed marker pixel, 300 px upward
+    after    212 items (takeoff) · 10.48 km · 35:15
+
+610 m of flight plan changed with no confirmation, no undo, and nothing on
+screen saying it happened. The first attempt, from coordinates I guessed, did
+not reproduce it — the marker has to be hit exactly, which is why this looked
+like flaky panning rather than a defect until the pixel was located by colour.
+
+`MissionEditing.kt:115` is unguarded by design: `ACTION_DOWN` over a marker sets
+`dragging`, calls `setAllGesturesEnabled(false)` and consumes the event, so the
+map cannot pan from that touch at all; `ACTION_MOVE` past `TAP_SLOP_PX` (20 px,
+about 5 mm here) starts writing the new position. There is no long-press to pick
+an item up.
+
+**Why it matters more as plans grow.** On a four-item plan the markers are small
+targets and panning elsewhere is easy — direct manipulation is a good
+affordance. On the 212-item plan the markers cover most of the canvas, so almost
+any pan starts on one. That is exactly the Phase 4 gate scenario, and exactly
+the case where an operator is reviewing rather than editing.
+
+**Not fixed, deliberately.** The candidates are a long-press to begin a drag
+(the usual mobile pattern, and the app already uses long-press on empty map to
+add, so the two do not collide), or an undo, or at minimum a "Moved #N" message
+on the existing `busy` channel so the change is visible. All three are design
+decisions about what the map's primary gesture should be, and that is not a call
+to make unilaterally on the strength of one measurement at half past five. The
+measurement is here so the decision can be made on evidence.
