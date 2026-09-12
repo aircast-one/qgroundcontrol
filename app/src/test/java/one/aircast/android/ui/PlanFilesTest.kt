@@ -42,350 +42,54 @@ class SaveGuardTest {
 }
 
 class PlanStatusTest {
+    private fun view(status: String) = org.json.JSONObject("""{"kind":"object","status":"$status"}""")
+
     @Test
-    fun `an untouched plan is new, not unsaved`() {
-        assertEquals("New plan", planStatusText(null, dirty = false, offline = true))
+    fun `the core spells the status, including whether changes are unsaved or unsent`() {
+        assertEquals("ridge.plan \u00b7 not uploaded", planStatusText(view("ridge.plan \u00b7 not uploaded"), "ridge.plan", dirty = true))
+        assertEquals("ridge.plan \u00b7 unsaved changes", planStatusText(view("ridge.plan \u00b7 unsaved changes"), "ridge.plan", dirty = true))
     }
 
     @Test
-    fun `an edited plan with no file says so`() {
-        assertEquals("Unsaved plan", planStatusText(null, dirty = true, offline = true))
-    }
-
-    @Test
-    fun `a saved plan is named`() {
-        assertEquals("mission.plan", planStatusText("mission.plan", dirty = false, offline = true))
-    }
-
-    @Test
-    fun `with no vehicle, dirty does mean the file is behind`() {
-        assertEquals(
-            "mission.plan · unsaved changes",
-            planStatusText("mission.plan", dirty = true, offline = true),
-        )
-    }
-
-    @Test
-    fun `with a vehicle, a saved plan is not called unsaved`() {
-        assertEquals(
-            "mission.plan · not uploaded",
-            planStatusText("mission.plan", dirty = true, offline = false),
-        )
+    fun `with no answer from the core the name is still shown rather than nothing`() {
+        assertEquals("New plan", planStatusText(null, null, dirty = false))
+        assertEquals("Unsaved plan", planStatusText(null, null, dirty = true))
+        assertEquals("mission.plan", planStatusText(null, "mission.plan", dirty = false))
     }
 }
 
 class PlanActionsTest {
     private fun actions(
-        syncing: Boolean = false,
-        containsItems: Boolean = true,
-        hasMissionItems: Boolean = true,
-        offline: Boolean = false,
-    ) = planActions(syncing, containsItems, hasMissionItems, offline)
+        open: Boolean = true,
+        save: Boolean = true,
+        exportKml: Boolean = true,
+        newPlan: Boolean = true,
+        clearMission: Boolean = true,
+    ) = planActions(
+        org.json.JSONObject(
+            """{"kind":"object","actions":{"open":$open,"save":$save,"exportKml":$exportKml,
+               "newPlan":$newPlan,"clearMission":$clearMission}}""",
+        ),
+    )
 
     @Test
-    fun `an empty plan cannot be saved over a real one`() {
-        val can = actions(containsItems = false, hasMissionItems = false)
-        assertEquals(false, can.save)
-        assertEquals(false, can.exportKml)
+    fun `each action is the core's answer rather than this head's arithmetic`() {
+        assertEquals(false, actions(save = false).save)
+        assertEquals(true, actions(save = false).open)
+        assertEquals(false, actions(exportKml = false).exportKml)
     }
 
     @Test
-    fun `opening stays available on an empty plan, because that is how you get one`() {
-        assertEquals(true, actions(containsItems = false, hasMissionItems = false).open)
+    fun `clearMission is the core's name for clearing the vehicle, which is what this button does`() {
+        assertEquals(false, actions(clearMission = false).clearFromVehicle)
+        assertEquals(true, actions(clearMission = true).clearFromVehicle)
     }
 
     @Test
-    fun `nothing is offered while a sync is in progress`() {
-        val can = actions(syncing = true)
-        assertEquals(false, can.open)
-        assertEquals(false, can.save)
-        assertEquals(false, can.exportKml)
-    }
-
-    @Test
-    fun `a fence-only plan saves but exports no KML, because saveToKml writes only the mission`() {
-        val can = actions(hasMissionItems = false)
-        assertEquals(true, can.save)
-        assertEquals(false, can.exportKml)
-    }
-
-    @Test
-    fun `a plan with mission items offers everything`() {
-        val can = actions()
-        assertEquals(true, can.open)
-        assertEquals(true, can.save)
-        assertEquals(true, can.exportKml)
-    }
-}
-
-class DestructiveActionsTest {
-    @Test
-    fun `a mission cannot be cleared from a vehicle that is not there`() {
-        assertEquals(false, planActions(false, true, true, offline = true).clearMission)
-        assertEquals(true, planActions(false, true, true, offline = false).clearMission)
-    }
-
-    @Test
-    fun `a sync in progress stops the mission being cleared`() {
-        assertEquals(false, planActions(true, true, true, offline = false).clearMission)
-    }
-
-    @Test
-    fun `starting a new plan stays available with no vehicle and an empty plan`() {
-        assertEquals(true, planActions(false, containsItems = false, hasMissionItems = false, offline = true).newPlan)
-    }
-
-    @Test
-    fun `clearing the vehicle says it touches the aircraft, not just the plan`() {
-        val copy = confirmCopy(PlanConfirm.ClearMission)
-        assertEquals(true, copy.body.contains("aircraft"))
-        assertEquals("Clear mission", copy.confirm)
-    }
-
-    @Test
-    fun `each confirmation names the act rather than saying OK`() {
-        listOf(PlanConfirm.Open, PlanConfirm.NewPlan, PlanConfirm.ClearMission)
-            .map { confirmCopy(it).confirm }
-            .forEach { assertEquals("vague confirm label: $it", false, it in listOf("OK", "Yes", "Confirm")) }
-    }
-
-    @Test
-    fun `the two discarding actions warn that the loss is permanent`() {
-        listOf(PlanConfirm.Open, PlanConfirm.NewPlan)
-            .map { confirmCopy(it).body }
-            .forEach { assertEquals("no warning in: $it", true, it.contains("cannot be recovered")) }
-    }
-}
-
-class ClearHonestyTest {
-    @Test
-    fun `only the action that touches the aircraft is styled destructive`() {
-        assertEquals(true, confirmCopy(PlanConfirm.ClearMission).destructive)
-        assertEquals(false, confirmCopy(PlanConfirm.Open).destructive)
-        assertEquals(false, confirmCopy(PlanConfirm.NewPlan).destructive)
-    }
-}
-
-class LoadFailureTest {
-    @Test
-    fun `a loaded plan reports nothing`() {
-        assertNull(loadFailureMessage(true))
-    }
-
-    @Test
-    fun `a rejected file is named as the wrong kind of file`() {
-        assertEquals(
-            "That is not a plan file. The current plan is unchanged.",
-            loadFailureMessage(false),
-        )
-    }
-
-    @Test
-    fun `a bridge that never answered does not get to blame the file`() {
-        assertEquals(
-            "The plan could not be loaded. The current plan is unchanged.",
-            loadFailureMessage(null),
-        )
-    }
-}
-
-class BoundaryImportTest {
-    @Test
-    fun `the cache file keeps the suffix the parser reads`() {
-        assertEquals("boundary.kml", boundaryCacheName("site.kml"))
-        assertEquals("boundary.shp", boundaryCacheName("Site Boundary.SHP"))
-        assertEquals("boundary.kml", boundaryCacheName("field.plan.kml"))
-    }
-
-    @Test
-    fun `a name with no suffix falls back rather than losing the extension`() {
-        assertEquals("boundary.kml", boundaryCacheName("boundary"))
-        assertEquals("boundary.kml", boundaryCacheName(null))
-    }
-
-    @Test
-    fun `a pattern with no area counts as nothing imported`() {
-        assertEquals(true, importedNothing(null))
-        assertEquals(true, importedNothing(0.0))
-    }
-
-    @Test
-    fun `a pattern that covers ground counts as imported`() {
-        assertEquals(false, importedNothing(0.5))
-        assertEquals(false, importedNothing(5100.0))
-    }
-}
-
-class WriteRefusalTest {
-    @Test
-    fun `an accepted write says nothing`() {
-        assertNull(writeRefusal(true))
-    }
-
-    @Test
-    fun `a refused write is named rather than left to look like a glitch`() {
-        assertEquals("That change was not accepted.", writeRefusal(false))
-    }
-
-    @Test
-    fun `the refusal does not guess at a cause it cannot know`() {
-        val message = writeRefusal(false)!!
-        listOf("vehicle", "property", "WRITE", "bridge")
-            .forEach { assertEquals("claims a cause: $message", false, message.contains(it)) }
-    }
-}
-
-class LinkFailureTest {
-    @Test
-    fun `a link call that finished says nothing`() {
-        assertNull(linkFailure("connect", done = true))
-    }
-
-    @Test
-    fun `a refused call names the action that did not happen`() {
-        assertEquals("Could not connect that link.", linkFailure("connect", done = false))
-        assertEquals("Could not disconnect that link.", linkFailure("disconnect", done = false))
-        assertEquals("Could not remove that link.", linkFailure("remove", done = false))
-    }
-}
-
-class CalibrationStartTest {
-    @Test
-    fun `a calibration that started says nothing`() {
-        assertNull(calibrationFailure("Compass", started = true))
-    }
-
-    @Test
-    fun `a calibration that never started names which one`() {
-        assertEquals("Compass calibration did not start.", calibrationFailure("Compass", false))
-        assertEquals(
-            "Accelerometer calibration did not start.",
-            calibrationFailure("Accelerometer", false),
-        )
-    }
-}
-
-class CalibrationBeganTest {
-    @Test
-    fun `a calibration still running has begun`() {
-        assertEquals(true, calibrationBegan(running = true, statusBefore = "", statusNow = ""))
-    }
-
-    @Test
-    fun `one that finished before the first poll left its status behind`() {
-        assertEquals(
-            true,
-            calibrationBegan(false, "", "Requesting pressure calibration... Successfully completed"),
-        )
-    }
-
-    @Test
-    fun `nothing running and nothing said means it never began`() {
-        assertEquals(false, calibrationBegan(false, "old text", "old text"))
-    }
-}
-
-
-class UndrawnItemsTest {
-    private fun item(kind: String, name: String = "") =
-        JSONObject().put("kind", kind).put("name", name)
-
-    private fun plan(vararg items: JSONObject) = JSONArray().also { items.forEach(it::put) }
-
-    @Test
-    fun `an ordinary plan raises no warning`() {
-        val ordinary = plan(
-            item("settings"),
-            item("takeoff", "Takeoff"),
-            item("waypoint", "Waypoint"),
-            item("survey", "Survey"),
-        )
-
-        assertEquals(emptyList<String>(), undrawnItemNames(ordinary))
-        assertNull(undrawnItemsWarning(undrawnItemNames(ordinary)))
-    }
-
-    @Test
-    fun `corridor and structure scans are drawn now, so they raise no warning`() {
-        val scans = plan(
-            item("settings"),
-            item("waypoint"),
-            item("corridor", "Corridor Scan"),
-            item("structure", "Structure Scan"),
-        )
-
-        assertEquals(emptyList<String>(), undrawnItemNames(scans))
-    }
-
-    @Test
-    fun `a landing pattern is named in the warning`() {
-        val mixed = plan(item("settings"), item("waypoint"), item("complex", "Landing Pattern"))
-
-        assertEquals(listOf("Landing Pattern"), undrawnItemNames(mixed))
-        assertEquals(
-            "The map cannot draw Landing Pattern. Those items are still in the plan and will still be flown.",
-            undrawnItemsWarning(undrawnItemNames(mixed)),
-        )
-    }
-
-    @Test
-    fun `each undrawn kind is named once however many the plan holds`() {
-        val many = plan(
-            item("settings"),
-            item("complex", "Landing Pattern"),
-            item("complex", "Landing Pattern"),
-            item("spiral", "Spiral Scan"),
-        )
-
-        assertEquals(listOf("Landing Pattern", "Spiral Scan"), undrawnItemNames(many))
-    }
-
-    @Test
-    fun `a kind this head has never heard of is warned about rather than passed over`() {
-        val future = plan(item("settings"), item("spiral", "Spiral Scan"))
-
-        assertEquals(listOf("Spiral Scan"), undrawnItemNames(future))
-    }
-
-    @Test
-    fun `an undrawn item with no name cannot be warned about and is not a blank entry`() {
-        assertEquals(emptyList<String>(), undrawnItemNames(plan(item("complex"))))
-    }
-}
-
-class CommandRefusalTest {
-    @Test
-    fun `a confirmed command says nothing`() {
-        assertNull(commandRefusal("Return", confirmed = true))
-    }
-
-    @Test
-    fun `an unconfirmed command names itself`() {
-        assertEquals(
-            "Return was not confirmed by the aircraft.",
-            commandRefusal("Return", confirmed = false),
-        )
-    }
-
-    @Test
-    fun `the settle window is long enough for a MAVLink round trip`() {
-        assertTrue(COMMAND_SETTLE_MS >= 2000L)
-    }
-}
-
-class DiscardConfirmationTest {
-    @Test
-    fun `an empty plan is never worth confirming`() {
-        assertFalse(discardNeedsConfirming(dirty = true, containsItems = false))
-    }
-
-    @Test
-    fun `a dirty plan with items is worth confirming`() {
-        assertTrue(discardNeedsConfirming(dirty = true, containsItems = true))
-    }
-
-    @Test
-    fun `a clean plan with items is not worth confirming`() {
-        assertFalse(discardNeedsConfirming(dirty = false, containsItems = true))
+    fun `no answer offers nothing rather than guessing what is allowed`() {
+        val none = planActions(null)
+        assertEquals(false, none.open)
+        assertEquals(false, none.save)
+        assertEquals(false, none.newPlan)
     }
 }

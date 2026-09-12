@@ -31,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.PlanMapScreen
 
 private const val NOTICE_MILLIS = 4000L
@@ -45,9 +46,8 @@ fun PlanTab(modifier: Modifier = Modifier) {
     val dirty by qgcBool("plan.dirty")
     val syncing by qgcBool("plan.syncInProgress")
     val containsItems by qgcBool("plan.containsItems")
-    val hasMissionItems by qgcBool("plan.missionController.containsItems")
-    val offline by qgcBool("plan.offline")
-    val can = planActions(syncing, containsItems, hasMissionItems, offline)
+    val planStatus by qgcPath("view.plan")
+    val can = planActions(planStatus)
     var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(syncing, containsItems, files.documentName()) {
@@ -154,14 +154,14 @@ fun PlanTab(modifier: Modifier = Modifier) {
                     )
                     DropdownMenuItem(
                         text = { Text("Clear mission") },
-                        enabled = can.clearMission,
+                        enabled = can.clearFromVehicle,
                         colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error),
                         onClick = { menuOpen = false; pending = PlanConfirm.ClearMission },
                     )
                 }
             }
             Text(
-                text = notice ?: planStatusText(files.documentName(), dirty, offline),
+                text = notice ?: planStatusText(planStatus, files.documentName(), dirty),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = if (notice == null) 1 else 3,

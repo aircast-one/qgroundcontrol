@@ -20,21 +20,23 @@ data class PlanActions(
     val save: Boolean,
     val exportKml: Boolean,
     val newPlan: Boolean,
-    val clearMission: Boolean,
+    val clearFromVehicle: Boolean,
 )
 
-internal fun planActions(
-    syncing: Boolean,
-    containsItems: Boolean,
-    hasMissionItems: Boolean,
-    offline: Boolean,
-) = PlanActions(
-    open = !syncing,
-    save = !syncing && containsItems,
-    exportKml = !syncing && hasMissionItems,
-    newPlan = !syncing,
-    clearMission = !offline && !syncing,
-)
+// Every one of these was computed here from four watched properties, in the same
+// shapes the core already publishes. Two implementations of one rule agree until
+// the day the producer changes its mind and only one of them follows.
+internal fun planActions(view: org.json.JSONObject?): PlanActions {
+    val actions = view?.optJSONObject("actions")
+    fun allowed(name: String) = actions?.optBoolean(name) == true
+    return PlanActions(
+        open = allowed("open"),
+        save = allowed("save"),
+        exportKml = allowed("exportKml"),
+        newPlan = allowed("newPlan"),
+        clearFromVehicle = allowed("clearMission"),
+    )
+}
 
 internal fun discardNeedsConfirming(dirty: Boolean, containsItems: Boolean): Boolean =
     dirty && containsItems
@@ -78,13 +80,16 @@ internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
     )
 }
 
-internal fun planStatusText(name: String?, dirty: Boolean, offline: Boolean): String = when {
-    name == null && !dirty -> "New plan"
-    name == null -> "Unsaved plan"
-    !dirty -> name
-    offline -> "$name \u00b7 unsaved changes"
-    else -> "$name \u00b7 not uploaded"
-}
+// The core spells this too, and knows whether the changes are unsaved or merely
+// not uploaded - which is the offline flag this head used to watch for itself.
+internal fun planStatusText(view: org.json.JSONObject?, name: String?, dirty: Boolean): String =
+    view?.optString("status").orEmpty().ifBlank {
+        when {
+            name == null && !dirty -> "New plan"
+            name == null -> "Unsaved plan"
+            else -> name
+        }
+    }
 
 internal val DRAWN_KINDS = setOf(
     "settings", "takeoff", "land", "waypoint", "command", "altitude", "roi",
