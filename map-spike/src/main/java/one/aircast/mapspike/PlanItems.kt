@@ -14,6 +14,22 @@ data class ItemRow(
     val placed: Boolean,
 )
 
+const val FRAME_LAUNCH = "launch"
+const val FRAME_AMSL = "amsl"
+const val FRAME_TERRAIN = "terrain"
+
+internal fun altitudeWithFrame(item: MissionItem): String? {
+    val height = item.altitudeText.ifBlank { null }
+        ?: item.altitudeBandText.ifBlank { null }
+        ?: return null
+    return when (item.altitudeFrame) {
+        "", FRAME_LAUNCH -> height
+        FRAME_AMSL -> "$height AMSL"
+        FRAME_TERRAIN -> "$height above ground"
+        else -> "$height ${item.altitudeFrame.uppercase()}"
+    }
+}
+
 internal fun sequenceLabel(item: MissionItem): String = when {
     item.foldedCommands > 0 -> "${item.sequence}\u2013${item.sequence + item.foldedCommands}"
     else -> item.sequence.toString()
@@ -34,8 +50,7 @@ fun itemRows(
 }
 
 internal fun itemDetail(item: MissionItem, stats: SurveyStats? = null): String = listOfNotNull(
-    item.altitudeText.ifBlank { null }
-        ?: item.altitudeBandText.ifBlank { null }
+    altitudeWithFrame(item)
         ?: NO_POSITION.takeIf { !item.placed && item.specifiesCoordinate },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
     item.speedChangeText.ifBlank { null },
