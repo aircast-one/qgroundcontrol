@@ -197,6 +197,8 @@ internal fun MapSpikeScreen(
     val planHasItems by mapBool("plan.containsItems")
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
+    val planStatus by mapPath("view.plan")
+    val support = planSupport(planStatus)
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     val missionSummaryView by mapPath("view.missionSummary")
     val terrainView by mapPath(TERRAIN_VIEW)
@@ -512,7 +514,7 @@ internal fun MapSpikeScreen(
                                 TrackPoint(at.latitude - 0.002, at.longitude + 0.002),
                             )
                         }
-                    }) { Text("Fence") }
+                    }, enabled = support.fence) { Text("Fence") }
 
                     addingAfterText(selected, allItems)?.let {
                         Text(it, style = MaterialTheme.typography.labelSmall)
@@ -539,7 +541,7 @@ internal fun MapSpikeScreen(
                         onBridge("Adding rally") {
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
-                    }) { Text("Rally") }
+                    }, enabled = support.rally) { Text("Rally") }
                     TextButton(
                         onClick = {
                             val at = placeAt()

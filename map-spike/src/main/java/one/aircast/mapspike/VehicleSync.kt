@@ -57,5 +57,16 @@ fun uploadStep(gate: UploadGate?, notReady: String? = null): UploadStep = when {
 // Read at the moment of the attempt, not from a watched copy. The precheck answers "should
 // this plan go to this vehicle right now", and a vehicle can begin flying the mission between
 // one poll and the operator's tap - which is exactly the case that must pause first.
+data class PlanSupport(val fence: Boolean, val rally: Boolean, val reason: String)
+
+fun planSupport(view: org.json.JSONObject?): PlanSupport {
+    val actions = view?.optJSONObject("actions")
+    return PlanSupport(
+        fence = actions?.optBoolean("addFence") == true,
+        rally = actions?.optBoolean("addRally") == true,
+        reason = view?.optText("unsupportedReason").orEmpty(),
+    )
+}
+
 fun freshPlanView(): org.json.JSONObject? =
     runCatching { org.json.JSONObject(org.mavlink.qgroundcontrol.QGCBridge.get("view.plan")) }.getOrNull()

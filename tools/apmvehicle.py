@@ -2,7 +2,10 @@ import math
 import os
 import socket
 import sys
+
 import time
+
+NO_FENCE = os.environ.get("NO_FENCE") == "1"
 
 from pymavlink.dialects.v20 import common as mavlink
 
@@ -397,8 +400,8 @@ def main():
                         mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_FLOAT
                         | mavlink.MAV_PROTOCOL_CAPABILITY_PARAM_FLOAT
                         | mavlink.MAV_PROTOCOL_CAPABILITY_COMMAND_INT
-                        | mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_FENCE
-                        | mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_RALLY,
+                        | (0 if NO_FENCE else mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_FENCE)
+                        | (0 if NO_FENCE else mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_RALLY),
                         FIRMWARE_VERSION, 0, 0, 0,
                         [0] * 8, [0] * 8, [0] * 8, 0, 0, 0, [0] * 18)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
