@@ -60,6 +60,7 @@ data class LinkRow(
     val index: Int,
     val name: String,
     val statusLine: String,
+    val goneQuiet: Boolean = false,
     val connected: Boolean,
     val heard: Boolean,
     val lastError: String,
@@ -78,6 +79,7 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 index = link.optInt("index"),
                 name = link.optText("name"),
                 statusLine = link.optText("statusLine"),
+                goneQuiet = link.optBoolean("goneQuiet"),
                 connected = link.optBoolean("connected"),
                 heard = link.optBoolean("heardVehicle"),
                 lastError = link.optText("lastError"),
@@ -180,12 +182,12 @@ private fun LinkRowItem(
             Text(
                 text = row.statusLine,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (row.heard) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                color = when {
+                    row.goneQuiet -> MaterialTheme.colorScheme.error
+                    row.heard -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
-                fontWeight = if (row.heard) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (row.heard && !row.goneQuiet) FontWeight.Bold else FontWeight.Normal,
             )
             if (row.lastError.isNotBlank()) {
                 Text(
