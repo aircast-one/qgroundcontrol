@@ -596,6 +596,11 @@ internal fun MapSpikeScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        survey?.let { cameraText(surveyStatsMap[it.index]) }?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            GroupBreak()
+                        }
+
                         survey?.takeIf { it.kind == KIND_SURVEY }?.let {
                             TextButton(onClick = {
                                 onBridge("Rotating grid") {

@@ -92,15 +92,29 @@ object SurveyBridge {
         )
 }
 
-data class SurveyStats(val areaText: String, val warning: String)
+const val ABSENT = "\u2014"
+
+data class SurveyStats(
+    val areaText: String,
+    val warning: String,
+    val intervalText: String = "",
+    val footprintText: String = "",
+    val surfaceDistanceText: String = "",
+)
+
+private fun stated(view: org.json.JSONObject, key: String): String =
+    view.optText(key).takeIf { it != ABSENT }.orEmpty()
 
 fun surveyStats(view: org.json.JSONObject?): SurveyStats? {
     if (view == null || !view.optBoolean("available")) {
         return null
     }
     return SurveyStats(
-        areaText = view.optText("areaText").takeIf { it != "\u2014" }.orEmpty(),
+        areaText = stated(view, "areaText"),
         warning = view.optText("warning"),
+        intervalText = stated(view, "intervalText"),
+        footprintText = stated(view, "footprintText"),
+        surfaceDistanceText = stated(view, "surfaceDistanceText"),
     )
 }
 

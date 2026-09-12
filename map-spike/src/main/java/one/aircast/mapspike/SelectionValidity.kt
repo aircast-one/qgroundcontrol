@@ -24,5 +24,8 @@ fun selectionSurvives(
     is MapHit.LandingPlace -> landings.any { it.index == selected.index }
 }
 
-fun selectedSurvey(selected: MapHit?, surveys: List<Survey>): Survey? =
-    (selected as? MapHit.SurveyVertex)?.let { hit -> surveys.firstOrNull { it.index == hit.item } }
+fun selectedSurvey(selected: MapHit?, surveys: List<Survey>): Survey? = when (selected) {
+    is MapHit.SurveyVertex -> surveys.firstOrNull { it.index == selected.item }
+    is MapHit.Waypoint -> surveys.firstOrNull { it.index == selected.index }
+    else -> null
+}

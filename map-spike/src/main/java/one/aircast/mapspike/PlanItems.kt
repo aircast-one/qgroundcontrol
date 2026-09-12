@@ -109,6 +109,12 @@ fun writeMove(hit: MapHit, latitude: Double, longitude: Double, surveys: List<Su
             moveLandingPlace(hit.index, hit.place, latitude, longitude)
     }
 
+internal fun cameraText(stats: SurveyStats?): String? = listOfNotNull(
+    stats?.surfaceDistanceText?.ifBlank { null }?.let { "$it above the surface" },
+    stats?.footprintText?.ifBlank { null }?.let { "each shot covers $it" },
+    stats?.intervalText?.ifBlank { null }?.let { "a shot every $it" },
+).takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ")
+
 internal fun photosText(shots: Int): String? = when {
     shots <= 0 -> null
     shots == 1 -> "1 photo"

@@ -71,7 +71,16 @@ class SelectedSurveyTest {
     @Test
     fun `nothing selected means no survey to act on`() {
         assertNull(selectedSurvey(null, surveys))
-        assertNull(selectedSurvey(MapHit.Waypoint(1), surveys))
+        assertNull(selectedSurvey(MapHit.Waypoint(2), surveys))
+    }
+
+    @Test
+    fun `a survey picked from the list is the same survey as one picked by its corner`() {
+        assertEquals(4, selectedSurvey(MapHit.Waypoint(4), surveys)!!.index)
+        assertEquals(
+            selectedSurvey(MapHit.SurveyVertex(1, 0), surveys),
+            selectedSurvey(MapHit.Waypoint(1), surveys),
+        )
     }
 
     @Test
