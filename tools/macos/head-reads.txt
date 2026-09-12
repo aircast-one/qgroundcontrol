@@ -13,6 +13,7 @@ altitudeChangeText
 altitudeEditUnits
 altitudeFrame
 altitudeFrameText
+altitudeMetres
 altitudeMode
 altitudePath
 altitudeRange

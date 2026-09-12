@@ -193,3 +193,21 @@ enum PlanShapeAbsence {
             : "This vehicle's firmware does not support rally points."
     }
 }
+
+// The breach return point is a QGeoCoordinate, whose altitude is METRES by definition, while the
+// altitude the operator types is a Fact carrying a cooked value in their own unit. Reading one
+// for the other is invisible in metric and 3.28x wrong in feet, so the two are named apart here
+// rather than both being "the altitude".
+enum BreachReturn {
+    static func shownAltitude(_ fact: [String: Any]) -> Double? {
+        (fact["value"] as? NSNumber)?.doubleValue
+    }
+
+    static func altitudeMetres(_ fact: [String: Any]) -> Double? {
+        (fact["rawValue"] as? NSNumber)?.doubleValue
+    }
+
+    static func altitudeUnits(_ fact: [String: Any]) -> String {
+        (fact["units"] as? String) ?? "m"
+    }
+}

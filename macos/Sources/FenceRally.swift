@@ -17,6 +17,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var syncing = false
     @Published var armingRally = false
     @Published private(set) var breachAltitude: Double?
+    @Published private(set) var breachAltitudeMetres: Double?
     @Published private(set) var breachAltitudeUnits = "m"
     @Published var writeFailure: String?
 
@@ -66,8 +67,9 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.breachReturn, (read["breachReturnPoint"] as? [String: Any])
             .map { RallyPointRow(coordinate: $0) })
         let breachFact = Bridge.group("plan.geoFenceController.breachReturnAltitude")
-        set(\.breachAltitude, (breachFact["value"] as? NSNumber)?.doubleValue)
-        set(\.breachAltitudeUnits, (breachFact["units"] as? String) ?? "m")
+        set(\.breachAltitude, BreachReturn.shownAltitude(breachFact))
+        set(\.breachAltitudeMetres, BreachReturn.altitudeMetres(breachFact))
+        set(\.breachAltitudeUnits, BreachReturn.altitudeUnits(breachFact))
 
         set(\.syncing, (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false)
     }
@@ -145,7 +147,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
         write("plan.geoFenceController.breachReturnPoint",
               ["latitude": centre.latitude, "longitude": centre.longitude,
-               "altitude": breachAltitude ?? 0], "the breach return point")
+               "altitude": breachAltitudeMetres ?? 0], "the breach return point")
         reload()
         return breachReturn == nil ? "The breach return point was not accepted." : nil
     }

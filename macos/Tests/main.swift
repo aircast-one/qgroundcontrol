@@ -1592,6 +1592,7 @@ func checkMissionItemKinds() {
     checkSetupGateInAnyLocale()
     checkSummaryOpensInAnyLocale()
     checkModeSlotNaming()
+    checkBreachReturnAltitude()
     checkResumeSequence()
     checkOrbitRingNeedsContact()
 
@@ -6294,4 +6295,31 @@ func checkModeSlotNaming() {
     expect(FlightModePosition.present(in: rover).first?.pwmRange ?? "", "up to 1230",
            "the PWM bands are fixed in firmware and keyed on the POSITION, not the parameter "
            + "name, so they are identical on both")
+}
+
+func checkBreachReturnAltitude() {
+    let feet: [String: Any] = ["value": 246.06, "rawValue": 75.0, "units": "ft"]
+
+    expect(BreachReturn.altitudeMetres(feet) == 75.0,
+           "THE FIXTURE THAT MATTERS: the breach return point is a QGeoCoordinate and its altitude "
+           + "is METRES by definition, so it takes the fact's RAW value. The head was putting the "
+           + "COOKED value there, which in a feet configuration placed the point 3.28 times higher "
+           + "than the operator asked for -- the same magnitude as the keep-out fence in b9ddbdbf7")
+    expect(BreachReturn.shownAltitude(feet) == 246.06,
+           "while the field the operator types into keeps their own number, because an EDITED "
+           + "value belongs in the unit they set")
+    expect(BreachReturn.altitudeUnits(feet), "ft", "and wears the unit that number is in")
+    expect(BreachReturn.altitudeMetres(feet) != BreachReturn.shownAltitude(feet),
+           "this fixture can tell the two rules apart, which is the whole point of spelling it in "
+           + "feet: a metric fixture has value and rawValue EQUAL and passes either way, which is "
+           + "why the defect survived in a metric build")
+
+    let metric: [String: Any] = ["value": 75.0, "rawValue": 75.0, "units": "m"]
+    expect(BreachReturn.altitudeMetres(metric) == BreachReturn.shownAltitude(metric),
+           "and in metric they agree, which is the measured state of this rig and the reason this "
+           + "could not be observed by looking at the running app")
+
+    expect(BreachReturn.altitudeMetres([:]) == nil,
+           "a fact that answered nothing yields no altitude rather than zero, so the caller "
+           + "decides what an absent altitude means rather than being handed sea level")
 }
