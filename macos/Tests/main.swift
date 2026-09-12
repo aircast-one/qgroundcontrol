@@ -145,6 +145,17 @@ expect(link(["displaySummary": "UDP port 14550"])?.displaySummary ?? "", "UDP po
 expect(link(["port": 14550 as NSNumber])?.port == 14550,
        "the port is whichever of port and localPort the link actually has, which the core picks; "
        + "reading only port reported every UDP link as port 0")
+expect(link(["port": 14550 as NSNumber])?.portText ?? "", "14550",
+       "and it reads as itself where the operator edits it")
+expect(link([:])?.baud == nil,
+       "baud is a property of SerialLink alone, so a UDP or TCP link has none. a9b4e2a53 made "
+       + "the core say so rather than answer zero, and decoding it into an Int put the zero back")
+expect(link([:])?.baudText ?? "x", "",
+       "an absent rate selects nothing in the picker rather than a rate of 0, which is not a "
+       + "rate the core offers and not one any link runs at")
+expect(link([:])?.portText ?? "x", "",
+       "and a log replay, which has neither a port nor a local port, offers an empty field to "
+       + "type into rather than a port numbered zero")
 expect(link(["logFileName": "flight.tlog", "filename": "/tmp/flight.tlog"])?.logFileName ?? "",
        "flight.tlog", "and the log file shows its last path component, not the whole path")
 
@@ -4453,9 +4464,10 @@ func checkAltitudeReading() {
            + "rather than as \u{201C}585 m to 585 m\u{201D}")
     expect(item("settings", specifies: false, text: "487 m", band: "0.0 m").altitudeReading,
            "487 m",
-           "but the mission start entry carries a band of its own -- QGC declares the property "
-           + "on every complex item and its launch altitude is min and max both -- so reading "
-           + "the band first would have replaced a real launch height with 0.0 m")
+           "and a height of its own always wins over a band. The core stopped serving the launch "
+           + "row a band in f8e16903b, so nothing produces this pair today -- the assertion is "
+           + "what pins the ORDER, which is otherwise unobservable because no item currently "
+           + "carries both, and the band-first rule passes every other assertion here")
     expect(item("command", specifies: false, text: "0.0 m", band: "").altitudeReading,
            MissionItem.noAltitude,
            "and an item with neither still reads no altitude")

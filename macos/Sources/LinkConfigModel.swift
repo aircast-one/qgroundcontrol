@@ -33,14 +33,18 @@ struct LinkConfig: Identifiable, Equatable {
     let heardVehicle: Bool
     let autoConnect: Bool
     let host: String
-    let port: Int
+    let port: Int?
     let portName: String
-    let baud: Int
+    let baud: Int?
     let filename: String
     let logFileName: String
     let lastError: String
 
     var id: Int { index }
+
+    var portText: String { port.map(String.init) ?? "" }
+
+    var baudText: String { baud.map(String.init) ?? "" }
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
@@ -58,9 +62,9 @@ struct LinkConfig: Identifiable, Equatable {
         heardVehicle = (json["heardVehicle"] as? NSNumber)?.boolValue ?? false
         autoConnect = (json["autoConnect"] as? NSNumber)?.boolValue ?? false
         host = (json["host"] as? String) ?? ""
-        port = (json["port"] as? NSNumber)?.intValue ?? 0
+        port = (json["port"] as? NSNumber)?.intValue
         portName = (json["portName"] as? String) ?? ""
-        baud = (json["baud"] as? NSNumber)?.intValue ?? 0
+        baud = (json["baud"] as? NSNumber)?.intValue
         filename = (json["filename"] as? String) ?? ""
         logFileName = (json["logFileName"] as? String) ?? ""
         lastError = (json["lastError"] as? String) ?? ""

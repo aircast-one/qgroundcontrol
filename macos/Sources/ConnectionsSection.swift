@@ -126,7 +126,7 @@ struct ConnectionsSection: View {
     }
 
     private func portField(_ link: LinkConfig) -> some View {
-        LabelledField(label: "Port", value: String(link.port)) {
+        LabelledField(label: "Port", value: link.portText) {
             if let port = Int($0), (1...65535).contains(port) { store.setPort(link, port) }
         }
     }
@@ -159,7 +159,7 @@ struct ConnectionsSection: View {
                                selection: link.portName) { store.setPortName(link, $0) }
                 LabelledPicker(label: "Baud",
                                options: store.baudRates.map { (String($0), String($0)) },
-                               selection: String(link.baud)) { store.setBaud(link, Int($0) ?? link.baud) }
+                               selection: link.baudText) { if let baud = Int($0) { store.setBaud(link, baud) } }
             case .none, .unknown:
                 EmptyView()
             }
