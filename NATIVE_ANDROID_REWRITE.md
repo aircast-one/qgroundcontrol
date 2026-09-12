@@ -6070,3 +6070,50 @@ The fixed-wing rig cannot go much deeper than this: the fake's parameters are
 copter-shaped, so a plane's flight-mode list or frame page would be testing the
 fake rather than the head. What it is genuinely good for is the airframe-gated
 *paths* — `insertLandItem` above all.
+
+## Where the tab stands, 2026-09-12, second pass
+
+The block at line 737 was written before the night's work and 46 entries have
+been appended since, several of them correcting earlier ones. This is the state
+they add up to. Where an entry above contradicts this, this is the later reading.
+
+**Closed tonight, all seen on the OnePlus 6 rather than inferred**
+
+- **Every unit defect.** Leg distance, bearing and climb; the terrain band; the
+  fence radius; list altitudes; the survey's height span; the telemetry strip;
+  and finally the proximity warning, which reads `3.2 m right` and `10.5 ft
+  right`. The head no longer spells a measurement anywhere.
+- **The fallbacks behind those fixes**, which were the same defect behind a
+  guard that never fired and which hid a stale library for hours.
+- **`Delete` naming a different item than the map did** — `index` addresses an
+  item, `sequence` names it, and they diverge the moment a survey is in the plan.
+- **A withheld field rendering as the word `null`**, swept across 150 call sites.
+  Not reproducible off-device: the JVM's `org.json` disagrees with Android's.
+- **Crowded plans drawing as a solid block.** Sizing is driven by item count,
+  not zoom, because extent and count are independent.
+- **A tile the cache lacks now comes from the network**, so the map is no longer
+  half blank.
+
+**The Phase 4 gate: the plan half is done.** 212 items generated, loaded,
+uploaded, cleared locally, downloaded and saved — 212 of 212 matching field for
+field to 1e-6, and separately two fence circles, a polygon and two rally points
+matching on radius, centre, inclusion, every vertex and altitude. Only the
+flight remains, and only hardware can give it.
+
+**Open, and why**
+
+- **Landing patterns are still undrawn.** Reproduced at last with `VEHICLE=plane`.
+  The earlier note that this "needs a `KINDS` entry" was wrong twice: the item is
+  already addable through the existing Land button, and its three coordinates
+  plus loiter radius do not fit a `(shape, property)` row. It needs its own view.
+- **A pan that starts on a marker moves it**, silently and without undo, on about
+  one pan in five at gate density. A notice now says `Moved #N`; long-press to
+  drag, or undo, is a design call and deliberately not taken.
+- **Staleness does not wake the obstacle view** — the only signal is a message
+  that stopped arriving, so a head wanting the warning to expire must poll.
+
+**What the rig can and cannot do now.** It holds fences and rally points, admits
+to being a plane or a VTOL, and reports a ground speed it is actually flying. It
+still orbits whether or not it is armed, its parameters are copter-shaped
+whatever the heartbeat says, and it emits no OBSTACLE_DISTANCE after 45 seconds
+by design.
