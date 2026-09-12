@@ -5,8 +5,8 @@ import time
 
 import rig
 
-TABS = ["Fly", "Plan", "Setup", "Params", "Analyze", "Settings"]
-CHROME = {"Fly", "Plan", "Setup", "Params", "Analyze", "Settings", "Aircast"}
+TABS = ["Fly", "Plan", "Setup", "Analyze", "Settings"]
+CHROME = {"Fly", "Plan", "Setup", "Analyze", "Settings"}
 
 
 def controls():
