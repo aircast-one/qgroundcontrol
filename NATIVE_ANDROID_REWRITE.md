@@ -5861,3 +5861,26 @@ each explanation was offered before the cheaper check that would have killed it 
 the `deps_for` guess before reading `router.rs`, the `setCookedValue` hypothesis
 before checking whether the conversion was even cached. Reading costs less than
 retracting, and both reads took under a minute.
+
+### A suspected layout defect that was a toast, 2026-09-12
+
+Selecting an item on a 212-item plan, the controls area looked clipped in the
+screenshot — the leg text and `Alt m` field half-visible at the bottom edge,
+`Delete` apparently gone. **It was a toast sitting over them.** Node bounds:
+`Delete #5` runs 1880-1931 on a 2280-high screen, comfortably above the nav bar.
+Nothing is clipped and there is nothing to fix.
+
+The same lesson as the filtered greps, in a different medium: a screenshot is a
+composite, and an overlay reads exactly like missing content. Bounds are the
+whole channel; the image is a filtered view of it.
+
+**What the screenshot did show is that the crowded-plan fix works.** With 212
+markers reduced to dots, the selected item — full radius and heavy white outline
+— is the one thing on the map the eye lands on. That was the intent of keeping
+the selection full size, and it holds at the density it was designed for.
+
+**A method gotcha worth more than the finding**: panning with `input swipe` from
+a point that lands on a marker **drags the marker** instead of panning, silently.
+Three pan gestures took the plan from 9.87 km to 10.93 km, and the summary chip
+was the only place it showed. Written into `tools/README.md` — start pans on
+empty map, and re-read the distance before trusting anything measured after one.
