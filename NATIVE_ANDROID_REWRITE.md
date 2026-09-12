@@ -741,8 +741,8 @@ what each claim rests on.
 
 **Drawn on the map**, all seen on the OnePlus 6: waypoints with per-kind colours, the dashed route,
 fence polygons and circles with vertex handles, rally points, survey areas with transects and handles,
-and corridor and structure scans. **Landing patterns are not drawn** and are the only plan item that
-is not — the banner names them, and drawing them needs a `KINDS` entry in the core.
+and corridor and structure scans, and landing patterns — approach line, slope and loiter ring. Every
+plan item the core describes is now drawn; see "Landing patterns: drawn, then placeable".
 
 **Editing**: drag a waypoint or any vertex, add by long press or toolbar, insert after the selected
 item, delete, edit an altitude, rotate a survey grid, import a KML or SHP boundary as any of the three
@@ -758,10 +758,14 @@ off the sim rather than the screen. That is not the gate, which wants 200+ waypo
 
 **What the gate still needs**: hardware. Nothing in the list above is blocked on code.
 
-**Known gaps, each recorded in full below**: landing patterns undrawn; the Fly view's obstacle distance
-is metres-only because no core view serves it; the "no position" branch for a `DO_` item is unit-tested
+**Known gaps, each recorded in full below**: the "no position" branch for a `DO_` item is unit-tested
 and never seen on a device, because this head cannot add such an item; the Add Item gate is
 deliberately not wired, because a greyed button on a phone cannot carry the sentence that explains it.
+
+Two entries left this list on 2026-09-12 and the summary went on asserting them for the rest of the
+day, which is the failure this paragraph exists to avoid. Landing patterns are drawn and placeable.
+The obstacle distance follows the operator's units — re-confirmed on the handset as `3.2 m right`
+from the core's own `distanceText`, the same reading `8f9c0c9e7` recorded when it closed the defect.
 
 **Task-level UX review of the finished tab (2026-09-08).** Every command from
 `PlanView.qml` is now present, and that is the problem: twelve controls of
