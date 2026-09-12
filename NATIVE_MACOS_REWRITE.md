@@ -5038,3 +5038,28 @@ Android's "Delete survey"; **my own armed gate on a `tr()`'d component name**; `
 QGC is wrapped in `tr()`, so a join on anything an operator reads is a defect waiting for a
 non-English build — and the third instance was written an hour after I fixed the first.** Knowing
 the rule is not the same as applying it to code being written now.
+
+### The synthetic "Unknown" enum entry is filtered only in English
+
+`Fact::enumIndex()` (`src/FactSystem/Fact.cc:225`) appends `tr("Unknown: %1").arg(rawValue())` to a
+parameter's enum list when the current raw value is not among the declared values, and returns the
+index of what it just appended. `ParameterModel.swift` filters that entry out on the English
+prefix `"Unknown: "`, which two deliberate assertions describe: a value outside its enum shows the
+NUMBER rather than the word, and the synthetic entry is not offered as a choice. Both are right.
+
+Outside English the `tr()` has been applied — it is a call-time `tr()`, not a static initialiser —
+so the prefix matches nothing, the bogus entry appears in the picker, and the value reads
+"Unbekannt: 9" where an English build shows "9".
+
+**No head-side test can distinguish it.** `addEnumInfo` mutates the metadata permanently, so from
+the next read onward the synthetic entry is the last entry, carries the current raw value, and is
+identical in structure to a legitimate last entry that happens to be selected. The original
+declared list is gone. Matching on the label's shape (it ends with the raw value) assumes every
+translation keeps `%1` last, which is not guaranteed.
+
+**The ask, and it is small:** one computed property on the C++ side — `unknownEnumLabel`, returning
+`tr("Unknown: %1").arg(rawValue())` — evaluated in the same translation context as the entry it
+describes. Then head and core compare strings that are equal by construction in every locale
+instead of guessing. `core-rs` cannot do this itself: it is Rust and has no `tr()`.
+
+Recorded rather than papered over. A head-side heuristic here would be a fallback dressed as a fix.
