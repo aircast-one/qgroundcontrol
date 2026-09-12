@@ -29,8 +29,18 @@ def wake():
         time.sleep(2)
 
 
+def freshness():
+    out = subprocess.run(
+        f"python3 {TOOLS}/fresh.py", shell=True, capture_output=True, text=True
+    )
+    for line in out.stdout.splitlines():
+        if "STALE" in line:
+            print(f"  rig: {line.strip()}")
+
+
 def ensure_app():
     wake()
+    freshness()
     if "REFUSED" in sh(f"{TOOLS}/ui.sh text 2>&1"):
         sh(f"adb shell am start -n {APP}/.MainActivity")
         time.sleep(8)
