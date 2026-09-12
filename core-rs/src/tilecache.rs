@@ -83,14 +83,6 @@ pub fn provider_of(hash: &str) -> Option<i32> {
     hash.len().checked_sub(TILE_DIGITS).and_then(|head| hash.get(..head)).and_then(|head| head.parse::<i32>().ok())
 }
 
-// The database uses a rollback journal, not WAL. When a read-only connection meets a journal the
-// Qt worker has open mid-transaction, SQLite has to roll it back before it can present a
-// consistent database - and rolling back is a write, which a read-only connection cannot do. It
-// answers SQLITE_READONLY, "attempt to write a readonly database", for a plain SELECT.
-//
-// busy_timeout does not cover this: it waits on a lock, and this is not a lock. The window is one
-// write transaction wide, so a bounded retry closes it without giving up read-only, which is the
-// property that keeps this connection unable to disturb the worker.
 const READONLY_RETRIES: u64 = 5;
 const RETRY_PAUSE_MS: u64 = 20;
 
@@ -127,8 +119,6 @@ impl Cache {
         Ok(cache)
     }
 
-    /// Opens a database another writer owns. No schema is created and nothing is written, so this
-    /// takes no write lock and cannot collide with the Qt worker holding the same file.
     pub fn serve(path: &Path) -> rusqlite::Result<Cache> {
         let connection = Connection::open_with_flags(
             &format!("file:{}?mode=ro&cache=private", uri_escaped(path)),
