@@ -140,9 +140,10 @@ struct GroupRow<Leading: View, Trailing: View>: View {
 extension GroupRow where Leading == EmptyView {
     init(title: String, description: String = "", value: String = "",
          showSeparator: Bool = true, current: Bool = false, titleLines: Int = 1,
-         @ViewBuilder trailing: () -> Trailing) {
+         descriptionLines: Int = 1, @ViewBuilder trailing: () -> Trailing) {
         self.init(title: title, description: description, value: value,
                   showSeparator: showSeparator, current: current, titleLines: titleLines,
+                  descriptionLines: descriptionLines,
                   leading: { EmptyView() }, trailing: trailing)
     }
 }

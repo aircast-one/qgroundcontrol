@@ -52,6 +52,10 @@ struct CalibrationRoutine: Identifiable, Equatable {
     let description: String
     let warning: String
 
+    static let untruncated = 12
+
+    var descriptionLines: Int { warning.isEmpty ? 1 : CalibrationRoutine.untruncated }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let id = json["id"] as? String,

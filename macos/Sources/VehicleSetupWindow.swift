@@ -124,6 +124,7 @@ struct SensorsView: View {
                                  ? routine.description
                                  : "\(routine.description) \(routine.warning)",
                              showSeparator: row > 0,
+                             descriptionLines: routine.descriptionLines,
                              trailing: {
                                  Button("Start") { store.start(routine) }
                                      .disabled(!routine.enabled)

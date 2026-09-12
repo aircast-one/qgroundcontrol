@@ -2593,6 +2593,26 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkAWarnedRoutineIsNotTruncated() {
+    func routine(_ id: String, warning: String) -> CalibrationRoutine? {
+        CalibrationRoutine(["id": id, "title": id.capitalized, "invocation": "calibrate" + id,
+                            "explanation": "Hold the vehicle in each orientation it asks for.",
+                            "warning": warning, "enabled": true as NSNumber])
+    }
+    expect(routine("gyro", warning: "")?.descriptionLines == 1,
+           "an ordinary routine keeps its one-line explanation, which is all it needs")
+    expect(routine("compassMot", warning: "This spins the motors. CompassMot only works well if "
+                   + "you have a battery current monitor.")?.descriptionLines
+               == CalibrationRoutine.untruncated,
+           "but a routine carrying a WARNING is never truncated. The core began offering CompassMot "
+           + "tonight -- the first routine it serves that SPINS THE PROPELLERS, where it previously "
+           + "excluded every such routine on purpose -- and this head appends the warning to an "
+           + "already long explanation and drew the pair through a GroupRow overload that takes no "
+           + "descriptionLines and therefore defaults to ONE LINE. The props instructions come "
+           + "first and \"This spins the motors\" comes last, so the sentence that matters was the "
+           + "sentence cut off, beside a live Start button")
+}
+
 func checkAddMenuNeedsNoVehicle() {
     func kind(_ id: String, enabled: Bool) -> [String: Any] {
         ["id": id, "title": id.capitalized, "enabled": enabled as NSNumber, "reason": ""]
@@ -2848,6 +2868,7 @@ checkModeRequest()
 checkSetupBlocked()
 checkCameraModeRow()
 checkAddMenuNeedsNoVehicle()
+checkAWarnedRoutineIsNotTruncated()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"
