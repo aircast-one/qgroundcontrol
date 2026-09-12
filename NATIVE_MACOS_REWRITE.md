@@ -4121,3 +4121,35 @@ here reads**: `adsbTraffic`, `followMe`, `gcsPosition`, `gimbal`. They are in th
 **uncommitted** working copy, with their `.rs` files untracked, and the running binary
 answers a bare null for all four. **`view-fields.py` reads the registry SOURCE by design, so
 it sees a peer's in-flight views before they exist. Left red rather than weakened.**
+
+### (ss) Four new views, and one of them found a defect
+
+`268105172` landed `view.gimbal`, `view.followMe`, `view.adsbTraffic` and
+`view.gcsPosition`. **Triaged one at a time against their live payloads. One was an
+adoption, not a gap.**
+
+**`view.gcsPosition` caught a real defect.** This head read the **raw Qt path**
+`positionManager.gcsPosition` and judged it with `MapCentre.usable`, which checks only that
+the coordinate is valid and is not null island. **The core's view refuses far more:**
+horizontal accuracy coarser than 100 m, a reading older than 5 s, a latitude out of range,
+the null-island axes. **So a coarse or stale fix the core calls unusable would still have
+centred My Location — the map jumping to a point up to two kilometres from where the
+operator stands, with nothing on screen saying the fix was poor.** `GcsFix` now yields a
+point only when the core says `usable`, and **the null-island check is kept as its own
+assertion** so adopting the core's rule did not quietly drop the one already there.
+
+**Checked and found clean: the head's own `CLLocationManager` is NOT a duplicated
+derivation.** Its `locationAccess` answers whether macOS granted permission; the core's
+`refused` answers whether a received reading was rejected for quality. **Different
+questions — and "the core owns it now" would have been the plausible-sounding wrong call.**
+
+**The other three are recorded, not built, each with what was measured:** `view.gimbal`
+(available false, discovery idle — a gimbal is discovered from a vehicle that has one, and
+this SITL is a bare quadrotor); `view.followMe` (reason `noVehicles` — **every state that
+distinguishes it from silence requires commanding the aircraft to follow**, which is
+forbidden); `view.adsbTraffic` (available true but connected false — needs a receiver, and
+**enabling it is a settings write**).
+
+**36 models, and all 68 served views are either read or listed with a reason.** The guard
+that reported these four is the one that found the five unlisted models this morning —
+**it has now caught new views within an hour of their landing, twice.**
