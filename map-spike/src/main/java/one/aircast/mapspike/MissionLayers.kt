@@ -257,6 +257,10 @@ const val HANDLE_KIND_FENCE = "fence"
 const val HANDLE_KIND_SURVEY = "survey"
 const val HANDLE_KIND_CIRCLE = "circle"
 const val HANDLE_KIND_LANDING = "landing"
+const val HANDLE_KIND_MIDPOINT = "midpoint"
+
+const val MIDPOINT_SOURCE = "aircast-midpoints"
+const val MIDPOINT_LAYER = "aircast-midpoints-layer"
 
 const val LANDING_PLACE_APPROACH = 0
 const val LANDING_PLACE_TOUCHDOWN = 1
@@ -331,6 +335,39 @@ const val LANDING_LOITER_LAYER = "aircast-landing-loiter-layer"
 
 const val SURVEY_LINE_SOURCE = "aircast-survey-line"
 const val SURVEY_LINE_LAYER = "aircast-survey-line-layer"
+
+fun installMidpointLayer(style: Style) {
+    if (style.getSource(MIDPOINT_SOURCE) != null) {
+        return
+    }
+    style.addSource(GeoJsonSource(MIDPOINT_SOURCE))
+    style.addLayer(
+        CircleLayer(MIDPOINT_LAYER, MIDPOINT_SOURCE).withProperties(
+            PropertyFactory.circleColor("#1565C0"),
+            PropertyFactory.circleRadius(5f),
+            PropertyFactory.circleStrokeColor("#FFFFFF"),
+            PropertyFactory.circleStrokeWidth(2f),
+            PropertyFactory.circleOpacity(0.85f),
+        ),
+    )
+}
+
+fun midpointFeatures(polygons: List<FencePolygon>): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        polygons.flatMap { polygon ->
+            polygon.midpoints.mapIndexed { segment, at ->
+                Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
+                    addStringProperty(HANDLE_KIND_PROPERTY, HANDLE_KIND_MIDPOINT)
+                    addNumberProperty(POLYGON_INDEX_PROPERTY, polygon.index)
+                    addNumberProperty(VERTEX_INDEX_PROPERTY, segment)
+                }
+            }
+        },
+    )
+
+fun renderMidpoints(style: Style, polygons: List<FencePolygon>) {
+    (style.getSource(MIDPOINT_SOURCE) as? GeoJsonSource)?.setGeoJson(midpointFeatures(polygons))
+}
 
 fun installLandingLayers(style: Style) {
     if (style.getSource(LANDING_LOITER_SOURCE) == null) {

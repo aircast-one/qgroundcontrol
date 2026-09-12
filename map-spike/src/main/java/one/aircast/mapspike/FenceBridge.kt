@@ -12,7 +12,12 @@ const val FENCE_CIRCLES = "$FENCE_ROOT.circles"
 const val RALLY_POINTS = "$RALLY_ROOT.points"
 const val FENCES_VIEW = "view.fences"
 
-data class FencePolygon(val index: Int, val inclusion: Boolean, val vertices: List<TrackPoint>)
+data class FencePolygon(
+    val index: Int,
+    val inclusion: Boolean,
+    val vertices: List<TrackPoint>,
+    val midpoints: List<TrackPoint> = emptyList(),
+)
 data class FenceCircle(
     val index: Int,
     val inclusion: Boolean,
@@ -36,6 +41,14 @@ const val FENCE_POLYGON_MINIMUM = 3
 internal fun cornerRemovable(polygon: FencePolygon?): Boolean =
     (polygon?.vertices?.size ?: 0) > FENCE_POLYGON_MINIMUM
 
+private fun midpointsOf(polygon: Int): List<TrackPoint> {
+    val view = runCatching {
+        JSONObject(QGCBridge.get("view.polygon($FENCE_POLYGONS.$polygon)"))
+    }.getOrNull() ?: return emptyList()
+    val between = view.optJSONArray("midpoints") ?: return emptyList()
+    return (0 until between.length()).mapNotNull { coordinate(between.optJSONObject(it)) }
+}
+
 fun fencePolygons(json: JSONObject?): List<FencePolygon> {
     val list = listed(json, "polygons") ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
@@ -43,7 +56,8 @@ fun fencePolygons(json: JSONObject?): List<FencePolygon> {
         val corners = element.optJSONArray("vertices") ?: return@mapNotNull null
         val vertices = (0 until corners.length()).mapNotNull { coordinate(corners.optJSONObject(it)) }
         if (vertices.size < FENCE_POLYGON_MINIMUM) return@mapNotNull null
-        FencePolygon(element.optInt("index", index), element.optBoolean("inclusion", true), vertices)
+        val at = element.optInt("index", index)
+        FencePolygon(at, element.optBoolean("inclusion", true), vertices, midpointsOf(at))
     }
 }
 
@@ -104,6 +118,9 @@ object FenceBridge {
 
     fun removeRallyPoint(index: Int): Boolean =
         invokeOk("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
+
+    fun splitSegment(polygon: Int, segment: Int): Boolean =
+        invokeOk("$FENCE_POLYGONS.$polygon.splitPolygonSegment", "[$segment]")
 
     fun removeVertex(polygon: Int, vertex: Int): Boolean =
         invokeOk("$FENCE_POLYGONS.$polygon.removeVertex", "[$vertex]")

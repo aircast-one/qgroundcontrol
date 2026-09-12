@@ -26,6 +26,8 @@ sealed interface MapHit {
     data class CircleCentre(val index: Int) : MapHit
 
     data class LandingPlace(val index: Int, val place: Int) : MapHit
+
+    data class Midpoint(val polygon: Int, val segment: Int) : MapHit
 }
 
 internal fun nearestIndex(x: Float, y: Float, points: List<Pair<Float, Float>?>): Int? =
@@ -59,11 +61,20 @@ internal fun handleHit(kind: String?, owner: Int, vertex: Int): MapHit? = when (
     HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
     HANDLE_KIND_CIRCLE -> MapHit.CircleCentre(owner)
     HANDLE_KIND_LANDING -> MapHit.LandingPlace(owner, vertex)
+    HANDLE_KIND_MIDPOINT -> MapHit.Midpoint(owner, vertex)
     else -> null
 }
 
 fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
     val box = RectF(x - HIT_RADIUS_PX, y - HIT_RADIUS_PX, x + HIT_RADIUS_PX, y + HIT_RADIUS_PX)
+
+    nearest(map, map.queryRenderedFeatures(box, MIDPOINT_LAYER), x, y)?.let { feature ->
+        val owner = feature.getNumberProperty(POLYGON_INDEX_PROPERTY)?.toInt()
+        val segment = feature.getNumberProperty(VERTEX_INDEX_PROPERTY)?.toInt()
+        if (owner != null && segment != null) {
+            return MapHit.Midpoint(owner, segment)
+        }
+    }
 
     nearest(map, map.queryRenderedFeatures(box, FENCE_HANDLE_LAYER), x, y)?.let { feature ->
         val owner = feature.getNumberProperty(POLYGON_INDEX_PROPERTY)?.toInt()
@@ -134,6 +145,9 @@ fun attachMissionEditing(
 
             MotionEvent.ACTION_MOVE -> {
                 val hit = dragging ?: return@setOnTouchListener false
+                if (hit is MapHit.Midpoint) {
+                    return@setOnTouchListener true
+                }
                 if (!moved && !withinTap(event.x - downX, event.y - downY)) {
                     moved = true
                 }

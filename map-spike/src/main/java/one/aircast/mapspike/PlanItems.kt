@@ -82,6 +82,7 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     is MapHit.Rally -> "Moved a rally point"
     is MapHit.CircleCentre -> "Moved a fence circle"
     is MapHit.Circle -> "Changed a fence radius"
+    is MapHit.Midpoint -> "Added a corner"
     is MapHit.LandingPlace -> when (hit.place) {
         LANDING_PLACE_APPROACH -> "Moved the final approach"
         else -> "Moved the touchdown"
@@ -97,6 +98,7 @@ fun writeMove(hit: MapHit, latitude: Double, longitude: Double, surveys: List<Su
         is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, latitude, longitude)
         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, latitude, longitude)
         is MapHit.Circle -> true
+        is MapHit.Midpoint -> false
         is MapHit.LandingPlace ->
             moveLandingPlace(hit.index, hit.place, latitude, longitude)
     }

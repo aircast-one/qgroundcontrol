@@ -20,6 +20,7 @@ fun selectionSurvives(
     is MapHit.Rally -> rally.any { it.index == selected.index }
     is MapHit.Circle -> circles.any { it.index == selected.index }
     is MapHit.CircleCentre -> circles.any { it.index == selected.index }
+    is MapHit.Midpoint -> false
     is MapHit.LandingPlace -> landings.any { it.index == selected.index }
 }
 

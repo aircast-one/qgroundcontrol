@@ -309,10 +309,17 @@ internal fun MapSpikeScreen(
                 )
             },
             onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList) } },
+            onWaypointSelected = { hit ->
+                when (hit) {
+                    is MapHit.Midpoint -> onBridge("Adding a corner") {
+                        FenceBridge.splitSegment(hit.polygon, hit.segment)
+                    }
+                    else -> selected = hit
+                }
+            },
             onMoved = { hit, lat, lon ->
                 onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList) }
             },
-            onWaypointSelected = { selected = it },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onCentreChanged = { at, level ->
                 centre = at
