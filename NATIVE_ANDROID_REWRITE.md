@@ -6290,6 +6290,35 @@ as the core session said; what clears the warning is the bridge re-reading a
 time-dependent property on a timer. That is a weaker guarantee than a signal and
 worth knowing, rather than either "it expires by itself" or "a head must poll".
 
+### The language setting does nothing, because no translation ships, 2026-09-13
+
+Applying the same move that found the unit defect - change what the rig can
+only render one way - to language. The Settings screen offers 22 languages.
+Selecting 中文 (Chinese) and restarting leaves every string English, including
+the ones that come from QGC through the bridge:
+`complexMissionItemNames` still reads `["Survey", "Corridor Scan", "Structure
+Scan"]`.
+
+**Why.** 48 `.qm` files are compiled into `build-android/i18n/`, and **zero**
+reach the `.aar` or the `.apk`. Qt has no catalogue to load, so every `tr()`
+string is its source text. The setting is written correctly - the fact holds
+enum value 58, which `enumValues` maps to Chinese - it simply has nothing to
+act on.
+
+So the head's own strings being Kotlin literals is not what keeps the app
+English. Nothing is translated, including QGC's own.
+
+**This makes a recorded risk unreachable rather than open.** The note above
+says `mission.insert` compares against `CorridorScanComplexItem::name`, a
+`tr()` static, so "a non-English build can draw a corridor it cannot add", and
+the core is holding it rather than guessing on a write path. On this build
+there is no non-English build to be wrong in. The comparison is still fragile
+and still worth fixing before translations ship; it cannot bite today.
+
+**The defect that is real today** is smaller and certain: a settings screen
+offering 22 choices where every choice does nothing. Either package the `.qm`
+files or stop offering the list.
+
 ### A metric rig cannot tell a conversion from an identity, 2026-09-13
 
 Two commits went green tonight on a rig where the fix and the bug produce the
