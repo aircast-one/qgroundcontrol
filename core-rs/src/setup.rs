@@ -114,11 +114,6 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     }
 }
 
-// There is deliberately no answer here to "does a head have a screen for this page". The core
-// cannot know it, the two heads do not implement the same set and never will, and a head that
-// took this list as its own found itself opening a page it had never built. What the core knows
-// is whether it can describe the page as parameters, which is parameterSections.
-
 pub fn readiness(connected: bool, components: &[(String, bool)], sensor_faults: &[String]) -> (Option<bool>, String, String) {
     let outstanding: Vec<&str> = components.iter().filter(|(_, needs)| *needs).map(|(n, _)| n.as_str()).collect();
     if !connected {
@@ -153,25 +148,13 @@ pub fn setup_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 
-// vehicleComponents is a plain QVariantList rather than a list model, so the bridge answers a value
-// holding pointers rather than an object holding elements. The count comes from the value and each
-// component is read by its own path.
 pub struct Component {
     pub name: String,
-    // The class the component reports. Its name is tr(), and unlike SurveyComplexItem::name -
-    // a file-scope static frozen before any translator exists - this one is a constructor
-    // initialiser, so it runs after QGCApplication installs them and really is translated. Same
-    // tr(), same apparent shape, opposite behaviour, decided only by where the initialisation
-    // sits relative to main().
     pub class_name: String,
     pub needs_attention: bool,
     pub blocked_reason: Option<&'static str>,
 }
 
-// SetupPage.qml gates a page on the vehicle's state and the component's own two permissions, and
-// exempts a rover from the flying gate because a rover's flying flag means nothing. All three are
-// the vehicle's knowledge, so a head that reads the raw flags has to carry the rover exemption and
-// the precedence as well - and would have to know that "armed" wins when both hold.
 fn blocked_by(component: &Value, armed: bool, flying: bool, rover: bool) -> Option<&'static str> {
     let by_armed = !flag(component, "allowSetupWhileArmed") && armed;
     let by_flying = !rover && !flag(component, "allowSetupWhileFlying") && flying;
@@ -423,8 +406,6 @@ mod components {
         let gated = json!({ "kind": "object", "name": "Sensors", "requiresSetup": true, "allowSetupWhileArmed": false, "allowSetupWhileFlying": false });
         let permitted = json!({ "kind": "object", "name": "Safety", "requiresSetup": false, "allowSetupWhileArmed": true, "allowSetupWhileFlying": true });
 
-        // blocked_by was tested directly and openable was not, so pinning the field to true and to
-        // false both passed - the rule was right and nothing checked it reached the head.
         let parked = setup_view(&Flying { components: vec![gated.clone(), permitted.clone()], armed: false, flying: false, rover: false }, &[]);
         let resting = parked["components"].as_array().unwrap().clone();
         assert_eq!(resting[0]["openable"], true);

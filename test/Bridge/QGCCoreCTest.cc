@@ -1071,7 +1071,6 @@ void QGCCoreCTest::_videoAndCameraAreServed()
 namespace
 {
 
-
 void flatten(const QJsonValue &value, const QString &path, QJsonObject &into)
 {
     if (value.isObject()) {
@@ -1138,10 +1137,6 @@ QStringList fieldsThatNeverVaried(const QList<QJsonObject> &states)
     return unchanged;
 }
 
-
-// QGCCacheWorker::run opens the database only when it has none, so QGCMapEngine::init chooses the
-// file once per process and every later call changes a path nothing reads again. Both tests that
-// need a cache therefore share one, and neither pretends it can put the engine back afterwards.
 QString sharedTileCache()
 {
     static const QString path = QDir::temp().filePath(QStringLiteral("qgc-core-tilecache-%1.db").arg(QCoreApplication::applicationPid()));
@@ -1149,9 +1144,6 @@ QString sharedTileCache()
     if (!started) {
         started = true;
         QFile::remove(path);
-        // The name carries this process's pid, so removing it only ever removed this run's own
-        // file and every previous run's stayed. The Mac session found 270 of them, 22 MB. Anything
-        // older than an hour cannot belong to a suite that is still running.
         const QDateTime stale = QDateTime::currentDateTime().addSecs(-3600);
         for (const QFileInfo &left : QDir::temp().entryInfoList({ QStringLiteral("qgc-core-tilecache-*.db") }, QDir::Files)) {
             if (left.lastModified() < stale) {
@@ -1168,10 +1160,6 @@ bool tileCacheIsReady(const QString &path)
     if (!QFileInfo::exists(path)) {
         return false;
     }
-    // removeDatabase while a QSqlDatabase copy or a query on it is still in scope leaks the
-    // connection - Qt says so on stderr and then carries on. This is called from a QTRY loop, so
-    // a leak here is dozens of open handles on one SQLite file, which is a plausible way for the
-    // Rust reader's own open to start failing.
     const QString name = QStringLiteral("tileCacheReady");
     bool ready = false;
     {
@@ -1204,9 +1192,6 @@ QJsonValue shapeOf(const QJsonValue &value)
         if (array.isEmpty()) {
             return QJsonArray { QJsonValue(QStringLiteral("empty")) };
         }
-        // Every element, not the first one. A list whose elements differ - a mission kind with a
-        // complex name beside one without - would otherwise be recorded as whichever the first
-        // happened to be, and a field that stopped ever being a string would look unchanged.
         QJsonValue element = shapeOf(array.first());
         for (const QJsonValue &entry : array) {
             element = mergeShapes(element, shapeOf(entry));
@@ -1268,8 +1253,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     for (const char *path : kViewPaths) {
         offline.insert(QString::fromUtf8(path), shapeOf(take(qgc_bridge_get(path))));
     }
-    // A field that reads the same with no vehicle, with one connected, and with a plan on it is a
-    // field that may not be answering the question its name asks. Six defects this week were that.
     QList<QJsonObject> states { snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))) };
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
@@ -1307,9 +1290,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     };
     QTRY_VERIFY_WITH_TIMEOUT(recorderIndex() >= 0, 5000);
 
-    // The controller recomputes its totals after an insert returns, so a snapshot taken straight
-    // afterwards records the values from before the edit. Recording those as if they were this
-    // state's answer makes them look like fields that never vary, which is what this list is for.
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
     for (const char *path : kViewPaths) {
@@ -1347,15 +1327,10 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded view contract; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
 
-    // Coarse on purpose: this run drives few states, so most of the recorded list is fields nothing
-    // here moves rather than fields nothing can. What it catches is the list growing - a field that
-    // used to vary and now does not, which is what all six of this week's defects looked like.
     QSet<QString> wereConstant;
     for (const QJsonValue &field : expected.value(QStringLiteral("_neverVaried")).toArray()) {
         wereConstant.insert(field.toString());
     }
-    // A field the recording never saw has no history, so it cannot have stopped varying. Without
-    // this, adding a field that is constant in these states reads as a regression in it.
     QSet<QString> seenBefore;
     for (const QJsonValue &field : expected.value(QStringLiteral("_observed")).toArray()) {
         seenBefore.insert(field.toString());
@@ -2109,8 +2084,6 @@ void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
         QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileCacheSchemaProbe"));
         database.setDatabaseName(databasePath);
 
-        // The worker creates the tables one at a time on its own thread, so a database file that
-        // exists is not yet a database with a schema in it. Wait for the last thing it writes.
         QJsonObject recordedSets;
         QElapsedTimer waitingForTheWorker;
         waitingForTheWorker.start();
@@ -2411,10 +2384,6 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QCOMPARE(notices().count(), 0);
     QCOMPARE(take(qgc_bridge_get("host.count")).value(QStringLiteral("value")).toInt(), 0);
 
-    // ParameterManager posts "Parameters are missing from firmware" once a second for as long as
-    // the condition holds. Sixty of those are one piece of news, and while the queue keeps the
-    // oldest eight and the newest, the duplicates in between displace every distinct message the
-    // operator has not read yet - a vehicle error a minute old is what goes.
     const auto repeat = []() { qgcApp()->showAppMessage(QStringLiteral("Parameters are missing from firmware"), QStringLiteral("Parameters")); };
     repeat();
     const qint64 first = notices().last().toObject().value(QStringLiteral("id")).toInteger();
@@ -2426,9 +2395,6 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QVERIFY2(notices().last().toObject().value(QStringLiteral("id")).toInteger() == first,
              "a repeat is the same news, so it keeps the id a head has already drawn rather than arriving as a new banner");
 
-    // The list is served oldestFirst by insertion, so at has to stay the first sighting or a
-    // repeated notice in the middle carries a newer timestamp than the ones after it, and a head
-    // that sorts by at draws them out of order. When it was last seen is a separate question.
     const QJsonObject folded = notices().last().toObject();
     QVERIFY2(folded.value(QStringLiteral("lastAt")).toInteger() >= folded.value(QStringLiteral("at")).toInteger(),
              "the last sighting cannot precede the first");
@@ -2440,10 +2406,6 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QVERIFY2(notices().last().toObject().value(QStringLiteral("repeated")).toInt() == 0,
              "only a run of identical notices collapses; the same text after something else is news again");
 
-    // A condition that is still ongoing and one that cleared and came back read the same to the
-    // queue, and no rule about elapsed time can separate them. Acknowledgement can: once a head has
-    // taken the notice, the operator has been told, so the next occurrence is news and arrives
-    // under its own id. Collapsing only holds while the notice is still waiting to be read.
     const qint64 unread = notices().last().toObject().value(QStringLiteral("id")).toInteger();
     (void) take(qgc_bridge_invoke("host.acknowledge", QStringLiteral("[%1]").arg(unread).toUtf8().constData()));
     repeat();
@@ -2455,28 +2417,17 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     drain();
     QCOMPARE(notices().count(), 0);
 
-    // A head cannot see this channel work without something posting on it, and every real poster
-    // needs a vehicle, an upload or a settings write. This is how a rig makes one arrive.
     QVERIFY2(take(qgc_bridge_invoke("host.postNotice", "[\"navigation\",\"setup\",\"\"]")).value(QStringLiteral("result")).toBool(false),
              "a rig has to be able to post a notice, or a head can only ever test its decoder");
     QCOMPARE(notices().count(), 1);
     QCOMPARE(notices().first().toObject().value(QStringLiteral("kind")).toString(), QStringLiteral("navigation"));
 
-    // A head reads this several ways and every one has to carry the notices rather than their
-    // count alone. A list whose length is right and whose elements are null looks like a queue
-    // with something in it and reads as empty, which is the silence this channel exists to end.
     const auto carriesTheNotice = [](const QJsonArray &listed) {
         return listed.count() == 1 && listed.first().toObject().value(QStringLiteral("title")).toString() == QStringLiteral("setup");
     };
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host.notices")).value(QStringLiteral("value")).toArray()), "reading the property directly lost the notice");
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host")).value(QStringLiteral("notices")).toArray()), "reading the whole object lost the notice");
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get_fields("host", "notices,count,dropped")).value(QStringLiteral("notices")).toArray()), "asking for named fields lost the notice");
-    // The strong version of this check registers a QVariantMap to QGeoCoordinate converter, which
-    // is what QtPositioning's QML plugin does in the running app and what made every map on the
-    // wire serialise as null. It cannot live here: a converter is process-wide and permanent, and
-    // registering one changed how unrelated suites in this binary read their own variants. What is
-    // checkable here is that a map arrives as a map; the condition that broke it belongs to a
-    // process that loads QML.
 
     QVERIFY2(take(qgc_bridge_get("host.notices.0")).value(QStringLiteral("found")).toBool(true) == false,
              "a list property is a leaf and cannot be walked into, and saying so is what tells a head to read the list rather than index it");
@@ -2648,8 +2599,6 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
     }
     restore();
 
-    // The vehicle has nothing left to say, and a skip below would otherwise leave the disconnect to
-    // run inside an already skipped test, where its wait for the vehicle to go never completes.
     _disconnectMockLink();
     stillConnected = false;
 
@@ -2729,8 +2678,6 @@ void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
         return sent;
     };
 
-    // MISSION_ITEM_INT carries latitude and longitude as degrees times ten million, so a coordinate
-    // comes back quantised and a not-a-number becomes a zero. Everything else has to survive exactly.
     const auto carriedIdentically = [](const Sent &sent, const Sent &read) {
         if (sent.sequence != read.sequence || sent.command != read.command || sent.frame != read.frame) {
             return false;
@@ -2985,8 +2932,6 @@ void QGCCoreCTest::_listsRecordedAsEmptyAreCheckedAgainstAVehicle()
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.sensors")).value(QStringLiteral("available")).toBool(false), 10000);
 
-    // A list recorded as empty is a question rather than a shape: it may be a list nothing filled,
-    // or a read that never finds anything. These two are the ones a connected vehicle should fill.
     const QJsonArray channels = take(qgc_core_get("view.radio")).value(QStringLiteral("channels")).toArray();
     const QJsonArray raw = take(qgc_bridge_get("radioCal.rcValues")).value(QStringLiteral("value")).toArray();
     QVERIFY2(channels.count() == raw.count(),
@@ -3097,17 +3042,12 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
     const QJsonObject opened = take(qgc_core_tile_open(databasePath.toUtf8().constData()));
     QVERIFY2(opened.value(QStringLiteral("ok")).toBool(false), qPrintable(QStringLiteral("the Rust cache could not open the database the map engine is using: %1").arg(opened.value(QStringLiteral("reason")).toString())));
 
-    // The worker writes on its own thread, so wait for the row rather than for the file.
     QElapsedTimer waitingForTheTile;
     waitingForTheTile.start();
     while (qgc_core_tile_size(hash.toUtf8().constData()) != drawn.size() && waitingForTheTile.elapsed() < 20000) {
         QTest::qWait(100);
         (void) take(qgc_core_tile_open(databasePath.toUtf8().constData()));
     }
-    // Read the size once. Calling it in the condition and again in the assertion let the two
-    // disagree - the Qt worker is still writing to the same database - so the diagnostic block was
-    // skipped while the assertion failed, which is how this failure produced an empty report every
-    // time it fired.
     const qint64 served = qgc_core_tile_size(hash.toUtf8().constData());
     QString stored;
     if (served != drawn.size()) {
@@ -3136,7 +3076,6 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
     QVERIFY2(served == drawn.size(),
              qPrintable(QStringLiteral("the Rust cache served %1 bytes where Qt wrote %2. What the database holds:\n%3").arg(served).arg(drawn.size()).arg(stored)));
 
-
     QByteArray read(drawn.size(), char(0));
     const qint64 copied = qgc_core_tile_copy(hash.toUtf8().constData(), reinterpret_cast<unsigned char *>(read.data()), read.size());
     QVERIFY2(copied != -3, "the database could not be read, which is a different fact from the tile being absent and used to be reported as one");
@@ -3147,7 +3086,6 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
     QCOMPARE(qgc_core_tile_copy(hash.toUtf8().constData(), reinterpret_cast<unsigned char *>(tooSmall.data()), tooSmall.size()), qint64(-2));
     QCOMPARE(qgc_core_tile_size("0000000000000000000000000000"), qint64(-1));
 
-    // The hash is the whole gate: a key computed differently is a tile downloaded again.
     char *const spelled = qgc_core_tile_hash(qgc_core_tile_provider(type.toUtf8().constData()), x, y, zoom);
     QCOMPARE(QString::fromUtf8(spelled), hash);
     qgc_core_free(spelled);
@@ -3177,10 +3115,6 @@ void QGCCoreCTest::_theMissionSummaryArrivesOnItsOwnAfterAnEdit()
     qgc_bridge_set_event_handler(onEvent);
     qgc_bridge_watch("view.missionSummary");
 
-    // The controller recomputes its totals after the insert returns, so a head that reads once and
-    // stops is a mission behind for as long as it stays stopped. The answer is not for the insert
-    // to block - it runs on the same thread the recompute is queued on - it is that the view says
-    // so when it changes.
     QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5480, -1]")).value(QStringLiteral("ok")).toBool(false), "the waypoint was refused");
     QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.missionSummary")), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(distance() > 100.0, 10000);
@@ -3221,10 +3155,6 @@ void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
     const QByteArray watched = (fires + QLatin1Char(',') + absent).toUtf8();
     qgc_bridge_watch(watched.constData());
 
-    // Terrain heights arrive long after the item count and the dirty flag have settled, so a
-    // profile watched through those alone is drawn once with nothing in it and never redrawn. The
-    // controller already emits when the profile needs redrawing; that it carries no value was the
-    // only reason the watcher could not bind to it.
     const QStringList inserts = {
         QStringLiteral("[\"takeoff\", 47.3960, 8.5440, -1]"),
         QStringLiteral("[\"waypoint\", 47.3990, 8.5480, -1]"),
@@ -3239,11 +3169,6 @@ void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
 
     QVERIFY2(counted(fires) >= inserts.count(), "the controller's redraw signal did not reach a head watching it");
 
-    // A name that matches no signal is not a signal path at all - it falls back to being read as a
-    // property, which is how the head learns the path is wrong. Answering it with a fired counter
-    // instead would defeat the value dedup that keeps unresolvable paths quiet, so a mistyped
-    // signal name would recompute its view on every poll tick while looking like a watch that
-    // works. The tell is in what the event carries, not how often it arrives.
     const QString mistyped = payloadFor(absent);
     QVERIFY2(!mistyped.contains(QStringLiteral("fired")), qPrintable(QStringLiteral("a signal that does not exist reported itself as firing: ") + mistyped));
     QVERIFY2(mistyped.isEmpty() || mistyped.contains(QStringLiteral("false")), qPrintable(QStringLiteral("a path naming no signal and no property answered as though it resolved: ") + mistyped));
@@ -3255,20 +3180,12 @@ void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
 void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
 {
 #ifdef QGC_RUST_CORE
-    // Without a vehicle, every chain through vehicle or the inspector's active system breaks at an
-    // absent object and answers found:false, which is indistinguishable from a misspelling. The
-    // check is only meaningful against a connected vehicle.
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
 
     const QJsonArray views = take(qgc_core_get("view.dependencies")).value(QStringLiteral("views")).toArray();
     QVERIFY2(views.count() > 40, "the core served no dependency list, so this test would pass by finding nothing");
 
-    // A dep that names no property binds to no signal. The watcher then falls back to a re-read
-    // that only runs while the event loop is idle, and the value dedup silences it after the first
-    // miss - so a misspelled dep makes its view quietly stop updating rather than fail anywhere.
-    // found:false is the only thing that separates a name the bridge does not have from a value
-    // that is legitimately absent because nothing is connected.
     QStringList unknown;
     int checked = 0;
     for (const QJsonValue &view : views) {
@@ -3278,10 +3195,6 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
             if (named.contains(QLatin1Char('@'))) {
                 continue;
             }
-            // Which parameters a vehicle has is the vehicle's business: the mode-slot names differ
-            // between firmware families and only one family is ever present, so an unresolved
-            // parameter here is the expected state rather than a misspelling. Everything else has
-            // to resolve.
             if (named.startsWith(QStringLiteral("vehicle.parameterManager.getParameter("))) {
                 continue;
             }
@@ -3319,17 +3232,10 @@ void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
     qgc_bridge_watch("view.modeSlots");
     QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.modeSlots")), 10000);
 
-    // The slot parameters are the whole content of this panel and were read through getParameter,
-    // which no dep named - so changing a mode left the panel showing the old one until something
-    // unrelated happened to fire. Watching the parameter is only worth anything if the watcher can
-    // actually bind to it, which is what this asserts rather than assumes.
     const QJsonArray before = take(qgc_core_get("view.modeSlots")).value(QStringLiteral("slots")).toArray();
     QVERIFY(before.count() >= 2);
     const QString firstMode = before.at(0).toObject().value(QStringLiteral("mode")).toString();
 
-    // ArduCopter names these MODE1..6 and ArduPlane FLTMODE1..6, which is exactly why both
-    // families are in the deps. The test has to ask rather than assume, or it writes to a name
-    // this vehicle does not have and reports the watch broken when it is the write that missed.
     const bool copterNames = take(qgc_bridge_invoke("vehicle.parameterManager.parameterExists", "[-1,\"MODE_CH\"]")).value(QStringLiteral("result")).toBool(false);
     const QString slotName = copterNames ? QStringLiteral("MODE1") : QStringLiteral("FLTMODE1");
     const QByteArray slotPath = QStringLiteral("vehicle.parameterManager.getParameter(-1,%1).rawValue").arg(slotName).toUtf8();
@@ -3344,8 +3250,6 @@ void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
     QVERIFY2(written.value(QStringLiteral("ok")).toBool(false),
              qPrintable(QStringLiteral("%1 would not take a write: %2").arg(slotName, written.value(QStringLiteral("reason")).toString())));
 
-    // Order matters: if the value never changes, the watch has nothing to report and a failure
-    // here would be blamed on the watch. Prove the write landed first, then that it woke anyone.
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.modeSlots")).value(QStringLiteral("slots")).toArray().at(0).toObject().value(QStringLiteral("mode")).toString() != firstMode, 15000);
     QVERIFY2(paths.contains(QStringLiteral("view.modeSlots")),
              qPrintable(QStringLiteral("the slot changed from %1 to %2 and no one watching the panel was told")
@@ -3376,11 +3280,6 @@ void QGCCoreCTest::_replacingAPlanWithOneTheSameLengthStillWakesTheItemList()
     qgc_bridge_watch("view.missionItems");
     QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.missionItems")), 10000);
 
-    // A fly view never edits this plan - it receives one from the vehicle or from a file. Loading
-    // the same file again replaces every item and leaves the count, the current index and
-    // containsItems exactly as they were, so the three property deps cannot see it. Without the
-    // controller's own rebuild signal a head watching this view would sit on the old plan and a
-    // 2Hz poll would be the only thing that noticed.
     paths.clear();
     QVERIFY2(take(qgc_bridge_invoke("plan.loadFromFile", loadArgs.constData())).value(QStringLiteral("result")).toBool(false), "the loader refused the second load");
     QCOMPARE(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count(), held);
@@ -3410,9 +3309,6 @@ void QGCCoreCTest::_changingTheUnitPreferenceRespellsTheTelemetryStrip()
         return items.isEmpty() ? QString() : items.first().toObject().value(QStringLiteral("units")).toString();
     };
 
-    // Fact::units is CONSTANT and its translator is bound once when the metadata is built, so a
-    // strip that reads valueString keeps the units the app started with. This asks the question the
-    // operator asks: change the preference, look at the strip.
     const auto choose = [&](int raw) {
         take(qgc_bridge_set(path.toUtf8().constData(),
                             QJsonDocument(QJsonObject{{QStringLiteral("value"), raw}}).toJson(QJsonDocument::Compact).constData()));
@@ -3442,31 +3338,9 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
         qgc_bridge_watch("");
         qgc_bridge_set_event_handler(nullptr);
     });
-    // Binding happens inside the poll, and the poll returns immediately when no event handler is
-    // set - so without this every dep reads as unbound and the test reports the entire watch
-    // system broken. It did exactly that twice before this line existed.
     paths.clear();
     qgc_bridge_set_event_handler(onEvent);
 
-    // A dep that does not bind is not an error and says so nowhere: it falls through to a re-read
-    // that only runs while the event loop is idle, and no test can tell the two apart because
-    // QTRY spins that loop. Asking the watcher directly is the only way to see it.
-    // Each of these names a list model or a bare object root whose Q_PROPERTY was read and found
-    // to be CONSTANT. Not because list models are CONSTANT - 33 of them in this tree are and 21
-    // are not, visualItems among the latter - but because these six were checked one at a time. That is a recorded decision per entry rather than an
-    // accident, and anything new arriving here has to earn its place:
-    //
-    //   fence polygons, circles, rally points - CONSTANT list models. Replacement is covered by
-    //     plan.geoFenceController@loadComplete; drawing a fence is not, and the only signal that
-    //     would cover it carries an argument, which the watcher does not bind to. Left polled
-    //     deliberately: a watch right for two of three edit shapes is worse than no watch.
-    //   links.linkConfigurations - CONSTANT list model, and link edits are rare enough that a
-    //     200ms re-read costs nothing.
-    //   logDownload.model - CONSTANT list model, but the list arriving is already covered:
-    //     requestingList goes false when the fetch completes and that dep does bind.
-    //   mavlinkInspector.activeSystem.messages - CONSTANT list model, and message arrival is a
-    //     flood. A rate display wants sampling, not an event per packet.
-    //   radioCal, sensorsCal - bare object roots, which name no property at all.
     const QStringList knowinglyPolled = {
         QStringLiteral("plan.geoFenceController.polygons"),
         QStringLiteral("plan.geoFenceController.circles"),
@@ -3488,8 +3362,6 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
         }
     }
 
-    // Watching them all at once and reading the result once avoids racing the queued setPaths
-    // per view, which is what made the first version of this report every dep unbound.
     const QByteArray asked = everyView.join(QLatin1Char(',')).toUtf8();
     qgc_bridge_watch(asked.constData());
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_watch_status()).value(QStringLiteral("paths")).toArray().count() > 80, 10000);
@@ -3529,20 +3401,12 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
         QVERIFY2(qAbs(core - controller) < qMax(1.0, controller * 0.001),
                  qPrintable(QStringLiteral("%1: the core makes it %2 m and the controller %3 m").arg(shape).arg(core).arg(controller)));
 
-        // The furthest point from launch, which the controller measures over a pattern's transect
-        // points rather than its entry corner - so a survey's far side counts and the corner it
-        // starts at does not decide it.
         const double reachQt = summary.value(QStringLiteral("maxTelemetryMetres")).toDouble(-1.0);
         const double reachCore = summary.value(QStringLiteral("maxTelemetryComputedMetres")).toDouble(-1.0);
         QVERIFY2(reachQt > 0.0, qPrintable(QStringLiteral("%1: the controller reported no telemetry reach").arg(shape)));
         QVERIFY2(qAbs(reachCore - reachQt) < qMax(1.0, reachQt * 0.001),
                  qPrintable(QStringLiteral("%1: the core reaches %2 m and the controller %3 m").arg(shape).arg(reachCore).arg(reachQt)));
 
-        // The altitude band the terrain panel draws against. A pattern contributes its own lowest
-        // and highest rather than the height at its entry, so a survey over sloping ground widens
-        // the band and a comparison that only reads entry altitudes would not notice.
-        // How long the mission takes. Not attempted for a VTOL, which answers null rather than a
-        // number that would be right before a transition and wrong after it.
         const double heldSeconds = summary.value(QStringLiteral("durationSeconds")).toDouble(-1.0);
         const QJsonValue computedSeconds = summary.value(QStringLiteral("durationComputedSeconds"));
         QVERIFY2(heldSeconds > 0.0, qPrintable(QStringLiteral("%1: the controller reported no mission time").arg(shape)));
@@ -3570,10 +3434,6 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
                  qPrintable(QStringLiteral("%1 was refused: %2").arg(QString::fromUtf8(args), answered.value(QStringLiteral("reason")).toString())));
     };
 
-    // The arithmetic has rules that are invisible from the answer: the leg is measured from the
-    // previous item's exit rather than its entry, a pattern contributes its own path on top of the
-    // leg into it, the walk does not count a first leg out of the plan's settings entry, and a
-    // landing ends the route so the leg after it is not counted at all.
     insert("[\"takeoff\", 47.3960, 8.5440, -1]");
     insert("[\"waypoint\", 47.3990, 8.5480, -1]");
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
@@ -3588,10 +3448,6 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 1000.0, 20000);
     agree("with a survey in the middle");
 
-    // A region of interest has a position and earns a marker, and the aircraft never flies to it.
-    // A walk that counts every placed item doglegs out to it and back - which is exactly the
-    // defect the macOS head found drawing the route on its map this morning, from the same
-    // conflation between "has a coordinate" and "is on the route".
     const double beforeRoi = take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(-1.0);
     insert("[\"roi\", 47.4100, 8.5600, -1]");
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 6, 20000);
@@ -3603,15 +3459,6 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 7, 20000);
     agree("ending in a landing");
 
-    // A landing that is last cannot distinguish "the leg after it is dropped" from "there is no
-    // leg after it". This is the shape that separates them, and the first rule I wrote - negating
-    // on a land command - walked straight past a return to launch into an item that is uploaded
-    // and never reached. The macOS head found it by building a plan my tests did not.
-    // The shape that exposed the first version of this rule - an item left beyond the end of the
-    // route - cannot be built here. The plan editor refuses to append after a landing, and the
-    // core's own insert refuses to put a landing in front of places the vehicle flies through. It
-    // arises from a return to launch, which nothing here can insert, so the rule is pinned as a
-    // unit test over a hand-built list instead: missionsummary::the_walk_stops_where_the_route_ends.
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
@@ -3625,10 +3472,6 @@ void QGCCoreCTest::_everyClassTheCatalogueNamesIsTheClassTheEditorBuilds()
     const auto leaveNoPlanBehind = qScopeGuard(restore);
     restore();
 
-    // className is a hand-written C++ class name, and a hand-written list of names rots exactly as
-    // silently as the translated ones it replaced: misspell one and by_class matches nothing, the
-    // item falls back to "complex", and it loses its geometry again with nothing failing. Building
-    // one of each and asking what the editor actually made is the only check that cannot drift.
     const QJsonArray kinds = take(qgc_core_get("view.missionKinds")).value(QStringLiteral("kinds")).toArray();
     QVERIFY2(kinds.count() > 3, "the catalogue served nothing, so this would pass by checking none of it");
 
@@ -3640,7 +3483,6 @@ void QGCCoreCTest::_everyClassTheCatalogueNamesIsTheClassTheEditorBuilds()
         }
         const QString id = entry.toObject().value(QStringLiteral("id")).toString();
         restore();
-        // The core refuses a pattern before a takeoff, so each round needs a plan it will accept.
         QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3960, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the takeoff was refused");
         const QByteArray args = QStringLiteral("[\"%1\", 47.3970, 8.5460, -1]").arg(id).toUtf8();
         const QJsonObject answered = take(qgc_core_invoke("mission.insert", args.constData()));
@@ -3668,10 +3510,6 @@ void QGCCoreCTest::_aTakeoffReportedInsertedHasAPlaceOnTheMap()
     const auto leaveNoPlanBehind = qScopeGuard(restore);
     restore();
 
-    // The insert answers ok when the write answers ok, and a write answers ok when setProperty
-    // accepted a value - which is not the same as the item having a position afterwards. The
-    // Android head sees a takeoff reported inserted with no position on it and none on the plan's
-    // own entry either, so the claim of success has to be checked against what the item reads back.
     const QJsonObject answered = take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3960, 8.5440, -1]"));
     QVERIFY2(answered.value(QStringLiteral("ok")).toBool(false),
              qPrintable(QStringLiteral("the takeoff was refused: %1").arg(answered.value(QStringLiteral("reason")).toString())));
@@ -3687,12 +3525,6 @@ void QGCCoreCTest::_aTakeoffReportedInsertedHasAPlaceOnTheMap()
     QVERIFY2(!settings.value(QStringLiteral("coordinate")).isNull(),
              "setLaunchCoordinate places the plan's own entry, so a launch position that landed shows there first, whatever the firmware");
 
-    // Whether the takeoff itself has a place is the firmware's business, not the insert's. This
-    // plan has no vehicle so it uses the PX4 default, where MAV_CMD_NAV_TAKEOFF specifies a
-    // coordinate. On ArduPilot the same command is declared specifiesCoordinate false and
-    // specifiesAltitudeOnly true, and an item with no place is then the correct answer - QGC's own
-    // plan view draws no takeoff pin there either. So the view is asked to agree with itself
-    // rather than to produce a position.
     const bool hasPlace = !takeoff.value(QStringLiteral("coordinate")).isNull();
     QCOMPARE(takeoff.value(QStringLiteral("movable")).toBool(!hasPlace), hasPlace);
     QVERIFY2(hasPlace != takeoff.value(QStringLiteral("altitudeOnly")).toBool(false),
@@ -3710,21 +3542,16 @@ void QGCCoreCTest::_theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge(
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto leaveNoPlanBehind = qScopeGuard([]() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); });
 
-    // Four Q_PROPERTYs added so the core can reach things it previously could not. A property that
-    // compiles and does not resolve through the bridge is the shape that has cost most today, so
-    // each is read here rather than assumed - found:false is the answer that means a wrong name.
     const auto reads = [](const char *path) {
         const QJsonObject answer = take(qgc_bridge_get(path));
         QVERIFY2(answer.value(QStringLiteral("found")).toBool(true),
                  qPrintable(QStringLiteral("%1 does not resolve, so the core cannot read what was added for it").arg(QString::fromUtf8(path))));
     };
 
-    // The vehicle's own current mission item, which needed the manager to be traversable as well.
     reads("vehicle.missionManager.currentIndex");
     QVERIFY2(take(qgc_bridge_get("vehicle.missionManager.currentIndex")).value(QStringLiteral("value")).toInt(-99) >= -1,
              "the index reads as a number rather than as an absent property");
 
-    // The custom mode behind each flight mode name, which is the locale-stable identity.
     const QJsonArray named = take(qgc_bridge_get("vehicle.flightModes")).value(QStringLiteral("value")).toArray();
     const QJsonArray ids = take(qgc_bridge_get("vehicle.flightModeIds")).value(QStringLiteral("value")).toArray();
     QVERIFY2(named.count() > 3, "this vehicle offers no flight modes, so the pairing proves nothing");
@@ -3732,9 +3559,6 @@ void QGCCoreCTest::_theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge(
     QVERIFY2(std::any_of(ids.cbegin(), ids.cend(), [](const QJsonValue &id) { return id.toInt(-1) > 0; }),
              "every mode id came back zero, which is what an unmatched name list looks like");
 
-    // The per-item delay that mission time cannot be computed without. Read on the entry the plan
-    // always has rather than one this test inserts - with a vehicle connected the plan may already
-    // hold a downloaded mission and refuse a takeoff, which says nothing about the property.
     reads("plan.missionController.visualItems.0.additionalTimeDelay");
 #else
     QSKIP("the Rust core is not linked into this build");
@@ -3852,9 +3676,6 @@ void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
         const QJsonArray fields = editing.value(QStringLiteral("fields")).toArray();
         const QJsonArray everyItem = take(qgc_core_get("view.missionItems(fields)")).value(QStringLiteral("items")).toArray();
         if (kind == QStringLiteral("survey") || kind == QStringLiteral("corridor")) {
-            // A pattern's transects are computed after the insert returns, so they are empty on the
-            // read that follows it. Same late arrival as the terrain heights and the shot count: a
-            // head that reads once draws a boundary with nothing inside it.
             const auto lastShaped = []() {
                 const QJsonArray shaped = take(qgc_core_get("view.missionItems(geometry)")).value(QStringLiteral("items")).toArray();
                 return shaped.isEmpty() ? QJsonObject() : shaped.last().toObject();
@@ -3931,9 +3752,6 @@ void QGCCoreCTest::_theFleetIsNamedAndTheCommandedOneCanBeChosen()
     const QJsonObject chosen = take(qgc_core_invoke("vehicles.setActive", QStringLiteral("[%1]").arg(id).toUtf8().constData()));
     QVERIFY2(chosen.value(QStringLiteral("ok")).toBool(false),
              qPrintable(QStringLiteral("choosing the one connected vehicle failed: %1").arg(chosen.value(QStringLiteral("reason")).toString())));
-    // The answer names what was asked for, not what is true yet: setActiveVehicle defers the
-    // change through a 20ms singleShot, so the core cannot confirm it without waiting and does not
-    // pretend to. A head learns it happened from view.vehicles, which is watched.
     QCOMPARE(chosen.value(QStringLiteral("activating")).toInt(-1), id);
     QVERIFY2(chosen.value(QStringLiteral("active")).isUndefined(), "the answer must not claim the vehicle is already the active one");
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), id, 5000);
@@ -3964,8 +3782,6 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
 
     QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3975, 8.5460, -1]")).value(QStringLiteral("ok")).toBool(false), "the survey was refused");
 
-    // A survey covering ground between its entry and its exit has to appear on the profile as the
-    // path it flies, not as the corner it starts at, or the operator reads level ground under it.
     QTRY_VERIFY_WITH_TIMEOUT(profilePoints() > withoutSurvey + 1, 20000);
 
     const QJsonArray points = take(qgc_core_get("view.terrainProfile")).value(QStringLiteral("points")).toArray();
@@ -3978,16 +3794,10 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
         distances.append(point.toObject().value(QStringLiteral("distance")).toDouble());
     }
 
-    // The core sorts the profile before serving it, so asserting the result is sorted asserts
-    // nothing. What the sampling can actually get wrong is stacking every sample of a pattern on
-    // one x, which is what reading a sample spacing as a segment length did - the points were all
-    // present, in order, and on top of each other.
     QHash<double, int> atDistance;
     for (const double distance : distances) {
         atDistance[distance]++;
     }
-    // Consecutive segments share an endpoint, so two points on one x is the boundary between them.
-    // More than two is samples piling up somewhere they were never flown.
     int worst = 0;
     double crowded = 0.0;
     for (auto entry = atDistance.cbegin(); entry != atDistance.cend(); ++entry) {
@@ -4000,9 +3810,6 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
              qPrintable(QStringLiteral("%1 of the %2 profile points sit at %3 m, so a stretch of the pattern is stacked on one distance rather than walked")
                             .arg(worst).arg(distances.count()).arg(crowded)));
 
-    // The x-axis has to span the mission the summary is describing. A profile that samples inside
-    // the pattern but stops the axis at the pattern's entry squashes the whole chart into the
-    // direct legs, and every altitude on it is drawn against the wrong ground.
     const double axis = take(qgc_core_get("view.terrainProfile")).value(QStringLiteral("totalDistanceMeters")).toDouble();
     const double flown = take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble();
     QVERIFY2(flown > 0.0, "the summary reported no distance for a plan with a survey in it");

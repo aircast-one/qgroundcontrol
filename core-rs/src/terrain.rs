@@ -41,8 +41,6 @@ pub fn profile(points: Vec<Point>) -> Profile {
     Profile { points, min_altitude: low - padding, max_altitude: high + padding, total_distance, unknown_terrain, min_clearance }
 }
 
-// Counting unknown points is not the same rule: an empty profile has none, so it reads complete
-// while carrying no figure at all. Completeness is a claim about a number, so there has to be one.
 pub fn clearance_complete(profile: &Profile) -> bool {
     profile.min_clearance.is_some() && profile.unknown_terrain == 0
 }
@@ -85,13 +83,6 @@ pub fn points(model: &Value) -> Vec<Point> {
         .unwrap_or_default()
 }
 
-// A pattern is one point on the profile unless its own path is walked. A survey covering a
-// kilometre of ground between its entry and its exit draws as a flat line across the hill it is
-// flying over, and the operator reads no collision because nothing sampled the middle.
-//
-// The length of a segment is totalDistance. distanceBetween is the spacing between terrain
-// samples along it, and it is zero until a terrain query answers - reading it as the length
-// collapses the whole pattern onto its entry point wherever terrain is unknown.
 pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start: f64) -> Vec<Point> {
     let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision"));
     let Some(listed) = segments.get("elements").and_then(Value::as_array) else { return Vec::new() };
@@ -131,10 +122,6 @@ pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start:
         .collect()
 }
 
-// TerrainTileManager::_pathQueryToCoords interpolates evenly spaced coordinates along the segment
-// and then overwrites the last one with the endpoint, so the samples sit at i * distanceBetween
-// and the final one at the segment's full length. Spreading them evenly across the length instead
-// shears every reading towards the end, which is where a landing approach reads its clearance.
 fn sample_at(step: usize, steps: usize, length: f64, spacing: f64) -> f64 {
     match (step + 1 == steps, spacing > 0.0) {
         (true, _) => length,
@@ -226,17 +213,10 @@ mod tests {
         assert_eq!(complete.unknown_terrain, 0);
         assert_eq!(complete.min_clearance, Some(10.0));
 
-        // The smallest clearance measured is not the smallest there is when part of the route has
-        // no ground under it, and a reassuring figure there is worse than none. Every head would
-        // otherwise have to rediscover that from unknownTerrain, and one of them would not.
         let partial = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 700.0, None), point(200.0, 700.0, Some(690.0))]);
         assert_eq!(partial.min_clearance, Some(10.0), "the samples that do have ground still measure, so the number is a bound rather than nothing");
         assert_eq!(partial.unknown_terrain, 1);
 
-        // Counting unknown points calls an empty profile complete, because there are no points to
-        // be unknown about. There is no figure, so there is nothing for completeness to be true of,
-        // and a head that reads "complete" and finds no number renders whatever its empty branch
-        // does - which for the macOS panel was the wording for a collision.
         assert_eq!(clearance_complete(&complete), true);
         assert_eq!(clearance_complete(&partial), false);
 
@@ -331,8 +311,6 @@ mod walking {
 
     #[test]
     fn a_route_that_flies_into_the_ground_says_so_and_one_that_does_not_says_that() {
-        // hasCollision is the one field on this view an operator is expected to act on, and
-        // nothing asserted it in either direction: pinning it to true and to false both passed.
         let hits = terrain_view(&Route(json!({ "kind": "object", "elements": [leg(0.0, 700.0, 600.0, false), leg(100.0, 500.0, 650.0, true)] })), &[]);
         assert_eq!(hits["hasCollision"], true);
         assert_eq!(hits["minClearanceMetres"], -150.0, "the depth comes from the samples, not from the flag, so the two can disagree and this says they do not");
@@ -348,11 +326,6 @@ mod walking {
 
     #[test]
     fn a_complete_clearance_always_carries_a_figure_to_state() {
-        // A head asked whether clearanceComplete can ever be true with clearanceText empty,
-        // because its sentence falls back to the collision wording when there is no magnitude -
-        // so a complete clearance with no figure would call a mission that clears it underground.
-        // It cannot: completeness requires a measured clearance, and every measured clearance
-        // formats to a number and a unit. Pinned so it stays a contract rather than a coincidence.
         let cases = vec![
             vec![leg(0.0, 700.0, 600.0, false), leg(100.0, 700.0, 690.0, false)],
             vec![leg(0.0, 700.0, 700.04, false), leg(100.0, 700.0, 700.0, false)],

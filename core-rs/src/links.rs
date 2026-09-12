@@ -53,8 +53,6 @@ pub fn link_json(index: usize, element: &Value) -> Value {
         ("logReplay", _, true) => "No log chosen".to_string(),
         _ => summary.clone(),
     };
-    // Binding a UDP socket cannot fail, so an open link says nothing about whether anything is
-    // on the other end. Only a decoded MAVLink packet does, which is what heardVehicle carries.
     let heard = flag("heardVehicle");
     let state = match (connected, heard) {
         (false, _) => "Not connected",
