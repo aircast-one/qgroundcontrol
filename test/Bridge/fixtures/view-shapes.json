@@ -6761,7 +6761,7 @@
         ],
         "headline": "string",
         "kind": "string",
-        "ready": "bool"
+        "ready": "bool|null"
     },
     "view.setup(Safety)": {
         "available": "bool",

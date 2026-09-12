@@ -119,12 +119,12 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
 // took this list as its own found itself opening a page it had never built. What the core knows
 // is whether it can describe the page as parameters, which is parameterSections.
 
-pub fn readiness(connected: bool, components: &[(String, bool)], sensor_faults: &[String]) -> (bool, String, String) {
+pub fn readiness(connected: bool, components: &[(String, bool)], sensor_faults: &[String]) -> (Option<bool>, String, String) {
     let outstanding: Vec<&str> = components.iter().filter(|(_, needs)| *needs).map(|(n, _)| n.as_str()).collect();
     if !connected {
-        return (false, "No vehicle connected".into(), "Connect a vehicle to check what it needs.".into());
+        return (None, "No vehicle connected".into(), "Connect a vehicle to check what it needs.".into());
     }
-    let ready = outstanding.is_empty() && sensor_faults.is_empty() && !components.is_empty();
+    let ready = Some(outstanding.is_empty() && sensor_faults.is_empty() && !components.is_empty());
     let headline = match (outstanding.len(), sensor_faults.len(), components.is_empty()) {
         (1, _, _) => "1 component needs setup".to_string(),
         (n, _, _) if n > 1 => format!("{n} components need setup"),
@@ -281,9 +281,11 @@ mod tests {
 
     #[test]
     fn readiness_reads_like_the_summary_page() {
+        assert_eq!(readiness(false, &[], &[]).0, None, "no vehicle is no verdict; the same false that means \"checked and not ready\" drew an amber Check pill beside an instruction to connect one, an imperative verb with nothing behind it");
         assert_eq!(readiness(false, &[], &[]).1, "No vehicle connected");
+        assert_eq!(readiness(true, &[], &[]).0, Some(false), "a connected vehicle reporting no components has been checked and is not ready, which is a different answer from having nothing to check");
         let ok = readiness(true, &[("Sensors".into(), false)], &[]);
-        assert_eq!(ok, (true, "Ready to fly".into(), "Setup complete and all enabled sensors are healthy.".into()));
+        assert_eq!(ok, (Some(true), "Ready to fly".into(), "Setup complete and all enabled sensors are healthy.".into()));
         let two = readiness(true, &[("Sensors".into(), true), ("Radio".into(), true)], &[]);
         assert_eq!(two.1, "2 components need setup");
         assert_eq!(two.2, "Sensors, Radio");
