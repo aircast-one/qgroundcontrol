@@ -4413,11 +4413,11 @@ func checkAltitudeModePickerIsOffered() {
 }
 
 func checkAltitudeReading() {
-    func item(_ kind: String, specifies: Bool, text: String) -> MissionItem {
+    func item(_ kind: String, specifies: Bool, text: String, band: String = "") -> MissionItem {
         MissionItem(view: ["index": 0 as NSNumber, "sequence": 0 as NSNumber,
                            "name": kind, "kind": kind,
                            "specifiesAltitude": specifies as NSNumber,
-                           "altitudeText": text], selected: -1)
+                           "altitudeText": text, "altitudeBandText": band], selected: -1)
     }
 
     expect(item("waypoint", specifies: true, text: "75.0 m").altitudeReading, "75.0 m",
@@ -4429,6 +4429,21 @@ func checkAltitudeReading() {
            MissionItem.noAltitude,
            "a DO_ command has no altitude, so the zero in its unused parameter slot is not one -- "
            + "it was drawn as 0.0 m, a plausible height for an item that has none")
+    expect(item("survey", specifies: false, text: "", band: "585 m to 660 m").altitudeReading,
+           "585 m to 660 m",
+           "a survey flies a band rather than one height, so specifiesAltitude is absent on it "
+           + "and its row read an em dash while the core had the band all along")
+    expect(item("survey", specifies: false, text: "", band: "585 m").altitudeReading, "585 m",
+           "and a pattern over level ground spans nothing, which the core spells as one figure "
+           + "rather than as \u{201C}585 m to 585 m\u{201D}")
+    expect(item("settings", specifies: false, text: "487 m", band: "0.0 m").altitudeReading,
+           "487 m",
+           "but the mission start entry carries a band of its own -- QGC declares the property "
+           + "on every complex item and its launch altitude is min and max both -- so reading "
+           + "the band first would have replaced a real launch height with 0.0 m")
+    expect(item("command", specifies: false, text: "0.0 m", band: "").altitudeReading,
+           MissionItem.noAltitude,
+           "and an item with neither still reads no altitude")
 }
 
 func checkRefusedModesSayWhy() {

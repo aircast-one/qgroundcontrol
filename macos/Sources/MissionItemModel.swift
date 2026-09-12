@@ -18,6 +18,7 @@ struct MissionItem: Identifiable, Equatable {
     let altitudeUnits: String
 
     let altitudeText: String
+    let altitudeBandText: String
 
     let azimuthText: String
     let distanceText: String
@@ -42,9 +43,8 @@ struct MissionItem: Identifiable, Equatable {
     var canMove: Bool { movable }
 
     var altitudeReading: String {
-        specifiesAltitude || kind == MissionItem.settingsKind
-            ? altitudeText
-            : MissionItem.noAltitude
+        if specifiesAltitude || kind == MissionItem.settingsKind { return altitudeText }
+        return altitudeBandText.isEmpty ? MissionItem.noAltitude : altitudeBandText
     }
 
     var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
@@ -112,6 +112,7 @@ struct MissionItem: Identifiable, Equatable {
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.metres.units
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
+        altitudeBandText = (json["altitudeBandText"] as? String) ?? ""
 
         azimuthText = (json["azimuthText"] as? String) ?? MissionItem.noAltitude
         distanceText = (json["distanceText"] as? String) ?? MissionItem.noAltitude
