@@ -593,6 +593,37 @@ convention — and it now takes `int`, the same type everywhere QGC builds. QML 
 same way, so the QML *Set Rate* combo was plausibly broken too; not tested, and worth checking before
 the QML is deleted on the assumption it worked.
 
+### The flight gate's other half passes at 212 items, 2026-09-13
+
+The Phase 4 gate is "212 items uploaded, flown, downloaded byte-identical", and
+it has been recorded as blocked on hardware. Only the *flown* part is. The fake
+speaks the whole mission protocol - MISSION_COUNT, MISSION_ITEM_INT,
+MISSION_REQUEST_LIST, and it stores what it is given - so the round trip is
+testable on the bench and had never been run.
+
+Driven on the OnePlus 6 against `big-212.plan`, already sitting in the handset's
+Download folder from an earlier session:
+
+- Opened: **212 items (takeoff) - 9.87 km - 33:14**
+- Uploaded: the fake logs `UPLOAD done type=0 items=213`, 212 plan items plus
+  the home position at sequence 0, and the dirty marker clears
+- Cleared to "Empty plan", so the download had to rebuild it
+- Downloaded: `DOWNLOAD start type=0 count=213`, and the plan comes back as
+  **212 items - 9.87 km - 33:14**, the same distance and duration to the digit
+- `view.missionItems` serves 213 entries, sequence 0 "Mission Start" through
+  sequence 212 "Land"
+
+Fence and rally downloaded as `count=0` beside it, which is correct for a plan
+that carries neither.
+
+**What this is not.** Byte-identical file comparison was not done: the Save-as
+picker did not give up its filename field and I stopped rather than spend the
+tick on it. Distance, duration, count and the first and last item all surviving
+a clear is strong evidence the parse round-trips, and it is not the same claim.
+
+So the gate is one thing, not three: everything except putting it in the air has
+been shown at full size.
+
 ### An enum value off its own list is matched by an English prefix, 2026-09-13
 
 Swept this head for the defect a peer has been clearing in the core tonight -
