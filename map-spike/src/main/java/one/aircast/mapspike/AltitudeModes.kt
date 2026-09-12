@@ -4,6 +4,7 @@ import org.json.JSONObject
 
 const val MISSION_CONTEXT = "mission"
 const val ALT_MODE_MIXED = 0
+const val FRAME_UNKNOWN = "Frame"
 
 data class AltitudeModeOffer(
     val raw: Int,

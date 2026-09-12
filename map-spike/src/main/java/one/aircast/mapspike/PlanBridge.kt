@@ -179,9 +179,6 @@ object PlanBridge {
     fun rawItems(): JSONObject? =
         runCatching { JSONObject(QGCBridge.get(PLAN_VIEW)) }.getOrNull()
 
-    fun readView(path: String): JSONObject? =
-        runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull()
-
     fun loadFromVehicle() = invokeOk("$PLAN_ROOT.loadFromVehicle")
 
     fun clearPlan() = invokeOk("$PLAN_ROOT.removeAll")
