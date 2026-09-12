@@ -202,7 +202,7 @@ let vibrationJson: [String: Any] = [
          "fraction": 0.3888 as NSNumber, "severity": "warning"],
     ],
 ]
-let vibration = VibrationReading(vibrationJson)
+let vibration = VibrationReading(vibrationJson, connected: true)
 expect(vibration.axes.count == 3, "each axis the core reports is carried across")
 expect(vibration.axes.map(\.label).joined(separator: ","), "X,Y,Z",
        "with the core's display label, so no head upper-cases an axis name itself")
@@ -212,17 +212,27 @@ expect(vibration.axes[1].severity == .danger, "each bar takes its own colour fro
 expect(vibration.dangerLevel == 60 && vibration.warningLevel == 30 && vibration.scaleMaximum == 90,
        "the thresholds the bars and the scale are drawn against come from the core, which is "
        + "where ArduPilot and PX4's flight guidance now lives rather than in two heads")
+expect(VibrationReading([:], connected: false).emptyText,
+       "Connect a vehicle to see its vibration.",
+       "with nothing connected there is no vehicle to be silent, and the page said \u{201C}This "
+       + "vehicle is not reporting vibration\u{201D} -- asserting an aircraft that is not there, "
+       + "the same shape as the readiness pill in 7b015c270")
+expect(VibrationReading([:], connected: true).emptyText,
+       "This vehicle is not reporting vibration.",
+       "and a vehicle that is present and silent still reads as one, which is a measurement "
+       + "rather than a regime that does not apply")
 expect(vibration.clipping,
        "the core decides whether the accelerometer clipped and this head carries the answer; it "
        + "derives nothing from clipCounts, which is why the two are set independently above")
 expect(VibrationReading(["available": true as NSNumber,
-                         "clipCounts": [0 as NSNumber, 2 as NSNumber, 0 as NSNumber]]).clipping
+                         "clipCounts": [0 as NSNumber, 2 as NSNumber, 0 as NSNumber]],
+                        connected: true).clipping
        == false,
        "so counts without the flag read as no clipping. That default is permissive and only the "
        + "required-keys row for view.vibration keeps it unreachable; the decode does not")
 
 let quiet = VibrationReading(["available": false as NSNumber,
-                              "axes": [["axis": "x", "label": "X"]]])
+                              "axes": [["axis": "x", "label": "X"]]], connected: true)
 expect(quiet.worst == nil,
        "a vehicle reporting no level has no worst level, which is not the same as normal")
 expect(quiet.axes[0].value == nil && quiet.axes[0].severity == nil,

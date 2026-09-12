@@ -21,12 +21,15 @@ final class VibrationStore: ObservableObject, Probeable {
     }
 
     func refresh() {
-        let read = VibrationReading(Bridge.group("view.vibration"))
+        let live = (Bridge.group("vehicles.activeVehicleAvailable")["value"] as? NSNumber)?
+            .boolValue ?? false
+        let read = VibrationReading(Bridge.group("view.vibration"), connected: live)
         if read != reading { reading = read }
     }
 
     func probeState() -> [String: Any] {
-        ["available": reading.available, "units": reading.units,
+        ["available": reading.available, "connected": reading.connected,
+         "empty": reading.emptyText, "units": reading.units,
          "axes": reading.axes.map { ["axis": $0.axis, "label": $0.label,
                                      "value": $0.value ?? -1,
                                      "severity": $0.severity.map { String(describing: $0) } ?? ""] },

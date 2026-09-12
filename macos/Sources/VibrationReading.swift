@@ -37,6 +37,7 @@ struct VibrationReading: Equatable {
     }
 
     let available: Bool
+    let connected: Bool
     let units: String
     let scaleMaximum: Double
     let warningLevel: Double
@@ -48,8 +49,15 @@ struct VibrationReading: Equatable {
 
     static let unavailable = VibrationReading()
 
+    var emptyText: String {
+        connected
+            ? "This vehicle is not reporting vibration."
+            : "Connect a vehicle to see its vibration."
+    }
+
     private init() {
         available = false
+        connected = false
         units = ""
         scaleMaximum = 90
         warningLevel = 30
@@ -60,8 +68,9 @@ struct VibrationReading: Equatable {
         clipping = false
     }
 
-    init(_ json: [String: Any]) {
+    init(_ json: [String: Any], connected: Bool) {
         available = (json["available"] as? NSNumber)?.boolValue ?? false
+        self.connected = connected
         units = (json["units"] as? String) ?? ""
         scaleMaximum = (json["scaleMaximum"] as? NSNumber)?.doubleValue ?? 90
         warningLevel = (json["warningLevel"] as? NSNumber)?.doubleValue ?? 30

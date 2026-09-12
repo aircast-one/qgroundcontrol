@@ -121,7 +121,7 @@ struct VibrationView: View {
                         .padding(.top, Overlay.unit * 0.35)
                 }
             } else {
-                GroupCard { EmptyStateRow(text: "This vehicle is not reporting vibration.") }
+                GroupCard { EmptyStateRow(text: store.reading.emptyText) }
             }
         }
         .onAppear(perform: store.start)
