@@ -593,6 +593,34 @@ convention — and it now takes `int`, the same type everywhere QGC builds. QML 
 same way, so the QML *Set Rate* combo was plausibly broken too; not tested, and worth checking before
 the QML is deleted on the assumption it worked.
 
+### An enum value off its own list is matched by an English prefix, 2026-09-13
+
+Swept this head for the defect a peer has been clearing in the core tonight -
+keying on a string QGC translates - after their stable component identity showed
+my setup dispatch had it. One instance left, and it is not only mine.
+
+`Fact::unknownEnumLabel()` is `tr("Unknown: %1")`, synthesised when a fact's
+value is not among its declared ones. Two consumers match that English prefix:
+
+- `core-rs/src/control.rs:41` filters it out of the options a picker offers.
+- `Qgc.kt:41` derives `valueIsOffTheEnumList` from it, and
+  `SettingsScreen.kt:225` uses that to choose between a picker and a raw field.
+
+In any other language neither test fires. The core offers the synthetic entry as
+a selectable option, and this head puts a picker on a value that is not in the
+list, so an operator can "choose" a placeholder.
+
+**Not fixed, deliberately.** `Fact.cc` is dirty in the working tree: a peer has
+`unknownEnumLabel` and a comment there saying the label is "served rather than
+matched" precisely so consumers stop guessing at the prefix. The property is
+already in the bridge allowlist, but the implementation is uncommitted, so it
+reads as null in the library I am running - a silent null, not a real answer.
+Keying on it now would ship a check that never fires and looks correct.
+
+Two reasons to leave it: editing `control.rs` would collide with work in flight,
+and the head should read the answer rather than derive it once the core serves
+one. Worth picking up after their change lands.
+
 ### Twelve views macOS reads that this head does not, 2026-09-13
 
 `view.modeSlots` turned up by accident - chasing an empty list in the contract -
