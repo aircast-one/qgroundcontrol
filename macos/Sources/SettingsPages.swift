@@ -71,7 +71,6 @@ struct SettingsControl: Identifiable, Equatable {
     let restartNotices: [String]
     let options: [ControlOption]
     let bits: [ControlBit]
-    let decimalPlaces: Int
     let minimum: Double?
     let maximum: Double?
 
@@ -117,7 +116,6 @@ struct SettingsControl: Identifiable, Equatable {
         restartNotices = ((json["restartNotices"] as? [Any]) ?? []).compactMap { $0 as? String }
         options = ((json["options"] as? [Any]) ?? []).compactMap(ControlOption.init)
         bits = ((json["bits"] as? [Any]) ?? []).compactMap(ControlBit.init)
-        decimalPlaces = (json["decimalPlaces"] as? NSNumber)?.intValue ?? 0
         minimum = (json["minimum"] as? NSNumber)?.doubleValue
         maximum = (json["maximum"] as? NSNumber)?.doubleValue
     }

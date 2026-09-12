@@ -7,7 +7,6 @@ struct CameraControl: Equatable {
     let present: Bool
     let title: String
     let model: String
-    let vendor: String
     let mode: Int
     let modeKnown: Bool
     let modeText: String
@@ -15,11 +14,8 @@ struct CameraControl: Equatable {
     let isTakingPhoto: Bool
     let stateText: String
     let clockText: String
-    let storageStatus: Int
     let storageText: String
-    let shots: Int
     let shotsText: String
-    let batteryRemaining: Int
     let batteryText: String
     let hasZoom: Bool
     let zoomLevel: Double
@@ -36,7 +32,6 @@ struct CameraControl: Equatable {
         present = false
         title = ""
         model = ""
-        vendor = ""
         mode = -1
         modeKnown = false
         modeText = ""
@@ -44,11 +39,8 @@ struct CameraControl: Equatable {
         isTakingPhoto = false
         stateText = ""
         clockText = ""
-        storageStatus = 0
         storageText = ""
-        shots = 0
         shotsText = ""
-        batteryRemaining = -1
         batteryText = ""
         hasZoom = false
         zoomLevel = 1
@@ -67,7 +59,6 @@ struct CameraControl: Equatable {
         present = flag("present")
         title = text("title")
         model = text("model")
-        vendor = text("vendor")
         mode = number("mode", -1)
         modeKnown = flag("modeKnown")
         modeText = text("modeText")
@@ -75,11 +66,8 @@ struct CameraControl: Equatable {
         isTakingPhoto = flag("isTakingPhoto")
         stateText = text("stateText")
         clockText = text("clockText")
-        storageStatus = number("storageStatus", 0)
         storageText = text("storageText")
-        shots = number("shots", 0)
         shotsText = text("shotsText")
-        batteryRemaining = number("batteryRemaining", -1)
         batteryText = text("batteryText")
         hasZoom = flag("hasZoom")
         zoomLevel = (json["zoomLevel"] as? NSNumber)?.doubleValue ?? 1

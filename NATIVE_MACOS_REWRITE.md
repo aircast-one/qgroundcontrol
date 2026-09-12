@@ -3894,3 +3894,33 @@ The other nine are recorded as a lead list to be worked by hand, not as a result
 `json[...]` assignment when the real form was `flag("streamSource")`, so the property went
 and its assignment stayed. **`cmake` exit 1 is what said so** — the third time this session
 that reading an exit code rather than assuming one was the whole difference.
+
+### (ii) Nine leads hand-checked: five dead, four the sweep got wrong — and why it cannot be fixed
+
+Every one grepped individually, because **the sweep's silence means nothing**.
+
+**FIVE were genuinely dead, all only ever assigned:** `CameraControl.vendor`,
+`storageStatus`, `shots` and `batteryRemaining` — **a camera card decoding four fields and
+drawing none of them** — plus `SettingsControl.decimalPlaces`, which had no mention
+anywhere outside its own declaration and decode. Removed, each by its exact three lines
+rather than a pattern, because **the deletion regex already fooled me once.**
+
+**FOUR were the sweep being wrong, and they share ONE cause.** `shapeNoun`,
+`adjustInvokable`, `removeInvokable` and `VehicleMessage.component` are all used **inside
+Swift string interpolation** — `"\(kind.shapeNoun)"`, `"\(polygon.adjustInvokable)"`,
+`"\(component.map(String.init) ?? "")"`. **My per-file string stripping erased exactly
+those uses.**
+
+**That is the definitive reason this cannot be a text predicate, and it is a vice, not a
+bug.** Strip strings and you lose interpolated uses, which are real code. Keep them and
+every decoded field gets a phantom use from its own JSON key, because the key is spelled
+like the property. **The two failure modes are in direct tension: there is no setting of
+that switch that is right for both.** The sweep stays a lead generator.
+
+**The live re-measure of the core's two fixes is DEFERRED, not done.** `fb3de8c29` renamed
+`closed` to `hasEnoughVertices` and `034362580` gave the bare refusal its sentence, both
+after my readings. The relaunch timed out; `/tmp/qgc-app.log` shows the debug API **did**
+start, and the process is now gone with the port free — consistent with a peer's
+`build-run.sh` `pkill` during their cycle, which is a known hazard in this tree. **Two
+sources disagreed and I checked both rather than believing the runner's summary.** No
+exposure either way: this head reads neither key.
