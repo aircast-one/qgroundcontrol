@@ -1240,10 +1240,10 @@ const char *const kViewPaths[] = {
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.links", "view.linkForm(udp,,14550)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
-    "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon", "view.setup",
+    "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
     "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
-    "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(1)",
+    "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(4)",
 };
 
 } // namespace
@@ -1291,6 +1291,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         recorded.insert(key, mergeShapes(offline.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", "{\"value\":1}"));
     const auto corner = [](double latitude, double longitude) { return QJsonObject { { QStringLiteral("latitude"), latitude }, { QStringLiteral("longitude"), longitude }, { QStringLiteral("altitude"), 0.0 } }; };
     const QByteArray box = QJsonDocument(QJsonArray { corner(47.398, 8.545), corner(47.396, 8.548) }).toJson(QJsonDocument::Compact);
     (void) take(qgc_bridge_invoke("plan.rallyPointController.addPoint", QJsonDocument(QJsonArray { corner(47.397, 8.546) }).toJson(QJsonDocument::Compact).constData()));
@@ -1298,6 +1299,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     (void) take(qgc_bridge_invoke("plan.geoFenceController.addInclusionCircle", box.constData()));
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.397, 8.546), 1, true }).toJson(QJsonDocument::Compact).constData()));
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.3975, 8.5465), 2, true }).toJson(QJsonDocument::Compact).constData()));
+    (void) take(qgc_bridge_invoke("plan.missionController.insertLandItem", QJsonDocument(QJsonArray { corner(47.3985, 8.5475), -1, true }).toJson(QJsonDocument::Compact).constData()));
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("rallyPoints")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("circles")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("polygons")).toArray().count() == 1, 5000);
@@ -1319,6 +1321,18 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         const QString key = QString::fromUtf8(path);
         recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
+    (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", "{\"value\":2}"));
+
+    for (auto it = recorded.begin(); it != recorded.end(); ++it) {
+        if (!it.key().startsWith(QStringLiteral("view."))) {
+            continue;
+        }
+        const QJsonObject shape = it.value().toObject();
+        const bool bareRefusal = shape.contains(QStringLiteral("reason")) && shape.size() == 2;
+        const QString why = bareRefusal ? take(qgc_bridge_get(it.key().toUtf8().constData())).value(QStringLiteral("reason")).toString() : QString();
+        QVERIFY2(!bareRefusal, qPrintable(QStringLiteral("%1 recorded nothing but a refusal, so every field a head reads from it is pinned by this fixture in name only - an argument-taking view called with an argument that does not resolve records a valid-looking shape and nothing appears wrong. It answered: %2").arg(it.key(), why)));
+    }
+
     (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
     const int recorder = recorderIndex();
     if (recorder >= 0) {
