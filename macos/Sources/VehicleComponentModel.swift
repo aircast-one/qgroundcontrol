@@ -4,6 +4,8 @@ struct VehicleComponentInfo: Identifiable, Equatable {
     let name: String
     let className: String
     let needsAttention: Bool
+    let openable: Bool
+    let blockedReason: String?
 
     var id: String { className.isEmpty ? name : className }
 
@@ -17,6 +19,20 @@ struct VehicleComponentInfo: Identifiable, Equatable {
         self.name = name
         className = (json["className"] as? String) ?? ""
         needsAttention = (json["needsAttention"] as? NSNumber)?.boolValue ?? false
+        openable = (json["openable"] as? NSNumber)?.boolValue ?? true
+        blockedReason = (json["blockedReason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    static let blockedWithoutReason = "Disabled"
+
+    var blockedSentence: String? {
+        guard !openable else { return nil }
+        guard let blockedReason else { return VehicleComponentInfo.blockedWithoutReason }
+        return "Disabled while the vehicle is \(blockedReason)"
+    }
+
+    static func blockedSentence(for page: String, in listed: [VehicleComponentInfo]) -> String? {
+        listed.first { $0.name == page }?.blockedSentence
     }
 
     static func list(_ json: Any?) -> [VehicleComponentInfo] {

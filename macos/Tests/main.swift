@@ -2581,6 +2581,36 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkSetupBlocked() {
+    func made(_ name: String, openable: Bool, reason: String?) -> [String: Any] {
+        var json: [String: Any] = ["name": name, "className": name + "Component",
+                                   "openable": openable as NSNumber]
+        if let reason { json["blockedReason"] = reason }
+        return json
+    }
+    let listed = VehicleComponentInfo.list([made("Sensors", openable: false, reason: "armed"),
+                                            made("Safety", openable: true, reason: nil)])
+    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: listed) ?? "",
+           "Disabled while the vehicle is armed",
+           "a component the CORE says is not openable disables its page and says why, in the "
+           + "original's own words. SetupPage.qml sets enabled: !_disableDueToArmed && "
+           + "!_disableDueToFlying and prints \"Disabled while the vehicle is armed\"; this head "
+           + "read neither openable nor blockedReason -- its only blockedReason decode is in "
+           + "MissionItemModel, a different view -- so an ARMED vehicle still offered live "
+           + "calibration Start buttons where QGC dims the page. Offering to start an accel "
+           + "calibration on an armed aircraft is the reason that gate exists")
+    expect(VehicleComponentInfo.blockedSentence(for: "Safety", in: listed) == nil,
+           "and a component beside it that is openable is untouched, so the gate is per component "
+           + "rather than per vehicle")
+    expect(VehicleComponentInfo.blockedSentence(for: "Nothing", in: listed) == nil,
+           "and a page with no component behind it is not blocked by a component that is missing")
+    let wordless = VehicleComponentInfo.list([made("Sensors", openable: false, reason: nil)])
+    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: wordless) ?? "", "Disabled",
+           "and if the core ever says not-openable without a word for why, the page still closes. "
+           + "Failing OPEN on a safety gate would offer the control the core just refused, so the "
+           + "least this can say is that it is disabled")
+}
+
 func checkModeRequest() {
     expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position",
                                        now: "Position") == false,
@@ -2754,6 +2784,7 @@ checkEditableFields()
 checkSetupCache()
 checkChecklistReset()
 checkModeRequest()
+checkSetupBlocked()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

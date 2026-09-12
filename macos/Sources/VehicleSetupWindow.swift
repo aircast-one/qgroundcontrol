@@ -883,6 +883,22 @@ struct VehicleSetupView: View {
     }
 
     @ViewBuilder private var content: some View {
+        let blocked = VehicleComponentInfo.blockedSentence(for: selection.page,
+                                                           in: components.components)
+        VStack(spacing: 0) {
+            if let blocked {
+                Text(blocked)
+                    .font(.callout.weight(.medium))
+                    .foregroundColor(Overlay.blocked)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Overlay.horizontalPadding)
+                    .padding(.vertical, Overlay.verticalPadding)
+            }
+            pages.disabled(blocked != nil)
+        }
+    }
+
+    @ViewBuilder private var pages: some View {
         switch selection.page {
         case "Parameters": ParametersView(store: parameters)
         case "Safety": SafetyView(store: parameters)
