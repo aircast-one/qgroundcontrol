@@ -89,6 +89,7 @@ private slots:
     void _everyClassTheCatalogueNamesIsTheClassTheEditorBuilds();
     void _aTakeoffReportedInsertedHasAPlaceOnTheMap();
     void _theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge();
+    void _changingTheUnitPreferenceRespellsTheTelemetryStrip();
 
 private:
     static bool _unavailable(const char *path);

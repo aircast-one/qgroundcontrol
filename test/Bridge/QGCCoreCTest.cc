@@ -3391,6 +3391,47 @@ void QGCCoreCTest::_replacingAPlanWithOneTheSameLengthStillWakesTheItemList()
 #endif
 }
 
+void QGCCoreCTest::_changingTheUnitPreferenceRespellsTheTelemetryStrip()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
+
+    const QString path = QStringLiteral("settings.unitsSettings.horizontalDistanceUnits.rawValue");
+    const QJsonValue before = take(qgc_bridge_get(path.toUtf8().constData())).value(QStringLiteral("value"));
+    const auto restore = [&]() {
+        take(qgc_bridge_set(path.toUtf8().constData(),
+                            QJsonDocument(QJsonObject{{QStringLiteral("value"), before}}).toJson(QJsonDocument::Compact).constData()));
+    };
+    const auto putItBack = qScopeGuard(restore);
+
+    const auto strip = []() {
+        const QJsonArray items = take(qgc_core_get("view.instruments(vehicle/altitudeRelative)")).value(QStringLiteral("items")).toArray();
+        return items.isEmpty() ? QString() : items.first().toObject().value(QStringLiteral("units")).toString();
+    };
+
+    // Fact::units is CONSTANT and its translator is bound once when the metadata is built, so a
+    // strip that reads valueString keeps the units the app started with. This asks the question the
+    // operator asks: change the preference, look at the strip.
+    const auto choose = [&](int raw) {
+        take(qgc_bridge_set(path.toUtf8().constData(),
+                            QJsonDocument(QJsonObject{{QStringLiteral("value"), raw}}).toJson(QJsonDocument::Compact).constData()));
+    };
+
+    const auto setting = [&]() { return take(qgc_bridge_get(path.toUtf8().constData())).value(QStringLiteral("value")).toDouble(-1.0); };
+
+    choose(1);
+    QTRY_COMPARE_WITH_TIMEOUT(strip(), QStringLiteral("m"), 5000);
+    choose(0);
+    QTRY_COMPARE_WITH_TIMEOUT(setting(), 0.0, 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(strip(), QStringLiteral("ft"), 5000);
+    choose(1);
+    QTRY_COMPARE_WITH_TIMEOUT(strip(), QStringLiteral("m"), 5000);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
 {
 #ifdef QGC_RUST_CORE
