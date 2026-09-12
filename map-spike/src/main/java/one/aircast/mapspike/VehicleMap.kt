@@ -160,6 +160,7 @@ fun VehicleMap(
     landings: List<LandingPattern> = emptyList(),
     editable: Boolean = false,
     selectedWaypoint: Int? = null,
+    firmwareFence: FirmwareFence? = null,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
@@ -351,7 +352,7 @@ fun VehicleMap(
         renderSurveys(currentStyle, surveys)
         renderLandings(currentStyle, landings)
         renderMidpoints(currentStyle, fencePolygons, surveys)
-        renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles))
+        renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence)
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings)
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint)
     }

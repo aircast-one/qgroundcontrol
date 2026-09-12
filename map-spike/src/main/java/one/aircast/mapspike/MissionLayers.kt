@@ -173,6 +173,8 @@ fun renderMission(
 const val FENCE_SOURCE = "aircast-fence"
 const val FENCE_FILL_LAYER = "aircast-fence-fill"
 const val FENCE_LINE_LAYER = "aircast-fence-line"
+const val FIRMWARE_FENCE_SOURCE = "aircast-firmware-fence"
+const val FIRMWARE_FENCE_LAYER = "aircast-firmware-fence-line"
 const val RALLY_SOURCE = "aircast-rally"
 const val RALLY_LAYER = "aircast-rally-layer"
 
@@ -194,6 +196,17 @@ fun installFenceLayers(style: Style) {
             LineLayer(FENCE_LINE_LAYER, FENCE_SOURCE).withProperties(
                 PropertyFactory.lineColor(fenceColour()),
                 PropertyFactory.lineWidth(2.5f),
+            ),
+        )
+    }
+
+    if (style.getSource(FIRMWARE_FENCE_SOURCE) == null) {
+        style.addSource(GeoJsonSource(FIRMWARE_FENCE_SOURCE))
+        style.addLayer(
+            LineLayer(FIRMWARE_FENCE_LAYER, FIRMWARE_FENCE_SOURCE).withProperties(
+                PropertyFactory.lineColor(KEEP_IN_COLOUR),
+                PropertyFactory.lineWidth(2.0f),
+                PropertyFactory.lineDasharray(arrayOf(3.0f, 3.0f)),
             ),
         )
     }
@@ -249,14 +262,21 @@ fun rallyFeatures(points: List<RallyPoint>): FeatureCollection =
         },
     )
 
+fun firmwareFenceFeatures(fence: FirmwareFence?): FeatureCollection {
+    val centre = fence?.centre ?: return FeatureCollection.fromFeatures(emptyList())
+    return FeatureCollection.fromFeatures(listOf(ringFeature(circleRing(centre, fence.radiusMetres))))
+}
+
 fun renderFences(
     style: Style,
     polygons: List<FencePolygon>,
     rally: List<RallyPoint>,
     circles: List<FencePolygon> = emptyList(),
+    firmware: FirmwareFence? = null,
 ) {
     (style.getSource(FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(fenceFeatures(polygons, circles))
     (style.getSource(RALLY_SOURCE) as? GeoJsonSource)?.setGeoJson(rallyFeatures(rally))
+    (style.getSource(FIRMWARE_FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(firmwareFenceFeatures(firmware))
 }
 
 const val FENCE_HANDLE_SOURCE = "aircast-fence-handles"

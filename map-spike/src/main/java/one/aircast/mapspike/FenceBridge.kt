@@ -63,6 +63,19 @@ fun fencePolygons(json: JSONObject?): List<FencePolygon> {
     }
 }
 
+data class FirmwareFence(
+    val radiusMetres: Double,
+    val radiusText: String,
+    val centre: TrackPoint?,
+)
+
+fun firmwareFence(json: JSONObject?): FirmwareFence? {
+    val served = json?.optJSONObject("firmwareFence") ?: return null
+    val radius = served.optDouble("radiusMetres", Double.NaN)
+    if (radius.isNaN() || radius <= 0.0) return null
+    return FirmwareFence(radius, served.optText("radiusText"), coordinate(served.optJSONObject("centre")))
+}
+
 fun fenceCircles(json: JSONObject?): List<FenceCircle> {
     val list = listed(json, "circles") ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
