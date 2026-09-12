@@ -33,7 +33,9 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
     let (side, frontal) = (fact_number("adjustedFootprintSide"), fact_number("adjustedFootprintFrontal"));
     let footprint_units = fact("adjustedFootprintSide").and_then(|f| f.get("units")).and_then(Value::as_str).unwrap_or("m").to_string();
     let minimum_interval = fact_number("minTriggerInterval");
+    let surface = fact("distanceToSurface").and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|metres| metres.is_finite() && *metres > 0.0);
     let area = Unit::area(backend);
+    let distance_unit = Unit::horizontal(backend);
     json!({
         "kind": "object",
         "class": "SurveyStats",
@@ -52,6 +54,8 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
         "footprintFrontal": frontal,
         "footprintUnits": footprint_units,
         "footprintText": if side > 0.0 && frontal > 0.0 { format!("{side:.1} \u{d7} {frontal:.1} {footprint_units}") } else { ABSENT.to_string() },
+        "surfaceDistanceMetres": surface,
+        "surfaceDistanceText": surface.map(|metres| crate::read::format_measure(distance_unit.show(metres), &distance_unit.name)),
         "minimumInterval": minimum_interval,
         "tooFast": !warning(minimum_interval, seconds).is_empty(),
         "warning": warning(minimum_interval, seconds),
@@ -108,6 +112,45 @@ mod tests {
         let refusal = survey_stats_view(&Fake, &[]);
         assert_eq!(refusal["kind"], "null", "the kind stays null so a head that already treats this as absent is unaffected");
         assert!(refusal["reason"].as_str().unwrap().contains("index"), "and the reason says which argument is missing, because a bare null is indistinguishable from a survey that has nothing to report");
+    }
+
+    #[test]
+    fn the_height_a_pattern_flies_above_the_ground_is_named_as_that() {
+        struct Camera(Option<f64>);
+        impl Backend for Camera {
+            fn get(&self, path: &str) -> String {
+                let mut facts = vec![json!({ "property": "adjustedFootprintSide", "value": 10.0, "units": "m" })];
+                if let Some(metres) = self.0 {
+                    facts.push(json!({ "property": "distanceToSurface", "value": metres }));
+                }
+                match path.ends_with("cameraCalc") {
+                    true => json!({ "kind": "object", "facts": facts }),
+                    false => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.3" => json!({ "kind": "object", "isSurveyItem": true, "cameraShots": 40, "coveredArea": 20000.0 }),
+                    _ => json!({ "kind": "object", "appSettingsAreaUnitsString": "m\u{b2}", "appSettingsHorizontalDistanceUnitsString": "m" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 1.0 }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let flying = survey_stats_view(&Camera(Some(60.0)), &["3".to_string()]);
+        assert_eq!(flying["surfaceDistanceMetres"], 60.0, "a TransectStyleComplexItem has no altitude fact at all - the camera's distanceToSurface is what a survey flies at, and it is a height above the ground rather than the item altitude a waypoint shows in the same column");
+        assert_eq!(flying["surfaceDistanceText"], "60.0 m");
+
+        let bare = survey_stats_view(&Camera(None), &["3".to_string()]);
+        assert_eq!(bare["surfaceDistanceMetres"], Value::Null, "a camera that carries no such fact says nothing");
+        assert_eq!(bare["surfaceDistanceText"], Value::Null);
+
+        let unresolved = survey_stats_view(&Camera(Some(0.0)), &["3".to_string()]);
+        assert_eq!(unresolved["surfaceDistanceMetres"], Value::Null, "and a camera holding zero has not resolved a distance either - a survey flown at no height above the ground is not a survey, so the zero is the absence rather than a measurement");
+        assert_eq!(unresolved["surfaceDistanceText"], Value::Null);
     }
 
     #[test]
