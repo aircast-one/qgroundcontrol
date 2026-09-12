@@ -6239,6 +6239,31 @@ as the core session said; what clears the warning is the bridge re-reading a
 time-dependent property on a timer. That is a weaker guarantee than a signal and
 worth knowing, rather than either "it expires by itself" or "a head must poll".
 
+### Structure scans draw the loop they fly, 2026-09-12
+
+`geometry_of` had been reading `visualTransectPoints` for every complex kind,
+and `StructureScanComplexItem` is a plain `ComplexMissionItem` with no such
+property — so the core recorded a boundary and an empty route, and both heads
+drew the outline with nothing through it. The core now serves `flightLoop` and
+`layers` beside `vertices` and `transects` (`b01607d` on the head).
+
+The head treats them as one question — what does the aircraft fly through this
+shape — so they share a layer and a style. The difference is the ending: a
+survey mows and its route is open, a structure scan circles and its route
+closes. `flownRoute` picks whichever the item carries and closes only the loop.
+
+Seen on the OnePlus 6 with a structure scan added from the Pattern chooser: the
+core serves `flightLoop` 4 points, `layers` 2, `transects` 0, and the map draws
+2622 pixels of route colour in a 708x696 box. The served transect list being
+empty is what makes that conclusive — under the previous code nothing could
+have drawn, so every one of those pixels comes from the loop. On screen it is a
+closed rectangle offset outward from the shaded polygon, which is what
+`flightPolygon` is: the drawn shape pushed out by the camera distance.
+
+**`layers` is read and not drawn.** Two stacked circuits render as one, which
+under-draws the mission in the same way the bare outline did. Recorded here
+rather than left to be rediscovered.
+
 ### Landing patterns: drawn, then placeable, 2026-09-12
 
 The last invisible plan item now draws and can be positioned.
