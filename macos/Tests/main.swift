@@ -1590,6 +1590,7 @@ func checkMissionItemKinds() {
     checkVehicleLinkRows()
     checkSerialLinkInAnyLocale()
     checkSetupGateInAnyLocale()
+    checkResumeSequence()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -6194,4 +6195,23 @@ func checkSetupGateInAnyLocale() {
     expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: silent) ?? "", "Disabled",
            "and a component that is not openable without saying why still closes the page, "
            + "because failing open on a safety gate offers the control the core just refused")
+}
+
+func checkResumeSequence() {
+    expect(GuidedOffer.resumeSequence(NSNumber(value: 5)) == 5,
+           "Resume Mission needs the waypoint to resume from, and the core now serves it. This "
+           + "head was reading planFly.missionController.resumeMissionIndex off a raw Qt path, "
+           + "which is the head re-deriving what the core already holds")
+    expect(GuidedOffer.resumeSequence(nil) == nil,
+           "the core WITHHOLDS the number rather than serving zero when there is no waypoint to "
+           + "resume from, so absent means do not resume")
+    expect(GuidedOffer.resumeSequence(NSNumber(value: 0)) == nil,
+           "and zero is refused here as well. That doubles the core's rule ON PURPOSE and the two "
+           + "statements differ: the core withholds zero because it is not a waypoint, this "
+           + "refuses it because a non-positive sequence must never reach a vehicle command. A "
+           + "safety floor on an outgoing command is worth stating twice")
+    expect(GuidedOffer.resumeSequence(NSNumber(value: -1)) == nil, "and a negative one likewise")
+    expect(GuidedOffer.resumeSequence("5") == nil,
+           "a string is not a sequence -- the bridge serves a number or nothing, and coercing "
+           + "text here would invent one")
 }

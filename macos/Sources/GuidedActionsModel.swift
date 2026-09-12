@@ -46,6 +46,13 @@ enum GuidedAction: String, CaseIterable, Identifiable {
     }
 }
 
+extension GuidedOffer {
+    static func resumeSequence(_ json: Any?) -> Int? {
+        guard let sequence = (json as? NSNumber)?.intValue, sequence > 0 else { return nil }
+        return sequence
+    }
+}
+
 struct GuidedOffer: Identifiable, Equatable {
     let action: GuidedAction
     let title: String
