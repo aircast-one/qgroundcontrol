@@ -89,9 +89,9 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         feature.getNumberProperty(RALLY_INDEX_PROPERTY)?.toInt()?.let { return MapHit.Rally(it) }
     }
 
-    map.queryRenderedFeatures(box, FENCE_FILL_LAYER).firstOrNull()?.let { feature ->
-        feature.getNumberProperty(CIRCLE_INDEX_PROPERTY)?.toInt()?.let { return MapHit.Circle(it) }
-    }
+    map.queryRenderedFeatures(box, FENCE_FILL_LAYER)
+        .firstNotNullOfOrNull { it.getNumberProperty(CIRCLE_INDEX_PROPERTY)?.toInt() }
+        ?.let { return MapHit.Circle(it) }
 
     return nearest(map, map.queryRenderedFeatures(box, MISSION_DOT_LAYER, MISSION_LAYER), x, y)
         ?.getNumberProperty(WAYPOINT_ID_PROPERTY)
