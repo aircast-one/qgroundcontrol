@@ -891,8 +891,7 @@ struct VehicleSetupView: View {
     }
 
     @ViewBuilder private var content: some View {
-        let blocked = VehicleComponentInfo.blockedSentence(for: selection.page,
-                                                           in: components.components)
+        let blocked = SetupCatalogue.page(selection.page, in: components.groups)?.blockedSentence
         VStack(spacing: 0) {
             if let blocked {
                 Text(blocked)

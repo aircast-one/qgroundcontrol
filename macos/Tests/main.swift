@@ -2807,24 +2807,25 @@ func checkSetupBlocked() {
         if let reason { json["blockedReason"] = reason }
         return json
     }
-    let listed = VehicleComponentInfo.list([made("Sensors", openable: false, reason: "armed"),
-                                            made("Safety", openable: true, reason: nil)])
-    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: listed) ?? "",
+    func page(_ name: String, openable: Bool, reason: String?) -> SetupPageInfo {
+        SetupPageInfo(name: name, parameterSections: false,
+                      openable: openable, blockedReason: reason)
+    }
+    expect(page("Sensors", openable: false, reason: "armed").blockedSentence ?? "",
            "Disabled while the vehicle is armed",
-           "a component the CORE says is not openable disables its page and says why, in the "
-           + "original's own words. SetupPage.qml sets enabled: !_disableDueToArmed && "
-           + "!_disableDueToFlying and prints \"Disabled while the vehicle is armed\"; this head "
-           + "read neither openable nor blockedReason -- its only blockedReason decode is in "
-           + "MissionItemModel, a different view -- so an ARMED vehicle still offered live "
-           + "calibration Start buttons where QGC dims the page. Offering to start an accel "
-           + "calibration on an armed aircraft is the reason that gate exists")
-    expect(VehicleComponentInfo.blockedSentence(for: "Safety", in: listed) == nil,
-           "and a component beside it that is openable is untouched, so the gate is per component "
-           + "rather than per vehicle")
-    expect(VehicleComponentInfo.blockedSentence(for: "Nothing", in: listed) == nil,
-           "and a page with no component behind it is not blocked by a component that is missing")
-    let wordless = VehicleComponentInfo.list([made("Sensors", openable: false, reason: nil)])
-    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: wordless) ?? "", "Disabled",
+           "a page the CORE says is not openable disables itself and says why, in the original's "
+           + "own words. SetupPage.qml sets enabled: !_disableDueToArmed && !_disableDueToFlying "
+           + "and prints \"Disabled while the vehicle is armed\"; this head read neither flag, so "
+           + "an ARMED vehicle still offered live calibration Start buttons where QGC dims the "
+           + "page. Offering to start an accel calibration on an armed aircraft is the reason "
+           + "that gate exists")
+    expect(page("Safety", openable: true, reason: nil).blockedSentence == nil,
+           "and a page beside it that is openable is untouched, so the gate stays per page rather "
+           + "than becoming per vehicle")
+    expect(page("Summary", openable: true, reason: nil).blockedSentence == nil,
+           "Summary and Parameters are backed by no component at all and the core leaves them "
+           + "openable, which is what stopped me blocking every page I could not identify")
+    expect(page("Sensors", openable: false, reason: nil).blockedSentence ?? "", "Disabled",
            "and if the core ever says not-openable without a word for why, the page still closes. "
            + "Failing OPEN on a safety gate would offer the control the core just refused, so the "
            + "least this can say is that it is disabled")
@@ -6176,48 +6177,47 @@ func checkSetupGateInAnyLocale() {
     expect(VehicleComponentInfo.identity(ofPage: "Flight Modes"), "flightModes",
            "and a two-word page camel-cases to match the enum spelling")
 
-    let german = VehicleComponentInfo.list([
-        component("Sensoren", known: "sensors", openable: false, why: "armed"),
-        component("Funkgerät", known: "radio", openable: true, why: nil),
-    ])
-    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: german) ?? "",
+    expect(SetupPageInfo(name: "Sensors", parameterSections: false,
+                         openable: false, blockedReason: "armed").blockedSentence ?? "",
            "Disabled while the vehicle is armed",
-           "THE FIXTURE THAT MATTERS: every component name here is German, which is what QGC "
-           + "actually serves outside English because VehicleComponent::_name is a tr() member "
-           + "initialiser run when the vehicle connects. The old rule compared that name against "
-           + "the English page id, matched nothing, and left the page ENABLED while armed -- the "
-           + "gate calls pages.disabled(), so this was a live control on an armed aircraft")
-    expect(VehicleComponentInfo.blockedSentence(for: "Radio", in: german) == nil,
-           "and the component beside it that allows setup while armed is still openable, so the "
-           + "gate stays per component rather than becoming per vehicle")
-    expect(VehicleComponentInfo.blockedSentence(for: "Sensoren", in: german) == nil,
-           "the TRANSLATED name is not a key: a page is addressed by the core's page id, and "
-           + "matching a component's display name would be the same join in the other direction")
+           "THE HEAD NO LONGER JOINS AT ALL, which is the real fix. It used to match a component's "
+           + "name against the English page id, and VehicleComponent::_name is a tr() member "
+           + "initialiser run when the vehicle connects, so outside English it matched nothing "
+           + "and the page stayed ENABLED while armed -- a live control on an armed aircraft, "
+           + "because the gate calls pages.disabled(). The core now decides per PAGE, joining on "
+           + "the KnownVehicleComponent enum where a firmware declares one and on the C++ class "
+           + "name otherwise, so all fourteen pages are settled without a translated string "
+           + "anywhere and this head only carries the answer across")
+    expect(SetupPageInfo(name: "Radio", parameterSections: false,
+                         openable: true, blockedReason: nil).blockedSentence == nil,
+           "and a page whose component allows setup while armed is untouched, so the gate is "
+           + "still per page rather than per vehicle")
 
-    let unidentified = VehicleComponentInfo.list([
-        component("Frame", known: nil, openable: false, why: "armed"),
-    ])
-    expect(VehicleComponentInfo.blockedSentence(for: "Frame", in: unidentified) ?? "",
+    expect(SetupPageInfo(name: "Frame", parameterSections: false,
+                         openable: false, blockedReason: "armed").blockedSentence ?? "",
            "Disabled while the vehicle is armed",
-           "a component with no KnownVehicleComponent enum is still gated by its name. THIS HALF "
-           + "REMAINS ENGLISH-ONLY and is recorded, not fixed: the core serves no identity for "
-           + "those components, and blocking every unidentified page instead would disable "
-           + "Parameters, Summary and Remote Support, which are not vehicle components at all")
+           "Frame was the half that stayed English-only while the head did the joining: it has no "
+           + "KnownVehicleComponent enum, so there was no id to key on and the name fallback was "
+           + "all that was left. The core joins it on APMAirframeComponent -- note the CLASS is "
+           + "not named after the page -- and eight pages are settled that way")
 
-    let both = VehicleComponentInfo.list([
-        component("Sensoren", known: "sensors", openable: true, why: nil),
-        component("Sensors", known: nil, openable: false, why: "armed"),
-    ])
-    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: both) == nil,
-           "an IDENTIFIED component wins over a same-named unidentified one, so the name fallback "
-           + "can never overrule an id that actually answered")
+    expect(SetupPageInfo(name: "Summary", parameterSections: false,
+                         openable: true, blockedReason: nil).blockedSentence == nil,
+           "Summary and Parameters are backed by NO component and stay openable. I checked that "
+           + "claim rather than repeating it: grep finds no SummaryComponent and no "
+           + "ParametersComponent anywhere under src/AutoPilotPlugins")
+    expect(SetupPageInfo(name: "Remote Support", parameterSections: false,
+                         openable: false, blockedReason: "armed").blockedSentence ?? "",
+           "Disabled while the vehicle is armed",
+           "AND REMOTE SUPPORT IS NOT IN THAT GROUP, which I asserted twice today and had wrong. "
+           + "APMRemoteSupportComponent.h exists, so the page IS backed and now follows its "
+           + "component like any other. I missed it because my own check truncated an "
+           + "alphabetical listing at four lines -- a pattern narrower than the thing it measured")
 
-    let silent = VehicleComponentInfo.list([
-        component("Sensoren", known: "sensors", openable: false, why: nil),
-    ])
-    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: silent) ?? "", "Disabled",
-           "and a component that is not openable without saying why still closes the page, "
-           + "because failing open on a safety gate offers the control the core just refused")
+    expect(SetupPageInfo(name: "Sensors", parameterSections: false,
+                         openable: false, blockedReason: nil).blockedSentence ?? "", "Disabled",
+           "and a page that is not openable without saying why still closes, because failing open "
+           + "on a safety gate offers the control the core just refused")
 }
 
 func checkResumeSequence() {

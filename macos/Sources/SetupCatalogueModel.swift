@@ -3,10 +3,15 @@ import Foundation
 struct SetupPageInfo: Equatable {
     let name: String
     let parameterSections: Bool
+    let openable: Bool
+    let blockedReason: String?
 
-    init(name: String, parameterSections: Bool) {
+    init(name: String, parameterSections: Bool,
+         openable: Bool = true, blockedReason: String? = nil) {
         self.name = name
         self.parameterSections = parameterSections
+        self.openable = openable
+        self.blockedReason = blockedReason
     }
 
     init?(_ json: Any?) {
@@ -14,6 +19,17 @@ struct SetupPageInfo: Equatable {
               let name = json["name"] as? String, !name.isEmpty else { return nil }
         self.name = name
         parameterSections = (json["parameterSections"] as? NSNumber)?.boolValue ?? false
+        openable = (json["openable"] as? NSNumber)?.boolValue ?? true
+        blockedReason = (json["blockedReason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    // The core joins a page to its component on the KnownVehicleComponent enum where a firmware
+    // declares one and on the C++ class name otherwise - five pages by enum, eight by class, one
+    // deliberately unbacked - so all fourteen are decided without a translated string anywhere.
+    var blockedSentence: String? {
+        guard !openable else { return nil }
+        guard let blockedReason else { return VehicleComponentInfo.blockedWithoutReason }
+        return "Disabled while the vehicle is \(blockedReason)"
     }
 }
 

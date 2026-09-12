@@ -45,13 +45,6 @@ struct VehicleComponentInfo: Identifiable, Equatable {
         return pages.first { $0 == component.name }
     }
 
-    static func blockedSentence(for page: String, in listed: [VehicleComponentInfo]) -> String? {
-        let wanted = identity(ofPage: page)
-        let matched = listed.first { $0.known == wanted }
-            ?? listed.first { $0.known == nil && $0.name == page }
-        return matched?.blockedSentence
-    }
-
     static func list(_ json: Any?) -> [VehicleComponentInfo] {
         ((json as? [Any]) ?? []).compactMap(VehicleComponentInfo.init)
     }
