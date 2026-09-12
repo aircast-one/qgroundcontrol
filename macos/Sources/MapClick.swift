@@ -58,7 +58,19 @@ final class MapClickStore: ObservableObject, Probeable {
         read.missionActive = flag("armed")
             && [vehicle["landFlightMode"], vehicle["rtlFlightMode"], vehicle["missionFlightMode"]]
                 .contains { ($0 as? String) == mode }
-        read.roiSupported = flag("roiModeSupported")
+        // 67d5cbf7d serves all three of these view-ready. The coordinate in particular is
+        // WITHHELD unless an ROI is actually in force, because the vehicle keeps whatever point it
+        // was last given and drawing that would mark a lock already released.
+        //
+        // What this does NOT change, and must not: isROIEnabled is set on a COMMAND_ACK for
+        // DO_SET_ROI_LOCATION and cleared only on an ACK for DO_SET_ROI_NONE. ArduPilot drops the
+        // ROI on a mode change and on a mission DO_SET_ROI item, neither of them ACKed, so the
+        // flag is an invalidation-free LATCH that can read true with a healthy link and no ROI in
+        // force. QGC's own map reads the same flag. A contact gate of the kind view.orbit needed
+        // would fix a case this does not have; correcting it wants invalidation on mode change,
+        // built by someone who can watch it happen on a real vehicle.
+        let guided = Bridge.group("view.guidedActions")
+        read.roiSupported = (guided["roiSupported"] as? NSNumber)?.boolValue ?? false
         read.orbitSupported = flag("orbitModeSupported")
         read.homeUsable = MapClickState.homeUsable(GeoPoint(json: home), altitude: homeAltitude)
         read.gpsSensorPresent = bits & MapClickState.gpsSensorBit != 0
@@ -72,7 +84,7 @@ final class MapClickStore: ObservableObject, Probeable {
         read.confirmGotoInGuided = (Bridge.group(
             "settings.flyViewSettings.goToLocationRequiresConfirmInGuided")["value"] as? NSNumber)?
             .boolValue ?? true
-        read.roiActive = flag("isROIEnabled")
+        read.roiActive = (guided["roiActive"] as? NSNumber)?.boolValue ?? false
 
         if read != state { state = read }
 
@@ -86,7 +98,7 @@ final class MapClickStore: ObservableObject, Probeable {
             radius: (orbit["radiusMetres"] as? NSNumber)?.doubleValue ?? 0,
             orbiting: (orbit["orbiting"] as? NSNumber)?.boolValue,
             roiActive: read.roiActive,
-            roi: Bridge.group("vehicle.roiCoord"))
+            roi: guided["roi"] as? [String: Any])
         drawn.goingTo = goingTo
         if drawn != overlays { overlays = drawn }
 
