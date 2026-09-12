@@ -5835,3 +5835,29 @@ it — labelled as a hypothesis.
 wrong, and it would have sent someone to read the one file that was already
 correct. Naming the mechanism is only worth doing when the mechanism has been
 read.
+
+### Narrowing it, and correcting myself twice
+
+`FactMetaData.cc:896` `_findAppSettingsUnitsTranslation` reads
+`unitsSettings->verticalDistanceUnits()->rawValue()` live on every call (lines
+906-912), and `appSettingsVerticalDistanceUnitsString()` calls straight through.
+**Nothing is memoised**, so the core's new conversion would produce feet the
+moment it ran. That rules out the "bound at startup" family for the new path —
+it only ever applied to the `Fact::cookedUnits` route it replaced.
+
+**And one of my own inferences was unsound.** I reported that a fresh read of the
+instruments view still returned metres, reasoning from having navigated away and
+back. That does not follow: the Fly strip renders subscribed state, so
+navigating re-renders the last push rather than re-reading; Plan does a
+`refresh()` on entry. The two tabs were not doing the same thing and should not
+have been compared.
+
+What is actually established is narrower than the earlier entries implied: the
+conversion works, it is not cached, and the view is not recomputed and pushed
+when the setting changes. The watch is the only remaining suspect.
+
+**Three messages on one defect, two of them corrections.** The pattern is that
+each explanation was offered before the cheaper check that would have killed it —
+the `deps_for` guess before reading `router.rs`, the `setCookedValue` hypothesis
+before checking whether the conversion was even cached. Reading costs less than
+retracting, and both reads took under a minute.
