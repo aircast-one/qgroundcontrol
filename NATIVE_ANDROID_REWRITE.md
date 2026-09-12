@@ -624,6 +624,18 @@ a clear is strong evidence the parse round-trips, and it is not the same claim.
 So the gate is one thing, not three: everything except putting it in the air has
 been shown at full size.
 
+**The tab itself holds up at that size, checked the same session.** The list
+sheet renders all 213 rows and scrolls to `212 Land` without stalling - eight
+swipes reach item 174 - and tapping the last row selects it, closing the sheet
+with `#212 at 0.0 m` in the summary. Nothing degraded between four items and two
+hundred, which is the only thing worth saying about a scale test that finds
+nothing.
+
+**Still one-way on this tab: terrain.** Every reading all night ends "ground
+height unknown". The rig has never served an elevation, so the terrain profile,
+`altitudeAmsl` on a terrain-framed item, and the "Calculated Above Terrain" mode
+I wired a picker to this session have all only ever rendered their empty case.
+
 ### An enum value off its own list is matched by an English prefix, 2026-09-13
 
 Swept this head for the defect a peer has been clearing in the core tonight -
