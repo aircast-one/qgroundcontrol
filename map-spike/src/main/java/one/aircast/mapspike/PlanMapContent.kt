@@ -156,9 +156,11 @@ internal fun MapSpikeScreen(
             if (outcome.ok) {
                 busy = null
                 outcome.index?.let { added ->
-                    if (kindId == KIND_LAND) {
-                        withContext(Dispatchers.Default) {
+                    withContext(Dispatchers.Default) {
+                        if (kindId == KIND_LAND) {
                             placeLandingIfUnplaced(added, at.latitude, at.longitude)
+                        } else if (kindId == KIND_TAKEOFF) {
+                            placeTakeoffIfUnplaced(added, at.latitude, at.longitude)
                         }
                     }
                     selected = MapHit.Waypoint(added)

@@ -172,6 +172,14 @@ fun moveLandingPlace(index: Int, place: Int, latitude: Double, longitude: Double
     return setOk("$PLAN_ITEMS.$index.$property", settingJson(coordinateJson(latitude, longitude)))
 }
 
+fun placeTakeoffIfUnplaced(index: Int, latitude: Double, longitude: Double): Boolean {
+    val placed = setOk(
+        "$PLAN_ITEMS.$index.launchCoordinate",
+        settingJson(coordinateJson(latitude, longitude)),
+    )
+    return placed && leaveWizardMode(index)
+}
+
 fun placeLandingIfUnplaced(index: Int, latitude: Double, longitude: Double): Boolean {
     val view = runCatching { JSONObject(QGCBridge.get("view.landingPattern($index)")) }.getOrNull()
     if (landingPattern(index, view)?.landing != null) {
