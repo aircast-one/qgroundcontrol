@@ -1594,6 +1594,7 @@ func checkMissionItemKinds() {
     checkSetupCacheIdentity()
     checkVehicleLinkRows()
     checkSerialLinkInAnyLocale()
+    checkLinkEntryRule()
     checkSetupGateInAnyLocale()
     checkSummaryOpensInAnyLocale()
     checkModeSlotNaming()
@@ -6444,4 +6445,32 @@ func checkBatteryHeadlines() {
     expect(FlyTelemetry.batteryHeadlines([]).isEmpty,
            "no packs, no headlines -- the row falls back to the telemetry line, which is what an "
            + "aircraft with no battery telemetry at all still draws")
+}
+
+func checkLinkEntryRule() {
+    expect(LinkTypes.accepts("115200", serial: true),
+           "THE CASE THAT MATTERS: the Add Link form reuses one field for two quantities -- a TCP "
+           + "or UDP link puts a PORT there, a serial link puts a BAUD RATE. It validated both as "
+           + "a port, so 115200, the standard telemetry rate, was refused and a serial link could "
+           + "not be created at it. Measured against the running app: the Baud picker offers "
+           + "76800, 115200, 230400, 460800, 500000 and 921600, EVERY ONE above the port ceiling")
+    expect(LinkTypes.accepts("115200", serial: false) == false,
+           "and the same number is still refused for a TCP or UDP link, where it really is a port "
+           + "and 65535 really is the ceiling. The two answers differing on one input is what "
+           + "makes this fixture able to tell the rules apart")
+    expect(LinkTypes.accepts("57600", serial: true) && LinkTypes.accepts("57600", serial: false),
+           "57600 is under the ceiling and valid either way, which is why the form's DEFAULT baud "
+           + "worked and hid this: only a faster rate fails")
+
+    expect(LinkTypes.accepts("0", serial: true) == false, "a baud of zero is not a rate")
+    expect(LinkTypes.accepts("-1", serial: true) == false, "nor a negative one")
+    expect(LinkTypes.accepts("", serial: true) == false, "nor an empty field")
+    expect(LinkTypes.accepts("9600x", serial: true) == false, "nor a number with something after it")
+
+    expect(LinkTypes.refusal("115200", serial: true) == nil, "an accepted entry has no refusal")
+    expect(LinkTypes.refusal("115200", serial: false) ?? "", "Port must be between 1 and 65535.",
+           "a rejected PORT says so")
+    expect(LinkTypes.refusal("0", serial: true) ?? "", "Choose a baud rate.",
+           "and a rejected BAUD names the field the operator was actually shown, rather than "
+           + "blaming a Port that is not on screen for a serial link")
 }

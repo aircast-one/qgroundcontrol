@@ -92,4 +92,19 @@ enum LinkTypes {
     static func isSerial(_ ids: [String], at index: Int) -> Bool {
         ids.indices.contains(index) && ids[index] == serial
     }
+
+    // The Add Link form reuses one field for two different quantities: a TCP or UDP link puts a
+    // PORT there, a serial link puts a BAUD RATE. Validating both as a port refused every rate
+    // above the port ceiling -- the form offers 76800, 115200, 230400, 460800, 500000 and 921600,
+    // so a serial link at the standard 115200 could not be created at all, and the refusal named
+    // a Port the operator was never shown.
+    static func accepts(_ entry: String, serial: Bool) -> Bool {
+        guard let value = Int(entry) else { return false }
+        return serial ? value > 0 : (1...65535).contains(value)
+    }
+
+    static func refusal(_ entry: String, serial: Bool) -> String? {
+        guard !accepts(entry, serial: serial) else { return nil }
+        return serial ? "Choose a baud rate." : "Port must be between 1 and 65535."
+    }
 }

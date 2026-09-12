@@ -72,10 +72,12 @@ struct ConnectionsSection: View {
             addError = "Give the link a name."
             return
         }
-        guard let port = Int(newPort), (1...65535).contains(port) else {
-            addError = "Port must be between 1 and 65535."
+        let serial = LinkTypes.isSerial(store.linkTypeIds, at: newType)
+        if let refusal = LinkTypes.refusal(newPort, serial: serial) {
+            addError = refusal
             return
         }
+        let port = Int(newPort) ?? 0
         guard store.create(type: newType, name: newName, host: newHost, port: port) else {
             addError = "Could not create the link."
             return
