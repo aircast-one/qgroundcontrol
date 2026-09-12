@@ -222,7 +222,7 @@ mod tests {
     fn a_view_with_arguments_watches_the_facts_those_arguments_name() {
         let core = Core::new(Fake::default());
         core.watch("fly", &["view.instruments(gps/count, vehicle/heading)".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.gps.count".to_string(), "vehicle.heading".to_string(), "vehicles.activeVehicleAvailable".to_string()]);
+        assert_eq!(*core.backend.watched.borrow(), vec!["settings.unitsSettings.areaUnits".to_string(), "settings.unitsSettings.horizontalDistanceUnits".to_string(), "settings.unitsSettings.speedUnits".to_string(), "settings.unitsSettings.verticalDistanceUnits".to_string(), "vehicle.gps.count".to_string(), "vehicle.heading".to_string(), "vehicles.activeVehicleAvailable".to_string()], "the strip converts every reading itself, so a change of unit has to wake it");
         assert_eq!(core.on_event("vehicle.heading", "{}").len(), 1);
         assert!(core.on_event("vehicle.vehicle", "{}").is_empty(), "the whole vehicle object is no longer a dependency");
     }
