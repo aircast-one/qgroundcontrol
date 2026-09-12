@@ -59,3 +59,16 @@ Facts the code no longer states, which are still true:
 - **ArduPilot makes QGC try the parameter download over MAVFTP first.** A NAK of
   `FileNotFound` is what makes it fall back to `PARAM_REQUEST_LIST`; ignoring
   the request just makes it retry.
+
+### Fences and rally points
+
+The fake stores missions per `mission_type` and advertises
+`MAV_PROTOCOL_CAPABILITY_MISSION_FENCE` and `_MISSION_RALLY`. Before
+2026-09-12 it did neither: it acked any non-zero type and kept nothing, and
+without the capability bits QGC correctly declined to send them at all. Either
+alone is enough to make a fence round trip look like a head defect.
+
+**QGC caches `capabilityBits` from the `AUTOPILOT_VERSION` it receives when the
+vehicle connects.** Restarting the sim is not enough to pick up a capability
+change — force-stop the app too, or it will keep the old answer and go on not
+sending.
