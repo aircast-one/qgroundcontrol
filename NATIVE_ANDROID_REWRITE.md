@@ -35,7 +35,10 @@ What landed, native:
 - **Activity duties** — wake lock, multicast lock, font scale, safe area, deep links, USB serial,
   system bar appearance, all moved out of `QGCActivity` into Kotlin.
 
-Still QML, hosted under native tabs: Fly (map + video).
+Still QML, hosted under native tabs: nothing. Corrected 2026-09-12 — the Fly tab draws through
+`FlyMap` from map-spike and video through the native `VideoSurface`. `QtQuickView` is still
+constructed and added to the layout, but with `renderViews` set false: it hosts the Qt runtime
+rather than drawing any UI.
 
 ### Since that gate — Phase 3 done, Phase 5 started
 
@@ -522,7 +525,9 @@ Nothing is missing from the core. `view.inspector` already emits `targetRateHz` 
 `targetRateTitle` per message and a top-level `rateChoices` list of `{rate, title}` built from
 `RATE_CHOICES` — exactly the shape a picker needs. **The macOS head reads all three and renders a
 rate Picker** (`AnalyzeWindow.swift:347`, `MavlinkInspector.swift:31`), so this is built on one head
-and missing on this one, not orphaned. An earlier version of this section said "read by no head";
+and missing on this one, not orphaned — **which stopped being true the same week**: `InspectorScreen.kt`
+calls `mavlinkInspector.setMessageInterval` behind a "Set rate" control, so both heads render it and
+this paragraph outlived its own finding. An earlier version of this section said "read by no head";
 that was wrong, and wrong in a way my own sweep could not have caught, because the sweep only ever
 looked at the Android head.
 
@@ -6126,10 +6131,10 @@ flight remains, and only hardware can give it.
 
 **Open, and why**
 
-- **Landing patterns are still undrawn.** Reproduced at last with `VEHICLE=plane`.
-  The earlier note that this "needs a `KINDS` entry" was wrong twice: the item is
-  already addable through the existing Land button, and its three coordinates
-  plus loiter radius do not fit a `(shape, property)` row. It needs its own view.
+- ~~**Landing patterns are still undrawn.**~~ **Closed the same day** — see
+  "Landing patterns: drawn, then placeable", which is below this block and so is
+  the later reading. The diagnosis here was right: the item needed its own view
+  rather than a `KINDS` entry, and that is what it got.
 - **A pan that starts on a marker moves it**, silently and without undo, on about
   one pan in five at gate density. A notice now says `Moved #N`; long-press to
   drag, or undo, is a design call and deliberately not taken.
