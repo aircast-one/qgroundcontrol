@@ -6279,3 +6279,27 @@ the picker where it refused before.
 already written. The drawing claim, the dragging claim, the "can now be saved"
 claim. Three of them were wrong. Writing a consequence down and then checking it
 turned out to be a more productive loop than looking for defects directly.
+
+### And the upload is sound, which was the half that mattered
+
+"End to end" had been checked at Save. The safety-relevant half was Upload,
+which is what previously put a `NAV_LAND` at 0,0 on the aircraft. Read off the
+sim after pressing Land on a fixed wing:
+
+    seq=4 cmd=189  DO_LAND_START      0.0000000, 0.0000000
+    seq=5 cmd=31   NAV_LOITER_TO_ALT  41.7171203, 44.8279189  alt 40
+    seq=6 cmd=21   NAV_LAND           41.7164459, 44.8233337
+
+Real places where both were null island. **`DO_LAND_START` at 0,0 is correct
+and deliberate**: `LandingComplexItem.cc:358` constructs it with all seven
+params zero in `MAV_FRAME_MISSION` and fills coordinates only when the
+firmware's metadata says `specifiesCoordinate()`. It marks where the landing
+sequence begins; it is not a place. Checked rather than assumed, because a
+lone 0,0 in a list of real coordinates is exactly what a defect looks like.
+
+**A method error worth recording.** The first attempt at this reported no
+uploads and no plan, because a Save-as picker had been left open and the whole
+sequence ran against `documentsui`. `ui.sh` refuses taps unless the app is in
+front, but the raw `adb shell input` calls used for picker scrolling do not, so
+every step "succeeded" against the wrong window. The guard existed and I had
+stepped around it.
