@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -83,6 +84,9 @@ fun StatusStrip(modifier: Modifier = Modifier) {
     val available by qgcBool("vehicles.activeVehicleAvailable")
     if (!available) return
 
+    val stateJson by qgcPath(FLY_STATE)
+    val live = remember(stateJson) { flyState(stateJson)?.staleNotice.isNullOrBlank() }
+
     val batteryJson by qgcPath(BATTERY)
     val rcRssi by qgcDouble("vehicle.rcRSSI", Double.NaN)
     val supportsRadio by qgcBool("vehicle.supportsRadio")
@@ -94,6 +98,7 @@ fun StatusStrip(modifier: Modifier = Modifier) {
 
     Row(
         modifier
+            .alpha(if (live) 1f else 0.45f)
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 6.dp),
