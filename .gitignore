@@ -143,3 +143,7 @@ core-rs/target/
 # QGC downloads the firmware manifest into whatever the process cwd was; /manifest.json
 # above only catches it at the repo root.
 core-rs/manifest.json
+
+# androiddeployqt runs gradle inside the package template
+deploy/android/.gradle/
+deploy/android/build/
