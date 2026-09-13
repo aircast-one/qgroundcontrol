@@ -638,7 +638,7 @@ void RadioComponentController::_setInternalCalibrationValuesFromParameters()
 
         paramFact = getParameterFact(ParameterManager::defaultComponentId, maxTpl.arg(i+1));
         if (paramFact) {
-            info->rcMax = getParameterFact(ParameterManager::defaultComponentId, maxTpl.arg(i+1))->rawValue().toInt();
+            info->rcMax = paramFact->rawValue().toInt();
         }
 
         info->reversed = _channelReversedParamValue(i);

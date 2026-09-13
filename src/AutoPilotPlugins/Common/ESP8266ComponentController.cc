@@ -59,7 +59,11 @@ ESP8266ComponentController::~ESP8266ComponentController()
 
 QString ESP8266ComponentController::version() const
 {
-    const uint32_t uv = getParameterFact(componentID(), QStringLiteral("SW_VER"))->rawValue().toUInt();
+    if (!_ver) {
+        return QString();
+    }
+
+    const uint32_t uv = _ver->rawValue().toUInt();
     const QString versionString = QStringLiteral("%1.%2.%3").arg(uv >> 24).arg((uv >> 16) & 0xFF).arg(uv & 0xFFFF);
     return versionString;
 }
@@ -232,7 +236,11 @@ void ESP8266ComponentController::setWifiPasswordSta(const QString &password) con
 
 int ESP8266ComponentController::baudIndex() const
 {
-    const int b = getParameterFact(componentID(), QStringLiteral("UART_BAUDRATE"))->rawValue().toInt();
+    if (!_baud) {
+        return 0;
+    }
+
+    const int b = _baud->rawValue().toInt();
     switch (b) {
     case 57600:
         return 0;
