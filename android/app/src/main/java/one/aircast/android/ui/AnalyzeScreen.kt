@@ -43,6 +43,10 @@ enum class AnalyzePage(
         "MAVLink Inspector",
         "Live message rates and field values",
     ),
+    GeoTag(
+        "Geotag Images",
+        "Match photographs to where the vehicle was when it took them",
+    ),
     ;
 }
 
@@ -98,6 +102,7 @@ fun AnalyzeScreen(
                 AnalyzePage.Console -> ConsoleScreen()
                 AnalyzePage.Inspector -> InspectorScreen()
                 AnalyzePage.Vibration -> VibrationScreen()
+                AnalyzePage.GeoTag -> GeoTagScreen()
             }
         }
     }

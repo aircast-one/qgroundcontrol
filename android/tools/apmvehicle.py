@@ -32,6 +32,7 @@ INT_PARAMS = frozenset(
 
 MAGCAL_MASK = 0b011
 ACCELCAL_POSITIONS = [1, 2, 3, 4, 5, 6]
+CAMERA_FEEDBACK_EVERY = int(os.environ.get("CAMERA_FEEDBACK_EVERY", "0"))
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
 DEFAULT_TAKEOFF_ALTITUDE = 10.0
@@ -559,6 +560,13 @@ def main():
                         "p%d=%.2f" % (n, getattr(message, "param%d" % n, 0.0))
                         for n in range(1, 8))), flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+
+        if CAMERA_FEEDBACK_EVERY and tick % CAMERA_FEEDBACK_EVERY == 0:
+            magcal.camera_feedback_send(
+                int(time.time() * 1e6), SYSID, 0, tick // CAMERA_FEEDBACK_EVERY,
+                int(lat * 1e7), int(lon * 1e7), altitude + GROUND_ALTITUDE,
+                altitude, 0.0, 0.0, heading, 0.0, 0)
+            print("CAMERA FEEDBACK %d" % (tick // CAMERA_FEEDBACK_EVERY), flush=True)
 
         if accelcal[0] is not None and accelcal_sent[0] != accelcal[0]:
             accelcal_sent[0] = accelcal[0]
