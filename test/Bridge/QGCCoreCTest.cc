@@ -4,6 +4,7 @@
 #include "Vehicle.h"
 #include "MissionItem.h"
 #include "MissionManager.h"
+#include <QtCore/QRegularExpression>
 #include <QtSql/QSqlError>
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlDatabase>
@@ -1419,10 +1420,17 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
     recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
     recorded.insert(QStringLiteral("_neverVaried"), QJsonArray::fromStringList(fieldsThatNeverVaried(states)));
+    // 86% of this list was one entry per array INDEX, so a run whose terrain profile resolved a
+    // different number of points moved ~1400 lines while nothing about the contract had changed -
+    // which is the condition under which a real change hides in a diff nobody can read. The
+    // indices carry nothing the shape does not: every element of an array has the same fields.
+    // Only this list is collapsed. _neverVaried and _alwaysNull ask whether EVERY index behaved,
+    // which is a different question from whether any index was seen, and they do not churn.
+    static const QRegularExpression subscript(QStringLiteral("\\.\\d+(?=\\.|$)"));
     QStringList observed;
     for (const QJsonObject &state : states) {
         for (auto it = state.begin(); it != state.end(); ++it) {
-            observed.append(it.key());
+            observed.append(QString(it.key()).replace(subscript, QStringLiteral("[]")));
         }
     }
     observed.removeDuplicates();
@@ -1453,7 +1461,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
     QStringList stopped;
     for (const QJsonValue &field : recorded.value(QStringLiteral("_neverVaried")).toArray()) {
-        if (!wereConstant.contains(field.toString()) && seenBefore.contains(field.toString())) {
+        if (!wereConstant.contains(field.toString()) && seenBefore.contains(QString(field.toString()).replace(subscript, QStringLiteral("[]")))) {
             stopped.append(field.toString());
         }
     }
