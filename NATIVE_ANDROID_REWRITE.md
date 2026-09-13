@@ -3018,23 +3018,42 @@ heading 306 and 306, altitudeAMSL 120.0 and 120.0, armed false and false.
 So `coreLinks` defaulting false is no longer evidence that core links do not work. It is a
 default nobody has moved.
 
-**Check 2 of 4, and it fails: the core never expires its vehicle, 2026-09-14.** With
-`coreLinks=true` and the fake vehicle killed outright:
+**Check 2 of 4 passes. My first report of it was wrong, 2026-09-14.**
 
-| elapsed | Qt | core |
+I reported that the core never expires its vehicle. It does. Re-measured reading every field
+instead of the one I assumed answered the question:
+
+| elapsed | `available` | `connectionLost` |
 |---|---|---|
-| 16 s | `communicationLost: true` | `view.coreVehicle available: true` |
-| 106 s | lost | **still `available: true`**, heading 28, altitudeAMSL 120 |
+| alive | true | false |
+| 6 s after the vehicle stopped | true | **true** |
 
-Frozen at the last frame received. The core link itself knows — `framesIn` stops climbing and
-stays at 2764 — so the transport has the fact and the vehicle view does not use it. A head
-trusting `view.coreVehicle` draws a live-looking aircraft for as long as the app runs, which
-is the same shape as QGC's own latched `vehicle.latitude` and the reason `view.gcsPosition`
-gates its distance on `communicationLost`.
+`hub.rs:1394` sets `connection_lost` on every read at `CONNECTION_LOST_US` = 3.5 s, and
+`hub.rs:1181` serves it. A silent vehicle is **kept and flagged**, deliberately, the way the
+Qt head keeps one until its link closes. So `available` means a record exists, not that the
+aircraft is alive, and the frozen heading I reported is that design working. The core flags
+loss in 6 s where Qt takes 16.
+
+**What I did wrong:** I read `available`, read the attitude, saw it frozen, and concluded.
+`connectionLost` was one level down inside `vehicle` in the same payload I had already
+fetched. The `framesIn` detail I built the argument on was true and pointed the wrong way.
+Absence of a reported value is not absence of the value — and I had tested the
+`/proc/net/udp` instrument against a known case an hour earlier without applying the same
+doubt to a JSON snapshot I had only partly read.
+
+**The report produced a real fix anyway**, which is the only reason this entry is not purely
+a retraction. `available` sat at the top of the snapshot and `connectionLost` one level down,
+so a head checking the obvious field never met the liveness answer. There is now a `heard`
+flag beside `available` at the top level, false the moment connection is lost. Same shape as
+the `view.gcsPosition` split where one `available` answered two questions.
+
+**For any head:** `available` says a record exists, `heard` says the aircraft is talking.
+Nothing safety-shaped should key on the first. This head binds to neither — `view.coreVehicle`
+has no consumer in `android/` at all — so nothing needed changing here.
 
 Recovery is clean: bring the vehicle back and Qt clears `communicationLost` within seconds
-while the core's heading resumes moving, 28 to 104, and `framesIn` climbs again. So this is
-an expiry gap, not a reconnect gap.
+while the core's heading resumes moving, 28 to 104, and `framesIn` climbs again. That half of
+the original report stands — reconnect works on both sides without a restart.
 
 Double-bind closed two ways while checking this. `LinkManager.cc:141-147` is an if/else — when
 `CoreLink::enabled() && CoreLink::handles(type)` the Qt link is never constructed — and
