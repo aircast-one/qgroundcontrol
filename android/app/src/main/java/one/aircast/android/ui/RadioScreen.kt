@@ -157,9 +157,9 @@ private fun ModeRow(mode: Int, onPick: (Int) -> Unit) {
 private fun ConfirmDialog(
     prompt: RadioPrompt,
     onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit,
+    onConfirm: (Int?) -> Unit,
 ) {
-    var choice by remember(prompt) { mutableStateOf(prompt.choices.lastIndex) }
+    var choice by remember(prompt) { mutableStateOf(prompt.choices.indices.lastOrNull()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(prompt.title) },
@@ -196,7 +196,7 @@ private fun AdditionalSetup(onInvoke: (String, Int?) -> Unit) {
         ConfirmDialog(
             prompt = asked,
             onDismiss = { prompt = null },
-            onConfirm = { choice -> onInvoke(asked.action, choice.takeIf { asked.choices.isNotEmpty() }) },
+            onConfirm = { choice -> onInvoke(asked.action, choice) },
         )
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp)) {
