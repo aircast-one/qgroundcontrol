@@ -1,0 +1,63 @@
+package one.aircast.android.ui
+
+import org.json.JSONObject
+import one.aircast.mapspike.optText
+
+internal const val NOTICE_MESSAGE = "message"
+internal const val NOTICE_VEHICLE_ERROR = "vehicleError"
+internal const val NOTICE_NAVIGATION = "navigation"
+internal val NOTICE_KINDS = setOf(NOTICE_MESSAGE, NOTICE_VEHICLE_ERROR, NOTICE_NAVIGATION)
+
+internal data class HostNotice(
+    val id: Long,
+    val kind: String,
+    val title: String,
+    val text: String,
+)
+
+internal fun hostNotices(view: JSONObject?): List<HostNotice> {
+    val items = view?.optJSONArray("notices") ?: return emptyList()
+    return (0 until items.length()).mapNotNull { index ->
+        items.optJSONObject(index)?.let {
+            HostNotice(
+                id = it.optLong("id", -1L),
+                kind = it.optText("kind"),
+                title = it.optText("title"),
+                text = it.optText("text"),
+            )
+        }
+    }.filter { it.id >= 0 }.onEach {
+        if (it.kind !in NOTICE_KINDS) {
+            android.util.Log.w("HostNotices", "unrecognised notice kind '" + it.kind + "' - showing it rather than guessing")
+        }
+    }
+}
+
+internal fun noticeDestination(notices: List<HostNotice>): String? =
+    notices.lastOrNull { it.kind == NOTICE_NAVIGATION }?.title?.ifBlank { null }
+
+internal fun noticesAfter(notices: List<HostNotice>, acknowledgedThrough: Long): List<HostNotice> =
+    notices.filter { it.id > acknowledgedThrough }
+
+internal fun noticesToShow(notices: List<HostNotice>): List<HostNotice> =
+    notices.filter { it.kind != NOTICE_NAVIGATION }
+
+internal fun noticeBanner(notice: HostNotice): String =
+    listOf(notice.title, notice.text).filter { it.isNotBlank() }.joinToString(" · ")
+
+const val REPEAT_QUIET_MS = 30_000L
+
+internal fun bannersToShow(
+    notices: List<HostNotice>,
+    shownAt: Map<String, Long>,
+    now: Long,
+): List<String> =
+    noticesToShow(notices)
+        .map { noticeBanner(it) }
+        .fold(emptyList<String>()) { kept, banner ->
+            val quiet = shownAt[banner]?.let { now - it < REPEAT_QUIET_MS } == true
+            when {
+                kept.contains(banner) || quiet -> kept
+                else -> kept + banner
+            }
+        }

@@ -1,0 +1,161 @@
+package one.aircast.mapspike
+
+import org.json.JSONArray
+import org.json.JSONObject
+import org.mavlink.qgroundcontrol.QGCBridge
+
+const val MISSION_CONTROLLER = "$PLAN_ROOT.missionController"
+
+const val SHAPE_AREA = "area"
+const val SHAPE_LINE = "line"
+
+data class Survey(
+    val index: Int,
+    val area: List<TrackPoint>,
+    val transects: List<TrackPoint>,
+    val cameraShots: Int,
+    val kind: String,
+    val shape: String,
+    val property: String,
+    val editable: EditableShape? = null,
+    val flightLoop: List<TrackPoint> = emptyList(),
+    val layers: Int = 0,
+    val layerSpanText: String = "",
+)
+
+private fun points(array: JSONArray?): List<TrackPoint> {
+    if (array == null) return emptyList()
+    return (0 until array.length()).mapNotNull { index ->
+        val point = array.optJSONObject(index) ?: return@mapNotNull null
+        val latitude = point.optDouble("latitude", Double.NaN)
+        val longitude = point.optDouble("longitude", Double.NaN)
+        if (isPlottable(latitude, longitude)) TrackPoint(latitude, longitude) else null
+    }
+}
+
+const val GRID_STEP_DEGREES = 30.0
+
+fun nextGridAngle(current: Double): Double =
+    ((if (current.isNaN()) 0.0 else current) + GRID_STEP_DEGREES) % 360.0
+
+object SurveyBridge {
+    fun surveysFrom(json: JSONObject?): List<Survey> {
+        val items = planItems(json) ?: return emptyList()
+
+        return (0 until items.length()).mapNotNull { index ->
+            val element = items.optJSONObject(index) ?: return@mapNotNull null
+            val geometry = element.optJSONObject("geometry") ?: return@mapNotNull null
+            val shape = geometry.optText("shape")
+            val property = geometry.optText("property")
+            if (shape.isBlank() || property.isBlank()) return@mapNotNull null
+
+            val area = points(geometry.optJSONArray("vertices"))
+            val transects = points(geometry.optJSONArray("transects"))
+            val flightLoop = points(geometry.optJSONArray("flightLoop"))
+            if (transects.isEmpty() && flightLoop.isEmpty() && area.isEmpty()) return@mapNotNull null
+
+            Survey(
+                index = index,
+                area = area,
+                transects = transects,
+                flightLoop = flightLoop,
+                layers = geometry.optInt("layers", 0),
+                layerSpanText = geometry.optText("layerSpanText"),
+                cameraShots = element.optInt("cameraShots"),
+                kind = element.optText("kind"),
+                shape = shape,
+                property = property,
+                editable = editableShape("$PLAN_ITEMS.$index.$property", shape),
+            )
+        }
+    }
+
+    fun rotateGrid(itemIndex: Int): Boolean {
+        val current = runCatching {
+            JSONObject(QGCBridge.get("$PLAN_ITEMS.$itemIndex.gridAngle")).optDouble("value", Double.NaN)
+        }.getOrDefault(Double.NaN)
+        return setGridAngle(itemIndex, nextGridAngle(current))
+    }
+
+    private fun altitudePath(itemIndex: Int) =
+        "$PLAN_ITEMS.$itemIndex.cameraCalc.distanceToSurface"
+
+    fun altitude(itemIndex: Int): Double =
+        runCatching {
+            JSONObject(QGCBridge.get(altitudePath(itemIndex))).optDouble("value", Double.NaN)
+        }.getOrDefault(Double.NaN)
+
+    fun altitudeUnits(itemIndex: Int): String =
+        runCatching {
+            JSONObject(QGCBridge.get(altitudePath(itemIndex))).optText("units")
+        }.getOrDefault("")
+
+    fun setAltitude(itemIndex: Int, metres: Double): Boolean =
+        setOk(altitudePath(itemIndex), settingJson("$metres"))
+
+    fun setGridAngle(itemIndex: Int, degrees: Double): Boolean =
+        setOk("$PLAN_ITEMS.$itemIndex.gridAngle", settingJson("$degrees"))
+
+
+    fun adjustVertex(survey: Survey, vertex: Int, latitude: Double, longitude: Double): Boolean =
+        invokeOk(
+            "$PLAN_ITEMS.${survey.index}.${survey.property}.adjustVertex",
+            "[$vertex, ${coordinateJson(latitude, longitude)}]",
+        )
+}
+
+const val ABSENT = "\u2014"
+
+data class SurveyStats(
+    val areaText: String,
+    val warning: String,
+    val intervalText: String = "",
+    val footprintText: String = "",
+    val surfaceDistanceText: String = "",
+)
+
+private fun stated(view: org.json.JSONObject, key: String): String =
+    view.optText(key).takeIf { it != ABSENT }.orEmpty()
+
+fun surveyStats(view: org.json.JSONObject?): SurveyStats? {
+    if (view == null || !view.optBoolean("available")) {
+        return null
+    }
+    return SurveyStats(
+        areaText = stated(view, "areaText"),
+        warning = view.optText("warning"),
+        intervalText = stated(view, "intervalText"),
+        footprintText = stated(view, "footprintText"),
+        surfaceDistanceText = stated(view, "surfaceDistanceText"),
+    )
+}
+
+fun insetRing(corners: List<TrackPoint>, fraction: Double): List<TrackPoint> {
+    if (corners.size < 3) return emptyList()
+    val midLatitude = corners.sumOf { it.latitude } / corners.size
+    val midLongitude = corners.sumOf { it.longitude } / corners.size
+    return corners.map {
+        TrackPoint(
+            midLatitude + (it.latitude - midLatitude) * fraction,
+            midLongitude + (it.longitude - midLongitude) * fraction,
+        )
+    }
+}
+
+fun fitSurveyArea(survey: Survey, corners: List<TrackPoint>): Boolean {
+    if (corners.isEmpty() || survey.area.size != corners.size) return false
+    return corners.withIndex().all { (vertex, at) ->
+        SurveyBridge.adjustVertex(survey, vertex, at.latitude, at.longitude)
+    }
+}
+
+fun surveyStatsFor(items: List<MissionItem>): Map<Int, SurveyStats> =
+    items.filter { it.complexPattern }
+        .mapNotNull { item ->
+            surveyStats(
+                runCatching {
+                    org.json.JSONObject(QGCBridge.get("view.surveyStats(${item.index})"))
+                }.getOrNull(),
+            )?.let { item.index to it }
+        }
+        .toMap()

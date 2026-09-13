@@ -1,0 +1,102 @@
+package one.aircast.mapspike
+
+import android.content.Context
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import org.maplibre.android.module.http.HttpRequestUtil
+
+private val TILE_PATH = Regex("""^/(\d+)/(\d+)/(\d+)$""")
+
+internal fun tileCoords(path: String): Triple<Int, Int, Int>? =
+    TILE_PATH.find(path)?.destructured?.let { (z, x, y) ->
+        runCatching { Triple(z.toInt(), x.toInt(), y.toInt()) }.getOrNull()
+    }
+
+internal fun uncachedTileUrl(path: String): String? =
+    tileCoords(path)?.let { (z, x, y) ->
+        OSM_TILE_URL.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y")
+    }
+
+fun qgcRasterStyle(): String = """
+{
+  "version": 8,
+  "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  "sources": {
+    "qgc": {
+      "type": "raster",
+      "tiles": ["$QGC_TILE_URL"],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "QGroundControl tile cache"
+    }
+  },
+  "layers": [ { "id": "qgc", "type": "raster", "source": "qgc" } ]
+}
+"""
+
+class QgcTileInterceptor(
+    private val cache: QgcTileCache,
+    private val prefix: String,
+    format: String,
+) : Interceptor {
+
+    private val mediaType = when (format.lowercase()) {
+        "png" -> "image/png"
+        else -> "image/jpeg"
+    }.toMediaType()
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (request.url.host != QGC_TILE_HOST) {
+            return chain.proceed(request)
+        }
+
+        val tile = runCatching {
+            tileCoords(request.url.encodedPath)?.let { (z, x, y) ->
+                cache.tile(prefix, z, x, y)
+            }
+        }.getOrNull()
+
+        if (tile != null) {
+            return Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(tile.toResponseBody(mediaType))
+                .build()
+        }
+
+        val online = uncachedTileUrl(request.url.encodedPath)?.let { url ->
+            runCatching { chain.proceed(request.newBuilder().url(url).build()) }.getOrNull()
+        }
+
+        return online ?: Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(404)
+            .message("No cached tile")
+            .body(ByteArray(0).toResponseBody(mediaType))
+            .build()
+    }
+}
+
+fun installQgcTileSource(context: Context): String {
+    val cache = QgcTileCache.open(context) ?: return OSM_RASTER_STYLE
+    val provider = cache.providers().firstOrNull { it.count > 0 }
+    if (provider == null) {
+        cache.close()
+        return OSM_RASTER_STYLE
+    }
+
+    HttpRequestUtil.setOkHttpClient(
+        OkHttpClient.Builder()
+            .addInterceptor(QgcTileInterceptor(cache, provider.prefix, provider.format))
+            .build(),
+    )
+    return qgcRasterStyle()
+}
