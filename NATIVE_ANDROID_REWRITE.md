@@ -5512,6 +5512,25 @@ are now appended only when `NOT ANDROID`. **83.3 MB to 72.5 MB.** Desktop is byt
 Verified by installing and touring all five tabs with `logcat` filtered for qrc failures — Qt warns
 when a resource path will not open, and there were none.
 
+**The second lever, and the third one measured rather than assumed** (`da1b8c369`): `QGC_VIEWER3D`
+skipped `src/Viewer3D` but never its payload — the DJI F450 meshes sat in `qgroundcontrol.qrc`
+unconditionally, 8.5 MB of that file's 9.4 MB. They now live in `viewer3d.qrc`, appended only when
+the option is on, which fixes the option on every platform. Off by default for Android.
+**83.3 MB → 72.5 MB → 68.1 MB**, and `libAircastQGC.so` from 81.8 MB to 58.5 MB. The split was
+checked entry by entry: 118 before, 118 after, none lost, every referenced path exists.
+
+**What is left is 9.4 MB, and "edit the Android dependency set" is the wrong description of it.**
+Quick3D, Charts and Location are still deployed with the viewer disabled. There is no link line to
+remove: `Qt6::Quick3D` is referenced only from `src/Viewer3D/CMakeLists.txt`, which is not even
+configured now, and `Qt6::Charts` is linked nowhere at all. They arrive through
+`androiddeployqt`'s **QML import scanner**, which walks the twelve `qml-root-path` entries in the
+deployment settings — `src/FlightDisplay`, `src/AnalyzeView`, `src/QmlControls` and the rest — and
+deploys a module for every `import` it finds in QGC's own QML.
+
+So the three modules leave when QGC's QML leaves the Android build, and not before. That makes the
+remaining 9.4 MB a *consequence* of deleting the QML, not a separate task that can be done first —
+which is the same mistake this section made about the images, in the opposite direction.
+
 **A trap this uncovered, for anyone with an existing `build-android` tree.**
 `QGC_ANDROID_PACKAGE_SOURCE_DIR` is a `CACHE PATH`, so moving the Qt template to `deploy/android`
 changed only the default: every already-configured build kept the old value, which now names the
