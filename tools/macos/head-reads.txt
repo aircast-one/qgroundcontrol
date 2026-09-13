@@ -133,6 +133,9 @@ firmware
 firmwareFence
 first
 fix
+fixAgeMs
+fixFresh
+fixValid
 flag
 flightLoop
 flightMode
@@ -385,6 +388,7 @@ warning
 warningLevel
 watching
 worst
+wouldSend
 x
 y
 z

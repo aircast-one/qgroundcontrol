@@ -20,6 +20,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var linkDetail: [DetailRow] = []
     @Published private(set) var traffic = AdsbTraffic.none
     @Published private(set) var obstacle = ObstacleDistance.none
+    @Published private(set) var followMe = FollowMe.absent
     @Published var expanded: Set<String> = []
     @Published private(set) var modes: [FlightModeChoice] = []
     @Published private(set) var canSetMode = false
@@ -78,6 +79,15 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
         let trail = VehicleTrack(Bridge.group("view.track"))
         if trail != track { track = trail }
+
+        // Follow Me is read BEFORE the no-vehicle guard, unlike obstacle and traffic below it.
+        // Those are the vehicle's sensors and mean nothing without one. This one's subject is THIS
+        // machine and a setting: with no vehicle connected it still has to say "no vehicle is
+        // connected to follow you", and whether the position it would send has gone stale. Read
+        // after the guard it answered empty on the rig while the core was answering noVehicles --
+        // the panel was not reporting absence, nobody was asking.
+        let readFollowMe = FollowMe(Bridge.group("view.followMe")) ?? .absent
+        if readFollowMe != followMe { followMe = readFollowMe }
 
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
@@ -237,6 +247,11 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
                    "count": track.count, "points": track.points.count,
                    "draws": track.draws, "notice": track.notice],
          "keepCentered": keepCentered,
+         "followMe": ["mode": followMe.mode, "enabled": followMe.enabled,
+                      "sending": followMe.sending, "reason": followMe.reason,
+                      "sentence": followMe.sentence, "fixKnown": followMe.fixKnown,
+                      "following": followMe.following.count,
+                      "vehicles": followMe.vehicles.count],
          "obstacle": ["available": obstacle.available, "enabled": obstacle.enabled,
                       "summary": obstacle.summary, "freshnessKnown": obstacle.freshnessKnown,
                       "sectors": obstacle.sectors, "rows": obstacle.rows().count],

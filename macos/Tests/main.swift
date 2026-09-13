@@ -4434,6 +4434,45 @@ func checkAWriteQtCanNeverTakeSaysSo() {
 }
 checkAWriteQtCanNeverTakeSaysSo()
 
+func checkFollowMeNamesWhoseProblemItIs() {
+    let off = FollowMe(["kind": "object", "mode": "never", "reason": "modeNever",
+                        "enabled": false as NSNumber, "wouldSend": false as NSNumber])
+    expect(off?.sentence ?? "", "Follow Me is switched off.",
+           "a setting the operator can change reads as a setting, not as a fault")
+
+    let stale = FollowMe(["kind": "object", "mode": "followMe", "reason": "fixStale",
+                          "wouldSend": false as NSNumber, "fixValid": true as NSNumber,
+                          "fixFresh": false as NSNumber, "fixAgeMs": 9000 as NSNumber])
+    expect(stale?.sentence ?? "", "This machine's position stopped updating.",
+           "and a position that stopped arriving is THIS machine's problem, not the vehicle's -- "
+           + "nine reasons and each says something different about who can act")
+    expect(stale?.sending == false,
+           "nothing is being sent while it is refused, whatever the mode says")
+
+    let unseen = FollowMe(["kind": "object", "mode": "followMe", "reason": "someNewReason",
+                           "wouldSend": false as NSNumber])
+    expect(unseen?.sentence.contains("someNewReason") == true,
+           "a reason this head has never been taught is reported AS unrecognised. The core "
+           + "gaining a tenth reason while this printed 'Follow Me is switched off' would hide a "
+           + "new failure behind an old sentence, and the operator would read a settled state "
+           + "where there is a new one")
+
+    let noFix = FollowMe(["kind": "object", "mode": "followMe", "reason": "noFix",
+                          "wouldSend": false as NSNumber])
+    expect(noFix?.fixKnown == false,
+           "a machine that has never reported a position carries no fixValid at all, and null is "
+           + "not valid -- absence and a bad fix are different answers")
+
+    let sending = FollowMe(["kind": "object", "mode": "followMe", "wouldSend": true as NSNumber,
+                            "enabled": true as NSNumber, "fixValid": true as NSNumber,
+                            "fixFresh": true as NSNumber])
+    expect(sending?.sentence ?? "", "Sending your position.",
+           "and the one case with no reason at all is the working one, which says so rather than "
+           + "showing the blank that every other state also shows")
+    expect(sending?.sending == true, "it is sending")
+}
+checkFollowMeNamesWhoseProblemItIs()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.

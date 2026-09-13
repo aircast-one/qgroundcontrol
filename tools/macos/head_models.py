@@ -21,6 +21,7 @@ MODELS = {
     "BatteryReading": "view.battery",
     "CalibrationState": "view.calibration",
     "CameraControl": "view.camera",
+    "FollowMe": "view.followMe",
     "FenceShape": "view.fences",
     "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",

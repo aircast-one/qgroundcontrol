@@ -50,6 +50,11 @@ struct FlyPanel: View {
                                    level: fly.obstacle.level, detail: fly.obstacle.rows(),
                                    showSeparator: true)
                     }
+                    if fly.followMe.worthShowing {
+                        GroupRow(title: "Follow Me", value: fly.followMe.sentence,
+                                 showSeparator: true,
+                                 leading: { dot(fly.followMe.level) })
+                    }
                 }
 
                 if video.camera.present {
