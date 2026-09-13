@@ -3051,6 +3051,29 @@ the `view.gcsPosition` split where one `available` answered two questions.
 Nothing safety-shaped should key on the first. This head binds to neither — `view.coreVehicle`
 has no consumer in `android/` at all — so nothing needed changing here.
 
+**Check 3 of 4: the hub keys two vehicles apart correctly, 2026-09-14.** Two
+`apmvehicle.py` instances, system ids 1 and 2 — the rig takes SYSID as `argv[2]` and offsets
+the second by 0.01 degrees, so they are distinguishable on position as well as on id.
+
+| | id 1 | id 2 |
+|---|---|---|
+| both alive | heartbeats 158, lost false, 47.37976 | heartbeats 159, lost false, 47.38975 |
+| 8 s after killing 1 | **lost true**, heartbeats frozen at 195 | lost false, 234 and climbing |
+| 16 s after | lost true, 195 | lost false, 273 |
+
+`vehicleIds` reports `[1, 2]` throughout. Separate heartbeat counters, separate positions,
+independent liveness. That is the check passing.
+
+**The open question it raises, stated as a question.** `active` stays on vehicle 1 sixteen
+seconds after vehicle 1 went silent, while vehicle 2 is alive and talking. From the source
+that is consistent rather than accidental: `hub.rs:1242` sets `active` on the first heartbeat
+seen with `get_or_insert`, and `hub.rs:1398` re-selects only in `remove()`. `expire()` flags
+`connection_lost` and returns the lost ids, leaving removal to its caller — and nothing
+removes. So "the operator's selection does not move under them" and "the active vehicle can
+be a dead one" are the same rule seen from two sides, and which is wanted is a decision
+rather than a defect. Not calling it one, after being wrong about expiry an hour earlier for
+exactly the reason of reading a field and inferring intent.
+
 Recovery is clean: bring the vehicle back and Qt clears `communicationLost` within seconds
 while the core's heading resumes moving, 28 to 104, and `framesIn` climbs again. That half of
 the original report stands — reconnect works on both sides without a restart.
