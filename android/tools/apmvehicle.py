@@ -544,11 +544,9 @@ def main():
                     magcal_started[0] = None
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG":
-                    print("CMD %d p1=%.2f p2=%.2f p4=%.2f p5=%.2f p7=%.2f" % (
-                        message.command, message.param1, message.param2,
-                        getattr(message, "param4", 0.0),
-                        getattr(message, "param5", 0.0),
-                        getattr(message, "param7", 0.0)), flush=True)
+                    print("CMD %d %s" % (message.command, " ".join(
+                        "p%d=%.2f" % (n, getattr(message, "param%d" % n, 0.0))
+                        for n in range(1, 8))), flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
 
         if accelcal[0] is not None and accelcal_sent[0] != accelcal[0]:
