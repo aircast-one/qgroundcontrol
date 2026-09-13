@@ -44,9 +44,16 @@ ACCEPTED = {
         "inProgress -- which that view does not serve and cannot be asked for. The names collide "
         "on a subject; the questions do not overlap at all. Same shape as the plan and links "
         "entries below, and view-fields.py carries the mirror of this reason",
-    "plan": "MEASURED: the head takes syncInProgress and canUndo from here, and view.plan "
-        "carries readiness and upload. The names collide; the fields do not. The core serves "
-        "no undo state and no sync flag, so there is nothing here to defer to",
+    "plan": "MEASURED: the head takes syncInProgress and canUndo from here. The undo half still "
+        "has nowhere to defer to -- no view carries undo or redo state. The SYNC half of this "
+        "reason was false when audited on 2026-09-13: plan.rs:64 serves view.plan.sync as "
+        "{state, refusal}, and the sentence said the core served no sync flag. It was written "
+        "before that field existed and nothing made it go red when it appeared. The raw read "
+        "still stands, for a reason that is about this head rather than about the core: the "
+        "boolean gates offersUndo, offersRedo and offersDownload, which are statements about "
+        "what THIS head can offer, and the core's sync carries a REFUSAL SENTENCE for a head "
+        "that explains itself where this one disables the control instead. Take the sentence "
+        "the day this head starts explaining",
     "links": "MEASURED: the head takes connectingLinkName and serialPortStrings from here -- "
         "a transient connection attempt and the machine's serial ports. view.links is the "
         "list of CONFIGURED links, which Links.swift also reads and draws. Different subjects "
