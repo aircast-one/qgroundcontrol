@@ -1,9 +1,11 @@
 import SwiftUI
 
-final class PacketRadioStore: ObservableObject, Probeable {
+final class PacketRadioStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "packetRadio"
 
     @Published private(set) var radio: PacketRadio?
+    @Published private(set) var deviceName = ""
+    @Published var writeFailure: String?
 
     private var timer: Timer?
 
@@ -23,6 +25,16 @@ final class PacketRadioStore: ObservableObject, Probeable {
     func refresh() {
         let read = PacketRadio(Bridge.group("view.packetRadio"))
         if read != radio { radio = read }
+        let configured = (Bridge.group(Self.deviceNamePath)["value"] as? String) ?? ""
+        if configured != deviceName { deviceName = configured }
+    }
+
+    static let deviceNamePath = "settings.packetRadioSettings.deviceName"
+
+    func chooseAdapter(_ index: Int) {
+        let name = AdapterChoice.chosen(index: index, adapters: radio?.adapters ?? [])
+        guard name != deviceName else { return }
+        if write(Self.deviceNamePath, name, "the Wi-Fi adapter") { deviceName = name }
     }
 
     func probeState() -> [String: Any] {
@@ -37,6 +49,9 @@ final class PacketRadioStore: ObservableObject, Probeable {
                 "unsupportedAdapters": radio.unsupportedAdapters,
                 "startError": radio.startError,
                 "stale": radio.stale,
+                "deviceName": deviceName,
+                "adapterChoice": AdapterChoice.selected(deviceName: deviceName,
+                                                        adapters: radio.adapters),
                 "antennas": radio.readings.indices.map {
                     ["rssi": radio.rssiText($0), "snr": radio.snrText($0)]
                 },
@@ -71,8 +86,18 @@ struct PacketRadioSection: View {
                 .padding(.bottom, 6)
         }
 
+        Picker("Wi-Fi adapter", selection: Binding(
+            get: { AdapterChoice.selected(deviceName: store.deviceName,
+                                          adapters: radio.adapters) },
+            set: { store.chooseAdapter($0) })) {
+            ForEach(Array(AdapterChoice.options(radio.adapters).enumerated()), id: \.offset) {
+                index, label in Text(label).tag(index)
+            }
+        }
+        .padding(.bottom, 6)
+
         if !radio.adapter.isEmpty {
-            row("Adapter", radio.adapter)
+            row("In use", radio.adapter)
         }
 
         if !radio.unsupportedAdapters.isEmpty {

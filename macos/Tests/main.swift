@@ -856,6 +856,38 @@ func checkSilenceAndAnEmptySkyAreDifferentAnswers() {
 
 checkSilenceAndAnEmptySkyAreDifferentAnswers()
 
+func checkTheAdapterPickerShowsTheChoiceNotTheConsequence() {
+    let adapters = ["ALFA AWUS036ACM [1]", "Realtek 8812au [2]"]
+
+    expect(AdapterChoice.selected(deviceName: "", adapters: adapters) == 0,
+           "an empty deviceName is Automatic, which is the setting's own encoding of let the "
+           + "host decide rather than an absent answer")
+
+    expect(AdapterChoice.selected(deviceName: "Realtek 8812au [2]", adapters: adapters) == 1 + 1,
+           "and a named adapter selects its own row, offset by the Automatic entry sitting "
+           + "above the list")
+
+    expect(AdapterChoice.selected(deviceName: "A radio that went away", adapters: adapters) == 0,
+           "A CONFIGURED ADAPTER THAT IS NO LONGER PRESENT FALLS BACK TO Automatic IN THE BOX "
+           + "while the fact keeps its value, which is what PacketRadioSettings.qml:86-90 does "
+           + "and is therefore what parity requires. It is arguably misleading -- the operator "
+           + "chose that radio and the box now says Automatic -- but a head inventing a "
+           + "different answer here would disagree with the QML build about what was configured")
+
+    expect(AdapterChoice.chosen(index: 0, adapters: adapters) == "",
+           "choosing Automatic writes the empty string rather than the word, because the empty "
+           + "string is what the fact means by automatic")
+    expect(AdapterChoice.chosen(index: 2, adapters: adapters), "Realtek 8812au [2]",
+           "and choosing a row writes that adapter's name")
+    expect(AdapterChoice.chosen(index: 9, adapters: adapters) == "",
+           "an index past the end writes Automatic rather than crashing on a list that shrank "
+           + "between the menu opening and the operator letting go")
+    expect(AdapterChoice.options(adapters).count == adapters.count + 1,
+           "the offered list is the adapters plus Automatic")
+}
+
+checkTheAdapterPickerShowsTheChoiceNotTheConsequence()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",

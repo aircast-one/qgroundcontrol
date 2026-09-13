@@ -97,3 +97,23 @@ struct PacketRadio: Equatable {
         return unit.isEmpty ? printed : printed + " " + unit
     }
 }
+
+enum AdapterChoice {
+    static let automatic = "Automatic"
+
+    static func options(_ adapters: [String]) -> [String] { [automatic] + adapters }
+
+    // The picker shows the CONFIGURED preference, not the adapter currently open: with
+    // Automatic selected those differ, and showing the open one would make the box read as a
+    // choice nobody made. An empty deviceName is Automatic.
+    static func selected(deviceName: String, adapters: [String]) -> Int {
+        guard !deviceName.isEmpty, let found = adapters.firstIndex(of: deviceName) else {
+            return 0
+        }
+        return found + 1
+    }
+
+    static func chosen(index: Int, adapters: [String]) -> String {
+        index >= 1 && index - 1 < adapters.count ? adapters[index - 1] : ""
+    }
+}

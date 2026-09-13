@@ -15,7 +15,8 @@ struct SettingsView: View {
         }
         .frame(minWidth: 720, minHeight: 460)
         .onAppear(perform: store.load)
-        .writeFailureAlert($store.writeFailure, $links.writeFailure, $video.writeFailure)
+        .writeFailureAlert($store.writeFailure, $links.writeFailure, $video.writeFailure,
+                           $packetRadio.writeFailure)
     }
 
     private var sidebar: some View {
