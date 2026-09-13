@@ -205,11 +205,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.defaultUnits
         altitudeRange = FactRange(altitudeFact, title: "The altitude for new items")
 
-        // Five of the six fields this once took raw now arrive on view.plan. The sixth is
-        // homePosition below, which nothing serves yet, so plan.controllerVehicle survives on
-        // one field rather than five.
-        let controllerVehicle = Bridge.group("plan.controllerVehicle")
-        vehicle = MissionVehicle(planningFor: planView["planningFor"]) ?? .unknown
+        let planningFor = planView["planningFor"] as? [String: Any]
+        vehicle = MissionVehicle(planningFor: planningFor) ?? .unknown
         let cruiseFact = Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")
         cruiseSpeed = (cruiseFact["valueString"] as? String) ?? ""
         cruiseRange = FactRange(cruiseFact, title: "Cruise speed")
@@ -218,9 +215,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         hoverRange = FactRange(hoverFact, title: "Hover speed")
         speedUnits = (cruiseFact["units"] as? String)
             ?? (hoverFact["units"] as? String) ?? ItemSpeed.metresPerSecond
-        launch = LaunchPosition(
-            home: (controllerVehicle["homePosition"] as? [String: Any]) ?? [:],
-            item: listed.first ?? [:])
+        launch = LaunchPosition(planningForHome: planningFor?["home"], item: listed.first ?? [:])
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         loadCommands()

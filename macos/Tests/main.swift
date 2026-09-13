@@ -1060,6 +1060,40 @@ func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
 
 checkAPlanWithNoVehicleChosenIsNotANamelessVehicle()
 
+func checkAHomeTheVehicleNeverSetIsAbsentRatherThanNowhere() {
+    let item: [String: Any] = ["altitude": 50.0 as NSNumber, "altitudeEditUnits": "m",
+                               "altitudeText": "50.0",
+                               "coordinate": ["latitude": 47.397 as NSNumber,
+                                              "longitude": 8.545 as NSNumber]]
+
+    expect(LaunchPosition(planningForHome: ["latitude": 47.397 as NSNumber,
+                                            "longitude": 8.545 as NSNumber],
+                          item: item).vehicleHasHome,
+           "a served home means the vehicle set one, which is what makes the launch row "
+           + "read-only rather than editable")
+
+    expect(LaunchPosition(planningForHome: NSNull(), item: item).editable,
+           "AND NULL MEANS NO HOME, so the operator may set one. The Qt object carried a "
+           + "`valid` flag beside a coordinate; the view sends the coordinate or nothing, and "
+           + "the core's nested serialiser already drops an unusable one to null -- so absent "
+           + "and invalid collapse deliberately and there is no third state to keep")
+
+    expect(LaunchPosition(planningForHome: ["latitude": 0.0 as NSNumber,
+                                            "longitude": 0.0 as NSNumber],
+                          item: item).vehicleHasHome,
+           "NULL ISLAND IS NOT GUARDED HERE AND MUST NOT BE. read.rs:nested_coordinate_at "
+           + "already filters (0,0) to None, so the core never sends it and this shape cannot "
+           + "arrive. I asserted the opposite first and the test was right to fail: a head-side "
+           + "guard would be a second opinion about a case the producer has already decided, "
+           + "and the next person would not know which one was authoritative")
+
+    expect(LaunchPosition(planningForHome: NSNull(), item: item).altitudeText, "50.0",
+           "and the altitude comes from the ITEM either way -- home only ever answered whether "
+           + "one had been set")
+}
+
+checkAHomeTheVehicleNeverSetIsAbsentRatherThanNowhere()
+
 func checkTheCameraSwitcherNamesEveryCamera() {
     let two = CameraControl(["present": true as NSNumber, "model": "Sony ILCE-7",
                              "labels": ["Sony ILCE-7", "Thermal"]])

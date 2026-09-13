@@ -63,7 +63,7 @@ if print -rl -- "$@" | grep -q '^macos/'; then
         exit 1
     fi
     python3 "$root/tools/macos/head-reads.py" > /dev/null
-    if ! git diff --quiet -- tools/macos/head-reads.txt; then
+    if ! git diff --quiet HEAD -- tools/macos/head-reads.txt; then
         set -- "$@" tools/macos/head-reads.txt
         print "including tools/macos/head-reads.txt: the names this head references changed"
     fi

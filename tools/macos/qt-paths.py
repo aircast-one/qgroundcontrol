@@ -112,7 +112,7 @@ not converting units head-side. Batch them as they appear.
 
 A LITERAL CAN RETIRE WHILE AN INTERPOLATED TEMPLATE STILL REACHES THE SAME OBJECT, and that
 is the one way this number moves in the FLATTERING direction without the dependence changing.
-Instruments.swift reads `"vehicle.batteries"` at :84 for a pack count and `"vehicle.\(group)"`
+Instruments.swift reads `"vehicle.batteries"` at :84 for a pack count and `"vehicle.\\(group)"`
 at :91 for each pack's facts -- seven lines apart, same function, same Qt object. Sourcing the
 count from `view.battery.packs` would delete the literal and drop the total by one while :91
 went on reading vehicle.batteries.0 exactly as before. The count would report progress that

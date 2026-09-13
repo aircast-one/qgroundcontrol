@@ -20,6 +20,18 @@ struct LaunchPosition: Equatable {
         self.coordinate = coordinate
     }
 
+    // planningFor.home is the coordinate itself or null, where the Qt object carried a `valid`
+    // flag beside one. Absent and invalid collapse to the same answer on purpose: the core's
+    // nested serialiser drops an unusable coordinate to null, so "there is a home" is exactly
+    // "a usable point came back" and there is no third state to keep.
+    init(planningForHome home: Any?, item: [String: Any]) {
+        self.init(vehicleHasHome: GeoPoint(json: home) != nil,
+                  altitude: (item["altitude"] as? NSNumber)?.doubleValue,
+                  units: (item["altitudeEditUnits"] as? String) ?? "",
+                  altitudeText: (item["altitudeText"] as? String) ?? "",
+                  coordinate: GeoPoint(json: item["coordinate"]))
+    }
+
     init(home: [String: Any], item: [String: Any]) {
         self.init(vehicleHasHome: (home["valid"] as? NSNumber)?.boolValue ?? false,
                   altitude: (item["altitude"] as? NSNumber)?.doubleValue,
