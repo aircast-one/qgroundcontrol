@@ -25,6 +25,10 @@ struct Parameter: Identifiable {
     let description: String
     let options: [ParameterOption]
     let range: FactRange
+    // Served in kFactProperties all along and read by nothing. Without it this model cannot tell
+    // a string-valued parameter from a numeric one, which is why 37226d051 could tighten
+    // SettingsControl.refusal -- it guards on kind first -- and had to leave FactRange alone.
+    let isString: Bool
 
     var id: String { "\(componentId)/\(name)" }
     var path: String { "vehicle.parameterManager.getParameter(\(componentId),\(name))" }
@@ -37,6 +41,7 @@ struct Parameter: Identifiable {
     init(name: String, componentId: Int, json: [String: Any]) {
         self.name = name
         self.componentId = componentId
+        isString = (json["typeIsString"] as? NSNumber)?.boolValue ?? false
         units = (json["units"] as? String) ?? ""
         description = (json["shortDescription"] as? String) ?? ""
         range = FactRange(json, title: name)
@@ -61,6 +66,15 @@ struct Parameter: Identifiable {
 }
 
 extension Parameter {
+    // The numeric rules apply to numeric parameters only. A string parameter legitimately holds
+    // a comma, a letter or anything else, and refusing it would break a write that is correct --
+    // worse than the hole it closes.
+    func refusal(_ entry: String) -> String? {
+        guard !isString else { return nil }
+        if let refused = Measure.numberRefusal(entry) { return refused }
+        return range.refusal(entry)
+    }
+
     static func rawText(_ value: Any) -> String {
         guard let number = value as? NSNumber else { return "\(value)" }
         let double = number.doubleValue

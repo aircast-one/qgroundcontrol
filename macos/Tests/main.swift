@@ -1936,6 +1936,7 @@ func checkMissionItemKinds() {
     checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines()
     checkANumberFieldRefusesAmbiguityRatherThanGuessing()
     checkARangeCheckRefusesWhatItCannotParse()
+    checkAStringParameterIsNotHeldToANumbersRules()
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
@@ -5333,6 +5334,32 @@ func checkSensorsComponentIsFoundByClass() {
     expect(component(name: "センサ", className: "SensorsComponent")?.id ?? "", "SensorsComponent",
            "identity comes from the class too -- keying it on a translated name would have "
            + "rebuilt every row the moment the language changed")
+}
+
+func checkAStringParameterIsNotHeldToANumbersRules() {
+    let numeric = Parameter(name: "WPNAV_SPEED", componentId: 1,
+                            json: ["value": 500.0 as NSNumber, "valueString": "500",
+                                   "min": 20.0 as NSNumber, "max": 2000.0 as NSNumber,
+                                   "minString": "20", "maxString": "2000",
+                                   "minIsDefaultForType": false as NSNumber,
+                                   "maxIsDefaultForType": false as NSNumber])
+    expect(numeric.refusal("1,500") ?? "", Measure.commaAdvice,
+           "a NUMERIC parameter gets the numeric rules, so the comma that wrote 1.5 into a "
+           + "settings field cannot reach a vehicle parameter either")
+    expect(numeric.refusal("5000") != nil, "and its declared range still refuses a value past it")
+    expect(numeric.refusal("500") == nil, "while a value inside the range is written")
+
+    let text = Parameter(name: "SYSID_BOARD", componentId: 1,
+                         json: ["value": "pixhawk,v5", "valueString": "pixhawk,v5",
+                                "typeIsString": true as NSNumber])
+    expect(text.refusal("pixhawk,v5") == nil,
+           "A STRING PARAMETER LEGITIMATELY HOLDS A COMMA. This is why FactRange could not be "
+           + "tightened directly: write(_ parameter:) passes text parameters through it and the "
+           + "model had no way to tell one from a number. typeIsString was in kFactProperties "
+           + "the whole time and read by nothing -- the fix was decoding a served field, not "
+           + "asking the core for one")
+    expect(!numeric.isString && text.isString,
+           "and the flag itself comes from the producer rather than being guessed from the value")
 }
 
 func checkARangeCheckRefusesWhatItCannotParse() {

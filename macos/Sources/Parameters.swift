@@ -91,7 +91,7 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func write(_ parameter: Parameter, _ value: String) {
-        if let refused = parameter.range.refusal(value) {
+        if let refused = parameter.refusal(value) {
             writeFailure = refused
             return
         }
