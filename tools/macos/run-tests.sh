@@ -163,8 +163,15 @@ if (( crashes > 0 )); then
     print -u2 "$crashes signal line(s) in the log: this run crashed, and its counts describe only what ran before that"
 fi
 if (( suites != finished )); then
-    print -u2 "$suites suites started and $finished finished -- the last one to start is where it died:"
+    # It stopped there. It did not necessarily DIE there: a crash, a kill, a timeout and a disk
+    # filling up all leave a suite started with no Totals, and this parity cannot tell them apart.
+    # The first draft said "is where it died" and I read a run my own `timeout 400` had killed as
+    # a second crash -- the gate was right that the run was incomplete and I was wrong about why,
+    # which is the same fault the gate exists to catch one level up. The signal count above says
+    # whether it was a crash; this line only says where it stopped.
+    print -u2 "$suites suites started and $finished finished -- it stopped during:"
     print -u2 "$(grep 'Start testing' "$log" | tail -1)"
+    print -u2 "(a crash, a kill or a timeout all look like this here; the signal count says which)"
 fi
 grep '^FAIL' "$log" || true
 pkill -9 -x QGCSuite 2>/dev/null || true
