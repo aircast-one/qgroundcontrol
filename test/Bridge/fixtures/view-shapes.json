@@ -1932,6 +1932,7 @@
         "view.plan.fenceSupported",
         "view.plan.file",
         "view.plan.kind",
+        "view.plan.planningFor.apmFirmware",
         "view.plan.planningFor.firmware",
         "view.plan.rallySupported",
         "view.plan.unsupportedReason",
@@ -4481,8 +4482,11 @@
         "view.plan.fenceSupported",
         "view.plan.file",
         "view.plan.kind",
+        "view.plan.planningFor.apmFirmware",
         "view.plan.planningFor.firmware",
+        "view.plan.planningFor.multiRotor",
         "view.plan.planningFor.type",
+        "view.plan.planningFor.vtol",
         "view.plan.rallySupported",
         "view.plan.readiness.ready",
         "view.plan.readiness.reason",
@@ -6623,8 +6627,11 @@
         "file": "null",
         "kind": "string",
         "planningFor": {
+            "apmFirmware": "bool",
             "firmware": "string",
-            "type": "string"
+            "multiRotor": "bool",
+            "type": "string",
+            "vtol": "bool"
         },
         "rallySupported": "bool",
         "readiness": {
