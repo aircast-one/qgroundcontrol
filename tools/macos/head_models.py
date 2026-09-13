@@ -22,6 +22,7 @@ MODELS = {
     "CalibrationState": "view.calibration",
     "CameraControl": "view.camera",
     "FenceShape": "view.fences",
+    "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",
     "PacketRadio": "view.packetRadio",
     "FlightModeChoice": "view.flightModes",

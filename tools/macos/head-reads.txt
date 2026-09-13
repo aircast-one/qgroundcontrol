@@ -9,6 +9,8 @@ addRally
 adjustInvokable
 advanced
 airframe
+alertUnknown
+alerting
 altitude
 altitudeBandText
 altitudeChangeText
@@ -102,6 +104,7 @@ disabledReason
 display
 displaySummary
 distance
+distanceMetres
 distanceText
 down
 downloading
@@ -109,6 +112,7 @@ dropped
 dynamic
 edited
 editing
+emergency
 emptyReason
 emptyText
 enabled
@@ -233,6 +237,7 @@ open
 openable
 orbiting
 order
+ownPositionKnown
 packetLoss
 packetLossUnit
 page
@@ -270,6 +275,7 @@ rcSupported
 readOnly
 ready
 reason
+receiving
 recording
 refusal
 refused

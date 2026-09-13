@@ -785,6 +785,77 @@ func checkOnlyTheRadioPageAsksForTheRadioBlock() {
 
 checkOnlyTheRadioPageAsksForTheRadioBlock()
 
+func checkTrafficNeverPlacesAnAircraftItCannotLocate() {
+    func contact(_ overrides: [String: Any]) -> AdsbContact? {
+        AdsbContact(["icaoAddress": 0xA1B2C3 as NSNumber, "callsign": "BAW117 ",
+                     "latitude": 47.41 as NSNumber, "longitude": 8.55 as NSNumber,
+                     "altitudeMetres": 2100.0 as NSNumber,
+                     "distanceMetres": 5200.0 as NSNumber,
+                     "bearingDegrees": 31.0 as NSNumber,
+                     "squawk": 7000 as NSNumber, "alert": true as NSNumber,
+                     "stale": false as NSNumber]
+            .merging(overrides) { _, override in override })
+    }
+
+    expect(contact([:])?.located == true, "a contact the core placed has a range and a bearing")
+
+    expect(contact(["distanceMetres": NSNull(), "bearingDegrees": NSNull()])?.located == false,
+           "BUT THE CORE WITHHOLDS BOTH UNTIL IT KNOWS WHERE THE OPERATOR IS, and an aircraft "
+           + "the receiver can hear without placing relative to us has no range at all. Zero is "
+           + "the one value that must never stand in here: it would draw traffic sitting on top "
+           + "of the operator, which is the single most alarming thing this panel can say")
+
+    expect(contact(["callsign": ""])?.name ?? "", "A1B2C3",
+           "an aircraft transmitting no callsign is named by its ICAO address rather than by an "
+           + "empty row, because a blank line reads as a decoding fault rather than as an "
+           + "aircraft that did not say who it is")
+
+    expect(contact([:])?.name ?? "", "BAW117",
+           "and a callsign arrives padded to a fixed width on the wire, so it is trimmed")
+
+    expect(contact(["alert": NSNull()])?.alert == nil,
+           "AN ALERT THE AIRCRAFT DID NOT REPORT IS UNKNOWN, NOT ABSENT. The core counts these "
+           + "separately as alertUnknown, which is the tell that it means the distinction; "
+           + "decoding null to false would report every silent transponder as calm")
+
+    expect(contact(["alert": false as NSNumber])?.alert == false,
+           "and an aircraft that positively reports no alert is a different answer again")
+
+    expect(AdsbContact(["callsign": "NOICAO"]) == nil,
+           "a contact with no ICAO address is not a contact -- it is the one field every report "
+           + "carries and the only stable identity between frames")
+}
+
+checkTrafficNeverPlacesAnAircraftItCannotLocate()
+
+func checkSilenceAndAnEmptySkyAreDifferentAnswers() {
+    func traffic(_ overrides: [String: Any]) -> AdsbTraffic? {
+        AdsbTraffic(["kind": "object", "class": "AdsbTraffic",
+                     "enabled": true as NSNumber, "available": true as NSNumber,
+                     "connected": true as NSNumber, "receiving": true as NSNumber,
+                     "ownPositionKnown": true as NSNumber,
+                     "count": 0 as NSNumber, "alerting": 0 as NSNumber,
+                     "alertUnknown": 0 as NSNumber, "contacts": []]
+            .merging(overrides) { _, override in override })
+    }
+
+    expect(traffic(["receiving": false as NSNumber])?.quiet == true,
+           "CONNECTED AND HEARING NOTHING IS NOT AN EMPTY SKY. A receiver whose feed has gone "
+           + "silent shows the same zero contacts as clear air, and only one of those is good "
+           + "news -- so they must not render the same")
+    expect(traffic([:])?.quiet == false, "a receiving feed with no contacts is the empty sky")
+
+    expect(traffic(["alertUnknown": 2 as NSNumber])?.alertsKnown == false,
+           "and the panel can say when some aircraft have not reported their alert state, "
+           + "rather than implying it polled every one of them")
+
+    expect(AdsbTraffic(["kind": "null"]) == nil,
+           "a refused view is no traffic rather than traffic reporting everything off, which "
+           + "would read as a working receiver hearing an empty sky")
+}
+
+checkSilenceAndAnEmptySkyAreDifferentAnswers()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",
