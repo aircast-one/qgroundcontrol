@@ -9,7 +9,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
@@ -53,6 +56,14 @@ object MapBridge {
             }
     }
 
+    fun seed(path: String) {
+        if (_values.value.containsKey(path)) {
+            return
+        }
+        val json = runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull() ?: return
+        _values.update { held -> if (held.containsKey(path)) held else held + (path to json) }
+    }
+
     fun markReachable() {
         _bridgeReady.value = true
     }
@@ -60,7 +71,10 @@ object MapBridge {
 
 @Composable
 fun mapPath(path: String): State<JSONObject?> {
-    LaunchedEffect(path) { MapBridge.watch(path) }
+    LaunchedEffect(path) {
+        MapBridge.watch(path)
+        withContext(Dispatchers.Default) { MapBridge.seed(path) }
+    }
     val values by MapBridge.values.collectAsState()
     return remember(path) { derivedStateOf { values[path] } }
 }
