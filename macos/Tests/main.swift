@@ -935,8 +935,17 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
 
     expect(traffic(["available": false as NSNumber]).rows().first?.value ?? "",
            "No receiver configured",
-           "THREE WAYS TO SHOW NO AIRCRAFT AND ONLY ONE IS GOOD NEWS. No receiver configured is "
+           "FOUR WAYS TO SHOW NO AIRCRAFT AND ONLY ONE IS GOOD NEWS. No receiver configured is "
            + "the first, and an empty panel would let an operator read it as clear air")
+
+    expect(traffic(["enabled": false as NSNumber]).summary, "Traffic off",
+           "A CONFIGURED RECEIVER THAT IS SWITCHED OFF IS NOT AN ABSENT ONE, and this was "
+           + "measured rather than imagined: the live rig reports available:true with a source "
+           + "at 127.0.0.1:30003 and enabled:false, and this head said \"No receiver\" -- "
+           + "telling an operator who disabled traffic that they never had a receiver. Same "
+           + "conflation the obstacle panel had, found the same way")
+    expect(traffic(["enabled": false as NSNumber]).rows().first?.value ?? "", "Switched off",
+           "and the detail row says which of the two it is rather than repeating the header")
     expect(traffic(["receiving": false as NSNumber]).rows().first?.value ?? "",
            "Receiver silent",
            "a configured receiver whose feed has stopped is the second, and it is the dangerous "

@@ -158,8 +158,12 @@ struct AdsbTraffic: Equatable {
         return unit.isEmpty ? printed : printed + " " + unit
     }
 
+    // A CONFIGURED RECEIVER THAT IS SWITCHED OFF IS NOT AN ABSENT ONE. The core reports
+    // available from whether a source is set and enabled from whether the feature is on, and
+    // collapsing them tells an operator who disabled traffic that they never had a receiver.
     var summary: String {
-        guard enabled, available else { return "No receiver" }
+        guard available else { return "No receiver" }
+        guard enabled else { return "Traffic off" }
         guard !quiet else { return "Silent" }
         guard !contacts.isEmpty else { return "Clear" }
         return contacts.count == 1 ? "1 aircraft" : "\(contacts.count) aircraft"
@@ -168,7 +172,7 @@ struct AdsbTraffic: Equatable {
     // An aircraft squawking an emergency outranks a merely close one, and an alert nobody
     // reported is not a calm sky -- so an unknown alert is drawn as caution rather than good.
     var level: FlyTelemetry.Level {
-        guard enabled, available else { return .unknown }
+        guard available, enabled else { return .unknown }
         if !emergency.isEmpty { return .critical }
         if alerting > 0 { return .warning }
         if quiet || alertUnknown > 0 { return .caution }
@@ -179,8 +183,11 @@ struct AdsbTraffic: Equatable {
     // each gets a sentence rather than an empty list: no receiver configured, a receiver whose
     // feed has gone silent, and clear air. Only the last is good news.
     func rows() -> [DetailRow] {
-        guard enabled, available else {
+        guard available else {
             return [DetailRow(label: "Traffic", value: "No receiver configured")]
+        }
+        guard enabled else {
+            return [DetailRow(label: "Traffic", value: "Switched off")]
         }
         guard !quiet else {
             return [DetailRow(label: "Traffic", value: "Receiver silent")]

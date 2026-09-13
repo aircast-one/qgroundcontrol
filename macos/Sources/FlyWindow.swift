@@ -38,7 +38,7 @@ struct FlyPanel: View {
                                    level: fly.state.linkLevel, detail: fly.linkDetail,
                                    showSeparator: true)
                     }
-                    if fly.traffic.enabled {
+                    if fly.traffic.available {
                         expandable(key: "traffic", title: "Traffic",
                                    value: fly.traffic.summary,
                                    level: fly.traffic.level, detail: fly.traffic.rows(),
