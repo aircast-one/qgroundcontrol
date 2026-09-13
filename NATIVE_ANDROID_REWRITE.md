@@ -57,13 +57,20 @@ QGC's desktop UI and this app draws none of them.
    a bridge one, and the pages send the operator to desktop QGC.~~ **Overruled and built, 2026-09-13.**
    `ui/MotorsScreen.kt` mirrors `MotorComponent` behind a propellers-off switch; CompassMot is a
    routine in the core's list carrying `spinsPropeller` so the page names the ones that turn a motor.
-3. **Radio calibration is not built here either**, and belongs with item 2 rather than on its own.
+3. ~~**Radio calibration is not built here either**, and belongs with item 2 rather than on its own.
    The Radio page is a channel monitor; its footer tells the operator that "calibration stays on the
    desktop: it needs you holding each stick at its extremes while watching the aircraft, and it
-   rewrites the mapping". The older note in this file — that calibration "cannot be driven in this
-   rig" — is about SITL not reflecting `setRcChannelOverride`, and says nothing about what this head
-   offers. I repeated it as a gap on 2026-09-12 without reading the page, which is the same mistake
-   as trusting any other claim in here.
+   rewrites the mapping".~~ **Built 2026-09-13.** Nothing was missing on either side: `view.radio`
+   already served `calibrating`, `statusText`, `nextText` and the three button enables, and
+   `RadioComponentController` already exposed `start`, `nextButtonClicked`, `skipButtonClicked`,
+   `cancelButtonClicked` and `copyTrims` as `Q_INVOKABLE`. The page renders the step text and the
+   buttons the core enables.
+
+   Driven on the OnePlus 6: Calibrate opens at "Lower the Throttle stick all the way down", Next
+   advances, Cancel returns to Calibrate. **And stick detection fires here** — holding channel 3
+   high through `STICKS_FILE` advanced the step with nothing tapped, which is `_inputStickDetect`
+   working on real `RC_CHANNELS`. `RadioConfigTest` has twelve failures today because MockLink
+   cannot drive that; the production path can.
 4. **`Viewer3D`** — a keep-or-drop decision, not a port task.
 5. **Deleting the QML this app no longer draws.** That is the plan's own completion rule, and it is a
    QGC-wide call rather than Android's: the desktop app still renders those files and the macOS head
