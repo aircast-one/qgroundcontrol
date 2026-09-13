@@ -27,6 +27,10 @@ struct FactRange: Equatable {
 
     func refusal(_ entry: String) -> String? {
         guard let typed = Double(entry) else { return nil }
+        return refusal(typed)
+    }
+
+    func refusal(_ typed: Double) -> String? {
         let under = lowest.map { typed < $0.limit } ?? false
         let over = highest.map { typed > $0.limit } ?? false
         guard under || over else { return nil }

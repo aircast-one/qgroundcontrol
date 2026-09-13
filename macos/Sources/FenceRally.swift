@@ -13,6 +13,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var connected = false
     @Published private(set) var breachReturn: RallyPointRow?
     @Published private(set) var firmwareFence: FirmwareFence?
+    @Published private(set) var breachRange = FactRange([:], title: BreachReturn.altitudeSubject)
+    @Published private(set) var breachDecimals: Int?
     @Published private(set) var status = ""
     @Published private(set) var syncing = false
     @Published var armingRally = false
@@ -70,6 +72,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.breachAltitude, BreachReturn.shownAltitude(breachFact))
         set(\.breachAltitudeMetres, BreachReturn.altitudeMetres(breachFact))
         set(\.breachAltitudeUnits, BreachReturn.altitudeUnits(breachFact))
+        set(\.breachRange, BreachReturn.range(breachFact))
+        set(\.breachDecimals, BreachReturn.decimals(breachFact))
 
         set(\.syncing, (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false)
     }
@@ -157,6 +161,10 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setBreachAltitude(_ value: Double) {
+        if let refused = breachRange.refusal(value) {
+            writeFailure = refused
+            return
+        }
         write("plan.geoFenceController.breachReturnAltitude", value,
               "the breach return altitude")
         reload()

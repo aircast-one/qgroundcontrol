@@ -82,6 +82,7 @@ count
 current
 currentText
 dangerLevel
+decimalPlaces
 decoding
 default
 delta

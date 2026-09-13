@@ -230,4 +230,14 @@ enum BreachReturn {
     static func altitudeUnits(_ fact: [String: Any]) -> String {
         (fact["units"] as? String) ?? "m"
     }
+
+    static let altitudeSubject = "A breach return altitude"
+
+    static func range(_ fact: [String: Any]) -> FactRange {
+        FactRange(fact, title: BreachReturn.altitudeSubject)
+    }
+
+    static func decimals(_ fact: [String: Any]) -> Int? {
+        (fact["decimalPlaces"] as? NSNumber)?.intValue
+    }
 }

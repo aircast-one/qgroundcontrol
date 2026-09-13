@@ -1902,6 +1902,7 @@ func checkMissionItemKinds() {
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
     checkTheEditFieldMatchesTheCoreOnPrecision()
+    checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact()
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
@@ -5293,6 +5294,36 @@ func checkSensorsComponentIsFoundByClass() {
     expect(component(name: "センサ", className: "SensorsComponent")?.id ?? "", "SensorsComponent",
            "identity comes from the class too -- keying it on a translated name would have "
            + "rebuilt every row the moment the language changed")
+}
+
+func checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact() {
+    let declared: [String: Any] = ["min": 2.0, "max": 121.0,
+                                   "minString": "2 m", "maxString": "121 m",
+                                   "minIsDefaultForType": false, "maxIsDefaultForType": false,
+                                   "decimalPlaces": 1]
+    let range = BreachReturn.range(declared)
+    expect(range.refusal(150.0) ?? "", "A breach return altitude must be within 2 m and 121 m.",
+           "the fact declares both ends and the sentence must name them in the operator's own "
+           + "units rather than saying only that the value was wrong")
+    expect(range.refusal(1.0) != nil,
+           "under the floor refuses too; a breach return below the declared minimum is the case "
+           + "that puts the vehicle into the ground on the way home")
+    expect(range.refusal(60.0) == nil, "a value inside the declared range is written, not refused")
+    expect(BreachReturn.decimals(declared) ?? -1 == 1,
+           "the fact declares its own decimalPlaces, so the field's precision comes from the same "
+           + "object as its bounds and the head invents neither")
+
+    let filledIn: [String: Any] = ["min": -3.4028234663852886e38, "max": 3.4028234663852886e38,
+                                   "minIsDefaultForType": true, "maxIsDefaultForType": true]
+    expect(BreachReturn.range(filledIn).refusal(1e9) == nil,
+           "a bound the type filled in is not a bound the fact declared, and refusing against "
+           + "FLT_MAX would be a guard that never fires pretending to be one that does")
+
+    expect(BreachReturn.range([:]).refusal(1e9) == nil,
+           "an unreachable fact declares nothing, which is not the same as declaring no floor")
+    expect(BreachReturn.decimals([:]) == nil,
+           "and it declares no precision either, so the caller keeps its own default rather than "
+           + "reading a missing key as zero decimals")
 }
 
 func checkTheEditFieldMatchesTheCoreOnPrecision() {

@@ -992,6 +992,7 @@ struct PlanInspector: View {
                         description: point.positionText,
                         trailing: {
                             AltitudeField(value: fenceRally.breachAltitude,
+                                          decimals: fenceRally.breachDecimals ?? 0,
                                           units: fenceRally.breachAltitudeUnits,
                                           commit: fenceRally.setBreachAltitude)
                         })
