@@ -4409,6 +4409,31 @@ func checkACameraRefusalIsSaidOutLoud() {
 }
 checkACameraRefusalIsSaidOutLoud()
 
+func checkAWriteQtCanNeverTakeSaysSo() {
+    expect(WriteReport.refusal("the camera zoom", ""), WriteReport.failure("the camera zoom"),
+           "a write that failed with nothing said is one this head cannot characterise, so it "
+           + "keeps the sentence that invites a retry; guessing at a cause would be the plausible "
+           + "default that absence makes worse")
+
+    let refused = WriteReport.refusal("the camera zoom", "zoomLevel on QGCCameraControl has no "
+                                      + "WRITE accessor")
+    expect(refused.contains("no way to"),
+           "but every reason Qt gives is about the asking and not the vehicle -- the path does not "
+           + "resolve, the property is not there, it has no setter -- so the next press is refused "
+           + "identically and the operator is told to stop rather than told to try again")
+    expect(refused.contains("zoomLevel on QGCCameraControl has no WRITE accessor"),
+           "and Qt's own words survive, naming a property and a class: nothing the operator can "
+           + "act on, everything they need to report it. Bridge.set reduced all five of these "
+           + "sentences to false, so a head asking for a property that does not exist looked "
+           + "exactly like a vehicle declining")
+    expect(refused.contains("the camera zoom"),
+           "the operator still learns WHAT did not change, which the reason alone never says")
+    expect(refused.hasSuffix("It is unchanged."),
+           "and either way it ends by saying nothing moved -- a refused write and a taken one "
+           + "differ on screen, which is the whole point of carrying the answer this far")
+}
+checkAWriteQtCanNeverTakeSaysSo()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.

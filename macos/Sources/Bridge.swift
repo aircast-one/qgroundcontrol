@@ -40,13 +40,19 @@ enum Bridge {
         return decode(raw)
     }
 
+    // Qt has been explaining every failed write all along and this reduced all of them to false:
+    // "%1 does not resolve", "%1 names an object, not a writable property", "no property %1 on %2",
+    // "%1 on %2 has no WRITE accessor", "%1 takes an object, so the value must be an @path". nil
+    // means written; a string is what came back, empty when nothing came back at all.
     @discardableResult
-    static func set(_ path: String, _ value: Any) -> Bool {
+    static func set(_ path: String, _ value: Any) -> String? {
         let payload = (try? JSONSerialization.data(withJSONObject: ["value": value]))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        guard let raw = qgc_bridge_set(path, payload) else { return false }
+        guard let raw = qgc_bridge_set(path, payload) else { return "" }
         defer { qgc_bridge_free(raw) }
-        return decode(raw)["ok"] as? Bool ?? false
+        let answer = decode(raw)
+        guard (answer["ok"] as? NSNumber)?.boolValue != true else { return nil }
+        return (answer["reason"] as? String) ?? ""
     }
 
     @discardableResult
@@ -75,10 +81,8 @@ protocol WriteReporting: AnyObject {
 extension WriteReporting {
     @discardableResult
     func write(_ path: String, _ value: Any, _ what: String) -> Bool {
-        guard Bridge.set(path, value) else {
-            writeFailure = WriteReport.failure(what)
-            return false
-        }
-        return true
+        guard let reason = Bridge.set(path, value) else { return true }
+        writeFailure = WriteReport.refusal(what, reason)
+        return false
     }
 }
