@@ -97,3 +97,6 @@ internal fun routineStatus(routine: CalibrationRoutine, state: CalibrationState)
 internal const val COMPASS_ROUTINE = "compass"
 
 internal const val REBOOT_VEHICLE = "vehicle.rebootVehicle"
+
+internal fun runningTitle(name: String): String =
+    name.trim().takeIf { it.isNotBlank() }?.let { "Calibrating $it" } ?: "Calibration in progress"

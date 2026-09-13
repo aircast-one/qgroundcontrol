@@ -38,3 +38,16 @@ class FactSubtitleTest {
         assertEquals("", factSubtitle(fact(units = "s", bool = true)))
     }
 }
+
+class RunningTitleTest {
+    @Test
+    fun `a named routine reads as itself`() {
+        assertEquals("Calibrating Compass", runningTitle("Compass"))
+    }
+
+    @Test
+    fun `a calibration the screen did not start still says what is happening`() {
+        assertEquals("Calibration in progress", runningTitle(""))
+        assertEquals("Calibration in progress", runningTitle("  "))
+    }
+}

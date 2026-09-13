@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -204,7 +205,7 @@ private fun RunningCalibration(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Calibrating $name", style = MaterialTheme.typography.titleMedium)
+        Text(runningTitle(name), style = MaterialTheme.typography.titleMedium)
 
         LinearProgressIndicator(
             progress = { progress.toFloat().coerceIn(0f, 1f) },
@@ -304,7 +305,16 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         )
     }
 
-    if (state.inProgress) {
+    val running = state.inProgress
+    DisposableEffect(running) {
+        onDispose {
+            if (running) {
+                offMainDetached { Qgc.invoke("$CAL.cancelCalibration") }
+            }
+        }
+    }
+
+    if (running) {
         RunningCalibration(runningName, state, modifier)
         return
     }
