@@ -19,6 +19,9 @@ pub const DEPS: &[&str] = &[
     "positionManager.gcsPositionHorizontalAccuracy",
     "positionManager.gcsPositionTimestamp",
     "positionManager.gcsPositionSource",
+    "vehicle.latitude",
+    "vehicle.longitude",
+    "vehicle.vehicleLinkManager.communicationLost",
 ];
 
 pub fn now() -> MonotonicMs {
@@ -367,7 +370,30 @@ pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
     position.horizontal_accuracy_m = number("gcsPositionHorizontalAccuracy");
     position.stamped_ms = stamped;
     position.last_report_ms = stamped.or(position.last_report_ms);
-    position.snapshot(wall)
+    let mut snapshot = position.snapshot(wall);
+    let separation = position
+        .usable(wall)
+        .then(|| (position.latitude, position.longitude))
+        .and_then(|(latitude, longitude)| latitude.zip(longitude))
+        .zip(live_vehicle(backend))
+        .map(|(gcs, vehicle)| crate::track::distance_m(gcs, vehicle));
+    snapshot["distanceToVehicle"] = json!(separation);
+    snapshot["distanceToVehicleUnits"] = json!("m");
+    snapshot
+}
+
+// The vehicle's coordinate is held after the link drops, so a distance drawn from
+// it would keep counting against a position the vehicle left long ago.
+fn live_vehicle(backend: &dyn Backend) -> Option<(f64, f64)> {
+    let lost = crate::read::object(&backend.get("vehicle.vehicleLinkManager.communicationLost"))
+        .get("value")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if lost {
+        return None;
+    }
+    let read = |path: &str| crate::read::object(&backend.get(path)).get("value").and_then(Value::as_f64).filter(|value| value.is_finite());
+    read("vehicle.latitude").zip(read("vehicle.longitude")).filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
 }
 
 #[cfg(test)]
@@ -417,6 +443,46 @@ mod tests {
 
     fn at(ms: u64) -> MonotonicMs {
         MonotonicMs(ms)
+    }
+
+    #[test]
+    fn the_distance_to_the_vehicle_needs_a_live_vehicle_as_well_as_a_usable_fix() {
+        struct Pair(&'static str, bool, f64);
+        impl Backend for Pair {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.latitude" => json!({ "kind": "value", "value": 47.4 }),
+                    "vehicle.longitude" => json!({ "kind": "value", "value": 8.55 }),
+                    "vehicle.vehicleLinkManager.communicationLost" => json!({ "kind": "value", "value": self.1 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({
+                    "gcsPosition": { "latitude": 47.397, "longitude": 8.545, "altitude": 500.0, "valid": true },
+                    "gcsPositionHorizontalAccuracy": self.2,
+                    "gcsPositionTimestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64,
+                    "gcsPositionSource": self.0,
+                })
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let metres = |source, lost, accuracy| {
+            lock().select_source(Source::None);
+            gcs_position_view(&Pair(source, lost, accuracy), &[])["distanceToVehicle"].as_f64()
+        };
+
+        let near = metres("gps", false, 3.0).expect("a usable fix and a live vehicle give a separation");
+        assert!((near - 503.0).abs() < 5.0, "0.003 degrees of latitude and 0.005 of longitude at Zurich, got {near}");
+        assert_eq!(metres("gps", true, 3.0), None, "the vehicle's coordinate is held after the link drops, so a distance from it would be counted against a place it has left");
+        assert_eq!(metres("gps", false, 500.0), None, "a fix too coarse to be usable cannot anchor a distance either");
+        assert!(metres("none", false, 3.0).is_some(), "the gate is usable(), which asks about the fix rather than about the source - a coordinate with no named source still reads as threeDimensional in the ladder above, so the distance agrees with it rather than inventing a stricter rule");
+        lock().select_source(Source::None);
     }
 
     #[test]
