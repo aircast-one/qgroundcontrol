@@ -28,6 +28,7 @@ private data class FlownPlan(
     val circles: List<FenceCircle> = emptyList(),
     val rally: List<RallyPoint> = emptyList(),
     val surveys: List<Survey> = emptyList(),
+    val operator: TrackPoint? = null,
 )
 
 @Composable
@@ -57,6 +58,7 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
                         circles = fenceCircles(fences),
                         rally = rallyPoints(fences),
                         surveys = SurveyBridge.surveysFrom(raw),
+                        operator = operatorPoint(OperatorBridge.read()),
                     )
                 }
                 plan = next
@@ -76,6 +78,7 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
             fencePolygons = plan.fences,
             fenceCircles = plan.circles,
             rallyPoints = plan.rally,
+            operator = plan.operator,
             surveys = plan.surveys,
             editable = false,
         )

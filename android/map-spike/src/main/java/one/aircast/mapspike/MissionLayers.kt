@@ -211,6 +211,18 @@ fun installFenceLayers(style: Style) {
         )
     }
 
+    if (style.getSource(GCS_SOURCE) == null) {
+        style.addSource(GeoJsonSource(GCS_SOURCE))
+        style.addLayer(
+            CircleLayer(GCS_LAYER, GCS_SOURCE).withProperties(
+                PropertyFactory.circleColor("#FFFFFF"),
+                PropertyFactory.circleRadius(6f),
+                PropertyFactory.circleStrokeColor("#1976D2"),
+                PropertyFactory.circleStrokeWidth(3f),
+            ),
+        )
+    }
+
     if (style.getSource(RALLY_SOURCE) == null) {
         style.addSource(GeoJsonSource(RALLY_SOURCE))
         style.addLayer(
@@ -223,6 +235,14 @@ fun installFenceLayers(style: Style) {
         )
     }
 }
+
+const val GCS_SOURCE = "aircast-gcs"
+const val GCS_LAYER = "aircast-gcs-layer"
+
+fun operatorFeatures(point: TrackPoint?): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        listOfNotNull(point).map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+    )
 
 const val CIRCLE_INDEX_PROPERTY = "circleIndex"
 const val KEEPS_IN_PROPERTY = "keepsIn"

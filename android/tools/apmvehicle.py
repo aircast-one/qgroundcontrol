@@ -56,7 +56,7 @@ STATUS_TEXTS = [
 CENTRE_SHIFT = (SYSID - 1) * 0.01
 CENTRE_LAT = float(os.environ.get("SIM_LAT", "41.7151"))
 CENTRE_LON = float(os.environ.get("SIM_LON", "44.8271"))
-RADIUS_DEG = 0.004
+RADIUS_DEG = float(os.environ.get("ORBIT_RADIUS_DEG", "0.004"))
 VEHICLE_TYPES = {
     "copter": mavlink.MAV_TYPE_QUADROTOR,
     "plane": mavlink.MAV_TYPE_FIXED_WING,

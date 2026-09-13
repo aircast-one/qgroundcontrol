@@ -118,6 +118,7 @@ fun VehicleMap(
     fencePolygons: List<FencePolygon> = emptyList(),
     fenceCircles: List<FenceCircle> = emptyList(),
     rallyPoints: List<RallyPoint> = emptyList(),
+    operator: TrackPoint? = null,
     surveys: List<Survey> = emptyList(),
     landings: List<LandingPattern> = emptyList(),
     editable: Boolean = false,
@@ -320,6 +321,7 @@ fun VehicleMap(
         renderLandings(currentStyle, landings)
         renderMidpoints(currentStyle, fencePolygons, surveys)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence)
+        (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings)
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint)
     }
