@@ -85,6 +85,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/MapCentreModel.swift" \
     "$root/macos/Sources/AdsbModel.swift" \
     "$root/macos/Sources/FlyOverlayModel.swift" \
+    "$root/macos/Sources/JoystickModel.swift" \
     "$root/macos/Sources/PacketRadioModel.swift" \
     "$root/macos/Sources/MapFollowModel.swift" \
     "$root/macos/Sources/MapScaleModel.swift" \

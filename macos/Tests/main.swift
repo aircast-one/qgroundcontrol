@@ -888,6 +888,60 @@ func checkTheAdapterPickerShowsTheChoiceNotTheConsequence() {
 
 checkTheAdapterPickerShowsTheChoiceNotTheConsequence()
 
+func checkTheJoystickCatalogueKeepsItsOwnDefaults() {
+    let mapping = JoystickMapping([
+        "kind": "object", "class": "JoystickMapping",
+        "axisRange": ["min": -32768.0 as NSNumber, "max": 32767.0 as NSNumber],
+        "functions": [["id": "roll", "required": true as NSNumber, "rcChannel": 1 as NSNumber],
+                      ["id": "gimbalPitch", "required": false as NSNumber,
+                       "rcChannel": NSNull()]],
+        "actions": [["id": "none", "action": "", "repeat": false as NSNumber],
+                    ["id": "arm", "action": "Arm", "repeat": false as NSNumber]],
+        "transmitterModes": [["mode": 1 as NSNumber], ["mode": 2 as NSNumber]],
+        "settings": [["name": "axisFrequencyHz", "type": "double", "units": "Hz",
+                      "min": 1.0 as NSNumber, "max": 200.0 as NSNumber, "enumValues": []],
+                     ["name": "transmitterMode", "type": "uint32", "units": NSNull(),
+                      "min": 1.0 as NSNumber, "max": 4.0 as NSNumber, "enumValues": [],
+                      "defaultFrom": "support.defaultTransmitterMode"],
+                     ["name": "calibrated", "type": "bool", "units": NSNull(),
+                      "min": NSNull(), "max": NSNull(), "enumValues": []]]])
+
+    expect(mapping?.setting("axisFrequencyHz")?.units ?? "", "Hz",
+           "the core NAMES the unit and the head formats the number, which is the rule "
+           + "joystick.rs:1767 pins on its side. Hz does not convert, so there is no *Text to "
+           + "ask for here and nothing is blocked")
+
+    expect(mapping?.setting("transmitterMode")?.defaultIsElsewhere == true,
+           "A SETTING WITH NO DEFAULT OF ITS OWN TAKES ONE AT RUNTIME -- transmitterMode reads "
+           + "support.defaultTransmitterMode. Rendering an invented default would show the "
+           + "operator a stick layout the vehicle will not use, which is the one thing this "
+           + "screen exists to get right")
+    expect(mapping?.setting("axisFrequencyHz")?.defaultIsElsewhere == false,
+           "and a setting carrying its own default says so")
+
+    expect(mapping?.setting("calibrated")?.bounded == false,
+           "a bool has no range, so a head must not draw it a slider")
+    expect(mapping?.setting("axisFrequencyHz")?.bounded == true, "and a bounded double does")
+
+    expect(mapping?.required.count == 1,
+           "the attitude functions are required and the rest are not, which is the core's call "
+           + "about what a joystick must map before it can fly at all")
+
+    expect(mapping?.actions.count == 2,
+           "THE no-action ENTRY IS KEPT. It is the choice an operator makes to CLEAR a button, "
+           + "not an empty row to filter out -- dropping it would leave a button assigned "
+           + "forever with no way back")
+
+    expect(mapping?.functions.first { $0.id == "gimbalPitch" }?.rcChannel == nil,
+           "a function carried over MANUAL_CONTROL rather than an RC channel has no channel "
+           + "number, and zero is a real channel so it cannot stand in")
+
+    expect(JoystickMapping(["kind": "null"]) == nil,
+           "and a refused view is no catalogue rather than one offering nothing")
+}
+
+checkTheJoystickCatalogueKeepsItsOwnDefaults()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",

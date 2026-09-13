@@ -93,6 +93,7 @@ dangerLevel
 decimalPlaces
 decoding
 default
+defaultFrom
 delta
 deltaMeters
 description
@@ -269,6 +270,7 @@ range
 rate
 rateText
 raw
+rcChannel
 rcSignal
 rcSignalText
 rcSupported
@@ -280,6 +282,7 @@ recording
 refusal
 refused
 removeInvokable
+repeat
 report
 request
 requestingList
