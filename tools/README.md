@@ -38,9 +38,18 @@ falsify it. The ones marked *found something* are in the commit log for
 | `FIRMWARE` | the version string in `AUTOPILOT_VERSION` | |
 | `NO_FENCE=1` | a vehicle without fence and rally capability bits | |
 | `NO_RCMAP=1`, `ACCEL_UNCAL=1`, `ARMING_CHECK`, `TRAILING_PARAM` | parameter-shaped edge cases | |
-| `SIM_LAT`, `SIM_LON`, `FENCE_RADIUS` | where it flies and how far it may go | |
+| `SIM_LAT`, `SIM_LON`, `FENCE_RADIUS` | where it flies and how far it may go | *see terrain below* |
 | `STILL_STICKS=1` | sticks that do not sweep, for a screenshot that does not change under you | |
 | `STATUS_AT`, `STATUS_EVERY` | when STATUSTEXT messages arrive | |
+
+**Terrain needs somewhere the service covers.** The default position is Tbilisi
+and `terrain-ce.suite.auterion.com` has no tile for it, so every plan reads
+"ground height unknown" and the terrain profile, `altitudeAmsl` and the
+Calculated Above Terrain mode all render their empty case. `SIM_LAT=47.3769
+SIM_LON=8.5417` puts it over Zurich, where the carpet endpoint answers 200 with
+real elevations. Two defects on 2026-09-13 were only visible with terrain
+present. Note the coordinates endpoint returns 501 everywhere tested, so only
+the carpet-fed surfaces come alive.
 
 The rule they came from: before auditing a screen, ask which of its inputs this
 rig has only ever produced one value for, and make it produce a second. Four of
