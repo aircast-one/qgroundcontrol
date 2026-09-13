@@ -850,10 +850,23 @@ Two more triaged the same night:
 - **`label` is not applicable.** It humanises an identifier - `altitudeRelative`
   becomes "Altitude Relative" - and macOS uses it as a fallback when a fact has
   no description. This head has no local humaniser and no surface that needs
-  one: every control on `view.settings(General)` has a title, parameters are
-  named `RTL_ALT` rather than camel case, and inspector fields are snake case,
-  which `humanise` does not claim to handle. Nothing to build until something
-  here displays a bare identifier.
+  one: parameters are named `RTL_ALT` rather than camel case, inspector fields
+  are snake case, which `humanise` does not claim to handle, and no settings
+  control is missing a label.
+
+  That last clause is the one that can go false without anything noticing, so
+  it is a measurement with its command attached rather than a sentence. Widened
+  2026-09-13 from `General` alone to nine pages - General, Fly View, Plan View,
+  Video, Maps, Connections, MAVLink, Flight Modes, RTK GPS - all clean:
+
+  ```
+  for p in General "Fly View" "Plan View" Video Maps Connections MAVLink "Flight Modes" "RTK GPS"; do
+    bash tools/probe.sh get "view.settings($p)" | python3 -c 'import json,sys; d=json.load(sys.stdin); ...'
+  done
+  ```
+
+  The first version of this note said "every control on `view.settings(General)`
+  has a title" and then concluded about every surface. One page is not nine.
 - **`orbit` is blocked, not absent.** It carries the centre, radius and
   direction of an orbit in progress, which is what draws the circle on the map.
   Reaching it needs an armed vehicle flying a commanded orbit, the same gate as
