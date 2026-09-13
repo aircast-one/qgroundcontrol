@@ -71,6 +71,31 @@ sum past the raw total. Counting exclusive use hid the thing the split was added
 Android has 15 paths that are both read and written, and its write count still read as 3
 with every constant resolved.
 
+A RAW COUNT CONFLATES THREE STATES AND CANNOT SEPARATE THEM. Auditing the macOS head's five
+distinct `vehicle.*` group reads on 2026-09-14 found all three present at once:
+
+  NO VIEW EXISTS              `vehicle.gps` and `vehicle.terrain`. There is no view.gps
+                              (view.gpsRtkBase is the base station) and no view carrying the
+                              terrain tile download queue (view.terrainTile is a file lookup).
+                              These are core asks.
+  A VIEW EXISTS AND IS IGNORED  the state everyone assumes when they read the number.
+  A VIEW EXISTS AND DOES NOT CARRY WHAT THIS READER NEEDS
+                              `vehicle.batteries` at Fly.swift:106 builds six detail rows and
+                              view.battery's packs carries two of them; `vehicle.cameraManager`
+                              needs exactly one more field (cameraLabels). Migrating the first
+                              on the strength of the path count alone would have dropped four
+                              rows with nothing going red.
+
+So a bare raw total points effort at the wrong session in both directions: it reads as core
+work when the answer is a head edit, and as a head edit when the answer is four more fields.
+Quote it with that caveat, and audit a path before planning around it.
+
+AND SOME READERS ARE PERMANENT, NOT UNMIGRATED. Instruments.swift enumerates `vehicle.children`
+and reads each group; Parameters.swift enumerates every parameter name and reads each Fact.
+Both are BROWSERS over the live object graph, and reflection over paths nobody enumerated in
+advance is the one thing a fixed view cannot replace. They will still be here when the port is
+done, and counting them as remaining work makes a finished migration look stalled.
+
 SERVED paths (`view.*`) are counted separately as the numerator of the migration: the head
 is done with a root when its raw count reaches zero.
 
