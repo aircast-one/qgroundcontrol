@@ -32,7 +32,7 @@ pkill -9 -x QGCSuite 2>/dev/null || true
 # mentions the flag. pgrep -f was the first attempt and it matched the very command line asking
 # the question -- the same trap that makes build-run.sh's pkill kill this session's own shells.
 foreign_suites() {
-    ps -axo command= | awk '$1 ~ /\.app\/Contents\/MacOS\// && $1 !~ /QGCSuite/ && /--unittest/' | wc -l
+    ps -axo command= | awk '$1 ~ /\.app\/Contents\/MacOS\// && $1 !~ /QGCSuite/ && /--unittest/' | wc -l | tr -d ' '
 }
 
 # Truncated before the gate, not after it. Every caller here parses this log after invoking the
@@ -62,7 +62,15 @@ for attempt in $(seq 1 30); do
     (( attempt % 3 == 1 )) && print -u2 "waiting: load $load, want under 8, $(( (attempt - 1) / 6 ))m so far of 5m"
     sleep 10
 done
-(( settled == 0 )) && print -u2 "load never settled; starting anyway, so treat a timeout or a SIGSEGV here as load rather than a regression"
+if (( settled == 0 )); then
+    load=$(sysctl -n vm.loadavg | awk '{print int($2)}')
+    if (( load >= 24 )); then
+        print "REFUSED: load $load after five minutes; a suite started here tells you about the machine, not the code" >> "$log"
+        print -u2 "load $load after five minutes; refusing rather than starting a run that cannot be attributed"
+        exit 1
+    fi
+    print -u2 "load never settled under 8; starting at $load, so treat a timeout or a SIGSEGV here as load rather than a regression"
+fi
 echo "starting with load $(sysctl -n vm.loadavg | awk '{print $2}')"
 
 # Build first, and treat a failed build as a failed run rather than testing what was there
