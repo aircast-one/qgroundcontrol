@@ -302,6 +302,10 @@ def claimed_actions():
              for block in OWNED_LIST.findall(source.stdout) + OWNS_ARM.findall(source.stdout)
              for name in re.findall(r"[A-Z_]+", block)}
     claimed = {values[name] for name in named if name in values}
+    # The signature, which cost two sessions three steps each to see: IDENTICAL PATH SETS WITH
+    # DIFFERENT TOTALS means the classifier changed and the tree did not. Diff the sets, never the
+    # totals. And check both directions -- this break inflated the count, and an inflation reads as
+    # honest bad news, which is the one kind nobody audits.
     if values and not claimed:
         print("actions.rs names " + str(len(values)) + " path consts and no ownership list this "
               "script recognises: its shape has changed and every claimed path is being counted "
