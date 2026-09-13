@@ -278,10 +278,17 @@ endif()
 # Note: Adding Resources to Library instead requires using Q_INIT_RESOURCE(qgcresources)
 
 list(APPEND QGC_RESOURCES
-    ${CMAKE_SOURCE_DIR}/qgcimages.qrc
-    ${CMAKE_SOURCE_DIR}/qgcresources.qrc
     ${CMAKE_SOURCE_DIR}/qgroundcontrol.qrc
 )
+
+# The image sets exist for QGC's own QML to draw. Android runs a native head
+# that instantiates none of it, so these 15 MB are unreachable there.
+if(NOT ANDROID)
+    list(APPEND QGC_RESOURCES
+        ${CMAKE_SOURCE_DIR}/qgcimages.qrc
+        ${CMAKE_SOURCE_DIR}/qgcresources.qrc
+    )
+endif()
 
 list(APPEND QGC_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/InstrumentValueIcons/InstrumentValueIcons.qrc
