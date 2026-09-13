@@ -1324,7 +1324,7 @@ impl Hub {
     }
 
     pub fn calibration_snapshot(&self, id: Option<u8>) -> Value {
-        let vehicle = id.and_then(|id| self.vehicles.get(&id)).or_else(|| self.active());
+        let vehicle = match id { Some(id) => self.vehicles.get(&id), None => self.active() };
         json!({
             "kind": "object",
             "class": "CoreCalibration",
@@ -1343,7 +1343,7 @@ impl Hub {
     }
 
     pub fn remote_snapshot(&self, id: Option<u8>) -> Value {
-        let vehicle = id.and_then(|id| self.vehicles.get(&id)).or_else(|| self.active());
+        let vehicle = match id { Some(id) => self.vehicles.get(&id), None => self.active() };
         json!({
             "kind": "object",
             "class": "CoreRemoteId",
@@ -1376,7 +1376,7 @@ impl Hub {
     }
 
     pub fn guided_snapshot(&self, id: Option<u8>) -> Value {
-        let chosen = id.and_then(|id| self.vehicles.get(&id)).or_else(|| self.active());
+        let chosen = match id { Some(id) => self.vehicles.get(&id), None => self.active() };
         json!({
             "kind": "object",
             "class": "CoreGuided",
@@ -1447,7 +1447,7 @@ pub fn core_guided_view(_backend: &dyn crate::router::Backend, args: &[String]) 
 
 pub fn core_mission_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     let hub = lock();
-    let vehicle = args.first().and_then(|a| a.trim().parse().ok()).and_then(|id| hub.vehicles.get(&id)).or_else(|| hub.active());
+    let vehicle = match args.first().map(|a| a.trim().parse().ok()) { Some(id) => id.and_then(|id: u8| hub.vehicles.get(&id)), None => hub.active() };
     json!({
         "kind": "object",
         "class": "CoreMission",
@@ -1470,7 +1470,7 @@ pub fn core_remote_id_view(backend: &dyn crate::router::Backend, args: &[String]
 
 pub fn core_parameters_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     let hub = lock();
-    let vehicle = args.first().and_then(|a| a.trim().parse().ok()).and_then(|id| hub.vehicles.get(&id)).or_else(|| hub.active());
+    let vehicle = match args.first().map(|a| a.trim().parse().ok()) { Some(id) => id.and_then(|id: u8| hub.vehicles.get(&id)), None => hub.active() };
     let listed: serde_json::Map<String, Value> = vehicle.map(|v| v.parameters(v.component).into_iter().map(|(name, value)| (name, json!({ "value": value.as_f64(), "type": value.param_type() }))).collect()).unwrap_or_default();
     json!({
         "kind": "object",
@@ -1485,12 +1485,12 @@ pub fn core_parameters_view(_backend: &dyn crate::router::Backend, args: &[Strin
 
 pub fn core_parameter_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     let (id, name) = match args {
-        [id, name] => (id.trim().parse().ok(), name.trim()),
+        [id, name] => (Some(id.trim().parse().ok()), name.trim()),
         [name] => (None, name.trim()),
         _ => (None, ""),
     };
     let hub = lock();
-    let vehicle = id.and_then(|id| hub.vehicles.get(&id)).or_else(|| hub.active());
+    let vehicle = match id { Some(id) => id.and_then(|id: u8| hub.vehicles.get(&id)), None => hub.active() };
     let value = vehicle.and_then(|v| v.parameter(v.component, name));
     json!({
         "kind": "object",
@@ -1569,6 +1569,11 @@ mod tests {
         assert_eq!(two.snapshot()["vehicle"]["id"], 1);
         assert_eq!(two.snapshot_of(Some(7))["vehicle"]["id"], 7);
         assert_eq!(two.snapshot_of(Some(9))["available"], false);
+        assert_eq!(two.guided_snapshot(Some(9))["available"], false, "guided answered for a vehicle nobody asked about");
+        assert_eq!(two.calibration_snapshot(Some(9))["available"], false, "calibration answered for a vehicle nobody asked about");
+        assert_eq!(two.remote_snapshot(Some(9))["available"], false, "remote id answered for a vehicle nobody asked about");
+        assert_eq!(two.guided_snapshot(None)["vehicleId"], 1, "asking for no vehicle in particular still means the active one");
+        assert_eq!(two.guided_snapshot(Some(7))["vehicleId"], 7);
     }
 
     use num_traits::FromPrimitive;
