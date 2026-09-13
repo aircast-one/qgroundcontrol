@@ -24,6 +24,7 @@ struct Parameter: Identifiable {
     let units: String
     let description: String
     let options: [ParameterOption]
+    let range: FactRange
 
     var id: String { "\(componentId)/\(name)" }
     var path: String { "vehicle.parameterManager.getParameter(\(componentId),\(name))" }
@@ -38,6 +39,7 @@ struct Parameter: Identifiable {
         self.componentId = componentId
         units = (json["units"] as? String) ?? ""
         description = (json["shortDescription"] as? String) ?? ""
+        range = FactRange(json, title: name)
 
         let enumIndex = (json["enumIndex"] as? NSNumber)?.intValue ?? -1
         let enums = (json["enumStrings"] as? [String]) ?? []

@@ -1262,6 +1262,38 @@ func checkASettingsControlRefusesWhatItsOwnHintForbids() {
 
 checkASettingsControlRefusesWhatItsOwnHintForbids()
 
+func checkAVehicleParameterIsMeasuredAgainstItsOwnDeclaredRange() {
+    let angle = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
+        "name": "WPNAV_SPEED", "valueString": "500", "units": "cm/s",
+        "min": 20, "max": 2000, "minString": "20", "maxString": "2000",
+        "minIsDefaultForType": false, "maxIsDefaultForType": false])
+    expect(angle.range.refusal("5000") ?? "", "WPNAV_SPEED must be within 20 and 2000.",
+           "a vehicle parameter is the highest-stakes write this head makes and it was the only "
+           + "one measured against nothing at all -- Parameter decoded no bounds, though its "
+           + "path is a Fact and carries all six")
+    expect(angle.range.refusal("500") == nil, "a value inside the range is written")
+
+    let open = Parameter(name: "SR0_POSITION", componentId: 1, json: [
+        "name": "SR0_POSITION", "valueString": "4",
+        "min": -1.7976931348623157e+308, "max": 1.7976931348623157e+308,
+        "minString": "-1797693134862315708.00", "maxString": "1797693134862315708.00",
+        "minIsDefaultForType": true, "maxIsDefaultForType": true])
+    expect(open.range.refusal("99999") == nil,
+           "a parameter declaring neither end refuses nothing, so the uniform rule does not "
+           + "invent a limit for the many parameters that genuinely have none")
+
+    let compact = Parameter(name: "COMPACT_ONLY", componentId: 1, json: [
+        "name": "COMPACT_ONLY", "valueString": "7", "units": "m"])
+    expect(compact.range.refusal("-9999") == nil,
+           "and a fact served WITHOUT bounds refuses nothing rather than guessing. "
+           + "compactFactJson emits only kind, name, value, valueString, rawValue and units, so "
+           + "a reader on that path sees no bounds at all -- this head is not on it, "
+           + "qgc_bridge_get calls readPath with compactFacts false, but the shape must still "
+           + "be safe to decode")
+}
+
+checkAVehicleParameterIsMeasuredAgainstItsOwnDeclaredRange()
+
 
 func checkUnplacedCommands() {
     let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)

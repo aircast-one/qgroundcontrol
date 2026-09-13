@@ -66,6 +66,10 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func writeControl(_ control: SettingsControl, _ value: String) {
+        if let refused = control.refusal(value) {
+            writeFailure = refused
+            return
+        }
         guard write(control.path, Double(value) ?? value, control.label) else { return }
         setupCache.removeAll()
         objectWillChange.send()
@@ -82,6 +86,10 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func write(_ parameter: Parameter, _ value: String) {
+        if let refused = parameter.range.refusal(value) {
+            writeFailure = refused
+            return
+        }
         guard write(parameter.path, Double(value) ?? value, parameter.name) else { return }
         let json = Bridge.group(parameter.path)
         guard json["kind"] as? String == "fact" else { return }
