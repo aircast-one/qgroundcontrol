@@ -290,6 +290,12 @@ if(NOT ANDROID)
     )
 endif()
 
+# The drone meshes are 8.5 MB and are read only by the 3D viewer, so they follow
+# its option rather than shipping whether or not it was built.
+if(QGC_VIEWER3D)
+    list(APPEND QGC_RESOURCES ${CMAKE_SOURCE_DIR}/viewer3d.qrc)
+endif()
+
 list(APPEND QGC_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/InstrumentValueIcons/InstrumentValueIcons.qrc
     ${CMAKE_SOURCE_DIR}/src/FirmwarePlugin/APM/APMResources.qrc
