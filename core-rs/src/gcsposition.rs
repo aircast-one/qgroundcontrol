@@ -22,6 +22,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.latitude",
     "vehicle.longitude",
     "vehicle.vehicleLinkManager.communicationLost",
+    "settings.unitsSettings.horizontalDistanceUnits",
 ];
 
 pub fn now() -> MonotonicMs {
@@ -377,8 +378,11 @@ pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .and_then(|(latitude, longitude)| latitude.zip(longitude))
         .zip(live_vehicle(backend))
         .map(|(gcs, vehicle)| crate::track::distance_m(gcs, vehicle));
-    snapshot["distanceToVehicle"] = json!(separation);
-    snapshot["distanceToVehicleUnits"] = json!("m");
+    let unit = crate::read::Unit::horizontal(backend);
+    snapshot["distanceToVehicleMeters"] = json!(separation);
+    snapshot["distanceToVehicle"] = json!(separation.map(|metres| unit.show(metres)));
+    snapshot["distanceToVehicleText"] = json!(separation.map(|metres| unit.label(metres)));
+    snapshot["distanceToVehicleUnits"] = json!(unit.name);
     snapshot
 }
 
@@ -474,9 +478,32 @@ mod tests {
 
         let metres = |source, lost, accuracy| {
             lock().select_source(Source::None);
-            gcs_position_view(&Pair(source, lost, accuracy), &[])["distanceToVehicle"].as_f64()
+            gcs_position_view(&Pair(source, lost, accuracy), &[])["distanceToVehicleMeters"].as_f64()
         };
 
+        let feet = {
+            struct Imperial(Pair);
+            impl Backend for Imperial {
+                fn get(&self, path: &str) -> String { self.0.get(path) }
+                fn get_fields(&self, path: &str, fields: &str) -> String {
+                    match path {
+                        "units" => json!({ "appSettingsHorizontalDistanceUnitsString": "ft" }).to_string(),
+                        _ => self.0.get_fields(path, fields),
+                    }
+                }
+                fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 3.28084 }).to_string() }
+                fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+                fn watch(&self, _p: &[String]) {}
+            }
+            lock().select_source(Source::None);
+            let view = gcs_position_view(&Imperial(Pair("gps", false, 3.0)), &[]);
+            (view["distanceToVehicle"].as_f64(), view["distanceToVehicleUnits"].as_str().map(str::to_string), view["distanceToVehicleMeters"].as_f64())
+        };
+        assert!((feet.0.unwrap() - 1_651.0).abs() < 20.0, "an operator working in feet is given feet, got {:?}", feet.0);
+        assert_eq!(feet.1.as_deref(), Some("ft"));
+        assert!((feet.2.unwrap() - 503.0).abs() < 5.0, "and the metres stay beside them for anything that needs the raw figure");
+
+        lock().select_source(Source::None);
         let near = metres("gps", false, 3.0).expect("a usable fix and a live vehicle give a separation");
         assert!((near - 503.0).abs() < 5.0, "0.003 degrees of latitude and 0.005 of longitude at Zurich, got {near}");
         assert_eq!(metres("gps", true, 3.0), None, "the vehicle's coordinate is held after the link drops, so a distance from it would be counted against a place it has left");

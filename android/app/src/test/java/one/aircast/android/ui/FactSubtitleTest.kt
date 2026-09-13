@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import one.aircast.android.bridge.Fact
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -49,5 +50,21 @@ class RunningTitleTest {
     fun `a calibration the screen did not start still says what is happening`() {
         assertEquals("Calibration in progress", runningTitle(""))
         assertEquals("Calibration in progress", runningTitle("  "))
+    }
+}
+
+class OperatorDistanceTest {
+    @Test
+    fun `the served text is shown as its own reading`() {
+        val view = JSONObject("""{"distanceToVehicleText":"316.8 m"}""")
+
+        assertEquals(listOf(Instrument("From you", "316.8 m")), operatorDistance(view))
+    }
+
+    @Test
+    fun `nothing is shown when the core withholds the distance`() {
+        assertEquals(emptyList<Instrument>(), operatorDistance(JSONObject("""{"distanceToVehicleText":null}""")))
+        assertEquals(emptyList<Instrument>(), operatorDistance(JSONObject("{}")))
+        assertEquals(emptyList<Instrument>(), operatorDistance(null))
     }
 }

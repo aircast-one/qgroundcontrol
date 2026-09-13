@@ -54,6 +54,8 @@ import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
 import one.aircast.mapspike.optText
 
+private const val GCS_POSITION = "view.gcsPosition"
+
 private const val INSTRUMENTS =
     "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)"
 
@@ -66,6 +68,12 @@ internal data class GuidedAction(
 
 
 internal data class Instrument(val label: String, val reading: String)
+
+internal fun operatorDistance(view: JSONObject?): List<Instrument> =
+    view?.optText("distanceToVehicleText")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { listOf(Instrument(label = "From you", reading = it)) }
+        ?: emptyList()
 
 internal fun instruments(view: JSONObject?): List<Instrument> {
     val items = view?.optJSONArray("items") ?: return emptyList()
@@ -122,7 +130,8 @@ fun VehicleTitle() {
 @Composable
 fun TelemetryRow(modifier: Modifier = Modifier) {
     val view by qgcPath(INSTRUMENTS)
-    val shown = remember(view) { instruments(view) }
+    val gcsJson by qgcPath(GCS_POSITION)
+    val shown = remember(view, gcsJson) { instruments(view) + operatorDistance(gcsJson) }
     val stateJson by qgcPath(FLY_STATE)
     val stale = remember(stateJson) { flyState(stateJson)?.staleNotice.orEmpty() }
     val silent = stale.isNotBlank()
