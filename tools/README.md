@@ -19,6 +19,7 @@ copy there.
 | `detfeed.py` | The SSE detection feed `detrig.sh` serves — two boxes, one of them moving. |
 | `whatsunder.py` | What flight control, if any, sits under a point. `ui.sh tap` refuses rather than guess, and refuses when this cannot answer — it failed open for six hours on 2026-09-11 because its own pattern would not parse. |
 | `whatsunder_test.py` | `python3 tools/whatsunder_test.py`. No device needed. Pins both quote styles, the planning-screen exemptions, that unreadable input exits non-zero, and that `PLAN_ITEMS_HEADING` in the Kotlin still matches the literal the guard looks for. |
+| `rccal.py` | drives a whole RC calibration through the head: reads `view.radio`, writes the sticks the step asks for, taps Next where the state machine waits for it. Twelve steps, about two minutes. The Radio component stops asking for setup when it finishes. |
 | `watchprobe.py` | `on`/`off` around timing instrumentation in `Watcher::_poll`. It asserts the poll body is in the shape it expects, so it fails loudly when the bridge changes rather than patching the wrong thing. |
 
 ## What `apmvehicle.py` can pretend to be
