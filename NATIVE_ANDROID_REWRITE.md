@@ -5544,6 +5544,32 @@ adapter to confirm attach still fires, which this session does not have.
 Store filtering rather than runtime, and is one line whenever someone is testing
 USB anyway.
 
+**Swept for the same shape, 2026-09-14. Two resources, and the second is the
+launcher icon.**
+
+| reference | owner |
+|---|---|
+| `@xml/device_filter` | the aar — which radios auto-open |
+| `@drawable/icon` | the aar — the launcher icon |
+| `@string/app_name` | the head |
+
+`android/app/src/main/res` holds only `values/strings.xml`; the head has no
+drawable directory at all, so the icon a user taps comes from
+`deploy/android/res/drawable-*/icon.png`. Deleting the Qt template today means
+the app loses its icon and forgets which radios to open, and no path count shows
+either, because both are resource references rather than bridge paths.
+
+The Kotlin importing `org.mavlink.qgroundcontrol` in ten files is the JNI bridge
+class, which the native build keeps by design, and the head's gradle points at
+the aar rather than at the packaging. Those two are clean.
+
+**The first run of this sweep reported three, including `app_name`.** The script
+compared resource type and name against folder and filename — correct for `xml/`
+and `drawable/`, where the file is the resource, and meaningless for a
+`<string name="app_name">` inside `values/strings.xml`. Three-for-three reads as
+a strong finding; one of them was the parser. File-based and value-based
+resources need two different lookups.
+
 **The second lever, and the third one measured rather than assumed** (`da1b8c369`): `QGC_VIEWER3D`
 skipped `src/Viewer3D` but never its payload — the DJI F450 meshes sat in `qgroundcontrol.qrc`
 unconditionally, 8.5 MB of that file's 9.4 MB. They now live in `viewer3d.qrc`, appended only when
