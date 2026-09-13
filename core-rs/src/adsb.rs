@@ -16,7 +16,37 @@ pub const DEPS: &[&str] = &[
     "settings.adsbVehicleManagerSettings.adsbServerHostAddress.rawValue",
     "settings.adsbVehicleManagerSettings.adsbServerPort.rawValue",
     "vehicle.coordinate",
+    "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits",
+    "settings.unitsSettings.speedUnits",
 ];
+
+// Distance, altitude and speed follow the operator's setting, so serving raw SI beside a hardcoded
+// "m" spells metres at an operator configured in feet. Bearing and heading are degrees and convert
+// for nobody, which is why they stay literal. Same three-field treatment as distanceToVehicle:
+// the raw number keeps its *Metres name, the converted one takes the bare name, and the text is
+// the core's spelling so two heads cannot disagree about it.
+#[derive(Clone)]
+pub struct Units {
+    pub horizontal: crate::read::Unit,
+    pub vertical: crate::read::Unit,
+    pub speed: crate::read::Unit,
+}
+
+impl Units {
+    pub fn read(backend: &dyn Backend) -> Self {
+        Units {
+            horizontal: crate::read::Unit::horizontal(backend),
+            vertical: crate::read::Unit::vertical(backend),
+            speed: crate::read::Unit::speed(backend),
+        }
+    }
+
+    fn metric() -> Self {
+        let si = |name: &str| crate::read::Unit { name: name.to_string(), factor: 1.0 };
+        Units { horizontal: si("m"), vertical: si("m"), speed: si("m/s") }
+    }
+}
 
 pub const EXPIRATION_MS: u64 = 120_000;
 pub const PUBLISH_INTERVAL_MS: u64 = 1_000;
@@ -326,7 +356,7 @@ impl Contact {
         own.zip(self.report.positioned()).map(|(own, position)| distance_m(own.position(), position))
     }
 
-    pub fn json(&self, now_ms: u64, own: Option<Own>) -> Value {
+    pub fn json(&self, now_ms: u64, own: Option<Own>, units: &Units) -> Value {
         json!({
             "icaoAddress": self.report.icao_address,
             "callsign": self.report.callsign,
@@ -346,8 +376,13 @@ impl Contact {
             "ageMs": now_ms.saturating_sub(self.last_contact_ms),
             "stale": self.stale(now_ms),
             "distanceMetres": self.range_metres(own),
+            "distance": self.range_metres(own).map(|metres| units.horizontal.show(metres)),
+            "altitude": self.report.altitude_metres.map(|metres| units.vertical.show(metres)),
+            "velocity": self.report.velocity_metres_per_second.map(|speed| units.speed.show(speed)),
+            "verticalVelocity": self.report.vertical_velocity_metres_per_second.map(|speed| units.speed.show(speed)),
             "bearingDegrees": own.zip(self.report.positioned()).map(|(own, position)| azimuth_deg(own.position(), position)),
             "relativeAltitudeMetres": own.and_then(|own| own.altitude_metres).zip(self.report.altitude_metres).map(|(mine, theirs)| theirs - mine),
+            "relativeAltitude": own.and_then(|own| own.altitude_metres).zip(self.report.altitude_metres).map(|(mine, theirs)| units.vertical.show(theirs - mine)),
         })
     }
 }
@@ -479,6 +514,10 @@ impl Traffic {
     }
 
     pub fn snapshot(&self, now_ms: u64) -> Value {
+        self.snapshot_in(now_ms, &Units::metric())
+    }
+
+    pub fn snapshot_in(&self, now_ms: u64, units: &Units) -> Value {
         json!({
             "kind": "object",
             "class": "AdsbTraffic",
@@ -496,12 +535,12 @@ impl Traffic {
             "publishIntervalMs": PUBLISH_INTERVAL_MS,
             "revision": self.revision,
             "updatedMs": self.updated_ms,
-            "units": { "altitude": "m", "velocity": "m/s", "verticalVelocity": "m/s", "heading": "deg", "distance": "m", "bearing": "deg" },
+            "units": { "altitude": units.vertical.name.clone(), "velocity": units.speed.name.clone(), "verticalVelocity": units.speed.name.clone(), "heading": "deg", "distance": units.horizontal.name.clone(), "bearing": "deg" },
             "alerting": self.alerting(),
             "alertUnknown": self.contacts.values().filter(|contact| contact.report.alert.is_none()).count(),
             "emergency": EMERGENCIES.iter().find(|(code, _)| self.contacts.values().any(|contact| contact.report.squawk == Some(*code))).map(|(_, token)| *token),
             "order": "nearestFirst",
-            "contacts": self.ranked().iter().map(|contact| contact.json(now_ms, self.own)).collect::<Vec<_>>(),
+            "contacts": self.ranked().iter().map(|contact| contact.json(now_ms, self.own, units)).collect::<Vec<_>>(),
         })
     }
 }
@@ -576,7 +615,7 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
         std::thread::Builder::new().name("qgc-core-adsb".to_string()).spawn(move || follow(source, generation)).expect("adsb thread");
     }
     traffic.expire(now_ms);
-    traffic.snapshot(now_ms)
+    traffic.snapshot_in(now_ms, &Units::read(backend))
 }
 
 #[cfg(test)]
@@ -1025,8 +1064,8 @@ mod tests {
         assert_eq!(view["source"], json!({ "host": "adsb.example", "port": 30003 }), "the port fact is stored as text and still names a port");
         assert_eq!(view["ownPositionKnown"], json!(true));
 
-        assert_eq!(DEPS.len(), 4, "every fact the view reads is watched, or it is never recomputed when the operator changes it");
-        assert!(DEPS.iter().all(|dep| dep.starts_with("settings.adsbVehicleManagerSettings.") || *dep == "vehicle.coordinate"));
+        assert_eq!(DEPS.len(), 7, "every fact the view reads is watched, or it is never recomputed when the operator changes it");
+        assert!(DEPS.iter().all(|dep| dep.starts_with("settings.adsbVehicleManagerSettings.") || dep.starts_with("settings.unitsSettings.") || *dep == "vehicle.coordinate"));
 
         let nowhere = adsb_traffic_view(&Settings { enabled: json!(true), host: json!("   "), port: json!(30003), coordinate: json!({ "kind": "null" }) }, &[]);
         assert_eq!((nowhere["enabled"].clone(), nowhere["available"].clone()), (json!(true), json!(false)), "switched on with no host is enabled and unusable, which is a different thing to say");
@@ -1034,6 +1073,39 @@ mod tests {
         assert_eq!(port_number(&json!({ "value": "0" }).to_string()), None, "port zero is no port");
         assert_eq!(port_number(&json!({ "value": "70000" }).to_string()), None);
         assert_eq!(port_number(&json!({ "value": 30003 }).to_string()), Some(30003), "and a fact stored as a number still names one");
+    }
+
+    #[test]
+    fn a_contact_is_measured_in_the_operators_units() {
+        struct Imperial;
+        impl Backend for Imperial {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            // Unit::read asks units.<conversion> for a factor and units for the name property, so
+            // a fake serving the raw settings value tests nothing about the conversion.
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", fields: match fields {
+                        "appSettingsVerticalDistanceUnitsString" => "ft",
+                        "appSettingsHorizontalDistanceUnitsString" => "ft",
+                        _ => "mph",
+                    } }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 3.28084 }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let mut traffic = Traffic::default();
+        traffic.observe(Some(Own { latitude: 47.0, longitude: 8.0, altitude_metres: Some(100.0) }));
+        traffic.receive(&Report { icao_address: 1, callsign: Some("TEST".into()), latitude: Some(47.01), longitude: Some(8.0), altitude_metres: Some(300.0), velocity_metres_per_second: Some(50.0), ..Report::default() }, 0);
+
+        let metric = traffic.snapshot(0);
+        let converted = traffic.snapshot_in(0, &Units::read(&Imperial));
+        assert_eq!(metric["contacts"][0]["altitudeMetres"], converted["contacts"][0]["altitudeMetres"], "the raw SI number is the same measurement whatever the operator reads it in");
+        assert_ne!(metric["units"]["altitude"], converted["units"]["altitude"], "and the units block has to name the one actually applied - it was a literal \"m\" whatever the setting said");
+        assert_ne!(metric["contacts"][0]["altitude"], converted["contacts"][0]["altitude"], "a head reading the bare name gets the operator's units, so it never converts and two heads cannot disagree");
     }
 
     #[test]

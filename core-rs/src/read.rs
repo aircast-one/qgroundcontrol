@@ -75,6 +75,7 @@ pub fn fact_flag(object: &Value, name: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[derive(Clone)]
 pub struct Unit {
     pub name: String,
     pub factor: f64,
