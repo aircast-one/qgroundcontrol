@@ -110,6 +110,19 @@ Each such addition is also a core ask rather than an accident: a head writing a 
 directly is how two heads come to disagree about validation, which is the same argument as
 not converting units head-side. Batch them as they appear.
 
+A LITERAL CAN RETIRE WHILE AN INTERPOLATED TEMPLATE STILL REACHES THE SAME OBJECT, and that
+is the one way this number moves in the FLATTERING direction without the dependence changing.
+Instruments.swift reads `"vehicle.batteries"` at :84 for a pack count and `"vehicle.\(group)"`
+at :91 for each pack's facts -- seven lines apart, same function, same Qt object. Sourcing the
+count from `view.battery.packs` would delete the literal and drop the total by one while :91
+went on reading vehicle.batteries.0 exactly as before. The count would report progress that
+did not happen.
+
+So a proposed migration has to be checked against what the head still REACHES, not against
+what the head still SPELLS. Refused once on 2026-09-14 for this reason, which is the mirror of
+the inflated-count problem in the header: an undercount is a number nobody re-derives, and a
+deflated one is a number nobody questions at all.
+
 SERVED paths (`view.*`) are counted separately as the numerator of the migration: the head
 is done with a root when its raw count reaches zero.
 
