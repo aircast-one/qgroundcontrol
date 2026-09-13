@@ -7,6 +7,7 @@ import time
 
 NO_FENCE = os.environ.get("NO_FENCE") == "1"
 
+from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
 
 TARGET = (sys.argv[1], 14550)
@@ -29,6 +30,7 @@ INT_PARAMS = frozenset(
     + ["RC%d_REVERSED" % ch for ch in range(1, 9)]
 )
 
+MAGCAL_MASK = 0b011
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
 DEFAULT_TAKEOFF_ALTITUDE = 10.0
@@ -113,6 +115,9 @@ def main():
 
     link = mavlink.MAVLink(Sender(sock, TARGET), srcSystem=SYSID,
                            srcComponent=mavlink.MAV_COMP_ID_AUTOPILOT1)
+    magcal = apm.MAVLink(Sender(sock, TARGET), srcSystem=SYSID,
+                         srcComponent=mavlink.MAV_COMP_ID_AUTOPILOT1)
+    magcal_started = [None]
     parser = mavlink.MAVLink(None, srcSystem=255, srcComponent=0)
     sent_status = [0]
     cameras = {
@@ -200,6 +205,9 @@ def main():
                         ("RTL_LOIT_TIME", 5000.0), ("LAND_SPEED", 50.0),
                         ("FRAME", 1.0), ("COMPASS_DEV_ID", 97539.0),
                         ("COMPASS_DEV_ID2", 131874.0), ("COMPASS_DEV_ID3", 0.0),
+                        ("COMPASS_OFS_X", 12.0), ("COMPASS_OFS_Y", -7.0),
+                        ("COMPASS_OFS_Z", 33.0), ("COMPASS_OFS2_X", 9.0),
+                        ("COMPASS_OFS2_Y", -4.0), ("COMPASS_OFS2_Z", 28.0),
                         ("COMPASS_USE", 1.0), ("COMPASS_USE2", 1.0),
                         ("COMPASS_USE3", 0.0), ("COMPASS_LEARN", 0.0)):
         params[name] = value
@@ -517,11 +525,33 @@ def main():
                         landing = True
                         target_altitude = 0.0
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif kind == "COMMAND_LONG" and message.command == apm.MAV_CMD_DO_START_MAG_CAL:
+                    magcal_started[0] = time.time()
+                    print("MAG CAL started", flush=True)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif kind == "COMMAND_LONG" and message.command == apm.MAV_CMD_DO_CANCEL_MAG_CAL:
+                    magcal_started[0] = None
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG":
                     print("CMD %d p1=%.2f p2=%.2f p7=%.2f" % (
                         message.command, message.param1, message.param2,
                         getattr(message, "param7", 0.0)), flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+
+        if magcal_started[0] is not None:
+            spent = time.time() - magcal_started[0]
+            percent = min(100, int(spent * 10))
+            for compass in (0, 1):
+                magcal.mag_cal_progress_send(
+                    compass, MAGCAL_MASK, apm.MAG_CAL_RUNNING_STEP_TWO, 1,
+                    percent, [255] * 10, 0.0, 0.0, 0.0)
+            if percent >= 100:
+                for compass in (0, 1):
+                    magcal.mag_cal_report_send(
+                        compass, MAGCAL_MASK, apm.MAG_CAL_SUCCESS, 1, 2.5,
+                        10.0, -8.0, 4.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+                print("MAG CAL reported success", flush=True)
+                magcal_started[0] = None
 
         tick += 1
 
