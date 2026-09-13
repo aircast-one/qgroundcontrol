@@ -636,6 +636,36 @@ height unknown". The rig has never served an elevation, so the terrain profile,
 `altitudeAmsl` on a terrain-framed item, and the "Calculated Above Terrain" mode
 I wired a picker to this session have all only ever rendered their empty case.
 
+### Checked: the range defect the other head had does not reach this one, 2026-09-13
+
+Two commits landed overnight fixing writes that read their own limits and then
+ignored them - a settings field hinting "6 to 48" and accepting 200, and the
+plan's cruise, hover and default-altitude settings. Both were macOS. Checked
+whether this head has the same hole, and it does not, for a better reason than
+luck.
+
+**Settings fields ask the fact.** `FactTextField` calls
+`Qgc.invokeResult("<fact path>.validate", text, false)` before writing, so the
+bounds are enforced by the FactSystem that owns them rather than re-read and
+re-applied in the head. `minString` and `maxString` are used only to choose the
+keyboard and to write the "Min 6 · Max 48" note. That is the right split: the
+hint and the rule cannot drift because the head never holds the rule.
+
+**Plan writes do not validate, and have nothing to validate against.** No write
+in `map-spike` calls `.validate`, and a bridge `set` on a fact-backed property
+lands in `Fact::setRawValue`, which calls `convertAndValidateRaw(value, true /*
+convertOnly */, ...)` - it converts the type and does not range-check. But
+`SimpleMissionItem::_altitudeMetaData` sets units, increment and decimal places
+and **no minimum or maximum**, so an item altitude has only the type's bounds.
+Nothing is being written past.
+
+**One question left for whoever owns the decision.** `parsedAltitude` refuses
+anything below zero. That is a rule this head invented; the fact declares none.
+In relative or terrain frames it is harmless, but an AMSL altitude below zero is
+a real place, and the picker built this session lets an operator choose AMSL.
+Not filed as a defect - nobody has asked to fly below sea level - but the head
+is the only thing saying no.
+
 ### view.altitudeModes is keyed by an argument nothing watches, 2026-09-13
 
 The frame picker reads `view.altitudeModes(mission,N)` where N is the mode the
