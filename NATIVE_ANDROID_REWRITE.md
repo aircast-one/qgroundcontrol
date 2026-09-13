@@ -823,7 +823,17 @@ the field.
   state is the violation; rearranging presentation is not.**
 
 That leaves `track` as the one confirmed duplication of vehicle state still
-standing, and it needs an armed vehicle to verify.
+standing.
+
+**Corrected 2026-09-13: it is not blocked.** I wrote that it "needs an armed
+vehicle to verify", which carried one closed route into a claim about the whole
+job. What needs a flight is the end-to-end check that the polyline draws the
+same line. The rules themselves are already unit-tested on both sides without a
+vehicle - `core-rs/src/track.rs` has its own `mod tests`, and the head has
+`map-spike/src/test/.../VehicleTrackTest.kt` - so the migration can be written,
+its behaviour pinned, and `VehicleTrack` deleted entirely off-device. Only the
+last confirmation waits on hardware, and that is a different sentence from the
+one I wrote.
 
 **The counts above were wrong, corrected 2026-09-13.** My sweep matched
 `view.<name>` anywhere in a file, comments included. `transports` and
@@ -867,10 +877,12 @@ Two more triaged the same night:
 
   The first version of this note said "every control on `view.settings(General)`
   has a title" and then concluded about every surface. One page is not nine.
-- **`orbit` is blocked, not absent.** It carries the centre, radius and
-  direction of an orbit in progress, which is what draws the circle on the map.
-  Reaching it needs an armed vehicle flying a commanded orbit, the same gate as
-  `track`.
+- **`orbit` is unmeasured on this rig, which is not the same as unreachable.**
+  It carries the centre, radius and direction of an orbit in progress, which is
+  what draws the circle on the map. Watching a real orbit needs an armed vehicle
+  flying one. Whether the view can be read, shaped and tested without that is a
+  question I have not asked - the same one I got wrong for `track`, where the
+  answer turned out to be yes.
 
 Four left unexamined: `gcsPosition`, `missionSeed`, `track`, `vehicleLinks`.
 `vehicleLinks` needs a second link to be worth anything - it names which radio
