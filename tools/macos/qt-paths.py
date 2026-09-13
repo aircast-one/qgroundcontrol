@@ -170,7 +170,19 @@ USE = [("read", re.compile(r'\b(?:group|get|getFields|watch|invokeResult|qgcBool
        ("action", re.compile(r'\binvoke\(')),
        ("write", re.compile(r'\b(?:set|write)\('))]
 
+# Kotlin `const val NAME = "..."` and Swift `static let name = "..."`. Only values that already
+# match PATH are kept, which is what makes this safe: `static let probeID = "geoTag"` is a bare
+# root with no dot, so it never matched PATH and is never expanded. I refused this fix once on
+# the grounds that expanding constants would manufacture paths -- the discriminator was there
+# the whole time and I had not looked for it.
 CONSTANT = re.compile(r'\bconst\s+val\s+([A-Z][A-Z0-9_]*)\s*=\s*"([^"]*)"')
+
+# Swift binds paths to constants too -- `static let deviceNamePath = "settings.…deviceName"`,
+# read and written only through the name. Unlike the Kotlin form the declaration line is NOT
+# skipped: `let path = "plan.…\(index)"` is itself a path, and skipping it lost two real
+# templates when I tried. Names must look like constants, because a bare `path` variable is
+# common enough that expanding it would rewrite half the file.
+SWIFT_CONSTANT = re.compile(r'\b(?:static\s+)?let\s+([A-Za-z_][A-Za-z0-9_]*[Pp]ath)\s*=\s*"([^"]*)"')
 
 APP_STORAGE = re.compile(r'@AppStorage\(')
 
@@ -180,10 +192,11 @@ SUFFIXES = (".swift", ".kt")
 def constants(sources):
     found = {}
     for source in sources:
-        for match in CONSTANT.finditer(source.read_text(errors="replace")):
-            found[match.group(1)] = match.group(2)
-    return {n: v for n, v in found.items()
-            if v.split(".")[0] in ROOTS or any(v.startswith(r + ".") for r in ROOTS)}
+        text = source.read_text(errors="replace")
+        for pattern in (CONSTANT, SWIFT_CONSTANT):
+            for match in pattern.finditer(text):
+                found[match.group(1)] = match.group(2)
+    return {n: v for n, v in found.items() if PATH.fullmatch(f'"{v}"')}
 
 
 def expand(line, named):
