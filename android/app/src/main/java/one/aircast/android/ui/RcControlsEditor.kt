@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -82,6 +81,7 @@ fun RcControlsEditor(modifier: Modifier = Modifier) {
     }
 
     Column(modifier) {
+        SectionHeader("On-screen RC controls")
         notice?.let { message ->
             Text(
                 text = message,
@@ -98,38 +98,35 @@ fun RcControlsEditor(modifier: Modifier = Modifier) {
             )
         }
 
-        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-            items(controls.size) { index ->
-                val control = controls[index]
-                val clash = channelOwner(json, control.channel, index, reserved)
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(control.label, style = MaterialTheme.typography.bodyLarge)
+        controls.forEachIndexed { index, control ->
+            val clash = channelOwner(json, control.channel, index, reserved)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(control.label, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Channel ${control.channel} · ${typeLabel(control.type)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    clash?.let {
                         Text(
-                            "Channel ${control.channel} · ${typeLabel(control.type)}",
+                            "Channel ${control.channel} is already driving $it.",
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
                         )
-                        clash?.let {
-                            Text(
-                                "Channel ${control.channel} is already driving $it.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
                     }
-                    TextButton(onClick = {
-                        draft = Draft(index, control.label, control.channel.toString(), control.type)
-                    }) { Text("Edit") }
-                    TextButton(onClick = {
-                        undo = control.label to json
-                        save(rcControlsRemoved(json, index))
-                    }) { Text("Remove") }
                 }
-                HorizontalDivider()
+                TextButton(onClick = {
+                    draft = Draft(index, control.label, control.channel.toString(), control.type)
+                }) { Text("Edit") }
+                TextButton(onClick = {
+                    undo = control.label to json
+                    save(rcControlsRemoved(json, index))
+                }) { Text("Remove") }
             }
+            HorizontalDivider()
         }
 
         undo?.let { (name, previous) ->

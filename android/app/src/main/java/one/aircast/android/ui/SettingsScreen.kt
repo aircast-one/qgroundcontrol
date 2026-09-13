@@ -58,16 +58,14 @@ data class SettingsGroup(val path: String, val title: String, val description: S
 
 const val LINKS_GROUP_PATH = "links"
 const val UNITS_GROUP_PATH = "settings.unitsSettings"
-const val RC_CONTROLS_GROUP_PATH = "settings.flyViewSettings.rcControls"
-const val EXTRA_SOURCES_GROUP_PATH = "settings.videoSettings.extraVideoSources"
+const val VIDEO_GROUP_PATH = "settings.videoSettings"
+const val FLY_VIEW_GROUP_PATH = "settings.flyViewSettings"
 
 val SETTINGS_GROUPS = listOf(
     SettingsGroup(LINKS_GROUP_PATH, "Comm Links", "Serial, UDP and TCP connections to the vehicle"),
     SettingsGroup(UNITS_GROUP_PATH, "Units", "Metric or imperial, or each measurement chosen separately"),
-    SettingsGroup("settings.videoSettings", "Video", "Stream source and address, and camera names"),
-    SettingsGroup(EXTRA_SOURCES_GROUP_PATH, "Extra cameras", "Additional streams alongside the main one"),
-    SettingsGroup("settings.flyViewSettings", "Fly View", "What the flight screen shows, and how the map follows"),
-    SettingsGroup(RC_CONTROLS_GROUP_PATH, "On-screen RC controls", "Sliders and buttons that drive RC channels"),
+    SettingsGroup(VIDEO_GROUP_PATH, "Video", "Stream source and address, and the cameras to switch between"),
+    SettingsGroup(FLY_VIEW_GROUP_PATH, "Fly View", "What the flight screen shows, and the on-screen RC controls"),
     SettingsGroup("settings.planViewSettings", "Plan View", "Defaults and rules for building a mission"),
     SettingsGroup("settings.mapsSettings", "Maps", "How much map imagery is kept on this device"),
     SettingsGroup("settings.batteryIndicatorSettings", "Battery", "What the battery indicator shows, and when it warns"),
@@ -107,10 +105,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             LinksScreen(Modifier.fillMaxSize())
         } else if (current.path == UNITS_GROUP_PATH) {
             UnitsPage(Modifier.fillMaxSize())
-        } else if (current.path == RC_CONTROLS_GROUP_PATH) {
-            RcControlsEditor(Modifier.fillMaxSize())
-        } else if (current.path == EXTRA_SOURCES_GROUP_PATH) {
-            ExtraVideoSourcesEditor(Modifier.fillMaxSize())
+        } else if (current.path == VIDEO_GROUP_PATH) {
+            FactList(current.path, Modifier.fillMaxSize()) { ExtraVideoSourcesEditor() }
+        } else if (current.path == FLY_VIEW_GROUP_PATH) {
+            FactList(current.path, Modifier.fillMaxSize()) { RcControlsEditor() }
         } else {
             FactList(current.path, Modifier.fillMaxSize())
         }
@@ -118,15 +116,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun FactList(groupPath: String, modifier: Modifier = Modifier) {
+fun FactList(groupPath: String, modifier: Modifier = Modifier, footer: @Composable () -> Unit = {}) {
     val facts by qgcFacts(groupPath)
 
-    if (facts.isEmpty()) {
-        Text("No settings exposed here.", modifier.padding(16.dp))
-        return
-    }
-
     LazyColumn(modifier) {
+        if (facts.isEmpty()) {
+            item(key = "empty") { Text("No settings exposed here.", Modifier.padding(16.dp)) }
+        }
         sectionedFacts(groupPath, facts).forEach { (title, members) ->
             if (title.isNotBlank()) {
                 item(key = "head$title") { SectionHeader(title) }
@@ -136,6 +132,7 @@ fun FactList(groupPath: String, modifier: Modifier = Modifier) {
                 HorizontalDivider()
             }
         }
+        item(key = "footer") { footer() }
     }
 }
 

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -69,6 +68,7 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
     }
 
     Column(modifier) {
+        SectionHeader("Extra cameras")
         notice?.let { message ->
             Text(
                 message,
@@ -80,35 +80,32 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
 
         if (sources.isEmpty()) {
             Text(
-                "One camera is set up under Video. Add another here to switch between them on the Fly view.",
+                "Add another camera to switch between them on the Fly view.",
                 Modifier.padding(16.dp),
             )
         }
 
-        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-            items(sources.size) { index ->
-                val entry = sources[index]
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            entry.name.ifBlank { "Camera ${index + 2}" },
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Text(extraSourceSummary(entry), style = MaterialTheme.typography.bodySmall)
-                    }
-                    TextButton(onClick = {
-                        draft = SourceDraft(index, entry.name, entry.source, entry.url)
-                    }) { Text("Edit") }
-                    TextButton(onClick = {
-                        undo = entry.name.ifBlank { "Camera ${index + 2}" } to json
-                        save(extraSourceRemoved(json, index))
-                    }) { Text("Remove") }
+        sources.forEachIndexed { index, entry ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        entry.name.ifBlank { "Camera ${index + 2}" },
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(extraSourceSummary(entry), style = MaterialTheme.typography.bodySmall)
                 }
-                HorizontalDivider()
+                TextButton(onClick = {
+                    draft = SourceDraft(index, entry.name, entry.source, entry.url)
+                }) { Text("Edit") }
+                TextButton(onClick = {
+                    undo = entry.name.ifBlank { "Camera ${index + 2}" } to json
+                    save(extraSourceRemoved(json, index))
+                }) { Text("Remove") }
             }
+            HorizontalDivider()
         }
 
         undo?.let { (name, previous) ->
