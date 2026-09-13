@@ -68,9 +68,14 @@ struct VibrationReading: Equatable {
         clipping = false
     }
 
-    init(_ json: [String: Any], connected: Bool) {
+    // view.vibration answers `connected` and the axes in ONE read. The store used to fetch
+    // vehicles.activeVehicleAvailable separately, so a vehicle dropping between the two calls
+    // produced a reading that was connected with no axes, or disconnected with axes. The view
+    // already DEPENDED on that path to know when to recompute and then dropped the answer, which
+    // is why the only way to get it was the second call that is the race.
+    init(view json: [String: Any]) {
         available = (json["available"] as? NSNumber)?.boolValue ?? false
-        self.connected = connected
+        connected = (json["connected"] as? NSNumber)?.boolValue ?? false
         units = (json["units"] as? String) ?? ""
         scaleMaximum = (json["scaleMaximum"] as? NSNumber)?.doubleValue ?? 90
         warningLevel = (json["warningLevel"] as? NSNumber)?.doubleValue ?? 30

@@ -21,9 +21,7 @@ final class VibrationStore: ObservableObject, Probeable {
     }
 
     func refresh() {
-        let live = (Bridge.group("vehicles.activeVehicleAvailable")["value"] as? NSNumber)?
-            .boolValue ?? false
-        let read = VibrationReading(Bridge.group("view.vibration"), connected: live)
+        let read = VibrationReading(view: Bridge.group("view.vibration"))
         if read != reading { reading = read }
     }
 

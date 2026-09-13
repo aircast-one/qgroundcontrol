@@ -188,7 +188,8 @@ expect(LinkConfig(["index": 0 as NSNumber]) == nil, "and one with no type is dro
 expect(LinkConfig.list(nil).isEmpty, "no answer is no links")
 
 let vibrationJson: [String: Any] = [
-    "available": true as NSNumber, "units": "", "scaleMaximum": 90.0 as NSNumber,
+    "available": true as NSNumber, "connected": true as NSNumber,
+    "units": "", "scaleMaximum": 90.0 as NSNumber,
     "warningLevel": 30.0 as NSNumber, "dangerLevel": 60.0 as NSNumber,
     "worst": "danger",
     "clipCounts": [0 as NSNumber, 2 as NSNumber, 0 as NSNumber],
@@ -202,7 +203,7 @@ let vibrationJson: [String: Any] = [
          "fraction": 0.3888 as NSNumber, "severity": "warning"],
     ],
 ]
-let vibration = VibrationReading(vibrationJson, connected: true)
+let vibration = VibrationReading(view: vibrationJson)
 expect(vibration.axes.count == 3, "each axis the core reports is carried across")
 expect(vibration.axes.map(\.label).joined(separator: ","), "X,Y,Z",
        "with the core's display label, so no head upper-cases an axis name itself")
@@ -220,27 +221,33 @@ expect(VehicleSetupText.connectPrompt(for: "vibration"),
 expect(VehicleSetupText.waiting(connected: false, for: "console output")
            == MavlinkConsole.none.emptyText,
        "so the console's disconnected line and the helper's cannot say different things")
-expect(VibrationReading([:], connected: false).emptyText,
+expect(!VibrationReading(view: [:]).connected,
+       "AN UNREADABLE VIEW REPORTS NO VEHICLE rather than assuming one. connected used to be "
+       + "passed in by the caller from a SEPARATE Bridge.group, so a vehicle dropping between "
+       + "that call and the axes gave a reading connected with no axes, or disconnected with "
+       + "axes. 7cf6f943b serves it beside them; the view already DEPENDED on that path to know "
+       + "when to recompute and dropped the answer, so the second call was the only way to get "
+       + "it and the second call was the race")
+expect(VibrationReading(view: ["connected": false as NSNumber]).emptyText,
        "Connect a vehicle to see its vibration.",
        "with nothing connected there is no vehicle to be silent, and the page said \u{201C}This "
        + "vehicle is not reporting vibration\u{201D} -- asserting an aircraft that is not there, "
        + "the same shape as the readiness pill in 7b015c270")
-expect(VibrationReading([:], connected: true).emptyText,
+expect(VibrationReading(view: ["connected": true as NSNumber]).emptyText,
        "This vehicle is not reporting vibration.",
        "and a vehicle that is present and silent still reads as one, which is a measurement "
        + "rather than a regime that does not apply")
 expect(vibration.clipping,
        "the core decides whether the accelerometer clipped and this head carries the answer; it "
        + "derives nothing from clipCounts, which is why the two are set independently above")
-expect(VibrationReading(["available": true as NSNumber,
-                         "clipCounts": [0 as NSNumber, 2 as NSNumber, 0 as NSNumber]],
-                        connected: true).clipping
+expect(VibrationReading(view: ["available": true as NSNumber, "connected": true as NSNumber,
+                         "clipCounts": [0 as NSNumber, 2 as NSNumber, 0 as NSNumber]]).clipping
        == false,
        "so counts without the flag read as no clipping. That default is permissive and only the "
        + "required-keys row for view.vibration keeps it unreachable; the decode does not")
 
-let quiet = VibrationReading(["available": false as NSNumber,
-                              "axes": [["axis": "x", "label": "X"]]], connected: true)
+let quiet = VibrationReading(view: ["available": false as NSNumber, "connected": true as NSNumber,
+                              "axes": [["axis": "x", "label": "X"]]])
 expect(quiet.worst == nil,
        "a vehicle reporting no level has no worst level, which is not the same as normal")
 expect(quiet.axes[0].value == nil && quiet.axes[0].severity == nil,
