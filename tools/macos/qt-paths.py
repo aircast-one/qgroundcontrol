@@ -196,7 +196,9 @@ def constants(sources):
         for pattern in (CONSTANT, SWIFT_CONSTANT):
             for match in pattern.finditer(text):
                 found[match.group(1)] = match.group(2)
-    return {n: v for n, v in found.items() if PATH.fullmatch(f'"{v}"')}
+    whole = {n: v for n, v in found.items() if PATH.fullmatch(f'"{v}"')}
+    root = {n: v for n, v in found.items() if v in ROOTS}
+    return whole | root, whole
 
 
 def expand(line, named):
@@ -207,8 +209,10 @@ def expand(line, named):
 
 def paths(roots):
     sources = sorted(p for root in roots for p in root.rglob("*") if p.suffix in SUFFIXES)
-    named = constants(sources)
-    bare = re.compile(r'\b(' + "|".join(named) + r')\b') if named else None
+    named, whole = constants(sources)
+    rooted = {n: v for n, v in named.items() if n not in whole}
+    bare = re.compile(r'\b(' + "|".join(whole) + r')\b') if whole else None
+    root_bare = re.compile(r'\b(' + "|".join(rooted) + r')\b') if rooted else None
     for source in sources:
         declaration, previous = "", ""
         for line in source.read_text(errors="replace").splitlines():
@@ -226,7 +230,9 @@ def paths(roots):
             for match in PATH.finditer(line):
                 yield match.group(1), use
             for match in bare.finditer(line) if bare else ():
-                yield named[match.group(1)], use
+                yield whole[match.group(1)], use
+            for match in root_bare.finditer(line) if root_bare and use != "unclassified" else ():
+                yield rooted[match.group(1)], use
 
 
 def main():
