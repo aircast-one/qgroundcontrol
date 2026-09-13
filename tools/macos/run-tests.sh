@@ -146,7 +146,26 @@ fi
 pass=$(grep -c '^PASS' "$log" || true)
 fail=$(grep -c '^FAIL' "$log" || true)
 suites=$(grep -c 'Start testing' "$log" || true)
-echo "PASS=$pass FAIL=$fail suites=$suites"
+finished=$(grep -c '^Totals:' "$log" || true)
+crashes=$(grep -c 'Received signal' "$log" || true)
+echo "PASS=$pass FAIL=$fail suites=$suites finished=$finished"
+
+# A suite that dies takes the suites after it with it, and every count here still agrees with
+# itself: no FAIL line is written for a process that never got to write one, and PASS counts what
+# ran before the signal. So a crashed run reports a smaller CLEAN run, which is the shape a
+# baseline absorbs -- it reads as a lower number to adopt rather than as a fault, and once adopted
+# the real total comes back as an unexamined increase. It cost me a wrong correction tonight: I
+# called 703/90 the true baseline and 729/94 stale, with the crash in the log the whole time.
+#
+# Parity names it with no baseline to maintain. A suite that started and never printed its Totals
+# is a suite that died, whatever the other numbers say.
+if (( crashes > 0 )); then
+    print -u2 "$crashes signal line(s) in the log: this run crashed, and its counts describe only what ran before that"
+fi
+if (( suites != finished )); then
+    print -u2 "$suites suites started and $finished finished -- the last one to start is where it died:"
+    print -u2 "$(grep 'Start testing' "$log" | tail -1)"
+fi
 grep '^FAIL' "$log" || true
 pkill -9 -x QGCSuite 2>/dev/null || true
-[[ "$fail" -eq 0 ]]
+[[ "$fail" -eq 0 && "$crashes" -eq 0 && "$suites" -eq "$finished" ]]
