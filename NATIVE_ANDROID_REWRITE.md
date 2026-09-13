@@ -5482,6 +5482,31 @@ QtLocation, QtCharts, QtMultimedia and QtPositioning; that needs the Android dep
 and this change is what makes that possible rather than what does it. Worth stating plainly, because
 "expect the AAR to roughly halve" is the sort of claim that gets read as already banked.
 
+**Correcting the mechanism, 2026-09-13: unlinking those five modules is the small half.** Measured by
+opening the AAR rather than reasoning about it. 154 shared libraries, 184.6 MB uncompressed, 87 MB
+packed. `libAircastQGC.so` alone is 81.8 MB of that, and `llvm-strip --strip-debug` takes nothing off
+it, so it is not symbols.
+
+Inside that library, `.rodata` is 38.5 MB against 30.2 MB of `.text` — the resources compiled into it
+outweigh the code. Attributed from the build tree: 34.4 MB of `qrc_*.o` across 72 files and 10.2 MB
+of `qmlcache` objects across 13. The four biggest are qgcresources at 9.6 MB, the QML of
+qgroundcontrol.qrc at 8.7 MB, qgcimages at 5.1 MB and the translations at 4.4 MB.
+
+The five Qt modules this section names come to roughly 13 MB of shared library — Quick 6.8, Location
+1.9, Charts 2.0, and the rest smaller. So:
+
+| what | uncompressed | share |
+|---|---|---|
+| QGC's own QML and qmlcache | ~19 MB | 10% |
+| QGC's image sets, which a native head draws none of | ~15 MB | 8% |
+| the five Qt modules | ~13 MB | 7% |
+| translations | ~4 MB | 2% |
+
+Halving is reachable, but the dependency set is the *last* 7% of it, not the mechanism. The images
+are the single cheapest win and need no Qt knowledge at all: a head that ships its own drawables
+carries 15 MB of QGC's. Attack the resources first, and the module unlinking becomes possible as a
+consequence rather than being the thing attempted.
+
 **It is not, however, the Plan-entry stall.** The head sets `page` on every tab change, which drives
 `flyViewActive`, which drives `planView.planActive` — so switching to Plan activates a second,
 invisible plan view, which is a good story for the ~930 ms. Tested by not setting `page` at all, so
