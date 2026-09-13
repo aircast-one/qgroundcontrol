@@ -274,25 +274,39 @@ def paths(roots):
 # caught only because no bridge root is spelled `mission` or `guided` -- an accident, not a design,
 # and it would have broken the same way the day one of them was.
 ACTION_CONST = re.compile(r'const\s+([A-Z_]+)\s*:\s*&str\s*=\s*"([^"]+)"')
+OWNED_LIST = re.compile(r'(?:pub\s+)?const\s+OWNED\w*\s*:\s*&\[&str\]\s*=\s*&\[([^\]]*)\]')
 OWNS_ARM = re.compile(r'fn owns\w*\([^)]*\)\s*->\s*bool\s*\{\s*matches!\(\s*path\s*,([^)]*)\)')
 
 
 def claimed_actions():
-    # The consts alone are the wrong list twice over. CAMERA names the Qt path the core invokes
-    # THROUGH -- a destination inside the core, not something a head may call -- and a const can
-    # sit in the file before owns() names it. The discriminator is owns(): a path is claimed when
-    # refusing to answer it would be a bug, which is exactly what that match arm decides.
+    # The consts alone are the wrong list: CAMERA names the Qt path the core invokes THROUGH, a
+    # destination inside the core rather than something a head may call. The claim is whichever
+    # consts the ownership lists name.
     #
-    # And it reads HEAD rather than the worktree, because a peer mid-edit must not move my number.
-    # A claim that has not landed is not a claim; the first draft of this read the working copy and
-    # credited an action nobody could call yet.
+    # Read from HEAD, never the worktree: a peer mid-edit must not move my number, and a claim that
+    # has not landed is not a claim.
+    #
+    # TWO SHAPES, because the core has already used both. It started as
+    # `matches!(path, A | B | C)` inside fn owns; it is now `const OWNED: &[&str] = &[A, B, C]`
+    # with `OWNED.contains(&path)`. Reading only the first gave an EMPTY claim set that printed as
+    # "of 0 the core owns" and quietly handed four migrated paths back to the debt column -- a zero
+    # that is indistinguishable from a core claiming nothing, which was true last week. Hence the
+    # refusal below: this instrument reads someone else's source, so it has to notice when that
+    # source stops looking like anything it knows.
     source = subprocess.run(["git", "show", "HEAD:core-rs/src/actions.rs"],
                             capture_output=True, text=True)
     if source.returncode != 0:
         return set()
     values = dict(ACTION_CONST.findall(source.stdout))
-    named = {name for arm in OWNS_ARM.findall(source.stdout) for name in re.findall(r"[A-Z_]+", arm)}
-    return {values[name] for name in named if name in values}
+    named = {name
+             for block in OWNED_LIST.findall(source.stdout) + OWNS_ARM.findall(source.stdout)
+             for name in re.findall(r"[A-Z_]+", block)}
+    claimed = {values[name] for name in named if name in values}
+    if values and not claimed:
+        print("actions.rs names " + str(len(values)) + " path consts and no ownership list this "
+              "script recognises: its shape has changed and every claimed path is being counted "
+              "as Qt debt", file=sys.stderr)
+    return claimed
 
 
 def main():
