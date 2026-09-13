@@ -11,18 +11,17 @@ struct ValueField: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            TextField("", text: $draft)
+            TextField("", text: Binding(
+                get: { EditedField.shown(typed: draft, held: value, editing: editing) },
+                set: { draft = $0 }))
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
                 .font(.body.monospacedDigit())
                 .frame(width: width)
                 .focused($editing)
-                .onAppear { draft = value }
-                .onChange(of: value) { latest in if !editing { draft = latest } }
-                .onSubmit(send)
+                .onSubmit { editing = false }
                 .onChange(of: editing) { focused in
-                    guard !focused else { return }
-                    send()
+                    if focused { draft = value } else { send() }
                 }
             if !units.isEmpty {
                 Text(units).font(.caption).foregroundColor(.secondary).fixedSize()
@@ -36,11 +35,7 @@ struct ValueField: View {
 
     private func send() {
         let trimmed = draft.trimmingCharacters(in: .whitespaces)
-        guard trimmed != value else { return }
-        guard !trimmed.isEmpty else {
-            draft = value
-            return
-        }
+        guard trimmed != value, !trimmed.isEmpty else { return }
         commit(trimmed)
     }
 }

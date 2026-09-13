@@ -1167,6 +1167,24 @@ func checkFactRangesRefuseTheWriteQGCWouldRefuse() {
 
 checkFactRangesRefuseTheWriteQGCWouldRefuse()
 
+func checkARefusedEditDoesNotStayOnScreen() {
+    expect(EditedField.shown(typed: "95", held: "80", editing: true), "95",
+           "while the operator is typing, the field shows what they typed")
+    expect(EditedField.shown(typed: "95", held: "80", editing: false), "80",
+           "once they leave it, the field shows what the plan holds. A refused write leaves the "
+           + "model's value alone, so nothing changes and no onChange fires -- the old field "
+           + "kept the rejected 95 on screen while WriteReport.failure was telling the operator "
+           + "in the same breath that the value was unchanged")
+    expect(EditedField.shown(typed: "85", held: "85", editing: false), "85",
+           "an accepted write shows the accepted value because that is now what is held")
+    expect(EditedField.shown(typed: "abc", held: "50", editing: false), "50",
+           "and an entry that is not a number at all does not linger either -- "
+           + "setDefaultAltitude has always returned without writing, and until now without "
+           + "clearing what was typed")
+}
+
+checkARefusedEditDoesNotStayOnScreen()
+
 
 func checkUnplacedCommands() {
     let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)

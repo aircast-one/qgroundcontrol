@@ -15,3 +15,9 @@ enum PlanFile {
         "Could not read a plan from \(name). The plan you had is unchanged."
     }
 }
+
+enum EditedField {
+    static func shown(typed: String, held: String, editing: Bool) -> String {
+        editing ? typed : held
+    }
+}
