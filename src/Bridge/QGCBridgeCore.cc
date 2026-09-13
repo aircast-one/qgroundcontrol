@@ -13,6 +13,9 @@
 #include "VideoManager.h"
 #include "MAVLinkInspectorController.h"
 #include "RadioComponentController.h"
+#ifdef QGC_WFB_ENABLED
+#include "PacketRadioManager.h"
+#endif
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
 #include "MissionCommandTree.h"
@@ -140,6 +143,11 @@ QObject *rootObject(const QString &name)
     if (name == QLatin1String("radioCal")) {
         return RadioComponentController::forActiveVehicle();
     }
+#ifdef QGC_WFB_ENABLED
+    if (name == QLatin1String("packetRadio")) {
+        return PacketRadioManager::instance();
+    }
+#endif
     return nullptr;
 }
 
