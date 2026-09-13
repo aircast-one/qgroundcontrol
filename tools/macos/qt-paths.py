@@ -164,9 +164,11 @@ SYMBOL_ARGUMENT = re.compile(r'systemName:|systemImage:')
 USE = [("read", re.compile(r'\b(?:group|get|getFields|watch|invokeResult|qgcBool|qgcDouble'
                            r'|qgcInt|qgcString|qgcPath|SettingsGroup)\(')),
        ("action", re.compile(r'\binvoke\(')),
-       ("write", re.compile(r'\bset\('))]
+       ("write", re.compile(r'\b(?:set|write)\('))]
 
 CONSTANT = re.compile(r'\bconst\s+val\s+([A-Z][A-Z0-9_]*)\s*=\s*"([^"]*)"')
+
+APP_STORAGE = re.compile(r'@AppStorage\(')
 
 SUFFIXES = (".swift", ".kt")
 
@@ -198,7 +200,7 @@ def paths(roots):
             symbolic = (SYMBOL_ARGUMENT.search(line + previous)
                         or SYMBOL_DECLARATION.search(declaration))
             previous = line
-            if CONSTANT.search(line):
+            if CONSTANT.search(line) or APP_STORAGE.search(line):
                 continue
             line = expand(line, named)
             use = next((name for name, call in USE if call.search(line)), "unclassified")
