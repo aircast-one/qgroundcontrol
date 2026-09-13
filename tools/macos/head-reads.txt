@@ -304,6 +304,7 @@ shots
 shotsText
 showsAbout
 showsLinks
+showsPacketRadio
 showsSides
 showsVideoSources
 simple

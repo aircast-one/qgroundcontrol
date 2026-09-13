@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
     @ObservedObject var links: LinksStore
+    @ObservedObject var packetRadio: PacketRadioStore
     @ObservedObject var video: VideoStore
 
     var body: some View {
@@ -53,6 +54,9 @@ struct SettingsView: View {
                 if showsVideoSources {
                     videoSources
                 }
+                if showsPacketRadio {
+                    PacketRadioSection(store: packetRadio)
+                }
                 ForEach(store.sections) { section in
                     VStack(alignment: .leading, spacing: 0) {
                         SectionLabel(text: section.title)
@@ -90,6 +94,11 @@ struct SettingsView: View {
     private var showsVideoSources: Bool {
         store.search.trimmingCharacters(in: .whitespaces).isEmpty
             && store.pages.first { $0.id == store.selected }?.showsVideoSources == true
+    }
+
+    private var showsPacketRadio: Bool {
+        store.search.trimmingCharacters(in: .whitespaces).isEmpty
+            && store.pages.first { $0.id == store.selected }?.showsPacketRadio == true
     }
 
     private var videoSources: some View {
@@ -283,12 +292,14 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     private let store = SettingsStore()
     private let links = LinksStore()
+    private let packetRadio = PacketRadioStore()
     private let video = VideoStore.shared
 
     override init() {
         super.init()
         NativeProbe.register(store)
         NativeProbe.register(links)
+        NativeProbe.register(packetRadio)
     }
     private var window: NSWindow?
 
@@ -311,7 +322,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         window.title = "Settings"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: SettingsView(store: store, links: links, video: video))
+        window.contentView = NSHostingView(rootView: SettingsView(store: store, links: links, packetRadio: packetRadio, video: video))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

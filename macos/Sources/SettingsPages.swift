@@ -240,6 +240,7 @@ struct SettingsPage: Identifiable, Equatable {
     let showsLinks: Bool
     let showsAbout: Bool
     let showsVideoSources: Bool
+    let showsPacketRadio: Bool
 
     var id: String { title }
 
@@ -251,6 +252,7 @@ struct SettingsPage: Identifiable, Equatable {
         showsLinks = (json["showsLinks"] as? NSNumber)?.boolValue ?? false
         showsAbout = (json["showsAbout"] as? NSNumber)?.boolValue ?? false
         showsVideoSources = (json["showsVideoSources"] as? NSNumber)?.boolValue ?? false
+        showsPacketRadio = (json["showsPacketRadio"] as? NSNumber)?.boolValue ?? false
     }
 
     static func list(_ json: Any?) -> [SettingsPage] {

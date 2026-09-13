@@ -759,6 +759,32 @@ func checkPacketRadioReadingsNeverInventANumber() {
 
 checkPacketRadioReadingsNeverInventANumber()
 
+func checkOnlyTheRadioPageAsksForTheRadioBlock() {
+    func page(_ overrides: [String: Any]) -> SettingsPage? {
+        SettingsPage(["title": "Packet Radio", "sections": [],
+                      "showsLinks": false as NSNumber, "showsAbout": false as NSNumber,
+                      "showsVideoSources": false as NSNumber,
+                      "showsPacketRadio": true as NSNumber]
+            .merging(overrides) { _, override in override })
+    }
+
+    expect(page([:])?.showsPacketRadio == true,
+           "the page announces that it needs the radio block, which is a fact about the page and "
+           + "so the core's to state. This head can see \"packetRadioSettings\" in the page's "
+           + "own sections and could have keyed on it with no core change at all -- and that "
+           + "would be a FOURTH mechanism for the fourth bespoke case, leaving whoever adds the "
+           + "fifth with two conventions and no reason to prefer either")
+
+    expect(page(["title": "General", "showsPacketRadio": false as NSNumber])?
+            .showsPacketRadio == false,
+           "and every other page says no, so the block is not drawn fifteen times")
+
+    expect(page(["showsPacketRadio": NSNull()])?.showsPacketRadio == false,
+           "a page from a core too old to answer draws no block rather than a broken one")
+}
+
+checkOnlyTheRadioPageAsksForTheRadioBlock()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",
@@ -4499,7 +4525,8 @@ func checkViewContract() {
           "clipCounts", "clipping"]),
         ("view.vibration", ["axes"], ["axis", "label", "value", "fraction", "severity"]),
         ("view.settings", ["pages"],
-         ["title", "sections", "showsLinks", "showsAbout", "showsVideoSources"]),
+         ["title", "sections", "showsLinks", "showsAbout", "showsVideoSources",
+          "showsPacketRadio"]),
         ("view.settings(General)", ["sections"], ["title", "group", "path", "note", "subsections"]),
         ("view.settings(General)", ["sections", "subsections"], ["title", "controls"]),
         ("view.settings(General)", ["sections", "subsections", "controls"],
