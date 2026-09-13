@@ -5512,6 +5512,38 @@ are now appended only when `NOT ANDROID`. **83.3 MB to 72.5 MB.** Desktop is byt
 Verified by installing and touring all five tabs with `logcat` filtered for qrc failures — Qt warns
 when a resource path will not open, and there were none.
 
+### The head's USB autodetect is held up by the template it wants to delete, 2026-09-14
+
+Three manifest items were on the R0 list as missing. Two are not.
+
+**WAKE_LOCK is not needed.** `MainActivity.kt:133` already sets
+`FLAG_KEEP_SCREEN_ON`, which is a window flag and requires no permission at all.
+It also releases itself when the window stops being visible, so a backgrounded
+app is not holding the screen awake. WAKE_LOCK would only buy a CPU wakelock
+with the screen off, which is not what a ground station wants.
+
+**USB_PERMISSION is not a manifest permission.** There is no such
+`uses-permission`; USB host access is granted per-device by a runtime dialog.
+What a manifest can declare is already here: `USB_DEVICE_ATTACHED` and
+`USB_DEVICE_DETACHED` intent filters on `.MainActivity`, with
+`@xml/device_filter` metadata.
+
+**The real finding is that filter.** `android/app/src/main/res` contains only
+`values/`. The single copy of `device_filter.xml` in the repository is
+`deploy/android/res/xml/device_filter.xml` — the **Qt packaging template**. It
+resolves today because the aar is a library dependency and Android merges
+library resources into the app, so the head's own manifest is reaching into the
+legacy app's packaging for the list of radios it will auto-open.
+
+That couples a native-head feature to the thing R8 is trying to remove. It fails
+at build time rather than silently, which is the good half. The fix is to give
+the head its own `res/xml/device_filter.xml`; doing it needs a USB serial
+adapter to confirm attach still fires, which this session does not have.
+
+`uses-feature android.hardware.usb.host` is also undeclared. That affects Play
+Store filtering rather than runtime, and is one line whenever someone is testing
+USB anyway.
+
 **The second lever, and the third one measured rather than assumed** (`da1b8c369`): `QGC_VIEWER3D`
 skipped `src/Viewer3D` but never its payload — the DJI F450 meshes sat in `qgroundcontrol.qrc`
 unconditionally, 8.5 MB of that file's 9.4 MB. They now live in `viewer3d.qrc`, appended only when
