@@ -11,9 +11,61 @@ const ACTIVATE: &str = "vehicles.setActive";
 const PHOTO: &str = "camera.takePhoto";
 const RECORD: &str = "camera.toggleRecording";
 const MODE: &str = "camera.setMode";
+const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
 pub fn owns(path: &str) -> bool {
     matches!(path, INSERT | REMOVE | ORBIT | ACTIVATE | PHOTO | RECORD | MODE)
+}
+
+// A write had no route to the core at all: router.set refused view paths and passed everything
+// else straight to the backend, and owns() was consulted only by invoke. A write is not a read
+// going the other way, so it needs its own door rather than either of the two that existed.
+pub fn owns_write(path: &str) -> bool {
+    matches!(path, ZOOM)
+}
+
+pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    match path {
+        ZOOM => zoom(backend, value),
+        _ => json!({ "ok": false, "reason": format!("{path} is not a write the core performs") }),
+    }
+}
+
+// setZoomLevel drops the write on a camera with no zoom and on a null vehicle, and silently CLAMPS
+// to 0..100 in between - so a head asking for 150 is told the write succeeded and the camera goes
+// to 100. Three ways to be wrong about what happened, none of them reported. The clamp travels
+// back here rather than being refused, because clamping is what the camera does and the head
+// asking too high is not an error; being unable to see it is.
+const ZOOM_LOWEST: f64 = 0.0;
+const ZOOM_HIGHEST: f64 = 100.0;
+
+fn zoom(backend: &dyn Backend, value: &str) -> Value {
+    let Some(asked) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()) else {
+        return json!({ "ok": false, "result": false, "reason": "A zoom level has to be a number." });
+    };
+    let view = crate::video::camera_view(backend, &[]);
+    let flag = |name: &str| view.get(name).and_then(Value::as_bool) == Some(true);
+    if !flag("present") {
+        return json!({ "ok": false, "result": false, "reason": "No camera is connected." });
+    }
+    if !flag("hasZoom") {
+        return json!({ "ok": false, "result": false, "reason": "This camera has no zoom." });
+    }
+    let level = asked.clamp(ZOOM_LOWEST, ZOOM_HIGHEST);
+    // A bridge set answers {"ok": true} and carries no "result", so result_flag - which requires
+    // both - reads every successful write as a failure.
+    let answered = crate::read::flag(&object(&backend.set(ZOOM, &json!({ "value": level }).to_string())), "ok");
+    json!({
+        "ok": answered,
+        "result": answered,
+        "asked": asked,
+        "level": level,
+        "clamped": level != asked,
+        "reason": match answered {
+            true => Value::Null,
+            false => json!("The camera did not take the zoom level."),
+        },
+    })
 }
 
 pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
@@ -44,15 +96,15 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
         MODE => match serde_json::from_str::<Value>(args).ok().and_then(|a| a.as_array()?.first()?.as_str().map(str::to_string)).as_deref() {
             Some("photo") => Some("Photo"),
             Some("video") => Some("Video"),
-            Some(other) => return json!({ "ok": false, "unknown": other, "reason": format!("a camera mode is photo or video, not {other}") }),
-            None => return json!({ "ok": false, "reason": "camera.setMode takes photo or video" }),
+            Some(other) => return json!({ "ok": false, "result": false, "unknown": other, "reason": format!("a camera mode is photo or video, not {other}") }),
+            None => return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" }),
         },
         _ => None,
     };
     let view = crate::video::camera_view(backend, &[]);
     let gate = |name: &str| view.get(name).and_then(Value::as_bool) == Some(true);
     if !gate("present") {
-        return json!({ "ok": false, "reason": "No camera is connected." });
+        return json!({ "ok": false, "result": false, "reason": "No camera is connected." });
     }
     let (allowed, refusal, invokable) = match path {
         PHOTO => (gate("canPhoto"), photo_refusal(&view), "takePhoto".to_string()),
@@ -61,11 +113,23 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
         _ => return json!({ "ok": false, "reason": format!("{path} is not a camera action") }),
     };
     if !allowed {
-        return json!({ "ok": false, "reason": refusal });
+        return json!({ "ok": false, "result": false, "reason": refusal });
     }
-    backend.invoke(&format!("{CAMERA}.{invokable}"), "[]");
+    // The Qt method's own bool is the answer to "did it happen", and these gates cannot see every
+    // reason it says no - _resetting is not a property the core can read. Ignoring it would put the
+    // silence back one layer down, having just removed it. It also travels as `result`, because
+    // that is where QGCBridgeCore puts a return value and a head must not have to learn which
+    // paths the core has claimed in order to read one.
+    let took = crate::read::flag(&object(&backend.invoke(&format!("{CAMERA}.{invokable}"), "[]")), "result");
     let after = crate::video::camera_view(backend, &[]);
-    json!({ "ok": true, "isRecording": after.get("isRecording").cloned().unwrap_or(Value::Null), "isTakingPhoto": after.get("isTakingPhoto").cloned().unwrap_or(Value::Null), "mode": after.get("mode").cloned().unwrap_or(Value::Null) })
+    json!({
+        "ok": took,
+        "result": took,
+        "reason": match took { true => Value::Null, false => json!("The camera did not carry out the command.") },
+        "isRecording": after.get("isRecording").cloned().unwrap_or(Value::Null),
+        "isTakingPhoto": after.get("isTakingPhoto").cloned().unwrap_or(Value::Null),
+        "mode": after.get("mode").cloned().unwrap_or(Value::Null),
+    })
 }
 
 fn photo_refusal(view: &Value) -> String {
@@ -336,6 +400,160 @@ mod tests {
 
     fn flying_mission() -> Value {
         json!({ "kind": "object", "onlyInsertTakeoffValid": false, "isInsertTakeoffValid": false, "isInsertLandValid": true, "flyThroughCommandsAllowed": true })
+    }
+
+    #[test]
+    fn a_camera_action_answers_when_the_camera_would_have_refused_in_silence() {
+        use std::cell::RefCell;
+        struct Cam { camera: Value, fired: RefCell<Vec<String>> }
+        impl Backend for Cam {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path.ends_with("currentCameraInstance") {
+                    true => self.camera.to_string(),
+                    false => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, _a: &str) -> String {
+                self.fired.borrow_mut().push(path.to_string());
+                json!({ "result": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let cam = |extra: Value| {
+            let mut base = json!({ "kind": "object", "modelName": "ZR30", "capturesPhotos": true, "capturesVideo": true, "hasModes": true });
+            extra.as_object().unwrap().iter().for_each(|(k, v)| { base[k] = v.clone(); });
+            Cam { camera: base, fired: RefCell::new(vec![]) }
+        };
+
+        let busy = cam(json!({ "cameraMode": 0, "photoCaptureStatus": 1 }));
+        let answer = run(&busy, PHOTO, "[]");
+        assert_eq!(answer["ok"], false);
+        assert!(answer["reason"].as_str().unwrap().contains("still taking"), "takePhoto returns false here with only a qCWarning, so the whole point of owning the action is that the head gets a sentence instead of nothing: {answer}");
+        assert!(busy.fired.borrow().is_empty(), "and the call the camera would have dropped is not made at all");
+
+        let ready = cam(json!({ "cameraMode": 0 }));
+        let answer = run(&ready, PHOTO, "[]");
+        assert_eq!(answer["ok"], true);
+        assert_eq!(*ready.fired.borrow(), vec![format!("{CAMERA}.takePhoto")]);
+
+        let wrong_mode = cam(json!({ "cameraMode": 1 }));
+        let answer = run(&wrong_mode, PHOTO, "[]");
+        assert_eq!(answer["ok"], false);
+        assert!(answer["reason"].as_str().unwrap().contains("mode"));
+        let in_video = cam(json!({ "cameraMode": 1, "photosInVideoMode": true }));
+        assert_eq!(run(&in_video, PHOTO, "[]")["ok"], true, "a camera that shoots stills in video mode is not refused, which is the term view.camera was missing");
+
+        let recording = cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }));
+        assert_eq!(run(&recording, RECORD, "[]")["ok"], true, "the toggle is what stops a running recording");
+        assert_eq!(*recording.fired.borrow(), vec![format!("{CAMERA}.toggleVideoRecording")]);
+        let held = cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }));
+        let answer = run(&held, MODE, "[\"photo\"]");
+        assert_eq!(answer["ok"], false);
+        assert!(answer["reason"].as_str().unwrap().contains("recording"), "{answer}");
+        assert!(held.fired.borrow().is_empty());
+
+        let switchable = cam(json!({ "cameraMode": 1 }));
+        assert_eq!(run(&switchable, MODE, "[\"photo\"]")["ok"], true);
+        assert_eq!(*switchable.fired.borrow(), vec![format!("{CAMERA}.setCameraModePhoto")]);
+        assert_eq!(*cam(json!({ "cameraMode": 0 })).fired.borrow(), Vec::<String>::new());
+
+        let fixed = cam(json!({ "cameraMode": 1, "hasModes": false }));
+        let answer = run(&fixed, MODE, "[\"video\"]");
+        assert!(answer["reason"].as_str().unwrap().contains("one mode"), "{answer}");
+
+        let nonsense = cam(json!({ "cameraMode": 0 }));
+        assert_eq!(run(&nonsense, MODE, "[\"panorama\"]")["unknown"], "panorama");
+        assert!(run(&nonsense, MODE, "[]")["reason"].as_str().unwrap().contains("photo or video"));
+        assert_eq!(run(&None_, MODE, "[\"panorama\"]")["unknown"], "panorama", "a mode the core cannot name is a malformed call whether or not a camera is attached; answering it with the rig's state hides the caller's bug");
+
+        struct Refusing;
+        impl Backend for Refusing {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path.ends_with("currentCameraInstance") {
+                    true => json!({ "kind": "object", "modelName": "ZR30", "capturesPhotos": true, "hasModes": true, "cameraMode": 0 }).to_string(),
+                    false => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let answer = run(&Refusing, PHOTO, "[]");
+        assert_eq!(answer["ok"], false, "takePhoto has refusals the core cannot see - _resetting is not a readable property - so reporting ok because the gate passed puts the silence back one layer down");
+        assert_eq!(answer["result"], false);
+        assert!(answer["reason"].as_str().unwrap().contains("did not carry out"));
+
+        struct None_;
+        impl Backend for None_ {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert!(run(&None_, PHOTO, "[]")["reason"].as_str().unwrap().contains("No camera"), "no camera is not the same refusal as a camera that will not");
+        assert!(run(&None_, MODE, "[\"photo\"]")["reason"].as_str().unwrap().contains("No camera"), "a well-formed call with no camera still gets the rig's answer");
+
+        assert!(owns(PHOTO) && owns(RECORD) && owns(MODE), "the router only reaches these if owns says so, which is how qgc_core_guided ended up defined with no caller");
+    }
+    #[test]
+    fn a_zoom_write_says_what_the_camera_actually_took() {
+        use std::cell::RefCell;
+        struct Cam { camera: Value, wrote: RefCell<Vec<String>> }
+        impl Backend for Cam {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path.ends_with("currentCameraInstance") {
+                    true => self.camera.to_string(),
+                    false => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, value: &str) -> String {
+                self.wrote.borrow_mut().push(value.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let cam = |extra: Value| {
+            let mut base = json!({ "kind": "object", "modelName": "ZR30", "hasZoom": true });
+            extra.as_object().unwrap().iter().for_each(|(k, v)| { base[k] = v.clone(); });
+            Cam { camera: base, wrote: RefCell::new(vec![]) }
+        };
+
+        let plain = cam(json!({}));
+        let answer = write(&plain, ZOOM, &json!({ "value": 40.0 }).to_string());
+        assert_eq!(answer["ok"], true);
+        assert_eq!(answer["clamped"], false);
+        assert_eq!(*plain.wrote.borrow(), vec![json!({ "value": 40.0 }).to_string()]);
+
+        let high = cam(json!({}));
+        let answer = write(&high, ZOOM, &json!({ "value": 150.0 }).to_string());
+        assert_eq!(answer["ok"], true);
+        assert_eq!(answer["level"], 100.0);
+        assert_eq!(answer["asked"], 150.0);
+        assert_eq!(answer["clamped"], true, "setZoomLevel clamps in silence, so a head asking for 150 is told it succeeded and never learns the camera went to 100");
+        assert_eq!(*high.wrote.borrow(), vec![json!({ "value": 100.0 }).to_string()], "and the clamped value is what travels, not the one that was asked for");
+
+        let fixed = cam(json!({ "hasZoom": false }));
+        let answer = write(&fixed, ZOOM, &json!({ "value": 40.0 }).to_string());
+        assert_eq!(answer["ok"], false);
+        assert!(answer["reason"].as_str().unwrap().contains("no zoom"));
+        assert!(fixed.wrote.borrow().is_empty(), "setZoomLevel drops this write entirely, so passing it through only spends a MAVLink message to achieve nothing");
+
+        let absent = cam(json!({ "modelName": "" }));
+        assert!(write(&absent, ZOOM, &json!({ "value": 40.0 }).to_string())["reason"].as_str().unwrap().contains("No camera"), "no camera and no zoom are different refusals");
+
+        let nonsense = cam(json!({}));
+        assert_eq!(write(&nonsense, ZOOM, "{\"value\": \"lots\"}")["ok"], false);
+        assert!(nonsense.wrote.borrow().is_empty());
+        assert_eq!(write(&nonsense, ZOOM, "{}")["ok"], false, "a payload with no value at all is not a zoom of zero");
+
+        assert!(owns_write(ZOOM), "router.set consults this and nothing else; unclaimed, the write goes straight past every check above");
+        assert!(!owns_write("vehicle.armed"), "arming is deliberately not claimed: a gate that can wrongly refuse an arm needs an airframe to prove it wrong");
     }
 
     #[test]
@@ -759,83 +977,5 @@ pub(super) mod orbiting {
         assert_eq!(refused["reason"], "not in guided mode");
     }
 
-    #[test]
-    fn a_camera_action_answers_when_the_camera_would_have_refused_in_silence() {
-        use std::cell::RefCell;
-        struct Cam { camera: Value, fired: RefCell<Vec<String>> }
-        impl Backend for Cam {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, path: &str, _f: &str) -> String {
-                match path.ends_with("currentCameraInstance") {
-                    true => self.camera.to_string(),
-                    false => json!({ "kind": "null" }).to_string(),
-                }
-            }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, path: &str, _a: &str) -> String {
-                self.fired.borrow_mut().push(path.to_string());
-                json!({ "result": true }).to_string()
-            }
-            fn watch(&self, _p: &[String]) {}
-        }
-        let cam = |extra: Value| {
-            let mut base = json!({ "kind": "object", "modelName": "ZR30", "capturesPhotos": true, "capturesVideo": true, "hasModes": true });
-            extra.as_object().unwrap().iter().for_each(|(k, v)| { base[k] = v.clone(); });
-            Cam { camera: base, fired: RefCell::new(vec![]) }
-        };
 
-        let busy = cam(json!({ "cameraMode": 0, "photoCaptureStatus": 1 }));
-        let answer = run(&busy, PHOTO, "[]");
-        assert_eq!(answer["ok"], false);
-        assert!(answer["reason"].as_str().unwrap().contains("still taking"), "takePhoto returns false here with only a qCWarning, so the whole point of owning the action is that the head gets a sentence instead of nothing: {answer}");
-        assert!(busy.fired.borrow().is_empty(), "and the call the camera would have dropped is not made at all");
-
-        let ready = cam(json!({ "cameraMode": 0 }));
-        let answer = run(&ready, PHOTO, "[]");
-        assert_eq!(answer["ok"], true);
-        assert_eq!(*ready.fired.borrow(), vec![format!("{CAMERA}.takePhoto")]);
-
-        let wrong_mode = cam(json!({ "cameraMode": 1 }));
-        let answer = run(&wrong_mode, PHOTO, "[]");
-        assert_eq!(answer["ok"], false);
-        assert!(answer["reason"].as_str().unwrap().contains("mode"));
-        let in_video = cam(json!({ "cameraMode": 1, "photosInVideoMode": true }));
-        assert_eq!(run(&in_video, PHOTO, "[]")["ok"], true, "a camera that shoots stills in video mode is not refused, which is the term view.camera was missing");
-
-        let recording = cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }));
-        assert_eq!(run(&recording, RECORD, "[]")["ok"], true, "the toggle is what stops a running recording");
-        assert_eq!(*recording.fired.borrow(), vec![format!("{CAMERA}.toggleVideoRecording")]);
-        let held = cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }));
-        let answer = run(&held, MODE, "[\"photo\"]");
-        assert_eq!(answer["ok"], false);
-        assert!(answer["reason"].as_str().unwrap().contains("recording"), "{answer}");
-        assert!(held.fired.borrow().is_empty());
-
-        let switchable = cam(json!({ "cameraMode": 1 }));
-        assert_eq!(run(&switchable, MODE, "[\"photo\"]")["ok"], true);
-        assert_eq!(*switchable.fired.borrow(), vec![format!("{CAMERA}.setCameraModePhoto")]);
-        assert_eq!(*cam(json!({ "cameraMode": 0 })).fired.borrow(), Vec::<String>::new());
-
-        let fixed = cam(json!({ "cameraMode": 1, "hasModes": false }));
-        let answer = run(&fixed, MODE, "[\"video\"]");
-        assert!(answer["reason"].as_str().unwrap().contains("one mode"), "{answer}");
-
-        let nonsense = cam(json!({ "cameraMode": 0 }));
-        assert_eq!(run(&nonsense, MODE, "[\"panorama\"]")["unknown"], "panorama");
-        assert!(run(&nonsense, MODE, "[]")["reason"].as_str().unwrap().contains("photo or video"));
-        assert_eq!(run(&None_, MODE, "[\"panorama\"]")["unknown"], "panorama", "a mode the core cannot name is a malformed call whether or not a camera is attached; answering it with the rig's state hides the caller's bug");
-
-        struct None_;
-        impl Backend for None_ {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
-            fn watch(&self, _p: &[String]) {}
-        }
-        assert!(run(&None_, PHOTO, "[]")["reason"].as_str().unwrap().contains("No camera"), "no camera is not the same refusal as a camera that will not");
-        assert!(run(&None_, MODE, "[\"photo\"]")["reason"].as_str().unwrap().contains("No camera"), "a well-formed call with no camera still gets the rig's answer");
-
-        assert!(owns(PHOTO) && owns(RECORD) && owns(MODE), "the router only reaches these if owns says so, which is how qgc_core_guided ended up defined with no caller");
-    }
 }

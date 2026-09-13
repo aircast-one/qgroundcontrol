@@ -53,6 +53,9 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn set(&self, path: &str, value: &str) -> String {
+        if crate::actions::owns_write(path) {
+            return crate::actions::write(&self.backend, path, value).to_string();
+        }
         match view::owns(path) {
             true => refusal(path),
             false => self.backend.set(path, value),
@@ -180,6 +183,22 @@ mod tests {
 
     fn parsed(text: &str) -> serde_json::Value {
         serde_json::from_str(text).unwrap()
+    }
+
+    #[test]
+    fn a_claimed_write_reaches_the_core_and_an_unclaimed_one_still_forwards() {
+        // Calling actions::write directly proves the function works and says nothing about whether
+        // anything CALLS it. router.set is the only door, and an unclaimed path goes straight to
+        // the backend with every check skipped and the suite still green - the qgc_core_guided
+        // shape, which no test of the function itself can see.
+        let core = Core::new(Fake::default());
+        let claimed = parsed(&core.set("vehicle.cameraManager.currentCameraInstance.zoomLevel", &json!({ "value": 40.0 }).to_string()));
+        assert_eq!(claimed["ok"], false, "the fake serves no camera, so the core answers rather than writing");
+        assert!(claimed["reason"].as_str().unwrap().contains("No camera"), "and a bare passthrough would carry a path instead of a reason: {claimed}");
+
+        let forwarded = parsed(&core.set("vehicle.somethingElse", &json!({ "value": 1 }).to_string()));
+        assert_eq!(forwarded["path"], "vehicle.somethingElse", "an unclaimed write still forwards untouched");
+        assert_eq!(parsed(&core.set("view.messages", "{}"))["ok"], false, "a view is still not writable");
     }
 
     #[test]
