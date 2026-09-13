@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
+use crate::read::{flag, object};
 use crate::router::Backend;
 
 // "vehicle.vibration" is a fact group object, so the watcher had nothing to bind to and every
@@ -39,6 +39,11 @@ fn axis_json(axis: &str, value: Option<f64>) -> Value {
 }
 
 pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    // DEPS has always listed activeVehicleAvailable first, so this view already recomputes when it
+    // changes and then dropped it. A head needing it had to fetch it in a second call, and a
+    // vehicle disappearing between the two reads gave a reading that was connected with no axes,
+    // or disconnected with axes.
+    let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
     let group = object(&backend.get("vehicle.vibration"));
     let fact = |name: &str| group.get("facts").and_then(Value::as_array).and_then(|facts| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)));
     let number = |name: &str| fact(name).and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite());
@@ -49,7 +54,13 @@ pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "Vibration",
+        "connected": connected,
         "available": axes.iter().all(|(_, v)| v.is_some()),
+        "silentReason": match (axes.iter().any(|(_, v)| v.is_some()), connected) {
+            (true, _) => Value::Null,
+            (false, false) => json!("No vehicle is connected."),
+            (false, true) => json!("This vehicle reports no vibration measurements."),
+        },
         "units": units,
         "scaleMaximum": SCALE_MAXIMUM,
         "warningLevel": WARNING_LEVEL,
@@ -65,9 +76,38 @@ pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
 mod tests {
     use super::*;
 
+    struct Quiet(bool);
+    impl Backend for Quiet {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": self.0 }).to_string(),
+                _ => json!({ "kind": "object", "facts": [ { "name": "xAxis", "value": null }, { "name": "yAxis" }, { "name": "zAxis" } ] }).to_string(),
+            }
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn no_axes_says_whether_there_is_a_vehicle_to_have_them() {
+        let gone = vibration_view(&Quiet(false), &[]);
+        assert_eq!(gone["connected"], false);
+        assert!(gone["silentReason"].as_str().unwrap().contains("No vehicle"), "a head fetching this flag itself races the axes it qualifies, so it travels in the same read");
+
+        let mute = vibration_view(&Quiet(true), &[]);
+        assert_eq!(mute["connected"], true);
+        assert!(mute["silentReason"].as_str().unwrap().contains("no vibration measurements"), "connected and not reporting is a different thing from absent, and available:false spells them the same");
+        assert_ne!(mute["silentReason"], gone["silentReason"]);
+    }
+
     struct Fake(Option<(f64, f64, f64)>);
     impl Backend for Fake {
-        fn get(&self, _path: &str) -> String {
+        fn get(&self, path: &str) -> String {
+            if path == "vehicles" {
+                return json!({ "kind": "object", "activeVehicleAvailable": self.0.is_some() }).to_string();
+            }
             match self.0 {
                 Some((x, y, z)) => json!({ "kind": "object", "facts": [
                     { "name": "xAxis", "value": x, "units": "m/s²" }, { "name": "yAxis", "value": y }, { "name": "zAxis", "value": z },

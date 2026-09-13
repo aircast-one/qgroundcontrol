@@ -4691,9 +4691,11 @@
         "view.vibration.clipCounts.#",
         "view.vibration.clipCounts[]",
         "view.vibration.clipping",
+        "view.vibration.connected",
         "view.vibration.dangerLevel",
         "view.vibration.kind",
         "view.vibration.scaleMaximum",
+        "view.vibration.silentReason",
         "view.vibration.units",
         "view.vibration.warningLevel",
         "view.vibration.worst",
@@ -6916,9 +6918,11 @@
             "number"
         ],
         "clipping": "bool",
+        "connected": "bool",
         "dangerLevel": "number",
         "kind": "string",
         "scaleMaximum": "number",
+        "silentReason": "null|string",
         "units": "string",
         "warningLevel": "number",
         "worst": "null|string"
