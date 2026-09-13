@@ -666,6 +666,37 @@ a real place, and the picker built this session lets an operator choose AMSL.
 Not filed as a defect - nobody has asked to fly below sea level - but the head
 is the only thing saying no.
 
+### Two core views answer "has contact been lost" differently, 2026-09-13
+
+`vehiclelinks.rs:59` serves `contactLost` as
+`watching.then(|| flag(&manager, "communicationLost"))` - **null** when
+`communicationLostEnabled` is false, because the flag means nothing when nothing
+maintains it. `flystate.rs:68` computes `contact_lost = connected &&
+communicationLost` with no such gate, so it reports the raw flag whatever its
+state. Read from the two files; they cannot both be right about the same
+question.
+
+**What happened when I looked.** Both read false, and
+`communicationLostEnabled` read true, every time I sampled. The gate only opens
+while a calibration runs: `APMSensorsComponentController` disables the watch in
+`calibrateAccel`, `calibrateMotorInterference`, `levelHorizon` and
+`calibratePressure`, and re-enables it in `_stopCalibration`. **Gyro is not one
+of them** - I tried it first and nothing moved, which is a fact about the code
+rather than a failed measurement.
+
+Running the pressure calibration does open the window, and it closed before I
+could sample it: the fake acks the command immediately, QGC calls
+`_stopCalibration`, and `view.calibration` read "Requesting pressure
+calibration... Successfully completed" with `inProgress` false by the time the
+probe returned. On hardware a calibration takes seconds and the window is real.
+
+So: not "unreachable", which is what I would have written yesterday. Reachable
+by four named routes, too brief to sample on a fake that acks instantly, and
+catchable here only if the fake is taught to withhold that ack. I have not built
+that, because the disagreement is already certain from the two files and the
+measurement would only confirm which of them changes. Left for whoever owns the
+core to decide which gate is right.
+
 ### view.altitudeModes is keyed by an argument nothing watches, 2026-09-13
 
 The frame picker reads `view.altitudeModes(mission,N)` where N is the mode the
