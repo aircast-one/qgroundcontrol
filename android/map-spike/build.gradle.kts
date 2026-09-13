@@ -22,7 +22,7 @@ android {
 }
 
 dependencies {
-    compileOnly(files("../../qgroundcontrol/build-android/android-build/AircastQGC.aar"))
+    compileOnly(files("../../build-android/android-build/AircastQGC.aar"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))

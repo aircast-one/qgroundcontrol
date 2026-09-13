@@ -33,7 +33,7 @@ android {
 }
 
 dependencies {
-    implementation(files("../../qgroundcontrol/build-android/android-build/AircastQGC.aar"))
+    implementation(files("../../build-android/android-build/AircastQGC.aar"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
     implementation("androidx.activity:activity-compose:1.9.3")
