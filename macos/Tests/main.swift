@@ -1221,6 +1221,47 @@ func checkSettingsRangesUseTheSameRuleAsItemFacts() {
 
 checkSettingsRangesUseTheSameRuleAsItemFacts()
 
+func checkASettingsControlRefusesWhatItsOwnHintForbids() {
+    let font = SettingsControl(["path": "settings.appSettings.appFontPointSize",
+                                "control": "number", "name": "appFontPointSize",
+                                "label": "Application font size", "valueString": "13",
+                                "units": "pt", "minimum": 6, "maximum": 48])!
+    let frost = SettingsControl(["path": "settings.appSettings.overlayGlassFrost",
+                                 "control": "number", "name": "overlayGlassFrost",
+                                 "label": "Overlay glass frost", "valueString": "100",
+                                 "units": "%", "maximum": 100])!
+    let muted = SettingsControl(["path": "settings.appSettings.audioMuted",
+                                 "control": "toggle", "name": "audioMuted",
+                                 "label": "Mute audio output", "valueString": "true"])!
+
+    expect(font.rangeHint, "6 to 48",
+           "the tooltip already told the operator the range -- it was the WRITE that never "
+           + "asked. Both now read the same two numbers, so the advice and the rule cannot "
+           + "drift apart")
+    expect(font.refusal("200") ?? "", "Application font size must be within 6 and 48.",
+           "and 200 pt was accepted before, measured on the running app: appFontPointSize "
+           + "declares 6 and 48 and view.settings serves both")
+    expect(font.refusal("13") == nil, "a value inside the range is written")
+    expect(font.refusal("6") == nil, "and the minimum itself is inside it")
+
+    expect(frost.rangeHint, "at most 100",
+           "the core serves only the bound the fact DECLARED -- overlayGlassFrost's minimum is "
+           + "the type's own zero, and view.settings omits it rather than passing a floor "
+           + "nobody wrote. Measured, not assumed")
+    expect(frost.refusal("250") ?? "", "Overlay glass frost must be at most 100.",
+           "so a frost of 250% is refused by the one end that exists")
+    expect(frost.refusal("-5") == nil,
+           "and the absent end refuses nothing, which is the same uniform behaviour the launch "
+           + "altitude gets")
+
+    expect(muted.refusal("999") == nil,
+           "a control that is not a number is measured against no range at all -- a toggle's "
+           + "valueString is \"true\", and comparing that to a bound would be nonsense")
+    expect(muted.rangeHint, "", "and offers no hint either, from the same guard")
+}
+
+checkASettingsControlRefusesWhatItsOwnHintForbids()
+
 
 func checkUnplacedCommands() {
     let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)

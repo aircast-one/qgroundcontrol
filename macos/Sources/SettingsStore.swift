@@ -72,6 +72,10 @@ final class SettingsStore: ObservableObject, Probeable, WriteReporting {
             writeFailure = FactWrite.readOnly
             return
         }
+        if let refused = control.refusal(String(describing: value)) {
+            writeFailure = refused
+            return
+        }
         write(control.path, value, control.label)
         cache.removeAll()
         refresh()

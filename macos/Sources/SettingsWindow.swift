@@ -231,34 +231,18 @@ struct FactControl: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
 
         case .text, .number, .bitmask, .unknown:
-            TextField("", text: $draft)
+            TextField("", text: Binding(
+                get: { EditedField.shown(typed: draft, held: fact.valueString, editing: editing) },
+                set: { draft = $0 }))
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)
                 .focused($editing)
-                .onAppear { draft = fact.valueString }
-                .onChange(of: fact.valueString) { latest in
-                    if !editing { draft = latest }
-                }
-                .onSubmit(commit)
+                .onSubmit { editing = false }
                 .onChange(of: editing) { focused in
-                    if !focused { commit() }
+                    if focused { draft = fact.valueString } else { commit() }
                 }
-                .help(rangeHint)
+                .help(fact.rangeHint)
         }
-    }
-
-    private var rangeHint: String {
-        guard fact.kind == .number else { return "" }
-        switch (fact.minimum, fact.maximum) {
-        case let (min?, max?): return "\(compact(min)) to \(compact(max))"
-        case let (min?, nil): return "at least \(compact(min))"
-        case let (nil, max?): return "at most \(compact(max))"
-        default: return ""
-        }
-    }
-
-    private func compact(_ value: Double) -> String {
-        value == value.rounded() ? String(Int(value)) : String(format: "%g", value)
     }
 
     private func commit() {

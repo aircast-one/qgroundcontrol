@@ -130,6 +130,32 @@ struct SettingsControl: Identifiable, Equatable {
         maximum = (json["maximum"] as? NSNumber)?.doubleValue
     }
 
+    func refusal(_ entry: String) -> String? {
+        guard kind == .number, let typed = Double(entry) else { return nil }
+        let under = minimum.map { typed < $0 } ?? false
+        let over = maximum.map { typed > $0 } ?? false
+        guard under || over else { return nil }
+        return FactRange.sentence(label.isEmpty ? name : label,
+                                  lowest: minimum.map(SettingsControl.spell),
+                                  highest: maximum.map(SettingsControl.spell))
+    }
+
+    var rangeHint: String {
+        guard kind == .number else { return "" }
+        switch (minimum.map(SettingsControl.spell), maximum.map(SettingsControl.spell)) {
+        case let (low?, high?): return "\(low) to \(high)"
+        case let (low?, nil): return "at least \(low)"
+        case let (nil, high?): return "at most \(high)"
+        default: return ""
+        }
+    }
+
+    static func spell(_ limit: Double) -> String {
+        limit == limit.rounded() && abs(limit) < 1e15
+            ? String(Int(limit))
+            : String(format: "%g", limit)
+    }
+
     static func list(_ json: Any?) -> [SettingsControl] {
         ((json as? [Any]) ?? []).compactMap(SettingsControl.init)
     }

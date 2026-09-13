@@ -30,10 +30,14 @@ struct FactRange: Equatable {
         let under = lowest.map { typed < $0.limit } ?? false
         let over = highest.map { typed > $0.limit } ?? false
         guard under || over else { return nil }
+        return FactRange.sentence(title, lowest: lowest?.text, highest: highest?.text)
+    }
+
+    static func sentence(_ what: String, lowest: String?, highest: String?) -> String? {
         switch (lowest, highest) {
-        case let (low?, high?): return "\(title) must be within \(low.text) and \(high.text)."
-        case let (low?, nil): return "\(title) must be at least \(low.text)."
-        case let (nil, high?): return "\(title) must be at most \(high.text)."
+        case let (low?, high?): return "\(what) must be within \(low) and \(high)."
+        case let (low?, nil): return "\(what) must be at least \(low)."
+        case let (nil, high?): return "\(what) must be at most \(high)."
         default: return nil
         }
     }
