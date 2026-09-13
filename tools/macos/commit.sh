@@ -47,6 +47,10 @@ fi
 # and said out loud, because silently adding a file to someone's commit is what this script exists
 # to prevent.
 if print -rl -- "$@" | grep -q '^macos/'; then
+    if ! python3 "$root/tools/macos/stale-state.py"; then
+        print -u2 "refusing to commit: a field outlives the selection that set it."
+        exit 1
+    fi
     python3 "$root/tools/macos/head-reads.py" > /dev/null
     if ! git diff --quiet -- tools/macos/head-reads.txt; then
         set -- "$@" tools/macos/head-reads.txt
