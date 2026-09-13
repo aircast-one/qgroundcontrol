@@ -454,6 +454,24 @@ void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
     QVERIFY2(shared.isEmpty(), qPrintable(QStringLiteral("these fact names appear in more than one settings group, so excluding one by bare name hides the others too: %1").arg(shared.join(QStringLiteral("; ")))));
 }
 
+void QGCCoreCTest::_aCameraActionIsRoutedByTheCoreAndNotThePassthrough()
+{
+    // qgc_core_guided is declared, defined and called by nothing, which no unit test could show:
+    // reachability is a property of the entry point, not of the module. actions::owns is the only
+    // thing that makes these three paths reach the core at all, and a path it does not claim falls
+    // through to the bridge and invokes a Qt method whose refusals are silent - which is the exact
+    // behaviour these actions exist to replace. The rig has no camera, so the answer here is the
+    // no-camera refusal; that it is the CORE's sentence and not an empty passthrough result is the
+    // whole assertion.
+    for (const char *path : { "camera.takePhoto", "camera.toggleRecording" }) {
+        const QJsonObject answer = take(qgc_core_invoke(path, "[]"));
+        QVERIFY2(answer.contains(QStringLiteral("reason")), qPrintable(QStringLiteral("%1 returned no reason, so owns() does not claim it and it fell through to the bridge").arg(path)));
+        QCOMPARE(answer.value(QStringLiteral("ok")).toBool(true), false);
+    }
+    const QJsonObject unknown = take(qgc_core_invoke("camera.setMode", "[\"panorama\"]"));
+    QCOMPARE(unknown.value(QStringLiteral("unknown")).toString(), QStringLiteral("panorama"));
+}
+
 void QGCCoreCTest::_settingsPagesDecodeTheirControls()
 {
     QCOMPARE(take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray().count(), 15);
