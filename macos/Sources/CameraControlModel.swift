@@ -97,3 +97,24 @@ struct CameraControl: Equatable {
     var offersShutter: Bool { present && canPhoto }
     var offersRecord: Bool { present && canRecord }
 }
+
+// The core answers every camera command now, and answering is the whole point: QGC's
+// VehicleCameraControl refuses on terms it never reports, so a head that fires and forgets shows
+// the operator exactly what a success shows them -- nothing. Three sentences were being computed
+// and thrown away here.
+//
+// The three cases are not two. A refusal carries a reason and is the camera speaking. An answer
+// with no `ok` at all is nobody speaking: the call did not reach the core's camera handler, which
+// is what an older core or a renamed action looks like, and reporting that as a camera refusal
+// would invent a fact about the hardware. Silence is the one thing it must not come back as,
+// because silence is what the defect looked like.
+enum CameraRefusal {
+    static let unanswered = "The camera command was not answered."
+
+    static func sentence(_ answer: [String: Any]) -> String? {
+        guard let ok = (answer["ok"] as? NSNumber)?.boolValue else { return unanswered }
+        guard !ok else { return nil }
+        let reason = (answer["reason"] as? String) ?? ""
+        return reason.isEmpty ? unanswered : reason
+    }
+}

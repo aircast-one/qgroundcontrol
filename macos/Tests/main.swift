@@ -4385,6 +4385,31 @@ checkFlyOverlays()
 checkSetupPages()
 checkRemoteSupport()
 
+func checkACameraRefusalIsSaidOutLoud() {
+    expect(CameraRefusal.sentence(["ok": true as NSNumber, "mode": "Photo"]) == nil,
+           "a camera that took the command says nothing; there is no sentence to show")
+
+    expect(CameraRefusal.sentence(["ok": false as NSNumber,
+                                   "reason": "The camera is still taking the last photo."]) ?? "",
+           "The camera is still taking the last photo.",
+           "and a refusal is shown in the core's own words -- this is the whole reason the core "
+           + "computes them, and the head discarded all three of them until now")
+
+    expect(CameraRefusal.sentence([:]) ?? "", CameraRefusal.unanswered,
+           "a call that came back with no ok at all never reached the core's camera handler, so "
+           + "it is reported as unanswered rather than as the camera refusing something")
+
+    expect(CameraRefusal.sentence(["ok": false as NSNumber]) ?? "", CameraRefusal.unanswered,
+           "and a refusal carrying no reason is unanswered too; inventing a cause for it would "
+           + "state a fact about hardware nobody asked")
+
+    expect(CameraRefusal.sentence(["ok": false as NSNumber, "reason": ""]) != nil,
+           "whatever the shape, a call that did not succeed leaves a sentence behind -- silence "
+           + "is what a taken photo looks like, and it is the one answer a refusal must not wear")
+}
+checkACameraRefusalIsSaidOutLoud()
+
+
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.
 if failures == 0 {

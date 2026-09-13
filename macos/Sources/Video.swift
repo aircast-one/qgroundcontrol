@@ -76,25 +76,27 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         if read.labels != cameraLabels { cameraLabels = read.labels }
     }
 
+    // The guards stay, and they are not the same check the core makes. They decide whether the
+    // control is OFFERED -- a greyed-out shutter beats a live one that will be refused. The core's
+    // answer covers the window the guard cannot: view.camera is up to half a second old here, so a
+    // photo that started since the last poll leaves the button live and only the core knows.
     func setCameraMode(photo: Bool) {
         guard camera.canChangeMode else { return }
-        Bridge.invoke(photo ? "vehicle.cameraManager.currentCameraInstance.setCameraModePhoto"
-                            : "vehicle.cameraManager.currentCameraInstance.setCameraModeVideo")
-        loadCamera()
+        ask("camera.setMode", [photo ? "photo" : "video"])
     }
 
-    // The gates are the core's canPhoto and canRecord, not this head's reading of the mode.
-    // QGC additionally refuses while a capture is already running; that term is not in the
-    // core's answer, so it is not invented here either.
     func takePhoto() {
         guard camera.offersShutter else { return }
-        Bridge.invoke("vehicle.cameraManager.currentCameraInstance.takePhoto")
-        loadCamera()
+        ask("camera.takePhoto", [])
     }
 
     func toggleRecording() {
         guard camera.offersRecord else { return }
-        Bridge.invoke("vehicle.cameraManager.currentCameraInstance.toggleVideoRecording")
+        ask("camera.toggleRecording", [])
+    }
+
+    private func ask(_ action: String, _ args: [Any]) {
+        writeFailure = CameraRefusal.sentence(Bridge.invoke(action, args))
         loadCamera()
     }
 
