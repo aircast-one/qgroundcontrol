@@ -13,7 +13,7 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let listed: Vec<Value> = (0..count)
         .map(|index| {
             let read = object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS));
-            let link = object(&backend.get_fields(&format!("vehicles.vehicles.{index}.vehicleLinkManager"), "primaryLinkName,communicationLost"));
+            let link = object(&backend.get_fields(&format!("vehicles.vehicles.{index}.vehicleLinkManager"), "primaryLinkName,communicationLost,communicationLostEnabled"));
             let id = integer(&read, "id");
             json!({
                 "id": id,
@@ -21,7 +21,7 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "type": text(&read, "vehicleTypeString"),
                 "firmware": text(&read, "firmwareTypeString"),
                 "link": text(&link, "primaryLinkName"),
-                "communicationLost": flag(&link, "communicationLost"),
+                "contactLost": flag(&link, "communicationLostEnabled").then(|| flag(&link, "communicationLost")),
                 "coordinate": nested_coordinate(&read).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
                 "active": id.is_some() && id == active,
                 "armed": flag(&read, "armed"),
@@ -73,7 +73,7 @@ mod tests {
                 let (index, tail) = rest.split_once('.').unwrap_or((rest, ""));
                 if let Some(vehicle) = index.parse::<usize>().ok().and_then(|index| self.0.get(index)) {
                     return match tail {
-                        "vehicleLinkManager" => json!({ "kind": "object", "primaryLinkName": vehicle["link"], "communicationLost": vehicle["quiet"] }).to_string(),
+                        "vehicleLinkManager" => json!({ "kind": "object", "primaryLinkName": vehicle["link"], "communicationLost": vehicle["quiet"], "communicationLostEnabled": vehicle.get("watching").cloned().unwrap_or(json!(true)) }).to_string(),
                         _ => vehicle.to_string(),
                     };
                 }
@@ -102,8 +102,13 @@ mod tests {
         let view = vehicles_view(&Fleet(vec![aircraft(1, "Multi-Rotor", "SITL"), grounded(2)], Some(1)), &[]);
         assert_eq!(view["vehicles"][0]["coordinate"]["latitude"], 47.397, "the inactive vehicle is the one a head could not draw before, so the position has to travel per vehicle rather than for the active one alone");
         assert_eq!(view["vehicles"][1]["coordinate"], Value::Null, "an invalid coordinate arrives from a nested read as a null rather than as valid:false, so keying on the flag alone would draw a marker at nowhere");
-        assert_eq!(view["vehicles"][1]["communicationLost"], true, "a position latches for the best part of a minute after the vehicle stops talking, so a head needs to know the marker is a memory");
-        assert_eq!(view["vehicles"][0]["communicationLost"], false);
+        assert_eq!(view["vehicles"][1]["contactLost"], true, "a position latches for the best part of a minute after the vehicle stops talking, so a head needs to know the marker is a memory");
+        assert_eq!(view["vehicles"][0]["contactLost"], false);
+
+        let mut unwatched = grounded(3);
+        unwatched["watching"] = json!(false);
+        let view = vehicles_view(&Fleet(vec![aircraft(1, "Multi-Rotor", "SITL"), unwatched], Some(1)), &[]);
+        assert_eq!(view["vehicles"][1]["contactLost"], Value::Null, "with the watch off the flag stays false however long the vehicle has been silent, so serving it raw would call a stale marker live - view.vehicleLinks answers this with a null and a head reads that as unwatched");
     }
 
     #[test]

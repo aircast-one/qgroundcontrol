@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, object, refused};
+use crate::read::{Unit, flag, object, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -65,10 +65,17 @@ fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
     })
 }
 
-fn circle_json(index: usize, json: &Value) -> Value {
+fn radius_bounds(backend: &dyn Backend, index: usize) -> (Option<f64>, Option<f64>) {
+    let fact = object(&backend.get(&format!("plan.geoFenceController.circles.{index}.radius")));
+    let bound = |key: &str, default_flag: &str| (!flag(&fact, default_flag)).then(|| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite())).flatten();
+    (bound("min", "minIsDefaultForType"), bound("max", "maxIsDefaultForType"))
+}
+
+fn circle_json(backend: &dyn Backend, index: usize, json: &Value) -> Value {
     let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
     let centre = json.get("center").and_then(point);
     let (metres, radius, units) = radius_fact(json);
+    let (smallest, largest) = radius_bounds(backend, index);
     let framing: Vec<Value> = centre
         .map(|(lat, lon)| {
             let lat_span = metres / METRES_PER_DEGREE;
@@ -91,6 +98,8 @@ fn circle_json(index: usize, json: &Value) -> Value {
         "radius": radius,
         "radiusUnits": units,
         "radiusMetres": metres,
+        "radiusMinimum": smallest,
+        "radiusMaximum": largest,
         "usable": centre.is_some(),
         "framing": framing,
     })
@@ -115,7 +124,7 @@ fn firmware_fence(backend: &dyn Backend) -> Value {
 pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vertical = Unit::vertical(backend);
     let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons").iter().enumerate().map(|(i, p)| polygon_json(i, p, &Unit::area(backend))).collect();
-    let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles").iter().enumerate().map(|(i, c)| circle_json(i, c)).collect();
+    let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles").iter().enumerate().map(|(i, c)| circle_json(backend, i, c)).collect();
     let rally: Vec<Value> = elements(backend, "plan.rallyPointController.points")
         .iter()
         .enumerate()
@@ -195,6 +204,39 @@ mod tests {
     use super::*;
 
     struct Fake;
+    struct RadiusFact;
+    impl Backend for RadiusFact {
+        fn get(&self, path: &str) -> String {
+            match path.ends_with(".radius") {
+                true => json!({ "kind": "fact", "name": "Radius", "min": 0.1, "max": 1.7976931348623157e308,
+                                "minIsDefaultForType": false, "maxIsDefaultForType": true }).to_string(),
+                false => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_circle_carries_the_radius_bound_somebody_declared_and_not_the_one_the_type_filled_in() {
+        let circle = circle_json(&RadiusFact, 0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 }, "facts": [ { "name": "Radius", "value": 60.0, "units": "m" } ] }));
+        assert_eq!(circle["radiusMinimum"], 0.1, "the fact declares this one, and a head hand-rolling value > 0 lets a five-centimetre keep-out fence into the plan");
+        assert_eq!(circle["radiusMaximum"], Value::Null, "no maximum was declared, so QGC filled it with the type's own extreme - serving that would tell an operator the radius must be under a 309-digit number");
+        let unbounded = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
+        assert_eq!(unbounded["radiusMinimum"], Value::Null, "a fact that does not resolve declares nothing, which is not the same as declaring no floor");
+    }
+
+    struct Boundless;
+    impl Backend for Boundless {
+        fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
             match path {
@@ -366,7 +408,7 @@ mod tests {
         let polygon = polygon_json(0, &json!({ "path": [ { "latitude": 47.0, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.1 } ] }), &metres);
         assert_eq!(polygon["inclusion"], false);
         assert_eq!(polygon["kindText"], "Keep-out polygon", "mistaking a keep-out zone for a boundary to stay inside flies an operator into forbidden airspace; the other way round only keeps them out of their own");
-        let circle = circle_json(0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
+        let circle = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
         assert_eq!(circle["kindText"], "Keep-out circle");
         let stated = polygon_json(0, &json!({ "inclusion": true, "path": [] }), &metres);
         assert_eq!(stated["kindText"], "Keep-in polygon", "a fence that says what it is is taken at its word");
@@ -374,11 +416,11 @@ mod tests {
 
     #[test]
     fn a_circle_beside_the_dateline_frames_onto_the_map() {
-        let circle = circle_json(0, &json!({ "center": { "latitude": -16.5, "longitude": 179.999 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
+        let circle = circle_json(&Boundless, 0, &json!({ "center": { "latitude": -16.5, "longitude": 179.999 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
         let corners = circle["framing"].as_array().unwrap();
         assert!(corners.iter().all(|c| (-180.0..=180.0).contains(&c["longitude"].as_f64().unwrap())), "a keep-out circle in Fiji framed past the dateline: {corners:?}");
         assert!(corners[1]["longitude"].as_f64().unwrap() < 0.0, "the eastern corner is on the far side of the dateline, not off the end of the world");
-        let polar = circle_json(0, &json!({ "center": { "latitude": 89.999, "longitude": 8.5 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
+        let polar = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 89.999, "longitude": 8.5 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
         assert!(polar["framing"].as_array().unwrap().iter().all(|c| (-90.0..=90.0).contains(&c["latitude"].as_f64().unwrap())));
     }
 }

@@ -1355,6 +1355,13 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.fences")).value(QStringLiteral("firmwareFence")).toObject().value(QStringLiteral("centre")).isNull(), 10000);
 
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.adsbTraffic")).value(QStringLiteral("ownPositionKnown")).toBool(false), 10000);
+    const auto preflightSettled = []() {
+        const QJsonObject once = take(qgc_core_get("view.preflight"));
+        QTest::qWait(500);
+        return once == take(qgc_core_get("view.preflight"));
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(preflightSettled(), 15000);
     states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
     for (const char *path : kViewPaths) {
         const QString key = QString::fromUtf8(path);
