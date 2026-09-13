@@ -3051,6 +3051,35 @@ the `view.gcsPosition` split where one `available` answered two questions.
 Nothing safety-shaped should key on the first. This head binds to neither — `view.coreVehicle`
 has no consumer in `android/` at all — so nothing needed changing here.
 
+### Geotagging: the head should use the core, not Qt's controller, 2026-09-14
+
+Two implementations exist and no head reads the core one. `view.geoTag` parses a tlog for
+camera triggers and correlates them against EXIF times within a tolerance — the whole
+feature, in the core, tested — while the macOS panel drives Qt's `GeoTagController` through
+`geoTag.startTagging`. Building this head against Qt would put two heads on the legacy engine
+and leave the core implementation orphaned.
+
+Both are genuinely available here: `AnalyzeView` is added with no platform guard at
+`src/CMakeLists.txt:78`, so `GeoTagController` is compiled on Android. This is a real choice
+rather than one the build makes.
+
+**Taking the core, and the deciding reason is platform rather than architecture.**
+`GeoTagWorker` opens images by absolute path — `QFile(fileInfo.absoluteFilePath())` to read,
+another `QFile` to write, over a `QDir` listing of an `imageDirectory` string. That is the
+shape Android scoped storage does not give you: a directory the user picked arrives as a tree
+`Uri` with granted access, not as a path a C++ `QDir` can walk. The Qt path would work only
+for directories the app already owns, which is the app's own `Photo/` folder and nothing an
+operator chose.
+
+The head's extra work on the core path is `ExifInterface`, which is framework and reads and
+writes GPS tags from a `Uri` directly. So the core route is not only the one that avoids two
+engines, it is the one more likely to work at all.
+
+What the head owes: read EXIF timestamps, pass them as arguments, write the returned tags
+back. What it gets: correlation, tolerance clamping and per-image failure reasons, already
+tested. Verified the contract against a real log on the handset — `readable: true`,
+`bytes: 163381`, `triggerCount: 0`, `refusal: "noImages"` with no timestamps supplied.
+
 **Check 3 of 4: the hub keys two vehicles apart correctly, 2026-09-14.** Two
 `apmvehicle.py` instances, system ids 1 and 2 — the rig takes SYSID as `argv[2]` and offsets
 the second by 0.01 degrees, so they are distinguishable on position as well as on id.
