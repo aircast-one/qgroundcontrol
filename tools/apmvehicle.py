@@ -31,6 +31,7 @@ INT_PARAMS = frozenset(
 )
 
 MAGCAL_MASK = 0b011
+ACCELCAL_POSITIONS = [1, 2, 3, 4, 5, 6]
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
 DEFAULT_TAKEOFF_ALTITUDE = 10.0
@@ -118,6 +119,8 @@ def main():
     magcal = apm.MAVLink(Sender(sock, TARGET), srcSystem=SYSID,
                          srcComponent=mavlink.MAV_COMP_ID_AUTOPILOT1)
     magcal_started = [None]
+    accelcal = [None]
+    accelcal_sent = [None]
     parser = mavlink.MAVLink(None, srcSystem=255, srcComponent=0)
     sent_status = [0]
     cameras = {
@@ -525,6 +528,14 @@ def main():
                         landing = True
                         target_altitude = 0.0
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif (kind == "COMMAND_LONG"
+                        and message.command == mavlink.MAV_CMD_PREFLIGHT_CALIBRATION
+                        and message.param5 == 1):
+                    accelcal[0] = 0
+                    print("ACCEL CAL started", flush=True)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif kind == "COMMAND_ACK" and accelcal[0] is not None:
+                    accelcal[0] += 1
                 elif kind == "COMMAND_LONG" and message.command == apm.MAV_CMD_DO_START_MAG_CAL:
                     magcal_started[0] = time.time()
                     print("MAG CAL started", flush=True)
@@ -533,10 +544,24 @@ def main():
                     magcal_started[0] = None
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG":
-                    print("CMD %d p1=%.2f p2=%.2f p7=%.2f" % (
+                    print("CMD %d p1=%.2f p2=%.2f p4=%.2f p5=%.2f p7=%.2f" % (
                         message.command, message.param1, message.param2,
+                        getattr(message, "param4", 0.0),
+                        getattr(message, "param5", 0.0),
                         getattr(message, "param7", 0.0)), flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+
+        if accelcal[0] is not None and accelcal_sent[0] != accelcal[0]:
+            accelcal_sent[0] = accelcal[0]
+            position = (ACCELCAL_POSITIONS[accelcal[0]]
+                        if accelcal[0] < len(ACCELCAL_POSITIONS)
+                        else apm.ACCELCAL_VEHICLE_POS_SUCCESS)
+            magcal.command_long_send(255, 0, apm.MAV_CMD_ACCELCAL_VEHICLE_POS, 0,
+                                     position, 0, 0, 0, 0, 0, 0)
+            print("ACCEL CAL position %d" % position, flush=True)
+            if position == apm.ACCELCAL_VEHICLE_POS_SUCCESS:
+                accelcal[0] = None
+                accelcal_sent[0] = None
 
         if magcal_started[0] is not None:
             spent = time.time() - magcal_started[0]
