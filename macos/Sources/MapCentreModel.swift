@@ -28,6 +28,7 @@ struct MapCentreState: Equatable {
     var launch: GeoPoint?
     var vehicle: GeoPoint?
     var gcs: GeoPoint?
+    var gcsFix = ""
     var access = LocationAccess.unknown
 
     var allPoints: [GeoPoint] { missionPoints + otherPoints }
@@ -79,10 +80,23 @@ enum MapCentre: String, CaseIterable, Identifiable {
             switch state.access {
             case .notAsked: return "macOS has not been asked for location access yet"
             case .refused: return "macOS is not allowing location access"
-            case .waiting: return "Waiting for a position fix"
+            case .waiting: return MapCentre.without(fix: state.gcsFix)
             case .unknown: return "No position for this computer"
             }
         }
+    }
+
+    static let noSource = "noSource"
+    static let stalePrefix = "stale"
+
+    static func without(fix: String) -> String {
+        if fix == MapCentre.noSource {
+            return "Nothing is reporting a position for this computer"
+        }
+        if fix.hasPrefix(MapCentre.stalePrefix) {
+            return "The last position is too old to use"
+        }
+        return "Waiting for a position fix"
     }
 
     func frame(in state: MapCentreState) -> MapFrame? {

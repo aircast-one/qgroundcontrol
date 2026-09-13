@@ -4916,7 +4916,22 @@ func checkCentreNotes() {
            "a refused permission reads differently from one never asked for")
     state.access = .waiting
     expect(MapCentre.myLocation.note(in: state) == "Waiting for a position fix",
-           "with permission granted the wait is the honest reason")
+           "with permission granted and the core saying nothing, the wait is the honest reason")
+    state.gcsFix = "noSource"
+    expect(MapCentre.myLocation.note(in: state) == "Nothing is reporting a position for this computer",
+           "but a wait that cannot end is not a wait. The core distinguishes NEVER from NOT YET "
+           + "in its own fix token and this head decoded that token for months without reading "
+           + "it -- I told the core the view could not separate the two, which was true of what "
+           + "it can currently REPORT and false of the view, because nothing feeds its position "
+           + "at all. GcsFix carried the answer the whole time")
+    state.gcsFix = "staleThreeDimensional"
+    expect(MapCentre.myLocation.note(in: state) == "The last position is too old to use",
+           "a reading that aged out is a third thing again: there WAS a fix, so neither "
+           + "\"nothing is reporting\" nor \"waiting\" is true of it")
+    state.gcsFix = "threeDimensional"
+    expect(MapCentre.myLocation.note(in: state) == "Waiting for a position fix",
+           "and a good fix with no point yet is the only case where waiting is still right")
+    state.gcsFix = ""
     state.access = .unknown
     expect(MapCentre.myLocation.note(in: state) == "No position for this computer",
            "and an unknown status claims nothing about permission")
