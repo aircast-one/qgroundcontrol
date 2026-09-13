@@ -153,7 +153,9 @@ pub fn wrap_longitude(degrees: f64) -> f64 {
 }
 
 fn age_of(stamped_ms: Option<u64>, now: MonotonicMs) -> Option<u64> {
-    stamped_ms.filter(|stamped| *stamped <= now.0).map(|stamped| now.0 - stamped)
+    stamped_ms
+        .filter(|stamped| *stamped <= now.0.saturating_add(STALE_AFTER_MS))
+        .map(|stamped| now.0.saturating_sub(stamped))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -415,6 +417,17 @@ mod tests {
 
     fn at(ms: u64) -> MonotonicMs {
         MonotonicMs(ms)
+    }
+
+    #[test]
+    fn a_fix_stamped_a_moment_in_the_future_is_current_rather_than_unknown() {
+        let now = MonotonicMs(10_000);
+
+        assert_eq!(age_of(Some(9_500), now), Some(500), "a fix from half a second ago is half a second old");
+        assert_eq!(age_of(Some(10_400), now), Some(0), "android stamps a fix with gps time rounded to the second, so it runs ahead of the phone's own clock");
+        assert_eq!(age_of(Some(10_000 + STALE_AFTER_MS), now), Some(0), "the tolerance is inclusive of its own limit");
+        assert_eq!(age_of(Some(10_001 + STALE_AFTER_MS), now), None, "further ahead than a fix could ever be means the two sides are not the same clock, which is not an age at all");
+        assert_eq!(age_of(Some(1_789_326_842_000), now), None, "epoch milliseconds against a clock counting from process start stays unreadable, which is the mismatch this filter was written for");
     }
 
     fn fix(horizontal: Option<f64>) -> Update {
