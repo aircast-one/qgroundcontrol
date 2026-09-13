@@ -666,6 +666,45 @@ a real place, and the picker built this session lets an operator choose AMSL.
 Not filed as a defect - nobody has asked to fly below sea level - but the head
 is the only thing saying no.
 
+### view.gcsPosition says no source while the phone knows where it is, 2026-09-13
+
+`view.gcsPosition` reports `fix: "noSource"`, `hasFix: false`, every field null.
+Read alone that says the handheld ground station has no position. It is not what
+it means.
+
+`gcs_position_view(_backend, _args)` takes the backend and ignores it. The view
+is fed by the core's own hub and its own `Source` enum, so `noSource` is a
+statement about **the core's** position state and says nothing about QGC's.
+Measured the other side through the bridge:
+
+```
+positionManager.gcsPosition = { latitude: 41.71738184, longitude: 41.72945152,
+                                altitude: 23.4, valid: true }
+gcsPositionHorizontalAccuracy = 10.72
+```
+
+QGC has a live fix from the handset to within eleven metres. The Qt Android
+positioning plugin ships in the apk
+(`libplugins_position_qtposition_android_arm64-v8a.so`) and
+`ACCESS_FINE_LOCATION` is granted USER_SET. Everything works except the join.
+
+**Two separate things, and they should not be confused.**
+
+- The core's view and QGC's position manager are not connected on this build. A
+  head that trusts `view.gcsPosition` will tell an operator standing in a field
+  that their ground station has no position while the phone in their hand has
+  one. Whether the core intends to take its position from its own hub rather
+  than from QGC is a decision I do not own.
+- This head shows the operator's position nowhere at all. On a phone that is the
+  one thing the ground station knows that a laptop does not, and "Distance to
+  Home" is the only spatial relation on the Fly view. Unbuilt rather than
+  broken.
+
+I twice nearly wrote the wrong conclusion from the first reading: first that the
+phone's GPS was not wired, then that QGC's side was unmeasurable. The apk listing
+and one bridge read settled both. A view named for a thing is not a view of that
+thing.
+
 ### Two core views answer "has contact been lost" differently, 2026-09-13
 
 `vehiclelinks.rs:59` serves `contactLost` as
