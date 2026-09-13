@@ -7,6 +7,7 @@ pub const VIDEO_DEPS: &[&str] = &["video.hasVideo", "video.decoding", "video.str
 pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,batteryRemaining,hasZoom,zoomLevel";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
+    "vehicle.cameraManager.cameraLabels",
     "vehicle.cameraManager.currentCameraInstance.modelName",
     "vehicle.cameraManager.currentCameraInstance.vendor",
     "vehicle.cameraManager.currentCameraInstance.cameraMode",
@@ -126,6 +127,15 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    // The only field any head took from vehicle.cameraManager: the switcher needs every camera's
+    // name, and this view carried only the current one's. One field short kept a whole Qt path
+    // alive on both heads.
+    let manager = object(&backend.get_fields("vehicle.cameraManager", "cameraLabels"));
+    let labels: Vec<&str> = manager
+        .get("cameraLabels")
+        .and_then(Value::as_array)
+        .map(|names| names.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
     let camera = object(&backend.get_fields("vehicle.cameraManager.currentCameraInstance", CAMERA_FIELDS));
     let model = text(&camera, "modelName");
     let present = camera.get("kind").and_then(Value::as_str) == Some("object") && !model.is_empty();
@@ -147,6 +157,8 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "present": present,
         "title": if !model.is_empty() { model.clone() } else if vendor.is_empty() { "Camera".to_string() } else { vendor.clone() },
         "model": model,
+        "labels": labels,
+        "choices": labels.len(),
         "vendor": vendor,
         "mode": mode,
         "modeKnown": mode != UNDEFINED_MODE,
@@ -203,6 +215,7 @@ mod tests {
             match path {
                 "video" => self.video.to_string(),
                 "vehicle.cameraManager.currentCameraInstance" => self.camera.to_string(),
+                "vehicle.cameraManager" => json!({ "kind": "object", "cameraLabels": ["Sony ILCE-7", "Thermal"] }).to_string(),
                 _ => json!({ "kind": "object", "count": 42 }).to_string(),
             }
         }
@@ -255,6 +268,14 @@ mod tests {
         assert_eq!(idle["canChangeMode"], true);
         let fixed = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "Fixed", "cameraMode": 1, "videoCaptureStatus": 0, "capturesVideo": true, "hasModes": false })), &[]);
         assert_eq!(fixed["canChangeMode"], false, "a camera with no modes is never offered a mode change");
+    }
+
+    #[test]
+    fn the_switcher_is_told_every_camera_and_not_just_the_open_one() {
+        let view = camera_view(&Fake::new(json!({ "kind": "object" }), json!({ "kind": "object", "modelName": "Sony ILCE-7" })), &[]);
+        assert_eq!(view["labels"], json!(["Sony ILCE-7", "Thermal"]), "the only field any head read off vehicle.cameraManager, and this view carried the current camera alone");
+        assert_eq!(view["choices"], 2);
+        assert_eq!(view["model"], "Sony ILCE-7", "the open camera is still named separately from the list it sits in");
     }
 
     #[test]

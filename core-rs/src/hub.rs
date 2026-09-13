@@ -1229,6 +1229,12 @@ pub static HUB: LazyLock<Mutex<Hub>> = LazyLock::new(|| Mutex::new(Hub::default(
 impl Hub {
     pub fn on_frame(&mut self, origin: Origin, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
         let mut bytes = Vec::new();
+        // adsb::on_message existed with nothing calling it, so a vehicle relaying traffic over
+        // MAVLink reached the module through no path at all. Its SBS-1 feed opens its own socket
+        // and always worked, which is why the gap was invisible: the view answers, from one source
+        // of two. This is the frame sink every message already passes through, so the relay needs
+        // a routing line here rather than a door of its own in the C ABI.
+        crate::adsb::on_message(message, now_ms);
         if let MavMessage::HEARTBEAT(h) = message {
             let (kind, autopilot) = (h.mavtype as u8, h.autopilot as u8);
             let excluded_type = matches!(kind, TYPE_GCS | TYPE_ONBOARD_CONTROLLER | TYPE_GIMBAL | TYPE_ADSB);
@@ -2167,6 +2173,31 @@ mod tests {
         hub.on_frame(origin(4), &apm, &done, 0, 2_300);
         assert_eq!(hub.calibration_snapshot(Some(1))["calibration"]["outcome"], "success");
     }
+    #[test]
+    fn a_relayed_adsb_contact_reaches_the_traffic_module() {
+        use mavlink::dialects::ardupilotmega::{AdsbAltitudeType, AdsbEmitterType, AdsbFlags, ADSB_VEHICLE_DATA};
+        *crate::adsb::lock() = crate::adsb::Traffic::default();
+        let mut hub = Hub::default();
+        let relayed = MavMessage::ADSB_VEHICLE(ADSB_VEHICLE_DATA {
+            ICAO_address: 0xC0FFEE,
+            lat: 474_000_000,
+            lon: 85_000_000,
+            altitude: 300_000,
+            heading: 9_000,
+            hor_velocity: 5_000,
+            ver_velocity: 0,
+            flags: AdsbFlags::ADSB_FLAGS_VALID_COORDS | AdsbFlags::ADSB_FLAGS_VALID_ALTITUDE,
+            squawk: 0,
+            altitude_type: AdsbAltitudeType::ADSB_ALTITUDE_TYPE_GEOMETRIC,
+            callsign: mavlink::types::CharArray::from("RELAY  "),
+            emitter_type: AdsbEmitterType::ADSB_EMITTER_TYPE_LIGHT,
+            tslc: 1,
+        });
+        hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &relayed, 1, 1);
+        assert_eq!(crate::adsb::lock().count(), 1, "adsb::on_message had no caller anywhere, so a vehicle relaying traffic over MAVLink reached the module by no path at all - its SBS-1 feed opens its own socket, which is why the view still answered and the gap stayed invisible");
+        *crate::adsb::lock() = crate::adsb::Traffic::default();
+    }
+
     #[test]
     fn a_chunked_message_whose_tail_never_arrives_is_flushed_rather_than_held() {
         use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavType, STATUSTEXT_DATA};
