@@ -24,6 +24,7 @@ MODELS = {
     "FenceShape": "view.fences",
     "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",
+    "TlogSummary": "view.tlog(/tmp/none.tlog)",
     "JoystickMapping": "view.joystickMapping",
     "PacketRadio": "view.packetRadio",
     "FlightModeChoice": "view.flightModes",

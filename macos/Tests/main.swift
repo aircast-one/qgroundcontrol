@@ -942,6 +942,64 @@ func checkTheJoystickCatalogueKeepsItsOwnDefaults() {
 
 checkTheJoystickCatalogueKeepsItsOwnDefaults()
 
+func checkAnUnreadableLogIsNotAnEmptyOne() {
+    func tlog(_ overrides: [String: Any]) -> TlogSummary? {
+        TlogSummary(["kind": "object", "class": "Tlog", "path": "/logs/flight.tlog",
+                     "readable": true as NSNumber, "bytes": 5_242_880 as NSNumber,
+                     "frames": 41_000 as NSNumber, "undecodable": 3 as NSNumber,
+                     "spanSeconds": 754.0 as NSNumber,
+                     "systemIds": [1 as NSNumber],
+                     "byName": ["HEARTBEAT": 754 as NSNumber,
+                                "ATTITUDE": 30_160 as NSNumber]]
+            .merging(overrides) { _, override in override })
+    }
+
+    let unreadable = TlogSummary(["kind": "object", "class": "Tlog",
+                                  "path": "/logs/gone.tlog", "readable": false as NSNumber])
+
+    expect(unreadable?.empty == false,
+           "A LOG THE CORE COULD NOT OPEN IS NOT AN EMPTY LOG. The refusal carries no bytes, no "
+           + "frames and no span at all -- it says the parser never got to look. Reporting it as "
+           + "zero frames would tell an operator their flight recorded nothing, when what "
+           + "happened is that the file could not be read")
+    expect(tlog(["frames": 0 as NSNumber, "undecodable": 0 as NSNumber])?.empty == true,
+           "and a file that DID open and holds nothing is the empty log, which is the only one "
+           + "of the two that says anything about the flight")
+
+    expect(unreadable?.sizeText ?? "MISSING", "",
+           "an unopened log has no size to show either, rather than 0 bytes")
+    expect(unreadable?.spanText ?? "MISSING", "", "and no duration")
+
+    expect(tlog(["frames": 0 as NSNumber, "undecodable": 900 as NSNumber])?
+            .whollyUndecodable == true,
+           "a file that opened and whose every frame failed to decode is a third answer again -- "
+           + "readable stays true because the FILE opened, so only the frame counts separate a "
+           + "corrupt log from an empty one")
+
+    expect(tlog([:])?.spanText ?? "", "12m 34s",
+           "seconds are seconds in every locale, so the head spells this one and the core does "
+           + "not need to -- distances and altitudes are the ones that convert")
+    expect(tlog(["spanSeconds": 45.0 as NSNumber])?.spanText ?? "", "45s",
+           "and a log under a minute does not claim a leading zero minutes")
+    expect(tlog(["spanSeconds": 0.0 as NSNumber])?.spanText ?? "MISSING", "",
+           "a log whose frames carry no usable timestamps has no span, which is not a span of "
+           + "zero seconds")
+
+    expect(tlog([:])?.sizeText ?? "", "5.0 MB", "a size is scaled to the unit that reads")
+    expect(tlog(["bytes": 512 as NSNumber])?.sizeText ?? "", "512 bytes",
+           "and a small file stays in bytes rather than reading 0.5 KB")
+
+    expect(tlog([:])?.busiest?.name ?? "", "ATTITUDE",
+           "the busiest message is what tells an operator what the log is mostly made of")
+    expect(tlog([:])?.messageKinds == 2, "and the kind count is the shape of the log")
+
+    expect(TlogSummary(["kind": "null"]) == nil,
+           "a refusal with no path at all is no summary, rather than one describing a log at "
+           + "the empty string")
+}
+
+checkAnUnreadableLogIsNotAnEmptyOne()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",
