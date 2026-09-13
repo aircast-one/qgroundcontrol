@@ -687,16 +687,19 @@ through the debug API correctly marks mode 4 current and names it. The picker
 still shows the fallback. Nudging the altitude, which certainly pushes the plan,
 does not move it. The value simply never arrives.
 
-`mapPath` now seeds a newly watched path with one read, which fixed the first
-transition and not the second - so the head side is only partly answered and I
-have stopped guessing at the rest. What is certain and code-read rather than
-inferred is the DEPS list above: a view parameterised by an argument needs
-something in its dependencies that changes with that argument, or it can only
-ever be read, never watched.
+`mapPath` now seeds a newly watched path with one read. **That is the whole fix,
+corrected 2026-09-13 morning.** I recorded that it mended the first transition
+and not the second; on a fresh app it mends both, and five consecutive changes -
+1 to 3, 3 to 4, 4 to 2, 2 to 1, 1 to 4 - each leave the button naming the mode
+the core marks current. The failure I saw at four in the morning came after a
+long run of switches and restarts and did not survive a clean start, so the
+limitation I wrote down was not one.
 
-Both terrain modes abbreviate to AGL, so while this stands the operator cannot
-tell Calculated Above Terrain from Terrain Frame on the button - only by opening
-the menu, where the current one is marked.
+What is certain and code-read rather than inferred is the DEPS list above: a
+view parameterised by an argument needs something in its dependencies that
+changes with that argument, or it can only ever be read, never watched. The seed
+is what makes reading enough here, and it is worth knowing that is what is
+carrying it - nothing pushes this path.
 
 **It is structural, not an oversight in one file.** `View.deps` is
 `&'static [&'static str]` - one list per view, fixed at compile time. There is
