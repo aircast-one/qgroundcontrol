@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,10 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 
 @Composable
@@ -87,9 +93,35 @@ private fun AttitudeRow(stick: RadioStick) {
 }
 
 @Composable
+private fun CalibrationControls(cal: RadioCalibration, onAction: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        if (cal.statusText.isNotBlank()) {
+            Text(
+                text = cal.statusText,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { onAction("nextButtonClicked") },
+                enabled = cal.nextEnabled,
+            ) { Text(cal.nextText.ifBlank { "Calibrate" }) }
+            if (cal.skipEnabled) {
+                OutlinedButton(onClick = { onAction("skipButtonClicked") }) { Text("Skip") }
+            }
+            if (cal.cancelEnabled) {
+                TextButton(onClick = { onAction("cancelButtonClicked") }) { Text("Cancel") }
+            }
+        }
+    }
+}
+
+@Composable
 fun RadioScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(RADIO_VIEW)
     val view = radioView(json)
+    LaunchedEffect(Unit) { Qgc.invoke(radioCalAction("start")) }
 
     if (view == null || !view.connected) {
         RadioNotice("Connect a vehicle to check its radio.", modifier)
@@ -103,6 +135,12 @@ fun RadioScreen(modifier: Modifier = Modifier) {
                     "No transmitter signal. Turn the transmitter on and check the " +
                         "receiver is bound.",
                 )
+            }
+        }
+
+        item(key = "calibration") {
+            CalibrationControls(view.calibration) { action ->
+                Qgc.invoke(radioCalAction(action))
             }
         }
 
@@ -159,8 +197,8 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         item(key = "footer") {
             FootNote(
                 "Move each stick and switch \u2014 every channel you use should move here. " +
-                    "Calibration stays on the desktop: it needs you holding each stick at " +
-                    "its extremes while watching the aircraft, and it rewrites the mapping.",
+                    "Calibration asks you to hold each stick at its extremes in turn and " +
+                    "rewrites the mapping, so do it with the propellers off.",
             )
         }
     }
