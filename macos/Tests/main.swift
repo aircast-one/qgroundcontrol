@@ -4928,9 +4928,20 @@ func checkCentreNotes() {
     expect(MapCentre.myLocation.note(in: state) == "The last position is too old to use",
            "a reading that aged out is a third thing again: there WAS a fix, so neither "
            + "\"nothing is reporting\" nor \"waiting\" is true of it")
-    state.gcsFix = "threeDimensional"
+    state.gcsFix = "waiting"
     expect(MapCentre.myLocation.note(in: state) == "Waiting for a position fix",
-           "and a good fix with no point yet is the only case where waiting is still right")
+           "the core spells the genuine wait: listening, nothing arrived yet")
+    state.gcsFix = "threeDimensional"
+    expect(MapCentre.myLocation.note(in: state) == "The position is not precise enough to use",
+           "A LIVE FIX WITH NO POINT MEANS ACCURACY, NOT WAITING. usable() is fixed AND not "
+           + "stale AND horizontal_accuracy <= the minimum, but fix() never looks at accuracy -- "
+           + "so a current 3D fix that is merely too imprecise disables the row while the token "
+           + "still reads threeDimensional. Falling through to \"waiting\" would tell the "
+           + "operator to wait for something that has already arrived")
+    state.gcsFix = "horizontal"
+    expect(MapCentre.myLocation.note(in: state) == "The position is not precise enough to use",
+           "and a 2D fix reaches the row disabled by the same accuracy floor, never by its "
+           + "missing altitude -- usable() does not consult altitude at all")
     state.gcsFix = ""
     state.access = .unknown
     expect(MapCentre.myLocation.note(in: state) == "No position for this computer",

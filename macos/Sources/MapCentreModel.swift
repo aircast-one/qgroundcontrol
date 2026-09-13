@@ -89,6 +89,8 @@ enum MapCentre: String, CaseIterable, Identifiable {
     static let noSource = "noSource"
     static let stalePrefix = "stale"
 
+    static let waitingToken = "waiting"
+
     static func without(fix: String) -> String {
         if fix == MapCentre.noSource {
             return "Nothing is reporting a position for this computer"
@@ -96,7 +98,10 @@ enum MapCentre: String, CaseIterable, Identifiable {
         if fix.hasPrefix(MapCentre.stalePrefix) {
             return "The last position is too old to use"
         }
-        return "Waiting for a position fix"
+        if fix.isEmpty || fix == MapCentre.waitingToken {
+            return "Waiting for a position fix"
+        }
+        return "The position is not precise enough to use"
     }
 
     func frame(in state: MapCentreState) -> MapFrame? {
