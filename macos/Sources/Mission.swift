@@ -23,6 +23,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var pickerCategory = ""
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var selectedSpeed = ItemSpeed.unavailable
+    @Published private(set) var selectedLanding = LandingPattern.none
     @Published private(set) var patternTransects: [[GeoPoint]] = []
     @Published private(set) var patternGeometries: [PatternGeometry] = []
     @Published private(set) var launch = LaunchPosition.unknown
@@ -491,6 +492,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private func loadSelectedFacts() {
         guard let item = items.first(where: \.isSelected) else {
             selectedFacts = []
+            selectedLanding = LandingPattern.none
             if selectedSpeed != .unavailable { selectedSpeed = .unavailable }
             if surveyStats != .none { surveyStats = .none }
             return
@@ -518,6 +520,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         let itemOffers = AltitudeMode.offers(
             Bridge.group("view.altitudeModes(\(context),\(itemAltitudeMode))"))
         if itemOffers != itemModes { itemModes = itemOffers }
+
+        let pattern = item.isSimpleItem
+            ? LandingPattern.none
+            : LandingPattern(Bridge.group("view.landingPattern(\(item.index))"))
+        if pattern != selectedLanding { selectedLanding = pattern }
         let distanceOffers = AltitudeMode.offers(
             Bridge.group("view.altitudeModes(\(context),\(distanceMode))"))
         if distanceOffers != distanceModes { distanceModes = distanceOffers }

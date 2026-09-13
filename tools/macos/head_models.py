@@ -24,6 +24,7 @@ MODELS = {
     "FenceShape": "view.fences",
     "FlyState": "view.flyState",
     "FlightModeChoice": "view.flightModes",
+    "LandingPattern": "view.landingPattern(6)",
     "LinkConfig": "view.links",
     "LogEntry": "view.logs",
     "GcsFix": "view.gcsPosition",

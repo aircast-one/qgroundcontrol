@@ -1318,6 +1318,70 @@ func checkAFenceRadiusSaysWhyItRefused() {
 
 checkAFenceRadiusSaysWhyItRefused()
 
+func checkALandingPatternDrawsOnlyWhatItWasGiven() {
+    let full = LandingPattern([
+        "index": 6,
+        "landing": ["latitude": 47.397, "longitude": 8.545],
+        "slopeStart": ["latitude": 47.399, "longitude": 8.549],
+        "finalApproach": ["latitude": 47.401, "longitude": 8.552],
+        "loiterRadiusMetres": 75.0, "loiterRadiusText": "75 m",
+        "loiterClockwise": true, "loiterToAltitude": false,
+        "landingAltitudeMetres": 12.0, "landingHeadingDegrees": 215.0,
+        "landingDistanceMetres": 200.0,
+    ])
+    expect(full.isPattern, "a landing with a coordinate is a pattern")
+    expect(full.descent.count == 2, "the descent is slope start to landing, and nothing else")
+    expect(full.loiterCentre == full.finalApproach,
+           "the loiter circle sits on the FINAL APPROACH point, not the landing point")
+    expect(full.loiterDetail, "75 m clockwise",
+           "the radius text is the CORE'S SPELLING -- loiterRadiusText, never re-derived from "
+           + "loiterRadiusMetres. Two rules for one number is how a header and a label end up "
+           + "disagreeing on the same control")
+
+    let refusedSimple = LandingPattern([
+        "reason": "that item draws no landing pattern; only a fixed wing or a VTOL gets one, and "
+            + "a multirotor land is a plain return",
+    ])
+    expect(refusedSimple.refused, "a refusal is a refusal")
+    expect(!refusedSimple.isPattern, "and is not a pattern to draw")
+    expect(refusedSimple.descent.isEmpty, "with nothing to put on the map")
+
+    let refusedComplex = LandingPattern([
+        "reason": "that item is not a landing pattern; being complex is not the same as being "
+            + "one, and the launch row and every survey are complex too",
+    ])
+    expect(refusedComplex.reason != refusedSimple.reason,
+           "the core refuses for TWO distinct reasons and the head keeps them apart: a "
+           + "multirotor has no pattern to draw, a survey is complex but is not one. Collapsing "
+           + "them would tell a survey's operator their vehicle cannot do this")
+
+    let noRadius = LandingPattern([
+        "index": 6,
+        "landing": ["latitude": 47.397, "longitude": 8.545],
+        "finalApproach": ["latitude": 47.401, "longitude": 8.552],
+        "loiterRadiusText": "",
+    ])
+    expect(noRadius.isPattern, "a pattern with no loiter radius is still a pattern")
+    expect(noRadius.loiterCentre == nil,
+           "but draws no circle. The CORE already filters a radius of zero or less to null, so "
+           + "the head asks whether it was given one rather than testing it against zero -- the "
+           + "hand-rolled bound this sweep has been removing everywhere else")
+    expect(noRadius.loiterDetail, "", "and says nothing about a loiter it cannot describe")
+
+    let unplaced = LandingPattern([
+        "index": 6, "landing": ["latitude": 47.397, "longitude": 8.545],
+        "loiterRadiusMetres": 75.0, "loiterRadiusText": "75 m",
+    ])
+    expect(unplaced.descent.isEmpty,
+           "no slope start means no descent line -- place() serves null unless the coordinate "
+           + "is valid AND not 0,0, so a missing point arrives absent rather than at the "
+           + "Gulf of Guinea")
+    expect(unplaced.drawnRadius == nil,
+           "and a radius with nowhere to centre it draws nothing, even though the number is real")
+}
+
+checkALandingPatternDrawsOnlyWhatItWasGiven()
+
 
 func checkUnplacedCommands() {
     let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)

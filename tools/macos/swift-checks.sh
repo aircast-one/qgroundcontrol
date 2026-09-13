@@ -109,6 +109,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/TerrainProfileModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
     "$root/macos/Sources/FenceRallyModel.swift" \
+    "$root/macos/Sources/LandingPatternModel.swift" \
     "$root/macos/Sources/TilePyramid.swift" \
     "$root/macos/Sources/VehicleComponentModel.swift" \
     "$root/macos/Sources/LogEntryModel.swift" \

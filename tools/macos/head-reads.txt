@@ -113,6 +113,7 @@ extraSeconds
 fenceSupported
 file
 filename
+finalApproach
 firmware
 firmwareFence
 first
@@ -163,6 +164,9 @@ kindText
 known
 label
 landing
+landingAltitudeMetres
+landingDistanceMetres
+landingHeadingDegrees
 last
 lastError
 latitude
@@ -173,6 +177,10 @@ listening
 liveChannels
 liveSlot
 logFileName
+loiterClockwise
+loiterRadiusMetres
+loiterRadiusText
+loiterToAltitude
 longitude
 lowest
 lowestText
@@ -277,6 +285,7 @@ showsSides
 showsVideoSources
 simple
 skipEnabled
+slopeStart
 slot
 source
 sourceSize
