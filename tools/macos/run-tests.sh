@@ -40,16 +40,48 @@ foreign_suites() {
 # reporting a green nobody saw, from the tool whose whole job is to stop exactly that.
 : > "$log"
 
+claim=${TMPDIR:-/tmp}/qgc-box-claim.d
+claim_note=$claim/holder
+
+# mkdir is atomic and fails if the directory exists, so taking the claim and recording who took
+# it are one step. Writing a plain file after testing for it is check-then-act, and two runners
+# both waking to a free box would both win -- which is the likeliest moment for it to happen.
+take_claim() {
+    mkdir "$claim" 2>/dev/null || return 1
+    print "$$ macos-suite $(date +%s)" > "$claim_note"
+}
+
+claim_holder() {
+    [[ -d "$claim" ]] || return 1
+    local held; held=$(< "$claim_note" 2>/dev/null)
+    local pid=${held%% *}
+    [[ "$pid" == <-> ]] || { print -u2 "claim is unreadable, breaking it: ${held:-<empty>}"; rm -rf "$claim"; return 1; }
+    kill -0 "$pid" 2>/dev/null || { print -u2 "claim held by dead pid $pid, breaking it: $held"; rm -rf "$claim"; return 1; }
+    local since=${held##* }
+    print "$held ($(( ($(date +%s) - since) / 60 ))m ago)"
+}
+
 others=0
+mine=0
 for attempt in $(seq 1 150); do
+    if held=$(claim_holder); then
+        (( attempt % 3 == 1 )) && print -u2 "waiting: box claimed by $held, $(( (attempt - 1) / 6 ))m so far of 25m"
+        sleep 10
+        continue
+    fi
     others=$(foreign_suites)
-    (( others == 0 )) && break
-    (( attempt % 3 == 1 )) && print -u2 "waiting: $others foreign suite(s) running, $(( (attempt - 1) / 6 ))m so far of 25m"
+    if (( others > 0 )); then
+        (( attempt % 3 == 1 )) && print -u2 "waiting: $others unclaimed foreign suite(s) running, $(( (attempt - 1) / 6 ))m so far of 25m"
+        sleep 10
+        continue
+    fi
+    take_claim && { mine=1; trap 'rm -rf "$claim"' EXIT INT TERM; break; }
+    (( attempt % 3 == 1 )) && print -u2 "waiting: lost the claim to another runner, $(( (attempt - 1) / 6 ))m so far of 25m"
     sleep 10
 done
-if (( others > 0 )); then
-    print "REFUSED: another session's unit suite is still running after twenty-five minutes" >> "$log"
-    print -u2 "another session's unit suite is still running after twenty-five minutes; not starting a second"
+if (( mine == 0 )); then
+    print "REFUSED: could not take the box in twenty-five minutes; last seen ${held:-busy with $others foreign suite(s)}" >> "$log"
+    print -u2 "could not take the box in twenty-five minutes; not starting"
     exit 1
 fi
 
