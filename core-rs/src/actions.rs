@@ -43,12 +43,14 @@ fn zoom(backend: &dyn Backend, value: &str) -> Value {
     let Some(asked) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()) else {
         return json!({ "ok": false, "result": false, "reason": "A zoom level has to be a number." });
     };
-    let view = crate::video::camera_view(backend, &[]);
-    let flag = |name: &str| view.get(name).and_then(Value::as_bool) == Some(true);
-    if !flag("present") {
+    // camera_view makes seven backend round trips - trigger points, labels, shot points - and this
+    // needs two flags off one object. A slider sends a write per drag tick, so the whole view per
+    // tick is six reads of things nobody asked for.
+    let camera = object(&backend.get_fields(CAMERA, "modelName,hasZoom"));
+    if !crate::video::camera_present(&camera) {
         return json!({ "ok": false, "result": false, "reason": "No camera is connected." });
     }
-    if !flag("hasZoom") {
+    if !crate::read::flag(&camera, "hasZoom") {
         return json!({ "ok": false, "result": false, "reason": "This camera has no zoom." });
     }
     let level = asked.clamp(ZOOM_LOWEST, ZOOM_HIGHEST);
@@ -109,7 +111,10 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let (allowed, refusal, invokable) = match path {
         PHOTO => (gate("canPhoto"), photo_refusal(&view), "takePhoto".to_string()),
         RECORD => (gate("canRecord"), "This camera cannot record video in the mode it is in.".to_string(), "toggleVideoRecording".to_string()),
-        MODE => (gate("canChangeMode"), mode_refusal(&view), format!("setCameraMode{}", mode.unwrap_or("Photo"))),
+        MODE => match mode {
+            Some(wanted) => (gate("canChangeMode"), mode_refusal(&view), format!("setCameraMode{wanted}")),
+            None => return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" }),
+        },
         _ => return json!({ "ok": false, "reason": format!("{path} is not a camera action") }),
     };
     if !allowed {
@@ -121,14 +126,17 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     // that is where QGCBridgeCore puts a return value and a head must not have to learn which
     // paths the core has claimed in order to read one.
     let took = crate::read::flag(&object(&backend.invoke(&format!("{CAMERA}.{invokable}"), "[]")), "result");
-    let after = crate::video::camera_view(backend, &[]);
+    // No post-state travels back. setCameraModePhoto and takePhoto set their own status before
+    // returning, but startVideoRecording only sends MAV_CMD_VIDEO_START_CAPTURE and waits for
+    // CAMERA_CAPTURE_STATUS - so isRecording read here is the value from BEFORE the toggle, while
+    // mode and isTakingPhoto beside it are current. Two fresh fields and one stale one with nothing
+    // to tell them apart is worse than none: a head toggling record would read false and conclude
+    // it failed. The action answers whether the command was taken; view.camera is watched and is
+    // where the state comes from when the vehicle confirms it.
     json!({
         "ok": took,
         "result": took,
         "reason": match took { true => Value::Null, false => json!("The camera did not carry out the command.") },
-        "isRecording": after.get("isRecording").cloned().unwrap_or(Value::Null),
-        "isTakingPhoto": after.get("isTakingPhoto").cloned().unwrap_or(Value::Null),
-        "mode": after.get("mode").cloned().unwrap_or(Value::Null),
     })
 }
 
@@ -408,10 +416,20 @@ mod tests {
         struct Cam { camera: Value, fired: RefCell<Vec<String>> }
         impl Backend for Cam {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, path: &str, _f: &str) -> String {
-                match path.ends_with("currentCameraInstance") {
+            // objectJson at QGCBridgeCore.cc:443 serves a property only when the fields set is
+            // empty or contains its name, so a field the core forgets to ask for is ABSENT rather
+            // than merely unread. A fake that ignores the list cannot fail on the omission, and
+            // dropping hasZoom from the request went green here while refusing every real write.
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                if !path.ends_with("currentCameraInstance") {
+                    return json!({ "kind": "null" }).to_string();
+                }
+                let asked: Vec<&str> = fields.split(',').filter(|f| !f.is_empty()).collect();
+                match asked.is_empty() {
                     true => self.camera.to_string(),
-                    false => json!({ "kind": "null" }).to_string(),
+                    false => Value::Object(self.camera.as_object().unwrap().iter()
+                        .filter(|(key, _)| *key == "kind" || asked.contains(&key.as_str()))
+                        .map(|(key, value)| (key.clone(), value.clone())).collect()).to_string(),
                 }
             }
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
@@ -505,10 +523,20 @@ mod tests {
         struct Cam { camera: Value, wrote: RefCell<Vec<String>> }
         impl Backend for Cam {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, path: &str, _f: &str) -> String {
-                match path.ends_with("currentCameraInstance") {
+            // objectJson at QGCBridgeCore.cc:443 serves a property only when the fields set is
+            // empty or contains its name, so a field the core forgets to ask for is ABSENT rather
+            // than merely unread. A fake that ignores the list cannot fail on the omission, and
+            // dropping hasZoom from the request went green here while refusing every real write.
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                if !path.ends_with("currentCameraInstance") {
+                    return json!({ "kind": "null" }).to_string();
+                }
+                let asked: Vec<&str> = fields.split(',').filter(|f| !f.is_empty()).collect();
+                match asked.is_empty() {
                     true => self.camera.to_string(),
-                    false => json!({ "kind": "null" }).to_string(),
+                    false => Value::Object(self.camera.as_object().unwrap().iter()
+                        .filter(|(key, _)| *key == "kind" || asked.contains(&key.as_str()))
+                        .map(|(key, value)| (key.clone(), value.clone())).collect()).to_string(),
                 }
             }
             fn set(&self, _p: &str, value: &str) -> String {

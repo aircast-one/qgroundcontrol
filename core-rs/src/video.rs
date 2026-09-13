@@ -128,6 +128,10 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+pub fn camera_present(camera: &Value) -> bool {
+    camera.get("kind").and_then(Value::as_str) == Some("object") && !text(camera, "modelName").is_empty()
+}
+
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // The only field any head took from vehicle.cameraManager: the switcher needs every camera's
     // name, and this view carried only the current one's. One field short kept a whole Qt path
@@ -140,7 +144,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .unwrap_or_default();
     let camera = object(&backend.get_fields("vehicle.cameraManager.currentCameraInstance", CAMERA_FIELDS));
     let model = text(&camera, "modelName");
-    let present = camera.get("kind").and_then(Value::as_str) == Some("object") && !model.is_empty();
+    let present = camera_present(&camera);
     let shots = integer(&object(&backend.get_fields("vehicle.cameraTriggerPoints", "count")), "count").unwrap_or(0);
     let vendor = text(&camera, "vendor");
     let mode = integer(&camera, "cameraMode").unwrap_or(UNDEFINED_MODE);
