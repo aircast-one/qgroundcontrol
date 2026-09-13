@@ -83,10 +83,15 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "requestingList": requesting,
         "downloading": downloading,
         "busy": busy,
+        // These three all send MAVLink and LogDownloadPage.qml gates only the first on a vehicle,
+        // which is where the core took them from. eraseAll returns on a null vehicle with nothing
+        // but a log line, and download with no selection flips downloading on and straight back
+        // off - so the operator confirms a destructive action, or waits for a file, and is told
+        // nothing either way. The refusals live in the controller, so the gate is built from those.
         "canRefresh": connected && !busy,
-        "canDownload": !busy,
+        "canDownload": connected && !busy && entries.iter().any(|entry| entry["selected"] == true),
         "canCancel": busy,
-        "canErase": !entries.is_empty() && !busy,
+        "canErase": connected && !entries.is_empty() && !busy,
         "anyDownloaded": entries.iter().any(|e| e["statusId"] == "downloaded"),
         "emptyText": empty_text(connected, requesting),
         "eraseWarning": erase_warning(entries.len()),
@@ -131,7 +136,7 @@ mod tests {
         }
         let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
         assert_eq!(idle["canRefresh"], true);
-        assert_eq!(idle["canDownload"], true, "nothing selected and not busy still enables download, as the QGC page does");
+        assert_eq!(idle["canDownload"], false, "_prepareLogDownload returns false with nothing selected, so the controller flips downloading on and straight back off: an operator waits for a file that was never asked for");
         assert_eq!(idle["canErase"], true);
         assert_eq!(idle["anyDownloaded"], true);
 
@@ -143,11 +148,20 @@ mod tests {
         assert!(idle["entries"][0].get("timeText").is_none(), "the head renders the time in its own locale");
         let asking = logs_view(&Fake { connected: true, requesting: true, entries: json!([]) }, &[]);
         assert_eq!(asking["canRefresh"], false);
-        assert_eq!(asking["canDownload"], false, "download follows busy-ness alone, as the QGC page does");
+        assert_eq!(asking["canDownload"], false);
         assert_eq!(asking["canCancel"], true);
         assert_eq!(asking["emptyText"], "Asking the vehicle for its logs\u{2026}");
+        let picked = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Available", "statusId": "available", "received": true, "selected": true, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
+        assert_eq!(picked["canDownload"], true);
+
         let none = logs_view(&Fake { connected: false, requesting: false, entries: json!([]) }, &[]);
         assert_eq!(none["emptyText"], "Connect a vehicle to list its logs.");
         assert_eq!(none["canErase"], false);
+
+        // This is the case the old assertion above passed for the wrong reason: it read false
+        // because the list was empty, never because there was no vehicle to erase from.
+        let dropped = logs_view(&Fake { connected: false, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Available", "statusId": "available", "received": true, "selected": true, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
+        assert_eq!(dropped["canErase"], false, "eraseAll returns on a null vehicle after a log line and nothing else, so offering it means the operator confirms a destructive action and is told nothing happened");
+        assert_eq!(dropped["canDownload"], false, "and the same window offers a download whose every byte would have to come from the vehicle that is gone");
     }
 }
