@@ -725,6 +725,22 @@ func checkMyLocationTrustsTheCoresGate() {
            + "49-second-old position does perfectly. gcsposition.rs keeps lastKnown* readable "
            + "under a name no consumer can mistake for a live one, for exactly this")
 
+    expect(fix(["usable": false as NSNumber, "fix": "staleHorizontal"])?.standingAt == nil,
+           "AND THE SAME STALE FIX MARKS NOTHING, which is the whole reason standingAt exists "
+           + "beside point. One fixture, two answers: centring a map on a 49-second-old position "
+           + "is correct, and drawing a dot that says YOU ARE HERE on it is not -- it would put "
+           + "the operator where they were rather than where they are, with nothing on screen "
+           + "saying so. The head does not re-derive that distinction; usable() is the core's "
+           + "gate and this reads it")
+
+    expect(fix([:])?.standingAt != nil,
+           "a usable fix does mark where the operator is standing, so the gate above is a gate "
+           + "and not an off switch")
+
+    expect(fix(["horizontalAccuracy": 250.0 as NSNumber])?.standingAt == nil,
+           "and standingAt inherits every refusal point already makes rather than restating "
+           + "them -- a fix too coarse to centre on is too coarse to plant a marker on")
+
     expect(fix(["horizontalAccuracy": 250.0 as NSNumber])?.point == nil,
            "BUT A COARSE ONE DOES NOT, and this is the half that stays. The concrete harm the "
            + "old gate protected against was a map jumping two kilometres from where the "
@@ -750,6 +766,14 @@ func checkMyLocationTrustsTheCoresGate() {
            + "however many other fields the view carries")
     expect(fix([:])?.fix ?? "", "gps", "the fix kind travels for a head that wants to say why")
     expect(GcsFix(nil) == nil, "and no view at all is no fix")
+
+    let drawn = FlyOverlays.read(orbit: nil, roiActive: false, gcs: fix([:]))
+    expect(drawn.showsOperator && drawn.operatorAt != nil,
+           "and the overlay the map draws from carries it, so the marker survives the trip from "
+           + "the view to the draw site")
+    expect(FlyOverlays.read(orbit: nil, roiActive: false, gcs: nil).showsOperator == false,
+           "with no fix served at all there is no operator marker, rather than one at the "
+           + "origin -- an absent answer and an answer of no-problem must not be the same value")
 }
 
 checkMyLocationTrustsTheCoresGate()

@@ -37,10 +37,15 @@ final class MapClickStore: ObservableObject, Probeable {
 
     func refresh() {
         let vehicle = Bridge.group("vehicle")
+        let gcs = GcsFix(Bridge.group("view.gcsPosition"))
+        // Where the operator is standing does not depend on a vehicle being connected, so this
+        // branch keeps that one marker rather than clearing to .none with everything else.
         guard vehicle["kind"] as? String == "object" else {
             if state != MapClickState() { state = MapClickState() }
             goingTo = nil
-            if overlays != .none { overlays = .none }
+            var standing = FlyOverlays()
+            standing.operatorAt = gcs?.standingAt
+            if standing != overlays { overlays = standing }
             dismissIfUnavailable()
             return
         }
@@ -95,7 +100,8 @@ final class MapClickStore: ObservableObject, Probeable {
         var drawn = FlyOverlays.read(
             orbit: Orbit(Bridge.group("view.orbit")),
             roiActive: read.roiActive,
-            roi: guided["roi"] as? [String: Any])
+            roi: guided["roi"] as? [String: Any],
+            gcs: gcs)
         drawn.goingTo = goingTo
         if drawn != overlays { overlays = drawn }
 
@@ -187,6 +193,7 @@ final class MapClickStore: ObservableObject, Probeable {
          "overlays": ["orbit": overlays.showsOrbit, "roi": overlays.roiActive,
                       "roiPlaced": overlays.showsRoi,
                       "goto": overlays.showsGoto, "summary": overlays.summary,
+                      "operator": overlays.showsOperator,
                       "roiNote": overlays.roiNote,
                       "clicked": shownOverlays.clickedAt != nil]]
     }

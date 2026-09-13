@@ -22,6 +22,12 @@ struct GcsFix: Equatable {
         imprecise = MapCentre.beyondDeclaredAccuracy(json)
         point = MapCentre.centreable(json)
     }
+
+    // centreable() answers "where was the operator last seen", which is what centring a map on
+    // them wants and is deliberately not stale-gated. A marker saying THIS IS WHERE YOU ARE
+    // STANDING is a different claim: the core's usable() is fixed && !stale && accurate, and a
+    // stale fix would draw the operator where they were rather than where they are.
+    var standingAt: GeoPoint? { usable ? point : nil }
 }
 
 struct MapCentreState: Equatable {

@@ -114,6 +114,15 @@ final class RoiAnnotation: NSObject, MKAnnotation {
     }
 }
 
+final class OperatorAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String? = "You are here"
+
+    init(point: GeoPoint) {
+        coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+    }
+}
+
 final class VehicleAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String? = "Vehicle"
@@ -220,6 +229,10 @@ struct MissionMap: NSViewRepresentable {
             map.addAnnotation(ClickAnnotation(point: clicked))
         }
 
+        if let standing = overlays.operatorAt {
+            map.addAnnotation(OperatorAnnotation(point: standing))
+        }
+
         if overlays.showsRoi, let looking = overlays.roiAt {
             map.addAnnotation(RoiAnnotation(point: looking))
         }
@@ -300,6 +313,7 @@ struct MissionMap: NSViewRepresentable {
             "annotations": map.annotations.count,
             "rally": rally.count,
             "fenceOverlays": map.overlays.filter { $0 is FencePolygon || $0 is FenceCircle }.count,
+            "operatorMarkers": map.annotations.filter { $0 is OperatorAnnotation }.count,
             "surveyOverlays": map.overlays.filter { $0 is SurveyPolygon }.count,
             "corridorOverlays": map.overlays.filter { $0 is CorridorPolyline }.count,
             "overlays": map.overlays.count,
@@ -578,6 +592,7 @@ struct MissionMap: NSViewRepresentable {
         var splitSegment: (Int, Int) -> Void = { _, _ in }
 
         static let clickRing = Coordinator.ring(18)
+        static let operatorDot = Coordinator.dot(NSColor.systemBlue, 14)
         static let vertexDot = Coordinator.dot(NSColor.controlAccentColor, 12)
         static let midpointDot = Coordinator.dot(NSColor.white.withAlphaComponent(0.85), 9)
 
@@ -725,6 +740,15 @@ struct MissionMap: NSViewRepresentable {
                     ?? MKAnnotationView(annotation: clicked, reuseIdentifier: "click")
                 view.annotation = clicked
                 view.image = Coordinator.clickRing
+                view.canShowCallout = true
+                return view
+            }
+
+            if let standing = annotation as? OperatorAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "operator")
+                    ?? MKAnnotationView(annotation: standing, reuseIdentifier: "operator")
+                view.annotation = standing
+                view.image = Coordinator.operatorDot
                 view.canShowCallout = true
                 return view
             }

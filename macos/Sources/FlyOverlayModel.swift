@@ -34,6 +34,7 @@ struct FlyOverlays: Equatable {
     var roiAt: GeoPoint?
     var goingTo: GeoPoint?
     var clickedAt: GeoPoint?
+    var operatorAt: GeoPoint?
 
     static let none = FlyOverlays()
 
@@ -42,6 +43,8 @@ struct FlyOverlays: Equatable {
     var showsGoto: Bool { goingTo != nil }
 
     var showsRoi: Bool { roiActive && roiAt != nil }
+
+    var showsOperator: Bool { operatorAt != nil }
 
     var roiNote: String {
         guard roiActive else { return "" }
@@ -58,8 +61,9 @@ struct FlyOverlays: Equatable {
     }
 
     static func read(orbit: Orbit?, roiActive: Bool,
-                     roi: [String: Any]? = nil) -> FlyOverlays {
+                     roi: [String: Any]? = nil, gcs: GcsFix? = nil) -> FlyOverlays {
         var built = FlyOverlays()
+        built.operatorAt = gcs?.standingAt
         built.orbitActive = orbit?.turning == true
         built.roiActive = roiActive
         built.roiAt = roiActive ? MapCentre.usable(roi) : nil
