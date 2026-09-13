@@ -127,7 +127,11 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     // A Fact write is COOKED, so this is whatever unit the operator is working in, not
     // metres. Naming it metres invites someone to convert a value that is already right.
     func setRadius(_ shape: FenceShape, value: Double) {
-        guard let path = circlePath(shape), value > 0 else { return }
+        if let refused = shape.radiusRefusal(value) {
+            writeFailure = refused
+            return
+        }
+        guard let path = circlePath(shape) else { return }
         write("\(path).radius", value, "the fence radius")
         reload()
     }

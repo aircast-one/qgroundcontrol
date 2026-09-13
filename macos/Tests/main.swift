@@ -1294,6 +1294,30 @@ func checkAVehicleParameterIsMeasuredAgainstItsOwnDeclaredRange() {
 
 checkAVehicleParameterIsMeasuredAgainstItsOwnDeclaredRange()
 
+func checkAFenceRadiusSaysWhyItRefused() {
+    let shapes = FenceShape.list([
+        ["index": 0, "shape": "circle", "path": "plan.geoFenceController.circles.0",
+         "inclusion": true, "usable": true, "radius": 100, "radiusUnits": "m",
+         "radiusMetres": 100],
+        ["index": 1, "shape": "polygon", "path": "plan.geoFenceController.polygons.0",
+         "inclusion": false, "usable": true],
+    ])
+    expect(shapes.count == 2, "the fixture decodes through the same reader the core feeds")
+    let circle = shapes[0], polygon = shapes[1]
+
+    expect(circle.radiusRefusal(150) == nil, "a positive radius is written")
+    expect(circle.radiusRefusal(0) ?? "", FenceShape.notPositive,
+           "a zero radius was REFUSED SILENTLY before -- setRadius guarded value > 0 and "
+           + "returned, so the operator watched the old number come back with no word that "
+           + "anything had been rejected. A silent return is worse than a wrong display")
+    expect(circle.radiusRefusal(-5) ?? "", FenceShape.notPositive, "and so is a negative one")
+    expect(polygon.radiusRefusal(50) ?? "", FenceShape.notACircle,
+           "a polygon has no radius, which the old guard also swallowed through circlePath "
+           + "returning nil")
+}
+
+checkAFenceRadiusSaysWhyItRefused()
+
 
 func checkUnplacedCommands() {
     let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)

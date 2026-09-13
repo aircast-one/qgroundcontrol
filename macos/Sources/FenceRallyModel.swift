@@ -93,6 +93,15 @@ struct FenceShape: Identifiable, Equatable {
 
     var isCircle: Bool { shape == "circle" }
 
+    static let notACircle = "Only a circular fence has a radius."
+    static let notPositive = "A fence radius has to be a positive distance."
+
+    func radiusRefusal(_ entered: Double) -> String? {
+        guard isCircle else { return FenceShape.notACircle }
+        guard entered.isFinite, entered > 0 else { return FenceShape.notPositive }
+        return nil
+    }
+
     var shapeText: String { isCircle ? "Circle" : "Polygon" }
 
     static let keepIn = "keepIn"

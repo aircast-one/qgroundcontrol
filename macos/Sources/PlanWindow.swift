@@ -13,18 +13,20 @@ struct AltitudeField: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            TextField("", text: $draft)
+            TextField("", text: Binding(
+                get: { EditedField.shown(typed: draft,
+                                         held: Measure.fieldText(value, decimals),
+                                         editing: editing) },
+                set: { draft = $0 }))
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
                 .font(.body.monospacedDigit())
                 .frame(width: 46)
                 .focused($editing)
-                .onAppear { draft = Measure.fieldText(value, decimals) }
-                .onChange(of: value) { latest in
-                    if !editing { draft = Measure.fieldText(latest, decimals) }
+                .onSubmit { editing = false }
+                .onChange(of: editing) { focused in
+                    if focused { draft = Measure.fieldText(value, decimals) } else { send() }
                 }
-                .onSubmit(send)
-                .onChange(of: editing) { focused in if !focused { send() } }
             Text(units).font(.caption).foregroundColor(.secondary).fixedSize()
         }
         .padding(.horizontal, 6)
@@ -34,10 +36,7 @@ struct AltitudeField: View {
     }
 
     private func send() {
-        guard let typed = Measure.committed(draft, showing: value, decimals: decimals) else {
-            draft = Measure.fieldText(value, decimals)
-            return
-        }
+        guard let typed = Measure.committed(draft, showing: value, decimals: decimals) else { return }
         commit(typed)
     }
 }
