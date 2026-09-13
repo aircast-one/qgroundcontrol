@@ -223,6 +223,12 @@ def why_it_stopped(exit_code):
 
 def report(summary, verdicts, history, stale, contention=None, missing=(), exit_code=0):
     lines = []
+    if exit_code < 0 and not missing:
+        lines.append(f"CRASHED WITH NOTHING MISSING - {why_it_stopped(exit_code)}")
+        lines.append("  every registered suite reported, so the totals below are real as far as "
+                     "they go. The binary still died: in teardown, or after the last suite printed "
+                     "its totals. Do not read this as a pass.")
+        lines.append("")
     if missing:
         lines.append(f"INCOMPLETE RUN - {len(missing)} of {len(missing) + len(summary['suites'])} "
                      f"suites never ran.")
@@ -316,6 +322,8 @@ def main():
 
     if missing:
         return 3
+    if exit_code < 0:
+        return 4
     return 1 if any(v["verdict"] == "REAL" for v in verdicts.values()) else 0
 
 
