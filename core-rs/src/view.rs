@@ -166,7 +166,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.waypointsFile", deps: waypoints::DEPS, compute: waypoints::waypoints_view },
     View { path: "view.planFromWaypoints", deps: planfile::DEPS, compute: planfile::plan_from_waypoints_view },
     View { path: "view.missionFile", deps: mission::DEPS, compute: mission::mission_file_view },
-    View { path: "view.transports", deps: &[], compute: linkhost::transports_view },
+    View { path: "view.transports", deps: linkhost::DEPS, compute: linkhost::transports_view },
     View { path: "view.track", deps: track::DEPS, compute: track::track_view },
     View { path: "view.altitudeModes", deps: altitudemodes::DEPS, compute: altitudemodes::altitude_modes_view },
     View { path: "view.flyState", deps: flystate::DEPS, compute: flystate::fly_state_view },
@@ -191,7 +191,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.debugApi", deps: debugapi::DEPS, compute: debugapi::debug_api_view },
     View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
     View { path: "view.packetRadio", deps: &[], compute: packetradio::packet_radio_view },
-    View { path: "view.gpsRtkBase", deps: &[], compute: gpsrtk::base_view },
+    View { path: "view.gpsRtkBase", deps: gpsrtk::DEPS, compute: gpsrtk::base_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
@@ -530,6 +530,36 @@ mod deps_cover_reads {
             unwatched.is_empty(),
             "these are read by a view and named in no dep, so the view is never recomputed when they change. Watch them, or add them to \
              UNWATCHED_BECAUSE_CONSTANT once you have checked the Q_PROPERTY really is CONSTANT: {unwatched:?}"
+        );
+    }
+
+    #[test]
+    fn a_view_that_reads_the_backend_declares_where_it_reads_from() {
+        // deps_of returns None for a module with no `pub const DEPS`, and filter_map SKIPS it - so
+        // a view registered with an inline `deps: &[]` was never checked at all, however much it
+        // read. view.gpsRtkBase read seven settings that way. A module reading the backend and
+        // declaring nothing is the case the check above cannot reach, because there is nothing to
+        // compare its reads against.
+        // Only modules that actually back a registered view: read.rs and router.rs read the
+        // backend too and have no view to recompute, so flagging them would be a check wider than
+        // the thing it measures - which is the error this whole family of guards keeps making.
+        let backing: BTreeSet<&str> = include_str!("view.rs")
+            .split("compute: ")
+            .skip(1)
+            .filter_map(|tail| tail.split("::").next())
+            .collect();
+        let silent: Vec<&str> = MODULES
+            .iter()
+            .filter(|(name, source)| {
+                let body = source.split("#[cfg(test)]").next().unwrap_or("");
+                backing.contains(name) && body.contains("backend.get") && !body.contains("DEPS: &[&str]")
+            })
+            .map(|(name, _)| *name)
+            .collect();
+        assert!(
+            silent.is_empty(),
+            "these read the backend and declare no DEPS, so the check that every read is watched skips them entirely and passes. \
+             Declare the paths, or move the read behind something that does: {silent:?}"
         );
     }
 

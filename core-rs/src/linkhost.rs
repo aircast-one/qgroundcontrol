@@ -288,6 +288,10 @@ pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
     closed
 }
 
+// transports_view folds the Qt-hosted links in beside the core's own, and watched neither, so the
+// list never refreshed when a link was added, removed or connected.
+pub const DEPS: &[&str] = &["links.linkConfigurations"];
+
 pub fn qt_links(backend: &dyn crate::router::Backend) -> Vec<Value> {
     let model = crate::read::object(&backend.get("links.linkConfigurations"));
     model

@@ -33,6 +33,19 @@ pub const FIX_TYPE_RTK_FIXED: u8 = 6;
 pub const FIX_TYPE_EXTRAPOLATED: u8 = 8;
 
 pub const SETTINGS_GROUP: &str = "settings.rtkSettings";
+
+// base_view reads these seven through settings_from and the view declared no dependencies at all,
+// so an operator changing the survey-in accuracy limit saw a view that never recomputed. They are
+// SettingsFacts, so rawValue notifies and they were watchable the whole time.
+pub const DEPS: &[&str] = &[
+    "settings.rtkSettings.surveyInAccuracyLimit.rawValue",
+    "settings.rtkSettings.surveyInMinObservationDuration.rawValue",
+    "settings.rtkSettings.useFixedBasePosition.rawValue",
+    "settings.rtkSettings.fixedBasePositionLatitude.rawValue",
+    "settings.rtkSettings.fixedBasePositionLongitude.rawValue",
+    "settings.rtkSettings.fixedBasePositionAltitude.rawValue",
+    "settings.rtkSettings.fixedBasePositionAccuracy.rawValue",
+];
 const SETTINGS_FACTS: [&str; 7] = [
     "surveyInAccuracyLimit",
     "surveyInMinObservationDuration",
