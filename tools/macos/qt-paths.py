@@ -28,7 +28,11 @@ reads, Android 38 against 51. Hence:
                SettingsGroup). A served view retires it; this is the migration's bulk.
   ACTION       invoke. Needs a core action, and cannot be verified on a rig that must not
                move the vehicle.
-  WRITE        set.
+  WRITE        set, or a head helper that wraps it. THIS BUCKET HAS NO RETIREMENT PATH: a
+               served view is REFUSED on write by router.set, and an actions::owns entry is
+               consulted by invoke only. A write is not a read that goes the other way; it needs
+               a mechanism that does not exist. Counting it as noise hid a third of one head's
+               surface until the vocabulary was widened on 2026-09-14.
   UNCLASSIFIED the literal is not on a call line -- a multi-line call, or a path built into
                a variable first. Reported rather than folded into READ, because guessing
                here is how the 89-vs-129 gap happened in the first place.
@@ -252,7 +256,9 @@ def main():
     print(f"  reads                {counted('read'):4}   group/get/watch/qgc* -- a served view retires these")
     print(f"  actions              {counted('action'):4}   invoke -- needs a core action, not a view, "
           f"and a grounded rig cannot exercise most of them")
-    print(f"  writes               {counted('write'):4}   set")
+    print(f"  writes               {counted('write'):4}   set/write -- NOTHING RETIRES THESE YET: "
+          f"router.set refuses view paths and otherwise passes straight to Qt, and actions::owns "
+          f"is only consulted by invoke")
     print(f"  unclassified         {counted('unclassified'):4}   not on a call line: a multi-line call or a "
           f"path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid")
     print(f"  used more than one way {sum(1 for k in uses.values() if len(k) > 1):3}   a path both read and "
