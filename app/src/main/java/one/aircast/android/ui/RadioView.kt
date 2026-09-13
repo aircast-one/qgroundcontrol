@@ -35,6 +35,8 @@ internal data class RadioView(
     val summary: String,
     val shortfall: String,
     val calibration: RadioCalibration,
+    val transmitterMode: Int,
+    val enoughChannels: Boolean,
     val sticks: List<RadioStick>,
     val channels: List<RadioChannel>,
 )
@@ -51,6 +53,8 @@ internal fun radioView(view: JSONObject?): RadioView? {
         channelCount = view.optInt("channelCount"),
         summary = view.optText("summary"),
         shortfall = view.optText("shortfall"),
+        transmitterMode = view.optInt("transmitterMode", 2),
+        enoughChannels = view.optBoolean("enoughChannels"),
         calibration = RadioCalibration(
             running = view.optBoolean("calibrating"),
             statusText = view.optText("statusText"),
@@ -82,3 +86,10 @@ internal fun radioView(view: JSONObject?): RadioView? {
 internal const val RADIO_CAL = "radioCal"
 
 internal fun radioCalAction(action: String): String = "$RADIO_CAL.$action"
+
+internal fun calibrationStep(statusText: String): String =
+    statusText.trim()
+        .lines()
+        .dropLastWhile { it.isBlank() || it.trim().startsWith("Click ") }
+        .joinToString("\n")
+        .trim()

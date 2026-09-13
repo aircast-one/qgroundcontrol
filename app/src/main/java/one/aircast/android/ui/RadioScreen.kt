@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
@@ -93,26 +96,83 @@ private fun AttitudeRow(stick: RadioStick) {
 }
 
 @Composable
-private fun CalibrationControls(cal: RadioCalibration, onAction: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-        if (cal.statusText.isNotBlank()) {
+private fun CalibrationStep(cal: RadioCalibration, onAction: (String) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
             Text(
-                text = cal.statusText,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                text = calibrationStep(cal.statusText),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(onClick = { onAction("nextButtonClicked") }, enabled = cal.nextEnabled) {
+                    Text(cal.nextText.ifBlank { "Next" })
+                }
+                if (cal.skipEnabled) {
+                    OutlinedButton(onClick = { onAction("skipButtonClicked") }) { Text("Skip") }
+                }
+                Spacer(Modifier.weight(1f))
+                if (cal.cancelEnabled) {
+                    TextButton(onClick = { onAction("cancelButtonClicked") }) { Text("Cancel") }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun ModeRow(mode: Int, onPick: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Text(
+            "Transmitter mode — which stick is the throttle",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            (1..4).forEach { choice ->
+                FilterChip(
+                    selected = choice == mode,
+                    onClick = { onPick(choice) },
+                    label = { Text("Mode $choice") },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalibrationStart(view: RadioView, onAction: (String) -> Unit, onMode: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        ModeRow(view.transmitterMode, onMode)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Button(
                 onClick = { onAction("nextButtonClicked") },
-                enabled = cal.nextEnabled,
-            ) { Text(cal.nextText.ifBlank { "Calibrate" }) }
-            if (cal.skipEnabled) {
-                OutlinedButton(onClick = { onAction("skipButtonClicked") }) { Text("Skip") }
-            }
-            if (cal.cancelEnabled) {
-                TextButton(onClick = { onAction("cancelButtonClicked") }) { Text("Cancel") }
-            }
+                enabled = view.calibration.nextEnabled && view.enoughChannels,
+            ) { Text(view.calibration.nextText.ifBlank { "Calibrate" }) }
+            Text(
+                text = when {
+                    !view.enoughChannels -> view.shortfall.ifBlank {
+                        "Not enough channels to calibrate."
+                    }
+                    else -> "Holds each stick at its extremes in turn and rewrites the mapping."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = when {
+                    view.enoughChannels -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.error
+                },
+            )
         }
     }
 }
@@ -139,8 +199,15 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         }
 
         item(key = "calibration") {
-            CalibrationControls(view.calibration) { action ->
-                Qgc.invoke(radioCalAction(action))
+            when {
+                view.calibration.running -> CalibrationStep(view.calibration) { action ->
+                    Qgc.invoke(radioCalAction(action))
+                }
+                else -> CalibrationStart(
+                    view = view,
+                    onAction = { action -> Qgc.invoke(radioCalAction(action)) },
+                    onMode = { mode -> Qgc.set("$RADIO_CAL.transmitterMode", mode) },
+                )
             }
         }
 

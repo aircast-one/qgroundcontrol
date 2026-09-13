@@ -75,3 +75,27 @@ class RadioViewTest {
         assertNull(radioView(null))
     }
 }
+
+class CalibrationStepTest {
+    @Test
+    fun `the line telling the operator to click is dropped, because the button is right there`() {
+        val served = "Lower the Throttle stick all the way down.\n\n" +
+            "Reset all transmitter trims to center.\n\nClick Next to continue"
+        assertEquals(
+            "Lower the Throttle stick all the way down.\n\nReset all transmitter trims to center.",
+            calibrationStep(served),
+        )
+    }
+
+    @Test
+    fun `a step that does not end in an instruction to click is left alone`() {
+        val served = "Move the Throttle stick all the way up and hold it there..."
+        assertEquals(served, calibrationStep(served))
+    }
+
+    @Test
+    fun `nothing served is nothing shown`() {
+        assertEquals("", calibrationStep(""))
+        assertEquals("", calibrationStep("   \n  "))
+    }
+}
