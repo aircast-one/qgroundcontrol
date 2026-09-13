@@ -21,13 +21,14 @@ pub const DEPS: &[&str] = &[
     "plan.controllerVehicle.multiRotor",
     "plan.controllerVehicle.vtol",
     "plan.controllerVehicle.apmFirmware",
+    "plan.controllerVehicle.homePosition",
 ];
 
 fn planning_for(backend: &dyn Backend) -> Value {
     // type and firmware alone left the reader on plan.controllerVehicle for the three flags it
     // branches on, so the view existed and retired nothing. A view retires a path when it carries
     // every field the reader dereferences, not when it carries the natural summary.
-    let read = object(&backend.get_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware"));
+    let read = object(&backend.get_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition"));
     let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_string);
     match text("vehicleTypeString").zip(text("firmwareTypeString")) {
         Some((kind, firmware)) => json!({
@@ -36,6 +37,9 @@ fn planning_for(backend: &dyn Backend) -> Value {
             "multiRotor": flag(&read, "multiRotor"),
             "vtol": flag(&read, "vtol"),
             "apmFirmware": flag(&read, "apmFirmware"),
+            // Six reads, not five. A nested coordinate arrives as a null rather than valid:false,
+            // so an unset home is absent here and never a point at nowhere.
+            "home": crate::read::nested_coordinate_at(&read, "homePosition").map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
         }),
         None => Value::Null,
     }
@@ -186,7 +190,7 @@ mod tests {
             fields: BTreeMap::from([
                 ("plan", plan),
                 ("plan.managerVehicle", json!({ "kind": "object", "capabilitiesKnown": known })),
-                ("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro", "multiRotor": true, "vtol": false, "apmFirmware": false })),
+                ("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro", "multiRotor": true, "vtol": false, "apmFirmware": false, "homePosition": { "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 } })),
                 ("plan.missionController", json!({ "kind": "object", "containsItems": true })),
                 ("plan.geoFenceController", json!({ "kind": "object", "supported": fences })),
                 ("plan.rallyPointController", json!({ "kind": "object", "supported": rally })),
@@ -323,6 +327,11 @@ mod tests {
         assert_eq!(view["planningFor"]["type"], "Multi-Rotor", "a plan is edited against a vehicle even with none connected, and a head asking which one had to read the controller object itself");
         assert_eq!(view["planningFor"]["firmware"], "PX4 Pro");
         assert_eq!((view["planningFor"]["multiRotor"].clone(), view["planningFor"]["vtol"].clone(), view["planningFor"]["apmFirmware"].clone()), (json!(true), json!(false), json!(false)), "the reader branches on these three, so serving the names alone left it on plan.controllerVehicle and retired nothing");
+        assert_eq!(view["planningFor"]["home"]["latitude"], 47.397, "the sixth read on that group - five of six is not retirement");
+
+        let mut homeless = supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true);
+        homeless.fields.insert("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro", "multiRotor": true, "vtol": false, "apmFirmware": false }));
+        assert_eq!(plan_view(&homeless, &[])["planningFor"]["home"], Value::Null, "an unset home is absent rather than a point at nowhere");
 
         let mut blank = supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true);
         blank.fields.insert("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "", "firmwareTypeString": "" }));

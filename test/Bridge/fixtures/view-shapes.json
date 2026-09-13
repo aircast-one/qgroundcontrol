@@ -195,6 +195,7 @@
         "view.packetRadio(receiving).statusText",
         "view.packetRadio(receiving).videoPackets",
         "view.plan.file",
+        "view.plan.planningFor.home",
         "view.settings(General).sections.0.subsections.0.controls.0.maximum",
         "view.settings(General).sections.0.subsections.0.controls.0.minimum",
         "view.settings(General).sections.0.subsections.0.controls.2.minimum",
@@ -1934,6 +1935,7 @@
         "view.plan.kind",
         "view.plan.planningFor.apmFirmware",
         "view.plan.planningFor.firmware",
+        "view.plan.planningFor.home",
         "view.plan.rallySupported",
         "view.plan.unsupportedReason",
         "view.plan.upload.pausesFirst",
@@ -4488,6 +4490,7 @@
         "view.plan.kind",
         "view.plan.planningFor.apmFirmware",
         "view.plan.planningFor.firmware",
+        "view.plan.planningFor.home",
         "view.plan.planningFor.multiRotor",
         "view.plan.planningFor.type",
         "view.plan.planningFor.vtol",
@@ -6640,6 +6643,7 @@
         "planningFor": {
             "apmFirmware": "bool",
             "firmware": "string",
+            "home": "null",
             "multiRotor": "bool",
             "type": "string",
             "vtol": "bool"
