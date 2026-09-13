@@ -1298,21 +1298,42 @@ func checkAFenceRadiusSaysWhyItRefused() {
     let shapes = FenceShape.list([
         ["index": 0, "shape": "circle", "path": "plan.geoFenceController.circles.0",
          "inclusion": true, "usable": true, "radius": 100, "radiusUnits": "m",
-         "radiusMetres": 100],
+         "radiusMetres": 100, "radiusMinimum": 0.1],
         ["index": 1, "shape": "polygon", "path": "plan.geoFenceController.polygons.0",
          "inclusion": false, "usable": true],
+        ["index": 2, "shape": "circle", "path": "plan.geoFenceController.circles.1",
+         "inclusion": true, "usable": true, "radius": 50, "radiusUnits": "m",
+         "radiusMetres": 50],
     ])
-    expect(shapes.count == 2, "the fixture decodes through the same reader the core feeds")
-    let circle = shapes[0], polygon = shapes[1]
+    expect(shapes.count == 3, "the fixture decodes through the same reader the core feeds")
+    let circle = shapes[0], polygon = shapes[1], unbounded = shapes[2]
 
-    expect(circle.radiusRefusal(150) == nil, "a positive radius is written")
+    expect(circle.radiusRefusal(150) == nil, "a radius inside the fact's own range is written")
+    expect(circle.radiusRefusal(0.05) ?? "", "A fence radius must be at least 0.1.",
+           "THE NUMBER IS THE CORE'S. QGCMapCircle.Facts.json declares min 0.1 and the head "
+           + "hand-rolled value > 0, which let a five-centimetre keep-out fence into the plan. "
+           + "The core now serves radiusMinimum as a DIRECT fact read, sidestepping the "
+           + "compactFacts path that could not see it")
+    expect(circle.radiusRefusal(0.1) == nil, "the declared minimum itself is inside the range")
+    expect(circle.radiusRefusal(1e9) == nil,
+           "and no maximum is declared -- QGC filled it with the type's extreme and the core "
+           + "drops that rather than telling an operator the radius must be under a 309-digit "
+           + "number, so nothing caps it here")
+
     expect(circle.radiusRefusal(0) ?? "", FenceShape.notPositive,
-           "a zero radius was REFUSED SILENTLY before -- setRadius guarded value > 0 and "
-           + "returned, so the operator watched the old number come back with no word that "
-           + "anything had been rejected. A silent return is worse than a wrong display")
+           "the STRUCTURAL rule is still the head's and still fires first: a circle with no "
+           + "area is not a fence, whatever the metadata says")
     expect(circle.radiusRefusal(-5) ?? "", FenceShape.notPositive, "and so is a negative one")
+
+    expect(unbounded.radiusRefusal(0.05) == nil,
+           "a fact that resolved NO bounds refuses nothing numeric -- declaring nothing is not "
+           + "declaring no floor, so the head does not invent 0.1 for a circle the core could "
+           + "not measure")
+    expect(unbounded.radiusRefusal(0) ?? "", FenceShape.notPositive,
+           "though the structural rule still holds there, because it was never about the range")
+
     expect(polygon.radiusRefusal(50) ?? "", FenceShape.notACircle,
-           "a polygon has no radius, which the old guard also swallowed through circlePath "
+           "a polygon has no radius, which the old guard swallowed through circlePath "
            + "returning nil")
 }
 

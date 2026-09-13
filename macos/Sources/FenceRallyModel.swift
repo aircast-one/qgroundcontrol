@@ -82,6 +82,8 @@ struct FenceShape: Identifiable, Equatable {
     let radius: Double?
     let radiusUnits: String
     let radiusMetres: Double?
+    let radiusMinimum: Double?
+    let radiusMaximum: Double?
 
     var id: String { path }
 
@@ -99,8 +101,15 @@ struct FenceShape: Identifiable, Equatable {
     func radiusRefusal(_ entered: Double) -> String? {
         guard isCircle else { return FenceShape.notACircle }
         guard entered.isFinite, entered > 0 else { return FenceShape.notPositive }
-        return nil
+        let under = radiusMinimum.map { entered < $0 } ?? false
+        let over = radiusMaximum.map { entered > $0 } ?? false
+        guard under || over else { return nil }
+        return FactRange.sentence(FenceShape.radiusSubject,
+                                  lowest: radiusMinimum.map(SettingsControl.spell),
+                                  highest: radiusMaximum.map(SettingsControl.spell))
     }
+
+    static let radiusSubject = "A fence radius"
 
     var shapeText: String { isCircle ? "Circle" : "Polygon" }
 
@@ -132,6 +141,8 @@ struct FenceShape: Identifiable, Equatable {
         radius = (json["radius"] as? NSNumber)?.doubleValue
         radiusMetres = (json["radiusMetres"] as? NSNumber)?.doubleValue
         radiusUnits = (json["radiusUnits"] as? String) ?? "m"
+        radiusMinimum = (json["radiusMinimum"] as? NSNumber)?.doubleValue
+        radiusMaximum = (json["radiusMaximum"] as? NSNumber)?.doubleValue
     }
 
     static func list(_ json: Any?) -> [FenceShape] {
