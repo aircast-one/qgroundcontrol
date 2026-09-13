@@ -18,6 +18,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var batteryLevels: [FlyTelemetry.Level] = []
     @Published private(set) var gpsDetail: [DetailRow] = []
     @Published private(set) var linkDetail: [DetailRow] = []
+    @Published private(set) var traffic = AdsbTraffic.none
     @Published var expanded: Set<String> = []
     @Published private(set) var modes: [FlightModeChoice] = []
     @Published private(set) var canSetMode = false
@@ -114,6 +115,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             remoteRSSI: (vehicle["telemetryRRSSI"] as? NSNumber)?.intValue)
             + VehicleLinks.rows(VehicleLinks.list(Bridge.group("view.vehicleLinks")["links"]))
         if readLink != linkDetail { linkDetail = readLink }
+
+        let readTraffic = AdsbTraffic(Bridge.group("view.adsbTraffic")) ?? .none
+        if readTraffic != traffic { traffic = readTraffic }
 
         let batteryView = Bridge.group("view.battery")
         let batteryPacks = (batteryView["packs"] as? [[String: Any]]) ?? []

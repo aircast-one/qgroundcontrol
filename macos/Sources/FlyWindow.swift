@@ -38,6 +38,12 @@ struct FlyPanel: View {
                                    level: fly.state.linkLevel, detail: fly.linkDetail,
                                    showSeparator: true)
                     }
+                    if fly.traffic.enabled {
+                        expandable(key: "traffic", title: "Traffic",
+                                   value: fly.traffic.summary,
+                                   level: fly.traffic.level, detail: fly.traffic.rows(),
+                                   showSeparator: true)
+                    }
                 }
 
                 if video.camera.present {

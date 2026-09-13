@@ -914,6 +914,65 @@ func checkTrafficIsSpelledInTheOperatorsUnits() {
 
 checkTrafficIsSpelledInTheOperatorsUnits()
 
+func checkTheTrafficPanelNeverGoesSilentlyBlank() {
+    func traffic(_ overrides: [String: Any]) -> AdsbTraffic {
+        AdsbTraffic(["kind": "object", "class": "AdsbTraffic",
+                     "enabled": true as NSNumber, "available": true as NSNumber,
+                     "connected": true as NSNumber, "receiving": true as NSNumber,
+                     "ownPositionKnown": true as NSNumber,
+                     "count": 0 as NSNumber, "alerting": 0 as NSNumber,
+                     "alertUnknown": 0 as NSNumber, "emergency": "",
+                     "units": ["distance": "ft", "altitude": "ft", "heading": "deg"],
+                     "contacts": []]
+            .merging(overrides) { _, override in override }) ?? .none
+    }
+
+    let placed: [String: Any] = ["icaoAddress": 0xABCDEF as NSNumber, "callsign": "DLH44",
+                                 "distance": 17060.0 as NSNumber,
+                                 "distanceMetres": 5200.0 as NSNumber,
+                                 "bearingDegrees": 31.0 as NSNumber,
+                                 "altitude": 6890.0 as NSNumber]
+
+    expect(traffic(["available": false as NSNumber]).rows().first?.value ?? "",
+           "No receiver configured",
+           "THREE WAYS TO SHOW NO AIRCRAFT AND ONLY ONE IS GOOD NEWS. No receiver configured is "
+           + "the first, and an empty panel would let an operator read it as clear air")
+    expect(traffic(["receiving": false as NSNumber]).rows().first?.value ?? "",
+           "Receiver silent",
+           "a configured receiver whose feed has stopped is the second, and it is the dangerous "
+           + "one -- the sky is not known to be empty, it is unheard")
+    expect(traffic([:]).rows().first?.value ?? "", "No aircraft nearby",
+           "and clear air is the third, which is the only one an operator should relax at")
+
+    expect(traffic(["contacts": [placed]]).rows().first?.label ?? "", "DLH44",
+           "a contact is labelled by callsign, which is also its row identity")
+    expect(traffic(["contacts": [placed]]).rows().first?.value ?? "",
+           "17060 ft  31 deg  6890 ft",
+           "and reads range, bearing and altitude in the operator's units")
+
+    let unplaced = placed.merging(["distance": NSNull(), "distanceMetres": NSNull(),
+                                   "bearingDegrees": NSNull()]) { _, b in b }
+    expect(traffic(["contacts": [unplaced]]).rows().first?.value ?? "", "bearing unknown",
+           "AN AIRCRAFT HEARD BUT NOT PLACED SAYS SO. A blank column reads as a decoding fault, "
+           + "and any number there would be a position nobody knows")
+
+    expect(traffic(["emergency": "hijack"]).level == .critical,
+           "an emergency squawk outranks everything else on the panel")
+    expect(traffic(["alerting": 2 as NSNumber]).level == .warning,
+           "and an alerting contact outranks a quiet one")
+    expect(traffic(["alertUnknown": 1 as NSNumber]).level == .caution,
+           "BUT AN ALERT NOBODY REPORTED IS NOT A CALM SKY. Unknown draws as caution rather "
+           + "than good, because good is a claim the data does not support")
+    expect(traffic([:]).level == .good, "and a receiving feed with every alert known is good")
+    expect(traffic(["receiving": false as NSNumber]).level == .caution,
+           "a silent receiver is caution too -- it is not reporting danger, it is not reporting")
+
+    expect(traffic(["contacts": [placed]]).summary, "1 aircraft",
+           "one aircraft is not 1 aircrafts")
+}
+
+checkTheTrafficPanelNeverGoesSilentlyBlank()
+
 func checkTheAdapterPickerShowsTheChoiceNotTheConsequence() {
     let adapters = ["ALFA AWUS036ACM [1]", "Realtek 8812au [2]"]
 

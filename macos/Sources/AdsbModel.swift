@@ -157,4 +157,48 @@ struct AdsbTraffic: Equatable {
         let printed = Measure.settled(String(format: "%.0f", value.rounded()))
         return unit.isEmpty ? printed : printed + " " + unit
     }
+
+    var summary: String {
+        guard enabled, available else { return "No receiver" }
+        guard !quiet else { return "Silent" }
+        guard !contacts.isEmpty else { return "Clear" }
+        return contacts.count == 1 ? "1 aircraft" : "\(contacts.count) aircraft"
+    }
+
+    // An aircraft squawking an emergency outranks a merely close one, and an alert nobody
+    // reported is not a calm sky -- so an unknown alert is drawn as caution rather than good.
+    var level: FlyTelemetry.Level {
+        guard enabled, available else { return .unknown }
+        if !emergency.isEmpty { return .critical }
+        if alerting > 0 { return .warning }
+        if quiet || alertUnknown > 0 { return .caution }
+        return .good
+    }
+
+    // The panel must not go blank in three different situations that mean different things, so
+    // each gets a sentence rather than an empty list: no receiver configured, a receiver whose
+    // feed has gone silent, and clear air. Only the last is good news.
+    func rows() -> [DetailRow] {
+        guard enabled, available else {
+            return [DetailRow(label: "Traffic", value: "No receiver configured")]
+        }
+        guard !quiet else {
+            return [DetailRow(label: "Traffic", value: "Receiver silent")]
+        }
+        guard !contacts.isEmpty else {
+            return [DetailRow(label: "Traffic", value: "No aircraft nearby")]
+        }
+        return contacts.map { contact in
+            DetailRow(label: contact.name, value: describe(contact))
+        }
+    }
+
+    // An aircraft the receiver hears but cannot place says so, rather than showing a blank
+    // column that reads as a decoding fault.
+    func describe(_ contact: AdsbContact) -> String {
+        guard contact.located else { return "bearing unknown" }
+        return [distanceText(contact), bearingText(contact), altitudeText(contact)]
+            .filter { !$0.isEmpty }
+            .joined(separator: "  ")
+    }
 }
