@@ -128,18 +128,31 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
-pub fn link_form_view(_backend: &dyn Backend, args: &[String]) -> Value {
+fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
+    object(&backend.get_fields("links", "serialBaudRates")).get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).collect()).unwrap_or_default()
+}
+
+pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
     let (kind, host, port) = (arg(0).to_lowercase(), arg(1), arg(2));
-    let parsed = port.parse::<i64>().ok().filter(|p| (1..=65535).contains(p));
-    let error = match (parsed, kind.as_str(), host.trim().is_empty()) {
-        (None, _, _) => Some("Port must be a number between 1 and 65535."),
-        (Some(_), "tcp", true) => Some("A TCP link needs the address of the device to call."),
+    let serial = kind == "serial";
+    let rates = serial_baud_rates(backend);
+    let number = port.parse::<i64>().ok();
+    let ok = match serial {
+        true => number.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))),
+        false => number.filter(|p| (1..=65535).contains(p)),
+    };
+    let error = match (ok, serial, kind.as_str(), host.trim().is_empty()) {
+        (None, true, _, _) => Some("Choose one of the rates the radio offers."),
+        (None, false, _, _) => Some("Port must be a number between 1 and 65535."),
+        (Some(_), true, _, true) => Some("A serial link needs the device to open."),
+        (Some(_), _, "tcp", true) => Some("A TCP link needs the address of the device to call."),
         _ => None,
     };
-    let name = match host.trim().is_empty() {
-        true => format!("{} {port}", kind.to_uppercase()),
-        false => format!("{} {}:{port}", kind.to_uppercase(), host.trim()),
+    let name = match (serial, host.trim().is_empty()) {
+        (true, _) => format!("{} {}", host.trim(), port).trim().to_string(),
+        (false, true) => format!("{} {port}", kind.to_uppercase()),
+        (false, false) => format!("{} {}:{port}", kind.to_uppercase(), host.trim()),
     };
     json!({ "kind": "object", "class": "LinkForm", "type": kind, "name": name, "valid": error.is_none(), "error": error.unwrap_or("") })
 }
@@ -195,7 +208,7 @@ mod tests {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
-                    "links" => json!({ "kind": "object", "linkTypeStrings": ["Seriell", "UDP", "TCP"], "linkTypeIds": ["serial", "udp", "tcp"], "serialBaudRates": ["57600"] }),
+                    "links" => json!({ "kind": "object", "linkTypeStrings": ["Seriell", "UDP", "TCP"], "linkTypeIds": ["serial", "udp", "tcp"], "serialBaudRates": ["57600", "115200"] }),
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -212,6 +225,20 @@ mod tests {
 
     #[test]
     fn the_form_validates_the_way_android_does_and_names_the_link() {
+        struct Rates;
+        impl Backend for Rates {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "links" => json!({ "kind": "object", "serialBaudRates": ["57600", "115200"] }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
         let bad_port = link_form_view(&Nothing, &["udp".into(), "".into(), "70000".into()]);
         assert_eq!(bad_port["valid"], false);
         let no_host = link_form_view(&Nothing, &["tcp".into(), "".into(), "5760".into()]);
@@ -220,6 +247,16 @@ mod tests {
         assert_eq!(good["valid"], true);
         assert_eq!(good["name"], "TCP 10.0.0.2:5760");
         assert_eq!(link_form_view(&Nothing, &["udp".into(), "".into(), "14550".into()])["name"], "UDP 14550");
+        let serial = link_form_view(&Rates, &["serial".into(), "/dev/cu.usbmodem1".into(), "57600".into()]);
+        assert_eq!(serial["valid"], true, "qgc_links_create builds a serial link with the device in host and the baud in port, so the form has to accept one");
+        assert_eq!(serial["name"], "/dev/cu.usbmodem1 57600", "a serial link is a device at a rate, never an address at a port");
+        let fast = link_form_view(&Rates, &["serial".into(), "/dev/cu.usbmodem1".into(), "115200".into()]);
+        assert_eq!(fast["valid"], true, "115200 is a rate the radio offers and not a port at all - a port range would refuse it for being over 65535");
+        let odd = link_form_view(&Rates, &["serial".into(), "/dev/cu.usbmodem1".into(), "57601".into()]);
+        assert_eq!(odd["valid"], false, "57601 sits inside the port range, so only the offered rates can tell it apart from 57600");
+        let no_device = link_form_view(&Rates, &["serial".into(), "".into(), "57600".into()]);
+        assert_eq!(no_device["valid"], false, "a serial link with no device names nothing to open");
+        assert_eq!(link_form_view(&Nothing, &["serial".into(), "/dev/cu.usbmodem1".into(), "460800".into()])["valid"], true, "an unavailable rate list is not evidence the rate is wrong");
     }
 
     struct Nothing;
