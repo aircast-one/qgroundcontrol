@@ -14,7 +14,14 @@ TARGET = (sys.argv[1], 14550)
 INT_PARAMS = frozenset(
     ["ARMING_CHECK", "FS_OPTIONS", "SIMPLE", "SUPER_SIMPLE", "FS_THR_ENABLE",
      "FLTMODE_CH", "INITIAL_MODE", "FRAME_CLASS", "FRAME_TYPE", "GRIP_ENABLE",
-     "BATT_MONITOR", "RTL_ALT", "FENCE_ENABLE", "FENCE_TYPE"]
+     "BATT_MONITOR", "RTL_ALT", "FENCE_ENABLE", "FENCE_TYPE",
+     "BATT_FS_LOW_ACT", "BATT_FS_CRT_ACT", "BATT_CAPACITY", "BATT_VOLT_PIN",
+     "BATT_CURR_PIN", "BATT2_MONITOR", "BATT2_FS_LOW_ACT", "BATT2_FS_CRT_ACT",
+     "BATT2_CAPACITY", "FENCE_ACTION", "FS_GCS_ENABLE", "FRAME",
+     "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3",
+     "COMPASS_USE", "COMPASS_USE2", "COMPASS_USE3",
+     "BATT2_VOLT_PIN", "BATT2_CURR_PIN"]
+    + ["RC%d_TRIM" % ch for ch in range(1, 9)]
     + ["FLTMODE%d" % slot for slot in range(1, 7)]
     + ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_THROTTLE", "RCMAP_YAW"]
     + ["RC%d_MIN" % ch for ch in range(1, 9)]
@@ -171,7 +178,33 @@ def main():
         for name, value in (("RCMAP_ROLL", 1.0), ("RCMAP_PITCH", 2.0),
                             ("RCMAP_THROTTLE", 3.0), ("RCMAP_YAW", 4.0)):
             params[name] = value
+    if os.environ.get("NO_BATTERY") != "1":
+        for name, value in (("BATT_MONITOR", 4.0), ("BATT_CAPACITY", 5000.0),
+                            ("BATT_LOW_VOLT", 10.5), ("BATT_CRT_VOLT", 9.9),
+                            ("BATT_LOW_MAH", 500.0), ("BATT_CRT_MAH", 200.0),
+                            ("BATT_FS_LOW_ACT", 2.0), ("BATT_FS_CRT_ACT", 1.0),
+                            ("BATT_VOLT_MULT", 10.1), ("BATT_AMP_PERVLT", 17.0),
+                            ("BATT_VOLT_PIN", 2.0), ("BATT_CURR_PIN", 3.0),
+                            ("BATT2_MONITOR", 0.0), ("BATT2_CAPACITY", 0.0),
+                            ("BATT2_LOW_VOLT", 0.0), ("BATT2_CRT_VOLT", 0.0),
+                            ("BATT2_LOW_MAH", 0.0), ("BATT2_CRT_MAH", 0.0),
+                            ("BATT2_FS_LOW_ACT", 0.0), ("BATT2_FS_CRT_ACT", 0.0),
+                            ("BATT_AMP_OFFSET", 0.0), ("BATT_ARM_VOLT", 0.0),
+                            ("BATT2_VOLT_PIN", -1.0), ("BATT2_CURR_PIN", -1.0),
+                            ("BATT2_VOLT_MULT", 10.1), ("BATT2_AMP_PERVLT", 17.0),
+                            ("BATT2_AMP_OFFSET", 0.0), ("BATT2_ARM_VOLT", 0.0)):
+            params[name] = value
+    for name, value in (("FS_THR_VALUE", 975.0), ("FS_GCS_ENABLE", 0.0),
+                        ("FENCE_ACTION", 1.0), ("FENCE_ALT_MAX", 100.0),
+                        ("FENCE_MARGIN", 2.0), ("RTL_ALT_FINAL", 0.0),
+                        ("RTL_LOIT_TIME", 5000.0), ("LAND_SPEED", 50.0),
+                        ("FRAME", 1.0), ("COMPASS_DEV_ID", 97539.0),
+                        ("COMPASS_DEV_ID2", 131874.0), ("COMPASS_DEV_ID3", 0.0),
+                        ("COMPASS_USE", 1.0), ("COMPASS_USE2", 1.0),
+                        ("COMPASS_USE3", 0.0)):
+        params[name] = value
     for channel in range(1, 9):
+        params["RC%d_TRIM" % channel] = 1500.0
         params["RC%d_MIN" % channel] = 1100.0
         params["RC%d_MAX" % channel] = 1900.0
         params["RC%d_REVERSED" % channel] = 1.0 if channel == 4 else 0.0
