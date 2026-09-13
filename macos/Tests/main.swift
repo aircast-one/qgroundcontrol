@@ -703,6 +703,62 @@ func checkAMeasureNeverReadsMinusZero() {
 
 checkAMeasureNeverReadsMinusZero()
 
+func checkPacketRadioReadingsNeverInventANumber() {
+    func radio(_ overrides: [String: Any]) -> PacketRadio? {
+        PacketRadio(["kind": "object", "class": "PacketRadio",
+                     "status": "running", "statusText": "Running on ALFA AWUS036ACM [1]",
+                     "running": true as NSNumber, "linkActive": true as NSNumber,
+                     "adapter": "ALFA AWUS036ACM [1]",
+                     "adapters": ["ALFA AWUS036ACM [1]", "Realtek 8812au [2]"],
+                     "antennaRssi": [-72.0 as NSNumber, -68.5 as NSNumber],
+                     "antennaSnr": [11.0 as NSNumber, -0.04 as NSNumber],
+                     "haveSignal": [true as NSNumber, true as NSNumber],
+                     "linkScore": 40.0 as NSNumber,
+                     "linkScoreMin": 0.0 as NSNumber, "linkScoreMax": 80.0 as NSNumber,
+                     "packetLoss": 2.5 as NSNumber,
+                     "rssiUnit": "dBm", "snrUnit": "dB", "packetLossUnit": "%"]
+            .merging(overrides) { _, override in override })
+    }
+
+    expect(radio([:])?.rssiText(0) ?? "", "-72 dBm",
+           "a reading is spelled head-side because dBm has no conversion and no precision for "
+           + "the core to own, which is the same rule that made the vehicle distance the core's")
+
+    expect(radio(["antennaRssi": NSNull()])?.rssiText(0) ?? "MISSING", "",
+           "BUT A READING THE RADIO HAS NOT TAKEN IS NOT ZERO. The core sends antennaRssi null "
+           + "until a fresh sample exists, and 0 dBm is a stronger signal than any real antenna "
+           + "reports -- an operator reading it would believe the link was perfect at the moment "
+           + "it had gone silent. An absent answer and an answer of no-problem must not render "
+           + "the same")
+
+    expect(radio(["packetLoss": NSNull()])?.packetLossText ?? "MISSING", "",
+           "and the same for loss, where zero is the BEST possible value rather than merely a "
+           + "plausible one")
+
+    expect(radio([:])?.snrText(1) ?? "", "0 dB",
+           "an SNR a hair below zero prints without its sign, through the same Measure.settled "
+           + "the altitude readings use. SNR sits near zero in normal operation, so this is the "
+           + "one packet radio reading where minus-zero is a case rather than a curiosity")
+
+    expect(radio([:])?.packetLossText ?? "", "2.5 %", "a fractional reading keeps one place")
+
+    expect(radio(["linkScore": NSNull()])?.linkScoreFraction == nil,
+           "no link score is no gauge position, rather than a gauge pinned at its floor")
+    expect((radio([:])?.linkScoreFraction ?? 0) > 0.49 && (radio([:])?.linkScoreFraction ?? 0) < 0.51,
+           "and a score is placed against the core's own min and max, never a range invented here")
+
+    expect(radio(["statusText": NSNull()])?.statusText ?? "MISSING", "",
+           "a status the core sent no sentence for gets none reconstructed from the token. "
+           + "Several statuses interpolate an adapter name or a driver error that only QGC has, "
+           + "so a head spelling its own would be wrong in exactly the cases that matter")
+
+    expect(PacketRadio(["kind": "null"]) == nil,
+           "and the view the core REFUSES until a host reports a radio decodes to no radio at "
+           + "all, rather than to one reporting every field empty")
+}
+
+checkPacketRadioReadingsNeverInventANumber()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",

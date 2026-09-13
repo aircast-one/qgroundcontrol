@@ -3,6 +3,7 @@ accuracy
 action
 active
 activeSource
+adapter
 addFence
 addRally
 adjustInvokable
@@ -21,6 +22,9 @@ altitudeRange
 altitudeText
 altitudeUnits
 ambiguous
+antennaRssi
+antennaScore
+antennaSnr
 anyConnecting
 areaText
 armed
@@ -142,6 +146,7 @@ hasCollision
 hasFix
 hasModes
 hasZoom
+haveSignal
 heading
 headline
 heardVehicle
@@ -181,6 +186,10 @@ latitude
 legs
 level
 link
+linkActive
+linkScore
+linkScoreMax
+linkScoreMin
 listening
 liveChannels
 liveSlot
@@ -224,6 +233,8 @@ open
 openable
 orbiting
 order
+packetLoss
+packetLossUnit
 page
 parameterSections
 path
@@ -275,6 +286,7 @@ roiActive
 roiSupported
 rotate
 route
+rssiUnit
 running
 save
 scaleMaximum
@@ -298,6 +310,7 @@ simple
 skipEnabled
 slopeStart
 slot
+snrUnit
 source
 sourceSize
 specifiesAltitude
@@ -306,6 +319,7 @@ splitInvokable
 stage
 stale
 staleNotice
+startError
 starting
 state
 stateText

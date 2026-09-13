@@ -23,6 +23,7 @@ MODELS = {
     "CameraControl": "view.camera",
     "FenceShape": "view.fences",
     "FlyState": "view.flyState",
+    "PacketRadio": "view.packetRadio",
     "FlightModeChoice": "view.flightModes",
     "LandingPattern": "view.landingPattern(6)",
     "LinkConfig": "view.links",
