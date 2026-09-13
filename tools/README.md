@@ -37,6 +37,7 @@ falsify it. The ones marked *found something* are in the commit log for
 | `RC_RSSI`, `BATT_PCT`, `BATT_STATE` | signal and battery readings | |
 | `FIRMWARE` | the version string in `AUTOPILOT_VERSION` | |
 | `NO_FENCE=1` | a vehicle without fence and rally capability bits | |
+| `OFFLIST_ENUM=1` | `FRAME_CLASS` at 99, a value outside its own enum list, so `Fact` appends its synthetic "Unknown: 99" entry | *the case three heads got wrong* |
 | `NO_RCMAP=1`, `ACCEL_UNCAL=1`, `ARMING_CHECK`, `TRAILING_PARAM` | parameter-shaped edge cases | |
 | `SIM_LAT`, `SIM_LON`, `FENCE_RADIUS` | where it flies and how far it may go | *see terrain below* |
 | `STILL_STICKS=1` | sticks that do not sweep, for a screenshot that does not change under you | |

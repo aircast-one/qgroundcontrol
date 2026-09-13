@@ -179,6 +179,8 @@ def main():
         params["FLTMODE%d" % slot] = float(slot)
     if os.environ.get("TRAILING_PARAM") == "1":
         params["ZZ_TRAILER"] = 1.0
+    if os.environ.get("OFFLIST_ENUM") == "1":
+        params["FRAME_CLASS"] = 99.0
     names = sorted(params)
 
     def send_param(name):
