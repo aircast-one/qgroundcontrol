@@ -12,17 +12,40 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 
+# Every git command below means the SHARED index. Inherit a caller's GIT_INDEX_FILE and they
+# all quietly mean a private one instead: the guard would inspect the private index, and the
+# refreshes would resync the very index they are resyncing away from -- succeeding, reporting
+# truthfully, and leaving the shared index exactly as armed as it was. That is how the phantom
+# this script exists to absorb got created: a peer DID reset after each commit, inside the
+# shell that still had the private index exported.
+unset GIT_INDEX_FILE
+
 if (( $# == 0 )); then
     print -u2 "usage: $0 <file> [<file> ...]   # commit message on stdin"
     exit 2
 fi
 
-armed="$(git diff --cached HEAD --stat)"
-if [[ -n "$armed" ]]; then
+# A file whose INDEX entry differs from HEAD while its WORKING TREE matches HEAD is not a staged
+# revert -- it is the default index left behind by someone landing through a private
+# GIT_INDEX_FILE, which moves HEAD and never updates it. That phantom is a reverse-diff of a
+# peer's LANDED work and reads exactly like somebody staging a deletion of it. It blocked this
+# script four times in one session before it was told the difference. Refreshing those entries
+# destroys nothing: HEAD and the worktree already agree on every byte.
+phantom=()
+real=()
+for staged in ${(f)"$(git diff --cached HEAD --name-only)"}; do
+    if git diff --quiet HEAD -- "$staged"; then phantom+=("$staged"); else real+=("$staged"); fi
+done
+if (( ${#phantom} )); then
+    print "refreshing ${#phantom} stale index entr$( (( ${#phantom} == 1 )) && print "y" || print "ies") left by a private-index commit: ${phantom}"
+    git reset -q HEAD -- "${phantom[@]}"
+fi
+if (( ${#real} )); then
     print -u2 "the shared index is armed against someone and this commit would carry it:"
-    print -u2 "$armed"
+    print -u2 "$(git diff --cached HEAD --stat -- "${real[@]}")"
     print -u2 ""
-    print -u2 "the working tree is not the question - 'git diff HEAD' cannot see this."
+    print -u2 "these differ from HEAD in the index AND in the working tree, so they are a real"
+    print -u2 "staging rather than a stale-index phantom."
     print -u2 "check it is not a deliberate staging of yours, then: git reset -q HEAD -- <files>"
     exit 1
 fi
