@@ -636,6 +636,38 @@ height unknown". The rig has never served an elevation, so the terrain profile,
 `altitudeAmsl` on a terrain-framed item, and the "Calculated Above Terrain" mode
 I wired a picker to this session have all only ever rendered their empty case.
 
+### view.altitudeModes is keyed by an argument nothing watches, 2026-09-13
+
+The frame picker reads `view.altitudeModes(mission,N)` where N is the mode the
+selected item is in. Its answer depends on N - that is how it marks one mode
+`current` - but its dependencies are
+
+```rust
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.supportsTerrainFrame",
+                            "plan.missionController.containsItems",
+                            "corePlugin.options.showMissionAbsoluteAltitude"];
+```
+
+None of those change when the operator selects a different item or changes an
+item's mode. So the core never recomputes the instance a head has just started
+watching, and a head that relies on pushes for this path waits forever.
+
+Measured: with the item in Terrain Frame, `view.altitudeModes(mission,4)` read
+through the debug API correctly marks mode 4 current and names it. The picker
+still shows the fallback. Nudging the altitude, which certainly pushes the plan,
+does not move it. The value simply never arrives.
+
+`mapPath` now seeds a newly watched path with one read, which fixed the first
+transition and not the second - so the head side is only partly answered and I
+have stopped guessing at the rest. What is certain and code-read rather than
+inferred is the DEPS list above: a view parameterised by an argument needs
+something in its dependencies that changes with that argument, or it can only
+ever be read, never watched.
+
+Both terrain modes abbreviate to AGL, so while this stands the operator cannot
+tell Calculated Above Terrain from Terrain Frame on the button - only by opening
+the menu, where the current one is marked.
+
 ### An enum value off its own list is matched by an English prefix, 2026-09-13
 
 Swept this head for the defect a peer has been clearing in the core tonight -
