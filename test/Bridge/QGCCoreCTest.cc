@@ -1455,7 +1455,11 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         QFile out(fixture);
         QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
         out.write(current);
-        return;
+        // A bare return here reported PASS while comparing nothing, and every guard below it - the
+        // never-varies check, _alwaysNull, the bare-refusal check, kArgumentsNotRecorded - sat
+        // after it. A recording run must SAY it recorded; the five oracle tests already QSKIP and
+        // this one did not, so a green from a recording read exactly like a green from a check.
+        QSKIP("recorded the view contract");
     }
 
     QFile in(fixture);
@@ -1959,7 +1963,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         QFile out(fixture);
         QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
         out.write(current);
-        return;
+        QSKIP("recorded the survey transects");
     }
 
     QFile in(fixture);
