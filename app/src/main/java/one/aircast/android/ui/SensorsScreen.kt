@@ -250,6 +250,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     val state = remember(json) { calibrationState(json) }
     var pending by remember { mutableStateOf<CalibrationRoutine?>(null) }
     var runningName by remember { mutableStateOf("") }
+    var rebootOffered by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     val flyJson by qgcPath(FLY_STATE)
     val aloft = remember(flyJson) { flyState(flyJson)?.state == "flying" }
@@ -279,6 +280,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
             calibration = calibration,
             onConfirm = {
                 runningName = calibration.title
+                rebootOffered = rebootOffered || calibration.id == COMPASS_ROUTINE
                 notice = null
                 scope.launch {
                     val before = withContext(Dispatchers.Default) { calibrationStatus() }
@@ -339,13 +341,26 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
 
         if (state.statusText.isNotBlank()) {
             item(key = "last") {
-                SectionHeader("Last calibration")
-                Text(
-                    text = state.statusText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                )
+                Column {
+                    SectionHeader("Last calibration")
+                    Text(
+                        text = state.statusText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                    if (rebootOffered) {
+                        Button(
+                            onClick = {
+                                rebootOffered = false
+                                scope.launch {
+                                    withContext(Dispatchers.Default) { Qgc.invoke(REBOOT_VEHICLE) }
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        ) { Text("Reboot vehicle") }
+                    }
+                }
             }
         }
 

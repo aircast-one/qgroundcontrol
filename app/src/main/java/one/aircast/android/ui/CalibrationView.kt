@@ -93,3 +93,7 @@ internal fun routineStatus(routine: CalibrationRoutine, state: CalibrationState)
     routine.id == "compass" -> if (state.compassNeeded) "Not calibrated" else "Calibrated"
     else -> ""
 }
+
+internal const val COMPASS_ROUTINE = "compass"
+
+internal const val REBOOT_VEHICLE = "vehicle.rebootVehicle"
