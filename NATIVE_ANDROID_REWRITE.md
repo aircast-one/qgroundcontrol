@@ -2998,6 +2998,22 @@ link, so the view itself is fine.
 The flag is definitely being read: the only change between the runs was that line in the ini,
 and the app went from a connected vehicle to none.
 
+**Re-running this now costs a safety flag, 2026-09-14.** The comparison above was made by
+editing the ini. From the debug API it is no longer possible: `/bridge/set` and
+`/bridge/invoke` both sit behind `QGC_DEBUG_API_ALLOW_ACTUATORS`, and the gate is blanket
+rather than path-aware, so writing a boolean app setting is refused by the same check that
+refuses a motor test. `DebugApiServer.cc:1707`. That is the right shape for a gate — a
+filter has to be correct about which paths can actuate and a refusal does not — but it means
+re-measuring costs deliberately enabling actuator writes on the handset.
+
+The head's own UI cannot do it either: nine settings groups are offered, and none is the App
+group that carries `coreLinks`. That is deliberate curation rather than an omission, since it
+is a developer switch, but it does mean there is no non-privileged path to the experiment.
+
+So the table above stands unrefreshed. Anyone repeating it should budget for the flag rather
+than discovering the refusal, and should say in the result whether the run had actuator
+writes enabled, because that is not a neutral condition to leave on.
+
 The cause turned out to be the guard added after this head's own reuse-port finding. That
 guard refuses a core UDP link on a port a Qt link already serves; `LinkManager` sets the
 configuration's link to the `CoreLink` before calling connect, so at open time the core saw a
