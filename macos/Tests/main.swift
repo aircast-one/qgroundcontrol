@@ -1935,6 +1935,7 @@ func checkMissionItemKinds() {
     checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact()
     checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines()
     checkANumberFieldRefusesAmbiguityRatherThanGuessing()
+    checkARangeCheckRefusesWhatItCannotParse()
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
@@ -5332,6 +5333,26 @@ func checkSensorsComponentIsFoundByClass() {
     expect(component(name: "センサ", className: "SensorsComponent")?.id ?? "", "SensorsComponent",
            "identity comes from the class too -- keying it on a translated name would have "
            + "rebuilt every row the moment the language changed")
+}
+
+func checkARangeCheckRefusesWhatItCannotParse() {
+    let bounded = SettingsControl(["path": "settings.app.alt", "control": "number", "name": "Alt",
+                                    "value": 50.0 as NSNumber,
+                                    "minimum": 1.0 as NSNumber, "maximum": 120.0 as NSNumber])
+    expect(bounded?.refusal("1,500") ?? "", Measure.commaAdvice,
+           "THE RANGE CHECK WAS SILENT ON WHAT IT COULD NOT PARSE. It returned nil -- no "
+           + "objection -- and the caller then wrote Double(value) ?? value, putting the raw "
+           + "STRING on the vehicle. The one guard between an operator and a bad write said "
+           + "nothing about the entry most in need of refusing")
+    expect(bounded?.refusal("200") != nil, "an out-of-range number still refuses on its range")
+    expect(bounded?.refusal("50") == nil, "and a value inside the range is written")
+
+    let text = SettingsControl(["path": "settings.app.callsign", "control": "text",
+                                 "name": "Callsign", "value": "QGC"])
+    expect(text?.refusal("12,5") == nil,
+           "a TEXT control is not a number and must not be held to a number's rules -- the kind "
+           + "guard comes first, which is why this could be tightened here and not in FactRange, "
+           + "where Parameter carries no kind to tell a string parameter from a numeric one")
 }
 
 func checkANumberFieldRefusesAmbiguityRatherThanGuessing() {

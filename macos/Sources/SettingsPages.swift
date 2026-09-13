@@ -130,8 +130,14 @@ struct SettingsControl: Identifiable, Equatable {
         maximum = (json["maximum"] as? NSNumber)?.doubleValue
     }
 
+    // A RANGE CHECK THAT CANNOT PARSE ITS INPUT USED TO RETURN nil -- no objection -- and the
+    // caller then wrote `Double(value) ?? value`, putting the raw STRING on the vehicle. So the
+    // one guard standing between an operator and a bad write was silent on exactly the entry
+    // that needed refusing. A comma is the common way in; anything unparseable is the class.
     func refusal(_ entry: String) -> String? {
-        guard kind == .number, let typed = Double(entry) else { return nil }
+        guard kind == .number else { return nil }
+        if let refused = Measure.numberRefusal(entry) { return refused }
+        guard let typed = Double(entry.trimmingCharacters(in: .whitespaces)) else { return nil }
         let under = minimum.map { typed < $0 } ?? false
         let over = maximum.map { typed > $0 } ?? false
         guard under || over else { return nil }
