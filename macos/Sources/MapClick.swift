@@ -92,11 +92,8 @@ final class MapClickStore: ObservableObject, Probeable {
                                   gotoFlightMode: (vehicle["gotoFlightMode"] as? String) ?? "") {
             goingTo = nil
         }
-        let orbit = Bridge.group("view.orbit")
         var drawn = FlyOverlays.read(
-            orbitCircle: vehicle["orbitMapCircle"] as? [String: Any],
-            radius: (orbit["radiusMetres"] as? NSNumber)?.doubleValue ?? 0,
-            orbiting: (orbit["orbiting"] as? NSNumber)?.boolValue,
+            orbit: Orbit(Bridge.group("view.orbit")),
             roiActive: read.roiActive,
             roi: guided["roi"] as? [String: Any])
         drawn.goingTo = goingTo

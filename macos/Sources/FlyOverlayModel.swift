@@ -1,5 +1,30 @@
 import Foundation
 
+// The head used to take the ring's CENTRE from the raw vehicle (vehicle.orbitMapCircle.center)
+// while taking its radius from view.orbit. The core already serves `centre`, built by centre_of,
+// which validates both coordinates AND withholds them unless the vehicle is actually turning --
+// so the raw read was a second decoder of the same value with none of the gating. It drew nothing
+// wrong: showsOrbit demanded orbitActive and orbitRadius too, and those WERE gated. That is a
+// coupling rather than a rule, and the next person to touch showsOrbit breaks it silently.
+struct Orbit {
+    let centre: GeoPoint?
+    let radiusMetres: Double
+    let radiusText: String
+    let turning: Bool?
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any] else { return nil }
+        guard let metres = (json["radiusMetres"] as? NSNumber)?.doubleValue,
+              metres.isFinite, metres > 0 else { return nil }
+        radiusMetres = metres
+        radiusText = (json["radiusText"] as? String) ?? ""
+        turning = (json["orbiting"] as? NSNumber)?.boolValue
+        centre = GeoPoint(json: json["centre"])
+    }
+
+    var drawable: Bool { turning == true && centre != nil }
+}
+
 struct FlyOverlays: Equatable {
     var orbitCentre: GeoPoint?
     var orbitRadius: Double = 0
@@ -31,15 +56,14 @@ struct FlyOverlays: Equatable {
         return parts.isEmpty ? "nothing in progress" : parts.joined(separator: ", ")
     }
 
-    static func read(orbitCircle: [String: Any]?, radius: Double,
-                     orbiting: Bool?, roiActive: Bool,
+    static func read(orbit: Orbit?, roiActive: Bool,
                      roi: [String: Any]? = nil) -> FlyOverlays {
         var built = FlyOverlays()
-        built.orbitActive = orbiting == true
+        built.orbitActive = orbit?.turning == true
         built.roiActive = roiActive
         built.roiAt = roiActive ? MapCentre.usable(roi) : nil
-        built.orbitCentre = GeoPoint(json: orbitCircle?["center"])
-        built.orbitRadius = radius.isFinite && radius > 0 ? radius : 0
+        built.orbitCentre = orbit?.centre
+        built.orbitRadius = orbit?.radiusMetres ?? 0
         return built
     }
 
