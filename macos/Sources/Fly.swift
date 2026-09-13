@@ -105,7 +105,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         reading.satellites = gps["count"].map { Int($0) }
         reading.gpsLock = gps["lock"].map { Int($0) }
 
-        let packs = (Bridge.group("vehicle.batteries")["elements"] as? [[String: Any]]) ?? []
+        let batteryView = Bridge.group("view.battery")
+        let packs = (batteryView["packs"] as? [[String: Any]]) ?? []
         let readPacks = packs.map { FlyDetail.battery(FactReading.from(($0["facts"] as? [Any]) ?? [])) }
         if readPacks != batteries { batteries = readPacks }
 
@@ -123,8 +124,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         let readObstacle = ObstacleDistance(Bridge.group("view.obstacle")) ?? .none
         if readObstacle != obstacle { obstacle = readObstacle }
 
-        let batteryView = Bridge.group("view.battery")
-        let batteryPacks = (batteryView["packs"] as? [[String: Any]]) ?? []
+        let batteryPacks = packs
         let first = batteryPacks.first
         reading.batteryLevel = FlyTelemetry.Level(batteryView["level"] as? String)
         reading.batteryText = FlyTelemetry.batteryLine((first?["text"] as? String) ?? "",

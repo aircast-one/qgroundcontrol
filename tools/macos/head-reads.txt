@@ -161,6 +161,7 @@ help
 helpText
 highest
 highestText
+home
 horizontalAccuracy
 host
 hover

@@ -171,7 +171,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             return
         }
 
-        readPlanVerdicts(Bridge.group("view.plan"))
+        let planView = Bridge.group("view.plan")
+        readPlanVerdicts(planView)
 
         let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
         if offered != patterns { patterns = offered }
@@ -204,13 +205,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.defaultUnits
         altitudeRange = FactRange(altitudeFact, title: "The altitude for new items")
 
+        // Five of the six fields this once took raw now arrive on view.plan. The sixth is
+        // homePosition below, which nothing serves yet, so plan.controllerVehicle survives on
+        // one field rather than five.
         let controllerVehicle = Bridge.group("plan.controllerVehicle")
-        vehicle = MissionVehicle(
-            firmware: (controllerVehicle["firmwareTypeString"] as? String) ?? "",
-            type: (controllerVehicle["vehicleTypeString"] as? String) ?? "",
-            multiRotor: (controllerVehicle["multiRotor"] as? NSNumber)?.boolValue ?? false,
-            vtol: (controllerVehicle["vtol"] as? NSNumber)?.boolValue ?? false,
-            apmFirmware: (controllerVehicle["apmFirmware"] as? NSNumber)?.boolValue ?? false)
+        vehicle = MissionVehicle(planningFor: planView["planningFor"]) ?? .unknown
         let cruiseFact = Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")
         cruiseSpeed = (cruiseFact["valueString"] as? String) ?? ""
         cruiseRange = FactRange(cruiseFact, title: "Cruise speed")

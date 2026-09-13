@@ -1034,6 +1034,32 @@ func checkObstacleSilenceIsNotClearAir() {
 
 checkObstacleSilenceIsNotClearAir()
 
+func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
+    let described = MissionVehicle(planningFor: ["type": "Multi-Rotor", "firmware": "PX4 Pro",
+                                                 "multiRotor": true as NSNumber,
+                                                 "vtol": false as NSNumber,
+                                                 "apmFirmware": false as NSNumber])
+    expect(described?.type ?? "", "Multi-Rotor", "a resolved controller vehicle describes itself")
+    expect(described?.showsHoverSpeed == true,
+           "and the flags the reader BRANCHES on arrive with it -- carrying type and firmware "
+           + "alone left this head on plan.controllerVehicle for multiRotor, vtol and "
+           + "apmFirmware, so the view existed and retired nothing")
+
+    expect(MissionVehicle(planningFor: NSNull()) == nil,
+           "PLANNING FOR NOTHING IS NOT PLANNING FOR A NAMELESS VEHICLE. The core sends null "
+           + "until the controller resolves one, and a vehicle that has not been chosen is a "
+           + "different state from one that cannot describe itself -- the call site falls back "
+           + "to .unknown deliberately rather than decoding an empty object into it")
+
+    expect(MissionVehicle(planningFor: ["type": "Fixed Wing", "firmware": "ArduPilot",
+                                        "apmFirmware": true as NSNumber])?
+            .acceptsMissionStartSpeed == false,
+           "and apmFirmware still decides whether a mission start speed is offered, which is "
+           + "the branch that would have silently flipped if the flag had defaulted false")
+}
+
+checkAPlanWithNoVehicleChosenIsNotANamelessVehicle()
+
 func checkTheCameraSwitcherNamesEveryCamera() {
     let two = CameraControl(["present": true as NSNumber, "model": "Sony ILCE-7",
                              "labels": ["Sony ILCE-7", "Thermal"]])
