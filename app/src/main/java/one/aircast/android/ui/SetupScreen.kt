@@ -211,7 +211,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 SetupRow(
                     title = component.name,
                     status = blocked?.let { "Not while $it" }
-                        ?: setupBadge(component.name, headCanOpen(page, component.name)),
+                        ?: setupBadge(component.name, headCanOpen(page, component.name), isPx4),
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
                     onClick = if (blocked == null && headCanOpen(page, component.name)) {
                         { openComponent = component }
@@ -237,7 +237,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     title = component.name,
                     status = when {
                         blocked != null -> "Not while $blocked"
-                        component.needsAttention -> setupBadge(component.name, openable)
+                        component.needsAttention -> setupBadge(component.name, openable, isPx4)
                         !openable -> "On desktop"
                         else -> ""
                     },
