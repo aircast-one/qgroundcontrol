@@ -46,6 +46,17 @@ fi
 # the Swift checks are, so a C++ session never picks it up. Included only when it actually moved,
 # and said out loud, because silently adding a file to someone's commit is what this script exists
 # to prevent.
+# A head source that swift-checks cannot compile reached master unbuilt once, in 2f5c086e1, and
+# blocked every session. Scoped to the files NAMED in this commit rather than to the tree, so a
+# peer's uncommitted edit in macos/Sources is never mine to refuse.
+if ! python3 "$root/tools/macos/built.py" "$@"; then
+    print -u2 ""
+    print -u2 "refusing to commit: a head source named here has not compiled since it was edited."
+    print -u2 "swift-checks covers 74 of 116 files and cannot see the rest; build build-test with"
+    print -u2 "cmake LAST in the command, grep the log for 'error:', then commit."
+    exit 1
+fi
+
 if print -rl -- "$@" | grep -q '^macos/'; then
     if ! python3 "$root/tools/macos/stale-state.py"; then
         print -u2 "refusing to commit: a field outlives the selection that set it."
