@@ -6853,6 +6853,12 @@ func checkOrbitRingNeedsContact() {
            + "The core withholds the flag entirely when there is no contact, and unknown draws "
            + "nothing rather than drawing the last thing that was true")
 
+    expect(drawn.orbitRadiusText, "60 m",
+           "and the overlay carries that spelling to the map, where OrbitAnnotation puts it in the "
+           + "subtitle beside an \"Orbiting here\" title -- the composition of its two neighbours: "
+           + "the transient markers (Flying here, Looking here) title a state and carry no value, "
+           + "the rally point carries a value in its subtitle, and an orbit is both")
+
     expect(Orbit(turning)?.radiusText ?? "", "60 m",
            "the core spells the radius and the head keeps it. Nothing draws this yet -- the fence "
            + "circle shows its radius and the orbit ring shows none -- so this pins the value "

@@ -35,6 +35,17 @@ final class RallyAnnotation: NSObject, MKAnnotation {
     }
 }
 
+final class OrbitAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String? = "Orbiting here"
+    let subtitle: String?
+
+    init(point: GeoPoint, radiusText: String) {
+        coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+        subtitle = radiusText.isEmpty ? nil : radiusText
+    }
+}
+
 final class FencePolygon: MKPolygon {
     var inclusion = false
 }
@@ -218,6 +229,8 @@ struct MissionMap: NSViewRepresentable {
                                                                      longitude: centre.longitude),
                                        radius: overlays.orbitRadius),
                            level: .aboveLabels)
+            map.addAnnotation(OrbitAnnotation(point: centre,
+                                              radiusText: overlays.orbitRadiusText))
         }
 
         let rally = rallyPoints.filter { $0.latitude != nil && $0.longitude != nil }

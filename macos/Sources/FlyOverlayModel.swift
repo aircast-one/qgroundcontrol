@@ -28,6 +28,7 @@ struct Orbit {
 struct FlyOverlays: Equatable {
     var orbitCentre: GeoPoint?
     var orbitRadius: Double = 0
+    var orbitRadiusText = ""
     var orbitActive = false
     var roiActive = false
     var roiAt: GeoPoint?
@@ -64,6 +65,7 @@ struct FlyOverlays: Equatable {
         built.roiAt = roiActive ? MapCentre.usable(roi) : nil
         built.orbitCentre = orbit?.centre
         built.orbitRadius = orbit?.radiusMetres ?? 0
+        built.orbitRadiusText = orbit?.radiusText ?? ""
         return built
     }
 
