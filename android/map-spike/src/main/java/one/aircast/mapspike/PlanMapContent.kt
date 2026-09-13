@@ -121,6 +121,7 @@ internal fun MapSpikeScreen(
     var linkStartToHome by remember { mutableStateOf(false) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
+    var operator by remember { mutableStateOf<TrackPoint?>(null) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
     var firmware by remember { mutableStateOf<FirmwareFence?>(null) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
@@ -246,6 +247,7 @@ internal fun MapSpikeScreen(
             val fenceView = FenceBridge.read()
             val nextFences = fencePolygons(fenceView)
             val nextRally = rallyPoints(fenceView)
+            val nextOperator = operatorPoint(OperatorBridge.read())
             val nextCircles = fenceCircles(fenceView)
             val nextFirmware = firmwareFence(fenceView)
             val nextSurveys = SurveyBridge.surveysFrom(plan)
@@ -265,6 +267,7 @@ internal fun MapSpikeScreen(
                 linkStartToHome = nextLink
                 fences = nextFences
                 rally = nextRally
+                operator = nextOperator
                 if (!selectionSurvives(
                         selected, nextAll, nextFences, nextCircles, nextRally, nextSurveys, nextLandings,
                     )
@@ -315,6 +318,7 @@ internal fun MapSpikeScreen(
             fenceCircles = circles,
             firmwareFence = firmware,
             rallyPoints = rally,
+            operator = operator,
             surveys = surveyList,
             landings = landingList,
             editable = true,
