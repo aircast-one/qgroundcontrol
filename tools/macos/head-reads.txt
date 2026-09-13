@@ -234,7 +234,9 @@ progressText
 prompt
 property
 radius
+radiusMaximum
 radiusMetres
+radiusMinimum
 radiusText
 radiusUnits
 rallySupported

@@ -493,6 +493,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         guard let item = items.first(where: \.isSelected) else {
             selectedFacts = []
             selectedLanding = LandingPattern.none
+            camera = CameraChoice.empty
+            distanceMode = AltitudeMode.none
+            distanceModes = []
+            itemAltitudeMode = AltitudeMode.none
+            itemModes = []
             if selectedSpeed != .unavailable { selectedSpeed = .unavailable }
             if surveyStats != .none { surveyStats = .none }
             return
