@@ -15,14 +15,14 @@ the closing quote. A 12% spread from charset choices alone. So the output prints
 predicate beside every number.
 
 WHAT A PATH COSTS DEPENDS ON WHAT IT DOES, which the first version of this script missed.
-On the macOS head 59 raw paths are invoke and only 18 are group -- so "118 paths left"
+On the macOS head 59 raw paths are invoke and only 24 are read -- so "118 paths left"
 reads as "118 views to serve" when the majority are COMMANDS. Those need a core ACTION
 endpoint, not a served view, and many of them (plan.sendToVehicle, vehicle.forceArm,
 logDownload.eraseAll, vehicle.motorTest) are actuator paths no head can exercise on a
 grounded rig. Counting a read and a command as one unit overstates what porting views
 achieves and hides the work that has no view-shaped answer. It also shows the two heads
-are at different stages rather than merely different sizes: macOS is 59 actions against 18
-reads, Android 23 against 28. Hence:
+are at different stages rather than merely different sizes: macOS is 59 actions against 24
+reads, Android 38 against 51. Hence:
 
   READ         group/get, or a typed helper (qgcBool, qgcDouble, qgcString, qgcPath,
                SettingsGroup). A served view retires it; this is the migration's bulk.
@@ -35,7 +35,7 @@ reads, Android 23 against 28. Hence:
 
 The call vocabulary is matched by NAME, not by receiver, so one list covers `Bridge.group`
 in Swift and a bare `get(` in Kotlin. Matching `Bridge.` instead reported Android as 0
-reads and 0 actions with all 76 paths unclassified -- a measure that looks like an answer.
+reads and 0 actions with every path unclassified -- a measure that looks like an answer.
 
 And apart from that, by shape:
 
@@ -57,14 +57,34 @@ for on the literal's own line and the one before it, because SwiftUI wraps argum
 `Image(systemName:` sat a line above its own literal; a symbol written three lines below
 its argument would still be miscounted.
 
+A PATH IS NOT ALWAYS WRITTEN AS A LITERAL. Kotlin assembles most of its writes from a
+constant -- `Qgc.set("$RADIO_CAL.transmitterMode", mode)` with `const val RADIO_CAL =
+"radioCal"` -- so the literal begins with `$RADIO_CAL`, fails the root test, and lands
+outside the measured surface rather than in UNCLASSIFIED. Sixteen write call sites were
+invisible and the head reported 0 writes, which reads as "nothing to migrate" instead of
+"not measured". The constant's value is in the source, so this is resolved exactly and not
+guessed. A path a FUNCTION builds from an argument still cannot be resolved and stays
+unclassified, which is the honest answer for it.
+
+THE USE BUCKETS COUNT PATHS TOUCHED, NOT PATHS USED EXCLUSIVELY, and so they overlap and
+sum past the raw total. Counting exclusive use hid the thing the split was added to show:
+Android has 15 paths that are both read and written, and its write count still read as 3
+with every constant resolved.
+
 SERVED paths (`view.*`) are counted separately as the numerator of the migration: the head
 is done with a root when its raw count reaches zero.
 
 A HEAD IS NOT ALWAYS ONE DIRECTORY, so this takes a list of them. Android is two modules
 -- app/src/main plus map-spike/src/main, which app/build.gradle.kts:43 depends on and which
-draws the Plan tab -- and measuring only the first reported 76 where the head is 89. Do not
-reach for the parent directory instead: android/ sweeps app/src/test, whose 27 paths are
-test fixtures and not head debt at all. Name the source roots.
+draws the Plan tab -- and measuring only the first left a third of the head out. Do not
+reach for the parent directory instead: android/ sweeps app/src/test, whose paths are test
+fixtures and not head debt at all. Name the source roots.
+
+AND TWO DISTINCT-COUNTS CANNOT BE ADDED, which is why the list matters more than running it
+twice. The two Android modules measured alone gave 76 and 13; their union is 84, because
+five paths appear in both. Four of those also CHANGE CLASS on being merged -- a path read in
+one module and invoked in the other is one path used two ways, and that is only visible when
+they are counted together.
 
 Usage: python3 tools/macos/qt-paths.py [head directory ...]
        default macos/Sources
@@ -165,7 +185,8 @@ def main():
     print(f"predicate: a quoted literal whose text is one of {len(ROOTS)} bridge roots "
           f"followed by a dot; interpolation detected as \\( or ${{ or $name; literals in "
           f"a systemName:/systemImage: argument or a symbol/glyph/icon declaration are "
-          f"SwiftUI icons, not paths, and are excluded")
+          f"SwiftUI icons, not paths, and are excluded; a leading $NAME or a bare NAME "
+          f"argument is expanded when a const val NAME names a root path")
     print()
     print(f"  served (view.*)      {len(served):4}   distinct, the migration's numerator")
     print(f"  literal Qt paths     {len(literal):4}   distinct, mechanical to move")
