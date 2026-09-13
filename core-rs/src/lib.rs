@@ -42,6 +42,7 @@ pub mod guidedcmd;
 pub mod guidedexec;
 pub mod hub;
 pub mod inspector;
+pub mod itemcamera;
 pub mod joystick;
 pub mod instruments;
 pub mod kml;

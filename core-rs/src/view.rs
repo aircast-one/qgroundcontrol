@@ -31,6 +31,7 @@ use crate::joystick;
 use crate::detections;
 use crate::followme;
 use crate::console;
+use crate::itemcamera;
 use crate::gcsposition;
 use crate::gimbal;
 use crate::guided;
@@ -78,6 +79,7 @@ pub struct View {
 
 pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.altitudeModes", "item,<index>"),
+    ("view.itemCamera", "<item index>"),
     ("view.cameraDefinition", "<file path>[,<locale>]"),
     ("view.debugApi", "<method>,<path>[,<query>]"),
     ("view.geoTag", "<file path>[,<tolerance seconds>]"),
@@ -193,6 +195,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
     View { path: "view.packetRadio", deps: &[], compute: packetradio::packet_radio_view },
     View { path: "view.mavlinkConsole", deps: console::DEPS, compute: console::console_view },
+    View { path: "view.itemCamera", deps: itemcamera::DEPS, compute: itemcamera::item_camera_view },
     View { path: "view.gpsRtkBase", deps: gpsrtk::DEPS, compute: gpsrtk::base_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
@@ -378,6 +381,7 @@ mod deps_cover_reads {
             ("hub", include_str!("hub.rs")),
             ("inspector", include_str!("inspector.rs")),
             ("instruments", include_str!("instruments.rs")),
+        ("itemcamera", include_str!("itemcamera.rs")),
             ("joystick", include_str!("joystick.rs")),
             ("kml", include_str!("kml.rs")),
             ("label", include_str!("label.rs")),

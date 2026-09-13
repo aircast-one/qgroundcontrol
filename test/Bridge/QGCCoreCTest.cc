@@ -1266,7 +1266,7 @@ const char *const kViewPaths[] = {
     "view.adsbTraffic", "view.followMe", "view.gcsPosition", "view.gimbal",
     "view.cameraProtocol", "view.joystickMapping",
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
-    "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
+    "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
 };
 
 } // namespace
