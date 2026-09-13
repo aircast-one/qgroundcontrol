@@ -5,7 +5,6 @@ use crate::read::{object, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[];
-const UNKNOWN_ENUM_PREFIX: &str = "Unknown: ";
 
 pub fn control_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.control needs the path of a fact, as view.control(settings.appSettings.audioMuted)") };
@@ -35,10 +34,12 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         .filter(|r| r.len() == labels.len())
         .cloned()
         .unwrap_or_else(|| (0..labels.len()).map(|i| json!(i)).collect());
+    let synthetic = text("unknownEnumLabel");
+    let is_synthetic = |label: &str| !synthetic.is_empty() && label == synthetic;
     let options: Vec<Value> = labels
         .iter()
         .zip(raws.iter())
-        .filter(|(label, _)| !label.starts_with(UNKNOWN_ENUM_PREFIX))
+        .filter(|(label, _)| !is_synthetic(label))
         .map(|(label, raw)| json!({ "label": label, "raw": raw_text(raw) }))
         .collect();
     let bit_labels: Vec<String> = fact.get("bitmaskStrings").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
@@ -59,7 +60,7 @@ pub fn decode(fact: &Value, path: &str) -> Value {
     let enum_index = fact.get("enumIndex").and_then(Value::as_i64).unwrap_or(-1);
     let display = labels
         .get(usize::try_from(enum_index).unwrap_or(usize::MAX))
-        .filter(|l| !l.starts_with(UNKNOWN_ENUM_PREFIX))
+        .filter(|l| !is_synthetic(l))
         .cloned()
         .unwrap_or_else(|| text("valueString"));
     let bound = |key: &str, default_flag: &str| (!flag(default_flag)).then(|| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite())).flatten();
@@ -152,11 +153,21 @@ mod tests {
     }
 
     #[test]
+    fn the_synthetic_entry_is_recognised_in_a_language_that_is_not_english() {
+        let german = decode(
+            &json!({ "kind": "fact", "name": "verticalDistanceUnits", "enumStrings": ["Fuss", "Meter", "Unbekannt: 7"], "enumValues": [0, 1, 7], "enumIndex": 2, "valueString": "7", "unknownEnumLabel": "Unbekannt: 7" }),
+            "p",
+        );
+        assert_eq!(german["options"].as_array().unwrap().len(), 2, "Fact synthesises this entry through tr(), so matching the English prefix offered it as a real choice in every other language");
+        assert_eq!(german["display"], "7", "and showed its translated placeholder where the raw value belongs");
+    }
+
+    #[test]
     fn a_bool_fact_is_a_toggle_and_an_enum_a_choice_without_unknowns() {
         let toggle = decode(&json!({ "kind": "fact", "name": "audioMuted", "typeIsBool": true, "value": true, "valueString": "true" }), "p");
         assert_eq!(toggle["control"], "toggle");
         assert_eq!(toggle["label"], "Audio Muted");
-        let choice = decode(&json!({ "kind": "fact", "name": "verticalDistanceUnits", "shortDescription": "Vertical distance", "enumStrings": ["Feet", "Meters", "Unknown: 7"], "enumValues": [0, 1, 7], "enumIndex": 2, "valueString": "7" }), "p");
+        let choice = decode(&json!({ "kind": "fact", "name": "verticalDistanceUnits", "shortDescription": "Vertical distance", "enumStrings": ["Feet", "Meters", "Unknown: 7"], "enumValues": [0, 1, 7], "enumIndex": 2, "valueString": "7", "unknownEnumLabel": "Unknown: 7" }), "p");
         assert_eq!(choice["control"], "choice");
         assert_eq!(choice["options"].as_array().unwrap().len(), 2);
         assert_eq!(choice["options"][1]["raw"], "1");
