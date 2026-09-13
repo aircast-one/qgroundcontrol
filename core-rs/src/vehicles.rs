@@ -1,11 +1,11 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object, text};
+use crate::read::{flag, integer, nested_coordinate, object, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicle.id"];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode";
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,coordinate";
 
 pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let count = integer(&object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
@@ -13,13 +13,16 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let listed: Vec<Value> = (0..count)
         .map(|index| {
             let read = object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS));
+            let link = object(&backend.get_fields(&format!("vehicles.vehicles.{index}.vehicleLinkManager"), "primaryLinkName,communicationLost"));
             let id = integer(&read, "id");
             json!({
                 "id": id,
                 "name": name_of(&read, id),
                 "type": text(&read, "vehicleTypeString"),
                 "firmware": text(&read, "firmwareTypeString"),
-                "link": text(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}.vehicleLinkManager"), "primaryLinkName")), "primaryLinkName"),
+                "link": text(&link, "primaryLinkName"),
+                "communicationLost": flag(&link, "communicationLost"),
+                "coordinate": nested_coordinate(&read).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
                 "active": id.is_some() && id == active,
                 "armed": flag(&read, "armed"),
                 "flying": flag(&read, "flying"),
@@ -70,7 +73,7 @@ mod tests {
                 let (index, tail) = rest.split_once('.').unwrap_or((rest, ""));
                 if let Some(vehicle) = index.parse::<usize>().ok().and_then(|index| self.0.get(index)) {
                     return match tail {
-                        "vehicleLinkManager" => json!({ "kind": "object", "primaryLinkName": vehicle["link"] }).to_string(),
+                        "vehicleLinkManager" => json!({ "kind": "object", "primaryLinkName": vehicle["link"], "communicationLost": vehicle["quiet"] }).to_string(),
                         _ => vehicle.to_string(),
                     };
                 }
@@ -83,7 +86,24 @@ mod tests {
     }
 
     fn aircraft(id: i64, kind: &str, link: &str) -> Value {
-        json!({ "kind": "object", "id": id, "vehicleTypeString": kind, "firmwareTypeString": "ArduPilot", "armed": false, "flying": false, "flightMode": "Loiter", "link": link })
+        json!({ "kind": "object", "id": id, "vehicleTypeString": kind, "firmwareTypeString": "ArduPilot", "armed": false, "flying": false, "flightMode": "Loiter", "link": link, "quiet": false,
+                "coordinate": { "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 } })
+    }
+
+    fn grounded(id: i64) -> Value {
+        let mut vehicle = aircraft(id, "Fixed Wing", "Radio");
+        vehicle["coordinate"] = Value::Null;
+        vehicle["quiet"] = json!(true);
+        vehicle
+    }
+
+    #[test]
+    fn every_vehicle_carries_where_it_is_so_a_map_can_draw_more_than_the_active_one() {
+        let view = vehicles_view(&Fleet(vec![aircraft(1, "Multi-Rotor", "SITL"), grounded(2)], Some(1)), &[]);
+        assert_eq!(view["vehicles"][0]["coordinate"]["latitude"], 47.397, "the inactive vehicle is the one a head could not draw before, so the position has to travel per vehicle rather than for the active one alone");
+        assert_eq!(view["vehicles"][1]["coordinate"], Value::Null, "an invalid coordinate arrives from a nested read as a null rather than as valid:false, so keying on the flag alone would draw a marker at nowhere");
+        assert_eq!(view["vehicles"][1]["communicationLost"], true, "a position latches for the best part of a minute after the vehicle stops talking, so a head needs to know the marker is a memory");
+        assert_eq!(view["vehicles"][0]["communicationLost"], false);
     }
 
     #[test]

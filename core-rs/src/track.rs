@@ -100,15 +100,6 @@ impl Track {
 
 static TRACKS: LazyLock<Mutex<BTreeMap<i64, Track>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
-fn coordinate(vehicle: &Value) -> Option<(f64, f64)> {
-    let coordinate = vehicle.get("coordinate")?;
-    if !flag(coordinate, "valid") {
-        return None;
-    }
-    let number = |key: &str| coordinate.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
-    number("latitude").zip(number("longitude")).filter(|(lat, lon)| *lat != 0.0 || *lon != 0.0)
-}
-
 pub fn track_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
     let vehicle = object(&backend.get_fields("vehicle", "id,armed,coordinate"));
@@ -119,7 +110,7 @@ pub fn track_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let clock = tracks.values().map(|t| t.touched).max().unwrap_or(0) + 1;
     let track = tracks.entry(id).or_default();
     track.touched = clock;
-    track.observe(flag(&vehicle, "armed"), coordinate(&vehicle));
+    track.observe(flag(&vehicle, "armed"), crate::read::nested_coordinate(&vehicle));
     let snapshot = track.snapshot(Some(id));
     let stale: Vec<i64> = tracks.iter().filter(|(_, t)| clock.saturating_sub(t.touched) >= MAX_TRACKED_VEHICLES as u64).map(|(id, _)| *id).collect();
     stale.iter().for_each(|id| {

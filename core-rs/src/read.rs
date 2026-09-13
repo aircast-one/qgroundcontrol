@@ -10,6 +10,15 @@ pub fn flag(object: &Value, key: &str) -> bool {
     object.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+pub fn nested_coordinate(read: &Value) -> Option<(f64, f64)> {
+    let coordinate = read.get("coordinate")?;
+    if !flag(coordinate, "valid") {
+        return None;
+    }
+    let number = |key: &str| coordinate.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
+    number("latitude").zip(number("longitude")).filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
+}
+
 pub fn integer(object: &Value, key: &str) -> Option<i64> {
     object.get(key).and_then(Value::as_i64)
 }

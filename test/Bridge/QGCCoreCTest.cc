@@ -1302,6 +1302,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
+    QVERIFY2(!take(qgc_bridge_get("view.coreVehicle")).value(QStringLiteral("available")).toBool(false), "the core hub now holds a vehicle while the recording runs, so the seven core views named in kArgumentsNotRecorded can be recorded with a real id after all - record them with it and delete those entries, because the reason each one carries is now false");
     _mockLink->sendStatusTextMessages();
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.messages")).value(QStringLiteral("count")).toInt() >= kMockStatusTextCount, 5000);
 
@@ -1351,7 +1352,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         (void) take(qgc_bridge_set(horizontalFence, QStringLiteral("{\"value\":%1}").arg(fenceBefore).toUtf8().constData()));
     });
     QVERIFY2(take(qgc_bridge_set(horizontalFence, "{\"value\":250}")).value(QStringLiteral("ok")).toBool(false), "GF_MAX_HOR_DIST would not take a write");
-    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.fences")).value(QStringLiteral("firmwareFence")).isNull(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.fences")).value(QStringLiteral("firmwareFence")).toObject().value(QStringLiteral("centre")).isNull(), 10000);
 
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
@@ -1371,13 +1372,13 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         { QStringLiteral("view.terrainTile"), QStringLiteral("needs a terrain tile on disk") },
         { QStringLiteral("view.cameraDefinition"), QStringLiteral("needs a camera definition file on disk") },
         { QStringLiteral("view.geoTag"), QStringLiteral("needs a telemetry log and an image directory on disk") },
-        { QStringLiteral("view.coreVehicle"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
-        { QStringLiteral("view.coreGuided"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
-        { QStringLiteral("view.coreParameter"), QStringLiteral("takes a vehicle id and a parameter name") },
-        { QStringLiteral("view.coreParameters"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
-        { QStringLiteral("view.coreMission"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
-        { QStringLiteral("view.coreRemoteId"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
-        { QStringLiteral("view.coreCalibration"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
+        { QStringLiteral("view.coreVehicle"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
+        { QStringLiteral("view.coreGuided"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
+        { QStringLiteral("view.coreParameter"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass, and no vehicle means no parameter name to ask for either") },
+        { QStringLiteral("view.coreParameters"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
+        { QStringLiteral("view.coreMission"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
+        { QStringLiteral("view.coreRemoteId"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
+        { QStringLiteral("view.coreCalibration"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
     };
     const QJsonArray argumentModes = take(qgc_bridge_get("view.dependencies")).value(QStringLiteral("argumentModes")).toArray();
     QVERIFY2(argumentModes.count() > 20, "the registry parsed, so an empty answer below would mean nothing");
