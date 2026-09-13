@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.wifi.WifiManager
 import android.os.Bundle
+import android.view.Window
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -38,7 +39,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,25 +80,24 @@ import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
-import org.qtproject.qt.android.QtQmlStatus
 import org.qtproject.qt.android.QtQuickView
+import org.qtproject.qt.android.QtRelaunchGuard
 
 private val VIDEO_INSET_WIDTH = 200.dp
 private val VIDEO_INSET_HEIGHT = 112.dp
 
 private const val QML_URI = "qrc:/qml/QGroundControl/MainWindow/AndroidHost.qml"
 private const val QML_LIBRARY = "AircastQGC"
-private const val QML_DEFAULT_PAGE = "fly"
 
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
 
-enum class Tab(val label: String, val icon: ImageVector, val page: String) {
-    Fly("Fly", Icons.Default.Home, "fly"),
-    Plan("Plan", Icons.Default.Place, "plan"),
-    Setup("Setup", Icons.Default.Build, "fly"),
-    Analyze("Analyze", Icons.Default.Info, "fly"),
-    Settings("Settings", Icons.Default.Settings, "fly");
+enum class Tab(val label: String, val icon: ImageVector) {
+    Fly("Fly", Icons.Default.Home),
+    Plan("Plan", Icons.Default.Place),
+    Setup("Setup", Icons.Default.Build),
+    Analyze("Analyze", Icons.Default.Info),
+    Settings("Settings", Icons.Default.Settings);
 
     companion object {
         fun from(destination: String) = when (destination.lowercase()) {
@@ -112,6 +111,10 @@ enum class Tab(val label: String, val icon: ImageVector, val page: String) {
 }
 
 class MainActivity : ComponentActivity(), QGCBridge.Host {
+    companion object {
+        private var live: MainActivity? = null
+    }
+
     private var multicastLock: WifiManager.MulticastLock? = null
     private lateinit var quickView: QtQuickView
 
@@ -120,6 +123,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        live = this
 
         QGCBridge.setHost(this)
         Qgc.start()
@@ -157,7 +161,12 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         }
     }
 
+    override fun getWindow(): Window =
+        if (isDestroyed) live?.takeIf { it !== this }?.window ?: super.getWindow() else super.getWindow()
+
     override fun onDestroy() {
+        if (live === this) live = null
+        if (isChangingConfigurations) QtRelaunchGuard.forgetActivity(this)
         runCatching { QGCUsbSerialManager.cleanup(this) }
         multicastLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
@@ -176,7 +185,6 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 @Composable
 fun AircastShell(quickView: QtQuickView) {
     var tab by remember { mutableStateOf(Tab.Fly) }
-    var qmlReady by remember { mutableStateOf(false) }
     var controlsExpanded by remember { mutableStateOf(true) }
     var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
@@ -212,41 +220,8 @@ fun AircastShell(quickView: QtQuickView) {
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
-            // Native rendering first: initNative() creates the receivers and binds them, and a
-            // receiver bound before this flag is set looks for a QtQuick item that does not exist.
             Qgc.invoke("video.setNativeRendering", true)
             Qgc.invoke("video.initNative")
-        }
-    }
-
-    DisposableEffect(quickView) {
-        val listeners = mutableListOf<Int>()
-        quickView.setStatusChangeListener { status ->
-            qmlReady = status == QtQmlStatus.READY
-            if (qmlReady && listeners.isEmpty()) {
-                quickView.setProperty("renderViews", false)
-                listeners += quickView.connectSignalListener(
-                    "navigateRequest",
-                    String::class.java,
-                ) { _, destination -> tab = Tab.from(destination ?: "") }
-            }
-        }
-        onDispose { listeners.forEach { quickView.disconnectSignalListener(it) } }
-    }
-
-    var appliedPage by remember { mutableStateOf(QML_DEFAULT_PAGE) }
-
-    LaunchedEffect(tab, qmlReady) {
-        if (!qmlReady) return@LaunchedEffect
-        if (appliedPage != tab.page) {
-            quickView.setProperty("page", tab.page)
-            appliedPage = tab.page
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            appliedPage = QML_DEFAULT_PAGE
         }
     }
 
