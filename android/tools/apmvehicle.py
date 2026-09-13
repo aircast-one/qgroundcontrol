@@ -530,6 +530,17 @@ def main():
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif (kind == "COMMAND_LONG"
                         and message.command == mavlink.MAV_CMD_PREFLIGHT_CALIBRATION
+                        and accelcal[0] is not None
+                        and not any(getattr(message, "param%d" % n, 0.0)
+                                    for n in range(1, 8))):
+                    magcal.command_long_send(255, 0, apm.MAV_CMD_ACCELCAL_VEHICLE_POS, 0,
+                                             apm.ACCELCAL_VEHICLE_POS_FAILED, 0, 0, 0, 0, 0, 0)
+                    accelcal[0] = None
+                    accelcal_sent[0] = None
+                    print("ACCEL CAL abandoned", flush=True)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif (kind == "COMMAND_LONG"
+                        and message.command == mavlink.MAV_CMD_PREFLIGHT_CALIBRATION
                         and message.param5 == 1):
                     accelcal[0] = 0
                     print("ACCEL CAL started", flush=True)
