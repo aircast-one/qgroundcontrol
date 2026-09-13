@@ -1131,6 +1131,25 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
 
 checkAnUnreadableLogIsNotAnEmptyOne()
 
+func checkAPathTheViewNameCannotCarryIsRefusedUpFront() {
+    expect(TlogSummary.encodable("/Users/pilot/logs/flight.tlog"),
+           "an ordinary path goes through untouched")
+
+    expect(TlogSummary.encodable("/Users/pilot/logs/flight,2.tlog") == false,
+           "A COMMA IN A FILENAME WOULD ARRIVE AS TWO ARGUMENTS. view.tlog carries its path "
+           + "inside the view name and view::split breaks that on commas, so the core would "
+           + "open a truncated path and answer readable:false -- a WRONG answer rather than a "
+           + "failure, because the file is fine and the encoding lost it. Refusing says so")
+
+    expect(TlogSummary.encodable("/Users/pilot/logs/flight (1).tlog") == false,
+           "and parentheses are counted for nesting by the same splitter, so a name carrying "
+           + "them is unaddressable too -- which is the shape macOS gives a duplicated download")
+
+    expect(TlogSummary.encodable("") == false, "and no path at all is not a path")
+}
+
+checkAPathTheViewNameCannotCarryIsRefusedUpFront()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",

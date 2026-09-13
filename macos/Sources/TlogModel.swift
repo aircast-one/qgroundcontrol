@@ -65,4 +65,13 @@ struct TlogSummary: Equatable {
             : Measure.settled(String(format: "%.1f", size))
         return "\(printed) \(units[step])"
     }
+
+    // view.tlog takes its path INSIDE the view name, and view::split splits that on commas at
+    // paren depth zero and counts parens for nesting. So a file whose name contains one of those
+    // arrives at the core as the wrong path -- truncated at the comma -- and comes back
+    // readable:false, which is a WRONG answer rather than a failure: the file is fine and the
+    // encoding lost it. Refusing up front says so instead.
+    static func encodable(_ path: String) -> Bool {
+        !path.isEmpty && !path.contains(",") && !path.contains("(") && !path.contains(")")
+    }
 }
