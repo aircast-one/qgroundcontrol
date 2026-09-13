@@ -158,6 +158,8 @@ object Qgc {
 
     fun invokeResult(path: String, vararg args: Any?): Any? = call(path, *args)?.opt("result")
 
+    fun refusalOf(path: String, vararg args: Any?): String? = refusal(call(path, *args))
+
     private fun call(path: String, vararg args: Any?): JSONObject? {
         val array = JSONArray().apply { args.forEach { put(it) } }
         return timed("invoke $path") {
@@ -210,4 +212,10 @@ object Qgc {
             qgcRebootRequired = json.optBoolean("qgcRebootRequired"),
         )
     }
+}
+
+internal fun refusal(answer: org.json.JSONObject?): String? = when {
+    answer == null -> "The vehicle did not answer."
+    answer.optBoolean("ok") -> null
+    else -> answer.optString("reason").takeIf { it.isNotBlank() } ?: "The vehicle refused."
 }

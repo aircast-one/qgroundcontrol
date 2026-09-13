@@ -38,3 +38,26 @@ class GeoTagViewTest {
         assertEquals("400 B", logSize(400))
     }
 }
+
+class RefusalTest {
+    @Test
+    fun `an accepted command has nothing to say`() {
+        assertNull(one.aircast.android.bridge.refusal(JSONObject("""{"ok":true,"mode":1}""")))
+    }
+
+    @Test
+    fun `a refusal is the sentence the core wrote`() {
+        assertEquals(
+            "The camera is still taking the last photo.",
+            one.aircast.android.bridge.refusal(
+                JSONObject("""{"ok":false,"reason":"The camera is still taking the last photo."}"""),
+            ),
+        )
+    }
+
+    @Test
+    fun `a refusal with no sentence, and no answer at all, still say something`() {
+        assertEquals("The vehicle refused.", one.aircast.android.bridge.refusal(JSONObject("""{"ok":false}""")))
+        assertEquals("The vehicle did not answer.", one.aircast.android.bridge.refusal(null))
+    }
+}

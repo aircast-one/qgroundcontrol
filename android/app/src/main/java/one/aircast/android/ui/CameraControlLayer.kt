@@ -12,6 +12,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
@@ -21,6 +25,8 @@ import androidx.compose.runtime.remember
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcStrings
+
+private const val REFUSAL_MS = 4000L
 
 private const val MANAGER = "vehicle.cameraManager"
 private const val CAMERA = "$MANAGER.currentCameraInstance"
@@ -32,6 +38,14 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
     val current by qgcDouble("$MANAGER.currentCamera", 0.0)
     val cameraJson by qgcPath(CAMERA_VIEW)
     val camera = remember(cameraJson) { cameraReading(cameraJson) }
+    var refused by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(refused) {
+        if (refused != null) {
+            delay(REFUSAL_MS)
+            refused = null
+        }
+    }
 
     if (!hasVehicle) {
         return
@@ -65,7 +79,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                         selected = false,
                         enabled = camera.canChangeMode,
                         onClick = {
-                            offMainDetached { Qgc.invoke("$CAMERA.toggleCameraMode") }
+                            offMainDetached { refused = Qgc.refusalOf("$CAMERA.toggleCameraMode") }
                         },
                         label = { Text(label) },
                     )
@@ -75,10 +89,9 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             Button(
                 onClick = {
                     offMainDetached {
-                        if (camera.isVideoMode) {
-                            Qgc.invoke("$CAMERA.toggleVideoRecording")
-                        } else {
-                            Qgc.invoke("$CAMERA.takePhoto")
+                        refused = when {
+                            camera.isVideoMode -> Qgc.refusalOf("$CAMERA.toggleVideoRecording")
+                            else -> Qgc.refusalOf("$CAMERA.takePhoto")
                         }
                     }
                 },
@@ -91,6 +104,15 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                     ButtonDefaults.buttonColors()
                 },
             ) { Text(shutter.label) }
+        }
+
+        refused?.let { sentence ->
+            Text(
+                text = sentence,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
         }
     }
 }
