@@ -106,7 +106,16 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "baud": number("baud"),
         "filename": filename,
         "logFileName": filename.rsplit('/').next().unwrap_or("").to_string(),
-        "lastError": last_error,
+        "lastError": last_error.clone(),
+        // MainStatusIndicatorOfflinePage.qml:47 branches on this to send the operator to edit the
+        // address instead of offering Retry, and TCPLink raises it for three cases - no address,
+        // host not found, nothing listening. Serving the sentence without it tells someone their
+        // link failed and lets them retry a configuration that cannot succeed until it is changed.
+        "errorRemedy": match (last_error.is_empty(), number("lastErrorRemedy")) {
+            (true, _) => Value::Null,
+            (false, Some(1)) => json!("editAddress"),
+            (false, _) => json!("retry"),
+        },
     })
 }
 
@@ -199,6 +208,32 @@ mod tests {
         let serial = link_json(4, &json!({ "name": "Pixhawk", "settingsURL": "SerialSettings.qml", "summary": "", "portName": "/dev/cu.usbmodem1", "baud": 57600, "children": [] }));
         assert_eq!(serial["baud"], 57600);
         assert_eq!(serial["port"], Value::Null, "and a serial link has no network port at all");
+    }
+
+    #[test]
+    fn a_failed_link_says_whether_retrying_could_ever_work() {
+        // variantJson serialises a Q_ENUM as its integer (QGCBridgeCore.cc), and ErrorRemedy is
+        // declared RemedyRetry then RemedyEditAddress, so the wire value is 0 or 1.
+        let link = |error: &str, remedy: Value| {
+            let mut element = json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "host": "192.168.1.5", "port": 5760 });
+            element["lastError"] = json!(error);
+            if !remedy.is_null() { element["lastErrorRemedy"] = remedy; }
+            link_json(0, &element)
+        };
+
+        let unreachable = link("Can't find 192.168.1.5 on this network.", json!(1));
+        assert_eq!(unreachable["errorRemedy"], "editAddress", "TCPLink raises RemedyEditAddress for no address, host not found and nothing listening; serving only the sentence leaves an operator retrying a configuration that cannot succeed until it is changed");
+        assert_eq!(unreachable["lastError"], "Can't find 192.168.1.5 on this network.", "and the sentence still travels beside it");
+
+        let busy = link("Serial port is already open.", json!(0));
+        assert_eq!(busy["errorRemedy"], "retry", "a remedy the core does not recognise is a retry, because that is the enum's own default and the wrong guess costs one tap");
+
+        let unreported = link("Something went wrong.", Value::Null);
+        assert_eq!(unreported["errorRemedy"], "retry");
+
+        let healthy = link("", json!(1));
+        assert_eq!(healthy["errorRemedy"], Value::Null, "a link with no error has no remedy to offer, and a stale remedy beside an empty error would draw a fix-this prompt on a working link");
+        assert_eq!(healthy["lastError"], "");
     }
 
     #[test]

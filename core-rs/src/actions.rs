@@ -13,15 +13,19 @@ const RECORD: &str = "camera.toggleRecording";
 const MODE: &str = "camera.setMode";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE];
+
 pub fn owns(path: &str) -> bool {
-    matches!(path, INSERT | REMOVE | ORBIT | ACTIVATE | PHOTO | RECORD | MODE)
+    OWNED.contains(&path)
 }
 
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
+pub const OWNED_WRITES: &[&str] = &[ZOOM];
+
 pub fn owns_write(path: &str) -> bool {
-    matches!(path, ZOOM)
+    OWNED_WRITES.contains(&path)
 }
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -410,6 +414,44 @@ mod tests {
         json!({ "kind": "object", "onlyInsertTakeoffValid": false, "isInsertTakeoffValid": false, "isInsertLandValid": true, "flyThroughCommandsAllowed": true })
     }
 
+
+    #[test]
+    fn a_claimed_path_keeps_the_shape_its_qt_answer_had() {
+        // Two different obligations, and conflating them made my first version of this fail on four
+        // correct actions. A path the core INVENTS - mission.insert, guided.orbit, camera.takePhoto,
+        // vehicles.setActive - has no Qt predecessor, so there is no answer it can take away; it owes
+        // ok, and a reason whenever ok is false. A path that SHADOWS a real Qt one owes everything Qt
+        // gave as well, because a head cannot know the core has claimed it. QGCBridgeCore puts a
+        // return value under "result" and seven macOS readers take it, three as `as? [String] ?? []`
+        // - and a list reader losing it draws an empty picker that reads as a quiet vehicle rather
+        // than a broken read.
+        struct Nothing;
+        impl Backend for Nothing {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { json!({ "ok": false }).to_string() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": false }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let answer = |path: &str| match owns_write(path) {
+            true => write(&Nothing, path, &json!({ "value": 1.0 }).to_string()),
+            false => run(&Nothing, path, "[]"),
+        };
+
+        let silent: Vec<&&str> = OWNED.iter().chain(OWNED_WRITES.iter())
+            .filter(|path| {
+                let given = answer(path);
+                given.get("ok").and_then(Value::as_bool) != Some(false) || given.get("reason").and_then(Value::as_str).is_none_or(str::is_empty)
+            })
+            .collect();
+        assert!(silent.is_empty(), "these refuse without saying why, which is the silence the whole table exists to remove: {silent:?}");
+
+        let shapeless: Vec<&&str> = OWNED_WRITES.iter().filter(|path| answer(path).get("result").is_none()).collect();
+        assert!(shapeless.is_empty(), "these shadow a Qt path and dropped its result key, so a head reading one the Qt way sees a failure or an empty list: {shapeless:?}");
+
+        assert!(!OWNED.iter().any(|path| path.contains("cameraManager")), "an invented name is exempt from the result rule only because no Qt path answers to it; a full Qt path in this list would be claiming one and owes the shape");
+    }
+
     #[test]
     fn a_camera_action_answers_when_the_camera_would_have_refused_in_silence() {
         use std::cell::RefCell;
@@ -555,12 +597,14 @@ mod tests {
         let plain = cam(json!({}));
         let answer = write(&plain, ZOOM, &json!({ "value": 40.0 }).to_string());
         assert_eq!(answer["ok"], true);
+        assert_eq!(answer["result"], true, "zoomLevel shadows a real Qt path, so its success answer owes the result key a Qt write would have carried");
         assert_eq!(answer["clamped"], false);
         assert_eq!(*plain.wrote.borrow(), vec![json!({ "value": 40.0 }).to_string()]);
 
         let high = cam(json!({}));
         let answer = write(&high, ZOOM, &json!({ "value": 150.0 }).to_string());
         assert_eq!(answer["ok"], true);
+        assert_eq!(answer["result"], true);
         assert_eq!(answer["level"], 100.0);
         assert_eq!(answer["asked"], 150.0);
         assert_eq!(answer["clamped"], true, "setZoomLevel clamps in silence, so a head asking for 150 is told it succeeded and never learns the camera went to 100");
