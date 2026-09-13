@@ -62,7 +62,9 @@ struct SettingsView: View {
                                          description: section.showsUnits ? fact.units : "",
                                          showSeparator: index > 0,
                                          trailing: {
-                                             FactControl(fact: fact) { store.write(fact, $0) }
+                                             FactControl(fact: fact,
+                                                         write: { store.write(fact, $0) },
+                                                         refuse: { store.writeFailure = $0 })
                                                  .disabled(fact.readOnly)
                                                  .frame(width: 200, alignment: .trailing)
                                          })
@@ -196,6 +198,11 @@ struct SearchField: NSViewRepresentable {
 struct FactControl: View {
     let fact: SettingsControl
     let write: (Any) -> Void
+    // Defaulted so the one call site opts in rather than every future one being forced to.
+    // I had recorded "a channel changes its signature at every call site" as the reason not to
+    // build this. There is exactly ONE call site, in this file, and it was an estimate standing
+    // in for a measurement.
+    var refuse: (String) -> Void = { _ in }
 
     @State private var draft = ""
     @FocusState private var editing: Bool
@@ -255,9 +262,11 @@ struct FactControl: View {
             // into Double("1.500") -- one point five -- in a field that sets altitudes and
             // speeds. A comma cannot be resolved without knowing the operator's locale, and
             // guessing wrong by a factor of a thousand is worse than refusing.
-            // LIMIT: this control has no failure channel of its own, so an unparseable entry
-            // still resets the draft in silence rather than saying why. The three plan writers
-            // say it; adding a channel here changes FactControl's signature at every call site.
+            if let refused = Measure.numberRefusal(draft) {
+                refuse(refused)
+                draft = fact.valueString
+                return
+            }
             guard let number = Double(draft.trimmingCharacters(in: .whitespaces)) else {
                 draft = fact.valueString
                 return
