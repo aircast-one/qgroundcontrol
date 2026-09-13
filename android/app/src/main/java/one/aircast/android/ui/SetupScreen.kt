@@ -95,11 +95,12 @@ private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun SetupScreen(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val parametersReady by qgcBool("vehicle.parameterManager.parametersReady")
     val setupComplete by qgcBool("$PLUGIN.setupComplete")
-    val isPx4 by qgcBool("vehicle.px4Firmware")
     val setupJson by qgcPath(SETUP)
+    val setup = remember(setupJson) { setupReadiness(setupJson) }
+    val hasVehicle = setup?.connected == true
+    val isPx4 = isPx4(setup)
     val vehicleId by qgcDouble("vehicle.id")
     val major by qgcDouble("vehicle.firmwareMajorVersion", -1.0)
     val minor by qgcDouble("vehicle.firmwareMinorVersion", 0.0)
@@ -193,7 +194,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "verdict") {
-            val readiness = setupReadiness(setupJson)
+            val readiness = setup
             ReadinessHeader(
                 ready = readiness?.ready ?: setupComplete,
                 vehicle = vehicleType.ifBlank { "Vehicle" },

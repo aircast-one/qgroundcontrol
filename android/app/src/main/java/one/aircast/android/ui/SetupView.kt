@@ -32,15 +32,25 @@ internal fun setupGroups(view: JSONObject?): List<SetupGroup> {
     }
 }
 
-internal data class SetupReadiness(val ready: Boolean, val headline: String, val detail: String)
+internal data class SetupReadiness(
+    val ready: Boolean,
+    val headline: String,
+    val detail: String,
+    val connected: Boolean,
+    val firmware: String,
+)
 
 internal fun setupReadiness(view: JSONObject?): SetupReadiness? = view?.let {
     SetupReadiness(
         ready = it.optBoolean("ready"),
         headline = it.optText("headline"),
         detail = it.optText("detail"),
+        connected = it.optBoolean("connected"),
+        firmware = it.optText("firmware"),
     )
 }
+
+internal fun isPx4(readiness: SetupReadiness?): Boolean = readiness?.firmware == "px4"
 
 internal fun setupPage(view: JSONObject?, name: String): SetupPage? =
     setupGroups(view).flatMap { it.pages }.firstOrNull { it.name == name }

@@ -129,3 +129,23 @@ class SetupReadinessTest {
         assertEquals("", readiness?.headline)
     }
 }
+
+class SetupFirmwareTest {
+    @Test
+    fun `the served firmware token answers px4, apm and no vehicle apart`() {
+        val px4 = setupReadiness(JSONObject("""{"connected":true,"firmware":"px4"}"""))
+        val apm = setupReadiness(JSONObject("""{"connected":true,"firmware":"apm"}"""))
+        val none = setupReadiness(JSONObject("""{"connected":false,"firmware":"none"}"""))
+
+        assertTrue(isPx4(px4))
+        assertFalse("apm is not px4", isPx4(apm))
+        assertFalse("and no vehicle is not px4 either, which a boolean could not distinguish", isPx4(none))
+        assertFalse(isPx4(null))
+    }
+
+    @Test
+    fun `connected comes from the same view rather than a second read`() {
+        assertTrue(setupReadiness(JSONObject("""{"connected":true}"""))!!.connected)
+        assertFalse(setupReadiness(JSONObject("""{"connected":false}"""))!!.connected)
+    }
+}
