@@ -24,12 +24,20 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Safety", &["known:safety"]),
     ("Power", &["known:power"]),
     ("Frame", &["AirframeComponent", "APMAirframeComponent", "APMSubFrameComponent"]),
-    ("Motors", &["MotorComponent"]),
+    ("Motors", &["MotorComponent", "APMMotorComponent"]),
     ("Tuning", &["APMTuningComponent", "PX4TuningComponent"]),
     ("Camera", &["APMCameraComponent"]),
     ("Lights", &["APMLightsComponent"]),
     ("Flight Behavior", &["PX4FlightBehavior"]),
     ("Remote Support", &["APMRemoteSupportComponent"]),
+    // Five pages QGC constructs and this catalogue never offered, so no head could draw them
+    // however willing: a page absent here is not a page a head declined. Keyed on the class the
+    // plugin builds rather than on the name it shows, because the name is tr()-wrapped.
+    ("Actuators", &["ActuatorComponent"]),
+    ("Heli", &["APMHeliComponent"]),
+    ("Follow Me", &["APMFollowComponent"]),
+    ("WiFi Bridge", &["ESP8266Component"]),
+    ("Syslink", &["SyslinkComponent"]),
 ];
 
 fn page_block(page: &str, components: &[Component]) -> Option<&'static str> {
@@ -62,8 +70,8 @@ pub fn page_absence(px4: bool) -> &'static str {
 
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
-    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Motors", "Tuning", "Camera", "Lights", "Flight Behavior"]),
-    ("Advanced", &["Remote Support", "Parameters"]),
+    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Motors", "Actuators", "Heli", "Tuning", "Camera", "Lights", "Flight Behavior", "Follow Me"]),
+    ("Advanced", &["Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
 ];
 
 pub struct Section {
@@ -582,6 +590,19 @@ mod components {
         let read = vehicle_components(&vehicle);
         assert_eq!(read.len(), 1);
         assert_eq!(read[0].name, "Sensors");
+    }
+
+    #[test]
+    fn a_page_qgc_builds_is_a_page_this_catalogue_offers() {
+        // Five pages QGC constructs were absent here, so both heads read as declining to draw
+        // them when nothing had ever offered them. A page missing from the catalogue is invisible
+        // in exactly the direction that looks like head debt.
+        for page in ["Actuators", "Heli", "Follow Me", "WiFi Bridge", "Syslink"] {
+            assert!(PAGES.iter().any(|(_, pages)| pages.contains(&page)), "{page} is built by a plugin and belongs to no group");
+            assert!(PAGE_COMPONENTS.iter().any(|(name, keys)| *name == page && !keys.is_empty()), "{page} names no component, so it can never be backed");
+        }
+        let motors = PAGE_COMPONENTS.iter().find(|(name, _)| *name == "Motors").unwrap().1;
+        assert!(motors.contains(&"APMMotorComponent"), "an ArduPilot vehicle builds APMMotorComponent, and Motors listed only the PX4 class");
     }
 
     #[test]
