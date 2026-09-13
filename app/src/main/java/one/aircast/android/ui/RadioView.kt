@@ -20,11 +20,21 @@ internal data class RadioChannel(
     val live: Boolean,
 )
 
+internal data class RadioCalibration(
+    val running: Boolean,
+    val statusText: String,
+    val nextText: String,
+    val nextEnabled: Boolean,
+    val cancelEnabled: Boolean,
+    val skipEnabled: Boolean,
+)
+
 internal data class RadioView(
     val connected: Boolean,
     val channelCount: Int,
     val summary: String,
     val shortfall: String,
+    val calibration: RadioCalibration,
     val sticks: List<RadioStick>,
     val channels: List<RadioChannel>,
 )
@@ -41,6 +51,14 @@ internal fun radioView(view: JSONObject?): RadioView? {
         channelCount = view.optInt("channelCount"),
         summary = view.optText("summary"),
         shortfall = view.optText("shortfall"),
+        calibration = RadioCalibration(
+            running = view.optBoolean("calibrating"),
+            statusText = view.optText("statusText"),
+            nextText = view.optText("nextText"),
+            nextEnabled = view.optBoolean("nextEnabled"),
+            cancelEnabled = view.optBoolean("cancelEnabled"),
+            skipEnabled = view.optBoolean("skipEnabled"),
+        ),
         sticks = each(view, "sticks") {
             RadioStick(
                 title = it.optText("title"),
@@ -60,3 +78,7 @@ internal fun radioView(view: JSONObject?): RadioView? {
         },
     )
 }
+
+internal const val RADIO_CAL = "radioCal"
+
+internal fun radioCalAction(action: String): String = "$RADIO_CAL.$action"
