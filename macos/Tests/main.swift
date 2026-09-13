@@ -2,7 +2,13 @@ import Foundation
 
 var failures = 0
 
+// Counts what RAN, not only what failed. An assertion that never executes and one that passed
+// produced the same output until now -- the shape that let two of the core's contract tests
+// report green while comparing nothing, because a bare `return` reports PASS.
+var assertions = 0
+
 func expect(_ actual: String, _ expected: String, _ label: String) {
+    assertions += 1
     if actual != expected {
         FileHandle.standardError.write("FAIL \(label): got \(actual.debugDescription), want \(expected.debugDescription)\n".data(using: .utf8)!)
         failures += 1
@@ -10,6 +16,7 @@ func expect(_ actual: String, _ expected: String, _ label: String) {
 }
 
 func expect(_ condition: Bool, _ label: String) {
+    assertions += 1
     if !condition {
         FileHandle.standardError.write("FAIL \(label)\n".data(using: .utf8)!)
         failures += 1
@@ -3777,8 +3784,10 @@ checkFlyOverlays()
 checkSetupPages()
 checkRemoteSupport()
 
+// The count is the point: a silently skipped block still prints "passed", and only a DROP in
+// what ran distinguishes it. Reported on every run so the number travels with the green line.
 if failures == 0 {
-    print("all Swift checks passed")
+    print("all Swift checks passed (\(assertions) assertions ran)")
     exit(0)
 }
 FileHandle.standardError.write("\(failures) check(s) failed\n".data(using: .utf8)!)
