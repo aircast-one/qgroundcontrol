@@ -283,9 +283,17 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
         present.then(|| decode(&fact, &path))
     };
+    let shown = |s: &Section, controls: Vec<Value>| -> Vec<Value> {
+        let Some(monitor) = s.parameters.first().filter(|p| p.ends_with("_MONITOR")) else { return controls };
+        let chosen = |c: &Value| c["name"] != **monitor || c["value"].as_f64() != Some(0.0);
+        match controls.iter().all(chosen) {
+            true => controls,
+            false => controls.into_iter().filter(|c| c["name"] == **monitor).collect(),
+        }
+    };
     let listed: Vec<Value> = sections
         .iter()
-        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter_map(|p| read(p)).collect::<Vec<_>>() }))
+        .map(|s| json!({ "title": s.title, "note": s.note, "controls": shown(s, s.parameters.iter().filter_map(|p| read(p)).collect::<Vec<_>>()) }))
         .filter(|s| !s["controls"].as_array().unwrap().is_empty())
         .collect();
     json!({ "kind": "object", "class": "SetupPage", "page": page, "firmware": if px4 { "px4" } else { "apm" }, "available": !listed.is_empty(), "sections": listed })
@@ -381,6 +389,34 @@ mod tests {
         assert_eq!(sections[0]["controls"][0]["control"], "number");
         assert_eq!(sections[1]["title"], "Arming");
         assert_eq!(setup_view(&Fake, &["Nope".to_string()])["kind"], "null");
+    }
+
+    #[test]
+    fn a_battery_section_offers_only_its_monitor_until_one_is_chosen() {
+        struct Packs(i64);
+        impl Backend for Packs {
+            fn get(&self, path: &str) -> String {
+                let name = path.rsplit(',').next().unwrap().trim_end_matches(')');
+                match name.starts_with("BATT") {
+                    true => json!({ "kind": "fact", "name": name, "value": if name.ends_with("_MONITOR") { self.0 } else { 7 }, "valueString": "7" }),
+                    false => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "px4Firmware": false, "apmFirmware": true }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let controls = |monitor: i64| {
+            let page = setup_view(&Packs(monitor), &["Power".to_string()]);
+            page["sections"].as_array().unwrap().iter()
+                .map(|s| s["controls"].as_array().unwrap().len())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(controls(0), vec![1, 1], "a pack with no monitor has nothing to calibrate, and QGC hides the rest too");
+        assert_eq!(controls(4), vec![8, 8], "once one is chosen every setting for that pack is offered");
     }
 
     #[test]
