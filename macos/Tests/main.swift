@@ -856,6 +856,64 @@ func checkSilenceAndAnEmptySkyAreDifferentAnswers() {
 
 checkSilenceAndAnEmptySkyAreDifferentAnswers()
 
+func checkTrafficIsSpelledInTheOperatorsUnits() {
+    // Deliberately IMPERIAL. A units test written in the default unit passes whether the
+    // conversion is there or not, which is the trap the core's own adsb fix was written about
+    // and which its test at :951 still sits in.
+    func traffic(_ overrides: [String: Any]) -> AdsbTraffic? {
+        AdsbTraffic(["kind": "object", "class": "AdsbTraffic",
+                     "enabled": true as NSNumber, "available": true as NSNumber,
+                     "connected": true as NSNumber, "receiving": true as NSNumber,
+                     "ownPositionKnown": true as NSNumber,
+                     "count": 1 as NSNumber, "alerting": 0 as NSNumber,
+                     "alertUnknown": 0 as NSNumber,
+                     "units": ["distance": "ft", "altitude": "ft", "velocity": "kn",
+                               "heading": "deg", "bearing": "deg"],
+                     "contacts": [["icaoAddress": 0xABCDEF as NSNumber, "callsign": "DLH44",
+                                   "distanceMetres": 5200.0 as NSNumber,
+                                   "distance": 17060.0 as NSNumber,
+                                   "altitudeMetres": 2100.0 as NSNumber,
+                                   "altitude": 6890.0 as NSNumber,
+                                   "velocity": 243.0 as NSNumber,
+                                   "bearingDegrees": 31.0 as NSNumber]]]
+            .merging(overrides) { _, override in override })
+    }
+
+    let read = traffic([:])
+    let contact = read?.contacts.first
+
+    expect(read.map { $0.distanceText(contact!) } ?? "", "17060 ft",
+           "THE CONVERTED NUMBER COMES FROM THE CONTACT AND THE UNIT NAME FROM THE BLOCK. The "
+           + "raw distanceMetres is still served and is still 5200 -- reading THAT would spell "
+           + "metres at an operator configured in feet, which is the defect 5fb28a13e fixed")
+
+    expect(read.map { $0.altitudeText(contact!) } ?? "", "6890 ft",
+           "altitude converts too, and takes the VERTICAL unit rather than the horizontal one")
+    expect(read.map { $0.velocityText(contact!) } ?? "", "243 kn",
+           "and speed takes its own")
+    expect(read.map { $0.bearingText(contact!) } ?? "", "31 deg",
+           "a bearing does not convert, so the block names degrees and the head spells it "
+           + "without asking the core for text")
+
+    expect(AdsbTraffic.show(nil, "ft"), "",
+           "A CONTACT WITH NO RANGE RENDERS NOTHING, not 0 ft. The core withholds distance "
+           + "until it knows where the operator stands, and zero would put that aircraft on "
+           + "top of them")
+
+    expect(AdsbTraffic.show(-0.4, "ft"), "0 ft",
+           "and a converted value a hair below zero drops its sign through Measure.settled "
+           + "rather than reading -0 ft")
+
+    let metric = traffic(["units": ["distance": "m", "altitude": "m", "velocity": "m/s",
+                                    "heading": "deg", "bearing": "deg"]])
+    expect(metric.map { $0.distanceText(contact!) } ?? "", "17060 m",
+           "THE UNIT IS THE BLOCK'S AND NOT THE CONTACT'S: the same contact renders with "
+           + "whatever the block says, which is what makes one block cheaper than fifty "
+           + "per-row labels and is the whole reason the core refused a per-contact distanceText")
+}
+
+checkTrafficIsSpelledInTheOperatorsUnits()
+
 func checkTheAdapterPickerShowsTheChoiceNotTheConsequence() {
     let adapters = ["ALFA AWUS036ACM [1]", "Realtek 8812au [2]"]
 

@@ -10,6 +10,10 @@ struct AdsbContact: Equatable {
     let distanceMetres: Double?
     let bearingDegrees: Double?
     let relativeAltitudeMetres: Double?
+    let distance: Double?
+    let altitude: Double?
+    let velocity: Double?
+    let relativeAltitude: Double?
     let squawk: Int?
     let emergency: String
     let alert: Bool?
@@ -34,6 +38,10 @@ struct AdsbContact: Equatable {
         distanceMetres = number("distanceMetres")
         bearingDegrees = number("bearingDegrees")
         relativeAltitudeMetres = number("relativeAltitudeMetres")
+        distance = number("distance")
+        altitude = number("altitude")
+        velocity = number("velocity")
+        relativeAltitude = number("relativeAltitude")
         squawk = (json["squawk"] as? NSNumber)?.intValue
         emergency = (json["emergency"] as? String) ?? ""
         alert = (json["alert"] as? NSNumber)?.boolValue
@@ -49,6 +57,21 @@ struct AdsbContact: Equatable {
     var name: String { callsign.isEmpty ? String(format: "%06X", icaoAddress) : callsign }
 }
 
+struct AdsbUnits: Equatable {
+    let distance: String
+    let altitude: String
+    let velocity: String
+    let heading: String
+
+    init(_ json: Any?) {
+        let json = (json as? [String: Any]) ?? [:]
+        distance = (json["distance"] as? String) ?? ""
+        altitude = (json["altitude"] as? String) ?? ""
+        velocity = (json["velocity"] as? String) ?? ""
+        heading = (json["heading"] as? String) ?? ""
+    }
+}
+
 struct AdsbTraffic: Equatable {
     let enabled: Bool
     let available: Bool
@@ -62,6 +85,7 @@ struct AdsbTraffic: Equatable {
     let emergency: String
     let errorToken: String
     let errorDetail: String
+    let units: AdsbUnits
 
     static let none = AdsbTraffic()
 
@@ -78,6 +102,7 @@ struct AdsbTraffic: Equatable {
         emergency = ""
         errorToken = ""
         errorDetail = ""
+        units = AdsbUnits(nil)
     }
 
     init?(_ json: Any?) {
@@ -98,6 +123,7 @@ struct AdsbTraffic: Equatable {
         let error = json["error"] as? [String: Any]
         errorToken = (error?["token"] as? String) ?? ""
         errorDetail = (error?["detail"] as? String) ?? ""
+        units = AdsbUnits(json["units"])
     }
 
     // Being connected to a feed and hearing nothing from it are different states, and an empty
@@ -105,4 +131,30 @@ struct AdsbTraffic: Equatable {
     var quiet: Bool { connected && !receiving }
 
     var alertsKnown: Bool { alertUnknown == 0 }
+
+    // The unit name comes from the block ONCE, never from the contact. A contact list is fifty
+    // rows of one quantity, so a per-row unit would be fifty copies of a string the view states
+    // in a single place -- which is why the core serves a converted number here and a *Text on
+    // a singleton like the vehicle distance.
+    func distanceText(_ contact: AdsbContact) -> String {
+        Self.show(contact.distance, units.distance)
+    }
+
+    func altitudeText(_ contact: AdsbContact) -> String {
+        Self.show(contact.altitude, units.altitude)
+    }
+
+    func velocityText(_ contact: AdsbContact) -> String {
+        Self.show(contact.velocity, units.velocity)
+    }
+
+    func bearingText(_ contact: AdsbContact) -> String {
+        Self.show(contact.bearingDegrees, units.heading)
+    }
+
+    static func show(_ value: Double?, _ unit: String) -> String {
+        guard let value, value.isFinite else { return "" }
+        let printed = Measure.settled(String(format: "%.0f", value.rounded()))
+        return unit.isEmpty ? printed : printed + " " + unit
+    }
 }

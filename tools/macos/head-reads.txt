@@ -65,6 +65,7 @@ centreText
 channel
 channelCount
 channels
+choices
 class
 className
 clearMission
@@ -369,6 +370,7 @@ value
 valueString
 valueText
 vehicleId
+velocity
 verdict
 visible
 voltage
