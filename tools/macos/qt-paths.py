@@ -342,9 +342,9 @@ def main():
     print(f"  reads                {counted('read'):4}   group/get/watch/qgc* -- a served view retires these")
     print(f"  actions              {counted('action'):4}   invoke -- needs a core action, not a view, "
           f"and a grounded rig cannot exercise most of them")
-    print(f"  writes               {counted('write'):4}   set/write -- NOTHING RETIRES THESE YET: "
-          f"router.set refuses view paths and otherwise passes straight to Qt, and actions::owns "
-          f"is only consulted by invoke")
+    print(f"  writes               {counted('write'):4}   set/write -- a core `owns_write` claim retires "
+          f"these, as of 1fa63637d; router.set consults it first, then refuses view paths, then "
+          f"passes to Qt. One path claimed so far, so this column is still almost entirely Qt")
     print(f"  unclassified         {counted('unclassified'):4}   not on a call line: a multi-line call or a "
           f"path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid")
     print(f"  used more than one way {sum(1 for k in uses.values() if len(k) > 1):3}   a path both read and "
