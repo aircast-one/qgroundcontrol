@@ -50,9 +50,7 @@ private const val HOME_LABEL_LAYER = "aircast-home-label-layer"
 private const val TRAIL_LAYER = "aircast-trail-layer"
 
 private const val DEFAULT_ZOOM = 16.0
-private const val MAX_TRAIL_POINTS = 500
 
-const val TRAIL_BREAK_DEGREES = 0.5
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
 private const val LOGO_EDGE_MARGIN_PX = 16
@@ -110,41 +108,6 @@ fun vehicleFeature(
         }
     }
 
-object VehicleTrail {
-    val track = VehicleTrack()
-}
-
-class VehicleTrack(private val limit: Int = MAX_TRAIL_POINTS) {
-    private val points = ArrayDeque<TrackPoint>()
-
-    fun add(latitude: Double, longitude: Double): Boolean {
-        if (!isPlottable(latitude, longitude)) {
-            return false
-        }
-        val point = TrackPoint(latitude, longitude)
-        val last = points.lastOrNull()
-        if (last == point) {
-            return false
-        }
-        if (last != null && isJump(last, point)) {
-            points.clear()
-        }
-        points.addLast(point)
-        while (points.size > limit) {
-            points.removeFirst()
-        }
-        return true
-    }
-
-    private fun isJump(from: TrackPoint, to: TrackPoint): Boolean =
-        kotlin.math.abs(from.latitude - to.latitude) > TRAIL_BREAK_DEGREES ||
-            kotlin.math.abs(from.longitude - to.longitude) > TRAIL_BREAK_DEGREES
-
-    fun points(): List<TrackPoint> = points.toList()
-
-    val size: Int get() = points.size
-}
-
 @Composable
 fun VehicleMap(
     modifier: Modifier = Modifier,
@@ -182,7 +145,8 @@ fun VehicleMap(
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
-    val track = VehicleTrail.track
+    val trackJson by mapPath(TRACK_VIEW)
+    val track = trackReading(trackJson)
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val mapView = remember {
@@ -276,11 +240,20 @@ fun VehicleMap(
                 ?: FeatureCollection.fromFeatures(emptyList()),
         )
 
-        if (track.add(latitude, longitude) && track.size >= 2) {
-            val line = LineString.fromLngLats(track.points().map { Point.fromLngLat(it.longitude, it.latitude) })
-            (currentStyle.getSource(TRAIL_SOURCE) as? GeoJsonSource)
-                ?.setGeoJson(Feature.fromGeometry(line))
-        }
+        (currentStyle.getSource(TRAIL_SOURCE) as? GeoJsonSource)?.setGeoJson(
+            when {
+                trackDraws(track) -> FeatureCollection.fromFeatures(
+                    listOf(
+                        Feature.fromGeometry(
+                            LineString.fromLngLats(
+                                track.points.map { Point.fromLngLat(it.longitude, it.latitude) },
+                            ),
+                        ),
+                    ),
+                )
+                else -> FeatureCollection.fromFeatures(emptyList())
+            },
+        )
 
         if (follow && isPlottable(latitude, longitude)) {
             map?.cameraPosition = CameraPosition.Builder()
