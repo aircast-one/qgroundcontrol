@@ -30,8 +30,21 @@ class RemoteSupportScreenTest {
             valueString = "Unknown: 0",
             enumStrings = listOf("Disabled", "Leveling", "Leveling and Limited", "Unknown: 0"),
             enumIndex = 3,
+            unknownEnumLabel = "Unknown: 0",
         )
         assertEquals(false, listed.valueIsOffTheEnumList)
         assertEquals(true, offList.valueIsOffTheEnumList)
+    }
+
+    @Test
+    fun `the synthetic entry is spotted in a language that is not english`() {
+        val german = Fact(
+            path = "p", name = "ACRO_RP_RATE_TC", description = "", units = "",
+            valueString = "0", value = 0,
+            enumStrings = listOf("Deaktiviert", "Nivellierung", "Unbekannt: 0"),
+            enumIndex = 2, unknownEnumLabel = "Unbekannt: 0",
+            isBool = false, isString = false, readOnly = false,
+        )
+        assertEquals(true, german.valueIsOffTheEnumList)
     }
 }

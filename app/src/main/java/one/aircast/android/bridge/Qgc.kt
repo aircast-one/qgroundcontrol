@@ -21,6 +21,7 @@ data class Fact(
     val enumStrings: List<String>,
     val enumValues: List<String> = emptyList(),
     val enumIndex: Int,
+    val unknownEnumLabel: String = "",
     val controlKind: String = "",
     val bitmaskStrings: List<String> = emptyList(),
     val bitmaskValues: List<Long> = emptyList(),
@@ -39,7 +40,7 @@ data class Fact(
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
     val isBitmask: Boolean = bitmaskStrings.isNotEmpty() && bitmaskStrings.size == bitmaskValues.size
     val valueIsOffTheEnumList: Boolean =
-        enumStrings.getOrNull(enumIndex)?.startsWith("Unknown: ") == true
+        unknownEnumLabel.isNotBlank() && enumStrings.getOrNull(enumIndex) == unknownEnumLabel
 
     val boolValue: Boolean = value == true || valueString.equals("true", ignoreCase = true) || valueString == "1"
 }
@@ -190,6 +191,7 @@ object Qgc {
                 (0 until raw.length()).map { raw.optText(it) }
             } ?: emptyList(),
             enumIndex = json.optInt("enumIndex", -1),
+            unknownEnumLabel = json.text("unknownEnumLabel"),
             bitmaskStrings = json.optJSONArray("bitmaskStrings")?.let { bits ->
                 (0 until bits.length()).map { bits.optText(it) }
             } ?: emptyList(),
