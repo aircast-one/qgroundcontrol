@@ -221,40 +221,32 @@ void APMSensorsComponentController::_mavCommandResult(int vehicleId, int compone
             _rgCompassCalComplete[2] = false;
 
             _startLogCalibration();
+            const auto calibratable = [this](const QString &deviceParam, const QString &useParam) {
+                const Fact *const device = getParameterFact(ParameterManager::defaultComponentId, deviceParam);
+                const Fact *const use = getParameterFact(ParameterManager::defaultComponentId, useParam);
+                return device && use && (device->rawValue().toInt() > 0) && use->rawValue().toBool();
+            };
+            static constexpr const char *rgDeviceParams[3] = { "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3" };
+            static constexpr const char *rgUseParams[3] = { "COMPASS_USE", "COMPASS_USE2", "COMPASS_USE3" };
             uint8_t compassBits = 0;
-            if ((getParameterFact(ParameterManager::defaultComponentId, QStringLiteral("COMPASS_DEV_ID"))->rawValue().toInt() > 0) &&
-                    getParameterFact(ParameterManager::defaultComponentId, QStringLiteral("COMPASS_USE"))->rawValue().toBool()) {
-                compassBits |= 1 << 0;
-                qCDebug(APMSensorsComponentControllerLog) << "Performing onboard compass cal for compass 1";
-            } else {
-                _rgCompassCalComplete[0] = true;
-                _rgCompassCalSucceeded[0] = true;
-                _rgCompassCalFitness[0] = 0;
-            }
-            if ((getParameterFact(ParameterManager::defaultComponentId, QStringLiteral("COMPASS_DEV_ID2"))->rawValue().toInt() > 0) &&
-                    getParameterFact(ParameterManager::defaultComponentId, QStringLiteral("COMPASS_USE2"))->rawValue().toBool()) {
-                compassBits |= 1 << 1;
-                qCDebug(APMSensorsComponentControllerLog) << "Performing onboard compass cal for compass 2";
-            } else {
-                _rgCompassCalComplete[1] = true;
-                _rgCompassCalSucceeded[1] = true;
-                _rgCompassCalFitness[1] = 0;
-            }
-            if ((getParameterFact(ParameterManager::defaultComponentId, QStringLiteral("COMPASS_DEV_ID3"))->rawValue().toInt() > 0) &&
-                    getParameterFact(ParameterManager::defaultComponentId, QStringLiteral("COMPASS_USE3"))->rawValue().toBool()) {
-                compassBits |= 1 << 2;
-                qCDebug(APMSensorsComponentControllerLog) << "Performing onboard compass cal for compass 3";
-            } else {
-                _rgCompassCalComplete[2] = true;
-                _rgCompassCalSucceeded[2] = true;
-                _rgCompassCalFitness[2] = 0;
+            for (int compass = 0; compass < 3; compass++) {
+                if (calibratable(QString::fromLatin1(rgDeviceParams[compass]), QString::fromLatin1(rgUseParams[compass]))) {
+                    compassBits |= 1 << compass;
+                    qCDebug(APMSensorsComponentControllerLog) << "Performing onboard compass cal for compass" << (compass + 1);
+                } else {
+                    _rgCompassCalComplete[compass] = true;
+                    _rgCompassCalSucceeded[compass] = true;
+                    _rgCompassCalFitness[compass] = 0;
+                }
             }
 
             // We bump up the fitness value so calibration will always succeed
-            const Fact *const compassCalFitness = getParameterFact(ParameterManager::defaultComponentId, _compassCalFitnessParam);
-            _restoreCompassCalFitness = true;
-            _previousCompassCalFitness = compassCalFitness->rawValue().toFloat();
-            getParameterFact(ParameterManager::defaultComponentId, _compassCalFitnessParam)->setRawValue(100.0);
+            Fact *const compassCalFitness = getParameterFact(ParameterManager::defaultComponentId, _compassCalFitnessParam);
+            _restoreCompassCalFitness = (compassCalFitness != nullptr);
+            if (compassCalFitness) {
+                _previousCompassCalFitness = compassCalFitness->rawValue().toFloat();
+                compassCalFitness->setRawValue(100.0);
+            }
 
             _appendStatusLog(tr("Rotate the vehicle randomly around all axes until the progress bar fills all the way to the right ."));
             _vehicle->sendMavCommand(
@@ -728,7 +720,9 @@ void APMSensorsComponentController::_restorePreviousCompassCalFitness()
 {
     if (_restoreCompassCalFitness) {
         _restoreCompassCalFitness = false;
-        getParameterFact(ParameterManager::defaultComponentId, _compassCalFitnessParam)->setRawValue(_previousCompassCalFitness);
+        if (Fact *const fitness = getParameterFact(ParameterManager::defaultComponentId, _compassCalFitnessParam)) {
+            fitness->setRawValue(_previousCompassCalFitness);
+        }
     }
 }
 
