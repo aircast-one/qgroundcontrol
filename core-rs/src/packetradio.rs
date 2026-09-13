@@ -201,6 +201,7 @@ pub enum Out {
 #[derive(Debug, Default)]
 pub struct PacketRadio {
     status: Status,
+    status_text: Option<String>,
     adapter: Option<String>,
     start_error: Option<String>,
     adapters: Vec<String>,
@@ -218,9 +219,10 @@ pub struct PacketRadio {
 }
 
 impl PacketRadio {
-    pub fn reported(status: Status, adapter: Option<&str>, reading: Option<Reading>, video_packets: Option<i64>, start_error: Option<&str>) -> Self {
+    pub fn reported(status: Status, status_text: Option<&str>, adapter: Option<&str>, reading: Option<Reading>, video_packets: Option<i64>, start_error: Option<&str>) -> Self {
         PacketRadio {
             status,
+            status_text: status_text.filter(|text| !text.is_empty()).map(str::to_string),
             adapter: adapter.map(str::to_string),
             adapters: adapter.map(str::to_string).into_iter().collect(),
             start_error: start_error.filter(|error| !error.is_empty()).map(str::to_string),
@@ -483,6 +485,11 @@ impl PacketRadio {
             "kind": "object",
             "class": "PacketRadio",
             "status": self.status.token(),
+            // The token is the state a head keys on; this is the sentence it shows. QGC composes
+            // it - several statuses interpolate the adapter name or a driver error, and all are
+            // translated - so a head given only the token has to invent wording for eight states
+            // and two heads then spell the same status differently.
+            "statusText": self.status_text,
             "linkActive": self.link_active(),
             "running": self.running,
             "starting": self.starting,
@@ -563,7 +570,10 @@ fn reported_snapshot(args: &[String]) -> Result<Value, String> {
             })
         })
         .transpose()?;
-    Ok(PacketRadio::reported(status, present(args, 1), reading, whole(args, 6)?, present(args, 7)).snapshot(0))
+    // No statusText: this path builds a radio from positional arguments and QGC is not composing
+    // anything for it, so there is no sentence to carry. Serving the token's own name here would
+    // be the core inventing wording, which is the thing statusText exists to avoid.
+    Ok(PacketRadio::reported(status, None, present(args, 1), reading, whole(args, 6)?, present(args, 7)).snapshot(0))
 }
 
 static HOST_REPORT: LazyLock<Mutex<Option<PacketRadio>>> = LazyLock::new(|| Mutex::new(None));
@@ -592,6 +602,7 @@ pub fn host_report(report: &Value) -> bool {
     });
     *reported() = Some(PacketRadio::reported(
         status,
+        report.get("statusText").and_then(Value::as_str),
         report.get("adapter").and_then(Value::as_str).filter(|name| !name.is_empty()),
         reading,
         report.get("videoPackets").and_then(Value::as_i64),
@@ -649,6 +660,18 @@ mod tests {
 
     fn strings(args: &[&str]) -> Vec<String> {
         args.iter().map(|arg| arg.to_string()).collect()
+    }
+
+    #[test]
+    fn the_status_sentence_travels_beside_the_token() {
+        assert!(host_report(&json!({ "status": "noAdapter", "statusText": "No supported Wi-Fi adapter found" })));
+        let view = packet_radio_view(&Nothing, &[]);
+        assert_eq!(view["status"], "noAdapter", "the token is the state a head keys on");
+        assert_eq!(view["statusText"], "No supported Wi-Fi adapter found", "and the sentence is what it shows: QGC composes it, and several statuses interpolate an adapter name or a driver error that only it has");
+
+        assert!(host_report(&json!({ "status": "noAdapter" })));
+        assert_eq!(packet_radio_view(&Nothing, &[])["statusText"], Value::Null, "a report carrying no sentence gets none invented for it here");
+        host_forgotten();
     }
 
     struct Nothing;

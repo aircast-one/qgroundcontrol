@@ -89,6 +89,11 @@ void PacketRadioManager::_reportToCore()
 
     QJsonObject report;
     report.insert(QStringLiteral("status"), tokens.value(static_cast<int>(_status)));
+    // The token is the state and statusText is the sentence, and only this object can compose the
+    // sentence: several of them interpolate the adapter name or a driver error, and all are
+    // translated. A head given the token alone has to invent wording for eight states, which is
+    // how two heads end up spelling the same status differently.
+    report.insert(QStringLiteral("statusText"), statusText());
     report.insert(QStringLiteral("adapter"), _adapterName);
     report.insert(QStringLiteral("antennaRssi"), whole(antennaRssi()));
     report.insert(QStringLiteral("antennaSnr"), whole(antennaSnr()));

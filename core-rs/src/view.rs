@@ -538,6 +538,7 @@ mod deps_cover_reads {
             "these are read by a view and named in no dep, so the view is never recomputed when they change. Watch them, or add them to \
              UNWATCHED_BECAUSE_CONSTANT once you have checked the Q_PROPERTY really is CONSTANT: {unwatched:?}"
         );
+
     }
 
     #[test]
