@@ -52,6 +52,8 @@ final class FenceCircle: MKCircle {
 final class FirmwareFenceCircle: MKCircle {}
 
 final class OrbitCircle: MKCircle {}
+final class LandingDescentPolyline: MKPolyline {}
+final class LoiterCircle: MKCircle {}
 
 final class GotoAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
@@ -126,6 +128,7 @@ struct MissionMap: NSViewRepresentable {
     let add: (Double, Double) -> Void
     let move: (Int, Double, Double) -> Void
     var firmwareFence: FirmwareFence?
+    var landing = LandingPattern.none
     var secondary: ((Double, Double, CGPoint) -> Void)?
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
@@ -222,6 +225,24 @@ struct MissionMap: NSViewRepresentable {
         shapes.compactMap(MissionMap.overlay(for:)).forEach { map.addOverlay($0, level: .aboveLabels) }
         firmwareFence.flatMap(MissionMap.overlay(for:))
             .map { map.addOverlay($0, level: .aboveLabels) }
+
+        // The descent is the ground the vehicle loses between the slope's start and the touchdown
+        // point, and the circle is where it waits to reach that slope. Drawn from the core's own
+        // coordinates; loiterCentre is nil unless a radius came with it, so a pattern with no
+        // loiter draws its descent and no ring.
+        var descent = landing.descent.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
+        if descent.count >= 2 {
+            map.addOverlay(LandingDescentPolyline(coordinates: &descent, count: descent.count),
+                           level: .aboveLabels)
+        }
+        if let centre = landing.loiterCentre, let radius = landing.drawnRadius {
+            map.addOverlay(LoiterCircle(center: CLLocationCoordinate2D(latitude: centre.latitude,
+                                                                      longitude: centre.longitude),
+                                        radius: radius),
+                           level: .aboveLabels)
+        }
 
         surveys.filter { $0.count >= 3 }.forEach { area in
             var corners = area.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
@@ -590,6 +611,19 @@ struct MissionMap: NSViewRepresentable {
                 renderer.strokeColor = .systemOrange
                 renderer.fillColor = NSColor.systemOrange.withAlphaComponent(0.12)
                 renderer.lineWidth = 2
+                return renderer
+            }
+            if let descent = overlay as? LandingDescentPolyline {
+                let renderer = MKPolylineRenderer(polyline: descent)
+                renderer.strokeColor = .systemGreen
+                renderer.lineWidth = 2.5
+                return renderer
+            }
+            if let loiter = overlay as? LoiterCircle {
+                let renderer = MKCircleRenderer(circle: loiter)
+                renderer.strokeColor = NSColor.systemGreen.withAlphaComponent(0.8)
+                renderer.fillColor = NSColor.systemGreen.withAlphaComponent(0.08)
+                renderer.lineWidth = 1.5
                 return renderer
             }
             if let transect = overlay as? TransectPolyline {

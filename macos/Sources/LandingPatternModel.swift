@@ -1,33 +1,28 @@
 import Foundation
 
+// FIVE FIELDS WERE DECODED HERE AND READ BY NOTHING, and they are gone rather than drawn.
+// landingAltitudeMetres, landingHeadingDegrees and landingDistanceMetres arrive from landing.rs
+// as raw numbers with no *Text sibling, so this head cannot spell them without inventing a
+// precision the core did not choose -- which is the coupling d07d9779e removed from the item
+// altitude field. loiterToAltitude and index had no drawing and no caller at all.
 struct LandingPattern: Equatable {
-    let index: Int
     let landing: GeoPoint?
     let slopeStart: GeoPoint?
     let finalApproach: GeoPoint?
     let loiterRadiusMetres: Double?
     let loiterRadiusText: String
     let loiterClockwise: Bool?
-    let loiterToAltitude: Bool?
-    let landingAltitudeMetres: Double?
-    let landingHeadingDegrees: Double?
-    let landingDistanceMetres: Double?
     let reason: String
 
     static let none = LandingPattern()
 
     private init() {
-        index = -1
         landing = nil
         slopeStart = nil
         finalApproach = nil
         loiterRadiusMetres = nil
         loiterRadiusText = ""
         loiterClockwise = nil
-        loiterToAltitude = nil
-        landingAltitudeMetres = nil
-        landingHeadingDegrees = nil
-        landingDistanceMetres = nil
         reason = ""
     }
 
@@ -40,17 +35,12 @@ struct LandingPattern: Equatable {
             return value
         }
         let truth: (String) -> Bool? = { key in (read[key] as? NSNumber)?.boolValue }
-        index = (read["index"] as? NSNumber)?.intValue ?? -1
         landing = GeoPoint(json: read["landing"])
         slopeStart = GeoPoint(json: read["slopeStart"])
         finalApproach = GeoPoint(json: read["finalApproach"])
         loiterRadiusMetres = number("loiterRadiusMetres")
         loiterRadiusText = (read["loiterRadiusText"] as? String) ?? ""
         loiterClockwise = truth("loiterClockwise")
-        loiterToAltitude = truth("loiterToAltitude")
-        landingAltitudeMetres = number("landingAltitudeMetres")
-        landingHeadingDegrees = number("landingHeadingDegrees")
-        landingDistanceMetres = number("landingDistanceMetres")
         reason = (read["reason"] as? String) ?? ""
     }
 

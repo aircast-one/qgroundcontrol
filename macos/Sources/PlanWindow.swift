@@ -553,6 +553,10 @@ struct PlanInspector: View {
             legCard(leg)
         }
 
+        if !mission.selectedLanding.loiterDetail.isEmpty {
+            landingCard
+        }
+
         if mission.selectedSpeed.shown(missionStart: showsMissionSettings, vehicle: mission.vehicle) {
             speedCard
         }
@@ -679,6 +683,19 @@ struct PlanInspector: View {
                 GroupRow(title: "Distance", value: item.distanceText, showSeparator: false)
                 GroupRow(title: "Heading", value: item.azimuthText)
                 GroupRow(title: "Altitude change", value: item.altitudeChangeText)
+            }
+        }
+    }
+
+    // Shown only when the core spelled a loiter radius. The pattern's altitude, heading and
+    // distance are served as raw numbers with no text sibling, so there is nothing here that
+    // this head could spell without choosing a precision the core did not.
+    private var landingCard: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            SectionLabel(text: "Landing Pattern")
+            GroupCard {
+                GroupRow(title: "Loiter", value: mission.selectedLanding.loiterDetail,
+                         showSeparator: false)
             }
         }
     }
@@ -1175,6 +1192,7 @@ struct PlanView: View {
                        add: place(latitude:longitude:),
                        move: mission.move(sequence:latitude:longitude:),
                        firmwareFence: fenceRally.firmwareFence,
+                       landing: mission.selectedLanding,
                        surveys: mission.surveyAreas,
                        corridors: mission.corridorPaths,
                        transects: mission.patternTransects,
