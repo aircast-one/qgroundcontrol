@@ -562,6 +562,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setDefaultAltitude(_ value: String) {
+        if let refused = Measure.numberRefusal(value) { writeFailure = refused; return }
         guard let entered = Double(value), entered.isFinite else { return }
         if let refused = altitudeRange.refusal(value) {
             writeFailure = refused
@@ -602,6 +603,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func setSpeed(_ setting: String, _ value: String, _ range: FactRange) {
+        if let refused = Measure.numberRefusal(value) { writeFailure = refused; return }
         guard let speed = Double(value), speed.isFinite else { return }
         if let refused = range.refusal(value) {
             writeFailure = refused
@@ -643,6 +645,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             return
         }
         guard let item = items.first(where: \.isSelected) else { return }
+        if let refused = Measure.numberRefusal(value) { writeFailure = refused; return }
         write("plan.missionController.visualItems.\(item.index).\(fact.pathSuffix)",
               Double(value) ?? value, fact.name)
         reload()

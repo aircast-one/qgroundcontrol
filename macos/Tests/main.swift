@@ -1934,6 +1934,7 @@ func checkMissionItemKinds() {
     checkTheEditFieldMatchesTheCoreOnPrecision()
     checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact()
     checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines()
+    checkANumberFieldRefusesAmbiguityRatherThanGuessing()
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
@@ -5331,6 +5332,26 @@ func checkSensorsComponentIsFoundByClass() {
     expect(component(name: "センサ", className: "SensorsComponent")?.id ?? "", "SensorsComponent",
            "identity comes from the class too -- keying it on a translated name would have "
            + "rebuilt every row the moment the language changed")
+}
+
+func checkANumberFieldRefusesAmbiguityRatherThanGuessing() {
+    expect(Measure.numberRefusal("1,500") ?? "", Measure.commaAdvice,
+           "THE THOUSAND-FOLD ERROR. FactControl replaced every comma with a full stop, so an "
+           + "operator typing 1,500 wrote Double(\"1.500\") -- one point five -- into a field that "
+           + "sets altitudes and speeds. Silent, plausible, and off by a factor of a thousand")
+    expect(Measure.numberRefusal("12,5") ?? "", Measure.commaAdvice,
+           "and the German decimal is refused by the SAME rule rather than guessed at: \"12,500\" "
+           + "is twelve and a half in one locale and twelve thousand five hundred in another, and "
+           + "nothing in the string says which. Refusing names the problem; choosing is how 1,500 "
+           + "became 1.5")
+    expect(Measure.numberRefusal("12.5") == nil, "a plain decimal is a number and passes")
+    expect(Measure.numberRefusal(" 47 ") == nil, "surrounding space is not the operator's mistake")
+    expect(Measure.numberRefusal("abc") ?? "", "abc is not a number.",
+           "and something that is not a number at all says so, rather than returning in silence "
+           + "the way setDefaultAltitude and setSpeed did")
+    expect(Measure.numberRefusal("") ?? "", " is not a number.",
+           "an empty entry refuses too -- Double(\"\") is nil, and a field cleared and committed "
+           + "must not read as a request to write nothing")
 }
 
 func checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines() {
