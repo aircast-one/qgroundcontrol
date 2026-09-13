@@ -31,6 +31,6 @@ final class MavlinkConsoleStore: ObservableObject, Probeable {
     func probeState() -> [String: Any] {
         ["connected": console.connected, "lines": console.lines.count,
          "last": console.last ?? "", "watching": watchPoll != nil,
-         "empty": console.emptyText]
+         "emptyText": console.emptyText]
     }
 }

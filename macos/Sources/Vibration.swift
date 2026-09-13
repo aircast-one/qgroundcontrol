@@ -29,7 +29,7 @@ final class VibrationStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["available": reading.available, "connected": reading.connected,
-         "empty": reading.emptyText, "units": reading.units,
+         "emptyText": reading.emptyText, "units": reading.units,
          "axes": reading.axes.map { ["axis": $0.axis, "label": $0.label,
                                      "value": $0.value ?? -1,
                                      "severity": $0.severity.map { String(describing: $0) } ?? ""] },
