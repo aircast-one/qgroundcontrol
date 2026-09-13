@@ -14,7 +14,6 @@ on:
       - '.github/workflows/android-macos.yml'
       - 'deploy/android/**'
       - 'src/**'
-      - 'android/**'
       - 'CMakeLists.txt'
       - 'cmake/**'
       - 'translations/*'

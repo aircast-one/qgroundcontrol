@@ -132,7 +132,7 @@ runs:
       shell: bash
       run: |
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-          "${GITHUB_WORKSPACE}"/android/gradlew.bat --version
+          "${GITHUB_WORKSPACE}"/deploy/android/gradlew.bat --version
         else
-          "${GITHUB_WORKSPACE}"/android/gradlew --version
+          "${GITHUB_WORKSPACE}"/deploy/android/gradlew --version
         fi
