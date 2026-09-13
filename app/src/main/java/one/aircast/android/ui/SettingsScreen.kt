@@ -142,11 +142,16 @@ fun FactList(groupPath: String, modifier: Modifier = Modifier) {
 internal fun enumLabel(fact: Fact): String =
     fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
 
+internal fun factSubtitle(fact: Fact): String = when {
+    fact.enumStrings.isNotEmpty() || fact.bitmaskStrings.isNotEmpty() || fact.isBool -> ""
+    else -> fact.units
+}
+
 @Composable
 internal fun FactRow(
     fact: Fact,
     title: String = fact.title,
-    subtitle: String = fact.units,
+    subtitle: String = factSubtitle(fact),
     onWrite: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
