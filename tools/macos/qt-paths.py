@@ -127,6 +127,31 @@ what the head still SPELLS. Refused once on 2026-09-14 for this reason, which is
 the inflated-count problem in the header: an undercount is a number nobody re-derives, and a
 deflated one is a number nobody questions at all.
 
+I CHANGED THIS FILE AND MEASURED ONLY ONE OF THE TWO HEADS IT SERVES. d2e7b8788 gated the
+constant table on `PATH.fullmatch`, which requires a root followed by a dot. Android binds bare
+ROOTS to constants -- `const val CAL = "sensorsCal"`, `PLAN_ROOT = "plan"` -- and interpolates
+them as `"$CAL.nextClicked"`, so those constants left the table and seventeen real paths went
+invisible: plan.sendToVehicle, plan.saveToFile, logDownload.eraseAll, sensorsCal.nextClicked and
+more. Android read 111 before and 93 after, over an unchanged tree. macOS read 116 both times,
+which is why my check passed.
+
+So: WHEN A SHARED INSTRUMENT CHANGES, RUN IT OVER EVERY HEAD IT SERVES, not the one whose
+number you were trying to fix. And the reason the gate was wrong is worth more than the gate: I
+tightened on the constant's VALUE because I was afraid of `static let probeID = "geoTag"`, a
+bare root that is not a path -- when probeID was already excluded by the NAME pattern and could
+not have entered the table at all. I over-corrected for a risk that was already handled, and the
+over-correction broke a head I do not read.
+
+THE DISCRIMINATOR IS THE CONSTANT'S USE, NOT ITS VALUE. A root-valued constant is kept for
+INTERPOLATION, where expanding it produces a string this regex then judges on its merits; it is
+yielded BARE only on a line carrying a recognised call, so `Qgc.group(LINKS_GROUP_PATH)` counts
+and `registry[probeID]` cannot. That is why `constants()` returns two tables rather than one.
+
+AND THIS IS THE FIRST FLATTERING ERROR THAT ACTUALLY LANDED -- one commit after this file
+started warning about them. 110 -> 93 overnight reads as a good night; nobody re-derives a
+number that moved the way they wanted. It was caught only because someone applied that rule to
+a result they liked.
+
 SERVED paths (`view.*`) are counted separately as the numerator of the migration: the head
 is done with a root when its raw count reaches zero.
 
