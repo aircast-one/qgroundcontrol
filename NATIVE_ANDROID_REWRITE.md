@@ -5327,9 +5327,24 @@ to type a number. `Fact::enumIndex()` *appends* that synthesised entry to the sh
 and returns its index, so after the first read the value is genuinely in the list and no data
 distinguishes it — and the bridge cannot avoid triggering the append, because `enumOrValueString`,
 which is how both heads render a readable value, calls `enumStringValue` calls `enumIndex`. The
-macOS head carries the same `hasPrefix` check for the same reason. Fixing it means teaching
+macOS head carries the same `hasPrefix` check for the same reason. ~~Fixing it means teaching
 `FactMetaData` to remember which entries it synthesised; that is a FactSystem change, not a head one,
-and it is not worth it for one screen in one locale. Recorded rather than attempted.
+and it is not worth it for one screen in one locale. Recorded rather than attempted.~~
+
+**Attempted and done, 2026-09-13, and this entry named the fix correctly.** The
+FactSystem change is `Fact::unknownEnumLabel`, a property carrying the exact
+string it synthesised, added by a peer and already in the bridge allowlist. All
+three consumers now compare against it instead of the English prefix: macOS in
+`2d680fdf0`, the core in `e325cf370`, this head in `ba63111`. Each of the three
+had a test whose fixture supplied an `Unknown: N` string and no label, so each
+could only pass by matching English; all three now carry a German fixture.
+Confirmed on the handset with `OFFLIST_ENUM=1`, which puts `FRAME_CLASS` at 99:
+`view.control` offers 18 options rather than 19 and displays `99`.
+
+What this entry got right is worth more than what it got wrong. "Not worth it"
+was a judgement that expired the moment someone thought it was worth it, but
+"teach FactMetaData to remember which entries it synthesised" described the
+landed fix precisely, months of reading apart.
 
 ## Phase 6 — Shell · 2 weeks
 
@@ -7111,10 +7126,17 @@ two formatters, one product. `maxTelemetryMetres` has no `Text` sibling, so the
 figure that says whether a plan exceeds radio range cannot be drawn without the
 head spelling metres.
 
-**And one on my side, deliberately not fixed.** The altitude field's label reads
+~~**And one on my side, deliberately not fixed.** The altitude field's label reads
 `Alt m` with no frame. My UI has no altitude-mode control, so no simple item in
 any plan I can build carries a non-launch frame — the path is unreachable and
-fixing it would be blind work against a fixture. It waits for a mode control.
+fixing it would be blind work against a fixture. It waits for a mode control.~~
+**Both halves done, 2026-09-13.** The mode control exists (`f1d8607`): the item
+editor carries a frame picker reading `view.altitudeModes`, driven on the
+handset through Relative To Launch, AMSL, Calculated Above Terrain and Terrain
+Frame. And the label takes the core's word rather than inventing one
+(`a9dfd92`), so the field reads `Alt m AGL` and `Alt m AMSL` against a real
+item rather than a fixture. The thing this entry was waiting for arrived, and
+nothing would have told the entry.
 
 ### A caveat on every fence and rally result in this document
 
