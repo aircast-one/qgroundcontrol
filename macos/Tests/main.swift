@@ -1160,7 +1160,7 @@ func checkFactRangesRefuseTheWriteQGCWouldRefuse() {
     let unranged = ItemFact.owned([
         ["name": "Delay", "property": "delay", "valueString": "45"],
     ], label: { $0 })
-    expect(unranged[0].lowest == nil && unranged[0].highest == nil,
+    expect(unranged[0].range.lowest == nil && unranged[0].range.highest == nil,
            "a fact serving no bounds at all carries none")
     expect(unranged[0].refusal("-5") == nil, "and refuses nothing")
 }
@@ -1184,6 +1184,42 @@ func checkARefusedEditDoesNotStayOnScreen() {
 }
 
 checkARefusedEditDoesNotStayOnScreen()
+
+func checkSettingsRangesUseTheSameRuleAsItemFacts() {
+    let cruise = FactRange(["min": 1, "max": 1.7976931348623157e+308,
+                            "minString": "1.00", "maxString": "1797693134862315708.00",
+                            "minIsDefaultForType": false, "maxIsDefaultForType": true],
+                           title: "Cruise speed")
+    expect(cruise.refusal("0.5") ?? "", "Cruise speed must be at least 1.00.",
+           "the old setSpeed read the same minimum and silently wrote it instead -- "
+           + "max(speed, slowest) -- so an operator asking for 0.5 m/s got 1 m/s and no word "
+           + "that their number had been replaced. QGC refuses it; a write that substitutes a "
+           + "value the operator did not choose is worse than one that only displays wrongly")
+    expect(cruise.refusal("500") == nil,
+           "and the filled-in maximum bounds nothing, so a fast cruise is still allowed")
+
+    let launch = FactRange(["min": -1.7976931348623157e+308, "max": 1.7976931348623157e+308,
+                            "minString": "-1797693134862315708.00",
+                            "maxString": "1797693134862315708.00",
+                            "minIsDefaultForType": true, "maxIsDefaultForType": true],
+                           title: "Launch altitude")
+    expect(launch.refusal("-4000") == nil,
+           "the launch altitude declares NEITHER bound -- measured on the running app -- so the "
+           + "same rule applied uniformly refuses nothing there and needs no special case")
+
+    let altitude = FactRange(["min": 0, "max": 1.7976931348623157e+308,
+                              "minString": "0", "maxString": "1797693134862315708.00",
+                              "minIsDefaultForType": false, "maxIsDefaultForType": true],
+                             title: "The altitude for new items")
+    expect(altitude.refusal("-50") ?? "", "The altitude for new items must be at least 0.",
+           "a negative altitude for new items was written unchecked")
+
+    expect(FactRange([:], title: "").refusal("-9999") == nil,
+           "and a range built from nothing at all refuses nothing, which is what every model "
+           + "holds before its first read")
+}
+
+checkSettingsRangesUseTheSameRuleAsItemFacts()
 
 
 func checkUnplacedCommands() {

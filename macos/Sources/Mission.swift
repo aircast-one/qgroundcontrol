@@ -36,6 +36,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var distanceModes: [AltitudeModeOffer] = []
     @Published private(set) var defaultAltitude = ""
     @Published private(set) var defaultAltitudeUnits = Measure.defaultUnits
+    private var altitudeRange = FactRange([:], title: "")
+    private var cruiseRange = FactRange([:], title: "")
+    private var hoverRange = FactRange([:], title: "")
     @Published private(set) var speedUnits = ItemSpeed.metresPerSecond
     @Published private(set) var summary = MissionSummary.empty
     @Published private(set) var vehicle = MissionVehicle.unknown
@@ -198,6 +201,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         let altitudeFact = Bridge.group("settings.appSettings.defaultMissionItemAltitude")
         defaultAltitude = (altitudeFact["valueString"] as? String) ?? ""
         defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.defaultUnits
+        altitudeRange = FactRange(altitudeFact, title: "The altitude for new items")
 
         let controllerVehicle = Bridge.group("plan.controllerVehicle")
         vehicle = MissionVehicle(
@@ -208,8 +212,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             apmFirmware: (controllerVehicle["apmFirmware"] as? NSNumber)?.boolValue ?? false)
         let cruiseFact = Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")
         cruiseSpeed = (cruiseFact["valueString"] as? String) ?? ""
+        cruiseRange = FactRange(cruiseFact, title: "Cruise speed")
         let hoverFact = Bridge.group("settings.appSettings.offlineEditingHoverSpeed")
         hoverSpeed = (hoverFact["valueString"] as? String) ?? ""
+        hoverRange = FactRange(hoverFact, title: "Hover speed")
         speedUnits = (cruiseFact["units"] as? String)
             ?? (hoverFact["units"] as? String) ?? ItemSpeed.metresPerSecond
         launch = LaunchPosition(
@@ -544,8 +550,12 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setDefaultAltitude(_ value: String) {
-        guard let metres = Double(value), metres.isFinite else { return }
-        write("settings.appSettings.defaultMissionItemAltitude", metres,
+        guard let entered = Double(value), entered.isFinite else { return }
+        if let refused = altitudeRange.refusal(value) {
+            writeFailure = refused
+            return
+        }
+        write("settings.appSettings.defaultMissionItemAltitude", entered,
               "the altitude for new items")
         reload()
     }
@@ -572,18 +582,20 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setCruiseSpeed(_ value: String) {
-        setSpeed("offlineEditingCruiseSpeed", value)
+        setSpeed("offlineEditingCruiseSpeed", value, cruiseRange)
     }
 
     func setHoverSpeed(_ value: String) {
-        setSpeed("offlineEditingHoverSpeed", value)
+        setSpeed("offlineEditingHoverSpeed", value, hoverRange)
     }
 
-    private func setSpeed(_ setting: String, _ value: String) {
+    private func setSpeed(_ setting: String, _ value: String, _ range: FactRange) {
         guard let speed = Double(value), speed.isFinite else { return }
-        let path = "settings.appSettings.\(setting)"
-        let slowest = (Bridge.group(path)["min"] as? NSNumber)?.doubleValue ?? 1
-        write(path, max(speed, slowest), "the speed")
+        if let refused = range.refusal(value) {
+            writeFailure = refused
+            return
+        }
+        write("settings.appSettings.\(setting)", speed, "the speed")
         reload()
     }
 

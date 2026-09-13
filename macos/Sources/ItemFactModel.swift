@@ -12,6 +12,33 @@ struct FactBound: Equatable {
     }
 }
 
+struct FactRange: Equatable {
+    let title: String
+    let lowest: FactBound?
+    let highest: FactBound?
+
+    init(_ json: [String: Any], title: String) {
+        self.title = title
+        lowest = FactBound(json["min"], text: json["minString"],
+                           filledIn: json["minIsDefaultForType"])
+        highest = FactBound(json["max"], text: json["maxString"],
+                            filledIn: json["maxIsDefaultForType"])
+    }
+
+    func refusal(_ entry: String) -> String? {
+        guard let typed = Double(entry) else { return nil }
+        let under = lowest.map { typed < $0.limit } ?? false
+        let over = highest.map { typed > $0.limit } ?? false
+        guard under || over else { return nil }
+        switch (lowest, highest) {
+        case let (low?, high?): return "\(title) must be within \(low.text) and \(high.text)."
+        case let (low?, nil): return "\(title) must be at least \(low.text)."
+        case let (nil, high?): return "\(title) must be at most \(high.text)."
+        default: return nil
+        }
+    }
+}
+
 struct ItemFact: Identifiable, Equatable {
     let pathSuffix: String
     let name: String
@@ -21,8 +48,7 @@ struct ItemFact: Identifiable, Equatable {
     let units: String
     let options: [String]
     let readOnly: Bool
-    let lowest: FactBound?
-    let highest: FactBound?
+    let range: FactRange
     var group = ItemFact.itemGroup
 
     var id: String { pathSuffix }
@@ -57,24 +83,10 @@ struct ItemFact: Identifiable, Equatable {
         units = (object["units"] as? String) ?? ""
         options = (object["enumStrings"] as? [String]) ?? []
         readOnly = (object["readOnly"] as? NSNumber)?.boolValue ?? false
-        lowest = FactBound(object["min"], text: object["minString"],
-                           filledIn: object["minIsDefaultForType"])
-        highest = FactBound(object["max"], text: object["maxString"],
-                            filledIn: object["maxIsDefaultForType"])
+        range = FactRange(object, title: title)
     }
 
-    func refusal(_ entry: String) -> String? {
-        guard let typed = Double(entry) else { return nil }
-        let under = lowest.map { typed < $0.limit } ?? false
-        let over = highest.map { typed > $0.limit } ?? false
-        guard under || over else { return nil }
-        switch (lowest, highest) {
-        case let (low?, high?): return "\(title) must be within \(low.text) and \(high.text)."
-        case let (low?, nil): return "\(title) must be at least \(low.text)."
-        case let (nil, high?): return "\(title) must be at most \(high.text)."
-        default: return nil
-        }
-    }
+    func refusal(_ entry: String) -> String? { range.refusal(entry) }
 
     // A fact in one of the item's fact lists is addressed by its position; a fact that
     // is a property of the item is addressed by that property's name.
