@@ -998,9 +998,19 @@ func checkObstacleSilenceIsNotClearAir() {
     expect(obstacle(["available": false as NSNumber]).summary, "No sensor",
            "FOUR WAYS THE PANEL CAN SHOW NOTHING AND ONLY ONE IS GOOD NEWS. No sensor is the "
            + "first")
-    expect(obstacle(["enabled": false as NSNumber]).summary, "Avoidance off",
-           "a sensor present but switched off is the second, and an operator who turned it off "
-           + "should see that rather than an empty row")
+    expect(obstacle(["enabled": false as NSNumber]).summary, "13.8 ft",
+           "AVOIDANCE BEING OFF MUST NEVER SUPPRESS A READING, and this one was witnessed: "
+           + "apmvehicle reports OBSTACLE_DISTANCE with enabled:false, and the panel said "
+           + "\"Avoidance off\" while its own expanded rows said 3.2 m. `enabled` says whether "
+           + "the AUTOPILOT will steer around what the sensor sees; with it off the operator "
+           + "needs the distance MORE, because nothing is going to turn for them")
+
+    expect(obstacle(["enabled": false as NSNumber, "nearest": NSNull()]).summary, "Avoidance off",
+           "it is still worth saying when there is nothing else to say -- an operator who "
+           + "switched avoidance off should see that rather than a bare Nothing detected")
+
+    expect(obstacle(["enabled": false as NSNumber]).level == .caution,
+           "and a live reading gets a level whatever the avoidance flag says")
     expect(obstacle(["stale": true as NSNumber]).summary, "Readings stopped",
            "READINGS THAT STOPPED ARRIVING READ AS CLEAR AIR AND ARE NOT. This is the dangerous "
            + "one: the panel would otherwise say nothing is out there when the truth is that "

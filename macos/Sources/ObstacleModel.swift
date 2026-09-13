@@ -55,18 +55,20 @@ struct ObstacleDistance: Equatable {
     // sensor whose readings have stopped arriving, which reads as clear air and is not.
     var summary: String {
         guard available else { return "No sensor" }
-        guard enabled else { return "Avoidance off" }
         if stale == true { return "Readings stopped" }
-        guard let nearest else {
-            return sectors == 0 ? "Nothing detected" : "Nothing in range"
+        if let nearest {
+            return nearest.distanceText.isEmpty ? nearest.sectorText : nearest.distanceText
         }
-        return nearest.distanceText.isEmpty ? nearest.sectorText : nearest.distanceText
+        return enabled ? "Nothing detected" : "Avoidance off"
     }
 
+    // `enabled` says whether the AUTOPILOT will steer around what the sensor sees. It does not
+    // say whether the sensor sees anything, and it must never suppress a reading: with avoidance
+    // off the operator needs the distance MORE, because nothing is going to turn for them.
     var level: FlyTelemetry.Level {
-        guard available, enabled else { return .unknown }
+        guard available else { return .unknown }
         if stale == true { return .caution }
-        guard let nearest else { return .good }
+        guard let nearest else { return enabled ? .good : .unknown }
         return nearest.close ? .warning : .caution
     }
 
@@ -79,7 +81,8 @@ struct ObstacleDistance: Equatable {
         }
         return [DetailRow(label: "Nearest", value: nearest.distanceText),
                 DetailRow(label: "Direction", value: nearest.sectorText),
-                DetailRow(label: "Sectors reporting", value: String(sectors))]
+                DetailRow(label: "Sectors reporting", value: String(sectors)),
+                DetailRow(label: "Avoidance", value: enabled ? "" : "Off")]
             .filter { !$0.value.isEmpty }
     }
 }
