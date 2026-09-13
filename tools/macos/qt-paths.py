@@ -96,6 +96,20 @@ Both are BROWSERS over the live object graph, and reflection over paths nobody e
 advance is the one thing a fixed view cannot replace. They will still be here when the port is
 done, and counting them as remaining work makes a finished migration look stalled.
 
+THE RAW COUNT RISES DURING PARITY WORK AND THAT IS NOT REGRESSION. Feature parity with
+QGroundControl became required scope on 2026-09-14, and every feature built against a view
+that covers only its READ side adds a raw Qt path for its writes. 96c8e8282 is the worked
+example: the packet radio adapter picker had to write
+`settings.packetRadioSettings.deviceName` because view.packetRadio reports radio state and
+has nothing for choosing an adapter, so macOS went 118 -> 119 on a commit that closed a
+parity gap. The count measures REMAINING QT DEPENDENCE, which is the right question at the
+end and an actively misleading one in the middle. Read the direction against what landed,
+never on its own.
+
+Each such addition is also a core ask rather than an accident: a head writing a Qt setting
+directly is how two heads come to disagree about validation, which is the same argument as
+not converting units head-side. Batch them as they appear.
+
 SERVED paths (`view.*`) are counted separately as the numerator of the migration: the head
 is done with a root when its raw count reaches zero.
 
