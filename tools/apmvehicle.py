@@ -19,7 +19,7 @@ INT_PARAMS = frozenset(
      "BATT_CURR_PIN", "BATT2_MONITOR", "BATT2_FS_LOW_ACT", "BATT2_FS_CRT_ACT",
      "BATT2_CAPACITY", "FENCE_ACTION", "FS_GCS_ENABLE", "FRAME",
      "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3",
-     "COMPASS_USE", "COMPASS_USE2", "COMPASS_USE3",
+     "COMPASS_USE", "COMPASS_USE2", "COMPASS_USE3", "COMPASS_LEARN",
      "BATT2_VOLT_PIN", "BATT2_CURR_PIN"]
     + ["RC%d_TRIM" % ch for ch in range(1, 9)]
     + ["FLTMODE%d" % slot for slot in range(1, 7)]
@@ -201,7 +201,7 @@ def main():
                         ("FRAME", 1.0), ("COMPASS_DEV_ID", 97539.0),
                         ("COMPASS_DEV_ID2", 131874.0), ("COMPASS_DEV_ID3", 0.0),
                         ("COMPASS_USE", 1.0), ("COMPASS_USE2", 1.0),
-                        ("COMPASS_USE3", 0.0)):
+                        ("COMPASS_USE3", 0.0), ("COMPASS_LEARN", 0.0)):
         params[name] = value
     for name, value in (("ATC_INPUT_TC", 0.15), ("ATC_ANG_RLL_P", 4.5),
                         ("ATC_ANG_PIT_P", 4.5), ("ATC_ANG_YAW_P", 4.5),
@@ -220,6 +220,8 @@ def main():
         params["RC%d_REVERSED" % channel] = 1.0 if channel == 4 else 0.0
     for slot in range(1, 7):
         params["FLTMODE%d" % slot] = float(slot)
+    if os.environ.get("NO_COMPASS_FIT") != "1":
+        params["COMPASS_CAL_FIT"] = 16.0
     if os.environ.get("TRAILING_PARAM") == "1":
         params["ZZ_TRAILER"] = 1.0
     if os.environ.get("OFFLIST_ENUM") == "1":

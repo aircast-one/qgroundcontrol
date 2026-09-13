@@ -43,6 +43,7 @@ falsify it. The ones marked *found something* are in the commit log for
 | `SIM_LAT`, `SIM_LON`, `FENCE_RADIUS` | where it flies and how far it may go | *see terrain below* |
 | `STILL_STICKS=1` | sticks that do not sweep, for a screenshot that does not change under you | |
 | `STATUS_AT`, `STATUS_EVERY` | when STATUSTEXT messages arrive | |
+| `NO_COMPASS_FIT=1` | drops `COMPASS_CAL_FIT`, the parameter whose absence crashed the app when a compass calibration started | *found something* |
 | `NO_BATTERY=1` | drops the whole `BATT_*` set, which is the only way back to the Power page's empty state now that the rig serves them | |
 
 **Terrain needs somewhere the service covers.** The default position is Tbilisi
