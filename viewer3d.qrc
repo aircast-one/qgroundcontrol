@@ -39,7 +39,11 @@
         <file alias="Viewer3D/Models3D/Line3D.qml">src/Viewer3D/Viewer3DQml/Models3D/Line3D.qml</file>
         <file alias="Viewer3D/Models3D/Viewer3DVehicleItems.qml">src/Viewer3D/Viewer3DQml/Models3D/Viewer3DVehicleItems.qml</file>
         <file alias="Viewer3D/Viewer3DProgressBar.qml">src/Viewer3D/Viewer3DQml/Viewer3DProgressBar.qml</file>
+    </qresource>
+    <qresource prefix="/ShaderVertex">
         <file alias="earthMaterial.vert">src/Viewer3D/Shaders/earthMaterial.vert</file>
+    </qresource>
+    <qresource prefix="/ShaderFragment">
         <file alias="earthMaterial.frag">src/Viewer3D/Shaders/earthMaterial.frag</file>
     </qresource>
     <qresource prefix="/json">
