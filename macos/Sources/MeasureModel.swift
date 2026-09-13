@@ -16,6 +16,14 @@ enum Measure {
         return typed
     }
 
+    static func decimals(matching served: String) -> Int? {
+        guard let dot = served.firstIndex(of: ".") else {
+            return served.contains(where: \.isNumber) ? 0 : nil
+        }
+        let after = served[served.index(after: dot)...].prefix { $0.isNumber }
+        return after.isEmpty ? nil : after.count
+    }
+
     static func settled(_ number: String) -> String {
         guard number.hasPrefix("-"),
               number.dropFirst().allSatisfy({ $0 == "0" || $0 == "." }) else { return number }

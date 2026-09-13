@@ -504,6 +504,7 @@ struct PlanInspector: View {
                                 if item.specifiesAltitude {
                                     AltitudeField(value: item.altitude,
                                                   units: item.altitudeFieldUnits,
+                                                  decimals: item.altitudeDecimals,
                                                   commit: { mission.setAltitude(of: item, value: $0) })
                                 } else {
                                     Text(item.altitudeReading)

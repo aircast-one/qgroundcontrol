@@ -1901,6 +1901,7 @@ func checkMissionItemKinds() {
     checkUnknownMissionTime()
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
+    checkTheEditFieldMatchesTheCoreOnPrecision()
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
@@ -5292,6 +5293,30 @@ func checkSensorsComponentIsFoundByClass() {
     expect(component(name: "センサ", className: "SensorsComponent")?.id ?? "", "SensorsComponent",
            "identity comes from the class too -- keying it on a translated name would have "
            + "rebuilt every row the moment the language changed")
+}
+
+func checkTheEditFieldMatchesTheCoreOnPrecision() {
+    expect(Measure.decimals(matching: "50.4 m") ?? -1 == 1,
+           "format_measure emits one decimal below WHOLE_NUMBER_FROM, so an altitude the core "
+           + "spells 50.4 m must be editable as 50.4 and not truncated to 50")
+    expect(Measure.decimals(matching: "847 m") ?? -1 == 0,
+           "at or above the core's threshold it emits none, and the field must not invent a "
+           + "decimal the core does not show")
+    expect(Measure.decimals(matching: "\u{2014}") == nil,
+           "an unreported altitude carries no precision to copy, and nil lets the caller keep its "
+           + "own default rather than reading zero as a measurement")
+    expect(Measure.decimals(matching: "0.0 m") ?? -1 == 1,
+           "a grounded item still declares one decimal; counting digits after the point must not "
+           + "treat a zero as absent")
+
+    let item = MissionItem(view: ["altitudeText": "12.5 m", "altitude": 12.5], selected: 0)
+    expect(item.altitudeDecimals == 1,
+           "the item reads its own precision from the text the core served for the same quantity, "
+           + "so the editable field and the read-only row beside it cannot disagree")
+    let high = MissionItem(view: ["altitudeText": "120 m", "altitude": 120.0], selected: 0)
+    expect(high.altitudeDecimals == 0,
+           "and it follows the core across the threshold without the head holding a copy of "
+           + "WHOLE_NUMBER_FROM, which is the constant that would drift")
 }
 
 func checkComplexGeometryInAnyLocale() {
