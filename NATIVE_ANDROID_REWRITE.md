@@ -3018,6 +3018,29 @@ heading 306 and 306, altitudeAMSL 120.0 and 120.0, armed false and false.
 So `coreLinks` defaulting false is no longer evidence that core links do not work. It is a
 default nobody has moved.
 
+**Check 2 of 4, and it fails: the core never expires its vehicle, 2026-09-14.** With
+`coreLinks=true` and the fake vehicle killed outright:
+
+| elapsed | Qt | core |
+|---|---|---|
+| 16 s | `communicationLost: true` | `view.coreVehicle available: true` |
+| 106 s | lost | **still `available: true`**, heading 28, altitudeAMSL 120 |
+
+Frozen at the last frame received. The core link itself knows — `framesIn` stops climbing and
+stays at 2764 — so the transport has the fact and the vehicle view does not use it. A head
+trusting `view.coreVehicle` draws a live-looking aircraft for as long as the app runs, which
+is the same shape as QGC's own latched `vehicle.latitude` and the reason `view.gcsPosition`
+gates its distance on `communicationLost`.
+
+Recovery is clean: bring the vehicle back and Qt clears `communicationLost` within seconds
+while the core's heading resumes moving, 28 to 104, and `framesIn` climbs again. So this is
+an expiry gap, not a reconnect gap.
+
+Double-bind closed two ways while checking this. `LinkManager.cc:141-147` is an if/else — when
+`CoreLink::enabled() && CoreLink::handles(type)` the Qt link is never constructed — and
+`/proc/net/udp` shows exactly one socket on 0x38D6 with core links on, the instrument having
+been checked first against the coreLinks=false case, which also shows one.
+
 **Two corrections to the paragraph this replaces, both mine from an hour earlier.** I wrote
 that the debug API gate made this unmeasurable and that the head's UI offered no route.
 The gate is real — `/bridge/set` and `/bridge/invoke` are behind
