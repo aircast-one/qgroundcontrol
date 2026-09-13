@@ -74,6 +74,9 @@ signals:
     void adaptersChanged();
     void statsChanged();
 
+private slots:
+    void _reportToCore();
+
 private:
     friend class PacketRadioTest;
 

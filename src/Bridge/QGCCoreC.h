@@ -35,6 +35,8 @@ bool qgc_core_link_write(uint32_t id, const uint8_t *bytes, size_t len);
 char *qgc_core_host_link_open(const char *kind, const char *name);
 void qgc_core_host_link_bytes(uint32_t id, const uint8_t *bytes, size_t len);
 bool qgc_core_host_link_closed(uint32_t id, const char *reason);
+bool qgc_core_packet_radio_report(const char *report_json);
+void qgc_core_packet_radio_forgotten(void);
 void qgc_core_set_link_writer(QGCCoreLinkWriterFn writer, void *user);
 void qgc_core_link_announce_on_state(void);
 char *qgc_core_guided(const char *action_json);

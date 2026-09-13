@@ -1,3 +1,5 @@
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
+
 use serde_json::{Value, json};
 
 use crate::videostate::{SOURCE_UDP_H264, SOURCE_UDP_H265};
@@ -564,8 +566,52 @@ fn reported_snapshot(args: &[String]) -> Result<Value, String> {
     Ok(PacketRadio::reported(status, present(args, 1), reading, whole(args, 6)?, present(args, 7)).snapshot(0))
 }
 
+static HOST_REPORT: LazyLock<Mutex<Option<PacketRadio>>> = LazyLock::new(|| Mutex::new(None));
+
+fn reported() -> MutexGuard<'static, Option<PacketRadio>> {
+    HOST_REPORT.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn host_report(report: &Value) -> bool {
+    let Some(status) = report.get("status").and_then(Value::as_str).and_then(Status::parse) else {
+        return false;
+    };
+    let antennas = |key: &str| -> Option<[i32; ANTENNA_COUNT]> {
+        let listed = report.get(key)?.as_array()?;
+        match listed.is_empty() {
+            true => None,
+            false => Some(std::array::from_fn(|index| listed.get(index).and_then(Value::as_i64).unwrap_or_default() as i32)),
+        }
+    };
+    let reading = antennas("antennaRssi").map(|rssi_raw| Reading {
+        rssi_raw,
+        snr: antennas("antennaSnr").unwrap_or_default(),
+        score: antennas("linkScore").unwrap_or_default(),
+        packets_lost: report.get("packetLoss").and_then(Value::as_i64).unwrap_or_default() as i32,
+        at_ms: 0,
+    });
+    *reported() = Some(PacketRadio::reported(
+        status,
+        report.get("adapter").and_then(Value::as_str).filter(|name| !name.is_empty()),
+        reading,
+        report.get("videoPackets").and_then(Value::as_i64),
+        report.get("startError").and_then(Value::as_str),
+    ));
+    true
+}
+
+pub fn host_forgotten() {
+    *reported() = None;
+}
+
 pub fn packet_radio_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
-    reported_snapshot(args).unwrap_or_else(|reason| crate::read::refused(&reason))
+    match args.is_empty() {
+        true => reported()
+            .as_ref()
+            .map(|radio| radio.snapshot(0))
+            .unwrap_or_else(|| crate::read::refused("no host has reported a packet radio yet, so there is nothing to say about one")),
+        false => reported_snapshot(args).unwrap_or_else(|reason| crate::read::refused(&reason)),
+    }
 }
 
 #[cfg(test)]

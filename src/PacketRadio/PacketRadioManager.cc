@@ -1,5 +1,11 @@
 #include "PacketRadioManager.h"
 
+#include "QGCCoreC.h"
+
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+
 #include "Fact.h"
 #include "QGCLoggingCategory.h"
 #include "PacketRadioSettings.h"
@@ -63,6 +69,36 @@ PacketRadioManager::PacketRadioManager(QObject *parent)
 
     _pollTimer.setInterval(kPollIntervalMs);
     connect(&_pollTimer, &QTimer::timeout, this, &PacketRadioManager::_poll);
+
+    connect(this, &PacketRadioManager::statusChanged, this, &PacketRadioManager::_reportToCore);
+    connect(this, &PacketRadioManager::statsChanged, this, &PacketRadioManager::_reportToCore);
+}
+
+void PacketRadioManager::_reportToCore()
+{
+#ifdef QGC_RUST_CORE
+    static const QStringList tokens = { QStringLiteral("disabled"), QStringLiteral("noAdapter"), QStringLiteral("adapterUnavailable"),
+                                        QStringLiteral("invalidKey"), QStringLiteral("listening"), QStringLiteral("receiving") };
+    const auto whole = [](const QVariantList &values) {
+        QJsonArray array;
+        for (const QVariant &value : values) {
+            array.append(value.toInt());
+        }
+        return array;
+    };
+
+    QJsonObject report;
+    report.insert(QStringLiteral("status"), tokens.value(static_cast<int>(_status)));
+    report.insert(QStringLiteral("adapter"), _adapterName);
+    report.insert(QStringLiteral("antennaRssi"), whole(antennaRssi()));
+    report.insert(QStringLiteral("antennaSnr"), whole(antennaSnr()));
+    report.insert(QStringLiteral("linkScore"), QJsonArray({ _linkScore, _linkScore }));
+    report.insert(QStringLiteral("packetLoss"), _packetLoss);
+    report.insert(QStringLiteral("videoPackets"), static_cast<double>(videoPackets()));
+    report.insert(QStringLiteral("startError"), _startError);
+
+    (void) qgc_core_packet_radio_report(QJsonDocument(report).toJson(QJsonDocument::Compact).constData());
+#endif
 }
 
 PacketRadioManager::~PacketRadioManager()

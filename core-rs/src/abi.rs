@@ -326,6 +326,19 @@ pub unsafe extern "C" fn qgc_core_host_link_bytes(id: u32, bytes: *const u8, len
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_packet_radio_report(report_json: *const c_char) -> bool {
+    match serde_json::from_str::<serde_json::Value>(&text(report_json)) {
+        Ok(report) => crate::packetradio::host_report(&report),
+        Err(_) => false,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_packet_radio_forgotten() {
+    crate::packetradio::host_forgotten()
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_host_link_closed(id: u32, reason: *const c_char) -> bool {
     let closed = crate::linkhost::host_closed(&crate::linkhost::TRANSPORTS, id, &text(reason));
     crate::hub::lock().link_closed(id);
