@@ -12,24 +12,25 @@ struct Page {
     shows_links: bool,
     shows_about: bool,
     shows_video_sources: bool,
+    shows_packet_radio: bool,
 }
 
 const PAGES: &[Page] = &[
-    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings"), ("Brand Image", "brandImageSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true },
-    Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Connections", sections: &[("Auto Connect", "autoConnectSettings")], shows_links: true, shows_about: false, shows_video_sources: false },
-    Page { title: "MAVLink", sections: &[("MAVLink", "mavlinkSettings"), ("APM Stream Rates", "apmMavlinkStreamRateSettings"), ("Actions", "mavlinkActionsSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Flight Modes", sections: &[("Flight Modes", "flightModeSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "ADSB Server", sections: &[("ADSB Server", "adsbVehicleManagerSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Packet Radio", sections: &[("Packet Radio", "packetRadioSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Remote ID", sections: &[("Remote ID", "remoteIDSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "RTK GPS", sections: &[("RTK GPS", "rtkSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "Firmware Upgrade", sections: &[("Firmware Upgrade", "firmwareUpgradeSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "3D Viewer", sections: &[("3D Viewer", "viewer3DSettings")], shows_links: false, shows_about: false, shows_video_sources: false },
-    Page { title: "About", sections: &[], shows_links: false, shows_about: true, shows_video_sources: false },
+    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings"), ("Brand Image", "brandImageSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false },
+    Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "Connections", sections: &[("Auto Connect", "autoConnectSettings")], shows_links: true, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "MAVLink", sections: &[("MAVLink", "mavlinkSettings"), ("APM Stream Rates", "apmMavlinkStreamRateSettings"), ("Actions", "mavlinkActionsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "Flight Modes", sections: &[("Flight Modes", "flightModeSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "ADSB Server", sections: &[("ADSB Server", "adsbVehicleManagerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "Packet Radio", sections: &[("Packet Radio", "packetRadioSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: true },
+    Page { title: "Remote ID", sections: &[("Remote ID", "remoteIDSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "RTK GPS", sections: &[("RTK GPS", "rtkSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "Firmware Upgrade", sections: &[("Firmware Upgrade", "firmwareUpgradeSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "3D Viewer", sections: &[("3D Viewer", "viewer3DSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false },
+    Page { title: "About", sections: &[], shows_links: false, shows_about: true, shows_video_sources: false, shows_packet_radio: false },
 ];
 
 const HIDDEN: &[&str] = &["firstRunPromptIdsShown", "instrumentQmlFile2"];
@@ -67,6 +68,7 @@ fn page_json(page: &Page, with_controls: Option<&dyn Backend>) -> Value {
         "showsLinks": page.shows_links,
         "showsAbout": page.shows_about,
         "showsVideoSources": page.shows_video_sources,
+        "showsPacketRadio": page.shows_packet_radio,
         "sections": page.sections.iter().map(|(title, group)| section_json(title, group, with_controls)).collect::<Vec<_>>(),
     })
 }
@@ -142,6 +144,18 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn exactly_one_page_carries_the_packet_radio_block() {
+        let flagged: Vec<&str> = PAGES.iter().filter(|page| page.shows_packet_radio).map(|page| page.title).collect();
+        assert_eq!(flagged, vec!["Packet Radio"], "a head draws its bespoke block from this flag, so a second page carrying it draws the radio twice and none carrying it draws the settings with no status line at all");
+        let bespoke: Vec<&str> = PAGES
+            .iter()
+            .filter(|page| [page.shows_links, page.shows_about, page.shows_video_sources, page.shows_packet_radio].iter().filter(|on| **on).count() > 1)
+            .map(|page| page.title)
+            .collect();
+        assert!(bespoke.is_empty(), "these pages claim more than one bespoke block and a head has one slot for it: {bespoke:?}");
     }
 
     #[test]
