@@ -93,3 +93,32 @@ internal fun calibrationStep(statusText: String): String =
         .dropLastWhile { it.isBlank() || it.trim().startsWith("Click ") }
         .joinToString("\n")
         .trim()
+
+internal data class RadioPrompt(
+    val title: String,
+    val body: String,
+    val action: String,
+    val choices: List<String>,
+)
+
+internal val RADIO_PROMPTS = listOf(
+    RadioPrompt(
+        title = "Spektrum Bind",
+        body = "Places your Spektrum receiver in bind mode. Pick the receiver type.",
+        action = "spektrumBindMode",
+        choices = listOf("DSM2", "DSMX (7 channels or less)", "DSMX (8 channels or more)"),
+    ),
+    RadioPrompt(
+        title = "CRSF Bind",
+        body = "Places your CRSF receiver in bind mode.",
+        action = "crsfBindMode",
+        choices = emptyList(),
+    ),
+    RadioPrompt(
+        title = "Copy Trims",
+        body = "Centre the sticks and hold the throttle all the way down, then confirm. " +
+            "The trims your transmitter is applying are copied to the vehicle.",
+        action = "copyTrims",
+        choices = emptyList(),
+    ),
+)

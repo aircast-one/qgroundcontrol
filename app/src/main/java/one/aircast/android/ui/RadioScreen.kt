@@ -24,6 +24,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -136,7 +142,7 @@ private fun ModeRow(mode: Int, onPick: (Int) -> Unit) {
             modifier = Modifier.padding(bottom = 4.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            (1..4).forEach { choice ->
+            (1..2).forEach { choice ->
                 FilterChip(
                     selected = choice == mode,
                     onClick = { onPick(choice) },
@@ -148,7 +154,72 @@ private fun ModeRow(mode: Int, onPick: (Int) -> Unit) {
 }
 
 @Composable
-private fun CalibrationStart(view: RadioView, onAction: (String) -> Unit, onMode: (Int) -> Unit) {
+private fun ConfirmDialog(
+    prompt: RadioPrompt,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    var choice by remember(prompt) { mutableStateOf(prompt.choices.lastIndex) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(prompt.title) },
+        text = {
+            Column {
+                Text(prompt.body)
+                prompt.choices.forEachIndexed { index, label ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(selected = index == choice, onClick = { choice = index })
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RadioButton(selected = index == choice, onClick = { choice = index })
+                        Text(label)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(choice); onDismiss() }) { Text("Ok") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun AdditionalSetup(onInvoke: (String, Int?) -> Unit) {
+    var prompt by remember { mutableStateOf<RadioPrompt?>(null) }
+    val asked = prompt
+    if (asked != null) {
+        ConfirmDialog(
+            prompt = asked,
+            onDismiss = { prompt = null },
+            onConfirm = { choice -> onInvoke(asked.action, choice.takeIf { asked.choices.isNotEmpty() }) },
+        )
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp)) {
+        Text(
+            "Additional radio setup",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RADIO_PROMPTS.forEach { entry ->
+                OutlinedButton(onClick = { prompt = entry }) { Text(entry.title) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalibrationStart(
+    view: RadioView,
+    onAction: (String) -> Unit,
+    onMode: (Int) -> Unit,
+    onInvoke: (String, Int?) -> Unit,
+) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         ModeRow(view.transmitterMode, onMode)
         Row(
@@ -174,6 +245,7 @@ private fun CalibrationStart(view: RadioView, onAction: (String) -> Unit, onMode
                 },
             )
         }
+        AdditionalSetup(onInvoke)
     }
 }
 
@@ -207,6 +279,12 @@ fun RadioScreen(modifier: Modifier = Modifier) {
                     view = view,
                     onAction = { action -> Qgc.invoke(radioCalAction(action)) },
                     onMode = { mode -> Qgc.set("$RADIO_CAL.transmitterMode", mode) },
+                    onInvoke = { action, choice ->
+                        when (choice) {
+                            null -> Qgc.invoke(radioCalAction(action))
+                            else -> Qgc.invoke(radioCalAction(action), choice)
+                        }
+                    },
                 )
             }
         }
