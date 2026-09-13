@@ -16,7 +16,18 @@ pub const DEPS: &[&str] = &[
     "plan.managerVehicle.capabilitiesKnown",
     "plan.geoFenceController.supported",
     "plan.rallyPointController.supported",
+    "plan.controllerVehicle.vehicleTypeString",
+    "plan.controllerVehicle.firmwareTypeString",
 ];
+
+fn planning_for(backend: &dyn Backend) -> Value {
+    let read = object(&backend.get_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString"));
+    let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_string);
+    match text("vehicleTypeString").zip(text("firmwareTypeString")) {
+        Some((kind, firmware)) => json!({ "type": kind, "firmware": firmware }),
+        None => Value::Null,
+    }
+}
 
 pub fn capability(backend: &dyn Backend, controller: &str) -> Option<bool> {
     let known = flag(&object(&backend.get_fields("plan.managerVehicle", "capabilitiesKnown")), "capabilitiesKnown");
@@ -41,6 +52,11 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "PlanStatus",
+        // The plan is edited against a vehicle even with none connected: offline it is the
+        // controllerVehicle, and a head showing "which aircraft is this plan for" had to read that
+        // object itself. Empty strings mean the controller has not resolved one, which is not the
+        // same as a plan for no vehicle.
+        "planningFor": planning_for(backend),
         "readiness": readiness_json(readiness),
         "upload": upload_json(upload),
         "actions": {
@@ -158,6 +174,7 @@ mod tests {
             fields: BTreeMap::from([
                 ("plan", plan),
                 ("plan.managerVehicle", json!({ "kind": "object", "capabilitiesKnown": known })),
+                ("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro" })),
                 ("plan.missionController", json!({ "kind": "object", "containsItems": true })),
                 ("plan.geoFenceController", json!({ "kind": "object", "supported": fences })),
                 ("plan.rallyPointController", json!({ "kind": "object", "supported": rally })),
@@ -286,6 +303,17 @@ mod tests {
         assert_eq!(flying["upload"]["proceedTitle"], "Pause and upload");
         assert_eq!(flying["upload"]["pausesFirst"], true);
         assert_eq!(flying["upload"]["heading"], "Upload this plan?");
+    }
+
+    #[test]
+    fn the_plan_names_the_vehicle_it_is_being_edited_against() {
+        let view = plan_view(&supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true), &[]);
+        assert_eq!(view["planningFor"]["type"], "Multi-Rotor", "a plan is edited against a vehicle even with none connected, and a head asking which one had to read the controller object itself");
+        assert_eq!(view["planningFor"]["firmware"], "PX4 Pro");
+
+        let mut blank = supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true);
+        blank.fields.insert("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "", "firmwareTypeString": "" }));
+        assert_eq!(plan_view(&blank, &[])["planningFor"], Value::Null, "an unresolved controller is not a plan for a vehicle with an empty name");
     }
 
     #[test]

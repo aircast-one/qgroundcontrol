@@ -1927,6 +1927,7 @@
         "view.plan.fenceSupported",
         "view.plan.file",
         "view.plan.kind",
+        "view.plan.planningFor.firmware",
         "view.plan.rallySupported",
         "view.plan.unsupportedReason",
         "view.plan.upload.pausesFirst",
@@ -4456,6 +4457,8 @@
         "view.plan.fenceSupported",
         "view.plan.file",
         "view.plan.kind",
+        "view.plan.planningFor.firmware",
+        "view.plan.planningFor.type",
         "view.plan.rallySupported",
         "view.plan.readiness.ready",
         "view.plan.readiness.reason",
@@ -6586,6 +6589,10 @@
         "fenceSupported": "bool",
         "file": "null",
         "kind": "string",
+        "planningFor": {
+            "firmware": "string",
+            "type": "string"
+        },
         "rallySupported": "bool",
         "readiness": {
             "ready": "bool",

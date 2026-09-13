@@ -426,6 +426,34 @@ void QGCCoreCTest::_flightModesFollowTheVehicle()
     QVERIFY(std::any_of(view.value(QStringLiteral("modes")).toArray().begin(), view.value(QStringLiteral("modes")).toArray().end(), [&current](const QJsonValue &m) { return m.toObject().value(QStringLiteral("name")).toString() == current; }));
 }
 
+void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
+{
+    // HIDDEN and DESKTOP_ONLY match a BARE fact name, not group plus name, so a second group
+    // introducing a name already on either list silently loses that control on a page nobody is
+    // looking at. deviceName is on HIDDEN because the Packet Radio block draws it as a picker;
+    // today it exists in one group, and nothing but this says so.
+    QMap<QString, QStringList> owners;
+    for (const QJsonValue &page : take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray()) {
+        const QString title = page.toObject().value(QStringLiteral("title")).toString();
+        const QJsonObject drawn = take(qgc_bridge_get(QStringLiteral("view.settings(%1)").arg(title).toUtf8().constData()));
+        for (const QJsonValue &section : drawn.value(QStringLiteral("sections")).toArray()) {
+            const QString group = section.toObject().value(QStringLiteral("group")).toString();
+            for (const QJsonValue &fact : section.toObject().value(QStringLiteral("facts")).toArray()) {
+                owners[fact.toObject().value(QStringLiteral("name")).toString()].append(group);
+            }
+        }
+    }
+    QStringList shared;
+    for (auto it = owners.begin(); it != owners.end(); ++it) {
+        QStringList groups = it.value();
+        groups.removeDuplicates();
+        if (groups.count() > 1) {
+            shared.append(QStringLiteral("%1 in %2").arg(it.key(), groups.join(QStringLiteral(", "))));
+        }
+    }
+    QVERIFY2(shared.isEmpty(), qPrintable(QStringLiteral("these fact names appear in more than one settings group, so excluding one by bare name hides the others too: %1").arg(shared.join(QStringLiteral("; ")))));
+}
+
 void QGCCoreCTest::_settingsPagesDecodeTheirControls()
 {
     QCOMPARE(take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray().count(), 15);

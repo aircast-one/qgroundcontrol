@@ -34,6 +34,7 @@ private slots:
     void _logsFollowTheController();
     void _inspectorListsMessages();
     void _flightModesFollowTheVehicle();
+    void _anExcludedSettingNameBelongsToOneGroupOnly();
     void _settingsPagesDecodeTheirControls();
     void _surveyStatsNeedAnItem();
     void _fencesAndPolygonsAreServed();
