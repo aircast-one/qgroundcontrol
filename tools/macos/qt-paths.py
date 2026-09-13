@@ -173,6 +173,7 @@ Usage: python3 tools/macos/qt-paths.py [head directory ...]
 """
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOTS = [
@@ -260,6 +261,40 @@ def paths(roots):
                 yield rooted[match.group(1)], use
 
 
+
+# `camera` is a bridge root AND the namespace the core's camera actions live in, so the moment a
+# head stopped calling vehicle.cameraManager....takePhoto and started calling camera.takePhoto,
+# three arrivals at the DESTINATION were counted as three Qt paths. The predicate was right about
+# what it tested -- the string does begin with a bridge root -- and wrong about the question, which
+# is whether the head still reaches Qt directly. Migrating away from Qt would have moved the number
+# by -1 instead of -4, and a measure that punishes the work it exists to track gets ignored.
+#
+# So the claimed set is read from the core rather than listed here: const NAME: &str = "..." in
+# actions.rs, which is the same file actions::owns matches on. mission.* and guided.* were never
+# caught only because no bridge root is spelled `mission` or `guided` -- an accident, not a design,
+# and it would have broken the same way the day one of them was.
+ACTION_CONST = re.compile(r'const\s+([A-Z_]+)\s*:\s*&str\s*=\s*"([^"]+)"')
+OWNS_ARM = re.compile(r'fn owns\w*\([^)]*\)\s*->\s*bool\s*\{\s*matches!\(\s*path\s*,([^)]*)\)')
+
+
+def claimed_actions():
+    # The consts alone are the wrong list twice over. CAMERA names the Qt path the core invokes
+    # THROUGH -- a destination inside the core, not something a head may call -- and a const can
+    # sit in the file before owns() names it. The discriminator is owns(): a path is claimed when
+    # refusing to answer it would be a bug, which is exactly what that match arm decides.
+    #
+    # And it reads HEAD rather than the worktree, because a peer mid-edit must not move my number.
+    # A claim that has not landed is not a claim; the first draft of this read the working copy and
+    # credited an action nobody could call yet.
+    source = subprocess.run(["git", "show", "HEAD:core-rs/src/actions.rs"],
+                            capture_output=True, text=True)
+    if source.returncode != 0:
+        return set()
+    values = dict(ACTION_CONST.findall(source.stdout))
+    named = {name for arm in OWNS_ARM.findall(source.stdout) for name in re.findall(r"[A-Z_]+", arm)}
+    return {values[name] for name in named if name in values}
+
+
 def main():
     roots = [pathlib.Path(a) for a in (sys.argv[1:] or ["macos/Sources"])]
     missing = [r for r in roots if not r.is_dir()]
@@ -267,13 +302,18 @@ def main():
         print("not a directory: " + ", ".join(map(str, missing)), file=sys.stderr)
         return 2
 
-    served, literal, template = set(), set(), set()
+    owned = claimed_actions()
+    served, claimed, literal, template = set(), set(), set(), set()
     uses, sites = {}, 0
     for path, use in paths(roots):
         sites += 1
         bucket = template if INTERPOLATION.search(path) else literal
-        (served if path.startswith("view.") else bucket).add(path)
-        if not path.startswith("view."):
+        if path.startswith("view."):
+            served.add(path)
+        elif path in owned:
+            claimed.add(path)
+        else:
+            bucket.add(path)
             uses.setdefault(path, set()).add(use)
 
     def counted(name):
@@ -291,6 +331,8 @@ def main():
           f"argument is expanded when a const val NAME names a root path")
     print()
     print(f"  served (view.*)      {len(served):4}   distinct, the migration's numerator")
+    print(f"  claimed actions      {len(claimed):4}   distinct, of {len(owned)} the core owns -- "
+          f"these reach Qt through the core, so they are the destination and not the debt")
     print(f"  literal Qt paths     {len(literal):4}   distinct, mechanical to move")
     print(f"  interpolated Qt      {len(template):4}   distinct TEMPLATES, each expanding to an "
           f"unknown number of runtime paths -- needs a parameterised view, not a substitution")
