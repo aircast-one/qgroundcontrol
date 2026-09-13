@@ -22,6 +22,11 @@ enum SetupPage {
         "Remote Support": "lifepreserver.fill",
         "Tuning": "dial.min",
         "Flight Behavior": "wind",
+        "Actuators": "slider.vertical.3",
+        "Heli": "fanblades",
+        "Follow Me": "figure.walk",
+        "WiFi Bridge": "wifi",
+        "Syslink": "link",
     ]
 
     static func symbol(for page: String) -> String {
