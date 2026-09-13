@@ -165,7 +165,7 @@ private fun CalibrationStart(view: RadioView, onAction: (String) -> Unit, onMode
                     !view.enoughChannels -> view.shortfall.ifBlank {
                         "Not enough channels to calibrate."
                     }
-                    else -> "Holds each stick at its extremes in turn and rewrites the mapping."
+                    else -> view.summary
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = when {
@@ -217,25 +217,6 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         }
 
         item(key = "monitorheader") { SectionHeader("Channel monitor") }
-        if (view.summary.isNotBlank()) {
-            item(key = "summary") {
-                Text(
-                    text = view.summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-                )
-            }
-        }
-        if (view.shortfall.isNotBlank()) {
-            item(key = "shortfall") {
-                Text(
-                    text = view.shortfall,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-                )
-            }
-        }
         items(view.channels.size, key = { "ch${view.channels[it].label}" }) { index ->
             val channel = view.channels[index]
             Row(
