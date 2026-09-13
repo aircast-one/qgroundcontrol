@@ -28,6 +28,7 @@ antennaRssi
 antennaScore
 antennaSnr
 anyConnecting
+apmFirmware
 areaText
 armed
 armingBlocker
@@ -225,9 +226,11 @@ modeKnown
 modeText
 model
 movable
+msSinceUpdate
 multiRotor
 multipleSources
 name
+nearest
 needsAttention
 needsConfirm
 newPlan
@@ -301,6 +304,7 @@ running
 save
 scaleMaximum
 secondaryText
+sectors
 segments
 selected
 sends
@@ -375,6 +379,7 @@ verdict
 visible
 voltage
 voltageText
+vtol
 warning
 warningLevel
 watching

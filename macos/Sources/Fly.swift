@@ -19,6 +19,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var gpsDetail: [DetailRow] = []
     @Published private(set) var linkDetail: [DetailRow] = []
     @Published private(set) var traffic = AdsbTraffic.none
+    @Published private(set) var obstacle = ObstacleDistance.none
     @Published var expanded: Set<String> = []
     @Published private(set) var modes: [FlightModeChoice] = []
     @Published private(set) var canSetMode = false
@@ -118,6 +119,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
         let readTraffic = AdsbTraffic(Bridge.group("view.adsbTraffic")) ?? .none
         if readTraffic != traffic { traffic = readTraffic }
+
+        let readObstacle = ObstacleDistance(Bridge.group("view.obstacle")) ?? .none
+        if readObstacle != obstacle { obstacle = readObstacle }
 
         let batteryView = Bridge.group("view.battery")
         let batteryPacks = (batteryView["packs"] as? [[String: Any]]) ?? []

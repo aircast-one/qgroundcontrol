@@ -44,6 +44,12 @@ struct FlyPanel: View {
                                    level: fly.traffic.level, detail: fly.traffic.rows(),
                                    showSeparator: true)
                     }
+                    if fly.obstacle.available {
+                        expandable(key: "obstacle", title: "Obstacles",
+                                   value: fly.obstacle.summary,
+                                   level: fly.obstacle.level, detail: fly.obstacle.rows(),
+                                   showSeparator: true)
+                    }
                 }
 
                 if video.camera.present {

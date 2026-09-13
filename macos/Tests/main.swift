@@ -973,6 +973,57 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
 
 checkTheTrafficPanelNeverGoesSilentlyBlank()
 
+func checkObstacleSilenceIsNotClearAir() {
+    func obstacle(_ overrides: [String: Any]) -> ObstacleDistance {
+        ObstacleDistance(["kind": "object", "class": "ObstacleDistance",
+                          "available": true as NSNumber, "enabled": true as NSNumber,
+                          "stale": false as NSNumber, "sectors": 8 as NSNumber,
+                          "nearest": ["distanceMetres": 4.2 as NSNumber,
+                                      "distanceText": "13.8 ft", "bearing": 45.0 as NSNumber,
+                                      "sector": "frontRight", "sectorText": "front right",
+                                      "close": false as NSNumber]]
+            .merging(overrides) { _, override in override }) ?? .none
+    }
+
+    expect(obstacle([:]).summary, "13.8 ft",
+           "the core converts and serves distanceText, so the head reads it rather than "
+           + "spelling metres at an operator set to feet")
+
+    expect(obstacle(["stale": NSNull()]).freshnessKnown == false,
+           "STALE IS NULLABLE AND NULL IS NOT FRESH. The core sends null when it has no "
+           + "msSinceUpdate to judge by, so a sensor that has never reported and one reporting "
+           + "on time would otherwise look identical")
+    expect(obstacle([:]).freshnessKnown, "and a judged reading says so")
+
+    expect(obstacle(["available": false as NSNumber]).summary, "No sensor",
+           "FOUR WAYS THE PANEL CAN SHOW NOTHING AND ONLY ONE IS GOOD NEWS. No sensor is the "
+           + "first")
+    expect(obstacle(["enabled": false as NSNumber]).summary, "Avoidance off",
+           "a sensor present but switched off is the second, and an operator who turned it off "
+           + "should see that rather than an empty row")
+    expect(obstacle(["stale": true as NSNumber]).summary, "Readings stopped",
+           "READINGS THAT STOPPED ARRIVING READ AS CLEAR AIR AND ARE NOT. This is the dangerous "
+           + "one: the panel would otherwise say nothing is out there when the truth is that "
+           + "nobody is looking")
+    expect(obstacle(["nearest": NSNull(), "sectors": 0 as NSNumber]).summary, "Nothing detected",
+           "and a reporting sensor finding nothing is the only one worth relaxing at")
+
+    expect(obstacle(["nearest": NSNull()]).level == .good,
+           "a live sensor with nothing in range is good")
+    expect(obstacle(["stale": true as NSNumber]).level == .caution,
+           "stopped readings are caution rather than good, for the same reason")
+    expect(obstacle(["nearest": ["distanceText": "3 ft", "close": true as NSNumber,
+                                 "sectorText": "ahead"]]).level == .warning,
+           "and something the core calls close outranks something merely detected")
+    expect(obstacle(["available": false as NSNumber]).level == .unknown,
+           "no sensor is not a level at all")
+
+    expect(ObstacleDistance(["kind": "null"]) == nil,
+           "a refused view is no obstacle state rather than one reporting everything off")
+}
+
+checkObstacleSilenceIsNotClearAir()
+
 func checkTheCameraSwitcherNamesEveryCamera() {
     let two = CameraControl(["present": true as NSNumber, "model": "Sony ILCE-7",
                              "labels": ["Sony ILCE-7", "Thermal"]])
