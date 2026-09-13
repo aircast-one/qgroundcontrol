@@ -5340,12 +5340,18 @@ func checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines() {
     expect("\(MavlinkConsole(view: [:]).lines.count)", "0",
            "and a controller answering nothing is not a controller answering an empty list")
 
-    expect(MavlinkConsole(view: ["connected": true as NSNumber,
-                                 "lines": ["ekf2 status", ""] as [Any]]).last ?? "", "ekf2 status",
-           "THE CORE'S count AND last ARE DELIBERATELY UNUSED. view.mavlinkConsole takes both from "
-           + "the list BEFORE this trim, so while a line is mid-assembly its count is one too many "
-           + "and its last is the empty string. Its fixture holds no trailing partial entry, so "
-           + "the axis the trim exists for is the one that fixture keeps constant")
+    let spaced = MavlinkConsole(view: ["connected": true as NSNumber,
+                                       "lines": ["ekf2 status", "", "HW arch: PX4_FMU_V5"] as [Any]])
+    expect("\(spaced.lines.count)", "3",
+           "A BLANK LINE THE VEHICLE PRINTED IS OUTPUT. The head used to drop the controller's "
+           + "trailing in-assembly row itself; e099c6dd6 pops it in the view, so this decoder now "
+           + "takes the list as given. Filtering empties would read as a tidier spelling of that "
+           + "old trim and would delete spacing the operator can see -- and my tests could not "
+           + "tell the two rules apart until the core mutated their own and found the same hole")
+    expect(spaced.last ?? "", "HW arch: PX4_FMU_V5",
+           "and the tail is still the last line, which needs no separate field now that the list "
+           + "arrives already trimmed -- taking the view's count and last as well would be three "
+           + "fields that have to agree where one does")
 }
 
 func checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact() {
@@ -6460,11 +6466,11 @@ func checkBlockedBanner() {
 
 func checkMavlinkConsole() {
     let read = MavlinkConsole(view: ["connected": true as NSNumber,
-                                       "lines": ["nsh> ver all", "FW git-hash: 1a2b3c", ""]])
+                                       "lines": ["nsh> ver all", "FW git-hash: 1a2b3c"]])
     expect(read.lines.joined(separator: "|"), "nsh> ver all|FW git-hash: 1a2b3c",
-           "MAVLinkConsoleController keeps the line still being assembled as the last entry, and "
-           + "it is empty until a newline arrives; drawing it adds a blank row that appears and "
-           + "disappears as characters land")
+           "the fixture is what view.mavlinkConsole now SENDS. MAVLinkConsoleController's trailing "
+           + "in-assembly row is popped in the view since e099c6dd6, so feeding one here would "
+           + "test a shape the producer no longer emits")
     expect(read.last ?? "", "FW git-hash: 1a2b3c",
            "the tail is what a console is for, so the head names it rather than making the "
            + "operator scroll a long session to find what just happened")
@@ -6472,8 +6478,7 @@ func checkMavlinkConsole() {
 
     expect(MavlinkConsole(view: ["connected": true as NSNumber, "lines": ["still typing"]])
         .lines.joined(separator: "|"), "still typing",
-           "but a partial line that is NOT empty is real output and is kept -- the tell is the "
-           + "empty string, not the position")
+           "a partial line that is NOT empty is real output and arrives intact")
 
     expect(MavlinkConsole.none.copyable, "",
            "an empty console copies an empty string rather than trapping on a missing last line")

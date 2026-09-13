@@ -16,16 +16,12 @@ struct MavlinkConsole: Equatable {
     // between the two calls produced a console that was connected and empty, or disconnected
     // with output. Narrow, and there is no reason to keep it.
     init(view json: [String: Any]) {
-        // MAVLinkConsoleController keeps a QStringList whose last entry is the line still being
-        // assembled, so it is empty until a newline arrives and drawing it adds a blank row that
-        // appears and disappears as characters land.
-        //
-        // THE CORE'S count AND last ARE NOT USED, and this is why: they are taken from the same
-        // list BEFORE this trim, so `count` is one too many and `last` is "" for as long as a
-        // line is mid-assembly. Their fixture cannot see it -- it has no trailing partial entry,
-        // so the axis the trim exists for is the one the fixture holds constant.
-        let listed = ((json["lines"] as? [Any]) ?? []).compactMap { $0 as? String }
-        lines = listed.last?.isEmpty == true ? Array(listed.dropLast()) : listed
+        // The line still being assembled used to be dropped here. e099c6dd6 pops it in the view,
+        // so this takes the list AS GIVEN and must keep doing so: a blank entry that is not the
+        // trailing one is a blank line the vehicle actually printed, which is output and spacing
+        // an operator can see. Filtering empties would read as a tidier version of the same trim
+        // and would silently delete real output.
+        lines = ((json["lines"] as? [Any]) ?? []).compactMap { $0 as? String }
         connected = (json["connected"] as? NSNumber)?.boolValue ?? false
     }
 
