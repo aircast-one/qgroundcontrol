@@ -415,6 +415,7 @@ void RadioComponentController::_inputStickDetect(rcCalFunctions function, int ch
 
             // Setup up to detect stick being pegged to min or max value
             _stickDetectChannel = channel;
+            _stickDetectValue = value;
         }
     } else if (channel == _stickDetectChannel) {
         if (_stickSettleComplete(value)) {

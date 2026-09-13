@@ -34,7 +34,7 @@
 
 
 // AutoPilotPlugins
-// #include "RadioConfigTest.h"
+#include "RadioConfigTest.h"
 
 // AircastSetup
 #include "AircastDeviceSetupTest.h"
@@ -148,11 +148,11 @@
 #include "ComponentInformationCacheTest.h"
 #include "ComponentInformationTranslationTest.h"
 #include "FTPManagerTest.h"
-// #include "InitialConnectTest.h"
+#include "InitialConnectTest.h"
 #include "MAVLinkLogManagerTest.h"
-// #include "RequestMessageTest.h"
-// #include "SendMavCommandWithHandlerTest.h"
-// #include "SendMavCommandWithSignalingTest.h"
+#include "RequestMessageTest.h"
+#include "SendMavCommandWithHandlerTest.h"
+#include "SendMavCommandWithSignallingTest.h"
 #include "RcChannelOverrideTest.h"
 #include "CameraControlTest.h"
 #include "FlightMapTest.h"
@@ -191,7 +191,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(ULogParserTest)
 
     // AutoPilotPlugins
-    // UT_REGISTER_TEST(RadioConfigTest)
+    UT_REGISTER_TEST(RadioConfigTest)
 
     // AircastSetup
     UT_REGISTER_TEST(AircastDeviceSetupTest)
@@ -303,11 +303,11 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(ComponentInformationCacheTest)
     UT_REGISTER_TEST(ComponentInformationTranslationTest)
     UT_REGISTER_TEST(FTPManagerTest)
-    // UT_REGISTER_TEST(InitialConnectTest)
+    UT_REGISTER_TEST(InitialConnectTest)
     UT_REGISTER_TEST(MAVLinkLogManagerTest)
-    // UT_REGISTER_TEST(RequestMessageTest)
-    // UT_REGISTER_TEST(SendMavCommandWithHandlerTest)
-    // UT_REGISTER_TEST(SendMavCommandWithSignalingTest)
+    UT_REGISTER_TEST(RequestMessageTest)
+    UT_REGISTER_TEST(SendMavCommandWithHandlerTest)
+    UT_REGISTER_TEST(SendMavCommandWithSignallingTest)
     UT_REGISTER_TEST(RcChannelOverrideTest)
     UT_REGISTER_TEST(CameraControlTest)
     UT_REGISTER_TEST(FlightMapTest)
