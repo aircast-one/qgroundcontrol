@@ -339,4 +339,20 @@ print(f"checked {checked} of {len(MODELS)} models against the views they decode:
       f"{len(gone)} read a key the core no longer emits")
 print(f"every one of the {len(registry)} views the core serves is either read here or listed "
       f"with the reason it is not: {len(unmodelled)} are neither")
+
+# The two counts above measure DIFFERENT things and reading them as one sentence overstates the
+# cover. A model in MODELS has every key it reads compared against the producer. A view read
+# inline in a store has only its PATH looked for in the source text -- nothing checks the keys,
+# because MODELS is keyed by type and a store that decodes a view in place declares no type to
+# key on. I quoted "79/79 views" for weeks meaning the first and measuring the second.
+covered = {v.split("(")[0] for declared in MODELS.values() for v in views(declared)}
+named_only = sorted(v for v in registry
+                    if v in names and v.split("(")[0] not in covered and not undrawn_reason(v))
+for view in named_only:
+    print(f"  KEYS UNCHECKED {view} is read inline in a store rather than through a model, so its "
+          f"path is confirmed present and not one of its keys is compared against the core. "
+          f"Adding it needs a type to key on, which is the structural cost of decoding in place",
+          file=sys.stderr)
+print(f"of the {len(covered & set(registry))} views reached through a model every key is compared "
+      f"against the producer; {len(named_only)} more are read inline and only their path is")
 sys.exit(1 if gone or unchecked or unmodelled or unlisted else 0)

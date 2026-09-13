@@ -37,6 +37,14 @@ MODELS = {
     "MapScaleBar": "view.mapScale(120)",
     "ModeSlot": "view.modeSlots",
     "ModeSlots": "view.modeSlots",
+    # Both decode a SUB-dictionary of view.plan rather than its top level, which the checker
+    # tolerates because it compares key names against the whole of plan.rs rather than against a
+    # nesting. So this catches a key the core DROPS and would not catch one it MOVES between
+    # levels -- weaker than the check a top-level model gets, and worth more than the nothing
+    # view.plan had, which was nothing because MODELS is keyed by type and Mission.swift decodes
+    # the rest of this view in place.
+    "PlanReadiness": "view.plan",
+    "PlanUpload": "view.plan",
     "PreflightCheck": "view.preflight",
     "RadioState": "view.radio",
     "SensorHealth": "view.sensors",
