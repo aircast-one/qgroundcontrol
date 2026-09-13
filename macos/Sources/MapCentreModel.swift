@@ -12,13 +12,15 @@ struct GcsFix: Equatable {
     let usable: Bool
     let fix: String
     let source: String
+    let imprecise: Bool
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any] else { return nil }
         usable = (json["usable"] as? NSNumber)?.boolValue ?? false
         fix = (json["fix"] as? String) ?? ""
         source = (json["source"] as? String) ?? ""
-        point = usable ? MapCentre.usable(json) : nil
+        imprecise = MapCentre.beyondDeclaredAccuracy(json)
+        point = MapCentre.centreable(json)
     }
 }
 
@@ -29,6 +31,7 @@ struct MapCentreState: Equatable {
     var vehicle: GeoPoint?
     var gcs: GeoPoint?
     var gcsFix = ""
+    var gcsImprecise = false
     var access = LocationAccess.unknown
 
     var allPoints: [GeoPoint] { missionPoints + otherPoints }
@@ -80,7 +83,8 @@ enum MapCentre: String, CaseIterable, Identifiable {
             switch state.access {
             case .notAsked: return "macOS has not been asked for location access yet"
             case .refused: return "macOS is not allowing location access"
-            case .waiting: return MapCentre.without(fix: state.gcsFix)
+            case .waiting: return MapCentre.without(fix: state.gcsFix,
+                                                    imprecise: state.gcsImprecise)
             case .unknown: return "No position for this computer"
             }
         }
@@ -91,17 +95,53 @@ enum MapCentre: String, CaseIterable, Identifiable {
 
     static let waitingToken = "waiting"
 
-    static func without(fix: String) -> String {
+    // Accuracy is asked FIRST because it is the only thing that now keeps a position off this
+    // map. Staleness used to, and the sentence order still reflected that: a reading that was
+    // both old and imprecise would be reported as old, and the operator would wait for a refresh
+    // that changes nothing. Age no longer decides anything here, so it can no longer explain
+    // anything either.
+    static func without(fix: String, imprecise: Bool) -> String {
+        if imprecise {
+            return "The position is not precise enough to use"
+        }
         if fix == MapCentre.noSource {
             return "Nothing is reporting a position for this computer"
         }
-        if fix.hasPrefix(MapCentre.stalePrefix) {
-            return "The last position is too old to use"
+        // Every remaining way to disable this row is a position we do not have yet: never fixed,
+        // or fixed and expired with no last known reading behind it. The second is unreachable as
+        // far as the core's own module goes -- a stale token means a reading existed and
+        // lastKnown* survives it -- but the head cannot prove that, so it answers rather than
+        // trapping.
+        return "Waiting for a position fix"
+    }
+
+    // The core's `usable` is fixed AND fresh within five seconds AND inside its declared accuracy
+    // floor -- thresholds for a position you would NAVIGATE on. Centring a map is not that task,
+    // and gcsposition.rs keeps lastKnownLatitude/lastKnownLongitude readable precisely so a
+    // consumer with a different question can ask it. This is `usable` minus the freshness term,
+    // and nothing else: the accuracy limit is still the core's own declared number, never one
+    // invented here for a purpose the core did not size it for.
+    static func centreable(_ json: [String: Any]) -> GeoPoint? {
+        guard (json["hasFix"] as? NSNumber)?.boolValue == true,
+              !MapCentre.beyondDeclaredAccuracy(json),
+              let latitude = (json["lastKnownLatitude"] as? NSNumber)?.doubleValue,
+              let longitude = (json["lastKnownLongitude"] as? NSNumber)?.doubleValue else {
+            return nil
         }
-        if fix.isEmpty || fix == MapCentre.waitingToken {
-            return "Waiting for a position fix"
+        return MapCentre.usable(["latitude": latitude as NSNumber,
+                                 "longitude": longitude as NSNumber])
+    }
+
+    // An unreported accuracy is not a good one. The core refuses a fix whose accuracy it cannot
+    // read, and a map centred on a position of unknown precision is the same wrong answer drawn
+    // more confidently.
+    static func beyondDeclaredAccuracy(_ json: [String: Any]) -> Bool {
+        guard (json["hasFix"] as? NSNumber)?.boolValue == true else { return false }
+        guard let floor = (json["minimumHorizontalAccuracy"] as? NSNumber)?.doubleValue,
+              let reported = (json["horizontalAccuracy"] as? NSNumber)?.doubleValue else {
+            return true
         }
-        return "The position is not precise enough to use"
+        return reported > floor
     }
 
     func frame(in state: MapCentreState) -> MapFrame? {

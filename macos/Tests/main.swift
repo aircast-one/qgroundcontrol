@@ -692,25 +692,48 @@ checkAMeasureNeverReadsMinusZero()
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",
-                "latitude": 47.397 as NSNumber, "longitude": 8.546 as NSNumber]
+                "hasFix": true as NSNumber,
+                "horizontalAccuracy": 35.0 as NSNumber,
+                "minimumHorizontalAccuracy": 100.0 as NSNumber,
+                "lastKnownLatitude": 47.397 as NSNumber,
+                "lastKnownLongitude": 8.546 as NSNumber]
             .merging(overrides) { _, override in override })
     }
 
     expect(fix([:])?.point != nil,
            "a usable fix centres the map where the operator is standing")
 
-    expect(fix(["usable": false as NSNumber])?.point == nil,
-           "and an UNUSABLE one does not, however well-formed its numbers are. This head used "
-           + "to read positionManager.gcsPosition raw and judge it with MapCentre.usable, "
-           + "which checks only that the coordinate is valid and is not null island. The core "
-           + "also refuses a fix coarser than 100 m or older than 5 s, so the head would have "
-           + "centred My Location on a reading the core calls unusable -- a map jumping to a "
-           + "point two kilometres from where the operator stands, with nothing on screen "
-           + "saying the fix was poor")
+    expect(fix(["usable": false as NSNumber, "fix": "staleHorizontal"])?.point != nil,
+           "AND A STALE ONE STILL DOES, which is the half of the core's gate this row must not "
+           + "adopt. `usable` means fixed AND fresh within five seconds AND inside the accuracy "
+           + "floor -- sized for a position you would NAVIGATE on. This row centres a map. "
+           + "Measured here: 49 seconds old at 35 m, refused and called too old, for a task a "
+           + "49-second-old position does perfectly. gcsposition.rs keeps lastKnown* readable "
+           + "under a name no consumer can mistake for a live one, for exactly this")
 
-    expect(fix(["latitude": 0.0 as NSNumber, "longitude": 0.0 as NSNumber])?.point == nil,
-           "null island is still refused, so adopting the core's gate did not drop the one "
-           + "this head already had")
+    expect(fix(["horizontalAccuracy": 250.0 as NSNumber])?.point == nil,
+           "BUT A COARSE ONE DOES NOT, and this is the half that stays. The concrete harm the "
+           + "old gate protected against was a map jumping two kilometres from where the "
+           + "operator stands with nothing on screen saying the fix was poor -- that is an "
+           + "ACCURACY failure, and dropping the freshness term does not touch it. The limit "
+           + "compared against is the core's own minimumHorizontalAccuracy, never a number "
+           + "invented here for a purpose the core did not size")
+
+    expect(fix(["horizontalAccuracy": NSNull(),
+                "minimumHorizontalAccuracy": NSNull()])?.point == nil,
+           "an accuracy the core does not report is not a good one. It refuses a fix whose "
+           + "accuracy it cannot read, and a map centred on a position of unknown precision is "
+           + "the same wrong answer drawn more confidently")
+
+    expect(fix(["lastKnownLatitude": 0.0 as NSNumber,
+                "lastKnownLongitude": 0.0 as NSNumber])?.point == nil,
+           "null island is still refused, so widening past `usable` did not drop the guard this "
+           + "head already had. Keyed on lastKnown* because that is what the rule now reads -- "
+           + "overriding the live latitude here passed while proving nothing")
+
+    expect(fix(["hasFix": false as NSNumber])?.point == nil,
+           "and a machine that has never had a fix has no last known position to centre on, "
+           + "however many other fields the view carries")
     expect(fix([:])?.fix ?? "", "gps", "the fix kind travels for a head that wants to say why")
     expect(GcsFix(nil) == nil, "and no view at all is no fix")
 }
@@ -4927,13 +4950,19 @@ func checkCentreNotes() {
            + "it can currently REPORT and false of the view, because nothing feeds its position "
            + "at all. GcsFix carried the answer the whole time")
     state.gcsFix = "staleThreeDimensional"
-    expect(MapCentre.myLocation.note(in: state) == "The last position is too old to use",
-           "a reading that aged out is a third thing again: there WAS a fix, so neither "
-           + "\"nothing is reporting\" nor \"waiting\" is true of it")
+    expect(MapCentre.myLocation.note(in: state) == "Waiting for a position fix",
+           "AGE NO LONGER DISABLES THIS ROW, so age can no longer explain it either. Measured on "
+           + "this machine: a 49-SECOND-OLD fix at 35 m accuracy against a 100 m floor, refused "
+           + "and reported as too old -- for a row whose whole job is centring a map, which a "
+           + "49-second-old position does perfectly well. The core keeps lastKnownLatitude "
+           + "readable for exactly this and STALE_AFTER_MS = 5000 sizes a position you would "
+           + "NAVIGATE on. Reaching this sentence at all now means a stale token with no last "
+           + "known reading behind it, which their module says cannot happen")
     state.gcsFix = "waiting"
     expect(MapCentre.myLocation.note(in: state) == "Waiting for a position fix",
            "the core spells the genuine wait: listening, nothing arrived yet")
     state.gcsFix = "threeDimensional"
+    state.gcsImprecise = true
     expect(MapCentre.myLocation.note(in: state) == "The position is not precise enough to use",
            "A LIVE FIX WITH NO POINT MEANS ACCURACY, NOT WAITING. usable() is fixed AND not "
            + "stale AND horizontal_accuracy <= the minimum, but fix() never looks at accuracy -- "

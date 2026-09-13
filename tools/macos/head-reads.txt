@@ -1,4 +1,5 @@
 accepted
+accuracy
 action
 active
 activeSource
@@ -136,6 +137,7 @@ groundKnown
 group
 gstreamer
 hasCollision
+hasFix
 hasModes
 hasZoom
 heading
@@ -145,6 +147,7 @@ help
 helpText
 highest
 highestText
+horizontalAccuracy
 host
 hover
 id
@@ -170,6 +173,8 @@ landingDistanceMetres
 landingHeadingDegrees
 last
 lastError
+lastKnownLatitude
+lastKnownLongitude
 latitude
 legs
 level
@@ -193,6 +198,7 @@ method
 min
 minAltitudeMeters
 minimum
+minimumHorizontalAccuracy
 minimumVertices
 missing
 missionActive

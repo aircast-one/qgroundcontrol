@@ -763,6 +763,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         let fix = GcsFix(Bridge.group("view.gcsPosition"))
         read.gcs = fix?.point
         read.gcsFix = fix?.fix ?? ""
+        read.gcsImprecise = fix?.imprecise ?? false
         read.access = MissionStore.locationAccess
         return read
     }
