@@ -668,6 +668,27 @@ Both terrain modes abbreviate to AGL, so while this stands the operator cannot
 tell Calculated Above Terrain from Terrain Frame on the button - only by opening
 the menu, where the current one is marked.
 
+**It is structural, not an oversight in one file.** `View.deps` is
+`&'static [&'static str]` - one list per view, fixed at compile time. There is
+no way to say "this instance depends on the path it was handed", so no
+argument-parameterised view can watch what its argument selects. Thirteen views
+take an argument. Two have no dependencies at all:
+
+- `view.control(<fact path>)` reads whatever fact the argument names and
+  declares nothing, so a fact changing never pushes. macOS reads this for its
+  settings controls.
+- `view.settings(<page>)` the same.
+
+The rest declare between three and nine, which cover the data they read but
+never the argument itself. Most get away with it because the argument only
+selects a slice of something already watched - `view.fences(...)` lists nine
+deps that move whenever a fence does. `altitudeModes` does not get away with it
+because its argument *is* the answer.
+
+A head can still read these on demand, which is what both heads do for most of
+them. What it cannot do is subscribe, and nothing in the shape of the view says
+so.
+
 ### An enum value off its own list is matched by an English prefix, 2026-09-13
 
 Swept this head for the defect a peer has been clearing in the core tonight -
