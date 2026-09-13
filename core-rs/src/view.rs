@@ -186,7 +186,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.cameraProtocol", deps: &[], compute: cameraproto::protocol_view },
     View { path: "view.joystickMapping", deps: &[], compute: joystick::joystick_view },
     View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
-    View { path: "view.gcsPosition", deps: &[], compute: gcsposition::gcs_position_view },
+    View { path: "view.gcsPosition", deps: gcsposition::DEPS, compute: gcsposition::gcs_position_view },
     View { path: "view.gimbal", deps: &[], compute: gimbal::gimbal_view },
     View { path: "view.debugApi", deps: debugapi::DEPS, compute: debugapi::debug_api_view },
     View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
@@ -330,6 +330,129 @@ mod watch_paths {
 mod deps_cover_reads {
     use std::collections::BTreeSet;
 
+    // One list. A parallel const of just the names drifted from this within minutes of being
+    // written: dropping a module here left the completeness check passing, which is the drift it
+    // exists to prevent.
+    const MODULES: &[(&str, &str)] = &[
+            ("actions", include_str!("actions.rs")),
+            ("adsb", include_str!("adsb.rs")),
+            ("altitude", include_str!("altitude.rs")),
+            ("altitudemodes", include_str!("altitudemodes.rs")),
+            ("apmmeta", include_str!("apmmeta.rs")),
+            ("autoconnect", include_str!("autoconnect.rs")),
+            ("battery", include_str!("battery.rs")),
+            ("batteryfacts", include_str!("batteryfacts.rs")),
+            ("boards", include_str!("boards.rs")),
+            ("calibration", include_str!("calibration.rs")),
+            ("cameracalc", include_str!("cameracalc.rs")),
+            ("cameradef", include_str!("cameradef.rs")),
+            ("cameraproto", include_str!("cameraproto.rs")),
+            ("cmdinfo", include_str!("cmdinfo.rs")),
+            ("compinfo", include_str!("compinfo.rs")),
+            ("compmeta", include_str!("compmeta.rs")),
+            ("compression", include_str!("compression.rs")),
+            ("connect", include_str!("connect.rs")),
+            ("contract", include_str!("contract.rs")),
+            ("control", include_str!("control.rs")),
+            ("corridorscan", include_str!("corridorscan.rs")),
+            ("debugapi", include_str!("debugapi.rs")),
+            ("detections", include_str!("detections.rs")),
+            ("factmeta", include_str!("factmeta.rs")),
+            ("fences", include_str!("fences.rs")),
+            ("flightmodes", include_str!("flightmodes.rs")),
+            ("flystate", include_str!("flystate.rs")),
+            ("followme", include_str!("followme.rs")),
+            ("ftp", include_str!("ftp.rs")),
+            ("gcsposition", include_str!("gcsposition.rs")),
+            ("geo", include_str!("geo.rs")),
+            ("geotag", include_str!("geotag.rs")),
+            ("gimbal", include_str!("gimbal.rs")),
+            ("gpsfacts", include_str!("gpsfacts.rs")),
+            ("gpsrtk", include_str!("gpsrtk.rs")),
+            ("guided", include_str!("guided.rs")),
+            ("guidedcmd", include_str!("guidedcmd.rs")),
+            ("guidedexec", include_str!("guidedexec.rs")),
+            ("hub", include_str!("hub.rs")),
+            ("inspector", include_str!("inspector.rs")),
+            ("instruments", include_str!("instruments.rs")),
+            ("joystick", include_str!("joystick.rs")),
+            ("kml", include_str!("kml.rs")),
+            ("label", include_str!("label.rs")),
+            ("landing", include_str!("landing.rs")),
+            ("linkconfig", include_str!("linkconfig.rs")),
+            ("linkhost", include_str!("linkhost.rs")),
+            ("links", include_str!("links.rs")),
+            ("logs", include_str!("logs.rs")),
+            ("mappolygon", include_str!("mappolygon.rs")),
+            ("mappolyline", include_str!("mappolyline.rs")),
+            ("mapscale", include_str!("mapscale.rs")),
+            ("mavcmd", include_str!("mavcmd.rs")),
+            ("mavout", include_str!("mavout.rs")),
+            ("messages", include_str!("messages.rs")),
+            ("metacache", include_str!("metacache.rs")),
+            ("mission", include_str!("mission.rs")),
+            ("missionitems", include_str!("missionitems.rs")),
+            ("missionkinds", include_str!("missionkinds.rs")),
+            ("missionsummary", include_str!("missionsummary.rs")),
+            ("modes", include_str!("modes.rs")),
+            ("modeslots", include_str!("modeslots.rs")),
+            ("obstacle", include_str!("obstacle.rs")),
+            ("operatorcontrol", include_str!("operatorcontrol.rs")),
+            ("orbit", include_str!("orbit.rs")),
+            ("packetradio", include_str!("packetradio.rs")),
+            ("params", include_str!("params.rs")),
+            ("plan", include_str!("plan.rs")),
+            ("planfile", include_str!("planfile.rs")),
+            ("plantransfer", include_str!("plantransfer.rs")),
+            ("preflight", include_str!("preflight.rs")),
+            ("px4meta", include_str!("px4meta.rs")),
+            ("radio", include_str!("radio.rs")),
+            ("read", include_str!("read.rs")),
+            ("remoteid", include_str!("remoteid.rs")),
+            ("remoteidview", include_str!("remoteidview.rs")),
+            ("replay", include_str!("replay.rs")),
+            ("router", include_str!("router.rs")),
+            ("rtcm", include_str!("rtcm.rs")),
+            ("sensorcal", include_str!("sensorcal.rs")),
+            ("sensorfacts", include_str!("sensorfacts.rs")),
+            ("sensors", include_str!("sensors.rs")),
+            ("seriallink", include_str!("seriallink.rs")),
+            ("settings", include_str!("settings.rs")),
+            ("settingsgroups", include_str!("settingsgroups.rs")),
+            ("settingsini", include_str!("settingsini.rs")),
+            ("setup", include_str!("setup.rs")),
+            ("shp", include_str!("shp.rs")),
+            ("signing", include_str!("signing.rs")),
+            ("speed", include_str!("speed.rs")),
+            ("standardmodes", include_str!("standardmodes.rs")),
+            ("statustext", include_str!("statustext.rs")),
+            ("structurescan", include_str!("structurescan.rs")),
+            ("survey", include_str!("survey.rs")),
+            ("surveygrid", include_str!("surveygrid.rs")),
+            ("surveyitems", include_str!("surveyitems.rs")),
+            ("sysstatus", include_str!("sysstatus.rs")),
+            ("takeoff", include_str!("takeoff.rs")),
+            ("tcplink", include_str!("tcplink.rs")),
+            ("terrain", include_str!("terrain.rs")),
+            ("terraintile", include_str!("terraintile.rs")),
+            ("tilecache", include_str!("tilecache.rs")),
+            ("tlog", include_str!("tlog.rs")),
+            ("track", include_str!("track.rs")),
+            ("transport", include_str!("transport.rs")),
+            ("udplink", include_str!("udplink.rs")),
+            ("ulogstream", include_str!("ulogstream.rs")),
+            ("vehiclefacts", include_str!("vehiclefacts.rs")),
+            ("vehiclelinks", include_str!("vehiclelinks.rs")),
+            ("vehicles", include_str!("vehicles.rs")),
+            ("vibration", include_str!("vibration.rs")),
+            ("video", include_str!("video.rs")),
+            ("videostate", include_str!("videostate.rs")),
+            ("view", include_str!("view.rs")),
+            ("warnings", include_str!("warnings.rs")),
+            ("waypoints", include_str!("waypoints.rs")),
+    ];
+
+
     const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
         "vehicle.flightModeSetAvailable",
         "vehicle.rtlFlightMode",
@@ -382,26 +505,7 @@ mod deps_cover_reads {
 
     #[test]
     fn every_field_a_view_reads_is_one_it_watches() {
-        let modules: &[(&str, &str)] = &[
-            ("altitudemodes", include_str!("altitudemodes.rs")),
-            ("calibration", include_str!("calibration.rs")),
-            ("control", include_str!("control.rs")),
-            ("fences", include_str!("fences.rs")),
-            ("flightmodes", include_str!("flightmodes.rs")),
-            ("flystate", include_str!("flystate.rs")),
-            ("guided", include_str!("guided.rs")),
-            ("links", include_str!("links.rs")),
-            ("logs", include_str!("logs.rs")),
-            ("missionitems", include_str!("missionitems.rs")),
-            ("missionsummary", include_str!("missionsummary.rs")),
-            ("modeslots", include_str!("modeslots.rs")),
-            ("plan", include_str!("plan.rs")),
-            ("preflight", include_str!("preflight.rs")),
-            ("setup", include_str!("setup.rs")),
-            ("survey", include_str!("survey.rs")),
-            ("terrain", include_str!("terrain.rs")),
-            ("vehicles", include_str!("vehicles.rs")),
-        ];
+        let modules = MODULES;
         let unwatched: Vec<String> = modules
             .iter()
             .filter_map(|(name, source)| {
@@ -426,6 +530,26 @@ mod deps_cover_reads {
             unwatched.is_empty(),
             "these are read by a view and named in no dep, so the view is never recomputed when they change. Watch them, or add them to \
              UNWATCHED_BECAUSE_CONSTANT once you have checked the Q_PROPERTY really is CONSTANT: {unwatched:?}"
+        );
+    }
+
+    #[test]
+    fn the_module_list_covers_every_module_that_declares_dependencies() {
+        // The list above is hand-written and include_str! needs a literal, so it cannot enumerate
+        // itself. It had drifted to 18 of 55 modules - the check that every field a view reads is
+        // one it watches was running over a third of the views and passing, which is the shape of
+        // an instrument that answers a narrower question than the one being asked of it. It cannot
+        // build its own list, but it can refuse to stay quiet about what is missing from it.
+        let listed: BTreeSet<&str> = MODULES.iter().map(|(name, _)| *name).collect();
+        let missing: Vec<&str> = include_str!("lib.rs")
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("pub mod ").and_then(|rest| rest.strip_suffix(';')))
+            .filter(|name| !listed.contains(name))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "these modules are not in the list the dependency check reads, so anything they read is unchecked and the check passes anyway. \
+             Add them with include_str!, whether or not they declare DEPS - a module with none is skipped harmlessly: {missing:?}"
         );
     }
 

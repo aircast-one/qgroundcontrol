@@ -13,6 +13,14 @@ pub const STALE_AFTER_MS: u64 = 5000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct MonotonicMs(u64);
 
+pub const DEPS: &[&str] = &[
+    "positionManager.gcsPosition",
+    "positionManager.gcsHeading",
+    "positionManager.gcsPositionHorizontalAccuracy",
+    "positionManager.gcsPositionTimestamp",
+    "positionManager.gcsPositionSource",
+];
+
 pub fn now() -> MonotonicMs {
     MonotonicMs(crate::hub::now_ms())
 }
@@ -42,6 +50,10 @@ impl Source {
             Source::Log => "log",
             Source::External => "external",
         }
+    }
+
+    pub fn from_token(token: &str) -> Self {
+        SOURCES.iter().copied().find(|source| source.token() == token).unwrap_or(Source::None)
     }
 
     pub fn listening(self) -> bool {
@@ -333,13 +345,73 @@ pub fn lock() -> MutexGuard<'static, GcsPosition> {
     POSITION.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-pub fn gcs_position_view(_backend: &dyn Backend, _args: &[String]) -> Value {
-    lock().snapshot(now())
+pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let read = crate::read::object(&backend.get_fields("positionManager", "gcsPosition,gcsHeading,gcsPositionHorizontalAccuracy,gcsPositionTimestamp,gcsPositionSource"));
+    let number = |key: &str| read.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
+    // gcsPositionTimestamp is epoch milliseconds while now() counts from process start, and the
+    // ladder subtracts one from the other. Converting the stamp into the process frame collapses
+    // whenever the process is younger than the fix, so BOTH sides are read on the wall clock here
+    // instead: every comparison in the struct is a difference, and a difference only needs the two
+    // operands to share a frame.
+    let stamped = read.get("gcsPositionTimestamp").and_then(Value::as_i64).filter(|stamped| *stamped > 0).map(|stamped| stamped as u64);
+    let wall = MonotonicMs(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0));
+    let coordinate = crate::read::nested_coordinate_at(&read, "gcsPosition");
+    let mut position = lock();
+    position.source = Source::from_token(read.get("gcsPositionSource").and_then(Value::as_str).unwrap_or("none"));
+    position.latitude = coordinate.map(|(latitude, _)| latitude);
+    position.longitude = coordinate.map(|(_, longitude)| longitude);
+    position.altitude = read.get("gcsPosition").and_then(|point| point.get("altitude")).and_then(Value::as_f64).filter(|metres| metres.is_finite());
+    position.heading_deg = number("gcsHeading").map(wrap_heading);
+    position.horizontal_accuracy_m = number("gcsPositionHorizontalAccuracy");
+    position.stamped_ms = stamped;
+    position.last_report_ms = stamped.or(position.last_report_ms);
+    position.snapshot(wall)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::router::Backend;
+
+    struct Station(&'static str, i64);
+    impl Backend for Station {
+        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get_fields(&self, path: &str, _f: &str) -> String {
+            match path {
+                // A nested read serialises an invalid QGeoCoordinate as a null rather than as
+                // valid:false, so a machine with nothing listening sends no point at all.
+                "positionManager" => json!({ "kind": "object",
+                    "gcsPosition": if self.1 == 0 { Value::Null } else { json!({ "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 }) },
+                    "gcsHeading": 91.5, "gcsPositionHorizontalAccuracy": 3.0,
+                    "gcsPositionTimestamp": self.1, "gcsPositionSource": self.0 }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn epoch_now() -> i64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
+    }
+
+    #[test]
+    fn the_view_reports_the_position_qgc_actually_has() {
+        let live = gcs_position_view(&Station("internalGps", epoch_now()), &[]);
+        assert_eq!(live["latitude"], 47.397, "nothing ever wrote to this module's static, so every field was null in the running app while QGC held a fix");
+        assert_eq!(live["source"], "internalGps");
+        assert_eq!(live["listening"], true);
+        assert_eq!(live["fix"], "threeDimensional");
+        assert_eq!(live["usable"], true, "the timestamp is epoch milliseconds and every clock here counts from process start, so comparing them raw reports a live fix as permanently stale");
+
+        let old = gcs_position_view(&Station("internalGps", epoch_now() - 600_000), &[]);
+        assert_eq!(old["fix"], "staleThreeDimensional", "a fix that aged out is not the same answer as never having had one");
+
+        let dark = gcs_position_view(&Station("none", 0), &[]);
+        assert_eq!(dark["fix"], "noSource", "nothing is listening, which an operator reads differently from a source that has not answered yet");
+        assert_eq!(dark["latitude"], Value::Null);
+    }
 
     fn at(ms: u64) -> MonotonicMs {
         MonotonicMs(ms)

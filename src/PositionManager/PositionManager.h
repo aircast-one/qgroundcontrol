@@ -11,6 +11,7 @@
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QString>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtPositioning/QGeoPositionInfo>
 #include <QtQmlIntegration/QtQmlIntegration>
@@ -31,6 +32,7 @@ class QGCPositionManager : public QObject
     Q_PROPERTY(qreal          gcsHeading                    READ gcsHeading                     NOTIFY gcsHeadingChanged)
     Q_PROPERTY(qreal          gcsPositionHorizontalAccuracy READ gcsPositionHorizontalAccuracy  NOTIFY gcsPositionHorizontalAccuracyChanged)
     Q_PROPERTY(qint64         gcsPositionTimestamp          READ gcsPositionTimestamp           NOTIFY positionInfoUpdated)
+    Q_PROPERTY(QString        gcsPositionSource             READ gcsPositionSource              NOTIFY gcsPositionSourceChanged)
 
 public:
     QGCPositionManager(QObject *parent = nullptr);
@@ -47,6 +49,7 @@ public:
     qreal gcsPositionHorizontalAccuracy() const { return _gcsPositionHorizontalAccuracy; }
     QGeoPositionInfo geoPositionInfo() const { return _geoPositionInfo; }
     qint64 gcsPositionTimestamp() const { return _geoPositionInfo.timestamp().isValid() ? _geoPositionInfo.timestamp().toMSecsSinceEpoch() : 0; }
+    QString gcsPositionSource() const { return _currentSourceName; }
     int updateInterval() const { return _updateInterval; }
 
     void setNmeaSourceDevice(QIODevice *device);
@@ -56,6 +59,7 @@ signals:
     void gcsHeadingChanged(qreal gcsHeading);
     void positionInfoUpdated(QGeoPositionInfo update);
     void gcsPositionHorizontalAccuracyChanged(qreal gcsPositionHorizontalAccuracy);
+    void gcsPositionSourceChanged(QString gcsPositionSource);
 
 private slots:
     void _positionUpdated(const QGeoPositionInfo &update);
@@ -87,6 +91,7 @@ private:
     qreal _gcsPositionAccuracy = std::numeric_limits<qreal>::infinity();
     qreal _gcsDirectionAccuracy = std::numeric_limits<qreal>::infinity();
 
+    QString _currentSourceName = QStringLiteral("none");
     QGeoPositionInfoSource *_currentSource = nullptr;
     QGeoPositionInfoSource *_defaultSource = nullptr;
     QNmeaPositionInfoSource *_nmeaSource = nullptr;

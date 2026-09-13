@@ -210,6 +210,21 @@ void QGCPositionManager::_setPositionSource(QGCPositionSource source)
         break;
     }
 
+    // The source decides whether "no position yet" means nothing is listening or that something is
+    // listening and has not answered. Those read identically from the outside and only this object
+    // can tell them apart, so the name travels rather than staying private.
+    const QString wasName = _currentSourceName;
+    // Identity first: _usingPluginSource says how _defaultSource was CREATED, not which source is
+    // current, so testing it earlier reports a plugin for an NMEA fix the moment both exist.
+    _currentSourceName = (_currentSource == nullptr)     ? QStringLiteral("none")
+        : (_currentSource == _nmeaSource)                ? QStringLiteral("nmea")
+        : (_currentSource == _simulatedSource)           ? QStringLiteral("simulated")
+        : (_currentSource == _defaultSource && _usingPluginSource) ? QStringLiteral("plugin")
+                                                         : QStringLiteral("internalGps");
+    if (wasName != _currentSourceName) {
+        emit gcsPositionSourceChanged(_currentSourceName);
+    }
+
     if (_currentSource != nullptr) {
         _currentSource->setPreferredPositioningMethods(QGeoPositionInfoSource::SatellitePositioningMethods);
         _updateInterval = _currentSource->minimumUpdateInterval();

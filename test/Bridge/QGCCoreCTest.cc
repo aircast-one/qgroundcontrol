@@ -1363,6 +1363,17 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         return once == take(qgc_core_get("view.preflight"));
     };
     QTRY_VERIFY_WITH_TIMEOUT(preflightSettled(), 15000);
+    // Terrain arrives from a tile cache or the network and has resolved in two of the last four
+    // recordings, which is why clearanceText has been flipping between "null|string" and "null"
+    // and taking its type with it. This waits rather than asserts: a machine that cannot reach
+    // terrain should still be able to record, and the guard that refuses a narrowed type is what
+    // stops such a run being committed.
+    const auto terrainResolved = []() {
+        return !take(qgc_core_get("view.terrainProfile")).value(QStringLiteral("minClearanceMetres")).isNull();
+    };
+    for (int attempt = 0; attempt < 40 && !terrainResolved(); ++attempt) {
+        QTest::qWait(500);
+    }
     states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
     for (const char *path : kViewPaths) {
         const QString key = QString::fromUtf8(path);

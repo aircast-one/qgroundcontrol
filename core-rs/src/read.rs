@@ -11,7 +11,11 @@ pub fn flag(object: &Value, key: &str) -> bool {
 }
 
 pub fn nested_coordinate(read: &Value) -> Option<(f64, f64)> {
-    let coordinate = read.get("coordinate")?;
+    nested_coordinate_at(read, "coordinate")
+}
+
+pub fn nested_coordinate_at(read: &Value, key: &str) -> Option<(f64, f64)> {
+    let coordinate = read.get(key)?;
     if !flag(coordinate, "valid") {
         return None;
     }

@@ -9,6 +9,10 @@ pub const DEPS: &[&str] = &[
     "vehicle.objectAvoidance.enabled",
     "vehicle.objectAvoidance.distances",
     "vehicle.objectAvoidance.msSinceUpdate",
+    "vehicle.objectAvoidance.increment",
+    "vehicle.objectAvoidance.minDistance",
+    "vehicle.objectAvoidance.maxDistance",
+    "vehicle.objectAvoidance.angleOffset",
     "settings.unitsSettings.horizontalDistanceUnits",
 ];
 
