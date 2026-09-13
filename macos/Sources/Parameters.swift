@@ -13,6 +13,11 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var visible: [Parameter] = []
 
     private let componentId = 1
+    // Cleared by EVERY parameter write, not only by writes made through a setup control.
+    // 3c96e2ea2 made a section's CONTENT depend on a parameter's VALUE: a block whose first
+    // parameter is a *_MONITOR serves only that parameter while it reads zero, because ArduPilot
+    // does not populate the rest until a monitor is set. Before that, a section's shape was fixed
+    // and a cache surviving writes cost nothing.
     private var setupCache: [String: [SettingsSection]] = [:]
     private var cachedFor: Int?
 
@@ -91,6 +96,7 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
             return
         }
         guard write(parameter.path, Double(value) ?? value, parameter.name) else { return }
+        setupCache.removeAll()
         let json = Bridge.group(parameter.path)
         guard json["kind"] as? String == "fact" else { return }
         let updated = Parameter(name: parameter.name, componentId: parameter.componentId, json: json)
