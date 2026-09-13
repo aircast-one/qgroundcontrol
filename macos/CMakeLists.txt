@@ -127,6 +127,7 @@ add_library(QGCNativeUI STATIC
     Sources/SettingsWindow.swift
     Sources/ConnectionsSection.swift
     Sources/PacketRadioSection.swift
+    Sources/TlogSection.swift
     Sources/Controls.swift
     Sources/LinkConfigModel.swift
     Sources/Links.swift

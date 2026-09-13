@@ -444,18 +444,21 @@ struct AnalyzeView: View {
     @ObservedObject var geoTag: GeoTagStore
     @ObservedObject var inspector: MavlinkInspectorStore
     @ObservedObject var console: MavlinkConsoleStore
+    @ObservedObject var tlog: TlogStore
     @ObservedObject var selection: PageSelection
 
-    static let pages = ["Vibration", "Log Download", "Geotag Images", "MAVLink Inspector",
-                        "MAVLink Console"]
+    static let pages = ["Vibration", "Log Download", "Geotag Images", "Telemetry Log",
+                        "MAVLink Inspector", "MAVLink Console"]
 
     static let symbols = ["Vibration": "waveform.path.ecg", "Log Download": "doc.text.fill",
                           "Geotag Images": "mappin.and.ellipse",
                           "MAVLink Inspector": "dot.radiowaves.left.and.right",
-                          "MAVLink Console": "terminal"]
+                          "MAVLink Console": "terminal",
+                          "Telemetry Log": "doc.text.magnifyingglass"]
     static let colours: [String: Color] = ["Vibration": .pink, "Log Download": .indigo,
                                            "Geotag Images": .teal, "MAVLink Inspector": .orange,
-                                           "MAVLink Console": .gray]
+                                           "MAVLink Console": .gray,
+                                           "Telemetry Log": .brown]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -475,6 +478,7 @@ struct AnalyzeView: View {
             case "Log Download": LogDownloadView(store: logs)
             case "Geotag Images": GeoTagView(store: geoTag)
             case "MAVLink Inspector": MavlinkInspectorView(store: inspector)
+            case "Telemetry Log": TlogView(store: tlog)
             case "MAVLink Console": MavlinkConsoleView(store: console)
             default: VibrationView(store: vibration)
             }
@@ -491,6 +495,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
     private let geoTag = GeoTagStore()
     private let inspector = MavlinkInspectorStore()
     private let console = MavlinkConsoleStore()
+    private let tlog = TlogStore()
     private let selection = PageSelection(owner: "analyze", pages: AnalyzeView.pages)
     private var window: NSWindow?
 
@@ -501,6 +506,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(geoTag)
         NativeProbe.register(inspector)
         NativeProbe.register(console)
+        NativeProbe.register(tlog)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -522,7 +528,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         window.title = "Analyze"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, inspector: inspector, console: console, selection: selection))
+        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, inspector: inspector, console: console, tlog: tlog, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
