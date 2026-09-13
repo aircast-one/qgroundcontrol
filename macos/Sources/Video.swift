@@ -109,8 +109,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
 
     func setZoom(_ level: Double) {
         guard camera.present, camera.hasZoom, level.isFinite else { return }
-        write("vehicle.cameraManager.currentCameraInstance.zoomLevel", level,
-              "the camera zoom")
+        write("vehicle.cameraManager.currentCameraInstance.zoomLevel", level, "the camera zoom")
         loadCamera()
     }
 

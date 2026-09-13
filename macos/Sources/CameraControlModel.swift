@@ -118,3 +118,21 @@ enum CameraRefusal {
         return reason.isEmpty ? unanswered : reason
     }
 }
+
+
+// THERE IS DELIBERATELY NO ZoomAnswer DECODER, and the core's `clamped` is not being ignored.
+//
+// The zoom range is not a camera property, it is the MAVLink protocol: setZoomLevel sends
+// ZOOM_TYPE_RANGE, whose level is a PERCENTAGE. So 0...100 is the same number in three places on
+// purpose -- this head's slider, the core's clamp, and VehicleCameraControl's own std::min/max --
+// and they agree because the protocol says so, not because anyone copied anyone.
+//
+// Which makes `clamped` unreachable from the only control that calls setZoom. A decoder for it
+// would take input nothing can produce, and the sentence it would render -- "the camera went to
+// 100 rather than 150" -- describes a press no operator can perform. That is worse than absent:
+// it reads as a handled case, so nobody checks whether it is handled.
+//
+// What DOES reach the operator is the refusal, and that is wired: no camera, no zoom, and the
+// camera declining the level are three distinguishable answers where there was one generic line.
+// If a camera ever reports its own range, this is where the decoder goes and `clamped` is already
+// being sent.

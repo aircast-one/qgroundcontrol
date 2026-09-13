@@ -45,14 +45,12 @@ enum Bridge {
     // "%1 on %2 has no WRITE accessor", "%1 takes an object, so the value must be an @path". nil
     // means written; a string is what came back, empty when nothing came back at all.
     @discardableResult
-    static func set(_ path: String, _ value: Any) -> String? {
+    static func set(_ path: String, _ value: Any) -> [String: Any] {
         let payload = (try? JSONSerialization.data(withJSONObject: ["value": value]))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        guard let raw = qgc_bridge_set(path, payload) else { return "" }
+        guard let raw = qgc_bridge_set(path, payload) else { return [:] }
         defer { qgc_bridge_free(raw) }
-        let answer = decode(raw)
-        guard (answer["ok"] as? NSNumber)?.boolValue != true else { return nil }
-        return (answer["reason"] as? String) ?? ""
+        return decode(raw)
     }
 
     @discardableResult
@@ -81,7 +79,7 @@ protocol WriteReporting: AnyObject {
 extension WriteReporting {
     @discardableResult
     func write(_ path: String, _ value: Any, _ what: String) -> Bool {
-        guard let reason = Bridge.set(path, value) else { return true }
+        guard let reason = WriteReport.reason(Bridge.set(path, value)) else { return true }
         writeFailure = WriteReport.refusal(what, reason)
         return false
     }

@@ -18,6 +18,15 @@ enum WriteReport {
     // makes worse. The reason itself names a property and a C++ class, which tells the operator
     // nothing they can act on -- but it is exactly what they need to have to hand when they report
     // it, and until now it did not survive Bridge.set.
+    // A write that a claimed path answers carries more than ok -- the zoom sends back what it
+    // asked for, what the camera took, and whether those differ. Bridge.set hands the whole answer
+    // over now, so the caller that wants the rest can have it and the ones that only want a verdict
+    // read it here. nil is written; a string is the reason, empty when none came back.
+    static func reason(_ answer: [String: Any]) -> String? {
+        guard (answer["ok"] as? NSNumber)?.boolValue != true else { return nil }
+        return (answer["reason"] as? String) ?? ""
+    }
+
     static func refusal(_ what: String, _ reason: String) -> String {
         guard !reason.isEmpty else { return failure(what) }
         return "Could not change \(what), and this build has no way to: \(reason). It is unchanged."
