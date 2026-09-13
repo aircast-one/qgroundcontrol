@@ -117,7 +117,7 @@ void LogDownloadController::_findMissingEntries()
         return;
     }
 
-    if (_retries++ > 2) {
+    if (_retries++ > kMaxRetries) {
         for (int i = 0; i < num_logs; i++) {
             QGCLogEntry *const entry = _logEntriesModel->value<QGCLogEntry*>(i);
             if (entry && !entry->received()) {
@@ -313,7 +313,15 @@ void LogDownloadController::_findMissingData()
         _downloadData->advanceChunk();
     }
 
-    _retries++;
+    // A received chunk resets _retries, so this counts consecutive silent timeouts.
+    // Without it a vehicle that stops answering is retried forever, and the
+    // communication lost watchdog stays disabled for as long as that lasts.
+    if (_retries++ > kMaxRetries) {
+        _downloadData->entry->setStatus(tr("Error"), QStringLiteral("error"));
+        qCWarning(LogDownloadControllerLog) << "Too many timeouts downloading log data. Giving up.";
+        _receivedAllData();
+        return;
+    }
 
     _updateDataRate();
 

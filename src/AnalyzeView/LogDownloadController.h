@@ -94,6 +94,7 @@ private:
     Vehicle *_vehicle = nullptr;
 
     static constexpr uint32_t kTimeOutMs = 500;
+    static constexpr int kMaxRetries = 2;
     static constexpr uint32_t kGUIRateMs = 17; ///< 1000ms / 60fps
     static constexpr uint32_t kRequestLogListTimeoutMs = 5000;
 };
