@@ -84,12 +84,14 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "downloading": downloading,
         "busy": busy,
         // These three all send MAVLink and LogDownloadPage.qml gates only the first on a vehicle,
-        // which is where the core took them from. eraseAll returns on a null vehicle with nothing
-        // but a log line, and download with no selection flips downloading on and straight back
-        // off - so the operator confirms a destructive action, or waits for a file, and is told
-        // nothing either way. The refusals live in the controller, so the gate is built from those.
+        // which is where the core took them from: eraseAll returns on a null vehicle with nothing
+        // but a log line, so an operator confirms a destructive action and is told nothing happened.
+        // A selection is deliberately NOT a term here. download() with none selected is a no-op,
+        // but AnalyzeWindow.swift offers Download per row and selects inside the action, so gating
+        // on a selection that only exists after the click disables every button permanently.
+        // That precondition belongs to the call, not to the view.
         "canRefresh": connected && !busy,
-        "canDownload": connected && !busy && entries.iter().any(|entry| entry["selected"] == true),
+        "canDownload": connected && !busy,
         "canCancel": busy,
         "canErase": connected && !entries.is_empty() && !busy,
         "anyDownloaded": entries.iter().any(|e| e["statusId"] == "downloaded"),
@@ -136,7 +138,7 @@ mod tests {
         }
         let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
         assert_eq!(idle["canRefresh"], true);
-        assert_eq!(idle["canDownload"], false, "_prepareLogDownload returns false with nothing selected, so the controller flips downloading on and straight back off: an operator waits for a file that was never asked for");
+        assert_eq!(idle["canDownload"], true, "the head selects the row inside download(), so requiring a selection the click has not made yet would disable every Download button there is");
         assert_eq!(idle["canErase"], true);
         assert_eq!(idle["anyDownloaded"], true);
 
@@ -151,9 +153,6 @@ mod tests {
         assert_eq!(asking["canDownload"], false);
         assert_eq!(asking["canCancel"], true);
         assert_eq!(asking["emptyText"], "Asking the vehicle for its logs\u{2026}");
-        let picked = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Available", "statusId": "available", "received": true, "selected": true, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
-        assert_eq!(picked["canDownload"], true);
-
         let none = logs_view(&Fake { connected: false, requesting: false, entries: json!([]) }, &[]);
         assert_eq!(none["emptyText"], "Connect a vehicle to list its logs.");
         assert_eq!(none["canErase"], false);
@@ -163,5 +162,6 @@ mod tests {
         let dropped = logs_view(&Fake { connected: false, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Available", "statusId": "available", "received": true, "selected": true, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
         assert_eq!(dropped["canErase"], false, "eraseAll returns on a null vehicle after a log line and nothing else, so offering it means the operator confirms a destructive action and is told nothing happened");
         assert_eq!(dropped["canDownload"], false, "and the same window offers a download whose every byte would have to come from the vehicle that is gone");
+        assert_eq!(dropped["canCancel"], false);
     }
 }

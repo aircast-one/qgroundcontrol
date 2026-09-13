@@ -37,9 +37,10 @@ fn planning_for(backend: &dyn Backend) -> Value {
             "multiRotor": flag(&read, "multiRotor"),
             "vtol": flag(&read, "vtol"),
             "apmFirmware": flag(&read, "apmFirmware"),
-            // Six reads, not five. A nested coordinate arrives as a null rather than valid:false,
-            // so an unset home is absent here and never a point at nowhere.
-            "home": crate::read::nested_coordinate_at(&read, "homePosition").map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+            // LaunchPosition(home:) reads home["valid"] and nothing else, so an object carrying
+            // only the coordinate answers false for every vehicle that has a home. Serving the
+            // path the reader names is not enough; it has to carry the keys the reader subscripts.
+            "home": crate::read::nested_coordinate_at(&read, "homePosition").map(|(latitude, longitude)| json!({ "kind": "coordinate", "valid": true, "latitude": latitude, "longitude": longitude })),
         }),
         None => Value::Null,
     }
@@ -327,6 +328,7 @@ mod tests {
         assert_eq!(view["planningFor"]["type"], "Multi-Rotor", "a plan is edited against a vehicle even with none connected, and a head asking which one had to read the controller object itself");
         assert_eq!(view["planningFor"]["firmware"], "PX4 Pro");
         assert_eq!((view["planningFor"]["multiRotor"].clone(), view["planningFor"]["vtol"].clone(), view["planningFor"]["apmFirmware"].clone()), (json!(true), json!(false), json!(false)), "the reader branches on these three, so serving the names alone left it on plan.controllerVehicle and retired nothing");
+        assert_eq!(view["planningFor"]["home"]["valid"], true, "LaunchPosition subscripts home[\"valid\"]; serving the coordinate without it answers no-home for every vehicle that has one");
         assert_eq!(view["planningFor"]["home"]["latitude"], 47.397, "the sixth read on that group - five of six is not retirement");
 
         let mut homeless = supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true);
