@@ -1414,7 +1414,13 @@ impl Hub {
         json!({
             "kind": "object",
             "class": "CoreVehicle",
+            // available means a vehicle RECORD exists, and the hub deliberately keeps a silent
+            // vehicle exactly as the Qt head does. connectionLost is the liveness answer and was
+            // served only inside `vehicle`, one level below the flag a head reaches for first - so
+            // a head checking availability at the top level never met it and drew a frozen
+            // aircraft as a live one. Both answers now sit at the same level.
             "available": chosen.is_some(),
+            "heard": chosen.map(|vehicle| !vehicle.connection_lost),
             "vehicleIds": self.vehicles.keys().collect::<Vec<_>>(),
             "vehicle": chosen.map(Vehicle::snapshot).unwrap_or(Value::Null),
         })
@@ -1561,8 +1567,10 @@ mod tests {
         assert!(hub.expire(5 + CONNECTION_LOST_US).is_empty());
         assert_eq!(hub.expire(6 + CONNECTION_LOST_US), vec![1]);
         assert_eq!((hub.snapshot()["available"].as_bool(), hub.snapshot()["vehicle"]["connectionLost"].as_bool()), (Some(true), Some(true)), "a silent vehicle is kept and flagged, as the Qt head keeps it until its link closes");
+        assert_eq!(hub.snapshot()["heard"], false, "a head reading only the top-level flags drew a frozen aircraft as a live one, because the liveness answer sat a level below the one it reached for");
         hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 7 + CONNECTION_LOST_US, 0);
         assert_eq!(hub.snapshot()["vehicle"]["connectionLost"], false);
+        assert_eq!(hub.snapshot()["heard"], true, "heard is the liveness answer beside available, which only says a record exists");
         let mut two = Hub::default();
         two.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 5, 0);
         two.on_frame(origin(0), &MavHeader { system_id: 7, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad), 6, 0);
