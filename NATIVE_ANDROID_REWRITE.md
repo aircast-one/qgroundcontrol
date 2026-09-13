@@ -5507,6 +5507,19 @@ are the single cheapest win and need no Qt knowledge at all: a head that ships i
 carries 15 MB of QGC's. Attack the resources first, and the module unlinking becomes possible as a
 consequence rather than being the thing attempted.
 
+**The first lever, taken the same evening** (`fa1035f1c`): `qgcimages.qrc` and `qgcresources.qrc`
+are now appended only when `NOT ANDROID`. **83.3 MB to 72.5 MB.** Desktop is byte-identical.
+Verified by installing and touring all five tabs with `logcat` filtered for qrc failures — Qt warns
+when a resource path will not open, and there were none.
+
+**A trap this uncovered, for anyone with an existing `build-android` tree.**
+`QGC_ANDROID_PACKAGE_SOURCE_DIR` is a `CACHE PATH`, so moving the Qt template to `deploy/android`
+changed only the default: every already-configured build kept the old value, which now names the
+Kotlin head. `androiddeployqt` then copied the *head's* gradle project in as the package template and
+gradle failed evaluating a root project called `aircast-android`. The fix is one reconfigure —
+`cmake -B build-android -DQGC_ANDROID_PACKAGE_SOURCE_DIR=<repo>/deploy/android` — but the error names
+repositories and settings files rather than the path, so it does not lead you to the cause.
+
 **It is not, however, the Plan-entry stall.** The head sets `page` on every tab change, which drives
 `flyViewActive`, which drives `planView.planActive` — so switching to Plan activates a second,
 invisible plan view, which is a good story for the ~930 ms. Tested by not setting `page` at all, so
