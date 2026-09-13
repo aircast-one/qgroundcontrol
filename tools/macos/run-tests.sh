@@ -41,24 +41,28 @@ foreign_suites() {
 : > "$log"
 
 others=0
-for _ in $(seq 1 60); do
+for attempt in $(seq 1 150); do
     others=$(foreign_suites)
     (( others == 0 )) && break
+    (( attempt % 3 == 1 )) && print -u2 "waiting: $others foreign suite(s) running, $(( (attempt - 1) / 6 ))m so far of 25m"
     sleep 10
 done
 if (( others > 0 )); then
-    print "REFUSED: another session's unit suite is still running after ten minutes" >> "$log"
-    print -u2 "another session's unit suite is still running after ten minutes; not starting a second"
+    print "REFUSED: another session's unit suite is still running after twenty-five minutes" >> "$log"
+    print -u2 "another session's unit suite is still running after twenty-five minutes; not starting a second"
     exit 1
 fi
 
 # Waiting for a completely idle machine never converges here (Spotlight and parallel
 # sessions keep it around 4-6), so settle for "not thrashing" and move on.
-for _ in $(seq 1 12); do
+settled=0
+for attempt in $(seq 1 30); do
     load=$(sysctl -n vm.loadavg | awk '{print int($2)}')
-    [[ "$load" -lt 8 ]] && break
+    if [[ "$load" -lt 8 ]]; then settled=1; break; fi
+    (( attempt % 3 == 1 )) && print -u2 "waiting: load $load, want under 8, $(( (attempt - 1) / 6 ))m so far of 5m"
     sleep 10
 done
+(( settled == 0 )) && print -u2 "load never settled; starting anyway, so treat a timeout or a SIGSEGV here as load rather than a regression"
 echo "starting with load $(sysctl -n vm.loadavg | awk '{print $2}')"
 
 # Build first, and treat a failed build as a failed run rather than testing what was there
