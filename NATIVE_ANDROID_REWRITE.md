@@ -3051,6 +3051,32 @@ the `view.gcsPosition` split where one `available` answered two questions.
 Nothing safety-shaped should key on the first. This head binds to neither — `view.coreVehicle`
 has no consumer in `android/` at all — so nothing needed changing here.
 
+### The geotag trigger count is still unproven above zero, and every link checks out, 2026-09-14
+
+`view.geoTag` reports `triggerCount: 0` for every telemetry log this rig can produce, so the
+number the screen exists to show cannot be told from a counter stuck at zero. Narrowed as far
+as it goes tonight, and the result is a contradiction rather than an answer:
+
+| link in the chain | checked | how |
+|---|---|---|
+| the rig sends CAMERA_FEEDBACK | **yes** | `CAMERA_FEEDBACK_EVERY=10`, 19 in the rig's own log |
+| the app receives it | **yes** | it is listed in the head's own MAVLink Inspector |
+| QGC writes every parsed message | **yes** | `_logData` at `MAVLinkProtocol.cc:128` is called unconditionally for every frame that parses, with no filter by id or component |
+| the core parses that dialect | **yes** | `Cargo.toml:12` has `dialect-ardupilotmega`, and `geotag.rs:3` imports `MavMessage` from it |
+| the log contains a trigger | **no** | 1079824 bytes, `triggerCount: 0`, `undecodableFrames: 0` |
+
+Every step verified and the answer is still zero, which means one of those five is wrong. The
+weakest is the second: the Inspector sighting and the logged session were different runs, so
+"the app receives it" and "the app received it during the run that produced this file" are not
+the same claim, and I did not check them together.
+
+The other candidate is `undecodableFrames` itself — if it counts framing failures rather than
+unknown message ids, a message the parser cannot map is invisible to it, and that zero means
+less than it appears.
+
+Not resolved. Recorded this far so the next person starts from a narrowed chain rather than
+from "it does not work", and so the screen's honest caveat has evidence behind it.
+
 ### Geotagging: the head should use the core, not Qt's controller, 2026-09-14
 
 Two implementations exist and no head reads the core one. `view.geoTag` parses a tlog for
