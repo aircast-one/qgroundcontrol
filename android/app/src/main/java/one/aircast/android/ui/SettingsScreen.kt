@@ -72,6 +72,7 @@ val SETTINGS_GROUPS = listOf(
     SettingsGroup("settings.autoConnectSettings", "AutoConnect", "Which link types connect on their own"),
     SettingsGroup("settings.mavlinkSettings", "MAVLink and telemetry logs", "Telemetry logging, stream requests and forwarding"),
     SettingsGroup("settings.rtkSettings", "RTK GPS", "Base station accuracy and position"),
+    SettingsGroup("settings.remoteIDSettings", "Remote ID", "Operator and aircraft identification, which some regions require in flight"),
     SettingsGroup("settings.appSettings", "General", "Offline editing defaults and other app-wide settings"),
 )
 
