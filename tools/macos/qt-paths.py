@@ -60,8 +60,15 @@ its argument would still be miscounted.
 SERVED paths (`view.*`) are counted separately as the numerator of the migration: the head
 is done with a root when its raw count reaches zero.
 
-Usage: python3 tools/macos/qt-paths.py [head directory]
-       default macos/Sources; pass android/app/src/main to measure the Android head.
+A HEAD IS NOT ALWAYS ONE DIRECTORY, so this takes a list of them. Android is two modules
+-- app/src/main plus map-spike/src/main, which app/build.gradle.kts:43 depends on and which
+draws the Plan tab -- and measuring only the first reported 76 where the head is 89. Do not
+reach for the parent directory instead: android/ sweeps app/src/test, whose 27 paths are
+test fixtures and not head debt at all. Name the source roots.
+
+Usage: python3 tools/macos/qt-paths.py [head directory ...]
+       default macos/Sources
+       Android: android/app/src/main android/map-spike/src/main
 """
 import pathlib
 import re
@@ -82,16 +89,36 @@ DECLARATION = re.compile(r'\b(?:var|let|func|val|fun)\s+([A-Za-z_][A-Za-z0-9_]*)
 SYMBOL_DECLARATION = re.compile(r'symbol|glyph|icon', re.IGNORECASE)
 SYMBOL_ARGUMENT = re.compile(r'systemName:|systemImage:')
 
-USE = [("action", re.compile(r'\binvoke\(')),
-       ("read", re.compile(r'\b(?:group|get|qgcBool|qgcDouble|qgcInt|qgcString|qgcPath'
-                           r'|SettingsGroup)\(')),
+USE = [("read", re.compile(r'\b(?:group|get|getFields|watch|invokeResult|qgcBool|qgcDouble'
+                           r'|qgcInt|qgcString|qgcPath|SettingsGroup)\(')),
+       ("action", re.compile(r'\binvoke\(')),
        ("write", re.compile(r'\bset\('))]
+
+CONSTANT = re.compile(r'\bconst\s+val\s+([A-Z][A-Z0-9_]*)\s*=\s*"([^"]*)"')
 
 SUFFIXES = (".swift", ".kt")
 
 
-def paths(root):
-    for source in sorted(p for p in root.rglob("*") if p.suffix in SUFFIXES):
+def constants(sources):
+    found = {}
+    for source in sources:
+        for match in CONSTANT.finditer(source.read_text(errors="replace")):
+            found[match.group(1)] = match.group(2)
+    return {n: v for n, v in found.items()
+            if v.split(".")[0] in ROOTS or any(v.startswith(r + ".") for r in ROOTS)}
+
+
+def expand(line, named):
+    for name, value in named.items():
+        line = line.replace("${" + name + "}", value).replace("$" + name, value)
+    return line
+
+
+def paths(roots):
+    sources = sorted(p for root in roots for p in root.rglob("*") if p.suffix in SUFFIXES)
+    named = constants(sources)
+    bare = re.compile(r'\b(' + "|".join(named) + r')\b') if named else None
+    for source in sources:
         declaration, previous = "", ""
         for line in source.read_text(errors="replace").splitlines():
             found = DECLARATION.search(line)
@@ -99,21 +126,28 @@ def paths(root):
             symbolic = (SYMBOL_ARGUMENT.search(line + previous)
                         or SYMBOL_DECLARATION.search(declaration))
             previous = line
+            if CONSTANT.search(line):
+                continue
+            line = expand(line, named)
             use = next((name for name, call in USE if call.search(line)), "unclassified")
+            if symbolic:
+                continue
             for match in PATH.finditer(line):
-                if not symbolic:
-                    yield match.group(1), use
+                yield match.group(1), use
+            for match in bare.finditer(line) if bare else ():
+                yield named[match.group(1)], use
 
 
 def main():
-    root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "macos/Sources")
-    if not root.is_dir():
-        print(f"not a directory: {root}", file=sys.stderr)
+    roots = [pathlib.Path(a) for a in (sys.argv[1:] or ["macos/Sources"])]
+    missing = [r for r in roots if not r.is_dir()]
+    if missing:
+        print("not a directory: " + ", ".join(map(str, missing)), file=sys.stderr)
         return 2
 
     served, literal, template = set(), set(), set()
     uses, sites = {}, 0
-    for path, use in paths(root):
+    for path, use in paths(roots):
         sites += 1
         bucket = template if INTERPOLATION.search(path) else literal
         (served if path.startswith("view.") else bucket).add(path)
@@ -121,13 +155,13 @@ def main():
             uses.setdefault(path, set()).add(use)
 
     def counted(name):
-        return sum(1 for kinds in uses.values() if kinds == {name})
+        return sum(1 for kinds in uses.values() if name in kinds)
 
     by_root = {}
     for path in literal | template:
         by_root.setdefault(path.split(".")[0], []).append(path)
 
-    print(f"head: {root}")
+    print("head: " + ", ".join(map(str, roots)))
     print(f"predicate: a quoted literal whose text is one of {len(ROOTS)} bridge roots "
           f"followed by a dot; interpolation detected as \\( or ${{ or $name; literals in "
           f"a systemName:/systemImage: argument or a symbol/glyph/icon declaration are "
@@ -140,13 +174,14 @@ def main():
     print(f"  raw Qt total         {len(literal) + len(template):4}   distinct, literal + templates")
     print(f"  call sites           {sites:4}   occurrences, not distinct: effort rather than surface")
     print()
-    print(f"  reads                {counted('read'):4}   group/get/qgc* -- a served view retires these")
+    print(f"  reads                {counted('read'):4}   group/get/watch/qgc* -- a served view retires these")
     print(f"  actions              {counted('action'):4}   invoke -- needs a core action, not a view, "
           f"and a grounded rig cannot exercise most of them")
     print(f"  writes               {counted('write'):4}   set")
     print(f"  unclassified         {counted('unclassified'):4}   not on a call line: a multi-line call or a "
           f"path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid")
-    print(f"  mixed use            {sum(1 for k in uses.values() if len(k) > 1):4}")
+    print(f"  used more than one way {sum(1 for k in uses.values() if len(k) > 1):3}   a path both read and "
+          f"written is counted under EACH use above, so those four exceed the raw total")
     print()
     for name, found in sorted(by_root.items(), key=lambda kv: (-len(kv[1]), kv[0])):
         templates = sum(1 for p in found if INTERPOLATION.search(p))
