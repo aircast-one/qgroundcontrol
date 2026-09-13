@@ -12,6 +12,7 @@ pub mod battery;
 pub mod boards;
 pub mod calibration;
 pub mod compression;
+pub mod console;
 pub mod connect;
 pub mod compinfo;
 pub mod corridorscan;

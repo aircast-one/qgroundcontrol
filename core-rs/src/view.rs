@@ -30,6 +30,7 @@ use crate::cameraproto;
 use crate::joystick;
 use crate::detections;
 use crate::followme;
+use crate::console;
 use crate::gcsposition;
 use crate::gimbal;
 use crate::guided;
@@ -191,6 +192,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.debugApi", deps: debugapi::DEPS, compute: debugapi::debug_api_view },
     View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
     View { path: "view.packetRadio", deps: &[], compute: packetradio::packet_radio_view },
+    View { path: "view.mavlinkConsole", deps: console::DEPS, compute: console::console_view },
     View { path: "view.gpsRtkBase", deps: gpsrtk::DEPS, compute: gpsrtk::base_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
@@ -351,6 +353,7 @@ mod deps_cover_reads {
             ("compinfo", include_str!("compinfo.rs")),
             ("compmeta", include_str!("compmeta.rs")),
             ("compression", include_str!("compression.rs")),
+        ("console", include_str!("console.rs")),
             ("connect", include_str!("connect.rs")),
             ("contract", include_str!("contract.rs")),
             ("control", include_str!("control.rs")),
