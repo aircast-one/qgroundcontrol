@@ -20,12 +20,8 @@ final class MavlinkConsoleStore: ObservableObject, Probeable {
         watchPoll = nil
     }
 
-    // Not Bridge.group("vehicle")["kind"]: that serialises the whole vehicle object, the largest
-    // node in the tree, once a second to read one word. This asks the one question instead.
     func refresh() {
-        let live = (Bridge.group("vehicles.activeVehicleAvailable")["value"] as? NSNumber)?
-            .boolValue ?? false
-        let read = MavlinkConsole(Bridge.group("mavlinkConsole"), connected: live)
+        let read = MavlinkConsole(view: Bridge.group("view.mavlinkConsole"))
         if read != console { console = read }
     }
 

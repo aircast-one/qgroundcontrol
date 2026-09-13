@@ -11,13 +11,22 @@ struct MavlinkConsole: Equatable {
         self.connected = connected
     }
 
-    init(_ json: [String: Any], connected: Bool) {
+    // view.mavlinkConsole answers `connected` and `lines` in ONE read. The store used to ask
+    // vehicles.activeVehicleAvailable and mavlinkConsole separately, so a vehicle that dropped
+    // between the two calls produced a console that was connected and empty, or disconnected
+    // with output. Narrow, and there is no reason to keep it.
+    init(view json: [String: Any]) {
         // MAVLinkConsoleController keeps a QStringList whose last entry is the line still being
         // assembled, so it is empty until a newline arrives and drawing it adds a blank row that
         // appears and disappears as characters land.
+        //
+        // THE CORE'S count AND last ARE NOT USED, and this is why: they are taken from the same
+        // list BEFORE this trim, so `count` is one too many and `last` is "" for as long as a
+        // line is mid-assembly. Their fixture cannot see it -- it has no trailing partial entry,
+        // so the axis the trim exists for is the one the fixture holds constant.
         let listed = ((json["lines"] as? [Any]) ?? []).compactMap { $0 as? String }
         lines = listed.last?.isEmpty == true ? Array(listed.dropLast()) : listed
-        self.connected = connected
+        connected = (json["connected"] as? NSNumber)?.boolValue ?? false
     }
 
     var describes: Bool { !lines.isEmpty }
@@ -25,6 +34,12 @@ struct MavlinkConsole: Equatable {
     // Shell output only appears in answer to a command, and this page cannot send one, so a
     // connected operator watching "nothing yet" is being told to wait for something that will
     // never arrive. Say where the commands go instead.
+    // NOT view.mavlinkConsole's emptyReason, deliberately. The core spells the connected case
+    // "The vehicle has not printed anything yet", which is true of the vehicle and wrong for
+    // THIS page: shell output only appears in answer to a command, and this page cannot send
+    // one. That sentence tells a connected operator to wait for something that will never
+    // arrive -- the same defect I removed from My Location twice in one day. What a head can do
+    // is the head's to say.
     var emptyText: String {
         connected
             ? "Nothing yet. The shell answers commands, and those are sent from the Qt build."

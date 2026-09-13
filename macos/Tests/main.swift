@@ -1926,6 +1926,7 @@ func checkMissionItemKinds() {
     checkComplexGeometryInAnyLocale()
     checkTheEditFieldMatchesTheCoreOnPrecision()
     checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact()
+    checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines()
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
     checkARouteLeavesAPatternWhereItEnds()
@@ -5325,6 +5326,28 @@ func checkSensorsComponentIsFoundByClass() {
            + "rebuilt every row the moment the language changed")
 }
 
+func checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines() {
+    let unplugged = MavlinkConsole(view: ["connected": false as NSNumber, "lines": [] as [Any]])
+    let quiet = MavlinkConsole(view: ["connected": true as NSNumber, "lines": [] as [Any]])
+    expect(quiet.emptyText != unplugged.emptyText,
+           "one read now carries both, where the store used to ask vehicles.activeVehicleAvailable "
+           + "and mavlinkConsole in separate calls -- a vehicle dropping between them produced a "
+           + "console that was connected and empty, or disconnected with output")
+
+    expect(!MavlinkConsole(view: [:]).connected,
+           "AN ABSENT VIEW REPORTS NO VEHICLE rather than assuming one. Connected was previously "
+           + "passed in by the caller, so an unreadable console could not have said this at all")
+    expect("\(MavlinkConsole(view: [:]).lines.count)", "0",
+           "and a controller answering nothing is not a controller answering an empty list")
+
+    expect(MavlinkConsole(view: ["connected": true as NSNumber,
+                                 "lines": ["ekf2 status", ""] as [Any]]).last ?? "", "ekf2 status",
+           "THE CORE'S count AND last ARE DELIBERATELY UNUSED. view.mavlinkConsole takes both from "
+           + "the list BEFORE this trim, so while a line is mid-assembly its count is one too many "
+           + "and its last is the empty string. Its fixture holds no trailing partial entry, so "
+           + "the axis the trim exists for is the one that fixture keeps constant")
+}
+
 func checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact() {
     let declared: [String: Any] = ["min": 2.0, "max": 121.0,
                                    "minString": "2 m", "maxString": "121 m",
@@ -6436,8 +6459,8 @@ func checkBlockedBanner() {
 }
 
 func checkMavlinkConsole() {
-    let read = MavlinkConsole(["lines": ["nsh> ver all", "FW git-hash: 1a2b3c", ""]],
-                              connected: true)
+    let read = MavlinkConsole(view: ["connected": true as NSNumber,
+                                       "lines": ["nsh> ver all", "FW git-hash: 1a2b3c", ""]])
     expect(read.lines.joined(separator: "|"), "nsh> ver all|FW git-hash: 1a2b3c",
            "MAVLinkConsoleController keeps the line still being assembled as the last entry, and "
            + "it is empty until a newline arrives; drawing it adds a blank row that appears and "
@@ -6447,16 +6470,16 @@ func checkMavlinkConsole() {
            + "operator scroll a long session to find what just happened")
     expect(read.describes, "and a console with output describes something")
 
-    expect(MavlinkConsole(["lines": ["still typing"]], connected: true)
+    expect(MavlinkConsole(view: ["connected": true as NSNumber, "lines": ["still typing"]])
         .lines.joined(separator: "|"), "still typing",
            "but a partial line that is NOT empty is real output and is kept -- the tell is the "
            + "empty string, not the position")
 
     expect(MavlinkConsole.none.copyable, "",
            "an empty console copies an empty string rather than trapping on a missing last line")
-    expect(MavlinkConsole([:], connected: true).describes == false,
+    expect(MavlinkConsole(view: ["connected": true as NSNumber]).describes == false,
            "an empty read describes nothing rather than an empty console")
-    expect(MavlinkConsole([:], connected: true).emptyText,
+    expect(MavlinkConsole(view: ["connected": true as NSNumber]).emptyText,
            "Nothing yet. The shell answers commands, and those are sent from the Qt build.",
            "and a connected vehicle that has said nothing is told apart from no vehicle at all -- "
            + "and told where the commands go, because shell output only answers a command and "
@@ -6468,7 +6491,7 @@ func checkMavlinkConsole() {
     expect(MavlinkConsole.none.emptyText, "Connect a vehicle to see its console output.",
            "because those are different situations and only one is worth waiting through")
 
-    expect(MavlinkConsole(["lines": ["a", 7 as NSNumber, "b"]], connected: true)
+    expect(MavlinkConsole(view: ["connected": true as NSNumber, "lines": ["a", 7 as NSNumber, "b"]])
         .lines.joined(separator: "|"), "a|b",
            "a line that is not a string is dropped rather than rendered as its description")
 
