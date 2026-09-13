@@ -203,6 +203,16 @@ def main():
                         ("COMPASS_USE", 1.0), ("COMPASS_USE2", 1.0),
                         ("COMPASS_USE3", 0.0)):
         params[name] = value
+    for name, value in (("ATC_INPUT_TC", 0.15), ("ATC_ANG_RLL_P", 4.5),
+                        ("ATC_ANG_PIT_P", 4.5), ("ATC_ANG_YAW_P", 4.5),
+                        ("ATC_RAT_RLL_P", 0.135), ("ATC_RAT_RLL_I", 0.135),
+                        ("ATC_RAT_RLL_D", 0.0036), ("ATC_RAT_PIT_P", 0.135),
+                        ("ATC_RAT_PIT_I", 0.135), ("ATC_RAT_PIT_D", 0.0036),
+                        ("ATC_RAT_YAW_P", 0.18), ("ATC_RAT_YAW_I", 0.018),
+                        ("PSC_ACCZ_P", 0.5), ("PSC_ACCZ_I", 1.0),
+                        ("MOT_SPIN_ARM", 0.10), ("MOT_SPIN_MIN", 0.15),
+                        ("MOT_THST_HOVER", 0.35)):
+        params[name] = value
     for channel in range(1, 9):
         params["RC%d_TRIM" % channel] = 1500.0
         params["RC%d_MIN" % channel] = 1100.0
