@@ -69,6 +69,11 @@ internal data class GuidedAction(
 
 internal data class Instrument(val label: String, val reading: String)
 
+internal fun rowWidth(count: Int): Int = when {
+    count <= 4 -> count
+    else -> (count + 1) / 2
+}
+
 internal fun operatorDistance(view: JSONObject?): List<Instrument> =
     view?.optText("distanceToVehicleText")
         ?.takeIf { it.isNotBlank() }
@@ -154,6 +159,7 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
             .alpha(if (silent) 0.45f else 1f),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalArrangement = Arrangement.spacedBy(6.dp),
+        maxItemsInEachRow = rowWidth(shown.size),
     ) {
         shown.forEach { instrument ->
             Column(

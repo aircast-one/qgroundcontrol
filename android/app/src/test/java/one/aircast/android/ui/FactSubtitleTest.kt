@@ -68,3 +68,18 @@ class OperatorDistanceTest {
         assertEquals(emptyList<Instrument>(), operatorDistance(null))
     }
 }
+
+class RowWidthTest {
+    @Test
+    fun `four or fewer readings stay on one line`() {
+        assertEquals(4, rowWidth(4))
+        assertEquals(3, rowWidth(3))
+    }
+
+    @Test
+    fun `more than four are split evenly rather than leaving an orphan`() {
+        assertEquals(3, rowWidth(5))
+        assertEquals(3, rowWidth(6))
+        assertEquals(4, rowWidth(7))
+    }
+}
