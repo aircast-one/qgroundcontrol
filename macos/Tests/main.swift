@@ -973,6 +973,20 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
 
 checkTheTrafficPanelNeverGoesSilentlyBlank()
 
+func checkTheCameraSwitcherNamesEveryCamera() {
+    let two = CameraControl(["present": true as NSNumber, "model": "Sony ILCE-7",
+                             "labels": ["Sony ILCE-7", "Thermal"]])
+    expect(two.labels.count == 2,
+           "the switcher needs every camera's name, and view.camera used to carry only the "
+           + "current one's -- one field short kept a whole Qt path alive on both heads")
+
+    expect(CameraControl(["present": true as NSNumber]).labels.isEmpty,
+           "a core too old to send labels leaves the switcher with nothing to offer rather "
+           + "than a list of one empty string")
+}
+
+checkTheCameraSwitcherNamesEveryCamera()
+
 func checkTheAdapterPickerShowsTheChoiceNotTheConsequence() {
     let adapters = ["ALFA AWUS036ACM [1]", "Realtek 8812au [2]"]
 

@@ -20,6 +20,7 @@ struct CameraControl: Equatable {
     let hasZoom: Bool
     let zoomLevel: Double
     let canRecord: Bool
+    let labels: [String]
     let canPhoto: Bool
     let hasModes: Bool
     let canChangeMode: Bool
@@ -57,6 +58,7 @@ struct CameraControl: Equatable {
         hasZoom = false
         zoomLevel = 1
         canRecord = false
+        labels = []
         canPhoto = false
         hasModes = false
         canChangeMode = false
@@ -84,6 +86,7 @@ struct CameraControl: Equatable {
         hasZoom = flag("hasZoom")
         zoomLevel = (json["zoomLevel"] as? NSNumber)?.doubleValue ?? 1
         canRecord = flag("canRecord")
+        labels = ((json["labels"] as? [Any]) ?? []).compactMap { $0 as? String }
         canPhoto = flag("canPhoto")
         hasModes = flag("hasModes")
         canChangeMode = flag("canChangeMode")

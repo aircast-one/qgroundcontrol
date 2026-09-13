@@ -71,12 +71,9 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func loadCamera() {
-        let manager = Bridge.group("vehicle.cameraManager")
-        let labels = (manager["cameraLabels"] as? [String]) ?? []
-        if labels != cameraLabels { cameraLabels = labels }
-
         let read = CameraControl(Bridge.group("view.camera"))
         if read != camera { camera = read }
+        if read.labels != cameraLabels { cameraLabels = read.labels }
     }
 
     func setCameraMode(photo: Bool) {
