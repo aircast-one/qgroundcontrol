@@ -4,7 +4,7 @@ use crate::read::{flag, integer, object, text};
 use crate::router::Backend;
 
 pub const VIDEO_DEPS: &[&str] = &["video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,batteryRemaining,hasZoom,zoomLevel";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,batteryRemaining,hasZoom,zoomLevel";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
@@ -17,6 +17,8 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.storageStatus",
     "vehicle.cameraManager.currentCameraInstance.storageFreeStr",
     "vehicle.cameraManager.currentCameraInstance.capturesPhotos",
+    "vehicle.cameraManager.currentCameraInstance.photosInVideoMode",
+    "vehicle.cameraManager.currentCameraInstance.videoInPhotoMode",
     "vehicle.cameraManager.currentCameraInstance.capturesVideo",
     "vehicle.cameraManager.currentCameraInstance.hasModes",
     "vehicle.cameraManager.currentCameraInstance.batteryRemaining",
@@ -181,8 +183,11 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "batteryText": if battery >= 0 { format!("{battery}%") } else { String::new() },
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(1.0),
-        "canRecord": present && captures_video && (!has_modes || mode != PHOTO_MODE),
-        "canPhoto": present && captures_photos && (!has_modes || mode != VIDEO_MODE),
+        // VehicleCameraControl.cc:351 and :~300 refuse on terms this gate did not carry, so it was
+        // wrong in both directions: a camera that shoots stills in video mode had a working shutter
+        // greyed out, and a camera mid-capture had a live button whose tap returns false in silence.
+        "canRecord": present && captures_video && (!has_modes || mode != PHOTO_MODE || flag(&camera, "videoInPhotoMode")),
+        "canPhoto": present && captures_photos && (!has_modes || mode != VIDEO_MODE || flag(&camera, "photosInVideoMode")) && photo_status == PHOTO_CAPTURE_IDLE,
         "hasModes": has_modes,
         "canChangeMode": present && has_modes && can_change_mode(mode, photo_status, video_status),
     })
@@ -250,6 +255,30 @@ mod tests {
         assert_eq!(view["cameras"][2]["enabled"], false);
         assert_eq!(view["configuredCount"], 1);
         assert_eq!(view["summary"], "Waiting for a stream.");
+    }
+
+    #[test]
+    fn a_shutter_is_offered_on_the_terms_the_camera_control_actually_refuses_on() {
+        let cam = |extra: Value| {
+            let mut base = json!({ "kind": "object", "modelName": "ZR30", "capturesPhotos": true, "capturesVideo": true, "hasModes": true });
+            extra.as_object().unwrap().iter().for_each(|(k, v)| { base[k] = v.clone(); });
+            camera_view(&Fake::new(json!({ "kind": "null" }), base), &[])
+        };
+
+        assert_eq!(cam(json!({ "cameraMode": 1 }))["canPhoto"], false, "in video mode a camera that cannot shoot stills there refuses, and the gate says so");
+        assert_eq!(cam(json!({ "cameraMode": 1, "photosInVideoMode": true }))["canPhoto"], true,
+            "VehicleCameraControl.cc only refuses on the mode when photosInVideoMode is false; without that term the core greys out a shutter that works");
+        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 1 }))["canPhoto"], false,
+            "takePhoto returns false when the status is not idle, so serving canPhoto here gives a head a live button whose tap does nothing and says nothing");
+        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 2 }))["canPhoto"], false,
+            "the wait between interval shots is idle enough to change mode but not to fire: takePhoto tests against IDLE alone, and the two questions have different answers");
+        assert_eq!(cam(json!({ "cameraMode": 0 }))["canPhoto"], true);
+
+        assert_eq!(cam(json!({ "cameraMode": 0 }))["canRecord"], false);
+        assert_eq!(cam(json!({ "cameraMode": 0, "videoInPhotoMode": true }))["canRecord"], true,
+            "startVideoRecording refuses on photo mode only when videoInPhotoMode is false, the same missing term the other way round");
+        assert_eq!(cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }))["canRecord"], true,
+            "a running recording is not a refusal, because the toggle is what stops it - which is why record takes no busy term and photo does");
     }
 
     #[test]
