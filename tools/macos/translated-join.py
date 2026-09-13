@@ -36,9 +36,16 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 COINCIDENCE = {
-    ("PlanWindow.swift", "Mission"): "the head's OWN page vocabulary, set by its tab control and "
-        "never served by the core -- it collides with a tr() literal somewhere in QGC by accident",
-    ("PlanWindow.swift", "Rally"): "the same head-owned page vocabulary as 'Mission'",
+    ("PlanWindow.swift", "Mission"): "a PLAN TAB name, which is the head's own page vocabulary "
+        "set by its tab control. Audited 2026-09-13 and the sentence was sloppier than the "
+        "measurement: it said 'never served by the core', and the core DOES serve this literal "
+        "-- as a FLIGHT MODE in modes.rs and flightmodes.rs, and as a preflight check name. "
+        "Different subject, same nine letters, which is the whole reason this checker cannot "
+        "read a collision on its own. What holds is the narrow claim: no view serves the plan's "
+        "tab names. Retake it with: grep -rn '\"Mission\"' core-rs/src/*.rs and read which "
+        "subject each hit belongs to",
+    ("PlanWindow.swift", "Rally"): "the same head-owned PLAN TAB vocabulary as 'Mission', with "
+        "the same narrow claim: no view serves the plan's tab names",
     ("PlanWindow.swift", "true"): "a Fact's raw boolean, which Qt spells 'true' in every locale",
     ("Links.swift", "false"): "a Fact's raw boolean, as above",
     ("VehicleSetupWindow.swift", "Sensors"): "a page name from the core's own PAGES table, which "
