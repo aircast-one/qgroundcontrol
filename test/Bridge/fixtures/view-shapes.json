@@ -3431,6 +3431,10 @@
         "view.battery.packs[].chargeState",
         "view.battery.packs[].current",
         "view.battery.packs[].currentText",
+        "view.battery.packs[].facts.#",
+        "view.battery.packs[].facts[].name",
+        "view.battery.packs[].facts[].units",
+        "view.battery.packs[].facts[].valueString",
         "view.battery.packs[].index",
         "view.battery.packs[].level",
         "view.battery.packs[].percent",
@@ -4921,6 +4925,13 @@
                 "chargeState": "number",
                 "current": "number",
                 "currentText": "string",
+                "facts": [
+                    {
+                        "name": "string",
+                        "units": "string",
+                        "valueString": "string"
+                    }
+                ],
                 "index": "number",
                 "level": "string",
                 "percent": "number",

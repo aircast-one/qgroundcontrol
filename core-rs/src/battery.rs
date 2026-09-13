@@ -13,7 +13,8 @@ pub const DEPS: &[&str] = &[
 ];
 
 const MAX_PACKS: usize = 8;
-const PACK_FACTS: [&str; 6] = ["voltage", "current", "percentRemaining", "chargeState", "timeRemaining", "timeRemainingStr"];
+const PACK_FACTS: [&str; 9] = ["voltage", "current", "percentRemaining", "chargeState", "timeRemaining", "timeRemainingStr", "instantPower", "mahConsumed", "temperature"];
+const DETAIL_FACTS: [&str; 6] = ["voltage", "current", "instantPower", "mahConsumed", "timeRemainingStr", "temperature"];
 static PACKS_SEEN: AtomicUsize = AtomicUsize::new(0);
 
 fn pack_fact_path(index: usize, name: &str) -> String {
@@ -105,6 +106,17 @@ fn pack(fact: &dyn Fn(&str) -> Value) -> Pack {
     }
 }
 
+fn detail_facts(backend: &dyn Backend, index: usize) -> Value {
+    DETAIL_FACTS
+        .iter()
+        .filter_map(|name| {
+            let fact = object(&backend.get(&pack_fact_path(index, name)));
+            let spelled = fact.get("valueString").and_then(Value::as_str).filter(|s| !s.is_empty())?;
+            Some(json!({ "name": name, "valueString": spelled, "units": fact.get("units").and_then(Value::as_str).unwrap_or_default() }))
+        })
+        .collect()
+}
+
 pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let packs = packs(backend);
     let threshold1 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
@@ -126,6 +138,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "voltageText": p.voltage_text,
                 "currentText": p.current_text,
                 "percentText": p.percent_text,
+                "facts": detail_facts(backend, index),
             })
         })
         .collect();
@@ -153,10 +166,28 @@ mod tests {
             Some(("current".to_string(), json!({ "kind": "fact", "name": "current", "value": 12.5, "valueString": "12.50", "units": "A" }))),
             Some(("chargeState".to_string(), json!({ "kind": "fact", "name": "chargeState", "value": state, "enumOrValueString": label }))),
             percent.map(|p| ("percentRemaining".to_string(), json!({ "kind": "fact", "name": "percentRemaining", "value": p, "valueString": format!("{p:.0}"), "units": "%" }))),
+            Some(("instantPower".to_string(), json!({ "kind": "fact", "name": "instantPower", "value": 197.5, "valueString": "197.50", "units": "W" }))),
+            Some(("mahConsumed".to_string(), json!({ "kind": "fact", "name": "mahConsumed", "value": 340.0, "valueString": "340", "units": "mAh" }))),
+            Some(("temperature".to_string(), json!({ "kind": "fact", "name": "temperature", "value": 0.0, "valueString": "", "units": "\u{00b0}C" }))),
         ]
         .into_iter()
         .flatten()
         .collect()
+    }
+
+    fn detail_facts_of(facts: &[(String, Value)]) -> Value {
+        struct One(Vec<(String, Value)>);
+        impl Backend for One {
+            fn get(&self, path: &str) -> String {
+                let name = path.rsplit('.').next().unwrap_or_default();
+                self.0.iter().find(|(n, _)| n == name).map(|(_, f)| f.clone()).unwrap_or(json!({ "kind": "null" })).to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        detail_facts(&One(facts.to_vec()), 0)
     }
 
     fn pack_of(facts: &[(String, Value)]) -> Pack {
@@ -221,6 +252,17 @@ mod tests {
         assert_eq!(view["packs"][0]["secondaryText"], "15.80V");
         assert_eq!(view["packs"][0]["currentText"], "12.50A", "the head was formatting this itself as %.2f A, which is locale-independent and prints a full stop where the Fact prints whatever the operator's locale does");
         assert_eq!(view["packs"][0]["percentText"], "90%", "and this was on the struct already and simply never served, so a head had nothing to read and spelled its own");
+    }
+
+    #[test]
+    fn a_pack_carries_the_facts_the_detail_panel_names() {
+        let facts = pack_facts(Some(90.0), CHARGE_OK, "OK");
+        let view = detail_facts_of(&facts);
+        let named: Vec<&str> = view.as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
+        assert_eq!(named, ["voltage", "current", "instantPower", "mahConsumed"], "the head reads a list, not scalars, and a fact the vehicle never spelled is absent rather than blank");
+        assert_eq!(view[2]["valueString"], "197.50");
+        assert_eq!(view[2]["units"], "W", "raw, because the head runs its own Units.display over it");
+        assert!(PACK_FACTS.contains(&"temperature"), "watched even when unspelled, or the view never recomputes when it starts arriving");
     }
 
     #[test]
