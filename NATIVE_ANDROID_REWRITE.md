@@ -2998,21 +2998,35 @@ link, so the view itself is fine.
 The flag is definitely being read: the only change between the runs was that line in the ini,
 and the app went from a connected vehicle to none.
 
-**Re-running this now costs a safety flag, 2026-09-14.** The comparison above was made by
-editing the ini. From the debug API it is no longer possible: `/bridge/set` and
-`/bridge/invoke` both sit behind `QGC_DEBUG_API_ALLOW_ACTUATORS`, and the gate is blanket
-rather than path-aware, so writing a boolean app setting is refused by the same check that
-refuses a motor test. `DebugApiServer.cc:1707`. That is the right shape for a gate — a
-filter has to be correct about which paths can actuate and a refusal does not — but it means
-re-measuring costs deliberately enabling actuator writes on the handset.
+**Superseded: the core link works now, 2026-09-14.** Re-measured on the handset, and the
+table above no longer describes this build.
 
-The head's own UI cannot do it either: nine settings groups are offered, and none is the App
-group that carries `coreLinks`. That is deliberate curation rather than an omission, since it
-is a developer switch, but it does mean there is no non-privileged path to the experiment.
+| run | setting | vehicle | messages | links |
+|---|---|---|---|---|
+| B (2026-09-11) | `coreLinks=true` | "No vehicle" | 0 | one, qt-owned, **closed** |
+| C (2026-09-14) | `coreLinks=true` | present | ~50/s | **core-owned, open, 4542 frames, 0 dropped** |
 
-So the table above stands unrefreshed. Anyone repeating it should budget for the flag rather
-than discovering the refusal, and should say in the result whether the run had actuator
-writes enabled, because that is not a neutral condition to leave on.
+`view.transports` now carries a core-owned UDP link holding local port 14550 with real
+counters — 160952 bytes in — beside a qt entry that has `id: null` and no counters at all,
+which reads as the configuration record rather than a second open socket.
+
+**The core is parsing MAVLink itself, not relaying it.** `view.coreVehicle` answers
+`available: true` with a populated vehicle: attitude, altitudeAMSL, airSpeed, armed,
+autopilot, baseMode. Read against QGC's own facts at the same moment, the two agree —
+heading 306 and 306, altitudeAMSL 120.0 and 120.0, armed false and false.
+
+So `coreLinks` defaulting false is no longer evidence that core links do not work. It is a
+default nobody has moved.
+
+**Two corrections to the paragraph this replaces, both mine from an hour earlier.** I wrote
+that the debug API gate made this unmeasurable and that the head's UI offered no route.
+The gate is real — `/bridge/set` and `/bridge/invoke` are behind
+`QGC_DEBUG_API_ALLOW_ACTUATORS`, blanket rather than path-aware, `DebugApiServer.cc:1707` —
+but the head has **eleven** settings groups, not nine, and the eleventh is General →
+`settings.appSettings`, which carries the switch with the label "Open UDP, TCP and serial
+links on the Rust core". I had read the first screenful of a scrolling list and described
+the list. The whole experiment then ran through the operator's own path with no flag lifted,
+and the setting was toggled back to false afterwards.
 
 The cause turned out to be the guard added after this head's own reuse-port finding. That
 guard refuses a core UDP link on a port a Qt link already serves; `LinkManager` sets the
