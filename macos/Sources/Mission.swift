@@ -490,7 +490,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     func move(sequence: Int, latitude: Double, longitude: Double) {
         guard let item = items.first(where: { $0.sequence == sequence }), item.canMove else { return }
         write("plan.missionController.visualItems.\(item.index).coordinate",
-              ["latitude": latitude, "longitude": longitude], "where this item is")
+              MissionItem.dragPayload(item, latitude: latitude, longitude: longitude),
+              "where this item is")
         reload()
     }
 

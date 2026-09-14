@@ -16,6 +16,7 @@ struct MissionItem: Identifiable, Equatable {
     let exitLongitude: Double?
     let altitude: Double?
     let altitudeMetres: Double?
+    let positionAltitudeMetres: Double?
     let isSelected: Bool
     let specifiesAltitude: Bool
     let commandId: Int
@@ -64,6 +65,26 @@ struct MissionItem: Identifiable, Equatable {
     // field feeds a coordinate would have been unpinnable there.
     static func launchAltitudeMetres(_ items: [MissionItem]) -> Double? {
         items.first { $0.index == 0 }?.altitudeMetres
+    }
+
+    // A map drag produces a latitude and a longitude and nothing else. QGC's own drag handler
+    // spends one statement on exactly this -- MissionItemIndicatorDrag.qml:57 assigns
+    // coordinate.altitude = itemCoordinate.altitude before it writes the coordinate back -- and
+    // without it the height is simply gone. The bridge is the reason it matters here: a coordinate
+    // payload missing the altitude key reaches QGCBridgeCore.cc:663 as toDouble() on an absent
+    // QVariant, which is 0.0, so the item is moved to sea level rather than moved sideways.
+    // SimpleMissionItem::setCoordinate discards the altitude and would not care, but the launch
+    // item is movable -- the core serves movable true for it and says so in its own test -- and
+    // MissionSettingsItem stores the whole coordinate, which the plan file then saves with its
+    // altitude at MissionController.cc:1137.
+    // An unknown altitude does NOT refuse the move, deliberately. A null there means the served
+    // coordinate is two-dimensional, so there is no height to lose; and every item but the launch
+    // one discards the altitude anyway, so refusing would block ordinary drags to protect nothing.
+    static func dragPayload(_ item: MissionItem,
+                            latitude: Double, longitude: Double) -> [String: Any] {
+        let place: [String: Any] = ["latitude": latitude, "longitude": longitude]
+        guard let altitude = item.positionAltitudeMetres else { return place }
+        return place.merging(["altitude": altitude]) { _, new in new }
     }
 
     var canMove: Bool { movable }
@@ -188,6 +209,7 @@ struct MissionItem: Identifiable, Equatable {
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
         longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue
+        positionAltitudeMetres = (coordinate?["altitude"] as? NSNumber)?.doubleValue
         let leaves = json["exitCoordinate"] as? [String: Any]
         exitLatitude = (leaves?["latitude"] as? NSNumber)?.doubleValue
         exitLongitude = (leaves?["longitude"] as? NSNumber)?.doubleValue

@@ -2707,6 +2707,7 @@ func checkMissionItemKinds() {
     checkModeSlotNaming()
     checkBreachReturnAltitude()
     checkLaunchAltitudeComesFromTheItem()
+    checkADragKeepsTheItemsHeight()
     checkCameraBrandSelection()
     checkBatteryHeadlines()
     checkResumeSequence()
@@ -8092,6 +8093,35 @@ func checkModeSlotNaming() {
     expect(FlightModePosition.present(in: rover).first?.pwmRange ?? "", "up to 1230",
            "the PWM bands are fixed in firmware and keyed on the POSITION, not the parameter "
            + "name, so they are identical on both")
+}
+
+func checkADragKeepsTheItemsHeight() {
+    let home = MissionItem(view: [
+        "index": 0, "sequence": 0, "name": "Mission Start", "kind": "settings",
+        "movable": true,
+        "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09]], selected: -1)
+
+    let moved = MissionItem.dragPayload(home, latitude: -35.37, longitude: 149.17)
+    expect((moved["altitude"] as? Double) == 584.09,
+           "a map drag produces a latitude and a longitude and NOTHING ELSE, so the payload has to "
+           + "carry the item's own height or it is gone. QGC spends one statement on this in "
+           + "MissionItemIndicatorDrag.qml:57 and this head had no equivalent")
+    expect((moved["latitude"] as? Double) == -35.37 && (moved["longitude"] as? Double) == 149.17,
+           "while the place the drag ended is what actually changes")
+
+    let heightless = MissionItem(view: [
+        "index": 0, "sequence": 0, "name": "Mission Start", "kind": "settings", "movable": true,
+        "coordinate": ["latitude": -35.36, "longitude": 149.16]], selected: -1)
+    let unknown = MissionItem.dragPayload(heightless, latitude: -35.37, longitude: 149.17)
+    expect(unknown["altitude"] == nil,
+           "and with no height to carry the key is absent rather than invented. A null altitude on "
+           + "a served coordinate means it is two-dimensional, so there is nothing to preserve, and "
+           + "a number put there would be a height the item never had")
+    expect((unknown["latitude"] as? Double) == -35.37,
+           "the move still happens. Refusing was considered and rejected: every item but the launch "
+           + "one has its altitude DISCARDED by SimpleMissionItem::setCoordinate, so a refusal would "
+           + "block ordinary drags to protect nothing. The sharp edge stays at the bridge, where "
+           + "QGCBridgeCore.cc:663 reads an absent altitude as 0.0 rather than leaving it unset")
 }
 
 func checkLaunchAltitudeComesFromTheItem() {
