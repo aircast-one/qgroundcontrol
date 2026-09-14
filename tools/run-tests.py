@@ -142,11 +142,6 @@ def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
-    # capture_output buffers in MEMORY, and a crash loop writes without pause: a peer's run emitted
-    # 1.4 million signal lines in a few minutes. Unhandled, TimeoutExpired then threw away every
-    # result the run had already produced -- an hour of running and nothing reported, which is worse
-    # than the crash. Its partial output is kept and returned as a run that stopped, so the
-    # started-vs-finished guard sees an incomplete run rather than a traceback.
     try:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
         return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
@@ -344,13 +339,6 @@ def main():
         return 0
 
     contention = sibling_run() or port_contention()
-    # This used to be a WARNING printed above the totals, which is not enough. The link suites bind
-    # 14550, and a held port produces reds that look like regressions -- eight of them historically,
-    # every one attributed to something other than the port before anyone named the cause. A warning
-    # arrives in the same report as the reds it explains, and by then the reds have been read. A peer
-    # runner refuses instead and that is the correct behaviour: a run that cannot be attributed is
-    # worth less than no run. --allow-stale already exists for the deliberate-override case; this
-    # takes the same flag rather than inventing a second one.
     if contention and not args.allow_stale:
         print(f"REFUSING: {contention}", file=sys.stderr)
         print("a suite started here reports on the port, not on the code; "
