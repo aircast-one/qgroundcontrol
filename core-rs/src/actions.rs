@@ -12,9 +12,11 @@ const PHOTO: &str = "camera.takePhoto";
 const RECORD: &str = "camera.toggleRecording";
 const MODE: &str = "camera.setMode";
 const STOP_PHOTO: &str = "camera.stopPhoto";
+const UNDO: &str = "plan.undo";
+const REDO: &str = "plan.redo";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -82,8 +84,41 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         ORBIT => orbit(backend, args),
         ACTIVATE => activate(backend, args),
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
+        UNDO | REDO => step(backend, path),
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
+}
+
+// PlanMasterController snapshots the plan on a timer that only runs while undoTracking is set. Every
+// head turns it on when its plan screen appears and OFF again when that screen goes away -
+// PlanView.qml binds it to planActive, Mission.swift and PlanTab.kt set and clear it on dispose - so
+// a plan screen that is not open is the ordinary state, not a broken one. canUndo is false there for
+// a reason that has nothing to do with the stack, and a gate reading canUndo alone answers "nothing
+// to undo" to a head that has made twenty edits and merely navigated away. The two are told apart.
+//
+// undo() returns void, and QGCBridgeCore answers a void invoke with {"ok": bool} and NO result key -
+// ok being "the call dispatched", not "the plan moved". Reading result here would report failure on
+// every successful undo, so it is not read and not served.
+fn step(backend: &dyn Backend, path: &str) -> Value {
+    let plan = object(&backend.get_fields("plan", "canUndo,canRedo,undoTracking"));
+    let undoing = path == UNDO;
+    let word = if undoing { "undo" } else { "redo" };
+    if !crate::read::flag(&plan, "undoTracking") {
+        return json!({
+            "ok": false,
+            "reason": format!("This plan is not recording edits, so there is nothing to {word}."),
+            "refusal": "notTracking",
+        });
+    }
+    if !crate::read::flag(&plan, if undoing { "canUndo" } else { "canRedo" }) {
+        return json!({ "ok": false, "reason": format!("Nothing to {word}."), "refusal": "nothingTo" });
+    }
+    let dispatched = crate::read::flag(&object(&backend.invoke(path, "[]")), "ok");
+    json!({
+        "ok": dispatched,
+        "reason": match dispatched { true => Value::Null, false => json!(format!("The plan did not take the {word}.")) },
+        "refusal": Value::Null,
+    })
 }
 
 const CAMERA: &str = "vehicle.cameraManager.currentCameraInstance";
@@ -1083,4 +1118,43 @@ pub(super) mod orbiting {
     }
 
 
+
+    #[test]
+    fn an_untracked_plan_is_not_a_plan_with_nothing_to_undo() {
+        use std::cell::RefCell;
+        struct Plan {
+            fields: Value,
+            called: RefCell<Vec<String>>,
+        }
+        impl Backend for Plan {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { self.fields.to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, p: &str, _a: &str) -> String {
+                self.called.borrow_mut().push(p.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let plan = |fields: Value| Plan { fields, called: RefCell::new(vec![]) };
+
+        let untracked = plan(json!({ "kind": "object", "undoTracking": false, "canUndo": false, "canRedo": false }));
+        let refused = run(&untracked, UNDO, "[]");
+        assert_eq!(refused["ok"], false);
+        assert_eq!(refused["refusal"], "notTracking", "every head clears undoTracking when its plan screen goes away, so canUndo is false after twenty edits and a navigation as surely as after none - answering nothingTo there is true about the stack and wrong about the plan");
+        assert!(untracked.called.borrow().is_empty(), "a refusal that still fired the invoke would be a refusal in the answer only");
+
+        let empty = plan(json!({ "kind": "object", "undoTracking": true, "canUndo": false, "canRedo": true }));
+        assert_eq!(run(&empty, UNDO, "[]")["refusal"], "nothingTo");
+        assert_eq!(run(&empty, REDO, "[]")["ok"], true, "the two stacks are separate and redo is gated on its own");
+
+        let ready = plan(json!({ "kind": "object", "undoTracking": true, "canUndo": true, "canRedo": false }));
+        let done = run(&ready, UNDO, "[]");
+        assert_eq!(done["ok"], true);
+        assert_eq!(done["refusal"], Value::Null);
+        assert_eq!(done.get("result"), None, "undo() returns void and the bridge answers a void invoke with ok and no result key, so serving result would mean inventing one");
+        assert_eq!(ready.called.borrow().as_slice(), ["plan.undo"]);
+
+        assert!(owns(UNDO) && owns(REDO));
+    }
 }
