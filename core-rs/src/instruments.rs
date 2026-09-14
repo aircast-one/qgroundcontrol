@@ -80,8 +80,8 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
             let resolves = fact.get("found").and_then(Value::as_bool) != Some(false);
             let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
             let fresh = converted(backend, &fact);
-            let held = fact.get("valueString").and_then(Value::as_str).filter(|v| !v.is_empty());
-            let value = fresh.as_ref().map(|(shown, _)| shown.clone()).or_else(|| held.map(|v| crate::read::settled(v.to_string())));
+            let held = crate::read::shown_text(&fact);
+            let value = fresh.as_ref().map(|(shown, _)| shown.clone()).or_else(|| held.map(crate::read::settled));
             let units = match &fresh {
                 Some((_, name)) => display_units(name.as_str()),
                 None => fact.get("units").and_then(Value::as_str).map(display_units).unwrap_or(""),
@@ -165,6 +165,27 @@ mod tests {
         }
         let view = instruments_view(&Resting, &["vehicle/altitudeRelative".to_string()]);
         assert_eq!(view["items"][0]["value"], "0.0", "Qt spells the fact and a vehicle sitting on the ground reports a hair under zero, so valueString arrives as -0.0 - and neither of us formats that string, so nothing stripped the sign before it reached an altimeter reading as below the launch point");
+    }
+
+    #[test]
+    fn an_instrument_showing_an_enum_names_the_choice_and_not_its_raw_number() {
+        struct Lettered;
+        impl Backend for Lettered {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.flightMode" => json!({ "kind": "fact", "name": "flightMode", "shortDescription": "Flight Mode", "value": 6, "valueString": "6", "enumOrValueString": "Return", "enumStrings": ["Stabilize", "Return"], "enumValues": [0, 6], "enumIndex": 1, "units": "" }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = instruments_view(&Lettered, &["vehicle/flightMode".to_string()]);
+        assert_eq!(view["items"][0]["value"], "Return", "valueString is the raw enum value and enumValues here are 0,6 rather than positional, so an instrument reading it shows 6 - a number that is not an index into anything the operator can see");
+        assert_eq!(view["items"][0]["missing"], false);
     }
 
     #[test]

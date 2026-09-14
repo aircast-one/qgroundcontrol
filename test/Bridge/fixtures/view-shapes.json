@@ -4061,6 +4061,9 @@
         "view.instruments.kind",
         "view.itemCamera(1).available",
         "view.itemCamera(1).cameraAction",
+        "view.itemCamera(1).cameraAction.choice",
+        "view.itemCamera(1).cameraAction.choices.#",
+        "view.itemCamera(1).cameraAction.choices[]",
         "view.itemCamera(1).cameraAction.text",
         "view.itemCamera(1).cameraAction.units",
         "view.itemCamera(1).cameraAction.value",
@@ -4952,6 +4955,7 @@
         "view.vibration.kind",
         "view.vibration.scaleMaximum",
         "view.vibration.silentReason",
+        "view.vibration.silentText",
         "view.vibration.units",
         "view.vibration.warningLevel",
         "view.vibration.worst",
@@ -6163,6 +6167,10 @@
     "view.itemCamera(1)": {
         "available": "bool",
         "cameraAction": {
+            "choice": "number",
+            "choices": [
+                "string"
+            ],
             "text": "string",
             "units": "string",
             "value": "number"
@@ -7351,6 +7359,7 @@
         "kind": "string",
         "scaleMaximum": "number",
         "silentReason": "null|string",
+        "silentText": "null|string",
         "units": "string",
         "warningLevel": "number",
         "worst": "null|string"

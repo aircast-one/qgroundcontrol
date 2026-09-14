@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::{enum_choice, enum_labels, flag, object, shown_text};
 use crate::router::Backend;
 
 // currentPlanFile was invented and the bridge has no such property; two guards said so. These are
@@ -21,11 +21,16 @@ fn fact<'a>(section: &'a Value, name: &str) -> Option<&'a Value> {
 
 fn measure(section: &Value, name: &str) -> Value {
     match fact(section, name) {
-        Some(found) => json!({
-            "value": found.get("value").cloned().unwrap_or(Value::Null),
-            "text": found.get("valueString").cloned().unwrap_or(Value::Null),
-            "units": found.get("units").cloned().unwrap_or(Value::Null),
-        }),
+        Some(found) => {
+            let labels = enum_labels(found);
+            json!({
+                "value": found.get("value").cloned().unwrap_or(Value::Null),
+                "text": shown_text(found),
+                "units": found.get("units").cloned().unwrap_or(Value::Null),
+                "choices": (!labels.is_empty()).then_some(labels),
+                "choice": enum_choice(found),
+            })
+        }
         None => Value::Null,
     }
 }
@@ -66,9 +71,11 @@ mod tests {
         fn get(&self, path: &str) -> String {
             match (path.ends_with(".cameraSection"), self.0) {
                 (true, Some(specify)) => json!({ "kind": "object", "specifyGimbal": specify, "facts": [
-                    { "property": "gimbalPitch", "value": -90.0, "valueString": "-90", "units": "deg" },
-                    { "property": "gimbalYaw", "value": 45.0, "valueString": "45", "units": "deg" },
-                    { "property": "cameraAction", "value": 1.0, "valueString": "Take photo", "units": "" },
+                    { "property": "gimbalPitch", "value": -90.0, "valueString": "-90", "enumOrValueString": "-90", "units": "deg" },
+                    { "property": "gimbalYaw", "value": 45.0, "valueString": "45", "enumOrValueString": "45", "units": "deg" },
+                    { "property": "cameraAction", "value": 6, "valueString": "6", "enumOrValueString": "Take photo",
+                      "enumStrings": ["No change", "Take photo", "Take photos (time)", "Take photos (distance)", "Stop taking photos", "Start recording video", "Stop recording video"],
+                      "enumValues": [0, 6, 1, 2, 3, 4, 5], "enumIndex": 1, "units": "" },
                 ] })
                 .to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
@@ -102,6 +109,12 @@ mod tests {
         let absent = item_camera_view(&Item(None), &["3".into()]);
         assert_eq!(absent["available"], false);
         assert_eq!(absent["commandsGimbal"], false);
+
+        assert_eq!(commanding["cameraAction"]["text"], "Take photo", "CameraAction declares enumValues 0,6,1,2,3,4,5 so the raw value for Take photo is 6, and valueString is that 6 - a head showing it names no action and a head indexing the label list by it names Stop recording video");
+        assert_eq!(commanding["cameraAction"]["choice"], 1);
+        assert_eq!(commanding["cameraAction"]["choices"][1], "Take photo");
+        assert_eq!(commanding["gimbalPitch"]["choices"], Value::Null, "an angle has no choices, and an empty list reads to a picker as a choice with nothing in it rather than as not a choice at all");
+        assert_eq!(commanding["gimbalPitch"]["choice"], Value::Null);
 
         let unasked = item_camera_view(&Item(Some(true)), &[]);
         assert_eq!(unasked["available"], false, "no index names no item, which is not an item without a camera");
