@@ -217,27 +217,31 @@ enum PlanShapeAbsence {
 // The breach return point is a QGeoCoordinate, whose altitude is METRES by definition, while the
 // altitude the operator types is a Fact carrying a cooked value in their own unit. Reading one
 // for the other is invisible in metric and 3.28x wrong in feet, so the two are named apart here
-// rather than both being "the altitude".
+// rather than both being "the altitude". The metric half is now valueMeters rather than the
+// fact's rawValue: rawValue is whatever the fact counts, so it answers a question about metres
+// for a fact measured in degrees or square metres just as confidently, and a coordinate fed that
+// number puts the point somewhere nobody asked for. The core gates it on rawUnits naming a
+// length and serves null otherwise, which is the guard this head cannot reach.
 enum BreachReturn {
-    static func shownAltitude(_ fact: [String: Any]) -> Double? {
-        (fact["value"] as? NSNumber)?.doubleValue
+    static func shownAltitude(_ control: [String: Any]) -> Double? {
+        (control["value"] as? NSNumber)?.doubleValue
     }
 
-    static func altitudeMetres(_ fact: [String: Any]) -> Double? {
-        (fact["rawValue"] as? NSNumber)?.doubleValue
+    static func altitudeMetres(_ control: [String: Any]) -> Double? {
+        (control["valueMeters"] as? NSNumber)?.doubleValue
     }
 
-    static func altitudeUnits(_ fact: [String: Any]) -> String {
-        (fact["units"] as? String) ?? "m"
+    static func altitudeUnits(_ control: [String: Any]) -> String {
+        (control["units"] as? String) ?? "m"
     }
 
     static let altitudeSubject = "A breach return altitude"
 
-    static func range(_ fact: [String: Any]) -> FactRange {
-        FactRange(fact, title: BreachReturn.altitudeSubject)
+    static func range(_ control: [String: Any]) -> FactRange {
+        FactRange(control: control, title: BreachReturn.altitudeSubject)
     }
 
-    static func decimals(_ fact: [String: Any]) -> Int? {
-        (fact["decimalPlaces"] as? NSNumber)?.intValue
+    static func decimals(_ control: [String: Any]) -> Int? {
+        (control["decimalPlaces"] as? NSNumber)?.intValue
     }
 }

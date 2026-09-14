@@ -6615,9 +6615,8 @@ func checkTheConsoleReadsConnectedFromTheSameObjectAsItsLines() {
 }
 
 func checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact() {
-    let declared: [String: Any] = ["min": 2.0, "max": 121.0,
-                                   "minString": "2 m", "maxString": "121 m",
-                                   "minIsDefaultForType": false, "maxIsDefaultForType": false,
+    let declared: [String: Any] = ["minimum": 2.0, "maximum": 121.0,
+                                   "minimumText": "2 m", "maximumText": "121 m",
                                    "decimalPlaces": 1]
     let range = BreachReturn.range(declared)
     expect(range.refusal(150.0) ?? "", "A breach return altitude must be within 2 m and 121 m.",
@@ -6631,11 +6630,15 @@ func checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact() {
            "the fact declares its own decimalPlaces, so the field's precision comes from the same "
            + "object as its bounds and the head invents neither")
 
-    let filledIn: [String: Any] = ["min": -3.4028234663852886e38, "max": 3.4028234663852886e38,
-                                   "minIsDefaultForType": true, "maxIsDefaultForType": true]
+    // The type-filled bound used to be gated HERE, on minIsDefaultForType. The core gates it now
+    // and serves minimum and minimumText through the same branch, so what is left to pin on this
+    // side is narrower and true: a null bound is no bound. Saying so because the replacement is
+    // weaker than what it replaces, and a test that quietly checks less is how a rule goes missing.
+    let filledIn: [String: Any] = ["minimum": NSNull(), "maximum": NSNull(),
+                                   "minimumText": NSNull(), "maximumText": NSNull()]
     expect(BreachReturn.range(filledIn).refusal(1e9) == nil,
-           "a bound the type filled in is not a bound the fact declared, and refusing against "
-           + "FLT_MAX would be a guard that never fires pretending to be one that does")
+           "a bound the type filled in is not a bound the fact declared; the core withholds both "
+           + "the number and its spelling, and a null here must not become a floor of zero")
 
     expect(BreachReturn.range([:]).refusal(1e9) == nil,
            "an unreachable fact declares nothing, which is not the same as declaring no floor")
@@ -8094,13 +8097,16 @@ func checkModeSlotNaming() {
 }
 
 func checkBreachReturnAltitude() {
-    let feet: [String: Any] = ["value": 246.06, "rawValue": 75.0, "units": "ft"]
+    let feet: [String: Any] = ["value": 246.06, "valueMeters": 75.0, "units": "ft"]
 
     expect(BreachReturn.altitudeMetres(feet) == 75.0,
            "THE FIXTURE THAT MATTERS: the breach return point is a QGeoCoordinate and its altitude "
-           + "is METRES by definition, so it takes the fact's RAW value. The head was putting the "
-           + "COOKED value there, which in a feet configuration placed the point 3.28 times higher "
-           + "than the operator asked for -- the same magnitude as the keep-out fence in b9ddbdbf7")
+           + "is METRES by definition, so it takes the served METRIC value. The head was putting "
+           + "the COOKED value there, which in a feet configuration placed the point 3.28 times "
+           + "higher than the operator asked for -- the same magnitude as the keep-out fence in "
+           + "b9ddbdbf7. The key is valueMeters and no longer the fact's rawValue: rawValue is "
+           + "whatever the fact counts, so it answers just as confidently for one measured in "
+           + "degrees, and only the producer knows which facts are lengths")
     expect(BreachReturn.shownAltitude(feet) == 246.06,
            "while the field the operator types into keeps their own number, because an EDITED "
            + "value belongs in the unit they set")
@@ -8110,10 +8116,16 @@ func checkBreachReturnAltitude() {
            + "feet: a metric fixture has value and rawValue EQUAL and passes either way, which is "
            + "why the defect survived in a metric build")
 
-    let metric: [String: Any] = ["value": 75.0, "rawValue": 75.0, "units": "m"]
+    let metric: [String: Any] = ["value": 75.0, "valueMeters": 75.0, "units": "m"]
     expect(BreachReturn.altitudeMetres(metric) == BreachReturn.shownAltitude(metric),
            "and in metric they agree, which is the measured state of this rig and the reason this "
            + "could not be observed by looking at the running app")
+
+    let notALength: [String: Any] = ["value": 7.5, "valueMeters": NSNull(), "units": "deg"]
+    expect(BreachReturn.altitudeMetres(notALength) == nil,
+           "and a control whose quantity is not a length serves valueMeters null, which arrives "
+           + "here as no altitude at all. This is what the migration buys: the reading the head "
+           + "used to do could not tell 7.5 metres from 7.5 degrees, and both are numbers")
 
     expect(BreachReturn.altitudeMetres([:]) == nil,
            "a fact that answered nothing yields no altitude rather than zero, so the caller "
