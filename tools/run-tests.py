@@ -227,6 +227,7 @@ def record(summary, verdicts, incomplete=False):
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "suites": summary["suites"],
+        "expected": len(expected_suites()),
         "passed": summary["passed"],
         "failed": summary["failed"],
         "skipped": summary["skipped"],
