@@ -142,6 +142,8 @@ def refresh_clone():
 QUIET_SECONDS = 15
 MAX_TRACES = 8
 PER_SUITE_TRACES = 2
+LATE_RESERVE = 2
+RESERVE_OPENS_AFTER = 60
 FLOOD_LINES = 5000
 TRACE_DIR = REPO / "build-test/hang-traces"
 RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -181,13 +183,18 @@ def suite_of(note):
     return note.split("::")[0] or "unknown"
 
 
+def budget_now(suites_seen):
+    return MAX_TRACES if suites_seen >= RESERVE_OPENS_AFTER else MAX_TRACES - LATE_RESERVE
+
+
 def watch_for_silence(proc, latest, taken):
     seen = set()
     while proc.poll() is None:
         silent_since = latest["at"]
         note = after_the_verdict(latest["line"])
         suite = suite_of(note)
-        room = sum(taken.values()) < MAX_TRACES and taken.get(suite, 0) < PER_SUITE_TRACES
+        room = (sum(taken.values()) < budget_now(len(latest["suites"]))
+                and taken.get(suite, 0) < PER_SUITE_TRACES)
         if time.monotonic() - silent_since > QUIET_SECONDS and silent_since not in seen and room:
             seen.add(silent_since)
             taken[suite] = taken.get(suite, 0) + 1
@@ -199,6 +206,7 @@ def stream(proc, latest):
     def pump():
         for line in proc.stdout:
             latest["at"], latest["line"] = time.monotonic(), line
+            latest["suites"].add(suite_of(after_the_verdict(line)))
             latest["signals"] += "Received signal" in line
             if latest["signals"] == FLOOD_LINES:
                 print(f"CRASH LOOP: {FLOOD_LINES:,} signal lines - killing pid {proc.pid}. "
@@ -216,7 +224,7 @@ def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
-    latest = {"at": time.monotonic(), "line": "", "lines": [], "signals": 0}
+    latest = {"at": time.monotonic(), "line": "", "lines": [], "signals": 0, "suites": set()}
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         reader = stream(proc, latest)
