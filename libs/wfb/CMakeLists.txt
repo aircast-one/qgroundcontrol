@@ -72,8 +72,8 @@ target_include_directories(wfblink
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/wifi
         ${CMAKE_CURRENT_SOURCE_DIR}/devourer/src
-    PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/wifi/compat
+    PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/wifi/wfb-ng/include
         ${CMAKE_CURRENT_SOURCE_DIR}/devourer/hal
 )
@@ -83,5 +83,8 @@ target_link_libraries(wfblink
         devourer
         WFB::libusb
         WFB::libsodium
-        pcap
 )
+
+if(NOT ANDROID)
+    target_link_libraries(wfblink PUBLIC pcap)
+endif()

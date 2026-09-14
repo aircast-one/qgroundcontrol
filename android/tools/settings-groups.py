@@ -9,8 +9,10 @@ HEAD = ROOT / "android/app/src/main/java/one/aircast/android/ui/SettingsScreen.k
 EXEMPT = {
     "FirmwareUpgrade": "flashing firmware needs a USB host and a bootloader dance this head does not do",
     "Viewer3D": "the 3D viewer is out of scope until the Qt viewer's future is decided",
-    "PacketRadio": "the page needs the bespoke adapter picker block, and the libusb file-descriptor "
-        "question is open with Pavlo",
+    "PacketRadio": "the page needs the bespoke adapter picker block. The scope question is settled - "
+        "packet radio belongs on a handset - and the library builds for Android as of f37267c73, but "
+        "libusb cannot enumerate without a file descriptor handed in from Java, so a page drawn now "
+        "would list no adapter on any device",
     "MavlinkActions": "two paths to JSON files that must already be on the device; the generic "
         "renderer draws two text fields nobody can usefully fill without a file picker",
     "BrandImage": "same shape - two image paths with no way to choose a file on a phone",

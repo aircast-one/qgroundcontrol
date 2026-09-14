@@ -205,41 +205,7 @@
     }
     #endif
 
-    // PCAP stubs
-    #ifndef lib_pcap_pcap_h
-    #define lib_pcap_pcap_h
-    #define lib_pcap_bpf_h
 
-    #ifdef __cplusplus
-    extern "C" {
-    #endif
-
-    #define PCAP_ERRBUF_SIZE 256
-    #define DLT_IEEE802_11_RADIO 127
-    typedef void pcap_t;
-    struct pcap_pkthdr { struct timeval ts; unsigned int caplen; unsigned int len; };
-    struct bpf_program { unsigned int bf_len; void *bf_insns; };
-    inline pcap_t* pcap_create(const char *, char *) { return NULL; }
-    inline int pcap_set_buffer_size(pcap_t *, int) { return -1; }
-    inline int pcap_set_snaplen(pcap_t *, int) { return -1; }
-    inline int pcap_set_promisc(pcap_t *, int) { return -1; }
-    inline int pcap_set_timeout(pcap_t *, int) { return -1; }
-    inline int pcap_set_immediate_mode(pcap_t *, int) { return -1; }
-    inline int pcap_activate(pcap_t *) { return -1; }
-    inline int pcap_setnonblock(pcap_t *, int, char *) { return -1; }
-    inline int pcap_datalink(pcap_t *) { return -1; }
-    inline int pcap_compile(pcap_t *, struct bpf_program *, const char *, int, unsigned int) { return -1; }
-    inline int pcap_setfilter(pcap_t *, struct bpf_program *) { return -1; }
-    inline void pcap_freecode(struct bpf_program *) {}
-    inline int pcap_get_selectable_fd(pcap_t *) { return -1; }
-    inline const unsigned char* pcap_next(pcap_t *, struct pcap_pkthdr *) { return NULL; }
-    inline void pcap_close(pcap_t *) {}
-    inline char* pcap_geterr(pcap_t *) { return (char*)"pcap not supported on Windows"; }
-
-    #ifdef __cplusplus
-    }
-    #endif
-    #endif
 
     #ifndef UNIX_PATH_MAX
         #define UNIX_PATH_MAX 108
@@ -278,4 +244,43 @@
     static inline ssize_t wfb_sendto(int s, const void* buf, size_t len, int flags, const struct sockaddr* to, socklen_t tolen) {
         return sendto(s, buf, len, flags, to, tolen);
     }
+#endif
+
+#if defined(_WIN32) || defined(__ANDROID__)
+// PCAP stubs: Windows has no libpcap, and Android has no monitor-mode capture to
+// point one at, so both take the entry points that refuse.
+#ifndef lib_pcap_pcap_h
+#define lib_pcap_pcap_h
+#define lib_pcap_bpf_h
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define PCAP_ERRBUF_SIZE 256
+#define DLT_IEEE802_11_RADIO 127
+typedef void pcap_t;
+struct pcap_pkthdr { struct timeval ts; unsigned int caplen; unsigned int len; };
+struct bpf_program { unsigned int bf_len; void *bf_insns; };
+inline pcap_t* pcap_create(const char *, char *) { return NULL; }
+inline int pcap_set_buffer_size(pcap_t *, int) { return -1; }
+inline int pcap_set_snaplen(pcap_t *, int) { return -1; }
+inline int pcap_set_promisc(pcap_t *, int) { return -1; }
+inline int pcap_set_timeout(pcap_t *, int) { return -1; }
+inline int pcap_set_immediate_mode(pcap_t *, int) { return -1; }
+inline int pcap_activate(pcap_t *) { return -1; }
+inline int pcap_setnonblock(pcap_t *, int, char *) { return -1; }
+inline int pcap_datalink(pcap_t *) { return -1; }
+inline int pcap_compile(pcap_t *, struct bpf_program *, const char *, int, unsigned int) { return -1; }
+inline int pcap_setfilter(pcap_t *, struct bpf_program *) { return -1; }
+inline void pcap_freecode(struct bpf_program *) {}
+inline int pcap_get_selectable_fd(pcap_t *) { return -1; }
+inline const unsigned char* pcap_next(pcap_t *, struct pcap_pkthdr *) { return NULL; }
+inline void pcap_close(pcap_t *) {}
+inline char* pcap_geterr(pcap_t *) { return (char*)"this platform has no libpcap"; }
+
+#ifdef __cplusplus
+}
+#endif
+#endif
 #endif
