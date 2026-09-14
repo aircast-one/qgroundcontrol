@@ -11,7 +11,6 @@ use crate::compinfo::ComponentParameters;
 use crate::compmeta::{self, MSG_COMPONENT_METADATA, TYPE_GENERAL, TYPE_PARAMETER, Uris};
 use crate::connect::{self, Action, AutopilotVersion, Connect, Firmware, MSG_AUTOPILOT_VERSION, MSG_PROTOCOL_VERSION};
 use crate::ftp::{self, Download};
-use crate::gimbal;
 use crate::guidedcmd::{self, CMD_DO_REPOSITION, Plan, VehicleState};
 use crate::guidedexec::{Emit, Executor, Observed};
 use crate::mavcmd::{Command, Commands, Failure, Out, RESULT_ACCEPTED};
@@ -236,33 +235,6 @@ impl Vehicle {
             compass_fitness: number(sensorcal::COMPASS_FITNESS_PARAM),
             compass_learn: number(sensorcal::COMPASS_LEARN_PARAM).is_some(),
         }
-    }
-
-    // gimbal::Out mixes messages to send with progress events. The command variants go out through
-    // the same self.commands path everything else uses, so retries and acks are not reimplemented
-    // here. The events are drained and dropped: no head reads view.gimbal at all today, and the
-    // refusal reasons a caller would want are already served per gimbal in control.offer and
-    // aim.offer, computed from the same constants Refused carries - so the state is the whole story
-    // and an event channel with no reader is what left this subsystem unwired in the first place.
-    fn follow_gimbal(&mut self, outs: Vec<gimbal::Out>, now_ms: u64) -> Vec<Vec<u8>> {
-        outs.into_iter()
-            .flat_map(|out| match out {
-                gimbal::Out::RequestMessage { component, message } => {
-                    let sent = self.commands.request_message(0, component, message, [0.0; 5], now_ms);
-                    self.handle(sent, now_ms)
-                }
-                gimbal::Out::MessageInterval { component, message, interval_us } => {
-                    let params = [message as f64, interval_us, 0.0, 0.0, 0.0, 0.0, 0.0];
-                    let sent = self.commands.send(Command { component, command: crate::mavcmd::CMD_SET_MESSAGE_INTERVAL, command_int: false, frame: 0, params, show_error: false, tag: 0 }, now_ms);
-                    self.handle(sent, now_ms)
-                }
-                gimbal::Out::Command { component, command, params, show_error } => {
-                    let sent = self.commands.send(Command { component, command, command_int: false, frame: 0, params, show_error, tag: 0 }, now_ms);
-                    self.handle(sent, now_ms)
-                }
-                _ => Vec::new(),
-            })
-            .collect()
     }
 
     fn follow_calibration(&mut self, actions: Vec<sensorcal::Action>, now_ms: u64) -> Vec<Vec<u8>> {
@@ -920,15 +892,11 @@ impl Vehicle {
     }
 
     fn handle(&mut self, outs: Vec<Out>, now_ms: u64) -> Vec<Vec<u8>> {
+        let target = (self.id, self.component);
         outs.into_iter()
             .flat_map(|out| match out {
-                // Addressed to the component the Out names, not to the autopilot. Out::Send has
-                // always carried a component and this always discarded it, which was invisible
-                // because every caller passed self.component - gimbal discovery is the first thing
-                // to address another component, and asking the autopilot for a gimbal manager's
-                // information gets silence from the one part that could have answered.
-                Out::Send { component, command, command_int: false, params, .. } => self.encode(&Outbound::CommandLong { target: (self.id, component), command, params }).into_iter().collect(),
-                Out::Send { component, command, command_int: true, frame, params, x, y } => self.encode(&Outbound::CommandInt { target: (self.id, component), command, frame, params, x, y }).into_iter().collect(),
+                Out::Send { command, command_int: false, params, .. } => self.encode(&Outbound::CommandLong { target, command, params }).into_iter().collect(),
+                Out::Send { command, command_int: true, frame, params, x, y, .. } => self.encode(&Outbound::CommandInt { target, command, frame, params, x, y }).into_iter().collect(),
                 Out::ShowError(text) => {
                     self.note(text);
                     Vec::new()
@@ -1052,52 +1020,6 @@ impl Vehicle {
                 self.custom_mode = h.custom_mode;
                 self.system_status = h.system_status as u8;
                 self.vehicle_type = h.mavtype as u8;
-            }
-            MavMessage::GIMBAL_MANAGER_INFORMATION(m) if from.0 == self.id => {
-                let outs = gimbal::lock().on_manager_information(
-                    gimbal::ManagerInformation {
-                        compid: header.component_id,
-                        device_id: m.gimbal_device_id,
-                        capability_flags: m.cap_flags.bits(),
-                        limits_rad: Some([m.roll_min, m.roll_max, m.pitch_min, m.pitch_max, m.yaw_min, m.yaw_max]),
-                    },
-                    now_ms,
-                );
-                return self.follow_gimbal(outs, now_ms);
-            }
-            MavMessage::GIMBAL_MANAGER_STATUS(m) if from.0 == self.id => {
-                let outs = gimbal::lock().on_manager_status(
-                    gimbal::ManagerStatus {
-                        compid: header.component_id,
-                        device_id: m.gimbal_device_id,
-                        primary_sysid: m.primary_control_sysid,
-                        primary_compid: m.primary_control_compid,
-                        secondary_sysid: m.secondary_control_sysid,
-                        secondary_compid: m.secondary_control_compid,
-                    },
-                    now_ms,
-                );
-                return self.follow_gimbal(outs, now_ms);
-            }
-            MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(m) if from.0 == self.id => {
-                // NaN is the protocol's way of saying "not measured" and is not a rate of zero, but
-                // the filtering belongs downstream and is already there: on_device_attitude_status
-                // checks is_finite PER AXIS. Screening here as well was not only redundant, it was
-                // coarser - an all-or-nothing test threw away a real pitch rate because yaw was NaN.
-                // So the wire values travel unaltered and one place decides what unmeasured means.
-                let outs = gimbal::lock().on_device_attitude_status(
-                    gimbal::DeviceAttitude {
-                        compid: header.component_id,
-                        device_id: m.gimbal_device_id,
-                        flags: m.flags.bits() as u32,
-                        q: m.q,
-                        angular_velocity_rad_s: Some([m.angular_velocity_x, m.angular_velocity_y, m.angular_velocity_z]),
-                        failure_flags: m.failure_flags.bits(),
-                        delta_yaw_rad: Some(m.delta_yaw),
-                    },
-                    now_ms,
-                );
-                return self.follow_gimbal(outs, now_ms);
             }
             MavMessage::COMMAND_ACK(a) => {
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
@@ -1235,32 +1157,7 @@ impl Vehicle {
         self.distance.apply(message);
         self.local.apply(message);
         self.estimator.apply(message);
-        self.gimbal_heartbeat(message, from.0, header.component_id, now_ms)
-    }
-
-    // Runs in the tail rather than as a match arm, because the HEARTBEAT arm above deliberately
-    // falls through to the five apply() calls beneath it - an arm that returned gimbal frames would
-    // skip them, and would put discovery traffic ahead of whatever the operator just asked for.
-    //
-    // The machine refuses every input until something tells it a vehicle is there, and it needs the
-    // vehicle's heading to aim in the earth frame while yaw is locked; neither had a caller outside
-    // its own tests. Both are set on every heartbeat rather than once at connect, because a vehicle
-    // that goes quiet and comes back has to be told again and there is no other edge to hang it on.
-    //
-    // Any component on our vehicle's system, not just the autopilot: a gimbal manager is usually a
-    // component of its own, so asking only compid 1 would discover nothing on the rigs that have
-    // one. The state machine bounds the asking itself - a fixed retry budget per component, and a
-    // pending-request timeout - so a system with no gimbal goes quiet rather than asking forever.
-    fn gimbal_heartbeat(&mut self, message: &MavMessage, system: u8, component: u8, now_ms: u64) -> Vec<Vec<u8>> {
-        if !matches!(message, MavMessage::HEARTBEAT(_)) || system != self.id {
-            return Vec::new();
-        }
-        let mut gimbals = gimbal::lock();
-        gimbals.set_ready(true);
-        gimbals.set_heading(Some(self.facts.heading as f32).filter(|heading| heading.is_finite()), now_ms);
-        let outs = gimbals.on_heartbeat(component, now_ms);
-        drop(gimbals);
-        self.follow_gimbal(outs, now_ms)
+        Vec::new()
     }
 
     pub fn snapshot(&self) -> Value {
@@ -1703,94 +1600,6 @@ mod tests {
         mavlink::read_versioned_msg::<MavMessage, _>(&mut mavlink::peek_reader::PeekReader::new(bytes), mavlink::ReadVersion::Single(mavlink::MavlinkVersion::V2)).unwrap().1
     }
 
-    #[test]
-    fn a_gimbal_on_the_wire_reaches_the_state_machine_that_answers_view_gimbal() {
-        use mavlink::dialects::ardupilotmega::{GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA, GIMBAL_MANAGER_STATUS_DATA, GimbalDeviceCapFlags, GimbalManagerCapFlags, MavCmd};
-
-        // The one test in the crate that touches the GIMBALS static. Every other gimbal test builds
-        // its own Gimbals, so nothing else can be disturbed by this - but the machine the C ABI
-        // actually serves is the static one, and a test against a local instance is precisely what
-        // let this subsystem sit unwired with 1,500 lines of green tests behind it.
-        *gimbal::lock() = gimbal::Gimbals::new(mavout::GCS_SYSTEM, mavout::GCS_COMPONENT);
-
-        const MANAGER: u8 = 154;
-        const DEVICE: u8 = 1;
-        let mut hub = Hub::default();
-        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
-        let manager = MavHeader { system_id: 1, component_id: MANAGER, sequence: 0 };
-
-        let first = hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), 1_000_000, 1000);
-        assert!(gimbal::lock().pairs().is_empty(), "a vehicle alone is not a gimbal");
-        assert!(
-            first.iter().any(|(_, frame)| matches!(decode(frame), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_REQUEST_MESSAGE && c.target_component == 1)),
-            "the autopilot is asked too, because ArduPilot commonly hosts the manager on compid 1"
-        );
-
-        let mut gimbal_heartbeat = match copter_heartbeat(0, false) { MavMessage::HEARTBEAT(h) => h, _ => panic!() };
-        gimbal_heartbeat.mavtype = mavlink::dialects::ardupilotmega::MavType::MAV_TYPE_GIMBAL;
-        let beat = MavMessage::HEARTBEAT(gimbal_heartbeat);
-        assert!(
-            hub.on_frame(origin(0), &manager, &beat, 1_100_000, 1100).is_empty(),
-            "one information request is outstanding at a time, so the manager waits rather than the two racing"
-        );
-        let asked = hub.on_frame(origin(0), &manager, &beat, 5_000_000, 1000 + gimbal::INFORMATION_REQUEST_TIMEOUT_MS + 1);
-        assert!(
-            asked.iter().any(|(_, frame)| matches!(decode(frame), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_REQUEST_MESSAGE && c.target_component == MANAGER)),
-            "once the outstanding request times out the manager gets asked in its own right - discovery has to reach the component that spoke, and a manager of its own is the case that asking only compid 1 would miss"
-        );
-
-        let mut information = GIMBAL_MANAGER_INFORMATION_DATA::default();
-        information.gimbal_device_id = DEVICE;
-        information.cap_flags = GimbalManagerCapFlags::from_bits_retain(gimbal::CAP_HAS_RETRACT | gimbal::CAP_HAS_YAW_LOCK);
-        information.pitch_min = -1.0;
-        information.pitch_max = 0.5;
-        hub.on_frame(origin(0), &manager, &MavMessage::GIMBAL_MANAGER_INFORMATION(information), 1_200_000, 1200);
-
-        let mut status = GIMBAL_MANAGER_STATUS_DATA::default();
-        status.gimbal_device_id = DEVICE;
-        status.primary_control_sysid = mavout::GCS_SYSTEM;
-        status.primary_control_compid = mavout::GCS_COMPONENT;
-        hub.on_frame(origin(0), &manager, &MavMessage::GIMBAL_MANAGER_STATUS(status), 1_300_000, 1300);
-
-        let mut attitude = GIMBAL_DEVICE_ATTITUDE_STATUS_DATA::default();
-        attitude.gimbal_device_id = DEVICE;
-        attitude.q = [1.0, 0.0, 0.0, 0.0];
-        attitude.angular_velocity_x = f32::NAN;
-        attitude.angular_velocity_y = f32::NAN;
-        attitude.angular_velocity_z = f32::NAN;
-        attitude.delta_yaw = f32::NAN;
-        attitude.failure_flags = mavlink::dialects::ardupilotmega::GimbalDeviceErrorFlags::from_bits_retain(0);
-        attitude.flags = mavlink::dialects::ardupilotmega::GimbalDeviceFlags::from_bits_retain(gimbal::FLAG_YAW_IN_VEHICLE_FRAME as u16);
-        hub.on_frame(origin(0), &manager, &MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(attitude), 1_400_000, 1400);
-
-        let served = gimbal::lock().snapshot(1400);
-        let first = &served["gimbals"][0];
-        assert_eq!(first["managerCompid"], MANAGER, "the view answered from a real message rather than from a test fixture, which is what nothing checked before");
-        assert_eq!(first["deviceId"], DEVICE);
-        assert_eq!(first["haveControl"], true);
-        assert_eq!(first["supportsRetract"], true);
-        assert_eq!(first["pitch"], 0.0);
-        assert_eq!(
-            first["measuredPitchRate"], Value::Null,
-            "the protocol writes NaN for a rate it is not measuring, and a rate of zero means the gimbal is holding still - collapsing them would tell a head the mount is steady when it is reporting nothing"
-        );
-        let mut partial = GIMBAL_DEVICE_ATTITUDE_STATUS_DATA::default();
-        partial.gimbal_device_id = DEVICE;
-        partial.q = [1.0, 0.0, 0.0, 0.0];
-        partial.angular_velocity_y = 0.5;
-        partial.angular_velocity_z = f32::NAN;
-        partial.delta_yaw = f32::NAN;
-        partial.flags = mavlink::dialects::ardupilotmega::GimbalDeviceFlags::from_bits_retain(gimbal::FLAG_YAW_IN_VEHICLE_FRAME as u16);
-        hub.on_frame(origin(0), &manager, &MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(partial), 1_500_000, 1500);
-        let mixed = gimbal::lock().snapshot(1500);
-        assert_eq!(mixed["gimbals"][0]["measuredPitchRate"], 0.5f32.to_degrees(), "a measured axis survives an unmeasured one beside it - the finiteness test is per axis, and an all-or-nothing screen upstream would have thrown this away");
-        assert_eq!(mixed["gimbals"][0]["measuredYawRate"], Value::Null);
-        assert_eq!(first["limits"]["pitchMin"], (-1.0f32).to_degrees(), "the wire carries radians and the view serves degrees");
-
-        assert!(GimbalDeviceCapFlags::from_bits_retain(gimbal::CAP_HAS_RETRACT as u16).bits() != 0, "the flag the core names is one the dialect has");
-        *gimbal::lock() = gimbal::Gimbals::default();
-    }
-
     fn copter_heartbeat(custom_mode: u32, armed: bool) -> MavMessage {
         use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavType};
         let mut h = HEARTBEAT_DATA::default();
@@ -1826,17 +1635,8 @@ mod tests {
         assert_eq!((arm.command, arm.param1), (MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0));
         assert!(hub.tick(2_500).is_empty());
         let takeoff = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(4, true), 3_000_000, 3000);
-        // Searched rather than indexed: gimbal discovery rides every heartbeat and answers from
-        // apply(), which runs before pump_with() where the guided command is raised. So a frame the
-        // operator did not ask for legitimately precedes one they did, and a positional assertion
-        // here was pinning the absence of a subsystem rather than the takeoff.
-        let commands: Vec<_> = takeoff.iter().filter_map(|(_, frame)| match decode(frame) { MavMessage::COMMAND_LONG(c) => Some(c), _ => None }).collect();
-        let t = commands.iter().find(|c| c.command == MavCmd::MAV_CMD_NAV_TAKEOFF).expect("the takeoff still goes out on the heartbeat that reports the vehicle armed");
-        assert_eq!(t.param7, 10.0);
-        assert!(
-            commands.iter().any(|c| c.command == MavCmd::MAV_CMD_REQUEST_MESSAGE && c.param1 == crate::gimbal::MSG_GIMBAL_MANAGER_INFORMATION as f32),
-            "and the gimbal discovery request is the frame that displaced it - asserted here so that its disappearance is a failure rather than a quietly restored ordering"
-        );
+        let MavMessage::COMMAND_LONG(t) = decode(&takeoff[0].1) else { panic!() };
+        assert_eq!((t.command, t.param7), (MavCmd::MAV_CMD_NAV_TAKEOFF, 10.0));
         assert_eq!(hub.guided_snapshot(Some(1))["guided"]["state"], "done");
         let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_NAV_TAKEOFF, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &denied, 3_100_000, 3100);
