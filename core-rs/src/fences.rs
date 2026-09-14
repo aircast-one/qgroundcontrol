@@ -5,14 +5,20 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "plan.geoFenceController.polygons",
+    "plan.geoFenceController.polygons.count",
     "plan.geoFenceController.circles",
+    "plan.geoFenceController.circles.count",
     "plan.rallyPointController.points",
+    "plan.rallyPointController.points.count",
     "plan.geoFenceController@loadComplete",
     "plan.geoFenceController.supported",
     "plan.rallyPointController.supported",
     "plan.managerVehicle.capabilitiesKnown",
     "plan.geoFenceController.paramCircularFence",
     "vehicle.homePosition",
+    "settings.unitsSettings.areaUnits",
+    "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits",
 ];
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -422,5 +428,16 @@ mod tests {
         assert!(corners[1]["longitude"].as_f64().unwrap() < 0.0, "the eastern corner is on the far side of the dateline, not off the end of the world");
         let polar = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 89.999, "longitude": 8.5 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
         assert!(polar["framing"].as_array().unwrap().iter().all(|c| (-90.0..=90.0).contains(&c["latitude"].as_f64().unwrap())));
+    }
+
+    #[test]
+    fn each_shape_list_is_both_polled_for_its_contents_and_bound_for_its_length() {
+        ["plan.geoFenceController.polygons", "plan.geoFenceController.circles", "plan.rallyPointController.points"]
+            .iter()
+            .for_each(|list| {
+                assert!(DEPS.contains(list), "{list} does not bind, which puts it on the branch of _poll that re-reads the whole list every tick; that full re-read is the only thing that notices a dragged vertex, because nothing else about the list changes when one moves");
+                let counted = format!("{list}.count");
+                assert!(DEPS.iter().any(|dep| *dep == counted), "{counted} binds to countChanged and is the only one of the two that does; without it an add or a remove waits on a poll that only runs while the event loop is idle, which is not when a fence is being edited on a connected vehicle");
+            });
     }
 }

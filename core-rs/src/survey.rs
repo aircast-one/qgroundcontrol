@@ -3,7 +3,10 @@ use serde_json::{Value, json};
 use crate::read::{Unit, flag, object, refused};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.dirty"];
+pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.dirty",
+    "settings.unitsSettings.areaUnits",
+    "settings.unitsSettings.horizontalDistanceUnits",
+];
 const ABSENT: &str = "\u{2014}";
 
 pub fn interval_text(seconds: f64) -> String {

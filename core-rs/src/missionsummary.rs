@@ -21,6 +21,7 @@ pub const DEPS: &[&str] = &[
     "settings.appSettings.offlineEditingHoverSpeed",
     "settings.appSettings.offlineEditingCruiseSpeed",
     "settings.appSettings.offlineEditingAscentSpeed",
+    "settings.unitsSettings.verticalDistanceUnits",
 ];
 
 const FEET_PER_METRE: f64 = 3.2808399;

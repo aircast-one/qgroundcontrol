@@ -511,6 +511,32 @@ mod deps_cover_reads {
     }
 
     #[test]
+    fn a_view_that_shows_a_unit_watches_the_setting_that_chooses_it() {
+        const CHOSEN_BY: &[(&str, &str)] = &[
+            ("Unit::horizontal(", "settings.unitsSettings.horizontalDistanceUnits"),
+            ("Unit::vertical(", "settings.unitsSettings.verticalDistanceUnits"),
+            ("Unit::area(", "settings.unitsSettings.areaUnits"),
+            ("Unit::speed(", "settings.unitsSettings.speedUnits"),
+        ];
+
+        let unwatched: Vec<String> = MODULES
+            .iter()
+            .filter_map(|(name, source)| {
+                let body = source.split("#[cfg(test)]").next()?;
+                let deps = deps_of(body)?;
+                Some(CHOSEN_BY
+                    .iter()
+                    .filter(|(call, dep)| body.contains(call) && !deps.contains(*dep))
+                    .map(|(_, dep)| format!("{name} converts a measurement for display but does not watch {dep}, the Fact that chooses the unit; Unit::read asks units.* and never the setting, so nothing else wakes the view and switching to feet leaves the numbers metric until an unrelated dep fires"))
+                    .collect::<Vec<_>>())
+            })
+            .flatten()
+            .collect();
+
+        assert!(unwatched.is_empty(), "{}", unwatched.join("; "));
+    }
+
+    #[test]
     fn every_field_a_view_reads_is_one_it_watches() {
         let modules = MODULES;
         let unwatched: Vec<String> = modules

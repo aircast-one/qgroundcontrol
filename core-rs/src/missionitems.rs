@@ -11,6 +11,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController@newItemsFromVehicle",
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",
+    "settings.unitsSettings.speedUnits",
 ];
 
 const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
@@ -476,6 +477,10 @@ mod tests {
         })
     }
 
+    fn pattern_item() -> Value {
+        json!({ "kind": "object", "sequenceNumber": 5, "abbreviation": "FWL", "commandName": "Fixed Wing Landing", "isSimpleItem": false })
+    }
+
     fn waypoint(sequence: i64, distance: f64) -> Value {
         json!({
             "kind": "object", "sequenceNumber": sequence, "abbreviation": sequence.to_string(), "commandName": "Waypoint",
@@ -491,6 +496,44 @@ mod tests {
             "isSimpleItem": false, "isSurveyItem": true, "specifiesCoordinate": true, "coordinate": at(47.2, 8.2),
             "readyForSaveState": 2, "readyForSaveMessage": "The survey needs an area before it can be saved.",
         })
+    }
+
+    #[test]
+    fn the_index_is_the_position_in_qts_list_and_never_the_sequence_number() {
+        struct Listed(Vec<Value>);
+        impl Backend for Listed {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": self.0.len() }).to_string(),
+                    "plan.missionController.currentPlanViewVIIndex" => json!({ "kind": "value", "value": 0 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn get_fields(&self, path: &str, _fields: &str) -> String {
+                match path {
+                    "plan.missionController" => json!({ "kind": "object", "containsItems": true }).to_string(),
+                    "plan.missionController.visualItems" => json!({ "kind": "object", "elements": self.0 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let plan = vec![settings(), takeoff(), pattern_item(), waypoint(9, 120.0)];
+        let served = |view: Value| view["items"].as_array().unwrap().clone();
+
+        [served(items_view(&Listed(plan.clone()), &[])), served(items_view(&Plan(plan.clone(), 0), &[]))]
+            .iter()
+            .for_each(|listed| {
+                assert_eq!(listed.len(), 4, "both the elements branch and the per-index fallback are live and feed the same head, and neither drops anything, so a position in this list is a position in Qt's");
+                listed.iter().enumerate().for_each(|(at, item)| {
+                    assert_eq!(item["index"], json!(at as i64), "Mission.swift builds raw paths as plan.missionController.visualItems.<index>.<property> and WRITES through them, so an index that is a position in a filtered list moves a waypoint the operator did not touch");
+                });
+                assert_eq!(listed[3]["sequence"], json!(9), "sequence is the item's own sequenceNumber and diverges from the position as soon as a complex item is in the plan; serving one where the other is meant is invisible until it is");
+                assert_ne!(listed[3]["index"], listed[3]["sequence"], "and this plan is one where they diverge, so the assertions above are not agreeing by accident");
+            });
     }
 
     #[test]
