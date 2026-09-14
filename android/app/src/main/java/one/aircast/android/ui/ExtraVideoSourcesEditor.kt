@@ -28,7 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.android.bridge.qgcString
+import one.aircast.android.bridge.qgcPath
 
 private const val SOURCE_UNDO_WINDOW_MS = 6000L
 
@@ -37,8 +37,11 @@ private data class SourceDraft(val index: Int, val name: String, val source: Str
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
-    val json by qgcString(EXTRA_SOURCES_FACT)
-    val sources = remember(json) { extraSources(json) }
+    val view by qgcPath(VIDEO_VIEW)
+    val reading = remember(view) { extraSourcesReading(view) }
+    val json = reading?.stored.orEmpty()
+    val sources = reading?.sources.orEmpty()
+    val editable = reading?.readable != false
     var kinds by remember { mutableStateOf(emptyList<VideoKind>()) }
     var draft by remember { mutableStateOf<SourceDraft?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -59,6 +62,10 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
     }
 
     fun save(next: String) {
+        if (!editable) {
+            notice = reading?.reason
+            return
+        }
         notice = null
         offMainDetached {
             if (!Qgc.set(EXTRA_SOURCES_FACT, next)) {
@@ -69,6 +76,14 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
 
     Column(modifier) {
         SectionHeader("Extra cameras")
+        if (!editable) {
+            Text(
+                reading?.reason.orEmpty(),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
         notice?.let { message ->
             Text(
                 message,

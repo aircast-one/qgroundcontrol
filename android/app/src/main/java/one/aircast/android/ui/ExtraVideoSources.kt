@@ -19,6 +19,28 @@ private val URL_SOURCES = setOf(
 
 internal data class ExtraVideoSource(val name: String, val source: String, val url: String)
 
+internal data class ExtraSourcesReading(
+    val readable: Boolean,
+    val reason: String,
+    val stored: String,
+    val sources: List<ExtraVideoSource>,
+)
+
+internal fun extraSourcesReading(view: JSONObject?): ExtraSourcesReading? {
+    val block = view?.optJSONObject("extraSources") ?: return null
+    val listed = block.optJSONArray("sources")
+    return ExtraSourcesReading(
+        readable = block.optBoolean("readable"),
+        reason = block.optText("reason"),
+        stored = block.optText("stored"),
+        sources = (0 until (listed?.length() ?: 0)).mapNotNull { at ->
+            listed?.optJSONObject(at)?.let {
+                ExtraVideoSource(it.optText("name"), it.optText("source"), it.optText("url"))
+            }
+        },
+    )
+}
+
 private fun objects(json: String?): List<JSONObject> {
     val array = runCatching { JSONArray(json.orEmpty()) }.getOrNull() ?: return emptyList()
     return (0 until array.length()).map { array.optJSONObject(it) ?: JSONObject() }

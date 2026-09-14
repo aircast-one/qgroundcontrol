@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -104,5 +106,43 @@ class VideoKindTest {
         val translated = listOf("", "Video deshabilitado", "Flujo RTSP", "Flujo UDP")
 
         assertEquals(videoKinds(raw, cooked).map { it.raw }, videoKinds(raw, translated).map { it.raw })
+    }
+}
+
+class ExtraSourcesReadingTest {
+
+    private fun view(block: String) = JSONObject("""{"kind":"object","extraSources":$block}""")
+
+    @Test
+    fun `a readable list decodes its sources`() {
+        val reading = extraSourcesReading(
+            view(
+                """{"readable":true,"stored":"[]","sources":[
+                   {"slot":0,"name":"Nose","source":"RTSP Video Stream","url":"rtsp://x"}]}""",
+            ),
+        )!!
+
+        assertTrue(reading.readable)
+        assertEquals(listOf(ExtraVideoSource("Nose", "RTSP Video Stream", "rtsp://x")), reading.sources)
+    }
+
+    @Test
+    fun `text that is not a list is not an empty list, and says why`() {
+        val broken = extraSourcesReading(
+            view(
+                """{"readable":false,"stored":"{ not json","sources":[],
+                   "reason":"The extra video sources setting is not a readable list."}""",
+            ),
+        )!!
+
+        assertFalse(broken.readable)
+        assertEquals("{ not json", broken.stored)
+        assertEquals("The extra video sources setting is not a readable list.", broken.reason)
+    }
+
+    @Test
+    fun `a view without the block is no reading rather than an empty one`() {
+        assertNull(extraSourcesReading(null))
+        assertNull(extraSourcesReading(JSONObject("""{"kind":"object"}""")))
     }
 }
