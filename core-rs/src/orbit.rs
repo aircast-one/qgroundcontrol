@@ -6,6 +6,9 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.orbitActive",
+    "vehicle.orbitMapCircle.radius",
+    "vehicle.orbitMapCircle.center",
+    "vehicle.orbitMapCircle.clockwiseRotation",
     "vehicle.vehicleLinkManager.communicationLost",
     "settings.unitsSettings.horizontalDistanceUnits",
 ];
@@ -107,5 +110,14 @@ mod tests {
         let quiet = orbit_view(&Flying { active: true, lost: true }, &[]);
         assert_eq!(quiet["orbiting"], Value::Null, "_orbitActive is set true by telemetry and cleared ONLY by a three second watchdog, so with contact lost false means 'no ORBIT_EXECUTION_STATUS arrived' rather than 'the vehicle stopped orbiting' - and the aircraft may still be turning");
         assert!(quiet["reason"].as_str().unwrap().contains("No contact"));
+    }
+
+    #[test]
+    fn the_circle_is_watched_where_it_moves_and_not_at_the_handle_that_holds_it() {
+        ["radius", "center", "clockwiseRotation"].iter().for_each(|leaf| {
+            let want = format!("vehicle.orbitMapCircle.{leaf}");
+            assert!(DEPS.iter().any(|dep| *dep == want), "_handleOrbitExecutionStatus writes {leaf} on every ORBIT_EXECUTION_STATUS but emits orbitActiveChanged only on the transition into the orbit, so watching orbitActive alone draws the first circle reported and never another");
+        });
+        assert!(!DEPS.contains(&"vehicle.orbitMapCircle"), "a dep stopping at the handle resolves to a QGCMapCircle* declared CONSTANT, fails the Fact special-case in _changeSignal, and asks a CONSTANT property for a notify signal it has not got: it would register and never fire");
     }
 }
