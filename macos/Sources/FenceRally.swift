@@ -27,7 +27,16 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     // The Fly view reads these while the Plan window edits them, and a fence is plan state that no
     // telemetry tick announces, so a reader has to look again.
+    //
+    // COUNTED, because there are now two owners. The Plan window watches so its own page notices a
+    // vehicle arriving -- connected gates the download offer, and with only Plan open it used to be
+    // read once on appear and never again, so powering the aircraft on afterwards left the offer
+    // hidden until something else reloaded. A single flag would let whichever window closed first
+    // stop the poll the other was still using, and the two windows close in either order.
+    private var watchers = 0
+
     func startWatching() {
+        watchers += 1
         guard watchPoll == nil else { return }
         reload()
         watchPoll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -36,6 +45,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func stopWatching() {
+        watchers = max(0, watchers - 1)
+        guard watchers == 0 else { return }
         watchPoll?.invalidate()
         watchPoll = nil
     }

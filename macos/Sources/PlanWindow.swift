@@ -1270,9 +1270,10 @@ struct PlanView: View {
         .frame(minWidth: 860, minHeight: 620)
         .onAppear {
             mission.reload()
-            fenceRally.reload()
+            fenceRally.startWatching()
             mission.startEditing()
         }
+        .onDisappear(perform: fenceRally.stopWatching)
     }
 
     private var fencePoints: [GeoPoint] { fenceRally.framingPoints }
