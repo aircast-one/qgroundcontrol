@@ -64,6 +64,17 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         .cloned()
         .unwrap_or_else(|| text("valueString"));
     let bound = |key: &str, default_flag: &str| (!flag(default_flag)).then(|| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite())).flatten();
+    // minString and maxString are populated whatever minIsDefaultForType says, so a fact that
+    // declares no floor still carries the string for the smallest number its type can hold. Serving
+    // that beside a null minimum is how a field ends up printing "Min -3.4e38". One gate decides the
+    // number and its spelling together, so the two cannot disagree about whether a bound exists.
+    let bound_text = |key: &str, default_flag: &str| (!flag(default_flag)).then(|| fact.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)).flatten();
+    // Fact declares a typed defaultValue beside the string one, but it was missing from the
+    // bridge's kFactProperties allowlist and so arrived nowhere - added there rather than parsed
+    // back out of defaultValueString here, because that string is already formatted to
+    // decimalPlaces and reading a number out of it would be the round trip through a rendered
+    // string that Android's plainNumber does, one layer further down where nobody can see it.
+    let has_default = flag("defaultValueAvailable");
     let described = text("shortDescription");
     json!({
         "kind": "object",
@@ -82,6 +93,10 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         "decimalPlaces": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0),
         "minimum": bound("min", "minIsDefaultForType"),
         "maximum": bound("max", "maxIsDefaultForType"),
+        "minimumText": bound_text("minString", "minIsDefaultForType"),
+        "maximumText": bound_text("maxString", "maxIsDefaultForType"),
+        "defaultText": has_default.then(|| text("defaultValueString")).filter(|shown| !shown.is_empty()),
+        "defaultValue": has_default.then(|| fact.get("defaultValue").cloned()).flatten().unwrap_or(Value::Null),
         "rebootRequired": flag("vehicleRebootRequired") || flag("qgcRebootRequired"),
         "vehicleRebootRequired": flag("vehicleRebootRequired"),
         "applicationRestartRequired": flag("qgcRebootRequired"),
@@ -184,6 +199,25 @@ mod tests {
         let open = decode(&json!({ "kind": "fact", "name": "X", "min": -32768, "max": 32767, "minIsDefaultForType": true, "maxIsDefaultForType": true }), "p");
         assert_eq!(open["minimum"], Value::Null);
         assert_eq!(open["maximum"], Value::Null);
+    }
+
+    #[test]
+    fn a_bound_with_no_spelling_and_a_spelling_with_no_bound_cannot_happen() {
+        let bounded = decode(&json!({ "kind": "fact", "name": "RTL_ALT", "min": 5.0, "max": 120.0, "minString": "5", "maxString": "120", "minIsDefaultForType": false, "maxIsDefaultForType": false, "defaultValueAvailable": true, "defaultValue": 10.0, "defaultValueString": "10" }), "p");
+        assert_eq!(bounded["minimumText"], "5");
+        assert_eq!(bounded["maximumText"], "120");
+        assert_eq!(bounded["defaultValue"], 10.0);
+        assert_eq!(bounded["defaultText"], "10");
+
+        let open = decode(&json!({ "kind": "fact", "name": "X", "min": -3.4e38, "max": 3.4e38, "minString": "-3.4e+38", "maxString": "3.4e+38", "minIsDefaultForType": true, "maxIsDefaultForType": true }), "p");
+        assert_eq!(open["minimum"], Value::Null);
+        assert_eq!(
+            open["minimumText"], Value::Null,
+            "the bridge fills minString whatever minIsDefaultForType says, so a fact declaring no floor still carries the smallest number its type can hold - serving that beside a null minimum is how a field prints \"Altitude must be at least -3.4e38\""
+        );
+        assert_eq!(open["maximumText"], Value::Null);
+        assert_eq!(open["defaultValue"], Value::Null, "no defaultValueAvailable means no default, and value beside it is the live reading rather than one");
+        assert_eq!(open["defaultText"], Value::Null);
     }
 
     #[test]

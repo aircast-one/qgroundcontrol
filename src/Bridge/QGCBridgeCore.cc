@@ -371,6 +371,7 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("maxString"),
         QStringLiteral("minIsDefaultForType"),
         QStringLiteral("maxIsDefaultForType"),
+        QStringLiteral("defaultValue"),
         QStringLiteral("defaultValueString"),
         QStringLiteral("defaultValueAvailable"),
         QStringLiteral("vehicleRebootRequired"),
@@ -383,7 +384,11 @@ QJsonObject factJson(Fact *fact)
     json.insert(QStringLiteral("kind"), QStringLiteral("fact"));
     const bool defaultAvailable = fact->defaultValueAvailable();
     for (const QString &property : kFactProperties) {
-        const bool skipped = (property == QLatin1String("defaultValueString")) && !defaultAvailable;
+        // Both default keys are dropped when there is no default. FactMetaData::rawDefaultValue
+        // answers QVariant(0) and warns when none is available, so serving defaultValue unskipped
+        // spells "no default" and "defaults to zero" the same way - and emitted 3200 warnings in one
+        // suite run doing it.
+        const bool skipped = (property == QLatin1String("defaultValueString") || property == QLatin1String("defaultValue")) && !defaultAvailable;
         json.insert(property, skipped ? QJsonValue() : QJsonValue::fromVariant(fact->property(property.toUtf8().constData())));
     }
     return json;
