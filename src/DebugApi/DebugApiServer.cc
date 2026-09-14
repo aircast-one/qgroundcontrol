@@ -1648,7 +1648,9 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
         return take(native->bridge_stats());
     }
     if (path == QStringLiteral("/native/menu/invoke")) {
-        const QString item = query.queryItemValue(QStringLiteral("path"));
+        // FullyDecoded for the same reason /native/probe below says: PrettyDecoded leaves %2F
+        // encoded, and a menu path is separated by slashes, so an encoded one matched no menu.
+        const QString item = query.queryItemValue(QStringLiteral("path"), QUrl::FullyDecoded);
         if (item.isEmpty()) {
             return _errorJson(QStringLiteral("path is required, e.g. path=Window/Native Telemetry"));
         }
@@ -1695,7 +1697,11 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
 
 QByteArray DebugApiServer::_bridgeJson(const QString &path, const QUrlQuery &query)
 {
-    const QString target = query.queryItemValue(QStringLiteral("path"));
+    // A view argument is written view.settings(Connections), and an encoder that escapes the
+    // parentheses is not wrong - PrettyDecoded left them as %28/%29, which matched no view and
+    // returned null. The same request written two correct ways gave two answers. /bridge/set
+    // already reads its value FullyDecoded; this is the same fix in the sibling handler.
+    const QString target = query.queryItemValue(QStringLiteral("path"), QUrl::FullyDecoded);
     if (target.isEmpty()) {
         return _errorJson(QStringLiteral("path is required, e.g. path=settings.appSettings"));
     }

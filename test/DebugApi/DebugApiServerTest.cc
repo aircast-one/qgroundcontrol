@@ -90,6 +90,33 @@ void DebugApiServerTest::_handlerErrorReturns400()
     reply->deleteLater();
 }
 
+void DebugApiServerTest::_anEncodedPathReachesTheSameViewAsARawOne()
+{
+    // queryItemValue defaults to PrettyDecoded, which leaves %28 and %2F as escapes. An encoder
+    // that percent-escapes them is not wrong, so the same request written two correct ways
+    // returned two answers - one the view, one null. /native/probe already carries a comment
+    // about this exact fault from when a %2F path made the app write a file by that literal name;
+    // the fix had never been applied to its two siblings.
+    DebugApiServer server(0);
+    QNetworkAccessManager network;
+
+    const QString raw = QStringLiteral("/bridge/get?path=view.settings(General)");
+    const QString encoded = QStringLiteral("/bridge/get?path=view.settings%28General%29");
+
+    QNetworkReply *rawReply = _get(network, server.serverPort(), raw, true);
+    QTRY_VERIFY_WITH_TIMEOUT(rawReply->isFinished(), 5000);
+    const QJsonObject rawBody = QJsonDocument::fromJson(rawReply->readAll()).object();
+    rawReply->deleteLater();
+
+    QNetworkReply *encodedReply = _get(network, server.serverPort(), encoded, true);
+    QTRY_VERIFY_WITH_TIMEOUT(encodedReply->isFinished(), 5000);
+    const QJsonObject encodedBody = QJsonDocument::fromJson(encodedReply->readAll()).object();
+    encodedReply->deleteLater();
+
+    QCOMPARE(rawBody.value(QStringLiteral("title")).toString(), QStringLiteral("General"));
+    QCOMPARE(encodedBody, rawBody);
+}
+
 void DebugApiServerTest::_uiClickRejectsUnknownButton()
 {
     DebugApiServer server(0);

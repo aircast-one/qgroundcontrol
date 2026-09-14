@@ -22,6 +22,7 @@ private slots:
     void _handlerErrorReturns400();
     void _motorTestRefusedWithoutActuatorGate();
     void _uiClickRejectsUnknownButton();
+    void _anEncodedPathReachesTheSameViewAsARawOne();
     void _uiClickAcceptsLeftAndRightButton();
     void _uiPropRequiresNameAndProperty();
     void _uiSetPropRequiresValue();
