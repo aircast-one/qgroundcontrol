@@ -623,7 +623,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\gstreamer
-          key: gstreamer-1.28.6-windows-arm64
+          key: gstreamer-1.28.6-windows-arm64-on-x64
 
       - name: Download GStreamer
         if: steps.gst-cache.outputs.cache-hit != 'true'
