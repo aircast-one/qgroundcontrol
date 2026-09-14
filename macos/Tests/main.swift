@@ -1128,12 +1128,34 @@ func checkTheAdapterPickerShowsTheChoiceNotTheConsequence() {
            "and a named adapter selects its own row, offset by the Automatic entry sitting "
            + "above the list")
 
-    expect(AdapterChoice.selected(deviceName: "A radio that went away", adapters: adapters) == 0,
-           "A CONFIGURED ADAPTER THAT IS NO LONGER PRESENT FALLS BACK TO Automatic IN THE BOX "
-           + "while the fact keeps its value, which is what PacketRadioSettings.qml:86-90 does "
-           + "and is therefore what parity requires. It is arguably misleading -- the operator "
-           + "chose that radio and the box now says Automatic -- but a head inventing a "
-           + "different answer here would disagree with the QML build about what was configured")
+    // REVERSED, and the note it replaces was mine: it asserted this falls back to Automatic
+    // "because that is what PacketRadioSettings.qml:86-90 does and is therefore what parity
+    // requires", while admitting the result is arguably misleading. QGC does do exactly that --
+    // `found < 0 ? 0` and an onActivated that writes "" for index 0 -- so the parity claim was
+    // accurate. What it got wrong is that this is not a case where the two situations are
+    // indistinguishable to an operator: an unset preference and a preference for a radio that is
+    // unplugged are different facts, and only one of them should read as Automatic.
+    //
+    // The cost of the old answer is not the label. Index 0 writes "", so a single interaction on
+    // a picker that is showing the wrong selection erases a preference the operator still has --
+    // and they would have to already know Automatic was never their choice to avoid it. Matching
+    // QGC there means copying a hazard, which is a different thing from matching a convention.
+    expect(AdapterChoice.selected(deviceName: "A radio that went away", adapters: adapters)
+               == adapters.count + 1,
+           "a configured adapter that is not present gets a row of its own rather than collapsing "
+           + "onto Automatic")
+    expect(AdapterChoice.options(adapters, configured: "A radio that went away").last ?? "",
+           "A radio that went away \u{2014} not connected",
+           "and the row says why it is not selectable-as-present, so the preference is visibly "
+           + "kept rather than silently replaced")
+    expect(AdapterChoice.chosen(index: adapters.count + 1, adapters: adapters,
+                                configured: "A radio that went away"),
+           "A radio that went away",
+           "and choosing that row writes the SAME name back, so selecting what is already "
+           + "selected cannot be the thing that clears it")
+    expect(AdapterChoice.chosen(index: 0, adapters: adapters, configured: "A radio that went away"),
+           "", "while Automatic still means Automatic")
+
 
     expect(AdapterChoice.chosen(index: 0, adapters: adapters) == "",
            "choosing Automatic writes the empty string rather than the word, because the empty "
@@ -4722,6 +4744,29 @@ func checkAParameterBrowserSaysWhatItCouldNotRead() {
            "and a complete read says nothing at all, because there is nothing to say")
 }
 checkAParameterBrowserSaysWhatItCouldNotRead()
+
+func checkSmartRTLCountsAsFlyingSomethingOfItsOwn() {
+    let apm: [String?] = ["Land", "RTL", "Smart RTL", "Auto"]
+
+    expect(BusyModes.busy(mode: "RTL", named: apm), "plain RTL is the vehicle flying its own plan")
+    expect(BusyModes.busy(mode: "Smart RTL", named: apm),
+           "and so is SMART RTL, which this head left out while QGC's GuidedActionsController "
+           + "counts it beside plain RTL -- an ArduPilot vehicle returning under Smart RTL read "
+           + "as idle. The core already had it right, which is the tell that the distinction is "
+           + "real: two places asked the same question and one got it")
+    expect(!BusyModes.busy(mode: "Guided", named: apm),
+           "a mode the operator put it in is not the vehicle flying something of its own")
+
+    let px4: [String?] = ["Land", "Return", "", "Mission"]
+    expect(!BusyModes.busy(mode: "", named: px4),
+           "smartRTLFlightMode is EMPTY on PX4, and an empty name must never match an empty "
+           + "flight mode -- otherwise every PX4 vehicle with no mode reported reads as busy")
+    expect(BusyModes.busy(mode: "Return", named: px4), "while PX4's own Return still counts")
+
+    expect(String(BusyModes.names.count), "4",
+           "four modes, and the list lives beside the rule so a fifth is added in one place")
+}
+checkSmartRTLCountsAsFlyingSomethingOfItsOwn()
 
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in

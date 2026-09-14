@@ -101,19 +101,33 @@ struct PacketRadio: Equatable {
 enum AdapterChoice {
     static let automatic = "Automatic"
 
-    static func options(_ adapters: [String]) -> [String] { [automatic] + adapters }
+    static func missing(_ name: String) -> String { "\(name) \u{2014} not connected" }
+
+    // A configured adapter that is not in the list gets a row of its own. It used to collapse to
+    // index 0, which is AUTOMATIC -- so unplugging the adapter made the picker show a choice the
+    // operator never made, and any interaction landing on 0 wrote "" and erased their preference.
+    // Two different situations, one index: an empty deviceName really is Automatic, and a named
+    // adapter that is absent is a preference being kept for a device that is not here.
+    static func options(_ adapters: [String], configured: String = "") -> [String] {
+        let listed = [automatic] + adapters
+        guard !configured.isEmpty, !adapters.contains(configured) else { return listed }
+        return listed + [missing(configured)]
+    }
 
     // The picker shows the CONFIGURED preference, not the adapter currently open: with
     // Automatic selected those differ, and showing the open one would make the box read as a
     // choice nobody made. An empty deviceName is Automatic.
     static func selected(deviceName: String, adapters: [String]) -> Int {
-        guard !deviceName.isEmpty, let found = adapters.firstIndex(of: deviceName) else {
-            return 0
-        }
+        guard !deviceName.isEmpty else { return 0 }
+        guard let found = adapters.firstIndex(of: deviceName) else { return adapters.count + 1 }
         return found + 1
     }
 
-    static func chosen(index: Int, adapters: [String]) -> String {
-        index >= 1 && index - 1 < adapters.count ? adapters[index - 1] : ""
+    // The absent row writes the SAME name back rather than "", so selecting what is already
+    // selected cannot be the thing that clears it.
+    static func chosen(index: Int, adapters: [String], configured: String = "") -> String {
+        if index >= 1 && index - 1 < adapters.count { return adapters[index - 1] }
+        if index == adapters.count + 1 { return configured }
+        return ""
     }
 }

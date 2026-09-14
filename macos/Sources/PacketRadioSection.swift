@@ -32,7 +32,8 @@ final class PacketRadioStore: ObservableObject, Probeable, WriteReporting {
     static let deviceNamePath = "settings.packetRadioSettings.deviceName"
 
     func chooseAdapter(_ index: Int) {
-        let name = AdapterChoice.chosen(index: index, adapters: radio?.adapters ?? [])
+        let name = AdapterChoice.chosen(index: index, adapters: radio?.adapters ?? [],
+                                        configured: deviceName)
         guard name != deviceName else { return }
         if write(Self.deviceNamePath, name, "the Wi-Fi adapter") { deviceName = name }
     }
@@ -90,7 +91,9 @@ struct PacketRadioSection: View {
             get: { AdapterChoice.selected(deviceName: store.deviceName,
                                           adapters: radio.adapters) },
             set: { store.chooseAdapter($0) })) {
-            ForEach(Array(AdapterChoice.options(radio.adapters).enumerated()), id: \.offset) {
+            ForEach(Array(AdapterChoice.options(radio.adapters,
+                                                configured: store.deviceName).enumerated()),
+                    id: \.offset) {
                 index, label in Text(label).tag(index)
             }
         }
