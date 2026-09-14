@@ -290,6 +290,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                 item(key = "erase") {
                     if (!busy) {
                         TextButton(
+                            enabled = logs.canErase,
                             onClick = { confirmErase = true },
                             colors = ButtonDefaults.textButtonColors(
                                 contentColor = MaterialTheme.colorScheme.error,

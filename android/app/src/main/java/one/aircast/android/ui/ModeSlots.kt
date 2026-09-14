@@ -14,7 +14,6 @@ internal data class ModeSlot(
 internal data class ModeSlotsView(
     val channel: Int,
     val slots: List<ModeSlot>,
-    val liveSlot: Int,
     val reason: String,
 )
 
@@ -32,7 +31,6 @@ internal fun modeSlotsView(view: JSONObject?): ModeSlotsView? {
                 )
             }
         },
-        liveSlot = view.optInt("liveSlot"),
         reason = view.optText("reason"),
     )
 }
