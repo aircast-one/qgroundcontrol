@@ -24,8 +24,10 @@ def newest(directory, suffixes):
 
 
 def installed_at():
+    serial = os.environ.get("ANDROID_SERIAL")
+    target = f"adb -s {serial}" if serial else "adb"
     out = subprocess.run(
-        f"adb shell dumpsys package {APP}", shell=True, capture_output=True, text=True
+        f"{target} shell dumpsys package {APP}", shell=True, capture_output=True, text=True
     ).stdout
     found = re.search(r"lastUpdateTime=(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", out)
     if not found:
