@@ -143,12 +143,12 @@ QUIET_SECONDS = 15
 MAX_TRACES = 8
 FLOOD_LINES = 5000
 TRACE_DIR = REPO / "build-test/hang-traces"
+RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def trace_hang(pid, note):
     TRACE_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%H%M%S")
-    path = TRACE_DIR / f"hang-{stamp}-{note}.txt"
+    path = TRACE_DIR / f"hang-{RUN_ID}-{note}.txt"
     sampled = subprocess.run(["sample", str(pid), "4", "-file", str(path)],
                              capture_output=True, text=True)
     if sampled.returncode != 0:
@@ -277,6 +277,7 @@ def record(summary, verdicts, incomplete=False):
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "run": RUN_ID,
         "suites": summary["suites"],
         "expected": len(expected_suites()),
         "passed": summary["passed"],
