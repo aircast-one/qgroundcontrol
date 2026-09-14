@@ -140,7 +140,7 @@ def refresh_clone():
 
 
 QUIET_SECONDS = 15
-MAX_TRACES = 3
+MAX_TRACES = 8
 TRACE_DIR = REPO / "build-test/hang-traces"
 
 
