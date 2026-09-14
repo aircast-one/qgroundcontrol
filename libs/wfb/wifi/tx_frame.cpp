@@ -9,6 +9,9 @@
     #include <linux/random.h>
     #include <linux/udp.h>
     #include <sys/ioctl.h>
+    #ifdef __ANDROID__
+        #include <netinet/udp.h>
+    #endif
 #else
     #include "cross/ip.h"
     #include "cross/udp.h"

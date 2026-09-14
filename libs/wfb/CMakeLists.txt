@@ -13,7 +13,7 @@ set(DEVOURER_KESTREL_8852C OFF CACHE BOOL "" FORCE)
 # both from source there instead: they then inherit CMAKE_OSX_ARCHITECTURES and
 # come out universal. Everywhere else the system packages are fine.
 list(LENGTH CMAKE_OSX_ARCHITECTURES WFB_OSX_ARCH_COUNT)
-if(APPLE AND WFB_OSX_ARCH_COUNT GREATER 1)
+if((APPLE AND WFB_OSX_ARCH_COUNT GREATER 1) OR ANDROID)
     set(WFB_BUILD_DEPS ON)
 else()
     set(WFB_BUILD_DEPS OFF)
@@ -37,6 +37,8 @@ if(WFB_BUILD_DEPS)
         OPTIONS
             "SODIUM_DISABLE_TESTS ON"
     )
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/usbprefix/libusb-1.0/libusb.h" "#pragma once\n#include <libusb.h>\n")
+    target_include_directories(usb-1.0 INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/usbprefix")
     add_library(WFB::libusb ALIAS usb-1.0)
     add_library(WFB::libsodium ALIAS sodium)
 else()

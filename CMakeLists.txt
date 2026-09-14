@@ -589,7 +589,7 @@ if(NOT ANDROID AND NOT IOS)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_QWINDOWKIT)
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID))
+if(CMAKE_SYSTEM_NAME MATCHES "^(Darwin|Linux|Android)$")
     add_subdirectory(libs/wfb)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE wfblink)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_WFB_ENABLED)
