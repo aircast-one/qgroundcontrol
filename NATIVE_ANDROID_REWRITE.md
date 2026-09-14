@@ -7809,3 +7809,29 @@ profile brings it back to "1000 ft".
 **The emulator's profile being imperial is the useful part.** A metric handset
 cannot tell a working conversion from a missing one, because both print the same
 number. Every unit path worth doubting should be looked at there.
+
+### A correction: horizontal distance is never miles, 2026-09-14
+
+`8310282dd` gave a reason for keeping a decimal on a traffic contact's distance
+below ten: *"at miles a contact 600 m away prints as 0 mi"*. **That state cannot
+occur.** `UnitsSettings.h:22` declares
+
+    enum HorizontalDistanceUnits { HorizontalDistanceUnitsFeet = 0, HorizontalDistanceUnitsMeters };
+
+and the app's own Units picker offers exactly those two. Miles exist in QGC for
+area and speed, not for horizontal distance, so the case I described to justify
+the rule is one the settings cannot produce.
+
+**The code stays and the reason changes.** A decimal below ten is still right in
+feet and metres - a contact four metres away reading "4.2 m" rather than "4 m"
+is the same argument at a smaller scale - but it is a refinement rather than the
+defect I called it.
+
+**The neighbouring fix is unaffected and worth separating.** `d852bf982` clamps a
+circle fence radius against bounds served in metres while the radius is in the
+operator's unit, and its worked example is feet, not miles: a 30 m floor
+refusing at 98 ft. Feet are real, that mismatch is real, and the test pinning it
+uses 3.28084.
+
+Found by looking, on an emulator whose profile is imperial. Reading the enum
+took one command and I had not run it.
