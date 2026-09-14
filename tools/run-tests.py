@@ -317,6 +317,19 @@ def main():
         return 0
 
     contention = port_contention()
+    # This used to be a WARNING printed above the totals, which is not enough. The link suites bind
+    # 14550, and a held port produces reds that look like regressions -- eight of them historically,
+    # every one attributed to something other than the port before anyone named the cause. A warning
+    # arrives in the same report as the reds it explains, and by then the reds have been read. A peer
+    # runner refuses instead and that is the correct behaviour: a run that cannot be attributed is
+    # worth less than no run. --allow-stale already exists for the deliberate-override case; this
+    # takes the same flag rather than inventing a second one.
+    if contention and not args.allow_stale:
+        print(f"REFUSING: {contention}", file=sys.stderr)
+        print("a suite started here reports on the port, not on the code; "
+              "pass --allow-stale to run anyway", file=sys.stderr)
+        return 2
+
     stale = staleness()
     if stale and not args.allow_stale:
         print(f"STALE BINARY: {stale}", file=sys.stderr)
