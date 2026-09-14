@@ -27,6 +27,9 @@ data class FenceCircle(
     val radius: Double,
     val detailText: String = "",
     val kindText: String = "",
+    val radiusMinimum: Double? = null,
+    val radiusMaximum: Double? = null,
+    val radiusMetres: Double = 0.0,
 )
 data class RallyPoint(val index: Int, val latitude: Double, val longitude: Double)
 
@@ -76,6 +79,28 @@ fun firmwareFence(json: JSONObject?): FirmwareFence? {
     return FirmwareFence(radius, served.optText("radiusText"), coordinate(served.optJSONObject("centre")))
 }
 
+private fun JSONObject.bound(key: String): Double? =
+    if (isNull(key)) null else optDouble(key).takeIf { it.isFinite() && it > 0.0 }
+
+internal const val CIRCLE_STEP = 1.5
+
+internal fun shownPerMetre(circle: FenceCircle): Double =
+    if (circle.radiusMetres > 0.0) circle.radius / circle.radiusMetres else 1.0
+
+private fun shown(circle: FenceCircle, metres: Double): Double = metres * shownPerMetre(circle)
+
+internal fun grownRadius(circle: FenceCircle): Double? {
+    val wanted = circle.radius * CIRCLE_STEP
+    val ceiling = circle.radiusMaximum?.let { shown(circle, it) } ?: return wanted
+    return if (circle.radius >= ceiling) null else minOf(wanted, ceiling)
+}
+
+internal fun shrunkRadius(circle: FenceCircle): Double? {
+    val wanted = circle.radius / CIRCLE_STEP
+    val floor = circle.radiusMinimum?.let { shown(circle, it) } ?: return wanted.takeIf { it > 0.0 }
+    return if (circle.radius <= floor) null else maxOf(wanted, floor)
+}
+
 fun fenceCircles(json: JSONObject?): List<FenceCircle> {
     val list = listed(json, "circles") ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
@@ -90,6 +115,9 @@ fun fenceCircles(json: JSONObject?): List<FenceCircle> {
             radius,
             element.optText("detailText"),
             element.optText("kindText"),
+            element.bound("radiusMinimum"),
+            element.bound("radiusMaximum"),
+            element.optDouble("radiusMetres", radius).takeIf { it.isFinite() } ?: radius,
         )
     }
 }
@@ -125,8 +153,8 @@ object FenceBridge {
     fun moveCircle(index: Int, latitude: Double, longitude: Double): Boolean =
         setOk("$FENCE_CIRCLES.$index.center", settingJson(coordinateJson(latitude, longitude)))
 
-    fun setCircleRadius(index: Int, metres: Double): Boolean =
-        setOk("$FENCE_CIRCLES.$index.radius", settingJson("$metres"))
+    fun setCircleRadius(index: Int, shown: Double): Boolean =
+        setOk("$FENCE_CIRCLES.$index.radius", settingJson("$shown"))
 
     fun deletePolygon(index: Int): Boolean = invokeOk("$FENCE_ROOT.deletePolygon", "[$index]")
 

@@ -884,14 +884,24 @@ internal fun MapSpikeScreen(
                         }
 
                         circle?.let { it ->
-                            TextButton(onClick = {
-                                onBridge { FenceBridge.setCircleRadius(it.index, it.radius * 1.5) }
-                            }) { Text("Bigger") }
+                            val bigger = grownRadius(it)
+                            val smaller = shrunkRadius(it)
 
                             TextButton(
-                                enabled = it.radius > 20.0,
+                                enabled = bigger != null,
                                 onClick = {
-                                    onBridge { FenceBridge.setCircleRadius(it.index, it.radius / 1.5) }
+                                    bigger?.let { wanted ->
+                                        onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
+                                    }
+                                },
+                            ) { Text("Bigger") }
+
+                            TextButton(
+                                enabled = smaller != null,
+                                onClick = {
+                                    smaller?.let { wanted ->
+                                        onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
+                                    }
                                 },
                             ) { Text("Smaller") }
 
