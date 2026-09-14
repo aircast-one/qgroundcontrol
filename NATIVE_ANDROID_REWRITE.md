@@ -3094,9 +3094,26 @@ frame boundaries. My walker is not inventing them and the crate has no reason to
 **`undecodableFrames` at 0 means less than I said, and something more specific.** I wrote
 "nothing objected". On `tlog::for_each` the counter increments on every decode error before
 resyncing a byte at a time, so 32 undecodable frames would have shown at least 32. Zero there
-means **nothing was ever offered to the decoder** — the frames either decode and are lost after,
-or are never reached. Both are different defects from the one I reported, and neither is
-visible from outside the core.
+means **nothing was ever offered to the decoder**.
+
+**Cause found, in the view rather than the parser.** The core session ran the file directly:
+4031 frames matching my walker exactly, 0 undecodable, 32 CAMERA_FEEDBACK, and
+`triggers_from_tlog_at` returns **32 triggers**. The parser reads this log perfectly. What
+happens is that `geotag_view` parses the log, gets 32, and hands it to a staged session —
+`start(n)`, `finish_loading`, `record_exif`, `finish_exif`, `set_triggers`. This screen calls
+with zero image timestamps, so `start(0)` refuses with `NoImages` and returns before
+`set_triggers` is reached. The snapshot then reports `triggerCount` **from the session rather
+than from the file**, and `undecodableFrames` likewise, since both are only ever written inside
+`set_triggers`.
+
+So both numbers I had been reading were staging artefacts rather than measurements — which is
+why the count was zero and the counter that should have objected was silent.
+
+The fix is theirs and is not at HEAD as of this entry: serve the counts the view has already
+measured instead of the session's copy, pinned by a synthetic one-frame log asserting 1 rather
+than 0. **Nothing changes on this head** — the screen already reads `triggerCount` and will
+start saying "32 camera triggers recorded" for that log when the fix lands. The caveat in
+`6fa7e7d64` stands until it does.
 
 **Why four earlier attempts failed, which is the reusable part.** My checks were about four
 different artefacts — the wire, the app's parser, the code path, and *a file* — and nothing
