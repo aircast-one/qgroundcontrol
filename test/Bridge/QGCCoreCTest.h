@@ -42,6 +42,7 @@ private slots:
     void _setupOverviewFollowsTheVehicle();
     void _videoAndCameraAreServed();
     void _everyRegisteredViewIsRecordedOrExcused();
+    void _everyFactPropertyIsServedOrExcused();
     void _viewShapesMatchTheRecordedContract();
     void _serialConfigurationsCanBeCreatedByPath();
     void _mapProvidersMatchTheRecordedHashes();

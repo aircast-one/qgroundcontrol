@@ -2,6 +2,7 @@
 #include "QGCApplication.h"
 #include "QGCMapUrlEngine.h"
 #include "Vehicle.h"
+#include "Fact.h"
 #include "MissionItem.h"
 #include "MissionManager.h"
 #include <QtCore/QRegularExpression>
@@ -1394,6 +1395,62 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
     }
     QVERIFY2(stale.isEmpty(), qPrintable(QStringLiteral("recorded AND excused, so the reason carried here is no longer true: %1").arg(stale.join(QStringLiteral(", ")))));
 #endif
+}
+
+void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
+{
+    // kFactProperties is a hand-maintained allowlist and a Q_PROPERTY missing from it arrives
+    // nowhere - the core reading that key takes its None branch, falls back, and the feature looks
+    // implemented while doing nothing. rawValue had been declared since forever and was still
+    // absent; defaultValue was found by a survey rather than by anyone reading Fact.h.
+    //
+    // Enumerated from the metaobject rather than from the header text on purpose. A grep taking the
+    // last token of a Q_PROPERTY line takes the READ accessor - Q_PROPERTY(QVariant max READ
+    // cookedMax CONSTANT) yields cookedMax, which looks exactly like a property somebody forgot to
+    // serve. The metaobject knows only property names, so that mistake cannot be made here. And the
+    // comparison is against what the bridge ACTUALLY serialises rather than against the list, so it
+    // cannot pass on a list that is right while the serialisation is not.
+    //
+    // A property stays out until a head names a use for it. Adding one because it is absent is the
+    // inverse of the mistake this suite keeps finding: batteriesRequired was served and dead.
+    static const QMap<QString, QString> kNotServed = {
+        { QStringLiteral("category"), QStringLiteral("groups facts in the Qt parameter editor's tree; no head draws that tree") },
+        { QStringLiteral("componentId"), QStringLiteral("view.coreParameters carries the component beside the parameter already") },
+        { QStringLiteral("enumStringValue"), QStringLiteral("enumOrValueString is the same string with a fallback, and that one is served") },
+        { QStringLiteral("group"), QStringLiteral("the path already says which group a fact came from") },
+        { QStringLiteral("hasControl"), QStringLiteral("nothing asks yet; view.control decides its own control kind from the type and the enum") },
+        { QStringLiteral("increment"), QStringLiteral("nothing asks yet - a stepper would want it") },
+        { QStringLiteral("longDescription"), QStringLiteral("nothing asks yet; shortDescription is what every label uses") },
+        { QStringLiteral("selectedBitmaskStrings"), QStringLiteral("view.control computes the set bits from bitmaskValues and the value") },
+        { QStringLiteral("valueEqualsDefault"), QStringLiteral("derivable from defaultValue, which is now served") },
+        { QStringLiteral("volatileValue"), QStringLiteral("nothing asks yet") },
+        { QStringLiteral("writeOnly"), QStringLiteral("readOnly is served and no head offers a write-only field") },
+    };
+
+    // A settings fact rather than a vehicle one: cleanup() disconnects the mock link and waits for
+    // activeVehicleAvailable to go false after EVERY test, so vehicle.altitudeRelative is null here
+    // and the sweep would have run against an empty object. DEFINE_SETTINGFACT facts exist with no
+    // vehicle attached, and a Fact is a Fact - factJson does not vary by which one it is handed.
+    const QJsonObject fact = take(qgc_bridge_get("settings.appSettings.audioMuted"));
+    QCOMPARE(fact.value(QStringLiteral("kind")).toString(), QStringLiteral("fact"));
+
+    const QMetaObject &meta = Fact::staticMetaObject;
+    QVERIFY2(meta.propertyCount() > 30, "the metaobject answered, so an empty sweep below would mean nothing");
+
+    QStringList missing;
+    QStringList stale;
+    for (int property = meta.propertyOffset(); property < meta.propertyCount(); ++property) {
+        const QString name = QString::fromUtf8(meta.property(property).name());
+        const bool served = fact.contains(name);
+        if (!served && !kNotServed.contains(name)) {
+            missing.append(name);
+        }
+        if (served && kNotServed.contains(name)) {
+            stale.append(name);
+        }
+    }
+    QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("declared on Fact and serialised nowhere, so core code reading them silently falls back and the feature looks implemented: %1. Add them to kFactProperties in QGCBridgeCore.cc, or name them above with the reason nothing asks").arg(missing.join(QStringLiteral(", ")))));
+    QVERIFY2(stale.isEmpty(), qPrintable(QStringLiteral("served AND excused, so the reason carried here is no longer true: %1").arg(stale.join(QStringLiteral(", ")))));
 }
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
