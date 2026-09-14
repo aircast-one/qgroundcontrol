@@ -61,8 +61,8 @@ final class MapClickStore: ObservableObject, Probeable {
         read.connected = true
         read.flying = flag("flying")
         read.missionActive = flag("armed")
-            && [vehicle["landFlightMode"], vehicle["rtlFlightMode"], vehicle["missionFlightMode"]]
-                .contains { ($0 as? String) == mode }
+            && BusyModes.busy(mode: mode,
+                              named: BusyModes.names.map { vehicle[$0] as? String })
         // 67d5cbf7d serves all three of these view-ready. The coordinate in particular is
         // WITHHELD unless an ROI is actually in force, because the vehicle keeps whatever point it
         // was last given and drawing that would mark a lock already released.

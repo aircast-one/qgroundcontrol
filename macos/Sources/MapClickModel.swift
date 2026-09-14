@@ -129,3 +129,21 @@ enum MapMenuPlacement {
         return max(low, min(click - gap - extent, high))
     }
 }
+
+// The modes that mean the vehicle is already flying something of its own, so a map click is not
+// the operator's next instruction. QGC's GuidedActionsController asks the same question and counts
+// SMART RTL beside plain RTL; this head listed land, rtl and mission and left smart RTL out, so an
+// ArduPilot vehicle returning under Smart RTL read as idle. The core already has it right --
+// guided.rs derives in_rtl as rtlFlightMode OR smartRTLFlightMode -- which is the tell that the
+// distinction is real rather than a reading of the enum: two places asked, one got it.
+//
+// smartRTLFlightMode is empty on PX4, and an empty name must never match an empty flight mode.
+enum BusyModes {
+    static let names = ["landFlightMode", "rtlFlightMode", "smartRTLFlightMode",
+                        "missionFlightMode"]
+
+    static func busy(mode: String, named: [String?]) -> Bool {
+        guard !mode.isEmpty else { return false }
+        return named.contains { $0 == mode }
+    }
+}
