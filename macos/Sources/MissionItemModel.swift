@@ -70,16 +70,18 @@ struct MissionItem: Identifiable, Equatable {
     // A map drag produces a latitude and a longitude and nothing else. QGC's own drag handler
     // spends one statement on exactly this -- MissionItemIndicatorDrag.qml:57 assigns
     // coordinate.altitude = itemCoordinate.altitude before it writes the coordinate back -- and
-    // without it the height is simply gone. The bridge is the reason it matters here: a coordinate
-    // payload missing the altitude key reaches QGCBridgeCore.cc:663 as toDouble() on an absent
-    // QVariant, which is 0.0, so the item is moved to sea level rather than moved sideways.
-    // SimpleMissionItem::setCoordinate discards the altitude and would not care, but the launch
-    // item is movable -- the core serves movable true for it and says so in its own test -- and
-    // MissionSettingsItem stores the whole coordinate, which the plan file then saves with its
-    // altitude at MissionController.cc:1137.
-    // An unknown altitude does NOT refuse the move, deliberately. A null there means the served
-    // coordinate is two-dimensional, so there is no height to lose; and every item but the launch
-    // one discards the altitude anyway, so refusing would block ordinary drags to protect nothing.
+    // without it the height is simply gone. The launch item is where it showed: it is movable --
+    // the core serves movable true for it and says so in its own test -- and MissionSettingsItem
+    // stores the whole coordinate, which the plan file then saves with its altitude at
+    // MissionController.cc:1137. SimpleMissionItem::setCoordinate discards the altitude and would
+    // not have cared.
+    // An unknown altitude does NOT refuse the move. A null there means the served coordinate is
+    // two-dimensional, so there is no height to lose, and every item but the launch one discards
+    // the altitude anyway -- refusing would block ordinary drags to protect nothing. Omitting the
+    // key is also SAFE rather than merely correct since 3dcb49394: the bridge used to read an
+    // absent altitude as toDouble() on an empty QVariant, which is 0.0, and it now builds the
+    // two-dimensional QGeoCoordinate instead. An explicit null failed the same way and is fixed
+    // with it, which was the core's finding and not mine.
     static func dragPayload(_ item: MissionItem,
                             latitude: Double, longitude: Double) -> [String: Any] {
         let place: [String: Any] = ["latitude": latitude, "longitude": longitude]
