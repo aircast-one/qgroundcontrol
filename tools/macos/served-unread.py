@@ -36,13 +36,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 # why every fine-grained finding in the plan is a macOS finding and Android's had to be derived by
 # hand. Android is the head with MORE to measure: 53 raw reads against macOS's 25.
 HEADS = {
-    "macos": (ROOT / "macos/Sources", "*.swift"),
-    "android": (ROOT / "android/app/src/main", "*.kt"),
+    "macos": ((ROOT / "macos/Sources",), "*.swift"),
+    "android": ((ROOT / "android/app/src/main", ROOT / "android/map-spike/src/main"), "*.kt"),
 }
 HEAD = sys.argv[1] if len(sys.argv) > 1 else "macos"
 if HEAD not in HEADS:
     raise SystemExit(f"unknown head {HEAD!r}: expected one of {', '.join(sorted(HEADS))}")
 SOURCES, SUFFIX = HEADS[HEAD]
+TREES = " or ".join(str(root.relative_to(ROOT)) for root in SOURCES)
 CONTRACT = ROOT / "test/Bridge/fixtures/view-shapes.json"
 
 # The last contract this head has reconciled. Move it forward when the additions
@@ -132,7 +133,11 @@ def contract_at(revision):
 
 
 def names_the_head_uses():
-    text = "\n".join(path.read_text(errors="replace") for path in sorted(SOURCES.rglob(SUFFIX)))
+    text = "\n".join(
+        path.read_text(errors="replace")
+        for root in SOURCES
+        for path in sorted(root.rglob(SUFFIX))
+    )
     return set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', text)) | set(
         re.findall(r"\b([a-z][A-Za-z0-9_]*)\b", text))
 
@@ -156,7 +161,7 @@ for why in stale:
 for field, views in added:
     where = ", ".join(views[:3]) + (" and more" if len(views) > 3 else "")
     print(f"  NEWLY SERVED {field!r} appeared in the contract for {where} since {SINCE}, and no "
-          f"file under macos/Sources names it. Read it, or accept it with the reason it stays "
+          f"file under {TREES} names it. Read it, or accept it with the reason it stays "
           f"undrawn and move SINCE forward", file=sys.stderr)
 
 print(f"compared {len(now)} served field names against the contract at {SINCE}: "
