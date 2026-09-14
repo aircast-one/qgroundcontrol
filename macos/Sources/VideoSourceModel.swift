@@ -49,6 +49,18 @@ enum VideoSources {
     // it is in before it is allowed to write.
     //
     // Valid JSON that is not an array is unreadable too: {"name":"Nose"} is not a list of sources.
+    // The core's answer is preferred and the head's parse is the fallback, in that order. One
+    // parser deciding for both heads is the point of serving it; a head that cannot ask an older
+    // core still has to know, because the write gate depends on the answer and a gate that fails
+    // open on a missing field is not a gate.
+    static func readability(_ extra: Any?, stored fallback: String) -> (readable: Bool, stored: String) {
+        guard let extra = extra as? [String: Any],
+              let served = (extra["readable"] as? NSNumber)?.boolValue else {
+            return (readable(fallback), fallback)
+        }
+        return (served, (extra["stored"] as? String) ?? fallback)
+    }
+
     static let unreadable = "The saved video sources could not be read, so they have not been "
         + "changed. Editing them now would replace what is stored."
 

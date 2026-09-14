@@ -21,10 +21,11 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         let fact = Bridge.group(VideoStore.sourcesPath)
         let cameras = ((Bridge.group("view.video")["cameras"] as? [Any]) ?? [])
             .compactMap(VideoCamera.init)
-        let stored = (fact["valueString"] as? String) ?? ""
-        let readable = VideoSources.readable(stored)
-        if readable != sourcesReadable { sourcesReadable = readable }
-        if stored != storedSources { storedSources = stored }
+        let raw = (fact["valueString"] as? String) ?? ""
+        let answer = VideoSources.readability(Bridge.group("view.video")["extraSources"], stored: raw)
+        if answer.readable != sourcesReadable { sourcesReadable = answer.readable }
+        if answer.stored != storedSources { storedSources = answer.stored }
+        let stored = raw
         let listed = VideoSources.decode(stored, cameras: cameras)
         if listed != sources { sources = listed }
     }

@@ -105,6 +105,24 @@ struct SettingsView: View {
     private var videoSources: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel(text: "Cameras")
+            // Showing what is stored is the difference between refusing safely and helping. The
+            // configuration is not gone -- it is unparseable -- and an operator who can see the
+            // text can retype it. A bare refusal leaves them with a blank list and no reason to
+            // believe anything survived.
+            if !video.sourcesReadable {
+                GroupCard {
+                    GroupRow(title: "Saved cameras", value: "")
+                    Text(VideoSources.unreadable)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                    if !video.storedSources.isEmpty {
+                        Text(video.storedSources)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .lineLimit(6)
+                    }
+                }
+            }
             GroupCard {
                 ForEach(Array(video.sources.enumerated()), id: \.element.id) { row, source in
                     GroupRow(title: source.title,
