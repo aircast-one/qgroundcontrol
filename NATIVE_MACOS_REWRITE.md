@@ -5101,3 +5101,31 @@ entry on an integer fact the way the dialog does, in every locale, with the mess
 Neighbouring dead end, checked so nobody re-checks it: `FactMetaData::_customCookedValidator` runs
 before the type conversion and would be a second source of refusals, but `setCustomCookedValidator`
 is called nowhere in the tree. It is a hook with no installer, the same shape as `batteriesRequired`.
+
+## An enum parameter can be read but not set to a value outside its list (open, 2026-09-14)
+
+`ParameterEditor` in `ParameterRow.swift` shows a `Picker` whenever a parameter has options, and a
+free-text field only when it has none. The picker already handles an out-of-list value on the READ
+side — `if !options.contains(where: { $0.raw == selectedRaw })` inserts the current value as a
+tagged row, so nothing is hidden — but there is no way to WRITE one. A raw value the metadata's
+enum list does not mention is unreachable from this head.
+
+QGC has the escape. `ParameterEditorDialog.qml:240` has a `manualEntry` checkbox, shown when
+`_advanced.checked && (factCombo.visible || bitmaskColumn.visible)`, which swaps the combo for the
+free-text field. Its existence is the evidence that the list is not the set of values the firmware
+accepts — ArduPilot routinely ships values before the metadata catches up, and this is the same
+screen where "not in the list" is the answer somebody came for (`b09ed8fee`).
+
+**The decision this needs, because it changes the work and I cannot take QGC's answer.** QGC gates
+manual entry behind an app-wide Advanced toggle. This head has no such concept — the only
+`advanced` in `macos/Sources` is the per-mode flag in `FlightModeModel`, which comes from the core
+and means something else. So the options are:
+
+- **Always offer it.** Smallest change, and defensible: `Parameter.refusal` already checks the
+  served range, so a typed value is bounded the same way a numeric parameter's is. The cost is a
+  free-text field beside every enum picker, including the ones where the list genuinely is closed.
+- **Add an app-wide Advanced setting first.** Faithful to QGC, and it is a settings fact plus a
+  place to put it, so it is the larger piece of work and one that affects screens beyond this.
+
+Not implemented either way yet. Recorded rather than guessed at because the two produce visibly
+different screens, and the port is not finished while a screen can do less than the QML it replaces.
