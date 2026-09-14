@@ -160,6 +160,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let (captures_photos, captures_video, has_modes) = (flag(&camera, "capturesPhotos"), flag(&camera, "capturesVideo"), flag(&camera, "hasModes"));
     let battery = integer(&camera, "batteryRemaining").unwrap_or(-1);
     let is_recording = video_status == VIDEO_CAPTURE_RUNNING;
+    let timelapse = integer(&camera, "photoCaptureMode") == Some(TIMELAPSE);
     let taking_photo = matches!(photo_status, PHOTO_CAPTURE_IN_PROGRESS | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS);
     json!({
         "kind": "object",
@@ -200,10 +201,13 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // `? 1 : _photoLapseCount`, so the same shutter press either takes one photo or starts an
         // interval capture of lapseCount shots. Serving only canPhoto makes those one button with
         // one meaning, and a count of zero is unlimited - the press that never stops on its own.
-        "photoMode": match integer(&camera, "photoCaptureMode") { Some(TIMELAPSE) => "timelapse", _ => "single" },
-        "lapseSeconds": camera.get("photoLapse").and_then(Value::as_f64),
-        "lapseCount": integer(&camera, "photoLapseCount"),
-        "lapseUnlimited": integer(&camera, "photoCaptureMode") == Some(TIMELAPSE) && integer(&camera, "photoLapseCount") == Some(0),
+        "photoMode": match timelapse { true => "timelapse", false => "single" },
+        // Gated the same way the action gates its copy. photoLapseCount keeps whatever it was last
+        // configured to in single mode, so serving it ungated hands a head a count of shots for a
+        // press that takes one - and a count of zero there would read as none rather than unlimited.
+        "lapseSeconds": timelapse.then(|| camera.get("photoLapse").and_then(Value::as_f64)).flatten(),
+        "lapseCount": timelapse.then(|| integer(&camera, "photoLapseCount")).flatten(),
+        "lapseUnlimited": timelapse && integer(&camera, "photoLapseCount") == Some(0),
         // stopTakePhoto refuses unless the status is one of the two interval states, and nothing in
         // QGC's QML calls it - so a head that starts a timelapse today cannot end it.
         "canStopPhoto": present && matches!(photo_status, PHOTO_CAPTURE_INTERVAL_IDLE | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS),
@@ -292,6 +296,21 @@ mod tests {
         assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 2 }))["canPhoto"], false,
             "the wait between interval shots is idle enough to change mode but not to fire: takePhoto tests against IDLE alone, and the two questions have different answers");
         assert_eq!(cam(json!({ "cameraMode": 0 }))["canPhoto"], true);
+
+        let configured = cam(json!({ "cameraMode": 0, "photoCaptureMode": 0, "photoLapse": 5.0, "photoLapseCount": 10 }));
+        assert_eq!(configured["photoMode"], "single");
+        assert_eq!(configured["lapseCount"], Value::Null, "photoLapseCount keeps its last configured value in single mode, so serving it ungated tells a head this press takes ten shots when it takes one");
+        assert_eq!(configured["lapseSeconds"], Value::Null);
+        assert_eq!(configured["lapseUnlimited"], false);
+
+        let lapsing = cam(json!({ "cameraMode": 0, "photoCaptureMode": 1, "photoLapse": 5.0, "photoLapseCount": 0 }));
+        assert_eq!(lapsing["photoMode"], "timelapse");
+        assert_eq!(lapsing["lapseCount"], 0);
+        assert_eq!(lapsing["lapseUnlimited"], true, "zero is MAV_CMD_IMAGE_START_CAPTURE's unlimited, so a head rendering the number alone says none when it means forever");
+        assert_eq!(lapsing["canStopPhoto"], false, "configured for a timelapse is not the same as running one; the stop control appears when the status says an interval is under way");
+        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 3 }))["canStopPhoto"], true);
+        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 2 }))["canStopPhoto"], true, "the wait between interval shots is still an interval to stop");
+        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 1 }))["canStopPhoto"], false, "a single shot in progress is not an interval and stopTakePhoto refuses it");
 
         assert_eq!(cam(json!({ "cameraMode": 0 }))["canRecord"], false);
         assert_eq!(cam(json!({ "cameraMode": 0, "videoInPhotoMode": true }))["canRecord"], true,

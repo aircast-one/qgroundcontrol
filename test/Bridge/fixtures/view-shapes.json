@@ -5,6 +5,8 @@
         "view.adsbTraffic.error",
         "view.adsbTraffic.mavlinkAgeMs",
         "view.adsbTraffic.updatedMs",
+        "view.camera.lapseCount",
+        "view.camera.lapseSeconds",
         "view.control(settings.appSettings.audioMuted).maximum",
         "view.control(settings.appSettings.audioMuted).minimum",
         "view.control(settings.appSettings.qLocaleLanguage).maximum",
@@ -501,6 +503,8 @@
         "view.camera.isRecording",
         "view.camera.isTakingPhoto",
         "view.camera.kind",
+        "view.camera.lapseCount",
+        "view.camera.lapseSeconds",
         "view.camera.lapseUnlimited",
         "view.camera.mode",
         "view.camera.modeKnown",
@@ -5019,8 +5023,8 @@
         "labels": [
             "string"
         ],
-        "lapseCount": "null|number",
-        "lapseSeconds": "null|number",
+        "lapseCount": "null",
+        "lapseSeconds": "null",
         "lapseUnlimited": "bool",
         "mode": "number",
         "modeKnown": "bool",
