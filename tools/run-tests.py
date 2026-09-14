@@ -141,6 +141,7 @@ def refresh_clone():
 
 QUIET_SECONDS = 15
 MAX_TRACES = 8
+PER_SUITE_TRACES = 2
 FLOOD_LINES = 5000
 TRACE_DIR = REPO / "build-test/hang-traces"
 RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -176,13 +177,21 @@ def name_for_what_it_shows(path, note):
     return named
 
 
-def watch_for_silence(proc, latest, traced):
+def suite_of(note):
+    return note.split("::")[0] or "unknown"
+
+
+def watch_for_silence(proc, latest, taken):
+    seen = set()
     while proc.poll() is None:
         silent_since = latest["at"]
-        unseen = silent_since not in traced
-        if time.monotonic() - silent_since > QUIET_SECONDS and unseen and len(traced) < MAX_TRACES:
-            traced.add(silent_since)
-            trace_hang(proc.pid, after_the_verdict(latest["line"]))
+        note = after_the_verdict(latest["line"])
+        suite = suite_of(note)
+        room = sum(taken.values()) < MAX_TRACES and taken.get(suite, 0) < PER_SUITE_TRACES
+        if time.monotonic() - silent_since > QUIET_SECONDS and silent_since not in seen and room:
+            seen.add(silent_since)
+            taken[suite] = taken.get(suite, 0) + 1
+            trace_hang(proc.pid, note)
         time.sleep(2.0)
 
 
@@ -211,7 +220,7 @@ def run_suite(name):
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         reader = stream(proc, latest)
-        watcher = threading.Thread(target=watch_for_silence, args=(proc, latest, set()), daemon=True)
+        watcher = threading.Thread(target=watch_for_silence, args=(proc, latest, {}), daemon=True)
         watcher.start()
         code = proc.wait(timeout=3600)
         reader.join(timeout=30)
