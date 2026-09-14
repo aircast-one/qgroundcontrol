@@ -1,6 +1,7 @@
 import math
 import os
 import socket
+import struct
 import sys
 
 import time
@@ -9,6 +10,7 @@ NO_FENCE = os.environ.get("NO_FENCE") == "1"
 
 from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
+from pymavlink.generator.mavcrc import x25crc
 
 TARGET = (sys.argv[1], 14550)
 
@@ -34,6 +36,7 @@ MAGCAL_MASK = 0b011
 ACCELCAL_POSITIONS = [1, 2, 3, 4, 5, 6]
 CAMERA_FEEDBACK_EVERY = int(os.environ.get("CAMERA_FEEDBACK_EVERY", "0"))
 ADSB_CONTACTS = int(os.environ.get("ADSB_CONTACTS", "0"))
+ORBIT_RADIUS_M = float(os.environ.get("ORBIT", "0"))
 ADSB_SQUAWK = int(os.environ.get("ADSB_SQUAWK", "1200"))
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
@@ -119,6 +122,21 @@ def read_sticks():
     except (OSError, ValueError):
         return None
     return (values + [0] * 8)[:8]
+
+
+
+ORBIT_STATUS_ID = 360
+ORBIT_STATUS_CRC = 11
+
+
+def orbit_status_frame(sequence, sysid, radius_m, latitude, longitude, altitude_m):
+    payload = struct.pack("<Qfiifb", int(time.time() * 1e6), radius_m,
+                          int(latitude * 1e7), int(longitude * 1e7), altitude_m, 0)
+    header = struct.pack("<BBBBBB", len(payload), 0, 0, sequence & 0xFF, sysid,
+                         mavlink.MAV_COMP_ID_AUTOPILOT1)
+    body = header + struct.pack("<I", ORBIT_STATUS_ID)[:3] + payload
+    checksum = x25crc(body + bytes([ORBIT_STATUS_CRC])).crc
+    return b"\xfd" + body + struct.pack("<H", checksum)
 
 
 def main():
@@ -591,6 +609,10 @@ def main():
                 | apm.ADSB_FLAGS_VALID_HEADING | apm.ADSB_FLAGS_VALID_VELOCITY
                 | apm.ADSB_FLAGS_VALID_CALLSIGN | apm.ADSB_FLAGS_VALID_SQUAWK,
                 ADSB_SQUAWK if contact == 0 else 1200)
+
+        if ORBIT_RADIUS_M:
+            link.file.write(orbit_status_frame(tick, SYSID, ORBIT_RADIUS_M,
+                                               CENTRE_LAT + CENTRE_SHIFT, CENTRE_LON, altitude))
 
         if CAMERA_FEEDBACK_EVERY and tick % CAMERA_FEEDBACK_EVERY == 0:
             magcal.camera_feedback_send(

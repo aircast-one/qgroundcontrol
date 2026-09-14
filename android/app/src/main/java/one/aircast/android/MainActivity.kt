@@ -69,6 +69,7 @@ import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.CameraControlLayer
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.ObstacleReadout
+import one.aircast.android.ui.OrbitReadout
 import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
@@ -319,6 +320,7 @@ fun AircastShell(quickView: QtQuickView) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ObstacleReadout()
+                        OrbitReadout()
                         TrafficReadout()
                         VideoSourceLayer()
                         CameraControlLayer()

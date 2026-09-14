@@ -49,6 +49,7 @@ falsify it. The ones marked *found something* are in the commit log for
 | `ORBIT_RADIUS_DEG` | how wide a circle the vehicle flies, default 0.004 (about 445 m). Small values put the vehicle and the operator on screen together, which is the only way to see both markers at once | |
 | `NO_COMPASS_FIT=1` | drops `COMPASS_CAL_FIT`, the parameter whose absence crashed the app when a compass calibration started | *found something* |
 | `NO_BATTERY=1` | drops the whole `BATT_*` set, which is the only way back to the Power page's empty state now that the rig serves them | |
+| `ORBIT=<metres>` | the vehicle reports an active orbit of that radius, negative for anticlockwise. The message is hand-framed: `ORBIT_EXECUTION_STATUS` is id 360 and this pymavlink (2.4.49) does not carry it, so the rig packs `<Qfiifb` with crc_extra 11 from the generated header and QGC's own parser is what proves the framing | |
 | `ADSB_CONTACTS`, `ADSB_SQUAWK` | aircraft relayed as `ADSB_VEHICLE`. These only reach the core when the core owns the link (`coreLinks`), which is off by default, so `sbs1feed.py` is the way in until that flips | |
 
 **Terrain needs somewhere the service covers.** The default position is Tbilisi
