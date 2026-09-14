@@ -6,8 +6,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 TREES = [ROOT / "android/app/src/main", ROOT / "android/map-spike/src/main"]
 
 KNOWN = ("canPhoto", 1)
+KNOWN_CLASS = ("Instrument", ["label", "reading"])
 
 ACCEPTED = {
+    "TerrainProfile.highestText": "MEASURED and redundant here. bandText is range_text(min, max) - "
+        "'474 m to 596 m' - and that is what profileLabel draws when the route is not flat, so the "
+        "highest already reaches the operator inside it. lowestText is drawn alone for a flat "
+        "route, where there is no band to state. A head that wanted the two ends separately would "
+        "read both; this one states the range",
     "LogsView.eraseWarning": "MEASURED and deliberately not drawn. The core serves 'This erases "
         "every log on the vehicle.' and the dialog says 'This permanently deletes every log on the "
         "vehicle. It cannot be undone.' - the head's wording is the stronger one because it names "
@@ -20,9 +26,22 @@ def corpus():
     return "\n".join(p.read_text() for tree in TREES for p in tree.rglob("*.kt"))
 
 
+def parameters(text, at):
+    depth = 0
+    for index in range(at, len(text)):
+        if text[index] == "(":
+            depth += 1
+        elif text[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[at + 1:index]
+    return ""
+
+
 def properties(text):
-    for found in re.finditer(r"(?:internal )?data class (\w+)\((.*?)\n\)", text, re.S):
-        for name in re.findall(r"val (\w+):", found.group(2)):
+    for found in re.finditer(r"(?:internal )?data class (\w+)\s*\(", text):
+        body = parameters(text, found.end() - 1)
+        for name in re.findall(r"val (\w+)\s*:", body):
             yield found.group(1), name
 
 
@@ -40,6 +59,15 @@ def main():
     seen = len(re.findall(r"\." + KNOWN[0] + r"\b", body))
     if seen < KNOWN[1]:
         raise SystemExit(f"instrument broken: {KNOWN[0]} should appear at least {KNOWN[1]} time(s), saw {seen}")
+    every = [
+        (cls, name)
+        for tree in TREES
+        for path in tree.rglob("*.kt")
+        for cls, name in properties(path.read_text())
+    ]
+    sampled = [name for cls, name in every if cls == KNOWN_CLASS[0]]
+    if sampled != KNOWN_CLASS[1]:
+        raise SystemExit(f"instrument broken: {KNOWN_CLASS[0]} should have {KNOWN_CLASS[1]}, saw {sampled}")
     found = [
         (f"{cls}.{name}", f"{path.name} {cls}.{name}")
         for tree in TREES

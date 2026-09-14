@@ -522,7 +522,7 @@ internal fun MapSpikeScreen(
 
                     GroupBreak()
 
-                    TextButton(onClick = {
+                    TextButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding fence", done = support.reason.ifBlank { null }) {
                             at != null && FenceBridge.addInclusionPolygon(
@@ -595,7 +595,7 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text("Circle") }
 
-                    TextButton(onClick = {
+                    TextButton(enabled = support.rally, onClick = {
                         val at = placeAt()
                         onBridge("Adding rally", done = support.reason.ifBlank { null }) {
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
