@@ -358,4 +358,63 @@ mod tests {
         assert_eq!(crate::hub::TYPE_ADSB, MavType::MAV_TYPE_ADSB as u8);
     }
 
+    #[test]
+    fn a_constant_defined_in_two_modules_has_the_same_value_in_both() {
+        const DELIBERATELY_PER_MODULE: &[(&str, &str)] = &[
+            ("ACK_TIMEOUT_MS", "a command ack and a mission item ack wait for different protocols"),
+            ("MAX_RETRY", "ftp and command retries are three, mission transfer allows five"),
+            ("STALE_MS", "how long a reading stays fresh is per subsystem"),
+            ("STALE_AFTER_MS", "same, and gpsrtk derives its own from its receive budget"),
+            ("CONNECT_TIMEOUT", "a tcp connect and a feed reconnect are different waits"),
+            ("DEPS", "every view declares its own; the name is a convention rather than a shared value"),
+            ("FIELDS", "same, the field list a module asks the bridge for"),
+            ("CAMERA_DEPS", "same"),
+            ("BUNDLED", "each module bundles the QGC file it parses"),
+            ("UNKNOWN", "each module's own sentinel for a value it could not read"),
+        ];
+
+        let defined: Vec<(String, String, String)> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+            .filter_map(|path| {
+                let source = std::fs::read_to_string(&path).ok()?;
+                let module = path.file_stem()?.to_string_lossy().to_string();
+                Some(source
+                    .split("#[cfg(test)]")
+                    .next()?
+                    .lines()
+                    .filter_map(|line| {
+                        let rest = line.strip_prefix("pub const ").or_else(|| line.strip_prefix("const "))?;
+                        let (name, tail) = rest.split_once(':')?;
+                        let value = tail.split_once('=')?.1.strip_suffix(';')?.trim().to_string();
+                        name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_').then(|| (name.to_string(), module.clone(), value))
+                    })
+                    .collect::<Vec<_>>())
+            })
+            .flatten()
+            .collect();
+
+        assert!(defined.len() > 200, "only {} constants parsed, so a clean result would mean nothing", defined.len());
+
+        let disagreeing: Vec<String> = defined
+            .iter()
+            .filter(|(name, _, _)| !DELIBERATELY_PER_MODULE.iter().any(|(excused, _)| excused == name))
+            .filter_map(|(name, module, value)| {
+                let others: Vec<&(String, String, String)> = defined.iter().filter(|(n, m, _)| n == name && m != module).collect();
+                others
+                    .iter()
+                    .find(|(_, _, other)| other != value)
+                    .map(|(_, other_module, other)| format!("{name} is {value} in {module} and {other} in {other_module}"))
+            })
+            .collect();
+
+        assert!(
+            disagreeing.is_empty(),
+            "one of the copies is checked against MAVLink or a QGC header and the others ride on agreeing with it, so a divergence silently unpins whichever copy is not the checked one: {}",
+            disagreeing.join("; ")
+        );
+    }
+
 }
