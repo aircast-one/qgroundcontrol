@@ -1079,6 +1079,8 @@
         "view.inspector.rateChoices.8.title",
         "view.inspector.rateChoices.9.rate",
         "view.inspector.rateChoices.9.title",
+        "view.instrumentGroups.class",
+        "view.instrumentGroups.kind",
         "view.instruments(vehicle/altitudeRelative).class",
         "view.instruments(vehicle/altitudeRelative).items.#",
         "view.instruments(vehicle/altitudeRelative).items.0.group",
@@ -3583,6 +3585,7 @@
         "view.camera.photoMode",
         "view.camera.present",
         "view.camera.reportsStorage",
+        "view.camera.selected",
         "view.camera.shotPoints.#",
         "view.camera.shots",
         "view.camera.shotsText",
@@ -4022,6 +4025,16 @@
         "view.inspector.rateChoices.#",
         "view.inspector.rateChoices[].rate",
         "view.inspector.rateChoices[].title",
+        "view.instrumentGroups.available",
+        "view.instrumentGroups.class",
+        "view.instrumentGroups.groups.#",
+        "view.instrumentGroups.groups[].facts.#",
+        "view.instrumentGroups.groups[].facts[].label",
+        "view.instrumentGroups.groups[].facts[].name",
+        "view.instrumentGroups.groups[].group",
+        "view.instrumentGroups.groups[].title",
+        "view.instrumentGroups.kind",
+        "view.instrumentGroups.packs",
         "view.instruments(vehicle/altitudeRelative).available",
         "view.instruments(vehicle/altitudeRelative).class",
         "view.instruments(vehicle/altitudeRelative).items.#",
@@ -4029,6 +4042,7 @@
         "view.instruments(vehicle/altitudeRelative).items[].id",
         "view.instruments(vehicle/altitudeRelative).items[].label",
         "view.instruments(vehicle/altitudeRelative).items[].missing",
+        "view.instruments(vehicle/altitudeRelative).items[].missingReason",
         "view.instruments(vehicle/altitudeRelative).items[].name",
         "view.instruments(vehicle/altitudeRelative).items[].units",
         "view.instruments(vehicle/altitudeRelative).items[].value",
@@ -4040,6 +4054,7 @@
         "view.instruments.items[].id",
         "view.instruments.items[].label",
         "view.instruments.items[].missing",
+        "view.instruments.items[].missingReason",
         "view.instruments.items[].name",
         "view.instruments.items[].units",
         "view.instruments.items[].value",
@@ -5174,6 +5189,7 @@
         "photoMode": "string",
         "present": "bool",
         "reportsStorage": "bool",
+        "selected": "null|number",
         "shotPoints": [
             "empty"
         ],
@@ -5536,6 +5552,7 @@
             "view.warnings",
             "view.label",
             "view.instruments",
+            "view.instrumentGroups",
             "view.obstacle",
             "view.landingPattern",
             "view.vibration",
@@ -6091,6 +6108,24 @@
             }
         ]
     },
+    "view.instrumentGroups": {
+        "available": "bool",
+        "class": "string",
+        "groups": [
+            {
+                "facts": [
+                    {
+                        "label": "string",
+                        "name": "string"
+                    }
+                ],
+                "group": "string",
+                "title": "string"
+            }
+        ],
+        "kind": "string",
+        "packs": "number"
+    },
     "view.instruments": {
         "available": "bool",
         "class": "string",
@@ -6100,6 +6135,7 @@
                 "id": "string",
                 "label": "string",
                 "missing": "bool",
+                "missingReason": "null|string",
                 "name": "string",
                 "units": "string",
                 "value": "string"
@@ -6116,6 +6152,7 @@
                 "id": "string",
                 "label": "string",
                 "missing": "bool",
+                "missingReason": "null|string",
                 "name": "string",
                 "units": "string",
                 "value": "string"

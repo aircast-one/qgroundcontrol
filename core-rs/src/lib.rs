@@ -44,6 +44,7 @@ pub mod hub;
 pub mod inspector;
 pub mod itemcamera;
 pub mod joystick;
+pub mod instrumentgroups;
 pub mod instruments;
 pub mod kml;
 pub mod landing;

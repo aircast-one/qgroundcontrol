@@ -36,6 +36,7 @@ use crate::gcsposition;
 use crate::gimbal;
 use crate::guided;
 use crate::inspector;
+use crate::instrumentgroups;
 use crate::instruments;
 use crate::landing;
 use crate::obstacle;
@@ -136,6 +137,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.warnings", deps: warnings::DEPS, compute: warnings::warnings_view },
     View { path: "view.label", deps: label::DEPS, compute: label::label_view },
     View { path: "view.instruments", deps: instruments::DEPS, compute: instruments::instruments_view },
+    View { path: "view.instrumentGroups", deps: instrumentgroups::DEPS, compute: instrumentgroups::instrument_groups_view },
     View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
     View { path: "view.landingPattern", deps: landing::DEPS, compute: landing::landing_view },
     View { path: "view.vibration", deps: vibration::DEPS, compute: vibration::vibration_view },
@@ -383,6 +385,7 @@ mod deps_cover_reads {
             ("guidedexec", include_str!("guidedexec.rs")),
             ("hub", include_str!("hub.rs")),
             ("inspector", include_str!("inspector.rs")),
+            ("instrumentgroups", include_str!("instrumentgroups.rs")),
             ("instruments", include_str!("instruments.rs")),
         ("itemcamera", include_str!("itemcamera.rs")),
             ("joystick", include_str!("joystick.rs")),
@@ -464,6 +467,7 @@ mod deps_cover_reads {
 
 
     const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
+        "video.gstreamerEnabled",
         "vehicle.flightModeSetAvailable",
         "vehicle.rtlFlightMode",
         "vehicle.landFlightMode",
@@ -483,10 +487,16 @@ mod deps_cover_reads {
     ];
 
     fn deps_of(module: &str) -> Option<BTreeSet<String>> {
-        let start = module.find("pub const DEPS: &[&str] = &[")?;
-        let rest = &module[start..];
-        let end = rest.find("];")?;
-        Some(literals(&rest[..end]).into_iter().collect())
+        let found: BTreeSet<String> = module
+            .match_indices("DEPS: &[&str] = &[")
+            .filter_map(|(at, _)| {
+                let rest = &module[at..];
+                let end = rest.find("];")?;
+                Some(literals(&rest[..end]))
+            })
+            .flatten()
+            .collect();
+        (!found.is_empty()).then_some(found)
     }
 
     fn literals(text: &str) -> Vec<String> {
