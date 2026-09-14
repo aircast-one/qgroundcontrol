@@ -92,8 +92,8 @@ internal fun trafficLevel(reading: TrafficReading): TrafficLevel = when {
 }
 
 internal fun trafficSummary(reading: TrafficReading): String = when {
-    reading.contacts.size == 1 -> "1 aircraft"
-    reading.contacts.isNotEmpty() -> "${reading.contacts.size} aircraft"
+    reading.contacts.size == 1 -> "Traffic: 1 aircraft"
+    reading.contacts.isNotEmpty() -> "Traffic: ${reading.contacts.size} aircraft"
     reading.errorToken == "connectFailed" -> "Traffic server unreachable"
     reading.errorToken == "linkLost" -> "Traffic feed dropped"
     reading.errorToken.isNotBlank() -> "Traffic feed failed"
@@ -101,6 +101,9 @@ internal fun trafficSummary(reading: TrafficReading): String = when {
     !reading.receiving -> "No traffic feed"
     else -> "Traffic clear"
 }
+
+internal fun trafficContactUrgent(contact: TrafficContact): Boolean =
+    contact.alert == true || contact.emergency.isNotBlank()
 
 internal fun trafficCaption(reading: TrafficReading): String = when (reading.ownPositionKnown) {
     false -> "No vehicle position, so nothing can be ranged"

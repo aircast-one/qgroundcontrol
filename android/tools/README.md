@@ -21,6 +21,7 @@ copy there.
 | `whatsunder_test.py` | `python3 tools/whatsunder_test.py`. No device needed. Pins both quote styles, the planning-screen exemptions, that unreadable input exits non-zero, and that `PLAN_ITEMS_HEADING` in the Kotlin still matches the literal the guard looks for. |
 | — | **A path with a space works now, and took three separate fixes.** The bridge did not decode its path parameter (fixed in `e99ebb6e0`); `probe.sh get` interpolated the path raw into the URL where `set` had always encoded it; and `curl --data-urlencode` writes a space as `+`, which `QUrl::FullyDecoded` leaves as a literal plus — a log under "Aircast QGC Daily" came back as "Aircast+QGC+Daily" and read as unreadable. `get` now percent-encodes with python so a space arrives as `%20`. Verified against a real telemetry log: `readable: true`, 1079824 bytes, path echoed back intact. |
 | `rccal.py` | drives a whole RC calibration through the head: reads `view.radio`, writes the sticks the step asks for, taps Next where the state machine waits for it. Twelve steps, about two minutes. The Radio component stops asking for setup when it finishes. |
+| `sbs1feed.py` | An SBS-1 traffic server on 30003 for the ADSB receiver: `adb reverse tcp:30003 tcp:30003`, switch on Settings > ADSB Traffic, and contacts appear. `SBS_CONTACTS`, `SBS_ALERT=1` for an aircraft squawking an alert. It serves every client in its own thread, because QGC's C++ ADSB manager takes a connection too and a single-connection server leaves the core's reader attached to a socket that never gets a byte - which reads exactly like a broken parser. |
 | `watchprobe.py` | `on`/`off` around timing instrumentation in `Watcher::_poll`. It asserts the poll body is in the shape it expects, so it fails loudly when the bridge changes rather than patching the wrong thing. |
 
 ## What `apmvehicle.py` can pretend to be
@@ -47,6 +48,7 @@ falsify it. The ones marked *found something* are in the commit log for
 | `ORBIT_RADIUS_DEG` | how wide a circle the vehicle flies, default 0.004 (about 445 m). Small values put the vehicle and the operator on screen together, which is the only way to see both markers at once | |
 | `NO_COMPASS_FIT=1` | drops `COMPASS_CAL_FIT`, the parameter whose absence crashed the app when a compass calibration started | *found something* |
 | `NO_BATTERY=1` | drops the whole `BATT_*` set, which is the only way back to the Power page's empty state now that the rig serves them | |
+| `ADSB_CONTACTS`, `ADSB_SQUAWK` | aircraft relayed as `ADSB_VEHICLE`. These only reach the core when the core owns the link (`coreLinks`), which is off by default, so `sbs1feed.py` is the way in until that flips | |
 
 **Terrain needs somewhere the service covers.** The default position is Tbilisi
 and `terrain-ce.suite.auterion.com` has no tile for it, so every plan reads

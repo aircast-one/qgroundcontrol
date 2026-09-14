@@ -101,7 +101,7 @@ class TrafficViewTest {
     fun `contacts outrank every complaint about the feed, because they are the answer asked for`() {
         val relayed = view(available = false, receiving = false, contacts = "[$near]")
 
-        assertEquals("1 aircraft", trafficSummary(trafficReading(relayed)!!))
+        assertEquals("Traffic: 1 aircraft", trafficSummary(trafficReading(relayed)!!))
     }
 
     @Test
@@ -177,5 +177,16 @@ class TrafficViewTest {
             "No vehicle position, so nothing can be ranged",
             trafficCaption(trafficReading(view(ownPositionKnown = false))!!),
         )
+    }
+
+    @Test
+    fun `the row that earned the warning is the one marked, not the whole list`() {
+        val calm = trafficReading(view(contacts = "[$near]"))!!.contacts[0]
+        val loud = trafficReading(view(contacts = "[${near.replace(""""alert":false""", """"alert":true""")}]"))!!.contacts[0]
+        val squawking = trafficReading(view(contacts = "[${near.replace(""""emergency":null""", """"emergency":"hijack"""")}]"))!!.contacts[0]
+
+        assertEquals(false, trafficContactUrgent(calm))
+        assertEquals(true, trafficContactUrgent(loud))
+        assertEquals(true, trafficContactUrgent(squawking))
     }
 }
