@@ -255,6 +255,13 @@ struct FlyPanel: View {
                 }
             }
 
+            if !fly.state.staleNotice.isEmpty {
+                Text(fly.state.staleNotice)
+                    .font(.callout)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
                     ForEach(fly.checklist) { group in

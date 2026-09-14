@@ -3993,6 +3993,17 @@ func checkChecklistReset() {
            "and they survive a vehicle ARRIVING -- the checklist's first group is the one an "
            + "operator works through before anything is powered up, so ticks made with nothing "
            + "connected are about the aircraft that is now here")
+    let quiet = FlyState(["connected": true as NSNumber, "armed": false as NSNumber,
+                          "kind": "contactLost", "contactLost": true as NSNumber,
+                          "line": "Communication lost"])
+    expect(Preflight.ticksSurvive(flying, quiet),
+           "ticks survive CONTACT being lost. Witnessed live: the vehicle stops answering, every "
+           + "telemetry verdict freezes at its last value and the position, heading and battery "
+           + "read byte-identical 57 seconds later. None of that makes the manual answers untrue "
+           + "-- props secured and the flight area clear are facts about a machine that has not "
+           + "moved -- so clearing them would make the operator re-answer eleven questions about "
+           + "an unchanged aircraft. Whether the list may call itself READY meanwhile is a "
+           + "different question and the core's: it blocks on the vehicle having gone quiet")
     expect(Preflight.ticksSurvive(flying, FlyState.none) == false,
            "but a tick does NOT survive the vehicle going away. A tick is an assertion the "
            + "operator made about a SPECIFIC aircraft -- props clear, hatch closed -- and carrying "

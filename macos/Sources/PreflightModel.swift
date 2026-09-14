@@ -92,6 +92,11 @@ enum Preflight {
         ((json as? [Any]) ?? []).compactMap(PreflightGroup.init)
     }
 
+    // A tick survives contact being LOST, deliberately, and only the vehicle going away clears it.
+    // The manual checks ask about the physical aircraft -- props secured, hatch closed, flight area
+    // clear -- and none of those answers stops being true because the radio went quiet. Clearing
+    // them would make an operator re-answer eleven questions about a machine that has not moved.
+    // Readiness while contact is out is a separate question and not this one: the core blocks it.
     static func ticksSurvive(_ previous: FlyState, _ latest: FlyState) -> Bool {
         !(previous.connected && !latest.connected)
     }
