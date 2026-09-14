@@ -146,6 +146,12 @@ TRACE_DIR = REPO / "build-test/hang-traces"
 RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def after_the_verdict(line):
+    spoken = line.split(": ", 1)[-1].strip().rstrip("()")
+    safe = re.sub(r"[^A-Za-z0-9_:.-]", "_", spoken)
+    return safe[:90] or "start"
+
+
 def trace_hang(pid, note):
     TRACE_DIR.mkdir(parents=True, exist_ok=True)
     path = TRACE_DIR / f"hang-{RUN_ID}-{note}.txt"
@@ -155,9 +161,19 @@ def trace_hang(pid, note):
         lldb = subprocess.run(["lldb", "-p", str(pid), "-batch", "-o", "bt all", "-o", "detach"],
                               capture_output=True, text=True, timeout=120)
         path.write_text(lldb.stdout + lldb.stderr)
+    path = name_for_what_it_shows(path, note)
     print(f"HANG TRACE: {QUIET_SECONDS}s of silence after {note!r} - stacks in {path}",
           file=sys.stderr)
     return path
+
+
+def name_for_what_it_shows(path, note):
+    running = re.search(r"\b(\w+Test::_\w+)\(\)", path.read_text(errors="replace"))
+    if not running:
+        return path
+    named = path.with_name(f"hang-{RUN_ID}-{running.group(1)}.txt")
+    path.rename(named)
+    return named
 
 
 def watch_for_silence(proc, latest, traced):
@@ -166,7 +182,7 @@ def watch_for_silence(proc, latest, traced):
         unseen = silent_since not in traced
         if time.monotonic() - silent_since > QUIET_SECONDS and unseen and len(traced) < MAX_TRACES:
             traced.add(silent_since)
-            trace_hang(proc.pid, latest["line"][:40].strip().replace("/", "_") or "start")
+            trace_hang(proc.pid, after_the_verdict(latest["line"]))
         time.sleep(2.0)
 
 
