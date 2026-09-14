@@ -50,6 +50,7 @@ import kotlin.math.abs
 import kotlin.math.floor
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -58,6 +59,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.mapspike.optText
 
 private const val SETTINGS_VIEW = "view.settings"
+private const val SEARCH_SETTLE_MS = 250L
 
 internal const val UNITS_GROUP = "unitsSettings"
 internal const val VIDEO_GROUP = "videoSettings"
@@ -157,6 +159,24 @@ internal fun settingsSections(page: JSONObject?): List<SettingsSectionRows> {
 internal fun blockHeading(pageTitle: String, section: SettingsSectionRows, block: SettingsBlock): String =
     block.title.ifBlank { section.title.takeIf { it != pageTitle }.orEmpty() }
 
+internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, needle: String):
+    List<SettingsSectionRows> {
+    val wanted = needle.trim().lowercase()
+    if (wanted.isBlank()) return emptyList()
+    return sections.filterNot { it.group == UNITS_GROUP }.mapNotNull { section ->
+        val hits = section.blocks.flatMap { it.facts }.filter {
+            it.title.lowercase().contains(wanted) || it.name.lowercase().contains(wanted)
+        }
+        hits.takeIf { it.isNotEmpty() }?.let {
+            section.copy(
+                title = "$pageTitle \u203a ${section.title}",
+                note = "",
+                blocks = listOf(SettingsBlock("", it)),
+            )
+        }
+    }
+}
+
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
@@ -170,16 +190,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
     val current = pages.firstOrNull { it.title == open }
     if (current == null) {
-        LazyColumn(modifier.fillMaxSize()) {
-            items(pages, key = { it.title }) { entry ->
-                ListItem(
-                    headlineContent = { Text(entry.title) },
-                    supportingContent = { PAGE_NOTES[entry.title]?.let { Text(it) } },
-                    modifier = Modifier.clickable { open = entry.title },
-                )
-                HorizontalDivider()
-            }
-        }
+        SettingsList(pages, modifier) { open = it }
         return
     }
 
@@ -189,6 +200,71 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Text(current.title, style = MaterialTheme.typography.titleLarge)
         }
         SettingsPageBody(current, Modifier.fillMaxSize())
+    }
+}
+
+@Composable
+private fun SettingsList(
+    pages: List<SettingsPageEntry>,
+    modifier: Modifier = Modifier,
+    onOpen: (String) -> Unit,
+) {
+    var search by rememberSaveable { mutableStateOf("") }
+    var hits by remember { mutableStateOf(emptyList<SettingsSectionRows>()) }
+    var searches by remember { mutableIntStateOf(0) }
+
+    // Read after the typing stops rather than on every keystroke: each page is its own bridge
+    // call, and the effect is cancelled and restarted while a key is still landing.
+    LaunchedEffect(search, pages, searches) {
+        if (search.isBlank()) {
+            hits = emptyList()
+            return@LaunchedEffect
+        }
+        delay(SEARCH_SETTLE_MS)
+        hits = withContext(Dispatchers.Default) {
+            pages.flatMap { page ->
+                matchesIn(page.title, settingsSections(Qgc.get(settingsPagePath(page.title))), search)
+            }
+        }
+    }
+
+    LazyColumn(modifier.fillMaxSize()) {
+        item(key = "search") {
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                label = { Text("Search settings") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
+
+        if (search.isBlank()) {
+            items(pages, key = { it.title }) { entry ->
+                ListItem(
+                    headlineContent = { Text(entry.title) },
+                    supportingContent = { PAGE_NOTES[entry.title]?.let { Text(it) } },
+                    modifier = Modifier.clickable { onOpen(entry.title) },
+                )
+                HorizontalDivider()
+            }
+            return@LazyColumn
+        }
+
+        if (hits.isEmpty()) {
+            item(key = "none") { FootNote("No setting matches \"$search\".") }
+            return@LazyColumn
+        }
+
+        hits.forEach { section ->
+            item(key = "head${section.title}") { SectionHeader(section.title) }
+            items(section.blocks.flatMap { it.facts }, key = { it.path }) { fact ->
+                FactRow(fact) { searches++ }
+                HorizontalDivider()
+            }
+        }
     }
 }
 

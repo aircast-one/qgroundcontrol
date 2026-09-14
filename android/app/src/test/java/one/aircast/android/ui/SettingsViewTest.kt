@@ -122,6 +122,48 @@ class SettingsViewTest {
     }
 
     @Test
+    fun `a search finds a setting by what it is called and by its name`() {
+        val read = settingsSections(general)
+        assertEquals(
+            listOf("General \u203a Application"),
+            matchesIn("General", read, "mute").map { it.title },
+        )
+        assertEquals(
+            "an operator who knows the fact's name should not have to guess the page",
+            listOf("audioMuted"),
+            matchesIn("General", read, "audioMuted").flatMap { s -> s.blocks.flatMap { it.facts } }.map { it.name },
+        )
+        assertEquals("a typed query is not case sensitive", 1, matchesIn("General", read, "MUTE").size)
+    }
+
+    @Test
+    fun `an empty search matches nothing rather than everything`() {
+        val read = settingsSections(general)
+        assertTrue(matchesIn("General", read, "").isEmpty())
+        assertTrue(matchesIn("General", read, "   ").isEmpty())
+    }
+
+    @Test
+    fun `a search result keeps the path its write goes to`() {
+        val hit = matchesIn("General", settingsSections(general), "mute").single()
+        assertEquals("settings.appSettings.audioMuted", hit.blocks.single().facts.single().path)
+        assertEquals(
+            "a note about facts the head drew elsewhere makes no sense beside one search hit",
+            "",
+            hit.note,
+        )
+    }
+
+    @Test
+    fun `the unit rows are reached through their own section, never through search`() {
+        assertTrue(
+            "whether a single measurement may be set at all depends on the measurement system, " +
+                "and that gate lives in the section this head draws itself",
+            matchesIn("General", settingsSections(general), "speed").isEmpty(),
+        )
+    }
+
+    @Test
     fun `the head suppresses the note only where it draws the editor itself`() {
         assertEquals(setOf(VIDEO_GROUP, FLY_VIEW_GROUP), GROUPS_WITH_A_HEAD_EDITOR)
         assertTrue(
