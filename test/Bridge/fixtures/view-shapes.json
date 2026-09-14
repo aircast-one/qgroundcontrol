@@ -127,6 +127,7 @@
         "view.joystickMapping.settings.8.default",
         "view.joystickMapping.settings.8.units",
         "view.joystickMapping.settings.9.defaultFrom",
+        "view.logs.savePathReason",
         "view.mavlinkConsole.last",
         "view.missionItems(geometry).items.0.altitudeBandText",
         "view.missionItems(geometry).items.0.altitudeMode",
@@ -1624,6 +1625,7 @@
         "view.links.linkTypes.3",
         "view.links.linkTypes.4",
         "view.links.linkTypes.5",
+        "view.links.supportForwarding",
         "view.logs.anyDownloaded",
         "view.logs.busy",
         "view.logs.canCancel",
@@ -1634,6 +1636,8 @@
         "view.logs.eraseWarning",
         "view.logs.kind",
         "view.logs.requestingList",
+        "view.logs.savePath",
+        "view.logs.savePathReason",
         "view.mapScale(120).available",
         "view.mapScale(120).class",
         "view.mapScale(120).fraction",
@@ -1936,6 +1940,8 @@
         "view.plan.actions.addRally",
         "view.plan.actions.newPlan",
         "view.plan.actions.open",
+        "view.plan.canRedo",
+        "view.plan.canUndo",
         "view.plan.class",
         "view.plan.defaults.altitude.applicationRestartRequired",
         "view.plan.defaults.altitude.bits.#",
@@ -4175,6 +4181,7 @@
         "view.links.links[].summary",
         "view.links.links[].type",
         "view.links.links[].typeLabel",
+        "view.links.supportForwarding",
         "view.logs.anyDownloaded",
         "view.logs.busy",
         "view.logs.canCancel",
@@ -4189,6 +4196,8 @@
         "view.logs.eraseWarning",
         "view.logs.kind",
         "view.logs.requestingList",
+        "view.logs.savePath",
+        "view.logs.savePathReason",
         "view.mapScale(120).available",
         "view.mapScale(120).class",
         "view.mapScale(120).fraction",
@@ -4562,6 +4571,8 @@
         "view.plan.actions.newPlan",
         "view.plan.actions.open",
         "view.plan.actions.save",
+        "view.plan.canRedo",
+        "view.plan.canUndo",
         "view.plan.class",
         "view.plan.defaults.altitude.applicationRestartRequired",
         "view.plan.defaults.altitude.bits.#",
@@ -6291,7 +6302,8 @@
                 "type": "string",
                 "typeLabel": "string"
             }
-        ]
+        ],
+        "supportForwarding": "bool"
     },
     "view.logs": {
         "anyDownloaded": "bool",
@@ -6309,7 +6321,9 @@
         ],
         "eraseWarning": "string",
         "kind": "string",
-        "requestingList": "bool"
+        "requestingList": "bool",
+        "savePath": "string",
+        "savePathReason": "null"
     },
     "view.mapScale(120)": {
         "available": "bool",
@@ -6786,6 +6800,8 @@
             "open": "bool",
             "save": "bool"
         },
+        "canRedo": "bool",
+        "canUndo": "bool",
         "class": "string",
         "defaults": {
             "altitude": {

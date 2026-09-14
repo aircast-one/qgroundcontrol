@@ -9,6 +9,8 @@ pub const DEPS: &[&str] = &[
     "plan.dirty",
     "plan.containsItems",
     "plan.currentPlanFile",
+    "plan.canUndo",
+    "plan.canRedo",
     "plan.missionController.containsItems",
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
@@ -82,7 +84,7 @@ fn defaults_json(backend: &dyn Backend) -> Value {
 }
 
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile"));
+    let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
     let syncing = flag(&plan, "syncInProgress");
     let offline = flag(&plan, "offline");
@@ -128,6 +130,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "status": status_text(name, dirty, offline, contains_items),
         "file": name,
         "dirty": dirty,
+        "canUndo": flag(&plan, "canUndo"),
+        "canRedo": flag(&plan, "canRedo"),
     })
 }
 
@@ -416,4 +420,18 @@ mod tests {
         assert!(view["readiness"]["reason"].as_str().unwrap().contains("could not be checked"));
         assert_eq!(view["upload"]["canSend"], false);
     }
+    #[test]
+    fn the_undo_stacks_travel_with_the_plan_so_the_head_stops_reading_the_raw_object() {
+        let with_history = json!({ "kind": "object", "syncInProgress": false, "offline": true, "dirty": true, "containsItems": true, "currentPlanFile": "", "canUndo": true, "canRedo": false });
+        let view = plan_view(&fake(with_history, true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 0 })), &[]);
+        assert_eq!(
+            (view["canUndo"].clone(), view["canRedo"].clone()), (json!(true), json!(false)),
+            "Mission.swift took five keys off Bridge.group(\"plan\") and view.plan already served three of them; these two were the whole reason the raw read survived, and a head mixing a view with a separate raw snapshot reads one plan at two instants"
+        );
+
+        let fresh = json!({ "kind": "object", "syncInProgress": false, "offline": true, "dirty": false, "containsItems": false, "currentPlanFile": "" });
+        let empty = plan_view(&fake(fresh, false, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 0 })), &[]);
+        assert_eq!((empty["canUndo"].clone(), empty["canRedo"].clone()), (json!(false), json!(false)), "an object that does not report them has nothing to undo, which is what a fresh plan is");
+    }
+
 }

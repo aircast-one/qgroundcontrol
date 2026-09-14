@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.model"];
+pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.model"];
 
 pub fn human_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["bytes", "KB", "MB", "GB"];
@@ -46,6 +46,9 @@ pub fn empty_text(connected: bool, requesting: bool) -> &'static str {
 pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
     let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs"));
+    let saving = object(&backend.get_fields("settings.appSettings", "logSavePath,savePath"));
+    let save_path = saving.get("logSavePath").and_then(Value::as_str).unwrap_or("").to_string();
+    let chosen = crate::read::text(saving.get("savePath").unwrap_or(&Value::Null), "valueString");
     let requesting = flag(&root, "requestingList");
     let downloading = flag(&root, "downloadingLogs");
     let entries: Vec<Value> = object(&backend.get("logDownload.model"))
@@ -80,6 +83,12 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "Logs",
         "connected": connected,
+        "savePath": save_path,
+        "savePathReason": match (save_path.is_empty(), chosen.trim().is_empty()) {
+            (false, _) => Value::Null,
+            (true, true) => json!("notChosen"),
+            (true, false) => json!("missing"),
+        },
         "requestingList": requesting,
         "downloading": downloading,
         "busy": busy,
@@ -128,6 +137,7 @@ mod tests {
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": self.connected }),
+                    "settings.appSettings" => json!({ "kind": "object", "logSavePath": "/Users/p/Logs" }),
                     _ => json!({ "kind": "object", "requestingList": self.requesting, "downloadingLogs": false }),
                 }
                 .to_string()
@@ -164,4 +174,30 @@ mod tests {
         assert_eq!(dropped["canDownload"], false, "and the same window offers a download whose every byte would have to come from the vehicle that is gone");
         assert_eq!(dropped["canCancel"], false);
     }
+    #[test]
+    fn an_unusable_save_path_says_which_kind_of_unusable_it_is() {
+        struct Saving(&'static str, &'static str);
+        impl Backend for Saving {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "object", "elements": [] }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    "settings.appSettings" => json!({ "kind": "object", "logSavePath": self.0, "savePath": { "kind": "fact", "valueString": self.1 } }),
+                    _ => json!({ "kind": "object", "requestingList": false, "downloadingLogs": false }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let usable = logs_view(&Saving("/Users/p/Docs/Logs", "/Users/p/Docs"), &[]);
+        assert_eq!(usable["savePath"], "/Users/p/Docs/Logs", "LogDownload.swift read this off settings.appSettings while view.logs already served every other thing that page draws");
+        assert_eq!(usable["savePathReason"], Value::Null);
+
+        assert_eq!(logs_view(&Saving("", ""), &[])["savePathReason"], "notChosen", "AppSettings::logSavePath returns an empty QString both when nothing was ever chosen and when the chosen directory has gone, and an operator acts on those differently: pick a folder, versus the folder you picked is missing");
+        assert_eq!(logs_view(&Saving("", "/Volumes/Card/QGC"), &[])["savePathReason"], "missing", "the setting still names a directory, so it was chosen and has since disappeared");
+    }
+
 }

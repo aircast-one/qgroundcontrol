@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses"];
+pub const DEPS: &[&str] = &["links.mavlinkSupportForwardingEnabled", "links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses"];
 
 fn kind(settings_url: &str) -> &'static str {
     match settings_url {
@@ -121,7 +121,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
 
 pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get("links.linkConfigurations"));
-    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates"));
+    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled"));
     let quiet = quiet_links(backend);
     let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json_with(i, el, &quiet)).collect()).unwrap_or_default();
     let configured: Vec<Value> = links.iter().filter(|l| l["dynamic"] == false).cloned().collect();
@@ -132,6 +132,7 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "links": links,
         "configured": configured,
         "linkTypes": root.get("linkTypeStrings").cloned().unwrap_or(json!([])),
+        "supportForwarding": crate::read::flag(&root, "mavlinkSupportForwardingEnabled"),
         "linkTypeIds": root.get("linkTypeIds").cloned().unwrap_or(json!([])),
         "baudRates": root.get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).collect::<Vec<_>>()).unwrap_or_default(),
     })
@@ -302,4 +303,24 @@ mod tests {
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
     }
+    #[test]
+    fn the_support_forwarding_flag_travels_with_the_links_view() {
+        struct Forwarding(bool);
+        impl Backend for Forwarding {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "links" => json!({ "kind": "object", "linkTypeStrings": [], "linkTypeIds": [], "serialBaudRates": [], "mavlinkSupportForwardingEnabled": self.0 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(links_view(&Forwarding(true), &[])["supportForwarding"], json!(true), "RemoteSupport.swift read this one field off the raw links object and no view served it, so that page was entirely on Qt for the first thing it needs");
+        assert_eq!(links_view(&Forwarding(false), &[])["supportForwarding"], json!(false));
+    }
+
 }
