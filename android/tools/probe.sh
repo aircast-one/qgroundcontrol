@@ -33,7 +33,11 @@ on)
 get)
     [ -n "${2:-}" ] || { echo "usage: probe.sh get <path>" >&2; exit 2; }
     curl -s --max-time 3 -H "$HEADER" "http://127.0.0.1:$PORT/status" > /dev/null || "$0" on > /dev/null
-    curl -s --max-time 8 -H "$HEADER" "http://127.0.0.1:$PORT/bridge/get?path=$2"
+    # curl --data-urlencode writes a space as "+", which QUrl::FullyDecoded leaves as a literal
+    # plus: a path under "Aircast QGC Daily" came back as "Aircast+QGC+Daily" and read as
+    # unreadable. percent-encode it ourselves so a space arrives as %20.
+    curl -s --max-time 8 -H "$HEADER" \
+        "http://127.0.0.1:$PORT/bridge/get?path=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$2")"
     echo ""
     ;;
 set)

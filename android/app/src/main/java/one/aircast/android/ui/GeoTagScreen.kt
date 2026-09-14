@@ -41,7 +41,9 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
         logs = found
         readings = withContext(Dispatchers.Default) {
             found.mapNotNull { log ->
-                geoTagReading(Qgc.get(geoTagPath(log.path)))?.let { log.path to it }
+                geoTagPath(log.path)
+                    ?.let { path -> geoTagReading(Qgc.get(path)) }
+                    ?.let { log.path to it }
             }.toMap()
         }
     }
@@ -73,7 +75,8 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
             ) {
                 Text(log.name, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    text = logSize(log.bytes) + (reading?.let { " · " + triggerSummary(it) } ?: ""),
+                    text = commaRefusal(log)
+                        ?: (logSize(log.bytes) + (reading?.let { " · " + triggerSummary(it) } ?: "")),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

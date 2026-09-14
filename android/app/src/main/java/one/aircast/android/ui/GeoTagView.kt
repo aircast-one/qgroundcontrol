@@ -14,7 +14,14 @@ internal data class GeoTagReading(
     val refusal: String,
 )
 
-internal fun geoTagPath(path: String): String = "$GEOTAG_VIEW($path)"
+// view::split separates arguments on a comma at paren depth zero, and view.geoTag's argument
+// mode is "<file path>[,<tolerance seconds>]" - so a comma in the path is genuinely ambiguous
+// and the core cannot guess. A log under a folder like "Flights, 2026" would arrive truncated.
+internal fun geoTagPath(path: String): String? =
+    if (path.contains(',')) null else "$GEOTAG_VIEW($path)"
+
+internal fun commaRefusal(log: TelemetryLog): String? =
+    if (log.path.contains(',')) "This log cannot be read: a comma in its folder name is not something the core can tell from a tolerance." else null
 
 internal fun geoTagReading(view: JSONObject?): GeoTagReading? {
     if (view == null || view.optText("class") != "GeoTag") return null

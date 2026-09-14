@@ -90,3 +90,21 @@ class SensorHealthTest {
         assertEquals("", healthSummary(null))
     }
 }
+
+class GeoTagCommaTest {
+    @Test
+    fun `a path the core can parse becomes a view argument`() {
+        assertEquals("view.geoTag(/a/b.tlog)", geoTagPath("/a/b.tlog"))
+        assertEquals("view.geoTag(/Aircast QGC Daily/b.tlog)", geoTagPath("/Aircast QGC Daily/b.tlog"))
+    }
+
+    @Test
+    fun `a comma is refused rather than sent to be truncated`() {
+        assertNull(geoTagPath("/Flights, 2026/b.tlog"))
+        assertEquals(
+            "This log cannot be read: a comma in its folder name is not something the core can tell from a tolerance.",
+            commaRefusal(TelemetryLog("/Flights, 2026/b.tlog", "b.tlog", 10)),
+        )
+        assertNull(commaRefusal(TelemetryLog("/a/b.tlog", "b.tlog", 10)))
+    }
+}
