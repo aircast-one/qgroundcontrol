@@ -100,3 +100,40 @@ internal const val REBOOT_VEHICLE = "vehicle.rebootVehicle"
 
 internal fun runningTitle(name: String): String =
     name.trim().takeIf { it.isNotBlank() }?.let { "Calibrating $it" } ?: "Calibration in progress"
+
+internal const val SENSOR_HEALTH = "view.sensors"
+
+internal data class SensorHealth(val name: String, val state: String, val label: String)
+
+internal data class SensorHealthReading(
+    val available: Boolean,
+    val sensors: List<SensorHealth>,
+    val failing: List<String>,
+    val status: String,
+)
+
+internal fun sensorHealth(view: JSONObject?): SensorHealthReading? {
+    if (view == null || view.optText("class") != "SensorHealth") return null
+    val listed = view.optJSONArray("sensors")
+    return SensorHealthReading(
+        available = view.optBoolean("available"),
+        sensors = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
+            listed?.optJSONObject(index)?.let { item ->
+                item.optText("name").takeIf { it.isNotBlank() }?.let { name ->
+                    SensorHealth(name, item.optText("state"), item.optText("label"))
+                }
+            }
+        },
+        failing = view.optJSONArray("failing")?.let { array ->
+            (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+        } ?: emptyList(),
+        status = view.optText("status"),
+    )
+}
+
+internal fun healthSummary(reading: SensorHealthReading?): String = when {
+    reading == null || !reading.available -> ""
+    reading.failing.size == 1 -> "${reading.failing.first()} is reporting a fault."
+    reading.failing.size > 1 -> "${reading.failing.size} sensors are reporting faults."
+    else -> ""
+}

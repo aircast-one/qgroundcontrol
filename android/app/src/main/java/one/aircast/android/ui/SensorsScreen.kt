@@ -248,6 +248,8 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val isPx4 by qgcBool("vehicle.px4Firmware")
     val json by qgcPath(CALIBRATION)
+    val healthJson by qgcPath(SENSOR_HEALTH)
+    val health = remember(healthJson) { sensorHealth(healthJson) }
     val state = remember(json) { calibrationState(json) }
     var pending by remember { mutableStateOf<CalibrationRoutine?>(null) }
     var runningName by remember { mutableStateOf("") }
@@ -322,6 +324,33 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
     ) {
+        health?.takeIf { it.available && it.sensors.isNotEmpty() }?.let { reading ->
+            item(key = "health") {
+                Column {
+                    SectionHeader("Sensor health")
+                    healthSummary(reading).takeIf { it.isNotBlank() }?.let { line ->
+                        Text(
+                            text = line,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        )
+                    }
+                    reading.sensors.forEach { sensor ->
+                        SetupRow(
+                            title = sensor.name,
+                            status = sensor.label,
+                            state = when (sensor.state) {
+                                "healthy" -> SetupState.Done
+                                "unhealthy" -> SetupState.NeedsAttention
+                                else -> SetupState.Neutral
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         item(key = "header") { SectionHeader("Calibration") }
 
         notice?.let { message ->

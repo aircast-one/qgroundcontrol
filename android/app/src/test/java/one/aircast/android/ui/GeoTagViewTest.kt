@@ -61,3 +61,32 @@ class RefusalTest {
         assertEquals("The vehicle did not answer.", one.aircast.android.bridge.refusal(null))
     }
 }
+
+class SensorHealthTest {
+    private fun view(json: String) = sensorHealth(JSONObject(json))
+
+    @Test
+    fun `a healthy vehicle says nothing extra`() {
+        val read = view("""{"class":"SensorHealth","available":true,"failing":[],"status":"","sensors":[{"name":"GPS","state":"healthy","label":"Healthy"}]}""")
+
+        assertEquals(1, read!!.sensors.size)
+        assertEquals(SensorHealth("GPS", "healthy", "Healthy"), read.sensors.first())
+        assertEquals("", healthSummary(read))
+    }
+
+    @Test
+    fun `a fault is named, and several are counted`() {
+        val one = view("""{"class":"SensorHealth","available":true,"failing":["Magnetometer"],"sensors":[]}""")
+        val two = view("""{"class":"SensorHealth","available":true,"failing":["Magnetometer","Gyro"],"sensors":[]}""")
+
+        assertEquals("Magnetometer is reporting a fault.", healthSummary(one))
+        assertEquals("2 sensors are reporting faults.", healthSummary(two))
+    }
+
+    @Test
+    fun `anything that is not the sensor health view is not a reading`() {
+        assertNull(sensorHealth(JSONObject("""{"kind":"null"}""")))
+        assertNull(sensorHealth(null))
+        assertEquals("", healthSummary(null))
+    }
+}
