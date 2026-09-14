@@ -121,3 +121,37 @@ class LogTimeZoneTest {
         assertEquals(expected, logLocalTime("2026-09-08T14:42:51+04:00"))
     }
 }
+
+class LogSavePathTest {
+
+    private fun logs(anyDownloaded: Boolean, savePath: String, reason: String) = logsView(
+        JSONObject(
+            """{"kind":"object","class":"LogDownload","entries":[],"busy":false,
+               "anyDownloaded":$anyDownloaded,"savePath":$savePath,"savePathReason":$reason}""",
+        ),
+    )
+
+    @Test
+    fun `nothing downloaded says nothing about where it went`() {
+        assertNull(savedToText(logs(false, "\"/sdcard/Logs\"", "null")))
+        assertNull(savedToText(null))
+    }
+
+    @Test
+    fun `a known directory is named`() {
+        assertEquals("Saved to /sdcard/Logs", savedToText(logs(true, "\"/sdcard/Logs\"", "null")))
+    }
+
+    @Test
+    fun `an empty path with a reason says the reason, because the two empties differ`() {
+        assertEquals(
+            "The folder chosen for logs is no longer there.",
+            savedToText(logs(true, "\"\"", "\"The folder chosen for logs is no longer there.\"")),
+        )
+    }
+
+    @Test
+    fun `an empty path with no reason stays silent rather than printing Saved to nowhere`() {
+        assertNull(savedToText(logs(true, "\"\"", "null")))
+    }
+}

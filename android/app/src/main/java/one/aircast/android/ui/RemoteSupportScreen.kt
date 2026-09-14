@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
 private const val HOST_FACT = "settings.mavlinkSettings.forwardMavlinkAPMSupportHostName"
@@ -48,7 +47,8 @@ private fun StartForwardingDialog(host: String, onConfirm: () -> Unit, onDismiss
 
 @Composable
 fun RemoteSupportScreen(modifier: Modifier = Modifier) {
-    val forwarding by qgcBool("links.mavlinkSupportForwardingEnabled")
+    val linksJson by qgcPath("view.links")
+    val forwarding = linksJson?.optBoolean("supportForwarding") == true
     var confirming by remember { mutableStateOf(false) }
     val json by qgcPath(HOST_FACT)
     val host: Fact? = json?.let { Qgc.factAt(HOST_FACT, it) }

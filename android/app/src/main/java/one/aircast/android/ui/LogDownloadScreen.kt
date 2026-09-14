@@ -86,6 +86,8 @@ internal data class LogsView(
     val canErase: Boolean,
     val busy: Boolean,
     val anyDownloaded: Boolean,
+    val savePath: String,
+    val savePathReason: String,
 )
 
 internal fun logsView(view: JSONObject?): LogsView? {
@@ -117,6 +119,8 @@ internal fun logsView(view: JSONObject?): LogsView? {
         canErase = view.optBoolean("canErase"),
         busy = view.optBoolean("busy"),
         anyDownloaded = view.optBoolean("anyDownloaded"),
+        savePath = view.optText("savePath"),
+        savePathReason = view.optText("savePathReason"),
     )
 }
 
@@ -177,6 +181,15 @@ private fun Message(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+internal fun savedToText(logs: LogsView?): String? {
+    val reading = logs?.takeIf { it.anyDownloaded } ?: return null
+    return when {
+        reading.savePath.isNotBlank() -> "Saved to ${reading.savePath}"
+        reading.savePathReason.isNotBlank() -> reading.savePathReason
+        else -> null
+    }
+}
+
 internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, hasEntries: Boolean, busy: Boolean) =
     hasVehicle && !hasEntries && !busy
 
@@ -184,7 +197,6 @@ internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, hasEntries: Boolean, bus
 fun LogDownloadScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(LOGS_VIEW)
     val logs = remember(json) { logsView(json) }
-    val savePath by qgcString("settings.appSettings.logSavePath")
     var confirmErase by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -290,9 +302,9 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        if (logs.anyDownloaded && savePath.isNotBlank()) {
+        savedToText(logs)?.let { line ->
             Text(
-                text = "Saved to $savePath",
+                text = line,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier
                     .fillMaxWidth()
