@@ -144,6 +144,7 @@ MAX_TRACES = 8
 PER_SUITE_TRACES = 2
 LATE_RESERVE = 2
 RESERVE_OPENS_AFTER = 60
+CONFIRM_AFTER = 30
 FLOOD_LINES = 5000
 TRACE_DIR = REPO / "build-test/hang-traces"
 RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -155,26 +156,28 @@ def after_the_verdict(line):
     return safe[:90] or "start"
 
 
-def trace_hang(pid, note):
+def trace_hang(pid, note, pass_number=1):
     TRACE_DIR.mkdir(parents=True, exist_ok=True)
-    path = TRACE_DIR / f"hang-{RUN_ID}-{note}.txt"
+    suffix = "" if pass_number == 1 else f"-still-here-{CONFIRM_AFTER}s-later"
+    path = TRACE_DIR / f"hang-{RUN_ID}-{note}{suffix}.txt"
     sampled = subprocess.run(["sample", str(pid), "4", "-file", str(path)],
                              capture_output=True, text=True)
     if sampled.returncode != 0:
         lldb = subprocess.run(["lldb", "-p", str(pid), "-batch", "-o", "bt all", "-o", "detach"],
                               capture_output=True, text=True, timeout=120)
         path.write_text(lldb.stdout + lldb.stderr)
-    path = name_for_what_it_shows(path, note)
+    path = name_for_what_it_shows(path, note, pass_number)
     print(f"HANG TRACE: {QUIET_SECONDS}s of silence after {note!r} - stacks in {path}",
           file=sys.stderr)
     return path
 
 
-def name_for_what_it_shows(path, note):
+def name_for_what_it_shows(path, note, pass_number=1):
     running = re.search(r"\b(\w+Test::_\w+)\(\)", path.read_text(errors="replace"))
     if not running:
         return path
-    named = path.with_name(f"hang-{RUN_ID}-{running.group(1)}.txt")
+    suffix = "" if pass_number == 1 else f"-still-here-{CONFIRM_AFTER}s-later"
+    named = path.with_name(f"hang-{RUN_ID}-{running.group(1)}{suffix}.txt")
     path.rename(named)
     return named
 
@@ -188,17 +191,21 @@ def budget_now(suites_seen):
 
 
 def watch_for_silence(proc, latest, taken):
-    seen = set()
+    seen = {}
     while proc.poll() is None:
         silent_since = latest["at"]
         note = after_the_verdict(latest["line"])
         suite = suite_of(note)
         room = (sum(taken.values()) < budget_now(len(latest["suites"]))
                 and taken.get(suite, 0) < PER_SUITE_TRACES)
-        if time.monotonic() - silent_since > QUIET_SECONDS and silent_since not in seen and room:
-            seen.add(silent_since)
+        quiet = time.monotonic() - silent_since
+        if quiet > QUIET_SECONDS and silent_since not in seen and room:
+            seen[silent_since] = 1
             taken[suite] = taken.get(suite, 0) + 1
             trace_hang(proc.pid, note)
+        elif quiet > QUIET_SECONDS + CONFIRM_AFTER and seen.get(silent_since) == 1:
+            seen[silent_since] = 2
+            trace_hang(proc.pid, note, pass_number=2)
         time.sleep(2.0)
 
 
