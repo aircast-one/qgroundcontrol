@@ -62,7 +62,7 @@ pub fn parse(text: &str) -> Result<Shape, String> {
 }
 
 pub fn kml_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.kml needs the path of the item to describe") };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.kmlFile needs the path of a kml or kmz file to read, as view.kmlFile(/Users/you/area.kml)") };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => return json!({ "kind": "object", "class": "KmlFile", "path": path, "readable": false, "error": e.to_string() }),

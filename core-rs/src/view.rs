@@ -680,6 +680,53 @@ mod argument_modes {
     use super::*;
 
     #[test]
+    fn every_view_a_message_names_is_one_that_exists() {
+        let registered: Vec<&str> = VIEWS.iter().map(|view| view.path).collect();
+        let quoted = |line: &str| -> Vec<String> {
+            line.split('"').skip(1).step_by(2).map(str::to_string).collect()
+        };
+        let named = |text: &str| -> Vec<String> {
+            text.match_indices("view.")
+                .map(|(at, _)| {
+                    let tail = &text[at..];
+                    let end = tail.char_indices().find(|(i, c)| *i > 4 && !c.is_ascii_alphanumeric()).map(|(i, _)| i).unwrap_or(tail.len());
+                    tail[..end].to_string()
+                })
+                .filter(|name| name.len() > 5 && !name.ends_with(".rs"))
+                .collect()
+        };
+
+        let all: Vec<(String, String)> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+            .filter_map(|path| {
+                let source = std::fs::read_to_string(&path).ok()?;
+                let file = path.file_name()?.to_string_lossy().to_string();
+                Some(source
+                    .split("#[cfg(test)]")
+                    .next()?
+                    .lines()
+                    .flat_map(quoted)
+                    .flat_map(|literal| named(&literal))
+                    .map(|name| (file.clone(), name))
+                    .collect::<Vec<_>>())
+            })
+            .flatten()
+            .collect();
+
+        assert!(all.len() > 20, "only {} view names found in messages, so a clean result would mean nothing", all.len());
+        let wrong: Vec<String> = all
+            .iter()
+            .filter(|(_, name)| !registered.contains(&name.as_str()))
+            .map(|(file, name)| format!("{file} names {name}"))
+            .collect();
+
+        assert!(wrong.is_empty(), "a refusal exists to tell a caller how to call correctly, so a name in one that resolves to nothing is worse than no message: {}", wrong.join("; "));
+    }
+
+    #[test]
     fn a_view_declaring_one_argument_never_reads_a_second() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
         let read = |name: &str| std::fs::read_to_string(format!("{dir}/{name}.rs")).ok();

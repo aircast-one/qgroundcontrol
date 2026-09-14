@@ -163,7 +163,7 @@ pub fn default_line(latitude: f64, longitude: f64) -> Vec<(f64, f64)> {
 pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
     let number = |i: usize| args.get(i).and_then(|a| a.parse::<f64>().ok()).filter(|v| v.is_finite());
     let (Some(kind), Some(latitude), Some(longitude)) = (args.first().and_then(|k| lookup(k)), number(1), number(2)) else {
-        return refused("view.seed needs a kind from view.missionKinds and a place, as view.seed(survey,47.4,8.5)");
+        return refused("view.missionSeed needs a kind from view.missionKinds and a place, as view.missionSeed(survey,47.4,8.5)");
     };
     let Some((shape, property)) = kind.geometry else { return refused("that kind draws no shape, so there is nothing to seed") };
     let points = match shape {
