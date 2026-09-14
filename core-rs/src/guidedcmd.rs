@@ -270,4 +270,32 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn every_command_number_is_the_one_the_dialect_calls_it() {
+        use mavlink::dialects::ardupilotmega::{MavCmd, MavFrame};
+        use num_traits::FromPrimitive;
+
+        [
+            (CMD_NAV_TAKEOFF, MavCmd::MAV_CMD_NAV_TAKEOFF),
+            (CMD_DO_SET_MODE, MavCmd::MAV_CMD_DO_SET_MODE),
+            (CMD_DO_CHANGE_SPEED, MavCmd::MAV_CMD_DO_CHANGE_SPEED),
+            (CMD_DO_REPOSITION, MavCmd::MAV_CMD_DO_REPOSITION),
+            (CMD_COMPONENT_ARM_DISARM, MavCmd::MAV_CMD_COMPONENT_ARM_DISARM),
+        ]
+        .iter()
+        .for_each(|(number, named)| {
+            assert_eq!(
+                MavCmd::from_u32(*number as u32),
+                Some(*named),
+                "{number} is what the core puts on the wire and {named:?} is what it means to send; the other tests here restate these constants rather than check them, so a mistyped digit would be pinned instead of caught and the aircraft would be sent a different command"
+            );
+        });
+
+        [(FRAME_GLOBAL, MavFrame::MAV_FRAME_GLOBAL), (FRAME_LOCAL_OFFSET_NED, MavFrame::MAV_FRAME_LOCAL_OFFSET_NED)]
+            .iter()
+            .for_each(|(number, named)| {
+                assert_eq!(MavFrame::from_u8(*number), Some(*named), "a wrong frame reinterprets the coordinates rather than rejecting them");
+            });
+    }
+
 }
