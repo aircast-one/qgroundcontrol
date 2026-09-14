@@ -87,7 +87,16 @@ struct ItemFact: Identifiable, Equatable {
         let described = (object["shortDescription"] as? String) ?? ""
         title = described.isEmpty ? label(name) : described
         isBool = (object["typeIsBool"] as? NSNumber)?.boolValue ?? false
-        value = (object["valueString"] as? String) ?? ""
+        // enumOrValueString, not valueString, for the same reason FlyDetailModel prefers it: on an
+        // ENUM fact valueString is the raw number and this is the label. The item editor binds a
+        // Picker's selection to this value and tags each row with its enumStrings entry, so with
+        // the number the selection matched NO tag and a camera action rendered with nothing chosen.
+        // The core's own fixture spells it out -- cameraAction carries valueString "6" beside
+        // enumOrValueString "Take photo" -- and enumStrings[6] is "Stop recording video", which is
+        // what a head indexing by that number would have drawn instead. On a fact with no enum the
+        // two are identical (gimbalPitch is "-90" in both), so this is right for every fact.
+        value = (object["enumOrValueString"] as? String)
+            ?? (object["valueString"] as? String) ?? ""
         units = (object["units"] as? String) ?? ""
         options = (object["enumStrings"] as? [String]) ?? []
         readOnly = (object["readOnly"] as? NSNumber)?.boolValue ?? false

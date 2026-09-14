@@ -1711,13 +1711,23 @@ checkMissionCommands()
 func checkItemFacts() {
     let facts = ItemFact.from([
         ["name": "Delay", "valueString": "45", "units": "secs"],
-        ["name": "Mode", "valueString": "Hold", "units": "", "enumStrings": ["Hold", "Continue"]],
+        ["name": "Mode", "valueString": "1", "enumOrValueString": "Continue", "units": "",
+         "enumStrings": ["Hold", "Continue"]],
         ["valueString": "12"],
     ], list: "textFieldFacts", label: { "<\($0)>" })
 
     expect(facts.count == 2, "a fact with no name is dropped")
     expect(facts[0].id, "textFieldFacts.0", "a fact is addressed by its list and position")
     expect(facts[1].id, "textFieldFacts.1", "positions follow the order the controller reported")
+    expect(facts[1].value, "Continue",
+           "an ENUM fact shows its LABEL, because valueString on one is the raw number. This "
+           + "fixture used to say valueString \"Hold\" -- a label where the bridge sends a number "
+           + "-- and agreeing with the reader is how the defect survived it: the item editor binds "
+           + "a Picker's selection to this and tags each row with an enumStrings entry, so the "
+           + "number matched no tag and a camera action drew with nothing chosen")
+    expect(facts[0].value, "45",
+           "and a fact with no enum is unchanged, because enumOrValueString falls through to the "
+           + "cooked value when there is no enum to name")
 
     let owned = ItemFact.owned([
         ["name": "Grid angle", "property": "gridAngle", "valueString": "0", "units": "deg"],

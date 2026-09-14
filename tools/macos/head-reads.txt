@@ -103,6 +103,7 @@ decimalPlaces
 decoding
 default
 defaultFrom
+defaultValue
 delta
 deltaMeters
 description
@@ -376,6 +377,7 @@ streaming
 summary
 supportForwarding
 surfaceDistanceText
+systemId
 target
 targetMeters
 targetMetersSecond
