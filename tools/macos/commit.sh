@@ -85,6 +85,11 @@ if print -rl -- "$@" | grep -q '^macos/'; then
         print -u2 "refusing to commit: a field outlives the selection that set it."
         exit 1
     fi
+    if ! python3 "$root/tools/macos/models-cover-views.py"; then
+        print -u2 "refusing to commit: a view root this head reads has no model in head_models.MODELS."
+        print -u2 "view-fields.py and null-fallbacks.py both skip what is not in it, silently."
+        exit 1
+    fi
     python3 "$root/tools/macos/head-reads.py" > /dev/null
     if ! git diff --quiet HEAD -- tools/macos/head-reads.txt; then
         set -- "$@" tools/macos/head-reads.txt
