@@ -417,4 +417,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_camera_parameter_types_and_the_aliased_enums_resolve_too() {
+        use mavlink::dialects::ardupilotmega::{MavAutopilot, MavParamExtType, MavType};
+
+        [
+            (crate::cameradef::PARAM_EXT_TYPE_UINT8, MavParamExtType::MAV_PARAM_EXT_TYPE_UINT8),
+            (crate::cameradef::PARAM_EXT_TYPE_INT8, MavParamExtType::MAV_PARAM_EXT_TYPE_INT8),
+            (crate::cameradef::PARAM_EXT_TYPE_UINT16, MavParamExtType::MAV_PARAM_EXT_TYPE_UINT16),
+            (crate::cameradef::PARAM_EXT_TYPE_INT16, MavParamExtType::MAV_PARAM_EXT_TYPE_INT16),
+            (crate::cameradef::PARAM_EXT_TYPE_UINT32, MavParamExtType::MAV_PARAM_EXT_TYPE_UINT32),
+            (crate::cameradef::PARAM_EXT_TYPE_INT32, MavParamExtType::MAV_PARAM_EXT_TYPE_INT32),
+            (crate::cameradef::PARAM_EXT_TYPE_UINT64, MavParamExtType::MAV_PARAM_EXT_TYPE_UINT64),
+            (crate::cameradef::PARAM_EXT_TYPE_INT64, MavParamExtType::MAV_PARAM_EXT_TYPE_INT64),
+            (crate::cameradef::PARAM_EXT_TYPE_REAL32, MavParamExtType::MAV_PARAM_EXT_TYPE_REAL32),
+            (crate::cameradef::PARAM_EXT_TYPE_REAL64, MavParamExtType::MAV_PARAM_EXT_TYPE_REAL64),
+            (crate::cameradef::PARAM_EXT_TYPE_CUSTOM, MavParamExtType::MAV_PARAM_EXT_TYPE_CUSTOM),
+        ]
+        .iter()
+        .for_each(|(ours, named)| {
+            assert_eq!(*ours, *named as u8, "this decides how a camera definition parameter's bytes are read, so a wrong one misreads the setting rather than refusing it");
+        });
+
+        assert_eq!(crate::debugapi::AUTOPILOT_ARDUPILOTMEGA, MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as i64, "same value as modes::AUTOPILOT_ARDUPILOT under a different name, so the duplicate-name check cannot see it");
+        assert_eq!(crate::debugapi::AUTOPILOT_PX4, MavAutopilot::MAV_AUTOPILOT_PX4 as i64);
+        assert_eq!(crate::debugapi::VEHICLE_TYPE_QUADROTOR, MavType::MAV_TYPE_QUADROTOR as i64);
+        assert_eq!(crate::metacache::PX4_FIRMWARE, MavAutopilot::MAV_AUTOPILOT_PX4 as u8, "a third copy of the PX4 autopilot number, named for what it is used for rather than what it is");
+    }
+
 }
