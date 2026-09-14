@@ -49,4 +49,18 @@ enum MapFollow {
     static func follows(setting: Bool, tracking: Bool) -> Bool { setting && tracking }
 
     static func nudges(setting: Bool, tracking: Bool) -> Bool { !setting && tracking }
+
+    // FlyViewMap.qml sets _disableVehicleTracking on onMapPanStart and a 10-second timer clears
+    // it. Both branches are gated on it, so panning is honoured during a soft follow too.
+    //
+    // Without this term the map cannot be moved at all while the setting is on: every telemetry
+    // frame calls setCenter, so a drag snaps back on the next one. An operator reports that as the
+    // map being broken rather than as a setting being on, which is why it is not a nicety --
+    // "the map follows the vehicle" and "the map cannot be moved" are different products.
+    static let panSuspension: TimeInterval = 10
+
+    static func tracking(pannedAt: Date?, now: Date) -> Bool {
+        guard let pannedAt else { return true }
+        return now.timeIntervalSince(pannedAt) >= panSuspension
+    }
 }

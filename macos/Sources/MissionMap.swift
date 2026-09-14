@@ -193,6 +193,7 @@ struct MissionMap: NSViewRepresentable {
         context.coordinator.splitSegment = splitSegment
         context.coordinator.arm(adding, on: map)
         context.coordinator.armSecondary(on: map)
+        context.coordinator.armPanWatch(on: map)
         map.removeAnnotations(map.annotations)
         map.overlays.filter { !($0 is CachedTileOverlay) }.forEach(map.removeOverlay)
 
@@ -353,12 +354,14 @@ struct MissionMap: NSViewRepresentable {
             let width = map.bounds.width
             let height = map.bounds.height
 
-            if MapFollow.follows(setting: follow, tracking: true) {
+            let following = MapFollow.tracking(pannedAt: context.coordinator.pannedAt,
+                                               now: Date())
+            if MapFollow.follows(setting: follow, tracking: following) {
                 map.setCenter(target, animated: false)
                 MissionMap.recordCentre(owner: owner, map: map)
                 return
             }
-            if MapFollow.nudges(setting: follow, tracking: true),
+            if MapFollow.nudges(setting: follow, tracking: following),
                MapFollow.needsRecentre(vehicle: point, width: width, height: height,
                                        insets: inset),
                let shift = MapFollow.offset(width: width, height: height, insets: inset) {
@@ -487,7 +490,7 @@ struct MissionMap: NSViewRepresentable {
     static var rendererCalls = 0
     static var rendererKinds: Set<String> = []
 
-    final class Coordinator: NSObject, MKMapViewDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, NSGestureRecognizerDelegate {
         let select: (Int) -> Void
         var add: (Double, Double) -> Void = { _, _ in }
         var move: (Int, Double, Double) -> Void = { _, _, _ in }
@@ -496,6 +499,8 @@ struct MissionMap: NSViewRepresentable {
         var lastFrame: MapFrame?
         var lastFocus: MapFocus?
         private var placer: NSClickGestureRecognizer?
+        private var panWatch: NSPanGestureRecognizer?
+        var pannedAt: Date?
 
         init(select: @escaping (Int) -> Void) {
             self.select = select
@@ -505,6 +510,32 @@ struct MissionMap: NSViewRepresentable {
             if placer != nil {
                 NSCursor.pop()
             }
+        }
+
+        // Observes the drag without consuming it -- the map keeps its own panning; this only
+        // records that the operator moved it, so the follow logic can stand back for ten seconds.
+        func armPanWatch(on map: MKMapView) {
+            guard panWatch == nil else { return }
+            let recognizer = NSPanGestureRecognizer(target: self, action: #selector(panned(_:)))
+            recognizer.delegate = self
+            map.addGestureRecognizer(recognizer)
+            panWatch = recognizer
+        }
+
+        // QGC re-centres the moment its timer clears the flag. This does not: the suspension
+        // simply lapses and the next position update follows again, so on a quiet link the map
+        // comes back late rather than on the ten-second mark. That is a smaller defect than the
+        // one being fixed -- an unmovable map -- and it is stated rather than hidden, because a
+        // catch-up needs the follow arithmetic to run outside a position update and this view
+        // computes it inline.
+        @objc private func panned(_ recognizer: NSPanGestureRecognizer) {
+            guard recognizer.state == .began || recognizer.state == .changed else { return }
+            pannedAt = Date()
+        }
+
+        func gestureRecognizer(_ recognizer: NSGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: NSGestureRecognizer) -> Bool {
+            true
         }
 
         func armSecondary(on map: MKMapView) {
