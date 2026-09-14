@@ -57,8 +57,14 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.status, "")
 
         let fences = Bridge.group("view.fences")
-        set(\.unsupportedReason, (Bridge.group("view.plan")["unsupportedReason"] as? String) ?? "")
-        set(\.connected, Bridge.group("vehicle")["kind"] as? String == "object")
+        let planView = Bridge.group("view.plan")
+        set(\.unsupportedReason, (planView["unsupportedReason"] as? String) ?? "")
+        // view.flyState composes connected from the same read -- it takes `vehicle` as an object
+        // and asks whether one came back -- so this is the same answer with the raw path retired.
+        // Deliberately NOT contactLost: a vehicle that has stopped talking still holds its fence
+        // and rally points, and QGC keeps the object until the link drops. Offering the download
+        // is right while contact is out; the download is what finds out whether it is coming back.
+        set(\.connected, FlyState(Bridge.group("view.flyState")).connected)
         set(\.fence, FenceSupport(answer: fences["fenceSupported"]))
         set(\.rally, FenceSupport(answer: fences["rallySupported"]))
 
@@ -75,7 +81,12 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.breachRange, BreachReturn.range(breachFact))
         set(\.breachDecimals, BreachReturn.decimals(breachFact))
 
-        set(\.syncing, (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false)
+        // The view was already in hand twenty lines above. Its sync composes offline, busy and
+        // ready where plan.syncInProgress is one flag, and offline WINS over syncing there -- so
+        // this retires the raw path rather than fixing behaviour: offline already means connected
+        // is false, and offersDownload was false either way. Saying so because the tidier sentence
+        // would be that it fixes something, and a difference nobody can reach is not a fix.
+        set(\.syncing, PlanSync.busy(planView["sync"]))
     }
 
     // Every one of these feeds the map. Assigning an unchanged value republishes the store and

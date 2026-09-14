@@ -71,6 +71,7 @@ centreText
 channel
 channelCount
 channels
+choice
 choices
 class
 className
