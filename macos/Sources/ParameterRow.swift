@@ -45,22 +45,29 @@ struct ParameterEditor: View {
     let units: String
     let options: [ParameterOption]
     let selectedRaw: String
+    var offersManualEntry = false
     let commit: (String) -> Void
 
     @ViewBuilder var body: some View {
         if options.isEmpty {
             ValueField(value: value, units: units, commit: commit)
         } else {
-            Picker("", selection: Binding(get: { selectedRaw }, set: { commit($0) })) {
-                if !options.contains(where: { $0.raw == selectedRaw }) {
-                    Text(value).tag(selectedRaw)
+            HStack(spacing: Overlay.unit / 2) {
+                Picker("", selection: Binding(get: { selectedRaw }, set: { commit($0) })) {
+                    if !options.contains(where: { $0.raw == selectedRaw }) {
+                        Text(value).tag(selectedRaw)
+                    }
+                    ForEach(options) { option in
+                        Text(option.label).tag(option.raw)
+                    }
                 }
-                ForEach(options) { option in
-                    Text(option.label).tag(option.raw)
+                .labelsHidden()
+                .frame(maxWidth: offersManualEntry ? 150 : 220)
+                if offersManualEntry {
+                    ValueField(value: selectedRaw, units: "", width: 56, commit: commit)
+                        .help(ParameterOption.manualEntryHelp)
                 }
             }
-            .labelsHidden()
-            .frame(maxWidth: 220)
         }
     }
 }
@@ -73,6 +80,7 @@ struct ParameterRow: View {
     let units: String
     let options: [ParameterOption]
     let selectedRaw: String
+    var offersManualEntry = false
     var showSeparator = true
     let commit: (String) -> Void
 
@@ -84,6 +92,7 @@ struct ParameterRow: View {
         detail = label.isEmpty ? "" : parameter.name
         units = parameter.units
         options = parameter.options
+        offersManualEntry = parameter.offersManualEntry
         selectedRaw = parameter.selectedOption?.raw ?? ""
         self.showSeparator = showSeparator
         self.commit = commit
@@ -97,6 +106,7 @@ struct ParameterRow: View {
         value = control.display.isEmpty ? control.valueString : control.display
         units = control.units
         options = control.parameterOptions
+        offersManualEntry = control.offersManualEntry
         selectedRaw = control.valueString
         self.showSeparator = showSeparator
         self.commit = commit
@@ -109,7 +119,8 @@ struct ParameterRow: View {
             showSeparator: showSeparator,
             trailing: {
                 ParameterEditor(value: value, units: units, options: options,
-                                selectedRaw: selectedRaw, commit: commit)
+                                selectedRaw: selectedRaw,
+                                offersManualEntry: offersManualEntry, commit: commit)
             })
     }
 }

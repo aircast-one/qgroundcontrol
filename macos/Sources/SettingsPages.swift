@@ -134,6 +134,12 @@ struct SettingsControl: Identifiable, Equatable {
     // caller then wrote `Double(value) ?? value`, putting the raw STRING on the vehicle. So the
     // one guard standing between an operator and a bad write was silent on exactly the entry
     // that needed refusing. A comma is the common way in; anything unparseable is the class.
+    // An app setting's choices come from QGC's own JSON and are exhaustive by construction -- there
+    // is no firmware shipping a language or a map provider the list has not heard of. So this is
+    // false where Parameter's is true, and the two are separate properties rather than one rule with
+    // a flag, because the reason they differ is about the PRODUCER of the list and not about the row.
+    var offersManualEntry: Bool { false }
+
     func refusal(_ entry: String) -> String? {
         guard kind == .number else { return nil }
         if let refused = Measure.numberRefusal(entry) { return refused }

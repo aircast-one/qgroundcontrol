@@ -2708,6 +2708,7 @@ func checkMissionItemKinds() {
     checkBreachReturnAltitude()
     checkLaunchAltitudeComesFromTheItem()
     checkADragKeepsTheItemsHeight()
+    checkAnEnumParameterCanStillBeTypedInto()
     checkCameraBrandSelection()
     checkBatteryHeadlines()
     checkResumeSequence()
@@ -8096,6 +8097,40 @@ func checkModeSlotNaming() {
     expect(FlightModePosition.present(in: rover).first?.pwmRange ?? "", "up to 1230",
            "the PWM bands are fixed in firmware and keyed on the POSITION, not the parameter "
            + "name, so they are identical on both")
+}
+
+func checkAnEnumParameterCanStillBeTypedInto() {
+    let listed = Parameter(name: "SERVO1_FUNCTION", componentId: 1, json: [
+        "enumStrings": ["Disabled", "RCPassThru"], "enumValues": [0, 1],
+        "enumIndex": 1, "valueString": "1"])
+    expect(listed.offersManualEntry,
+           "a vehicle parameter with a list still gets a field to type into. The list is what the "
+           + "METADATA names and firmware ships values ahead of it, so without the field this is "
+           + "the one screen where \"it is not in the list\" is the answer somebody came for and "
+           + "the screen cannot give it")
+    expect(listed.refusal("94") == nil,
+           "and a value the list omits is written rather than refused, which is the whole point")
+
+    let free = Parameter(name: "RTL_ALT", componentId: 1, json: ["valueString": "3000"])
+    expect(free.offersManualEntry == false,
+           "a parameter with no list already had the field, so the flag is about ADDING one beside "
+           + "a picker and not about whether typing is possible at all")
+
+    let language = SettingsControl([
+        "path": "settings.appSettings.qLocaleLanguage", "name": "qLocaleLanguage",
+        "control": "choice", "valueString": "0",
+        "options": [["label": "System", "raw": "0"], ["label": "English", "raw": "1"]]])
+    expect(language != nil, "the settings fixture has to actually construct, or the assertion below "
+           + "passes on a nil and proves nothing -- optional chaining makes an absent object and a "
+           + "false answer identical")
+    expect(language?.options.count ?? 0 == 2,
+           "and it has to carry the choices, or `no manual entry` would be true because there is no "
+           + "list rather than because the list is closed")
+    expect(language?.offersManualEntry == false,
+           "AN APP SETTING IS THE OPPOSITE CASE AND THE REASON THE TWO ARE SEPARATE PROPERTIES: its "
+           + "choices come from QGC's own JSON and are exhaustive by construction. No firmware ships "
+           + "a language the list has not heard of, so a field there would offer an operator a way "
+           + "to write something the app cannot mean")
 }
 
 func checkADragKeepsTheItemsHeight() {

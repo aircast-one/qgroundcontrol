@@ -5,6 +5,9 @@ struct ParameterOption: Identifiable, Equatable {
     let raw: String
 
     var id: String { raw }
+
+    static let manualEntryHelp = "Set a value the list does not offer. Firmware accepts values "
+        + "before the metadata names them."
 }
 
 struct Parameter: Identifiable {
@@ -74,6 +77,15 @@ extension Parameter {
         if let refused = Measure.numberRefusal(entry) { return refused }
         return range.refusal(entry)
     }
+
+    // A vehicle parameter's enum list is not the set of values the firmware accepts. ArduPilot ships
+    // values ahead of the metadata that names them, which is why QGC's own editor carries an escape:
+    // ParameterEditorDialog.qml:240's manualEntry checkbox swaps the combo for a free-text field.
+    // Without it this is the one screen where "it is not in the list" is the answer somebody came
+    // for and the screen cannot give it -- the same shape as b09ed8fee. A typed value is bounded by
+    // refusal above, exactly as a numeric parameter's is; the escape widens what can be asked for,
+    // not what can be written unchecked. A parameter with no options already gets the field.
+    var offersManualEntry: Bool { !options.isEmpty }
 
     static func rawText(_ value: Any) -> String {
         guard let number = value as? NSNumber else { return "\(value)" }
