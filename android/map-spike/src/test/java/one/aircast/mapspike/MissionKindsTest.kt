@@ -58,3 +58,34 @@ class InsertedIndexTest {
         assertNull(insertOutcome(JSONObject("""{"ok":false,"reason":"no"}""")).index)
     }
 }
+
+class RemoveRefusalTest {
+
+    private fun outcome(json: String) = insertOutcome(JSONObject(json))
+
+    @Test
+    fun `a refusal carries the core's sentence rather than a generic failure`() {
+        val refused = outcome(
+            """{"ok":false,"reason":"The first entry holds the plan's own settings and cannot be removed."}""",
+        )
+
+        assertEquals(
+            "The first entry holds the plan's own settings and cannot be removed.",
+            refused.reason,
+        )
+    }
+
+    @Test
+    fun `a removal that happened carries no reason to show`() {
+        val done = outcome("""{"ok":true,"removed":3,"remaining":6}""")
+
+        assertEquals(true, done.ok)
+        assertEquals("", done.reason)
+    }
+
+    @Test
+    fun `an answer with no reason still says something`() {
+        assertEquals("The plan did not answer.", outcome("""{"ok":false}""").reason)
+        assertEquals("The plan did not answer.", insertOutcome(null).reason)
+    }
+}

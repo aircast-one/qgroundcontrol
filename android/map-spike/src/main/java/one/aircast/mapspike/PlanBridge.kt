@@ -191,6 +191,10 @@ object PlanBridge {
 
     fun removeItem(index: Int): Boolean = removeMissionItem(index).ok
 
+    fun removeItemRefusal(index: Int): String? = removeMissionItem(index).let { outcome ->
+        if (outcome.ok) null else outcome.reason
+    }
+
     fun selectSequence(sequence: Int): Boolean =
         invokeOk("$MISSION_CONTROLLER.setCurrentPlanViewSeqNum", "[$sequence, true]")
 

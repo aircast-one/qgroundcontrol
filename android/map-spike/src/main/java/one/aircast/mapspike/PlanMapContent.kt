@@ -184,6 +184,18 @@ internal fun MapSpikeScreen(
         }
     }
 
+    fun onRefusal(label: String? = null, work: () -> String?) {
+        busy = label
+        scope.launch {
+            val refusal = withContext(Dispatchers.Default) { work() }
+            busy = refusal
+            if (refusal != null) {
+                delay(FAILURE_MESSAGE_MS)
+            }
+            busy = null
+        }
+    }
+
     fun onBridge(label: String? = null, done: String? = null, work: () -> Boolean) {
         busy = label
         scope.launch {
@@ -878,7 +890,7 @@ internal fun MapSpikeScreen(
 
                         surveyHit?.let { hit ->
                             TextButton(onClick = {
-                                onBridge { PlanBridge.removeItem(hit.item) }
+                                onRefusal { PlanBridge.removeItemRefusal(hit.item) }
                                 selected = null
                             }) { Text("Delete ${patternName(hit.item, allItems)}") }
                         }
