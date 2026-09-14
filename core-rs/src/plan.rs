@@ -22,6 +22,9 @@ pub const DEPS: &[&str] = &[
     "plan.controllerVehicle.vtol",
     "plan.controllerVehicle.apmFirmware",
     "plan.controllerVehicle.homePosition",
+    "settings.appSettings.defaultMissionItemAltitude",
+    "settings.appSettings.offlineEditingCruiseSpeed",
+    "settings.appSettings.offlineEditingHoverSpeed",
 ];
 
 fn planning_for(backend: &dyn Backend) -> Value {
@@ -52,6 +55,32 @@ pub fn capability(backend: &dyn Backend, controller: &str) -> Option<bool> {
     known.then_some(supported)
 }
 
+// Mission.swift reads these three as raw Facts and rebuilds their units and bounds itself, then
+// picks a speed unit with `cruise.units ?? hover.units ?? "m/s"` - a guess for a case that cannot
+// arise, since App.SettingsGroup.json declares units on both. The guess is not the defect; the
+// re-derivation is. These go through control::decode, the same serialiser the settings controls
+// use, so the bounds and the unit are resolved once here rather than per reader.
+fn plan_default(backend: &dyn Backend, name: &str) -> Value {
+    let path = format!("settings.appSettings.{name}");
+    crate::control::decode(&object(&backend.get(&path)), &path)
+}
+
+fn defaults_json(backend: &dyn Backend) -> Value {
+    let altitude = plan_default(backend, "defaultMissionItemAltitude");
+    let cruise = plan_default(backend, "offlineEditingCruiseSpeed");
+    let hover = plan_default(backend, "offlineEditingHoverSpeed");
+    // One unit for both speeds, and null rather than a guess when the two disagree or neither
+    // reports - a speed drawn in an invented unit is worse than a speed drawn with none.
+    let unit_of = |c: &Value| c.get("units").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string);
+    let speed_units = match (unit_of(&cruise), unit_of(&hover)) {
+        (Some(c), Some(h)) if c == h => json!(c),
+        (Some(c), None) => json!(c),
+        (None, Some(h)) => json!(h),
+        _ => Value::Null,
+    };
+    json!({ "altitude": altitude, "cruise": cruise, "hover": hover, "speedUnits": speed_units })
+}
+
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
@@ -74,6 +103,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // object itself. Empty strings mean the controller has not resolved one, which is not the
         // same as a plan for no vehicle.
         "planningFor": planning_for(backend),
+        "defaults": defaults_json(backend),
         "readiness": readiness_json(readiness),
         "upload": upload_json(upload),
         "actions": {
@@ -154,6 +184,43 @@ fn status_text(name: Option<&str>, dirty: bool, offline: bool, has_items: bool) 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_plan_defaults_resolve_their_unit_once_instead_of_per_reader() {
+        struct Defaults(&'static str, &'static str);
+        impl Backend for Defaults {
+            fn get(&self, path: &str) -> String {
+                let speed = |units: &str| json!({ "kind": "fact", "name": "s", "value": 15.0, "valueString": "15.00", "units": units,
+                    "min": 1.0, "minIsDefaultForType": false, "max": 100.0, "maxIsDefaultForType": true, "decimalPlaces": 2 });
+                match path {
+                    "settings.appSettings.defaultMissionItemAltitude" => json!({ "kind": "fact", "name": "a", "value": 50.0, "valueString": "50", "units": "m",
+                        "min": 0.0, "minIsDefaultForType": false, "max": 1000.0, "maxIsDefaultForType": false, "decimalPlaces": 0 }).to_string(),
+                    "settings.appSettings.offlineEditingCruiseSpeed" => speed(self.0).to_string(),
+                    "settings.appSettings.offlineEditingHoverSpeed" => speed(self.1).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let agreed = defaults_json(&Defaults("m/s", "m/s"));
+        assert_eq!(agreed["speedUnits"], "m/s");
+        assert_eq!(agreed["altitude"]["units"], "m", "the altitude keeps its own unit; only the two speeds share one");
+        assert_eq!(agreed["cruise"]["valueString"], "15.00");
+        assert_eq!(agreed["altitude"]["minimum"], 0.0, "the bound travels decoded, so a head does not rebuild FactRange from min and minIsDefaultForType");
+        assert_eq!(agreed["altitude"]["maximum"], 1000.0);
+        assert_eq!(agreed["cruise"]["maximum"], Value::Null, "maxIsDefaultForType means the type's own limit rather than a real one, and offering it as a ceiling invents a rule the setting does not have");
+
+        let disagreeing = defaults_json(&Defaults("m/s", "ft/s"));
+        assert_eq!(disagreeing["speedUnits"], Value::Null, "two speeds in different units have no shared unit, and picking the first would draw one of them wrong");
+        assert_eq!(disagreeing["cruise"]["units"], "m/s", "each still carries its own, so nothing is lost by refusing to pick");
+
+        let silent = defaults_json(&Defaults("", ""));
+        assert_eq!(silent["speedUnits"], Value::Null, "Mission.swift falls back to \"m/s\" here; a guessed unit on a number an operator flies by is worse than none");
+    }
     use super::*;
     use std::collections::BTreeMap;
 
@@ -328,6 +395,7 @@ mod tests {
         assert_eq!(view["planningFor"]["type"], "Multi-Rotor", "a plan is edited against a vehicle even with none connected, and a head asking which one had to read the controller object itself");
         assert_eq!(view["planningFor"]["firmware"], "PX4 Pro");
         assert_eq!((view["planningFor"]["multiRotor"].clone(), view["planningFor"]["vtol"].clone(), view["planningFor"]["apmFirmware"].clone()), (json!(true), json!(false), json!(false)), "the reader branches on these three, so serving the names alone left it on plan.controllerVehicle and retired nothing");
+        assert!(view["defaults"]["altitude"]["path"].is_string(), "plan_view has to CARRY the defaults block; a head reads view.plan and never calls defaults_json, so testing that function alone leaves the wiring unpinned");
         assert_eq!(view["planningFor"]["home"]["valid"], true, "LaunchPosition subscripts home[\"valid\"]; serving the coordinate without it answers no-home for every vehicle that has one");
         assert_eq!(view["planningFor"]["home"]["latitude"], 47.397, "the sixth read on that group - five of six is not retirement");
 
