@@ -83,8 +83,10 @@ if(WIN32)
     set(GSTREAMER_PLUGIN_PATH "${GSTREAMER_LIB_PATH}/gstreamer-1.0")
     set(GSTREAMER_INCLUDE_PATH "${GStreamer_ROOT_DIR}/include")
 
-    set(ENV{PKG_CONFIG} "${GStreamer_ROOT_DIR}/bin")
-    set(PKG_CONFIG_EXECUTABLE "$ENV{PKG_CONFIG}/pkg-config.exe")
+    if(NOT CMAKE_CROSSCOMPILING)
+        set(ENV{PKG_CONFIG} "${GStreamer_ROOT_DIR}/bin")
+        set(PKG_CONFIG_EXECUTABLE "$ENV{PKG_CONFIG}/pkg-config.exe")
+    endif()
     set(ENV{PKG_CONFIG_PATH} "${GSTREAMER_LIB_PATH}/pkgconfig;${GSTREAMER_PLUGIN_PATH}/pkgconfig;$ENV{PKG_CONFIG_PATH}")
     list(APPEND PKG_CONFIG_ARGN
         --dont-define-prefix
