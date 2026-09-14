@@ -141,6 +141,7 @@ def refresh_clone():
 
 QUIET_SECONDS = 15
 MAX_TRACES = 8
+FLOOD_LINES = 5000
 TRACE_DIR = REPO / "build-test/hang-traces"
 
 
@@ -173,7 +174,14 @@ def stream(proc, latest):
     def pump():
         for line in proc.stdout:
             latest["at"], latest["line"] = time.monotonic(), line
-            latest["lines"].append(line)
+            latest["signals"] += "Received signal" in line
+            if latest["signals"] == FLOOD_LINES:
+                print(f"CRASH LOOP: {FLOOD_LINES:,} signal lines - killing pid {proc.pid}. "
+                      f"QTest's handler re-enters itself and never stops; everything after the "
+                      f"first fault is noise at two cores.", file=sys.stderr)
+                proc.kill()
+            if latest["signals"] < FLOOD_LINES:
+                latest["lines"].append(line)
     reader = threading.Thread(target=pump, daemon=True)
     reader.start()
     return reader
@@ -183,7 +191,7 @@ def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
-    latest = {"at": time.monotonic(), "line": "", "lines": []}
+    latest = {"at": time.monotonic(), "line": "", "lines": [], "signals": 0}
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         reader = stream(proc, latest)
