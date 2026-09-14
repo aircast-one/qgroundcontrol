@@ -98,24 +98,12 @@ ACCEPTED_BY_HEAD = {
             "already draws",
     },
     "macos": {
-        "distanceToVehicle": "MEASURED. This head draws distanceToVehicleText, which is the same "
-            "quantity already converted and spelled in the operator's unit. The raw metres and the unit "
-            "name beside it are for a head that formats its own numbers, and formatting a second time "
-            "here is the defect two-coordinate-serialisers removed",
-        "distanceToVehicleMeters": "See distanceToVehicle - the raw quantity behind the text this head "
-            "already draws",
-        "distanceToVehicleUnits": "See distanceToVehicle - the unit name behind the text this head "
-            "already draws",
-    },
-    "macos": {
-        "silentReason": "MEASURED and deliberately not adopted. VibrationReading already draws both "
-            "cases and has since before this field existed: connected spells 'This vehicle is not "
-            "reporting vibration.' and not-connected spells the connect prompt. The distinction is "
-            "keyed on the CONNECTED FLAG, a fact, where adopting the served sentence would key the "
-            "screen's only remaining choice on the wording of a translatable string. The two "
-            "reachable empty states are exactly those two -- with a vehicle reporting axes the "
-            "screen is not empty and no reason is shown -- so the extra combinations the core "
-            "distinguishes have nowhere to appear here. A token beside the sentence would be read",
+        "defaultText": "MEASURED and deliberately undrawn. It is the value a fact would return TO, "
+            "and nothing in this head offers a reset: the plan defaults are three plain value fields "
+            "and the settings pages edit in place. A row that showed what it would revert to without "
+            "offering the revert describes an action the operator cannot take from that screen -- the "
+            "console case, where a sentence implying something impossible is worse than silence. It "
+            "becomes worth reading the day one of those screens grows a Reset control",
         "distanceToVehicle": "MEASURED. This head draws distanceToVehicleText in the Fly panel, "
             "which is the same quantity already converted and labelled in the operator's unit. This "
             "is the NUMBER behind it, for a head that formats its own; formatting it a second time "

@@ -201,25 +201,26 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         watchViews()
         let read = MissionSummary(Bridge.group("view.missionSummary"))
         if read != summary { summary = read }
-        // Three settings facts that were read raw for their value, unit and bounds. view.control
-        // carries all three, and its minimumText/maximumText are gated on the same flags as
-        // minimum/maximum -- which the raw minString is NOT, so the strings these used to reach
-        // for would have spelled a floor of -3.4e38 on any fact that declares none.
-        let altitudeFact = Bridge.group("view.control(settings.appSettings.defaultMissionItemAltitude)")
+        // view.plan carries all three plan defaults as full controls, and it was already in hand
+        // eight lines above, so 2dfaf7cf2's three separate view.control fetches are gone rather
+        // than merely moved off Qt. speedUnits comes with them: this used to be cruise ?? hover ??
+        // a literal, which is a derivation, and the two facts it chose between can only differ if
+        // something upstream is already wrong.
+        let defaults = (planView["defaults"] as? [String: Any]) ?? [:]
+        let altitudeFact = (defaults["altitude"] as? [String: Any]) ?? [:]
         defaultAltitude = (altitudeFact["valueString"] as? String) ?? ""
         defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.defaultUnits
         altitudeRange = FactRange(control: altitudeFact, title: "The altitude for new items")
 
         let planningFor = planView["planningFor"] as? [String: Any]
         vehicle = MissionVehicle(planningFor: planningFor) ?? .unknown
-        let cruiseFact = Bridge.group("view.control(settings.appSettings.offlineEditingCruiseSpeed)")
+        let cruiseFact = (defaults["cruise"] as? [String: Any]) ?? [:]
         cruiseSpeed = (cruiseFact["valueString"] as? String) ?? ""
         cruiseRange = FactRange(control: cruiseFact, title: "Cruise speed")
-        let hoverFact = Bridge.group("view.control(settings.appSettings.offlineEditingHoverSpeed)")
+        let hoverFact = (defaults["hover"] as? [String: Any]) ?? [:]
         hoverSpeed = (hoverFact["valueString"] as? String) ?? ""
         hoverRange = FactRange(control: hoverFact, title: "Hover speed")
-        speedUnits = (cruiseFact["units"] as? String)
-            ?? (hoverFact["units"] as? String) ?? ItemSpeed.metresPerSecond
+        speedUnits = (defaults["speedUnits"] as? String) ?? ItemSpeed.metresPerSecond
         launch = LaunchPosition(planningForHome: planningFor?["home"], item: listed.first ?? [:])
         canUndo = (planView["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (planView["canRedo"] as? NSNumber)?.boolValue ?? false

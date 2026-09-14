@@ -96,6 +96,7 @@ continuous
 control
 coordinate
 count
+cruise
 current
 currentText
 dangerLevel
