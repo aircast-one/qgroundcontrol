@@ -217,19 +217,20 @@ enum PlanShapeAbsence {
 // The breach return point is a QGeoCoordinate, whose altitude is METRES by definition, while the
 // altitude the operator types is a Fact carrying a cooked value in their own unit. Reading one
 // for the other is invisible in metric and 3.28x wrong in feet, so the two are named apart here
-// rather than both being "the altitude". The metric half is the fact's rawValue, which is not a
-// guarded answer -- rawValue is whatever the fact counts, so it would answer a question about
-// metres for one measured in degrees just as confidently. A served field gated on the unit would
-// be the guard this head cannot reach. 0a3b35375 adopted one -- it has never existed in any
-// commit, and what it was read from was a peer's uncommitted working tree, since reverted. This
-// reads rawValue until a gated field lands COMMITTED, checked with git show HEAD:.
+// rather than both being "the altitude". The metric half is valueMeters and not the fact's
+// rawValue: rawValue is whatever the fact counts, so it would answer a question about metres for
+// one measured in degrees just as confidently, and a coordinate fed that number puts the point
+// somewhere nobody asked for. The core gates it on rawUnits naming a length -- m, meter, meters,
+// vertical m -- and serves null for everything else including m^2 and cm/px, which is the guard
+// this head cannot reach. Landed in 070f7b046 after 0a3b35375 adopted the same field an hour
+// before it existed in any commit and cd0af58c6 took it back out.
 enum BreachReturn {
     static func shownAltitude(_ control: [String: Any]) -> Double? {
         (control["value"] as? NSNumber)?.doubleValue
     }
 
     static func altitudeMetres(_ control: [String: Any]) -> Double? {
-        (control["rawValue"] as? NSNumber)?.doubleValue
+        (control["valueMeters"] as? NSNumber)?.doubleValue
     }
 
     static func altitudeUnits(_ control: [String: Any]) -> String {
@@ -239,7 +240,7 @@ enum BreachReturn {
     static let altitudeSubject = "A breach return altitude"
 
     static func range(_ control: [String: Any]) -> FactRange {
-        FactRange(control, title: BreachReturn.altitudeSubject)
+        FactRange(control: control, title: BreachReturn.altitudeSubject)
     }
 
     static func decimals(_ control: [String: Any]) -> Int? {

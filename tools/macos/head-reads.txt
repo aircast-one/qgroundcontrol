@@ -407,6 +407,7 @@ up
 usable
 valid
 value
+valueMeters
 valueString
 valueText
 vehicleId
