@@ -23,6 +23,21 @@ the hard way, this reports five and misses confidence for that reason.
 It matches a field by NAME across all of macos/Sources rather than per view, so a name this head
 reads for one view counts as read for every view. That UNDER-reports and never invents.
 
+MEASURED, so the obvious fix is not attempted again: 146 of the 730 distinct field names in the
+contract appear under more than one view root, so that blind hemisphere is a fifth of the object,
+and it has cost something real -- altitudeMetres was served on view.missionItems and unread there
+while AdsbModel read a field of the same name from view.adsbTraffic, which is how a launch
+position came to be written from the core's fallback altitude (c5daab20c). Scoping the match to
+the model head_models.MODELS names for that view root WAS then measured against the whole
+contract and reports 223 fields, nearly all of them envelope keys -- class, kind, available,
+canUndo -- that a STORE file decodes rather than the model. Models and stores split the decoding
+between them, and MODELS maps a view to its model alone, so the strict version is a detector at a
+bad ratio. It is not built. The under-reporting stays until something maps a view to every file
+that reads it.
+
+Two limits compound: this reports only fields ADDED since SINCE, so a name-collision from before
+that line is invisible on both counts.
+
 Usage: python3 tools/macos/served-unread.py
 """
 import json

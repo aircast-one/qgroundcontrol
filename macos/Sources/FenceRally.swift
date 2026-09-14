@@ -13,7 +13,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var connected = false
     @Published private(set) var breachReturn: RallyPointRow?
     @Published private(set) var firmwareFence: FirmwareFence?
-    @Published private(set) var breachRange = FactRange(control: [:], title: BreachReturn.altitudeSubject)
+    @Published private(set) var breachRange = FactRange([:], title: BreachReturn.altitudeSubject)
     @Published private(set) var breachDecimals: Int?
     @Published private(set) var status = ""
     @Published private(set) var syncing = false
@@ -85,7 +85,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
         set(\.breachReturn, (read["breachReturnPoint"] as? [String: Any])
             .map { RallyPointRow(coordinate: $0) })
-        let breachFact = Bridge.group("view.control(plan.geoFenceController.breachReturnAltitude)")
+        let breachFact = Bridge.group("plan.geoFenceController.breachReturnAltitude")
         set(\.breachAltitude, BreachReturn.shownAltitude(breachFact))
         set(\.breachAltitudeMetres, BreachReturn.altitudeMetres(breachFact))
         set(\.breachAltitudeUnits, BreachReturn.altitudeUnits(breachFact))
@@ -175,9 +175,13 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
             return "The map has not settled yet, so there is nowhere to put it."
         }
 
+        guard let altitude = breachAltitudeMetres else {
+            return "The breach return altitude has not been read yet, so there is no height to "
+                + "put it at."
+        }
         write("plan.geoFenceController.breachReturnPoint",
               ["latitude": centre.latitude, "longitude": centre.longitude,
-               "altitude": breachAltitudeMetres ?? 0], "the breach return point")
+               "altitude": altitude], "the breach return point")
         reload()
         return breachReturn == nil ? "The breach return point was not accepted." : nil
     }
