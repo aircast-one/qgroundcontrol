@@ -164,10 +164,10 @@ endif()
 # Change these to something else at your own risk. Anything other than what is specified 
 # here is unsupported so don't expect any help with problems.
 
-if(QGC_ENABLE_HERELINK AND ANDROID)
+if(ANDROID)
     set(QGC_QT_MINIMUM_VERSION "6.6.3" CACHE STRING "Minimum Supported Qt Version")
     set(QGC_QT_MAXIMUM_VERSION "6.6.3" CACHE STRING "Maximum Supported Qt Version")
-    set(QGC_QT_ANDROID_MIN_SDK_VERSION "25" CACHE STRING "Android Min SDK Version")
+    set(QGC_QT_ANDROID_MIN_SDK_VERSION "23" CACHE STRING "Android Min SDK Version")
 else()
     set(QGC_QT_MINIMUM_VERSION "6.8.3" CACHE STRING "Minimum Supported Qt Version")
     set(QGC_QT_MAXIMUM_VERSION "6.8.3" CACHE STRING "Maximum Supported Qt Version")
