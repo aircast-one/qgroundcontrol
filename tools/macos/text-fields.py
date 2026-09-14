@@ -89,6 +89,14 @@ def texts(value):
 
 
 registry = re.findall(r'View\s*\{\s*path:\s*"([^"]+)"', (ROOT / "core-rs/src/view.rs").read_text())
+# SOURCES is sys.argv[1] and the glob below is not, so an Android root scanned for *.swift matched
+# nothing and the head read as drawing nothing. text-fields printed "-1 drawn, 29 undrawn" -- a
+# negative count is at least unbelievable, but it came with 29 false UNDRAWN findings. Refuse
+# instead: a predicate that cannot reach a head has measured nothing, not found nothing.
+if not any(SOURCES.rglob("*.swift")):
+    raise SystemExit(f"no *.swift under {SOURCES}: this script reads the Swift head and has measured "
+                     "nothing here rather than found nothing")
+
 named = "\n".join(path.read_text() for path in sorted(SOURCES.glob("*.swift")))
 
 served, silent = set(), []
