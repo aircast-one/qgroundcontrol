@@ -3,6 +3,7 @@
 #include "QGCHostNotices.h"
 
 #include <QtCore/QVariantMap>
+#include <QtCore/QtNumeric>
 
 #include "Fact.h"
 #include "LinkManager.h"
@@ -659,9 +660,19 @@ QJsonObject writePath(const QString &path, const QVariant &value)
                 { QStringLiteral("reason"), QStringLiteral("%1 needs latitude and longitude").arg(resolved.property) },
             };
         }
-        const QGeoCoordinate coordinate(point.value(QStringLiteral("latitude")).toDouble(),
-                                        point.value(QStringLiteral("longitude")).toDouble(),
-                                        point.value(QStringLiteral("altitude")).toDouble());
+        // A two-dimensional payload leaves the altitude UNSET rather than at sea level. An absent key
+        // is an empty QVariant and a null one converts the same way, so toDouble() answers 0.0 for
+        // both - which spells "no height given" and "on the ground" identically. Every caller that
+        // stores the whole coordinate then writes a real zero: MissionSettingsItem keeps all three
+        // components and MissionController saves the launch point with writeAltitude true, so a
+        // dragged launch point saved and reopened sits at zero. QGC's own QML carries one line for
+        // exactly this, MissionItemIndicatorDrag.qml:57 restoring the altitude before the write.
+        const QVariant height = point.value(QStringLiteral("altitude"));
+        bool numeric = false;
+        const double metres = height.toDouble(&numeric);
+        const QGeoCoordinate coordinate = (numeric && qIsFinite(metres))
+            ? QGeoCoordinate(point.value(QStringLiteral("latitude")).toDouble(), point.value(QStringLiteral("longitude")).toDouble(), metres)
+            : QGeoCoordinate(point.value(QStringLiteral("latitude")).toDouble(), point.value(QStringLiteral("longitude")).toDouble());
         const bool placed = resolved.object->setProperty(name.constData(), QVariant::fromValue(coordinate));
         return QJsonObject {
             { QStringLiteral("ok"), placed },
