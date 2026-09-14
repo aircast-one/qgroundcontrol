@@ -111,6 +111,11 @@ struct ConnectionsSection: View {
                         .font(.caption)
                         .foregroundColor(.red)
                 }
+                if !link.remedySentence.isEmpty {
+                    Text(link.remedySentence)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             Spacer()
 
@@ -120,11 +125,21 @@ struct ConnectionsSection: View {
             Button(link.connected ? "Disconnect" : "Connect") {
                 link.connected ? store.disconnect(link) : store.connect(link)
             }
-            Button(store.editingIndex == link.id ? "Done" : "Edit") {
-                store.editingIndex = store.editingIndex == link.id ? nil : link.id
+            // The remedy decides which button is the loud one. Connect is the wrong thing to
+            // emphasise for a link that cannot connect until its address changes.
+            if link.needsAddressEdit && store.editingIndex != link.id {
+                editButton(link).buttonStyle(.borderedProminent)
+            } else {
+                editButton(link)
             }
         }
         .padding(.vertical, 7)
+    }
+
+    private func editButton(_ link: LinkConfig) -> some View {
+        Button(store.editingIndex == link.id ? "Done" : "Edit") {
+            store.editingIndex = store.editingIndex == link.id ? nil : link.id
+        }
     }
 
     private func portField(_ link: LinkConfig) -> some View {

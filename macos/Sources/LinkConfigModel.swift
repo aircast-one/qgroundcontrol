@@ -39,6 +39,7 @@ struct LinkConfig: Identifiable, Equatable {
     let filename: String
     let logFileName: String
     let lastError: String
+    let errorRemedy: String
 
     var id: Int { index }
 
@@ -68,6 +69,7 @@ struct LinkConfig: Identifiable, Equatable {
         filename = (json["filename"] as? String) ?? ""
         logFileName = (json["logFileName"] as? String) ?? ""
         lastError = (json["lastError"] as? String) ?? ""
+        errorRemedy = (json["errorRemedy"] as? String) ?? ""
     }
 
     enum Health {
@@ -106,5 +108,20 @@ enum LinkTypes {
     static func refusal(_ entry: String, serial: Bool) -> String? {
         guard !accepts(entry, serial: serial) else { return nil }
         return serial ? "Choose a baud rate." : "Port must be between 1 and 65535."
+    }
+}
+
+// A failed link was telling the operator what went wrong and then offering them Connect, which for
+// three of TCPLink's cases -- no address, host not found, nothing listening on the port -- is an
+// invitation to retry a configuration that cannot succeed until it is changed. QGC's own
+// MainStatusIndicatorOfflinePage branches on this and sends them to edit the address instead.
+extension LinkConfig {
+    var needsAddressEdit: Bool { !lastError.isEmpty && errorRemedy == "editAddress" }
+
+    // Only the editAddress case earns a second line. "retry" is what the Connect button already
+    // says, and a sentence telling someone to press the button in front of them is the noise that
+    // teaches operators to stop reading this row.
+    var remedySentence: String {
+        needsAddressEdit ? "Retrying will not help until the address is changed." : ""
     }
 }

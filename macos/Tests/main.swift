@@ -4500,6 +4500,32 @@ func checkTheShutterSaysWhichCaptureItStarted() {
 }
 checkTheShutterSaysWhichCaptureItStarted()
 
+func checkALinkThatCannotConnectIsNotOfferedConnect() {
+    let base: [String: Any] = ["index": 1 as NSNumber, "name": "Ground", "type": "TCP"]
+
+    let unreachable = LinkConfig(base.merging(["lastError": "Host not found.",
+                                               "errorRemedy": "editAddress"]) { _, b in b })
+    expect(unreachable?.needsAddressEdit == true,
+           "TCPLink raises editAddress for no address, host not found and nothing listening -- "
+           + "three configurations that cannot succeed until they are changed, and the row was "
+           + "offering Connect as though pressing it again were the fix")
+    expect(unreachable?.remedySentence ?? "", "Retrying will not help until the address is changed.",
+           "so the operator is told that before they spend a minute on the button")
+
+    let busy = LinkConfig(base.merging(["lastError": "Port in use.",
+                                        "errorRemedy": "retry"]) { _, b in b })
+    expect(busy?.remedySentence ?? "", "",
+           "a retryable failure earns NO second line: Connect already says retry, and a sentence "
+           + "telling someone to press the button in front of them is the noise that teaches "
+           + "operators to stop reading this row")
+
+    let healthy = LinkConfig(base)
+    expect(healthy?.needsAddressEdit == false,
+           "and a link with no error has no remedy at all -- a stale remedy beside an empty error "
+           + "would draw a fix-this prompt on a working link")
+}
+checkALinkThatCannotConnectIsNotOfferedConnect()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.

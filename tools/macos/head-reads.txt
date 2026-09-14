@@ -123,6 +123,7 @@ enabled
 endsRoute
 eraseWarning
 error
+errorRemedy
 exitCoordinate
 exportKml
 extraSeconds

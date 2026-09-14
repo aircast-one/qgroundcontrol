@@ -136,7 +136,10 @@ extension LinksStore {
                                "summary": $0.displaySummary, "connected": $0.connected,
                                "heardVehicle": $0.heardVehicle, "statusLine": $0.statusLine,
                                "health": "\($0.health)",
-                               "autoConnect": $0.autoConnect, "lastError": $0.lastError] }]
+                               "autoConnect": $0.autoConnect, "lastError": $0.lastError,
+                               "errorRemedy": $0.errorRemedy,
+                               "needsAddressEdit": $0.needsAddressEdit,
+                               "remedySentence": $0.remedySentence] }]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
