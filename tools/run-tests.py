@@ -38,6 +38,30 @@ def newest_source_mtime():
     return max((p.stat().st_mtime for p in (*files, *manifests)), default=0.0)
 
 
+SIBLING_RUNNERS = ("run-tests.py", "run-suite-f.sh")
+
+
+def ancestry():
+    def climb(pid, seen):
+        parent = subprocess.run(["ps", "-o", "ppid=", "-p", pid], capture_output=True, text=True)
+        up = parent.stdout.strip()
+        return seen if not up or up in seen or up == "0" else climb(up, seen | {up})
+    return climb(str(os.getpid()), {str(os.getpid())})
+
+
+def sibling_run():
+    mine = ancestry()
+    listed = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
+    rows = [line.split(None, 1) for line in listed.splitlines() if line.split(None, 1)]
+    others = [(pid, cmd) for pid, cmd in rows
+              if pid not in mine and any(name in cmd for name in SIBLING_RUNNERS) and "-axo" not in cmd]
+    if not others:
+        return None
+    return (f"another suite is already running: pid {others[0][0]} - {others[0][1][:70]}. "
+            f"Two full runs on one box is the contention that produces false timeouts and "
+            f"SIGSEGV loops in link suites. Wait for it, or ask that session to stop.")
+
+
 def port_contention():
     held = subprocess.run(["lsof", "-nP", "-iUDP:14550"], capture_output=True, text=True)
     holders = [line.split()[0] for line in held.stdout.splitlines()[1:] if line.split()]
@@ -318,7 +342,7 @@ def main():
               or "  no flakes recorded")
         return 0
 
-    contention = port_contention()
+    contention = sibling_run() or port_contention()
     # This used to be a WARNING printed above the totals, which is not enough. The link suites bind
     # 14550, and a held port produces reds that look like regressions -- eight of them historically,
     # every one attributed to something other than the port before anyone named the cause. A warning
