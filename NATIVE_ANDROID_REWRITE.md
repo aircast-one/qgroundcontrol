@@ -3051,7 +3051,7 @@ the `view.gcsPosition` split where one `available` answered two questions.
 Nothing safety-shaped should key on the first. This head binds to neither — `view.coreVehicle`
 has no consumer in `android/` at all — so nothing needed changing here.
 
-### The geotag trigger count is still unproven above zero, and every link checks out, 2026-09-14
+### The geotag trigger count read zero for a log full of triggers, 2026-09-14
 
 `view.geoTag` reports `triggerCount: 0` for every telemetry log this rig can produce, so the
 number the screen exists to show cannot be told from a counter stuck at zero. Narrowed as far
@@ -3109,11 +3109,15 @@ than from the file**, and `undecodableFrames` likewise, since both are only ever
 So both numbers I had been reading were staging artefacts rather than measurements — which is
 why the count was zero and the counter that should have objected was silent.
 
-The fix is theirs and is not at HEAD as of this entry: serve the counts the view has already
-measured instead of the session's copy, pinned by a synthetic one-frame log asserting 1 rather
-than 0. **Nothing changes on this head** — the screen already reads `triggerCount` and will
-start saying "32 camera triggers recorded" for that log when the fix lands. The caveat in
-`6fa7e7d64` stands until it does.
+The fix was theirs and landed in `c518b4b68`: serve the counts the view has already measured
+instead of the session's copy. **Nothing changed on this head** — the screen already read
+`triggerCount`. Verified on the handset against the same file rather than taken on trust:
+
+    view.geoTag on 2026-09-14 08-08-41.tlog, 179928 bytes
+    readable true, triggerCount 32, undecodableFrames 0
+
+which `geoTagSummary` renders as "32 camera triggers recorded." The caveat in `6fa7e7d64` is
+spent.
 
 **Why four earlier attempts failed, which is the reusable part.** My checks were about four
 different artefacts — the wire, the app's parser, the code path, and *a file* — and nothing
