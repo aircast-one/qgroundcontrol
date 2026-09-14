@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcDouble
@@ -194,7 +193,7 @@ private fun EmptyState(message: String, detail: String, modifier: Modifier = Mod
 
 @Composable
 fun VibrationScreen(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val hasVehicle = hasVehicle()
     val view by qgcPath(VIBRATION)
     val reading = remember(view) { vibrationReading(view) }
     val reporting = reading?.axes?.any { it.value != null } == true

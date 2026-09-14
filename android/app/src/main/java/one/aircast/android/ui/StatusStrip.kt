@@ -14,7 +14,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcPath
@@ -94,7 +93,7 @@ private fun gpsColour(fix: FixLevel): Color = when (fix) {
 
 @Composable
 fun StatusReadingsInline(modifier: Modifier = Modifier) {
-    val available by qgcBool("vehicles.activeVehicleAvailable")
+    val available = hasVehicle()
     if (!available) return
 
     val stateJson by qgcPath(FLY_STATE)

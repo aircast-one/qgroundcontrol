@@ -245,7 +245,7 @@ private fun RunningCalibration(
 
 @Composable
 fun SensorsScreen(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val hasVehicle = hasVehicle()
     val isPx4 by qgcBool("vehicle.px4Firmware")
     val json by qgcPath(CALIBRATION)
     val healthJson by qgcPath(SENSOR_HEALTH)

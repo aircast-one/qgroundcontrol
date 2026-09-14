@@ -184,7 +184,7 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FlightActions(modifier: Modifier = Modifier) {
-    val available by qgcBool("vehicles.activeVehicleAvailable")
+    val available = hasVehicle()
     val armed by qgcBool("vehicle.armed")
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
     var refusal by remember { mutableStateOf<String?>(null) }

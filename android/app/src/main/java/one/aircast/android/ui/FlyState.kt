@@ -1,5 +1,9 @@
 package one.aircast.android.ui
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
@@ -36,4 +40,10 @@ internal fun vehicleSubtitle(state: FlyState?): String = when {
     state == null || !state.connected -> "No vehicle"
     state.contactLost -> state.stateText
     else -> listOfNotNull(state.mode.ifBlank { null }, state.stateText).joinToString(" · ")
+}
+
+@Composable
+internal fun hasVehicle(): Boolean {
+    val view by qgcPath(FLY_STATE)
+    return remember(view) { flyState(view)?.connected == true }
 }

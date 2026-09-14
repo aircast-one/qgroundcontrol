@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMain
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcString
 import one.aircast.mapspike.optText

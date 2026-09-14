@@ -34,7 +34,6 @@ import java.util.Locale
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.optText
 
@@ -186,7 +185,7 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun InspectorScreen(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val hasVehicle = hasVehicle()
     val inspectorJson by qgcPath(INSPECTOR_VIEW)
     var openPath by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf("") }

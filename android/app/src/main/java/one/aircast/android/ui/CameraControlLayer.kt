@@ -26,7 +26,6 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import androidx.compose.runtime.remember
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
 
 private const val REFUSAL_MS = 4000L
@@ -35,7 +34,7 @@ private const val MANAGER = "vehicle.cameraManager"
 
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val hasVehicle = hasVehicle()
     val current by qgcDouble("$MANAGER.currentCamera", 0.0)
     val cameraJson by qgcPath(CAMERA_VIEW)
     val camera = remember(cameraJson) { cameraReading(cameraJson) }

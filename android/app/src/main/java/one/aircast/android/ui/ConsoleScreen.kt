@@ -77,7 +77,7 @@ internal fun shouldFollowTail(lastVisibleIndex: Int?, count: Int): Boolean =
 
 @Composable
 fun ConsoleScreen(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val hasVehicle = hasVehicle()
     val isPx4 by qgcBool("vehicle.px4Firmware")
     val consoleJson by qgcPath(CONSOLE_VIEW)
     val rawLines = remember(consoleJson) { consoleLines(consoleJson) }

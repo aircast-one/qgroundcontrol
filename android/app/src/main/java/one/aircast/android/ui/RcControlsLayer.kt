@@ -138,7 +138,7 @@ private fun RcMomentary(control: RcControl) {
 
 @Composable
 fun RcControlsLayer(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val hasVehicle = hasVehicle()
     val configured by qgcString(RC_CONTROLS_FACT)
     val controls = remember(configured) { parseRcControls(configured) }
     val overriding by qgcBool("vehicle.rcChannelOverrideActive")

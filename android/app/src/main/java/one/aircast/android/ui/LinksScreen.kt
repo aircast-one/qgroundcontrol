@@ -47,7 +47,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcStrings
 import one.aircast.mapspike.optText
@@ -508,7 +507,7 @@ private fun connectNamed(name: String): Boolean {
 @Composable
 fun LinksScreen(modifier: Modifier = Modifier) {
     val view by qgcPath(LINKS_VIEW)
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val hasVehicle = hasVehicle()
     val rows = linkRows(view)
     val scope = rememberCoroutineScope()
 
