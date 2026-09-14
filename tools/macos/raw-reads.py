@@ -32,6 +32,11 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCES = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "macos/Sources"
+# The path was already an argument and the SUFFIX was not, so passing an Android root scanned for
+# *.swift under a tree of *.kt, found nothing, and reported "0 non-view paths read by this head" --
+# a confident zero about a head with 53 of them. Derived from the tree rather than passed, so the
+# two cannot disagree.
+SUFFIX = "*.kt" if any(SOURCES.rglob("*.kt")) else "*.swift"
 CORE = ROOT / "core-rs/src"
 
 # A raw read kept on purpose. Each reason names what the view does NOT cover, and a view that
@@ -80,8 +85,12 @@ def fold(name):
 served = {fold(v.split(".", 1)[1].split("(")[0]): v for v in views() if "." in v}
 
 reads = {}
-for source in sorted(SOURCES.glob("*.swift")):
-    for match in re.finditer(r'Bridge\.group\("([^"]+)"', source.read_text()):
+for source in sorted(SOURCES.rglob(SUFFIX)):
+    # Bridge.group on the Swift head, Qgc.group on the Kotlin one. The predicate is deliberately
+    # narrow -- it does not follow the typed helpers (qgcBool, qgcDouble, qgcString, qgcPath), so
+    # this undercounts BOTH heads and is a floor rather than a census. Widening it changes the
+    # macOS answer and is the head author's call, not this edit's.
+    for match in re.finditer(r'(?:Bridge|Qgc)\.group\("([^"]+)"', source.read_text(errors="replace")):
         path = match.group(1)
         if path.startswith("view.") or "\\(" in path:
             continue
@@ -90,6 +99,14 @@ for source in sorted(SOURCES.glob("*.swift")):
 hits = [(path, sorted(files), served[fold(path.rsplit(".", 1)[-1])])
         for path, files in sorted(reads.items())
         if fold(path.rsplit(".", 1)[-1]) in served and path not in ACCEPTED]
+
+if not reads:
+    raise SystemExit(
+        f"no {SUFFIX} file under {SOURCES} contains a `group(\"literal\")` call, so this script has "
+        "measured nothing rather than found nothing. The Kotlin head reads through the typed helpers "
+        "(qgcBool, qgcDouble, qgcString, qgcPath) at 83 sites and calls Qgc.group at zero, so the "
+        "predicate does not reach it. A zero here would have read as `Android has no raw reads`, "
+        "which is false by 53.")
 
 stale = [f"{path!r} is accepted and this head no longer reads it"
          for path in sorted(ACCEPTED) if path not in reads]
