@@ -7835,3 +7835,23 @@ uses 3.28084.
 
 Found by looking, on an emulator whose profile is imperial. Reading the enum
 took one command and I had not run it.
+
+### What a partial-telemetry vehicle verified, 2026-09-14
+
+A vehicle sending only HEARTBEAT, SYS_STATUS and GLOBAL_POSITION_INT - no
+parameters, no home, no GPS_RAW_INT, no VIBRATION - reached three states the
+complete rig cannot, because apmvehicle.py sends all of those.
+
+| screen | state | result |
+|---|---|---|
+| status strip | position known, satellites unknown, no lock | **defect**: "No fix sats", fixed in 510cca7ad |
+| telemetry row | distanceToHome uncomputable with no home | **defect**: "--.-- ft", reported and taken by the core |
+| vibration | connected and sending no VIBRATION | correct: the core's sentence as the title, this head's instruction as the body, chosen by the token |
+| inspector | three message types from system 1 | correct: "System 1" above the list |
+| guided actions | no lock, no home, disarmed | correct: arm and takeoff ready, every sheet action hidden, so the Actions sheet holds only the checklist |
+| preflight | battery absent, sensors healthy, no 3D lock | correct: a warning and the core's reason per failing item, a tick per passing one |
+
+**The pattern is that a complete rig hides the states a head has to handle.**
+Every defect on this list is a case where something the vehicle did not send
+reached the screen as a value rather than an absence. Two of the four screens
+were shipped earlier tonight and had never been seen in these states.
