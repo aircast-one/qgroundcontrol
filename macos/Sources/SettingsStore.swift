@@ -10,8 +10,6 @@ final class SettingsStore: ObservableObject, Probeable, WriteReporting {
     @Published var selected: SettingsPage.ID?
     @Published var search = "" { didSet { refresh() } }
 
-    private var cache: [String: [SettingsSection]] = [:]
-
     func load() {
         let read = SettingsPage.list(Bridge.group("view.settings")["pages"])
         guard !read.isEmpty else {
@@ -25,7 +23,6 @@ final class SettingsStore: ObservableObject, Probeable, WriteReporting {
         if selected == nil || !read.contains(where: { $0.id == selected }) {
             selected = read.first?.id
         }
-        cache.removeAll()
         refresh()
     }
 
@@ -36,11 +33,8 @@ final class SettingsStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func sections(of page: String) -> [SettingsSection] {
-        if let cached = cache[page] { return cached }
-        let read = SettingsSection.list(Bridge.group("view.settings(\(page))")["sections"])
+        SettingsSection.list(Bridge.group("view.settings(\(page))")["sections"])
             .filter { !$0.controls.isEmpty }
-        cache[page] = read
-        return read
     }
 
     private func currentPage() -> [SettingsSection] {
@@ -66,7 +60,7 @@ final class SettingsStore: ObservableObject, Probeable, WriteReporting {
     }
 
     // A Fact can clamp or refuse a value, so the written value is not necessarily the
-    // stored one. Drop the cache and read back rather than trusting local state.
+    // stored one. Read back rather than trusting local state.
     func write(_ control: SettingsControl, _ value: Any) {
         guard !control.readOnly else {
             writeFailure = FactWrite.readOnly
@@ -77,7 +71,6 @@ final class SettingsStore: ObservableObject, Probeable, WriteReporting {
             return
         }
         write(control.path, value, control.label)
-        cache.removeAll()
         refresh()
     }
 }
