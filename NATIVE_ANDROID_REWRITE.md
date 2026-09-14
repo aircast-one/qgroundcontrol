@@ -3083,12 +3083,20 @@ less than it appears.
 Same file. The walker was validated before being believed — a sane heartbeat count for the
 session length, and id180=0 on an earlier log where the core also says zero.
 
-The frames are MAVLink2 with **payload length 43 against pymavlink's declared 47**, which is
-legal trailing-zero truncation of the `completed_captures` extension. A conformant parser
-zero-extends. That is a lead rather than a diagnosis — I have not read the crate's decode path.
+**The truncation theory was wrong and is withdrawn.** The frames are MAVLink2 at payload
+length 43 against pymavlink's declared 47, which I read as the parser choking on a truncated
+extension field. The core session encoded one with the rust crate and got 44 — the crate
+truncates trailing zeros itself on write, so 43 is one more zero, not a different class of
+thing. And all 32 frames **pass an X25 CRC check against CAMERA_FEEDBACK's crc_extra of 52**,
+computed over the truncated payload, so they are well-formed by MAVLink2 rules and sit at real
+frame boundaries. My walker is not inventing them and the crate has no reason to reject them.
 
-**`undecodableFrames` stayed 0 for all 32**, so a message the parser cannot map is
-indistinguishable from one that was never sent. I trusted that zero for hours.
+**`undecodableFrames` at 0 means less than I said, and something more specific.** I wrote
+"nothing objected". On `tlog::for_each` the counter increments on every decode error before
+resyncing a byte at a time, so 32 undecodable frames would have shown at least 32. Zero there
+means **nothing was ever offered to the decoder** — the frames either decode and are lost after,
+or are never reached. Both are different defects from the one I reported, and neither is
+visible from outside the core.
 
 **Why four earlier attempts failed, which is the reusable part.** My checks were about four
 different artefacts — the wire, the app's parser, the code path, and *a file* — and nothing
