@@ -481,10 +481,10 @@ mod tests {
                 .split_once(&format!("enum {name}"))
                 .and_then(|(_, rest)| rest.split_once('{'))
                 .and_then(|(_, body)| body.split_once('}'))
-                .map(|(body, _)| body.to_string())
+                .map(|(body, _)| body.lines().map(|line| line.split("//").next().unwrap_or("")).collect::<Vec<_>>().join(" "))
                 .unwrap_or_default()
                 .split(',')
-                .map(|entry| entry.split("//").next().unwrap_or("").trim().to_string())
+                .map(|entry| entry.trim().to_string())
                 .filter(|entry| !entry.is_empty())
                 .scan(0i64, |next, entry| {
                     let (name, value) = match entry.split_once('=') {

@@ -422,4 +422,9 @@ mod walking {
     fn an_item_with_no_segments_is_left_to_its_entry_point() {
         assert!(along_segments(&Pattern(json!({ "kind": "null" })), 1, 3, 0.0).is_empty());
     }
+    #[test]
+    fn the_terrain_frame_number_is_the_same_enum_as_everywhere_else() {
+        assert_eq!(TERRAIN_FRAME, crate::altitudemodes::TERRAIN_FRAME, "a fourth copy of the same AltMode ordinal, and altitudemodes is the one pinned against the header");
+    }
+
 }

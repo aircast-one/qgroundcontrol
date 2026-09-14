@@ -217,4 +217,44 @@ mod tests {
         assert!(absent["modes"].as_array().unwrap().iter().all(|m| m["current"] == false));
         assert_eq!(absent["modes"].as_array().unwrap().iter().filter(|m| m["enabled"] == true).count(), 1, "with no items and no current mode only mixed stays live");
     }
+    #[test]
+    fn the_altitude_modes_are_the_ordinals_qgc_declares() {
+        let header = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/QmlControls/QGroundControlQmlGlobal.h")).unwrap_or_default();
+        let body = header
+            .split_once("enum AltMode")
+            .and_then(|(_, rest)| rest.split_once('{'))
+            .and_then(|(_, rest)| rest.split_once('}'))
+            .map(|(body, _)| body.to_string())
+            .unwrap_or_default();
+        assert!(body.contains("AltitudeModeRelative"), "this guard reads QGroundControlQmlGlobal.h, where the modes are declared; a rename there would leave every assertion below comparing nothing");
+
+        let uncommented = body.lines().map(|line| line.split("//").next().unwrap_or("")).collect::<Vec<_>>().join(" ");
+        let declared: Vec<(String, i64)> = uncommented
+            .split(',')
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty())
+            .scan(0i64, |next, entry| {
+                let (name, value) = match entry.split_once('=') {
+                    Some((name, given)) => (name.trim().to_string(), given.trim().parse().unwrap_or(*next)),
+                    None => (entry.clone(), *next),
+                };
+                *next = value + 1;
+                Some((name, value))
+            })
+            .collect();
+        let at = |name: &str| declared.iter().find(|(n, _)| n == name).map(|(_, v)| *v);
+
+        assert_eq!(
+            [at("AltitudeModeMixed"), at("AltitudeModeRelative"), at("AltitudeModeAbsolute"), at("AltitudeModeCalcAboveTerrain"), at("AltitudeModeTerrainFrame")],
+            [Some(MIXED), Some(RELATIVE), Some(ABSOLUTE), Some(CALC_ABOVE_TERRAIN), Some(TERRAIN_FRAME)],
+            "these decide what a waypoint's altitude is measured FROM, so a shifted ordinal flies the aircraft at a height nobody asked for"
+        );
+
+        assert_eq!(
+            [crate::planfile::ALTITUDE_MODE_MIXED, crate::planfile::ALTITUDE_MODE_RELATIVE, crate::planfile::ALTITUDE_MODE_ABSOLUTE, crate::planfile::ALTITUDE_MODE_TERRAIN_FRAME],
+            [MIXED, RELATIVE, ABSOLUTE, TERRAIN_FRAME],
+            "planfile keeps its own copy for reading and writing .plan files, and a plan written with one numbering and read with another is silently wrong"
+        );
+    }
+
 }

@@ -1219,4 +1219,13 @@ mod reported {
         let unread = listed(json!({ "kind": "null" }));
         assert_eq!(unread["kind"], "unreadable", "a read that found nothing used to classify as complex, because complex was the only negative test");
     }
+    #[test]
+    fn the_altitude_mode_numbers_here_are_the_same_enum_as_everywhere_else() {
+        assert_eq!(
+            [MODE_RELATIVE as i64, MODE_ABSOLUTE as i64, MODE_CALC_ABOVE_TERRAIN as i64],
+            [crate::altitudemodes::RELATIVE, crate::altitudemodes::ABSOLUTE, crate::altitudemodes::CALC_ABOVE_TERRAIN],
+            "this module keeps a third copy of QGroundControlQmlGlobal::AltMode as floats for writing into facts, and altitudemodes is the copy pinned against the header"
+        );
+    }
+
 }
