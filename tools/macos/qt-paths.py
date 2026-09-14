@@ -351,6 +351,13 @@ def main():
     print(f"  served (view.*)      {len(served):4}   distinct, the migration's numerator")
     print(f"  claimed actions      {len(claimed):4}   distinct, of {len(owned)} the core owns -- "
           f"these reach Qt through the core, so they are the destination and not the debt")
+    # Named rather than counted, because this line's input is the SHAPE of someone else's source
+    # and nothing declares that dependency. The core made owns() enumerable for a test of their
+    # own, my parser read the shape it replaced, and four migrated paths left the count in silence.
+    # A four that should be a four and a zero that should be a four are both just numbers; the
+    # names are checkable at a glance, and whoever next changes actions.rs sees what this reads.
+    if claimed:
+        print("    " + ", ".join(sorted(claimed)))
     print(f"  literal Qt paths     {len(literal):4}   distinct, mechanical to move")
     print(f"  interpolated Qt      {len(template):4}   distinct TEMPLATES, each expanding to an "
           f"unknown number of runtime paths -- needs a parameterised view, not a substitution")
