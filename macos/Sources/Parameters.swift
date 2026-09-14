@@ -53,7 +53,7 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
 
         parameters = loaded
         loading = false
-        status = loaded.isEmpty ? "This vehicle reported no parameters." : ""
+        status = ParameterLoad.status(named: names.count, loaded: loaded.count)
         refilter()
     }
 

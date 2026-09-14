@@ -87,3 +87,26 @@ extension Parameter {
         options.first { $0.label == value }
     }
 }
+
+// The load dropped unreadable parameters with compactMap and then reported on the SURVIVORS, so
+// three failures out of a thousand gave a list of 997 and no sign that three were missing. A
+// parameter browser is exactly where somebody goes to check whether a setting exists, and it was
+// answering "not there" for both "the vehicle does not have it" and "the bridge could not read it".
+//
+// Worse when every read failed: the vehicle HAD named its parameters, so an empty result meant
+// "none of the N it listed could be read" and the head said "This vehicle reported no parameters"
+// -- the opposite of what happened, and the sentence that belongs to the other case. Both counts
+// are in hand at that point, so telling them apart costs nothing.
+enum ParameterLoad {
+    static func status(named: Int, loaded: Int) -> String {
+        guard named > 0 else { return "This vehicle reported no parameters." }
+        guard loaded > 0 else {
+            return "The vehicle listed \(named) parameters and none of them could be read."
+        }
+        guard loaded < named else { return "" }
+        let missing = named - loaded
+        return missing == 1
+            ? "1 of \(named) parameters could not be read."
+            : "\(missing) of \(named) parameters could not be read."
+    }
+}

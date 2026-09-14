@@ -3333,6 +3333,19 @@ func checkVideoSources() {
     expect(VideoSources.readable("[]"),
            "and an explicit empty array is readable: somebody configured no extras")
 
+    let served = VideoSources.readability(["readable": false as NSNumber, "stored": "was here"],
+                                          stored: "")
+    expect(!served.readable && served.stored == "was here",
+           "the core's answer is preferred when it is there, and it carries the ORIGINAL text -- "
+           + "which is the difference between refusing safely and helping, because an operator "
+           + "who can see what is stored can retype it")
+
+    let older = VideoSources.readability(nil, stored: "not json")
+    expect(!older.readable,
+           "but a core that does not serve extraSources leaves the head's own parse deciding. "
+           + "The write gate depends on this answer, and a gate that fails OPEN on a missing "
+           + "field is not a gate")
+
     expect(VideoSources.looksLikeAddress("0.0.0.0:5691"), "a host and port is an address")
     expect(VideoSources.looksLikeAddress("rtsp://camera/live"), "so is a URL")
     expect(!VideoSources.looksLikeAddress("Front camera"), "a human name is not")
@@ -4685,6 +4698,30 @@ func checkTheFleetListAppearsOnlyWhenTheScreenIsAmbiguous() {
     expect(unwatched?.lost == false, "and an unwatched vehicle is not a lost one either")
 }
 checkTheFleetListAppearsOnlyWhenTheScreenIsAmbiguous()
+
+func checkAParameterBrowserSaysWhatItCouldNotRead() {
+    expect(ParameterLoad.status(named: 0, loaded: 0), "This vehicle reported no parameters.",
+           "a vehicle that named nothing reported nothing")
+
+    expect(ParameterLoad.status(named: 412, loaded: 0),
+           "The vehicle listed 412 parameters and none of them could be read.",
+           "but a vehicle that LISTED 412 and yielded none did not report nothing -- the old "
+           + "sentence said the opposite of what happened, and it belonged to the case above")
+
+    expect(ParameterLoad.status(named: 1000, loaded: 997),
+           "3 of 1000 parameters could not be read.",
+           "and three failures out of a thousand used to give a list of 997 and no sign that "
+           + "three were missing. A parameter browser is exactly where somebody checks whether a "
+           + "setting EXISTS, so 'not in the list' answered for both 'the vehicle does not have "
+           + "it' and 'the bridge could not read it'")
+
+    expect(ParameterLoad.status(named: 5, loaded: 4), "1 of 5 parameters could not be read.",
+           "one missing reads as one, not as 1 parameters")
+
+    expect(ParameterLoad.status(named: 412, loaded: 412), "",
+           "and a complete read says nothing at all, because there is nothing to say")
+}
+checkAParameterBrowserSaysWhatItCouldNotRead()
 
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
