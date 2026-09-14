@@ -63,6 +63,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/CameraControlModel.swift" \
     "$root/macos/Sources/FollowMeModel.swift" \
     "$root/macos/Sources/ItemCameraModel.swift" \
+    "$root/macos/Sources/VehiclesModel.swift" \
     "$root/macos/Sources/Probeable.swift" \
     "$root/macos/Sources/MissionItemModel.swift" \
     "$root/macos/Sources/MissionCommandModel.swift" \

@@ -50,6 +50,13 @@ struct FlyPanel: View {
                                    level: fly.obstacle.level, detail: fly.obstacle.rows(),
                                    showSeparator: true)
                     }
+                    if fly.fleet.worthShowing {
+                        ForEach(fly.fleet.vehicles, id: \.id) { craft in
+                            GroupRow(title: craft.name, value: craft.stateText,
+                                     showSeparator: true,
+                                     leading: { dot(craft.level) })
+                        }
+                    }
                     if fly.followMe.worthShowing {
                         GroupRow(title: "Follow Me", value: fly.followMe.sentence,
                                  showSeparator: true,

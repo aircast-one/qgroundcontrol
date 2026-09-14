@@ -23,6 +23,7 @@ MODELS = {
     "CameraControl": "view.camera",
     "FollowMe": "view.followMe",
     "ItemCamera": "view.itemCamera",
+    "Fleet": "view.vehicles",
     "FenceShape": "view.fences",
     "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",

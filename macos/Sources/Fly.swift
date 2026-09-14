@@ -21,6 +21,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var traffic = AdsbTraffic.none
     @Published private(set) var obstacle = ObstacleDistance.none
     @Published private(set) var followMe = FollowMe.absent
+    @Published private(set) var fleet = Fleet.none
     @Published var expanded: Set<String> = []
     @Published private(set) var modes: [FlightModeChoice] = []
     @Published private(set) var canSetMode = false
@@ -88,6 +89,12 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         // the panel was not reporting absence, nobody was asking.
         let readFollowMe = FollowMe(Bridge.group("view.followMe")) ?? .absent
         if readFollowMe != followMe { followMe = readFollowMe }
+
+        // Read above the no-vehicle guard for the same reason follow-me is: the fleet is a fact
+        // about how many vehicles there are, which is exactly the question that has no answer
+        // once you have returned early because there is no active one.
+        let readFleet = Fleet(Bridge.group("view.vehicles")) ?? .none
+        if readFleet != fleet { fleet = readFleet }
 
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
@@ -247,6 +254,10 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
                    "count": track.count, "points": track.points.count,
                    "draws": track.draws, "notice": track.notice],
          "keepCentered": keepCentered,
+         "fleet": ["count": fleet.count, "ambiguous": fleet.ambiguous,
+                   "activeId": fleet.activeId ?? -1,
+                   "states": fleet.vehicles.map(\.stateText),
+                   "contactKnown": fleet.vehicles.map(\.contactKnown)],
          "followMe": ["mode": followMe.mode, "enabled": followMe.enabled,
                       "sending": followMe.sending, "reason": followMe.reason,
                       "sentence": followMe.sentence, "fixKnown": followMe.fixKnown,

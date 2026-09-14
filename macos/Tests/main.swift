@@ -4617,6 +4617,41 @@ func checkAnItemThatDoesNotCommandTheGimbalShowsNoAngles() {
 }
 checkAnItemThatDoesNotCommandTheGimbalShowsNoAngles()
 
+func checkTheFleetListAppearsOnlyWhenTheScreenIsAmbiguous() {
+    let alone = Fleet(["class": "Vehicles", "count": 1 as NSNumber,
+                       "ambiguous": false as NSNumber,
+                       "vehicles": [["id": 1 as NSNumber, "name": "Quadrotor 1",
+                                     "active": true as NSNumber]]])
+    expect(alone?.worthShowing == false,
+           "one vehicle needs no list -- everything on the Fly view is already about it, and a "
+           + "panel repeating that is the noise an operator learns to skip")
+
+    let two = Fleet(["class": "Vehicles", "count": 2 as NSNumber,
+                     "ambiguous": true as NSNumber,
+                     "vehicles": [["id": 1 as NSNumber, "name": "Quadrotor 1",
+                                   "active": true as NSNumber, "flying": true as NSNumber,
+                                   "flightMode": "Guided",
+                                   "contactLost": false as NSNumber],
+                                  ["id": 2 as NSNumber, "name": "Quadrotor 2",
+                                   "contactLost": true as NSNumber]]])
+    expect(two?.worthShowing == true,
+           "but the list earns its place the moment the rest of the screen has become ambiguous "
+           + "about which vehicle it is describing")
+    expect(two?.vehicles.first?.stateText ?? "", "Flying \u{00B7} Guided",
+           "the state line says the strongest true thing and stops")
+    expect(two?.vehicles.last?.stateText ?? "", "Contact lost",
+           "and a lost vehicle outranks whatever it was doing -- what it was doing when contact "
+           + "went is no longer a fact about now")
+
+    let unwatched = FleetVehicle(["id": 3 as NSNumber, "name": "Quadrotor 3"])
+    expect(unwatched?.contactKnown == false,
+           "contactLost arrives only when communicationLostEnabled is on, so null is NOT 'in "
+           + "contact' -- it is a vehicle nobody is watching for silence, which is a different "
+           + "thing to report than one being heard from")
+    expect(unwatched?.lost == false, "and an unwatched vehicle is not a lost one either")
+}
+checkTheFleetListAppearsOnlyWhenTheScreenIsAmbiguous()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.

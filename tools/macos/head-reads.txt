@@ -2,6 +2,7 @@ accepted
 accuracy
 action
 active
+activeId
 activeSource
 adapter
 addFence
@@ -345,6 +346,7 @@ source
 sourceSize
 specifiesAltitude
 speedChangeText
+speedUnits
 splitInvokable
 stage
 stale
