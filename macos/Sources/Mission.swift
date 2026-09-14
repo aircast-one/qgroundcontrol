@@ -590,17 +590,16 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setLaunchToMapCentre() {
-        guard let centre = mapCentre else { return }
+        guard let centre = mapCentre, let altitude = launchAltitudeMetres else { return }
         write("plan.missionController.visualItems.0.coordinate",
               ["latitude": centre.latitude, "longitude": centre.longitude,
-               "altitude": launchAltitudeMetres],
+               "altitude": altitude],
               "the launch position")
         reload()
     }
 
-    private var launchAltitudeMetres: Double {
-        (Bridge.group("plan.missionController.visualItems.0.plannedHomePositionAltitude.rawValue")["value"]
-            as? NSNumber)?.doubleValue ?? 0
+    private var launchAltitudeMetres: Double? {
+        MissionItem.launchAltitudeMetres(items)
     }
 
     func setCruiseSpeed(_ value: String) {

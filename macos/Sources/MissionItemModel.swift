@@ -15,6 +15,7 @@ struct MissionItem: Identifiable, Equatable {
     let exitLatitude: Double?
     let exitLongitude: Double?
     let altitude: Double?
+    let altitudeMetres: Double?
     let isSelected: Bool
     let specifiesAltitude: Bool
     let commandId: Int
@@ -52,6 +53,18 @@ struct MissionItem: Identifiable, Equatable {
     var unready: Bool { blocked || awaitingTerrain }
 
     var canRemove: Bool { index > 0 }
+
+    // The launch position is written as a QGeoCoordinate, whose altitude is metres by definition.
+    // This used to read plan.missionController.visualItems.0.plannedHomePositionAltitude.rawValue
+    // directly, which is the core's FALLBACK source and not its answer: for the home item the core
+    // prefers the `altitude` fact and only falls back to plannedHomePositionAltitude when that one
+    // reports nothing. Two ways to reach the same number is how they come to disagree, and the one
+    // the head had chosen was the one that loses. It lives here rather than at the call site
+    // because the call site is a store file swift-checks does not compile, so the choice of WHICH
+    // field feeds a coordinate would have been unpinnable there.
+    static func launchAltitudeMetres(_ items: [MissionItem]) -> Double? {
+        items.first { $0.index == 0 }?.altitudeMetres
+    }
 
     var canMove: Bool { movable }
 
@@ -180,6 +193,7 @@ struct MissionItem: Identifiable, Equatable {
         exitLongitude = (leaves?["longitude"] as? NSNumber)?.doubleValue
 
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
+        altitudeMetres = (json["altitudeMetres"] as? NSNumber)?.doubleValue
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.defaultUnits
         altitudeEditUnits = (json["altitudeEditUnits"] as? String) ?? ""
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude

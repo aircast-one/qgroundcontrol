@@ -2706,6 +2706,7 @@ func checkMissionItemKinds() {
     checkSummaryOpensInAnyLocale()
     checkModeSlotNaming()
     checkBreachReturnAltitude()
+    checkLaunchAltitudeComesFromTheItem()
     checkCameraBrandSelection()
     checkBatteryHeadlines()
     checkResumeSequence()
@@ -8094,6 +8095,36 @@ func checkModeSlotNaming() {
     expect(FlightModePosition.present(in: rover).first?.pwmRange ?? "", "up to 1230",
            "the PWM bands are fixed in firmware and keyed on the POSITION, not the parameter "
            + "name, so they are identical on both")
+}
+
+func checkLaunchAltitudeComesFromTheItem() {
+    let home = MissionItem(view: [
+        "index": 0, "sequence": 0, "name": "Mission Start", "kind": "settings",
+        "altitude": 1916.3, "altitudeMetres": 584.09,
+        "altitudeUnits": "ft", "altitudeText": "1916 ft"], selected: -1)
+    let takeoff = MissionItem(view: [
+        "index": 1, "sequence": 1, "name": "Takeoff", "kind": "takeoff",
+        "altitude": 164.0, "altitudeMetres": 50.0], selected: -1)
+
+    expect(MissionItem.launchAltitudeMetres([home, takeoff]) == 584.09,
+           "the launch position is written as a QGeoCoordinate and its altitude is METRES, so it "
+           + "takes the served metric altitude of item 0. The fixture is in feet because that is "
+           + "the only configuration where taking the cooked 1916.3 instead can be seen at all")
+    expect(MissionItem.launchAltitudeMetres([home, takeoff]) != home.altitude,
+           "and this fixture can tell the two apart, which a metric one cannot")
+    expect(MissionItem.launchAltitudeMetres([takeoff, home]) == 584.09,
+           "item 0 is chosen by its index rather than its position in the list, because the write "
+           + "targets visualItems.0 by name and a list that arrived reordered would otherwise move "
+           + "the launch point to the takeoff's height")
+
+    expect(MissionItem.launchAltitudeMetres([takeoff]) == nil,
+           "with no item 0 there is no altitude, and the caller declines to write rather than "
+           + "sending a coordinate at sea level. This is the exception to a reader not failing "
+           + "closed on its own absence: the output drives a write, and the old ?? 0 put the "
+           + "launch point on the ground whenever the read came back empty")
+
+    expect(MissionItem.launchAltitudeMetres([]) == nil,
+           "an empty plan says nothing rather than zero")
 }
 
 func checkBreachReturnAltitude() {
