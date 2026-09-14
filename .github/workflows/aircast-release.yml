@@ -685,7 +685,7 @@ jobs:
           target: desktop
           arch: win64_msvc2022_64
           dir: ${{ runner.temp }}
-          modules: qtshadertools
+          modules: qtshadertools qtquick3d
           cache: true
 
       - name: Install Qt for Windows (ARM64 cross)
