@@ -13,9 +13,15 @@ struct GcsFix: Equatable {
     let fix: String
     let source: String
     let imprecise: Bool
+    let distanceText: String
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any] else { return nil }
+        // The core answers null unless the operator's fix is usable AND the vehicle is live, and it
+        // gates on liveness deliberately: the vehicle's coordinate is held after the link drops, so
+        // a distance drawn from it would keep counting against a position the aircraft left. An
+        // empty string is therefore "cannot say", and the head draws no row rather than a stale one.
+        distanceText = (json["distanceToVehicleText"] as? String) ?? ""
         usable = (json["usable"] as? NSNumber)?.boolValue ?? false
         fix = (json["fix"] as? String) ?? ""
         source = (json["source"] as? String) ?? ""

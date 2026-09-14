@@ -115,6 +115,7 @@ displaySummary
 distance
 distanceMetres
 distanceText
+distanceToVehicleText
 down
 downloading
 dropped

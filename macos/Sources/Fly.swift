@@ -21,6 +21,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var traffic = AdsbTraffic.none
     @Published private(set) var obstacle = ObstacleDistance.none
     @Published private(set) var followMe = FollowMe.absent
+    @Published private(set) var separation = ""
     @Published private(set) var fleet = Fleet.none
     @Published var expanded: Set<String> = []
     @Published private(set) var modes: [FlightModeChoice] = []
@@ -107,8 +108,15 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             if !gpsDetail.isEmpty { gpsDetail = [] }
             if !linkDetail.isEmpty { linkDetail = [] }
             if !modes.isEmpty { modes = [] }
+            if !separation.isEmpty { separation = "" }
             return
         }
+
+        // Below the guard because the core answers null without a live vehicle anyway, and reset
+        // above it because an unreset string would go on claiming a distance to an aircraft that
+        // has gone -- the same latch the position fields have.
+        let readSeparation = GcsFix(Bridge.group("view.gcsPosition"))?.distanceText ?? ""
+        if readSeparation != separation { separation = readSeparation }
 
         var reading = FlyTelemetry()
         let facts = FlyStore.facts(vehicle)
@@ -251,6 +259,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
          "connected": state.connected, "mode": state.mode, "state": state.display,
          "stateToken": state.kind.rawValue, "alarming": state.alarming,
          "contactLost": state.contactLost, "staleNotice": state.staleNotice,
+         "separation": separation,
          "track": ["available": track.available, "recording": track.recording,
                    "generation": track.generation, "dropped": track.dropped,
                    "count": track.count, "points": track.points.count,

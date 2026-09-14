@@ -1376,6 +1376,15 @@ func checkMyLocationTrustsTheCoresGate() {
            "and a machine that has never had a fix has no last known position to centre on, "
            + "however many other fields the view carries")
     expect(fix([:])?.fix ?? "", "gps", "the fix kind travels for a head that wants to say why")
+    expect(fix(["distanceToVehicleText": "182 m"])?.distanceText ?? "", "182 m",
+           "the separation travels already converted and labelled, and the Fly panel draws THAT "
+           + "rather than the metres and unit name served beside it -- formatting a number the core "
+           + "has already formatted is how two serialisers disagree")
+    expect(fix([:])?.distanceText ?? "x", "",
+           "and it is EMPTY whenever the core cannot say, which is every read without a usable "
+           + "operator fix or without a LIVE vehicle. The vehicle's coordinate outlives the link, "
+           + "so a head that filled this in from the last position would count a distance to an "
+           + "aircraft that is no longer there; the panel draws no row instead")
     expect(GcsFix(nil) == nil, "and no view at all is no fix")
 
     let drawn = FlyOverlays.read(orbit: nil, roiActive: false, gcs: fix([:]))

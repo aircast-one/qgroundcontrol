@@ -38,6 +38,11 @@ struct FlyPanel: View {
                                    level: fly.state.linkLevel, detail: fly.linkDetail,
                                    showSeparator: true)
                     }
+                    if !fly.separation.isEmpty {
+                        GroupRow(title: "Distance", value: fly.separation,
+                                 showSeparator: true,
+                                 leading: { dot(.good) })
+                    }
                     if fly.traffic.available {
                         expandable(key: "traffic", title: "Traffic",
                                    value: fly.traffic.summary,
