@@ -30,10 +30,12 @@ TOTALS_RE = re.compile(r"^Totals:\s*(\d+) passed, (\d+) failed, (\d+) skipped, (
 
 
 def newest_source_mtime():
-    roots = (REPO / "src", REPO / "test")
+    roots = (REPO / "src", REPO / "test", REPO / "core-rs" / "src")
     files = (p for root in roots for p in root.rglob("*")
-             if p.suffix in {".cc", ".h", ".qml", ".txt"} and p.is_file())
-    return max((p.stat().st_mtime for p in files), default=0.0)
+             if p.suffix in {".cc", ".h", ".qml", ".txt", ".rs"} and p.is_file())
+    manifests = (p for p in (REPO / "core-rs" / "Cargo.toml", REPO / "core-rs" / "Cargo.lock")
+                 if p.is_file())
+    return max((p.stat().st_mtime for p in (*files, *manifests)), default=0.0)
 
 
 def port_contention():
