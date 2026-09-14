@@ -42,6 +42,45 @@ PORT = 8777
 # and a gate that moves has to move this line with it. Without this table the steady
 # state is four hits nobody reads, which is how an instrument stops being believed.
 ACCEPTED = {
+    ("FlyState", "rcSignalText"): "MEASURED, and it only APPEARS with no vehicle connected -- "
+        "which is itself worth knowing about this check: what it reports depends on the rig state, "
+        "so one run does not enumerate the findings. flystate.rs:94 maps rc_signal over an Option, "
+        "so null means the vehicle reported no RC signal at all, and FlyDetail.link gates the row "
+        "on rcSupported && !rcSignalText.isEmpty -- empty draws NO ROW rather than a blank one. "
+        "The core spells 0 as \"No signal\" precisely so that a live-and-terrible link never "
+        "reads as an absent one; the empty string is the third case, where there is nothing to say",
+    ("AdsbTraffic", "alerting"): "MEASURED and the distinction is carried by a SIBLING field, "
+        "which is what this check cannot see. adsb.rs:507 is deliberately three-valued -- true "
+        "when a contact states an alert, false when contacts reported and none does, null when "
+        "NOBODY has said either way -- and the head does not collapse it: alertUnknown counts the "
+        "contacts that said nothing, and AdsbModel's level() draws caution rather than good "
+        "whenever it is above zero, with the core's own test at adsb.rs:880 pinning that one "
+        "contact's all-clear is an answer for itself and not for the one still unknown",
+    ("AdsbTraffic", "emergency"): "MEASURED: adsb.rs:541 finds the first contact squawking an "
+        "emergency code and maps it to a token, so null means NO CONTACT IS SQUAWKING ONE. That "
+        "is a real answer rather than an absence, and the empty string is the same statement: "
+        "level() asks !emergency.isEmpty, which is false for both spellings",
+    ("GcsFix", "distanceToVehicleText"): "MEASURED and the fallback IS the design. gcsposition.rs "
+        "answers null unless the operator's fix is usable AND the vehicle is live, gating on "
+        "liveness deliberately because the vehicle's coordinate outlives the link. Empty means "
+        "CANNOT SAY, and the Fly panel draws no Distance row at all rather than a stale number, "
+        "which is 27e187bb0's whole subject",
+    ("LinkConfig", "errorRemedy"): "MEASURED: links.rs:114 matches on whether lastError is empty, "
+        "so null means THERE IS NO ERROR and there is nothing to remedy. Its own test pins that an "
+        "unrecognised remedy becomes retry rather than nothing, so the null case is the no-error "
+        "case alone and the empty string says the same",
+    ("Orbit", "radiusText"): "MEASURED: orbit.rs:53 is turning.then_some(radius), so null means "
+        "THE VEHICLE IS NOT ORBITING. An empty radius on a vehicle that is not turning is not a "
+        "missing measurement, it is the absence of the thing being measured",
+    ("JoystickMapping", "min"): "FALSE POSITIVE of this check, and worth leaving written down. The "
+        "null min it saw is setting_meta's (joystick.rs:991), where a setting with no declared "
+        "bounds serves null -- a DIFFERENT key of the same name, nested elsewhere in the same "
+        "view. What the head reads is axisRange.min, and joystick.rs:1020 serves that as the "
+        "constant AXIS_MIN, never null, so this fallback cannot fire. The check matches key NAMES "
+        "against a whole view rather than paths, which is the nested-key-with-unnested-matcher "
+        "shape; until it matches paths, a repeated key name will collide like this",
+    ("JoystickMapping", "max"): "See JoystickMapping/min -- the same collision with setting_meta's "
+        "bounds. axisRange.max is the constant AXIS_MAX and is never null",
     ("MissionItem", "altitudeEditUnits"): "MEASURED against the running app: the ONLY item in a "
         "live plan that sends this null is the SURVEY, and it sends altitudeText null beside it "
         "-- a complex item has no single altitude. altitudeEditUnits is spent only on "
