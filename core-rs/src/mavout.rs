@@ -306,4 +306,56 @@ mod tests {
         });
     }
 
+    #[test]
+    fn every_message_id_the_core_asks_for_is_the_one_the_dialect_assigns() {
+        use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, CAMERA_CAPTURE_STATUS_DATA, CAMERA_INFORMATION_DATA, CAMERA_SETTINGS_DATA, COMPONENT_METADATA_DATA, GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA, GIMBAL_MANAGER_STATUS_DATA, PROTOCOL_VERSION_DATA, STORAGE_INFORMATION_DATA, VIDEO_STREAM_INFORMATION_DATA, VIDEO_STREAM_STATUS_DATA};
+
+        [
+            (crate::cameraproto::MSG_CAMERA_INFORMATION, CAMERA_INFORMATION_DATA::ID, "CAMERA_INFORMATION"),
+            (crate::cameraproto::MSG_CAMERA_SETTINGS, CAMERA_SETTINGS_DATA::ID, "CAMERA_SETTINGS"),
+            (crate::cameraproto::MSG_STORAGE_INFORMATION, STORAGE_INFORMATION_DATA::ID, "STORAGE_INFORMATION"),
+            (crate::cameraproto::MSG_CAMERA_CAPTURE_STATUS, CAMERA_CAPTURE_STATUS_DATA::ID, "CAMERA_CAPTURE_STATUS"),
+            (crate::cameraproto::MSG_VIDEO_STREAM_INFORMATION, VIDEO_STREAM_INFORMATION_DATA::ID, "VIDEO_STREAM_INFORMATION"),
+            (crate::cameraproto::MSG_VIDEO_STREAM_STATUS, VIDEO_STREAM_STATUS_DATA::ID, "VIDEO_STREAM_STATUS"),
+            (crate::compmeta::MSG_COMPONENT_METADATA, COMPONENT_METADATA_DATA::ID, "COMPONENT_METADATA"),
+            (crate::connect::MSG_AUTOPILOT_VERSION, AUTOPILOT_VERSION_DATA::ID, "AUTOPILOT_VERSION"),
+            (crate::connect::MSG_PROTOCOL_VERSION, PROTOCOL_VERSION_DATA::ID, "PROTOCOL_VERSION"),
+            (crate::gimbal::MSG_GIMBAL_MANAGER_INFORMATION, GIMBAL_MANAGER_INFORMATION_DATA::ID, "GIMBAL_MANAGER_INFORMATION"),
+            (crate::gimbal::MSG_GIMBAL_MANAGER_STATUS, GIMBAL_MANAGER_STATUS_DATA::ID, "GIMBAL_MANAGER_STATUS"),
+            (crate::gimbal::MSG_GIMBAL_DEVICE_ATTITUDE_STATUS, GIMBAL_DEVICE_ATTITUDE_STATUS_DATA::ID, "GIMBAL_DEVICE_ATTITUDE_STATUS"),
+        ]
+        .iter()
+        .for_each(|(ours, dialect, name)| {
+            assert_eq!(ours, dialect, "the core asks for {name} by number, and asking for the wrong one waits forever for a message nothing will send");
+        });
+    }
+
+    #[test]
+    fn the_bit_and_enum_constants_agree_with_the_dialect_too() {
+        use mavlink::dialects::ardupilotmega::{GimbalDeviceCapFlags, MavAutopilot, MavMissionType, MavProtocolCapability, MavResult, MavType};
+
+        assert_eq!(crate::connect::CAP_MISSION_INT, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_INT.bits() as u64);
+        assert_eq!(crate::connect::CAP_COMMAND_INT, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMMAND_INT.bits() as u64);
+        assert_eq!(crate::connect::CAP_MAVLINK2, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MAVLINK2.bits() as u64);
+        assert_eq!(crate::connect::CAP_MISSION_FENCE, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_FENCE.bits() as u64);
+        assert_eq!(crate::gimbal::CAP_HAS_RETRACT, GimbalDeviceCapFlags::GIMBAL_DEVICE_CAP_FLAGS_HAS_RETRACT.bits() as u32);
+        assert_eq!(crate::gimbal::CAP_HAS_YAW_LOCK, GimbalDeviceCapFlags::GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_LOCK.bits() as u32);
+
+        assert_eq!(crate::plantransfer::PLAN_MISSION, MavMissionType::MAV_MISSION_TYPE_MISSION as u8);
+        assert_eq!(crate::plantransfer::PLAN_FENCE, MavMissionType::MAV_MISSION_TYPE_FENCE as u8);
+        assert_eq!(crate::plantransfer::PLAN_RALLY, MavMissionType::MAV_MISSION_TYPE_RALLY as u8);
+
+        assert_eq!(crate::mavcmd::RESULT_ACCEPTED, MavResult::MAV_RESULT_ACCEPTED as u8);
+        assert_eq!(crate::cameraproto::RESULT_TEMPORARILY_REJECTED, MavResult::MAV_RESULT_TEMPORARILY_REJECTED as u8);
+        assert_eq!(crate::cameraproto::RESULT_DENIED, MavResult::MAV_RESULT_DENIED as u8);
+        assert_eq!(crate::cameraproto::RESULT_UNSUPPORTED, MavResult::MAV_RESULT_UNSUPPORTED as u8);
+
+        assert_eq!(crate::modes::AUTOPILOT_ARDUPILOT, MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as u8);
+        assert_eq!(crate::modes::AUTOPILOT_PX4, MavAutopilot::MAV_AUTOPILOT_PX4 as u8);
+        assert_eq!(crate::hub::TYPE_GCS, MavType::MAV_TYPE_GCS as u8);
+        assert_eq!(crate::hub::TYPE_ONBOARD_CONTROLLER, MavType::MAV_TYPE_ONBOARD_CONTROLLER as u8);
+        assert_eq!(crate::hub::TYPE_GIMBAL, MavType::MAV_TYPE_GIMBAL as u8);
+        assert_eq!(crate::hub::TYPE_ADSB, MavType::MAV_TYPE_ADSB as u8);
+    }
+
 }
