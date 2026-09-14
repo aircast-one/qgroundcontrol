@@ -104,7 +104,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.linkForm", "<type>,<host>,<port>"),
     ("view.missionSeed", "<kind>,<latitude>,<longitude>"),
     ("view.tlog", "<file path>"),
-    ("view.planFile", "<file path>[,<firmware>]"),
+    ("view.planFile", "<file path>"),
     ("view.waypointsFile", "<file path>"),
     ("view.planFromWaypoints", "<file path>[,<firmware type>[,<vehicle type>]]"),
     ("view.missionFile", "<file path>"),
