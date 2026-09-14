@@ -38,6 +38,7 @@ struct VibrationReading: Equatable {
 
     let available: Bool
     let connected: Bool
+    let silentReason: String
     let units: String
     let scaleMaximum: Double
     let warningLevel: Double
@@ -49,8 +50,14 @@ struct VibrationReading: Equatable {
 
     static let unavailable = VibrationReading()
 
+    // Keyed on the core's TOKEN rather than on connected, which was this head inferring what the
+    // silence meant from a neighbouring fact. The token IS the meaning, and it travels in the same
+    // read as the axes it qualifies. The sentences stay this head's because this screen shows one
+    // string and it should be an instruction -- silentText states what is true, which is the right
+    // half for a screen that has room for both and the wrong half for a screen that has room for
+    // one. An unrecognised token falls back to the prompt that still asks the operator to look.
     var emptyText: String {
-        connected
+        silentReason == "notReported"
             ? "This vehicle is not reporting vibration."
             : VehicleSetupText.connectPrompt(for: "vibration")
     }
@@ -58,6 +65,7 @@ struct VibrationReading: Equatable {
     private init() {
         available = false
         connected = false
+        silentReason = ""
         units = ""
         scaleMaximum = 90
         warningLevel = 30
@@ -76,6 +84,7 @@ struct VibrationReading: Equatable {
     init(view json: [String: Any]) {
         available = (json["available"] as? NSNumber)?.boolValue ?? false
         connected = (json["connected"] as? NSNumber)?.boolValue ?? false
+        silentReason = (json["silentReason"] as? String) ?? ""
         units = (json["units"] as? String) ?? ""
         scaleMaximum = (json["scaleMaximum"] as? NSNumber)?.doubleValue ?? 90
         warningLevel = (json["warningLevel"] as? NSNumber)?.doubleValue ?? 30

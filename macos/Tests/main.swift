@@ -235,15 +235,31 @@ expect(!VibrationReading(view: [:]).connected,
        + "axes. 7cf6f943b serves it beside them; the view already DEPENDED on that path to know "
        + "when to recompute and dropped the answer, so the second call was the only way to get "
        + "it and the second call was the race")
-expect(VibrationReading(view: ["connected": false as NSNumber]).emptyText,
+expect(VibrationReading(view: ["connected": false as NSNumber,
+                              "silentReason": "noVehicle"]).emptyText,
        "Connect a vehicle to see its vibration.",
        "with nothing connected there is no vehicle to be silent, and the page said \u{201C}This "
        + "vehicle is not reporting vibration\u{201D} -- asserting an aircraft that is not there, "
        + "the same shape as the readiness pill in 7b015c270")
-expect(VibrationReading(view: ["connected": true as NSNumber]).emptyText,
+expect(VibrationReading(view: ["connected": true as NSNumber,
+                              "silentReason": "notReported"]).emptyText,
        "This vehicle is not reporting vibration.",
        "and a vehicle that is present and silent still reads as one, which is a measurement "
        + "rather than a regime that does not apply")
+expect(VibrationReading(view: ["connected": true as NSNumber,
+                              "silentReason": "noVehicle"]).emptyText,
+       "Connect a vehicle to see its vibration.",
+       "THE TOKEN DECIDES, NOT connected. These two disagree only in a fixture, but that is the "
+       + "point: connected was this head inferring what the silence meant from a neighbouring "
+       + "fact, and silentReason IS the meaning, in the same read as the axes it qualifies. I "
+       + "accepted this field this morning saying a token beside the sentence would be read; the "
+       + "core split it and the acceptance would otherwise have outlived its reason")
+expect(VibrationReading(view: ["connected": true as NSNumber,
+                              "silentReason": "somethingNewer"]).emptyText,
+       "Connect a vehicle to see its vibration.",
+       "and a token this head does not know falls back to the line that still asks the operator "
+       + "to look, rather than asserting a vehicle is silent on the strength of a word it cannot "
+       + "read")
 expect(vibration.clipping,
        "the core decides whether the accelerometer clipped and this head carries the answer; it "
        + "derives nothing from clipCounts, which is why the two are set independently above")

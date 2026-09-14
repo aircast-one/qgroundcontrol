@@ -98,6 +98,16 @@ ACCEPTED_BY_HEAD = {
             "already draws",
     },
     "macos": {
+        "distanceToVehicle": "MEASURED. This head draws distanceToVehicleText, which is the same "
+            "quantity already converted and spelled in the operator's unit. The raw metres and the unit "
+            "name beside it are for a head that formats its own numbers, and formatting a second time "
+            "here is the defect two-coordinate-serialisers removed",
+        "distanceToVehicleMeters": "See distanceToVehicle - the raw quantity behind the text this head "
+            "already draws",
+        "distanceToVehicleUnits": "See distanceToVehicle - the unit name behind the text this head "
+            "already draws",
+    },
+    "macos": {
         "silentReason": "MEASURED and deliberately not adopted. VibrationReading already draws both "
             "cases and has since before this field existed: connected spells 'This vehicle is not "
             "reporting vibration.' and not-connected spells the connect prompt. The distinction is "
