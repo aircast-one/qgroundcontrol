@@ -78,11 +78,6 @@ from head_models import MODELS  # noqa: E402
 # Android's position while macOS drew neither it nor the text beside it.
 ACCEPTED_BY_HEAD = {
     "android": {
-        "valueMeters": "MEASURED. The raw metres behind a control's cooked value, for a head that "
-            "feeds a number to something spatial - the core's own test warns a map annotation given "
-            "the cooked value sits three times too high on an imperial profile. This head edits "
-            "these three in the settings screen, in the operator's unit, and its map draws from "
-            "view.fences and view.plan rather than from a settings control",
         "showsPacketRadio": "MEASURED and tied to the PacketRadio exemption in "
             "android/tools/settings-groups.py. It tells a head whether to offer the packet radio "
             "page; this head builds its own settings list and leaves that page out until libusb can "
