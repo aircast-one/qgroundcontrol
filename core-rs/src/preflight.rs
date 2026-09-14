@@ -6,6 +6,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
+    "vehicle.vehicleLinkManager.communicationLost",
     "vehicle.multiRotor",
     "vehicle.vtol",
     "vehicle.rover",
@@ -122,6 +123,7 @@ pub struct Group {
 
 pub struct Inputs {
     pub airframe: Airframe,
+    pub contact_lost: bool,
     pub lock: Option<i64>,
     pub satellites: Option<i64>,
     pub battery_percent: Option<f64>,
@@ -165,6 +167,17 @@ fn sensor_names(bits: i64) -> String {
     }
 }
 
+pub fn contact(lost: bool) -> Option<Check> {
+    const PROMPT: &str = "The vehicle is answering.";
+    lost.then(|| {
+        Check::failing(
+            "Contact",
+            PROMPT,
+            "No heartbeat from the vehicle. Every reading below is the last one it sent and does not describe the aircraft now.".to_string(),
+        )
+    })
+}
+
 fn sound(muted: bool) -> Check {
     const PROMPT: &str = "QGC audio warnings are on. Is the system output on too?";
     match muted {
@@ -178,13 +191,17 @@ pub fn groups(inputs: &Inputs) -> Vec<Group> {
     vec![
         Group {
             name: "Before you power up",
-            checks: vec![
-                Check::manual("Hardware", airframe.hardware_prompt()),
-                battery(inputs.battery_percent),
-                sensors(inputs.unhealthy_bits),
-                gps(inputs.lock, inputs.satellites),
-                Check::manual("Radio control", "Receiving signal. Range test done and confirmed?"),
-            ],
+            checks: [
+                contact(inputs.contact_lost),
+                Some(Check::manual("Hardware", airframe.hardware_prompt())),
+                Some(battery(inputs.battery_percent)),
+                Some(sensors(inputs.unhealthy_bits)),
+                Some(gps(inputs.lock, inputs.satellites)),
+                Some(Check::manual("Radio control", "Receiving signal. Range test done and confirmed?")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
         },
         Group {
             name: "Arm the vehicle here",
@@ -231,6 +248,7 @@ fn read_inputs(backend: &dyn Backend) -> Inputs {
     let vehicle = object(&backend.get_fields("vehicle", "multiRotor,vtol,rover,sub,fixedWing,sensorsUnhealthyBits"));
     let gps_fact = |name: &str| value_number(&backend.get(&format!("vehicle.gps.{name}")));
     Inputs {
+        contact_lost: flag(&object(&backend.get("vehicle.vehicleLinkManager.communicationLost")), "value"),
         airframe: Airframe::of(flag(&vehicle, "multiRotor"), flag(&vehicle, "vtol"), flag(&vehicle, "rover"), flag(&vehicle, "sub"), flag(&vehicle, "fixedWing")),
         lock: gps_fact("lock").map(|v| v as i64),
         satellites: gps_fact("count").map(|v| v as i64),
@@ -266,7 +284,7 @@ mod tests {
 
     #[test]
     fn the_groups_follow_the_airframe() {
-        let base = Inputs { airframe: Airframe::MultiRotor, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false };
+        let base = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false };
         let copter = groups(&base);
         assert_eq!(copter.len(), 3);
         assert_eq!(copter[0].checks[0].prompt, "Props mounted and secured?");
@@ -279,8 +297,24 @@ mod tests {
     }
 
     #[test]
+    fn a_silent_vehicle_says_so_before_the_readings_it_makes_stale() {
+        let talking = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false };
+        assert!(groups(&talking)[0].checks.iter().all(|c| c.name != "Contact"), "a link that is up is the precondition for the list, not a line in it - a passing Contact row would be one more thing to read on every flight that is fine");
+
+        let silent = groups(&Inputs { contact_lost: true, ..talking });
+        assert_eq!(silent[0].checks[0].name, "Contact", "it has to come first: every check under it is reading a figure the vehicle sent before it went quiet");
+        assert!(silent[0].checks[0].blocked);
+        assert_eq!(silent[0].checks.iter().filter(|c| c.name == "Contact").count(), 1);
+        assert_eq!(
+            silent[0].checks[1].name, "Hardware",
+            "the rest of the group keeps its order and its content; the vehicle going quiet adds a check rather than replacing the ones whose inputs are now stale"
+        );
+        assert_eq!(silent[0].checks[3].verdict, "passing", "battery still reads 90% because Vehicle latches its last value, which is exactly why Contact has to be the thing that says the number is old");
+    }
+
+    #[test]
     fn a_muted_app_blocks_the_sound_check() {
-        let muted = Inputs { airframe: Airframe::Generic, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: true };
+        let muted = Inputs { airframe: Airframe::Generic, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: true };
         let sound = groups(&muted)[1].checks.iter().find(|c| c.name == "Sound output").unwrap().blocked;
         assert!(sound);
     }
