@@ -44,3 +44,9 @@ internal fun flightModesView(view: JSONObject?): FlightModesView? {
         folded = options(view, "folded"),
     )
 }
+
+internal fun modeHeading(modes: FlightModesView?): String? {
+    val summary = modes?.currentSummary?.ifBlank { null } ?: return null
+    val name = modes.current.ifBlank { null } ?: return null
+    return "$name — $summary"
+}

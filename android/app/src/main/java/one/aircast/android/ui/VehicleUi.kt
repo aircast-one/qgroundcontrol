@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -696,10 +697,29 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit) {
             expanded = expanded,
             onDismissRequest = { expanded = false; showFolded = false },
         ) {
+            modeHeading(modes)?.let { heading ->
+                Text(
+                    heading,
+                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 280.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             val shown = if (showFolded) modes.everyday + modes.folded else modes.everyday
             shown.forEach { mode ->
                 DropdownMenuItem(
-                    text = { Text(mode.name) },
+                    text = {
+                        Column(Modifier.widthIn(max = 280.dp)) {
+                            Text(mode.name, style = MaterialTheme.typography.bodyMedium)
+                            mode.summary.ifBlank { null }?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    },
                     trailingIcon = if (mode.current) {
                         { Icon(Icons.Default.Check, null) }
                     } else {

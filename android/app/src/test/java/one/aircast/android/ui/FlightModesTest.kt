@@ -61,3 +61,28 @@ class FlightModesTest {
         assertNull(flightModesView(JSONObject("""{"available":false}""")))
     }
 }
+
+class ModeHeadingTest {
+
+    private fun modes(current: String, summary: String) = flightModesView(
+        JSONObject(
+            """{"kind":"object","class":"FlightModes","available":true,"canSet":true,"current":$current,
+               "currentSummary":$summary,"everyday":[],"folded":[]}""",
+        ),
+    )
+
+    @Test
+    fun `the heading names the mode and what it does`() {
+        assertEquals(
+            "Stabilize — You fly it by hand, it only levels itself",
+            modeHeading(modes("\"Stabilize\"", "\"You fly it by hand, it only levels itself\"")),
+        )
+    }
+
+    @Test
+    fun `a mode the core has no sentence for gets no heading rather than a dangling dash`() {
+        assertNull(modeHeading(modes("\"Stabilize\"", "\"\"")))
+        assertNull(modeHeading(modes("\"\"", "\"Something\"")))
+        assertNull(modeHeading(null))
+    }
+}
