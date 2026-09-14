@@ -143,17 +143,38 @@ class GpsFixTest {
 
     @Test
     fun `a 2D fix says so next to the count`() {
-        assertEquals("11 · 2D only", satsText(FixLevel.TwoD, "11"))
+        assertEquals("11 sats · 2D only", satsText(FixLevel.TwoD, "11"))
     }
 
     @Test
     fun `a good fix is just the count`() {
-        assertEquals("11", satsText(FixLevel.Good, "11"))
+        assertEquals("11 sats", satsText(FixLevel.Good, "11"))
     }
 
     @Test
     fun `the rendered lock text is not a fix level, so wiring the string back in hides the cell`() {
         assertNull(fixLevel("3D Lock".toDoubleOrNull() ?: Double.NaN))
         assertNull(fixLevel("None".toDoubleOrNull() ?: Double.NaN))
+    }
+}
+
+class SatelliteCellTest {
+
+    @Test
+    fun `a sentence does not get the noun appended to it`() {
+        assertEquals("No fix", satsText(FixLevel.None, "11"))
+        assertEquals("No fix", satsText(FixLevel.None, ""))
+    }
+
+    @Test
+    fun `a count carries the noun once`() {
+        assertEquals("11 sats", satsText(FixLevel.Good, "11"))
+        assertEquals("11 sats · 2D only", satsText(FixLevel.TwoD, "11"))
+    }
+
+    @Test
+    fun `a fix with no count reported draws nothing rather than a bare noun`() {
+        assertEquals("", satsText(FixLevel.Good, ""))
+        assertEquals("2D only", satsText(FixLevel.TwoD, ""))
     }
 }

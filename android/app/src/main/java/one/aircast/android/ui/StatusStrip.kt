@@ -69,8 +69,8 @@ internal fun fixLevel(lock: Double): FixLevel? = when {
 
 internal fun satsText(fix: FixLevel, count: String): String = when (fix) {
     FixLevel.None -> "No fix"
-    FixLevel.TwoD -> if (count.isBlank()) "2D only" else "$count · 2D only"
-    FixLevel.Good -> count
+    FixLevel.TwoD -> if (count.isBlank()) "2D only" else "$count sats · 2D only"
+    FixLevel.Good -> if (count.isBlank()) "" else "$count sats"
 }
 
 
@@ -114,7 +114,9 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) }
-        fix?.let { InlineCell("${satsText(it, satellites)} sats", gpsColour(it)) }
+        fix?.let { level ->
+            satsText(level, satellites).ifBlank { null }?.let { InlineCell(it, gpsColour(level)) }
+        }
         rcCell(state)?.let { InlineCell(it.text, if (it.lost) CRITICAL else Color.Unspecified) }
         links?.let { InlineCell(it.text, if (it.degraded) CAUTION else Color.Unspecified) }
     }
