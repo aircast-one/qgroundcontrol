@@ -87,7 +87,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.gpsRtkBase", "<gps type>"),
     ("view.videoSource", "<source>[,<url>[,<rtsp timeout seconds>]]"),
     ("view.control", "<fact path>"),
-    ("view.guidedAltitude", "<metres>"),
+    ("view.guidedAltitude", "<metres>[,pause]"),
     ("view.guidedSpeed", "<metres per second>"),
     ("view.guidedTakeoff", "<metres>"),
     ("view.instruments", "<group/fact>,..."),
@@ -106,7 +106,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.tlog", "<file path>"),
     ("view.planFile", "<file path>[,<firmware>]"),
     ("view.waypointsFile", "<file path>"),
-    ("view.planFromWaypoints", "<file path>"),
+    ("view.planFromWaypoints", "<file path>[,<firmware type>[,<vehicle type>]]"),
     ("view.missionFile", "<file path>"),
     ("view.kmlFile", "<file path>"),
     ("view.shapeFile", "<file path>"),
@@ -244,6 +244,9 @@ pub fn split(path: &str) -> (&str, Vec<String>) {
     let inner = rest.strip_suffix(')').unwrap_or(rest);
     if inner.trim().is_empty() {
         return (base, Vec::new());
+    }
+    if ARGUMENT_MODES.iter().any(|(view, mode)| *view == base && *mode == "<file path>") {
+        return (base, vec![inner.to_string()]);
     }
     let (args, last, _) = inner.chars().fold((Vec::new(), String::new(), 0usize), |(mut args, mut current, depth), c| match (c, depth) {
         (',', 0) => {
@@ -675,6 +678,62 @@ mod deps_cover_reads {
 #[cfg(test)]
 mod argument_modes {
     use super::*;
+
+    #[test]
+    fn a_view_declaring_one_argument_never_reads_a_second() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
+        let read = |name: &str| std::fs::read_to_string(format!("{dir}/{name}.rs")).ok();
+        let table = read("view").expect("view.rs is readable from its own test");
+        let computes: Vec<(String, String)> = table
+            .lines()
+            .filter_map(|line| {
+                let path = line.split_once("View { path: \"")?.1.split_once('"')?.0;
+                let compute = line.rsplit_once("compute: ")?.1.split_once(' ')?.0;
+                Some((path.to_string(), compute.to_string()))
+            })
+            .collect();
+        assert!(computes.len() > 60, "parsed only {} rows of the VIEWS table, so a clean result would mean nothing", computes.len());
+
+        let overreaching: Vec<String> = ARGUMENT_MODES
+            .iter()
+            .filter(|(_, mode)| !mode.contains(','))
+            .filter_map(|(view, mode)| {
+                let compute = &computes.iter().find(|(path, _)| path == view)?.1;
+                let (module, function) = compute.split_once("::").unwrap_or(("view", compute));
+                let source = read(module)?;
+                let body = source.split("#[cfg(test)]").next()?.to_string();
+                let at = body.find(&format!("fn {function}("))?;
+                let segment = body[at..body.len().min(at + 2500)].to_string();
+                (segment.contains("args.get(1)") || segment.contains("args[1]"))
+                    .then(|| format!("{view} declares \"{mode}\" but {compute} reads a second argument"))
+            })
+            .collect();
+
+        assert!(overreaching.is_empty(), "the declared shape is what a head builds its call from, and view::split trusts it to decide whether a comma separates arguments or belongs to the value: {}", overreaching.join("; "));
+    }
+
+    #[test]
+    fn a_lone_file_path_argument_survives_the_commas_and_brackets_a_filename_may_hold() {
+        let awkward = "/Users/p/Flights, 2026/log (2).tlog";
+        assert_eq!(split(&format!("view.tlog({awkward})")), ("view.tlog", vec![awkward.to_string()]));
+        assert_eq!(split("view.kmlFile(/a/b,c/d.kml)").1, vec!["/a/b,c/d.kml".to_string()]);
+
+        assert_eq!(
+            split("view.terrainTile(/a/b.tif,47.4,8.5)").1,
+            vec!["/a/b.tif".to_string(), "47.4".to_string(), "8.5".to_string()],
+            "a file path followed by declared arguments still splits, so this is not a licence to stop splitting wherever a path appears"
+        );
+        assert_eq!(split("view.altitudeModes(item,4)").1, vec!["item".to_string(), "4".to_string()]);
+        assert_eq!(
+            split("view.missionItems(geometry,fields)").1,
+            vec!["geometry".to_string(), "fields".to_string()],
+            "items_view reads both flags independently, so the pair has to arrive as two even though no caller sends it today"
+        );
+
+        ARGUMENT_MODES.iter().filter(|(_, mode)| *mode == "<file path>").for_each(|(view, _)| {
+            assert_eq!(split(&format!("{view}(/x/y,z.dat)")).1.len(), 1, "{view} declares a single file path, so a comma in it is part of the name");
+        });
+    }
 
     fn source(module: &str) -> String {
         std::fs::read_to_string(format!("{}/src/{module}.rs", env!("CARGO_MANIFEST_DIR"))).unwrap_or_default()
