@@ -554,6 +554,12 @@ struct InstrumentBar: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+                        if value.absentHere {
+                            Text(InstrumentValue.absentText)
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                                .lineLimit(1)
+                        }
                     }
                     .fixedSize()
                     .contentShape(Rectangle())

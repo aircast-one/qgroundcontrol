@@ -78,19 +78,23 @@ final class InstrumentsStore: ObservableObject, Probeable {
         cancelEdit()
     }
 
+    // This was 2 + N reads, and the N was invisible in a grep over call sites: one read per child
+    // of the vehicle, of which a copter has thirty-three. view.instrumentGroups does that walk in
+    // the core and serves the result already keyed and labelled. The two reads that remain are the
+    // two the view does NOT carry: it iterates the vehicle's CHILDREN, so the group an operator
+    // sees as "Vehicle" -- the one holding altitude, heading and climb rate, where every default
+    // selection lives -- has no entry, and the per-pack battery groups are named from packs by
+    // this head because their ids are ours rather than the core's.
     func discoverGroups() {
-        let vehicle = Bridge.group("vehicle")
-        let children = (vehicle["children"] as? [String]) ?? []
-        let packs = ((Bridge.group("vehicle.batteries")["elements"] as? [Any]) ?? []).count
-        let candidates = [InstrumentSelection.vehicleGroup] + children
-            + InstrumentGroup.batteryGroups(count: packs)
-        let read = candidates.map { group in
-            (group: group,
-             json: group == InstrumentSelection.vehicleGroup
-                 ? vehicle
-                 : Bridge.group("vehicle.\(group)"))
+        let view = Bridge.group("view.instrumentGroups")
+        let packs = (view["packs"] as? NSNumber)?.intValue ?? 0
+        let own = [(group: InstrumentSelection.vehicleGroup, json: Bridge.group("vehicle"))]
+        let batteries = InstrumentGroup.batteryGroups(count: packs).map { group in
+            (group: group, json: Bridge.group("vehicle.\(group)"))
         }
-        let assembled = InstrumentGroup.assemble(read, label: Labels.humanise)
+        let assembled = InstrumentGroup.assemble(own, label: Labels.humanise)
+            + InstrumentGroup.served(view["groups"])
+            + InstrumentGroup.assemble(batteries, label: Labels.humanise)
         if assembled != groups { groups = assembled }
     }
 
@@ -104,7 +108,9 @@ final class InstrumentsStore: ObservableObject, Probeable {
          "groups": groups.map { ["group": $0.group, "title": $0.title, "facts": $0.facts.count] },
          "stored": selections.map(\.stored), "canAdd": canAdd, "canRemove": canRemove,
          "values": values.map { ["label": $0.label, "value": $0.value, "units": $0.units,
-                                 "fact": $0.id, "missing": $0.missing] }]
+                                 "fact": $0.id, "missing": $0.missing,
+                                 "missingReason": $0.missingReason,
+                                 "absentHere": $0.absentHere] }]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {

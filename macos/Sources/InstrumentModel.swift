@@ -93,11 +93,40 @@ struct InstrumentGroup: Identifiable, Equatable {
         return label(group)
     }
 
+    // The two fields have different jobs and this used to give both to the fact's own name. The
+    // selection is handed back as view.instruments(<group>/<name>), which resolves it as a PATH,
+    // so the key has to be the Q_PROPERTY; sixteen facts on a copter disagree with their property
+    // -- every ESC rpm and current, and goodAttitudeEstimate against goodAttitudeEsimate -- and
+    // each of those stored a key that silently resolved to nothing. The LABEL humanises the fact
+    // name, because an operator numbers motors 1 to 4 rather than First to Fourth.
     static func facts(in json: [String: Any], label: (String) -> String) -> [InstrumentFact] {
         ((json["facts"] as? [[String: Any]]) ?? []).compactMap { fact in
-            guard let name = fact["name"] as? String, !name.isEmpty else { return nil }
+            let named = (fact["name"] as? String) ?? ""
+            let property = (fact["property"] as? String) ?? ""
+            let key = property.isEmpty ? named : property
+            guard !key.isEmpty else { return nil }
+            let reads = named.isEmpty ? key : named
             let described = (fact["shortDescription"] as? String) ?? ""
-            return InstrumentFact(name: name, label: described.isEmpty ? label(name) : described)
+            return InstrumentFact(name: key, label: described.isEmpty ? label(reads) : described)
+        }
+    }
+
+    // view.instrumentGroups has already made both choices -- property as the key, shortDescription
+    // else the humanised fact name as the label -- so this decodes rather than re-deriving. It
+    // covers the vehicle's CHILDREN only: the group an operator sees as "Vehicle" and the per-pack
+    // battery groups are named by this head and are assembled above.
+    static func served(_ json: Any?) -> [InstrumentGroup] {
+        ((json as? [Any]) ?? []).compactMap { entry in
+            guard let entry = entry as? [String: Any],
+                  let group = entry["group"] as? String, !group.isEmpty,
+                  let title = entry["title"] as? String else { return nil }
+            let listed = ((entry["facts"] as? [[String: Any]]) ?? []).compactMap { fact -> InstrumentFact? in
+                guard let name = fact["name"] as? String, !name.isEmpty,
+                      let label = fact["label"] as? String else { return nil }
+                return InstrumentFact(name: name, label: label)
+            }
+            guard !listed.isEmpty else { return nil }
+            return InstrumentGroup(group: group, title: title, facts: listed)
         }
     }
 
@@ -123,6 +152,7 @@ struct InstrumentValue: Identifiable, Equatable {
     let value: String
     let units: String
     let missing: Bool
+    let missingReason: String
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
@@ -135,7 +165,18 @@ struct InstrumentValue: Identifiable, Equatable {
         value = (json["value"] as? String) ?? ""
         units = (json["units"] as? String) ?? ""
         missing = (json["missing"] as? NSNumber)?.boolValue ?? false
+        missingReason = (json["missingReason"] as? String) ?? ""
     }
+
+    // A blank is the right drawing for a fact the aircraft has and has not reported yet -- it will
+    // fill in. It is the WRONG drawing for a fact this aircraft does not have at all, which is
+    // what a selection stored against a different airframe leaves behind: the row waits forever
+    // for a value that is never coming and says nothing about why. Only noSuchFact earns a
+    // sentence; an unrecognised reason keeps the blank, because a reason this head cannot read is
+    // not evidence that the fact is absent.
+    var absentHere: Bool { missing && missingReason == "noSuchFact" }
+
+    static let absentText = "not on this aircraft"
 
     static func list(_ json: Any?) -> [InstrumentValue] {
         ((json as? [Any]) ?? []).compactMap(InstrumentValue.init)

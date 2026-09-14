@@ -4458,6 +4458,26 @@ func checkInstrumentValues() {
            "an item with no name is dropped rather than drawn as a blank slot")
     expect(InstrumentValue(["name": "heading"]) == nil,
            "and one with no id is dropped, because the id is what the slot is keyed by")
+
+    func reading(_ reason: String, missing: Bool) -> InstrumentValue? {
+        InstrumentValue(["id": "escStatus/rpmFirst", "name": "rpmFirst", "label": "Rpm 1",
+                         "value": missing ? "\u{2014}" : "1200", "units": "",
+                         "missing": missing as NSNumber, "missingReason": reason])
+    }
+    expect(reading("noSuchFact", missing: true)?.absentHere == true,
+           "a fact THIS AIRCRAFT DOES NOT HAVE earns a sentence. The blank was right for a fact "
+           + "that has not reported yet and wrong for one that never will: a selection stored "
+           + "against a different airframe left a slot waiting forever and saying nothing about "
+           + "why, which is the same shape as a stored flight-mode choice outliving its vehicle")
+    expect(reading("notReported", missing: true)?.absentHere == false,
+           "while a fact the aircraft HAS and has not sent yet keeps the blank, because it will "
+           + "fill in and a sentence would be wrong a second later")
+    expect(reading("", missing: false)?.absentHere == false,
+           "a reading with a value is not absent whatever else travels beside it")
+    expect(reading("invented", missing: true)?.absentHere == false,
+           "and a reason this head cannot read keeps the blank too -- an unrecognised token is not "
+           + "evidence the fact is absent, and asserting absence from it would be a plausible "
+           + "default in the one place absence is the whole message")
 }
 checkInstrumentValues()
 
@@ -4501,6 +4521,33 @@ func checkInstrumentGroups() {
         .joined(separator: ","), "Vehicle,<gps>,<gps2>",
            "the vehicle lists itself among its children, so that one alias goes, and two GPS "
            + "units share a schema so both stay and both are named by the core")
+
+    let mismatched = InstrumentGroup.assemble(
+        [("escStatus", ["facts": [["name": "rpm1", "property": "rpmFirst", "shortDescription": ""],
+                                  ["name": "", "property": "current1", "shortDescription": ""]]])],
+        label: { "<\($0)>" })
+    expect(mismatched.first?.facts.map(\.name).joined(separator: ",") ?? "", "rpmFirst,current1",
+           "the KEY is the Q_PROPERTY, because the selection is handed back as a PATH and resolved "
+           + "as one. Keying on the fact's own name stored rpm1, which resolves to nothing on every "
+           + "ESC fact and on goodAttitudeEstimate, and the row then waited forever in silence")
+    expect(mismatched.first?.facts.map(\.label).joined(separator: ",") ?? "", "<rpm1>,<current1>",
+           "while the LABEL humanises the fact NAME, which is what an operator calls the motor -- "
+           + "Rpm 1 rather than Rpm First -- and falls back to the property only when the fact "
+           + "carries no name of its own")
+
+    let servedJson: [Any] = [
+        ["group": "gps", "title": "GPS", "facts": [["name": "lock", "label": "GPS Lock"]]],
+        ["group": "empty", "title": "Empty", "facts": []],
+        ["group": "", "title": "Nameless", "facts": [["name": "x", "label": "X"]]],
+        ["group": "partial", "title": "Partial", "facts": [["name": "y"]]],
+    ]
+    let served = InstrumentGroup.served(servedJson)
+    expect(served.map(\.title).joined(separator: ","), "GPS",
+           "the core has already keyed and labelled every group it serves, so this decodes rather "
+           + "than re-deriving -- and it still refuses a group with no facts, an unnamed group, and "
+           + "a fact missing the label half, because a reader must not invent either one")
+    expect(served.first?.facts.first?.name ?? "", "lock", "the served name is taken as the key")
+    expect(served.first?.facts.first?.label ?? "", "GPS Lock", "and the served label as the label")
 }
 
 checkInstrumentGroups()
