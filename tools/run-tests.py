@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -138,15 +139,62 @@ def refresh_clone():
     return CLONE_BIN
 
 
+QUIET_SECONDS = 15
+MAX_TRACES = 3
+TRACE_DIR = REPO / "build-test/hang-traces"
+
+
+def trace_hang(pid, note):
+    TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%H%M%S")
+    path = TRACE_DIR / f"hang-{stamp}-{note}.txt"
+    sampled = subprocess.run(["sample", str(pid), "4", "-file", str(path)],
+                             capture_output=True, text=True)
+    if sampled.returncode != 0:
+        lldb = subprocess.run(["lldb", "-p", str(pid), "-batch", "-o", "bt all", "-o", "detach"],
+                              capture_output=True, text=True, timeout=120)
+        path.write_text(lldb.stdout + lldb.stderr)
+    print(f"HANG TRACE: {QUIET_SECONDS}s of silence after {note!r} - stacks in {path}",
+          file=sys.stderr)
+    return path
+
+
+def watch_for_silence(proc, latest, traced):
+    while proc.poll() is None:
+        silent_since = latest["at"]
+        unseen = silent_since not in traced
+        if time.monotonic() - silent_since > QUIET_SECONDS and unseen and len(traced) < MAX_TRACES:
+            traced.add(silent_since)
+            trace_hang(proc.pid, latest["line"][:40].strip().replace("/", "_") or "start")
+        time.sleep(2.0)
+
+
+def stream(proc, latest):
+    def pump():
+        for line in proc.stdout:
+            latest["at"], latest["line"] = time.monotonic(), line
+            latest["lines"].append(line)
+    reader = threading.Thread(target=pump, daemon=True)
+    reader.start()
+    return reader
+
+
 def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
+    latest = {"at": time.monotonic(), "line": "", "lines": []}
     try:
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
-        return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        reader = stream(proc, latest)
+        watcher = threading.Thread(target=watch_for_silence, args=(proc, latest, set()), daemon=True)
+        watcher.start()
+        code = proc.wait(timeout=3600)
+        reader.join(timeout=30)
+        return "".join(latest["lines"]), time.monotonic() - started, code
     except subprocess.TimeoutExpired as ran_out:
-        partial = (ran_out.output or "") + (ran_out.stderr or "")
+        proc.kill()
+        partial = "".join(latest["lines"])
         signals = partial.count("Received signal")
         print(f"TIMED OUT after {ran_out.timeout:.0f}s with {len(partial):,} characters captured"
               + (f" and {signals:,} signal lines -- this is the crash-loop shape, not a slow suite"
