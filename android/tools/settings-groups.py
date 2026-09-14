@@ -3,30 +3,34 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-CORE = ROOT / "core-rs/src/settingsgroups.rs"
+GROUPS = ROOT / "core-rs/src/settingsgroups.rs"
+PAGES = ROOT / "core-rs/src/settings.rs"
 HEAD = ROOT / "android/app/src/main/java/one/aircast/android/ui/SettingsScreen.kt"
-
-EXEMPT = {
-    "FirmwareUpgrade": "flashing firmware needs a USB host and a bootloader dance this head does not do",
-    "Viewer3D": "the 3D viewer is out of scope until the Qt viewer's future is decided",
-    "PacketRadio": "the page needs the bespoke adapter picker block. The scope question is settled - "
-        "packet radio belongs on a handset - and the library builds for Android as of f37267c73, but "
-        "libusb cannot enumerate without a file descriptor handed in from Java, so a page drawn now "
-        "would list no adapter on any device",
-    "MavlinkActions": "two paths to JSON files that must already be on the device; the generic "
-        "renderer draws two text fields nobody can usefully fill without a file picker",
-    "BrandImage": "same shape - two image paths with no way to choose a file on a phone",
-    "FlightMode": "twelve comma-separated lists of hidden mode names per airframe. The mode picker "
-        "reads what these produce; drawing the raw lists is worse than not drawing them",
-}
 
 
 def core_groups():
-    return re.findall(r'Group \{ name: "([^"]+)"', CORE.read_text())
+    return re.findall(r'Group \{ name: "([^"]+)"', GROUPS.read_text())
 
 
-def head_paths():
-    return set(re.findall(r'"settings\.(\w+)"', HEAD.read_text()))
+def core_pages():
+    text = PAGES.read_text()
+    table = text[text.index("const PAGES:"):text.index("const HIDDEN:")]
+    return [
+        (title, re.findall(r'\("[^"]*", "(\w+)"\)', sections))
+        for title, sections in re.findall(r'Page \{ title: "([^"]+)", sections: &\[([^\]]*)\]', table)
+    ]
+
+
+def head_set(name):
+    text = HEAD.read_text()
+    block = text[text.index(f"internal val {name} = mapOf("):]
+    return set(re.findall(r'^    "([^"]+)" to', block[:block.index("\n)")], re.M))
+
+
+def head_notes():
+    text = HEAD.read_text()
+    block = text[text.index("internal val PAGE_NOTES = mapOf("):]
+    return set(re.findall(r'^    "([^"]+)" to', block[:block.index("\n)")], re.M))
 
 
 def stem(name):
@@ -35,20 +39,42 @@ def stem(name):
     return name[:keep].lower() + name[keep:]
 
 
-def drawn(name, paths):
-    return stem(name) in paths or stem(name) + "Settings" in paths
-
-
+# The head draws every page and every section view.settings serves, so what a group needs to be
+# reachable is a page that carries it. What it needs to be DELIBERATELY absent is an entry in one
+# of the head's two exclusion tables, each of which states its reason beside the name.
 def main():
-    paths = head_paths()
-    missing = [name for name in core_groups() if not drawn(name, paths)]
-    unexplained = [name for name in missing if name not in EXEMPT]
-    for name in missing:
-        print(f"  {name:26} {EXEMPT.get(name, 'UNREACHABLE - no entry and no stated reason')}")
-    print(f"{len(core_groups())} groups served, {len(missing)} not drawn, {len(unexplained)} without a reason")
-    stale = [name for name in EXEMPT if drawn(name, paths)]
+    skipped_pages, skipped_sections, notes = (
+        head_set("PAGES_WITHOUT_A_SCREEN"), head_set("SECTIONS_WITHOUT_A_SCREEN"), head_notes())
+    pages = core_pages()
+    carried = {}
+    for title, groups in pages:
+        for group in groups:
+            carried.setdefault(group, []).append(title)
+
+    unexplained, absent = [], []
+    for name in core_groups():
+        key = stem(name) + "Settings"
+        where = carried.get(key) or carried.get(stem(name))
+        if where is None:
+            unexplained.append(f"{name} is served but no page in settings.rs carries it")
+        elif key in skipped_sections or all(title in skipped_pages for title in where):
+            absent.append(name)
+
+    offered = [title for title, groups in pages
+               if title not in skipped_pages and any(g not in skipped_sections for g in groups)]
+    unexplained += [f"page {title} has no line in PAGE_NOTES" for title in offered if title not in notes]
+
+    stale = [f"section {name}" for name in skipped_sections if name not in carried]
+    stale += [f"page {title}" for title in skipped_pages if title not in {t for t, _ in pages}]
+
+    for name in absent:
+        print(f"  {name:24} left out with a reason")
+    for why in unexplained:
+        print(f"  UNEXPLAINED {why}")
     for name in stale:
-        print(f"  {name} is drawn now - drop its exemption")
+        print(f"  STALE {name} is not served any more - drop its entry")
+    print(f"{len(core_groups())} groups served, {len(absent)} left out with a reason, "
+          f"{len(unexplained)} unexplained")
     return 1 if unexplained or stale else 0
 
 

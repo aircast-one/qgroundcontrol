@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class UnitsPageTest {
+class UnitsSectionTest {
     private fun fact(name: String) = Fact(
         path = "settings.unitsSettings.$name",
         name = name,

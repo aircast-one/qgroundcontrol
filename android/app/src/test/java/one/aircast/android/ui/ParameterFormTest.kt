@@ -248,12 +248,17 @@ class ReadOnlyNoteTest {
 
 class ControlBoundsTest {
 
+    private fun shown(value: String) =
+        if (value == "null") "null" else "\"%.2f\"".format(value.toDouble())
+
     private fun control(minimum: String, maximum: String, default: String) = factFromControl(
         JSONObject(
             """{"kind":"object","class":"Control","control":"number","name":"FENCE_ALT_MAX",
                "label":"Fence maximum altitude","path":"p","units":"m","value":100.0,
                "valueString":"100.00","options":[],"bits":[],"readOnly":false,
-               "minimum":$minimum,"maximum":$maximum,"defaultValue":$default}""",
+               "minimum":$minimum,"maximum":$maximum,"defaultValue":$default,
+               "minimumText":${shown(minimum)},"maximumText":${shown(maximum)},
+               "defaultText":${shown(default)}}""",
         ),
     )!!
 

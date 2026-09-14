@@ -96,8 +96,27 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
         "group": group,
         "path": path,
         "note": note,
-        "subsections": subsections(group, &shown),
+        "subsections": subsections(group, &named_apart(shown)),
     })
+}
+
+// Two settings can carry the same shortDesc - the brand image pair differ only in a longDesc
+// nobody shows - and a section then draws two identical rows holding different values. The name
+// is the only thing that always differs, so a repeated label falls back to it.
+fn named_apart(controls: Vec<Value>) -> Vec<Value> {
+    let label_of = |c: &Value| c.get("label").and_then(Value::as_str).unwrap_or("").to_string();
+    let repeated = |label: &str| controls.iter().filter(|c| label_of(c) == label).count() > 1;
+    controls
+        .iter()
+        .map(|control| match repeated(&label_of(control)) {
+            false => control.clone(),
+            true => {
+                let mut apart = control.clone();
+                apart["label"] = json!(crate::label::humanise(control.get("name").and_then(Value::as_str).unwrap_or("")));
+                apart
+            }
+        })
+        .collect()
 }
 
 fn subsections(group: &str, controls: &[Value]) -> Vec<Value> {
@@ -181,5 +200,16 @@ mod tests {
         assert_eq!(units["subsections"][0]["title"], "");
         assert_eq!(units["subsections"][0]["controls"][0]["control"], "choice");
         assert_eq!(settings_view(&Fake, &["Nope".to_string()])["kind"], "null");
+    }
+
+    #[test]
+    fn two_settings_that_share_a_description_are_told_apart_by_name() {
+        let same = |name: &str| json!({ "kind": "object", "name": name, "label": "User-selected brand image" });
+        let apart = named_apart(vec![same("userBrandImageIndoor"), same("userBrandImageOutdoor")]);
+        assert_eq!(apart[0]["label"], "User Brand Image Indoor");
+        assert_eq!(apart[1]["label"], "User Brand Image Outdoor", "two rows reading the same thing and holding different values cannot be told apart at all");
+
+        let single = named_apart(vec![json!({ "name": "audioMuted", "label": "Mute audio output" })]);
+        assert_eq!(single[0]["label"], "Mute audio output", "a label nothing else claims is the one the metadata wrote");
     }
 }

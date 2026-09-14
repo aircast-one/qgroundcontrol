@@ -505,7 +505,7 @@ private fun connectNamed(name: String): Boolean {
 }
 
 @Composable
-fun LinksScreen(modifier: Modifier = Modifier) {
+fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = {}) {
     val view by qgcPath(LINKS_VIEW)
     val hasVehicle = hasVehicle()
     val rows = linkRows(view)
@@ -589,6 +589,8 @@ fun LinksScreen(modifier: Modifier = Modifier) {
                     "Bluetooth links are set up on the desktop.",
             )
         }
+
+        item(key = "footer") { footer() }
     }
 
     }

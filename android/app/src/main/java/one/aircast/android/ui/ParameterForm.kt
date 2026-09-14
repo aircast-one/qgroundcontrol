@@ -76,16 +76,14 @@ internal fun factFromControl(control: JSONObject): Fact? {
         isString = control.optText("control") == "text",
         readOnly = control.optBoolean("readOnly"),
         vehicleRebootRequired = control.optBoolean("rebootRequired"),
-        minString = boundText(control, "minimum"),
-        maxString = boundText(control, "maximum"),
-        minIsDefaultForType = control.isNull("minimum"),
-        maxIsDefaultForType = control.isNull("maximum"),
-        defaultValueString = boundText(control, "defaultValue"),
+        minString = control.optText("minimumText"),
+        maxString = control.optText("maximumText"),
+        minIsDefaultForType = control.isNull("minimumText"),
+        maxIsDefaultForType = control.isNull("maximumText"),
+        defaultValueString = control.optText("defaultText"),
+        qgcRebootRequired = control.optBoolean("applicationRestartRequired"),
     )
 }
-
-private fun boundText(control: JSONObject, key: String): String =
-    if (control.isNull(key)) "" else control.optDouble(key).takeIf { it.isFinite() }?.toString().orEmpty()
 
 private fun readPage(page: String): List<ParameterRows> {
     val sections = Qgc.get(setupPagePath(page)).optJSONArray("sections") ?: return emptyList()

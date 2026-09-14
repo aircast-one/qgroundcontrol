@@ -95,26 +95,32 @@ from head_models import MODELS  # noqa: E402
 # Android's position while macOS drew neither it nor the text beside it.
 ACCEPTED_BY_HEAD = {
     "android": {
-        "showsPacketRadio": "MEASURED and tied to the PacketRadio exemption in "
-            "android/tools/settings-groups.py. It tells a head whether to offer the packet radio "
-            "page; this head builds its own settings list and leaves that page out until libusb can "
-            "enumerate on Android. It is read the same day the page is listed",
+        "showsPacketRadio": "MEASURED. The settings list now comes from view.settings, so the "
+            "Packet Radio page is offered and its settings are drawn like any other group. The flag "
+            "says a head should draw a BESPOKE radio block - adapter picker and status line - and "
+            "there is none here until libusb can enumerate on Android. showsLinks and "
+            "showsVideoSources, the two flags that name a block this head does have, are both read",
+        "showsAbout": "MEASURED. The About page carries no sections at all, so the flag is the only "
+            "thing on it, and this head has no About screen to draw. settingsPages drops a page with "
+            "no sections and no block this head draws, which is that page and only that page",
+        "valueMeters": "MEASURED. The metres behind a control's value, for a head that converts "
+            "and writes metres itself. Every fact row here draws the fact's OWN valueString beside "
+            "the fact's OWN units and writes the typed text back through the fact, so the "
+            "conversion happens where the unit is defined - the same argument altitudeMetres is "
+            "accepted on, and the defect 8110770d3 removed",
         "apmFirmware": "MEASURED. Nothing in this head branches on airframe or firmware family - "
             "grep for multiRotor, vtol or apmFirmware across both modules returns nothing. What "
             "the plan editor offers is gated by view.plan.actions, which is the core deciding what "
             "this vehicle accepts rather than the head inferring it from a type flag. The day a "
             "screen here needs to draw something differently for a VTOL, it reads these",
         "vtol": "See apmFirmware - the same block, and the same reason",
-        "defaultValue": "MEASURED. The four bound and default keys on view.plan.defaults are the "
-            "served form of what the settings screen already draws from raw fact reads - "
-            "factConstraintNote spells 'Min 5 . Max 120 . Default 10' from minString, maxString and "
-            "defaultValueString. They land when that screen moves onto view.settings controls, "
-            "which is 25 raw settings paths and the largest single retirement left on this head. "
-            "Reading them into the plan tab as well would put the same three numbers on two screens "
-            "from two sources",
-        "defaultText": "See defaultValue - part of the same settings-screen migration",
-        "minimumText": "See defaultValue - part of the same settings-screen migration",
-        "maximumText": "See defaultValue - part of the same settings-screen migration",
+        "defaultValue": "MEASURED. view.plan.defaults serves the bound and default keys as "
+            "numbers beside the text ones. The settings screen moved onto view.settings controls in "
+            "the same sweep and reads defaultText, minimumText and maximumText - the SPELLINGS, "
+            "formatted to the fact's decimalPlaces. defaultMissionItemAltitude is why: the number is "
+            "164.04199475065616 feet and the text is 164.0, so a head that formats the number itself "
+            "prints sixteen digits of a converted metre. The numbers are for a head that formats its "
+            "own, and this one does not",
         "distanceToVehicle": "MEASURED. This head draws distanceToVehicleText, which is the same "
             "quantity already converted and spelled in the operator's unit. The raw metres and the unit "
             "name beside it are for a head that formats its own numbers, and formatting a second time "

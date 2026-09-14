@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -35,10 +34,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,51 +52,130 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.qgcFacts
+import one.aircast.mapspike.optText
 
-data class SettingsGroup(val path: String, val title: String, val description: String)
+private const val SETTINGS_VIEW = "view.settings"
 
-const val LINKS_GROUP_PATH = "links"
-const val UNITS_GROUP_PATH = "settings.unitsSettings"
-const val VIDEO_GROUP_PATH = "settings.videoSettings"
-const val FLY_VIEW_GROUP_PATH = "settings.flyViewSettings"
+internal const val UNITS_GROUP = "unitsSettings"
+internal const val VIDEO_GROUP = "videoSettings"
+internal const val FLY_VIEW_GROUP = "flyViewSettings"
 
-val SETTINGS_GROUPS = listOf(
-    SettingsGroup(LINKS_GROUP_PATH, "Comm Links", "Serial, UDP and TCP connections to the vehicle"),
-    SettingsGroup(UNITS_GROUP_PATH, "Units", "Metric or imperial, or each measurement chosen separately"),
-    SettingsGroup(VIDEO_GROUP_PATH, "Video", "Stream source and address, and the cameras to switch between"),
-    SettingsGroup(FLY_VIEW_GROUP_PATH, "Fly View", "What the flight screen shows, and the on-screen RC controls"),
-    SettingsGroup("settings.planViewSettings", "Plan View", "Defaults and rules for building a mission"),
-    SettingsGroup("settings.mapsSettings", "Maps", "How much map imagery is kept on this device"),
-    SettingsGroup("settings.flightMapSettings", "Flight Map", "Which provider draws the map under the aircraft"),
-    SettingsGroup("settings.offlineMapsSettings", "Offline Maps", "Zoom range and tile budget when downloading for a flight"),
-    SettingsGroup("settings.gimbalControllerSettings", "Gimbal", "On-screen gimbal control and the camera's field of view"),
-    SettingsGroup("settings.apmMavlinkStreamRateSettings", "Stream rates", "How often the vehicle is asked to send each kind of telemetry"),
-    SettingsGroup("settings.batteryIndicatorSettings", "Battery", "What the battery indicator shows, and when it warns"),
-    SettingsGroup("settings.autoConnectSettings", "AutoConnect", "Which link types connect on their own"),
-    SettingsGroup("settings.mavlinkSettings", "MAVLink and telemetry logs", "Telemetry logging, stream requests and forwarding"),
-    SettingsGroup("settings.rtkSettings", "RTK GPS", "Base station accuracy and position"),
-    SettingsGroup("settings.adsbVehicleManagerSettings", "ADSB Traffic", "The SBS-1 receiver the traffic readout draws from"),
-    SettingsGroup("settings.remoteIDSettings", "Remote ID", "Operator and aircraft identification, which some regions require in flight"),
-    SettingsGroup("settings.appSettings", "General", "Offline editing defaults and other app-wide settings"),
+internal val GROUPS_WITH_A_HEAD_EDITOR = setOf(VIDEO_GROUP, FLY_VIEW_GROUP)
+
+// What this head leaves out, and why. Every one was measured: the generic renderer would draw
+// the controls, and drawing them is worse than the absence.
+internal val PAGES_WITHOUT_A_SCREEN = mapOf(
+    "Firmware Upgrade" to "flashing firmware needs a USB host and a bootloader dance this head does not do",
+    "3D Viewer" to "there is no 3D view here to configure",
+    "Flight Modes" to "twelve comma-separated lists of hidden mode names, one per airframe. The mode " +
+        "picker reads what they produce; the raw lists are worse than nothing",
+    "Packet Radio" to "the page needs a picker over the adapters the radio reports, and libusb " +
+        "cannot enumerate on Android without a file descriptor handed in from Java",
 )
+
+internal val SECTIONS_WITHOUT_A_SCREEN = mapOf(
+    "brandImageSettings" to "two paths to image files, with no way to choose a file on a phone",
+    "mavlinkActionsSettings" to "two paths to JSON files that have to be on the device already",
+)
+
+internal val PAGE_NOTES = mapOf(
+    "General" to "Appearance, sound, units and the defaults a new mission starts from",
+    "Fly View" to "What the flight screen shows, the battery indicator and gimbal control",
+    "Plan View" to "Defaults and rules for building a mission",
+    "Video" to "Stream source and address, and the cameras to switch between",
+    "Maps" to "Which provider draws the map, and how much imagery is kept on this device",
+    "Connections" to "Serial, UDP and TCP links to the vehicle, and which kinds connect on their own",
+    "MAVLink" to "Telemetry logging, how often the vehicle is asked to send each message, and forwarding",
+    "ADSB Server" to "The SBS-1 receiver the traffic readout draws from",
+    "Remote ID" to "Operator and aircraft identification, which some regions require in flight",
+    "RTK GPS" to "Base station accuracy and position",
+)
+
+internal data class SettingsPageEntry(
+    val title: String,
+    val showsLinks: Boolean,
+    val showsVideoSources: Boolean,
+    val sectionCount: Int,
+)
+
+internal data class SettingsBlock(val title: String, val facts: List<Fact>)
+
+internal data class SettingsSectionRows(
+    val title: String,
+    val group: String,
+    val note: String,
+    val blocks: List<SettingsBlock>,
+)
+
+internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
+
+internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
+    val pages = view?.optJSONArray("pages") ?: return emptyList()
+    return (0 until pages.length()).mapNotNull { index ->
+        pages.optJSONObject(index)?.let { page ->
+            SettingsPageEntry(
+                title = page.optText("title"),
+                showsLinks = page.optBoolean("showsLinks"),
+                showsVideoSources = page.optBoolean("showsVideoSources"),
+                sectionCount = page.optJSONArray("sections")?.length() ?: 0,
+            )
+        }
+    }.filter {
+        it.title.isNotBlank() && it.title !in PAGES_WITHOUT_A_SCREEN.keys &&
+            (it.sectionCount > 0 || it.showsLinks)
+    }
+}
+
+internal fun settingsSections(page: JSONObject?): List<SettingsSectionRows> {
+    val sections = page?.optJSONArray("sections") ?: return emptyList()
+    return (0 until sections.length()).mapNotNull { index ->
+        sections.optJSONObject(index)?.let { section ->
+            val subs = section.optJSONArray("subsections")
+            SettingsSectionRows(
+                title = section.optText("title"),
+                group = section.optText("group"),
+                note = section.optText("note"),
+                blocks = (0 until (subs?.length() ?: 0)).mapNotNull { index ->
+                    subs!!.optJSONObject(index)?.let { block ->
+                        val controls = block.optJSONArray("controls")
+                        SettingsBlock(
+                            title = block.optText("title"),
+                            facts = (0 until (controls?.length() ?: 0)).mapNotNull { control ->
+                                controls!!.optJSONObject(control)?.let(::factFromControl)
+                            },
+                        )
+                    }
+                }.filter { it.facts.isNotEmpty() },
+            )
+        }
+    }.filter { it.blocks.isNotEmpty() && it.group !in SECTIONS_WITHOUT_A_SCREEN.keys }
+}
+
+internal fun blockHeading(pageTitle: String, section: SettingsSectionRows, block: SettingsBlock): String =
+    block.title.ifBlank { section.title.takeIf { it != pageTitle }.orEmpty() }
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
-    var group by remember { mutableStateOf<SettingsGroup?>(null) }
+    var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
+    var open by rememberSaveable { mutableStateOf<String?>(null) }
 
-    BackHandler(enabled = group != null) { group = null }
+    LaunchedEffect(Unit) {
+        pages = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
+    }
 
-    val current = group
+    BackHandler(enabled = open != null) { open = null }
+
+    val current = pages.firstOrNull { it.title == open }
     if (current == null) {
         LazyColumn(modifier.fillMaxSize()) {
-            items(SETTINGS_GROUPS) { entry ->
+            items(pages, key = { it.title }) { entry ->
                 ListItem(
                     headlineContent = { Text(entry.title) },
-                    supportingContent = { Text(entry.description) },
-                    modifier = Modifier.clickable { group = entry },
+                    supportingContent = { PAGE_NOTES[entry.title]?.let { Text(it) } },
+                    modifier = Modifier.clickable { open = entry.title },
                 )
                 HorizontalDivider()
             }
@@ -104,41 +185,70 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
     Column(modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { group = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            IconButton(onClick = { open = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
             Text(current.title, style = MaterialTheme.typography.titleLarge)
         }
-        if (current.path == LINKS_GROUP_PATH) {
-            LinksScreen(Modifier.fillMaxSize())
-        } else if (current.path == UNITS_GROUP_PATH) {
-            UnitsPage(Modifier.fillMaxSize())
-        } else if (current.path == VIDEO_GROUP_PATH) {
-            FactList(current.path, Modifier.fillMaxSize()) { ExtraVideoSourcesEditor() }
-        } else if (current.path == FLY_VIEW_GROUP_PATH) {
-            FactList(current.path, Modifier.fillMaxSize()) { RcControlsEditor() }
-        } else {
-            FactList(current.path, Modifier.fillMaxSize())
-        }
+        SettingsPageBody(current, Modifier.fillMaxSize())
     }
 }
 
 @Composable
-fun FactList(groupPath: String, modifier: Modifier = Modifier, footer: @Composable () -> Unit = {}) {
-    val facts by qgcFacts(groupPath)
+private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modifier) {
+    var sections by remember(page.title) { mutableStateOf(emptyList<SettingsSectionRows>()) }
+    var loaded by remember(page.title) { mutableStateOf(false) }
+    var reloads by remember(page.title) { mutableIntStateOf(0) }
 
-    LazyColumn(modifier) {
-        if (facts.isEmpty()) {
-            item(key = "empty") { Text("No settings exposed here.", Modifier.padding(16.dp)) }
+    LaunchedEffect(page.title, reloads) {
+        sections = withContext(Dispatchers.Default) {
+            settingsSections(Qgc.get(settingsPagePath(page.title)))
         }
-        sectionedFacts(groupPath, facts).forEach { (title, members) ->
-            if (title.isNotBlank()) {
-                item(key = "head$title") { SectionHeader(title) }
-            }
-            items(members, key = { it.path }) { fact ->
-                FactRow(fact)
+        loaded = true
+    }
+
+    if (page.showsLinks) {
+        LinksScreen(modifier) { SettingsControls(page, sections) { reloads++ } }
+        return
+    }
+
+    if (!loaded) {
+        Text("Reading settings.", modifier.padding(16.dp))
+        return
+    }
+
+    if (sections.isEmpty()) {
+        Text("No settings exposed here.", modifier.padding(16.dp))
+        return
+    }
+
+    Column(modifier.verticalScroll(rememberScrollState())) {
+        SettingsControls(page, sections) { reloads++ }
+    }
+}
+
+@Composable
+private fun SettingsControls(
+    page: SettingsPageEntry,
+    sections: List<SettingsSectionRows>,
+    onWrite: () -> Unit,
+) {
+    sections.forEach { section ->
+        if (section.group == UNITS_GROUP) {
+            SectionHeader(section.title)
+            UnitsSection()
+            return@forEach
+        }
+        section.blocks.forEach { block ->
+            blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(it) }
+            block.facts.forEach { fact ->
+                FactRow(fact, onWrite = onWrite)
                 HorizontalDivider()
             }
         }
-        item(key = "footer") { footer() }
+        section.note
+            .takeIf { it.isNotBlank() && section.group !in GROUPS_WITH_A_HEAD_EDITOR }
+            ?.let { FootNote(it) }
+        if (section.group == VIDEO_GROUP && page.showsVideoSources) ExtraVideoSourcesEditor()
+        if (section.group == FLY_VIEW_GROUP) RcControlsEditor()
     }
 }
 

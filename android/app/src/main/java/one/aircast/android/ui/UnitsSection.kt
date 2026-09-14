@@ -3,12 +3,11 @@ package one.aircast.android.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
@@ -109,21 +108,18 @@ private fun UnitSystemRow(system: Int, onPick: (Int) -> Unit) {
 }
 
 @Composable
-fun UnitsPage(modifier: Modifier = Modifier) {
+fun UnitsSection(modifier: Modifier = Modifier) {
     val facts by qgcFacts(UNITS_PATH)
     val system by qgcDouble("$UNITS_PATH.unitSystem", 0.0)
     val chosen = system.toInt()
 
-    LazyColumn(modifier) {
-        item(key = "system") {
-            UnitSystemRow(chosen) { picked ->
-                offMainDetached { Qgc.invoke("$UNITS_PATH.setUnitSystem", picked) }
-            }
-            HorizontalDivider()
+    Column(modifier) {
+        UnitSystemRow(chosen) { picked ->
+            offMainDetached { Qgc.invoke("$UNITS_PATH.setUnitSystem", picked) }
         }
-        item(key = "note") { FootNote(unitSystemNote(chosen)) }
-
-        items(unitRowsFor(chosen, facts), key = { it.path }) { fact ->
+        HorizontalDivider()
+        FootNote(unitSystemNote(chosen))
+        unitRowsFor(chosen, facts).forEach { fact ->
             FactRow(fact)
             HorizontalDivider()
         }
