@@ -94,3 +94,26 @@ class PlanActionsTest {
         assertEquals(false, none.newPlan)
     }
 }
+
+class PlanHistoryTest {
+
+    @Test
+    fun `a plan with nothing behind it offers neither`() {
+        val fresh = planHistory(JSONObject("""{"kind":"object","canUndo":false,"canRedo":false}"""))
+
+        assertEquals(PlanHistory(canUndo = false, canRedo = false), fresh)
+    }
+
+    @Test
+    fun `an edited plan can be undone but not yet redone`() {
+        val edited = planHistory(JSONObject("""{"kind":"object","canUndo":true,"canRedo":false}"""))
+
+        assertEquals(PlanHistory(canUndo = true, canRedo = false), edited)
+    }
+
+    @Test
+    fun `a view that never answered offers nothing, rather than enabled buttons that refuse`() {
+        assertEquals(PlanHistory(canUndo = false, canRedo = false), planHistory(null))
+        assertEquals(PlanHistory(canUndo = false, canRedo = false), planHistory(JSONObject("{}")))
+    }
+}

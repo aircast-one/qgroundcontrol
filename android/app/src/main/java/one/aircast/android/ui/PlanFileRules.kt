@@ -38,6 +38,13 @@ internal fun planActions(view: org.json.JSONObject?): PlanActions {
     )
 }
 
+internal data class PlanHistory(val canUndo: Boolean, val canRedo: Boolean)
+
+internal fun planHistory(view: org.json.JSONObject?): PlanHistory = PlanHistory(
+    canUndo = view?.optBoolean("canUndo") == true,
+    canRedo = view?.optBoolean("canRedo") == true,
+)
+
 internal fun discardNeedsConfirming(dirty: Boolean, containsItems: Boolean): Boolean =
     dirty && containsItems
 

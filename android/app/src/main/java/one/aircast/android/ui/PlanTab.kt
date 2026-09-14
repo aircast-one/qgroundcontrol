@@ -31,6 +31,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.qgcBool
+import androidx.compose.runtime.DisposableEffect
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.PlanMapScreen
 
@@ -48,7 +51,13 @@ fun PlanTab(modifier: Modifier = Modifier) {
     val containsItems by qgcBool("plan.containsItems")
     val planStatus by qgcPath("view.plan")
     val can = planActions(planStatus)
+    val history = planHistory(planStatus)
     var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    DisposableEffect(Unit) {
+        offMainDetached { Qgc.set("plan.undoTracking", true) }
+        onDispose { offMainDetached { Qgc.set("plan.undoTracking", false) } }
+    }
 
     LaunchedEffect(syncing, containsItems, files.documentName()) {
         undrawn = withContext(Dispatchers.Default) { undrawnItemNames(visualItems()) }
@@ -112,6 +121,15 @@ fun PlanTab(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            TextButton(
+                enabled = history.canUndo,
+                onClick = { offMainDetached { Qgc.invoke("plan.undo") } },
+            ) { Text("Undo") }
+            TextButton(
+                enabled = history.canRedo,
+                onClick = { offMainDetached { Qgc.invoke("plan.redo") } },
+            ) { Text("Redo") }
+
             Box {
                 TextButton(onClick = { menuOpen = true }) { Text("File") }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
