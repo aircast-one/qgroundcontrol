@@ -64,6 +64,7 @@ data class LinkRow(
     val connected: Boolean,
     val heard: Boolean,
     val lastError: String,
+    val errorRemedy: String = "",
     val editing: String = "",
     val host: String = "",
     val port: Int = 0,
@@ -83,6 +84,7 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 connected = link.optBoolean("connected"),
                 heard = link.optBoolean("heardVehicle"),
                 lastError = link.optText("lastError"),
+                errorRemedy = link.optText("errorRemedy"),
                 editing = link.optText("editing"),
                 host = link.optText("host"),
                 port = link.optInt("port"),
@@ -195,12 +197,20 @@ private fun LinkRowItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+                remedyText(row.errorRemedy)?.let { advice ->
+                    Text(
+                        advice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
-        if (row.connected) {
-            OutlinedButton(onClick = onDisconnect) { Text("Disconnect") }
-        } else {
-            Button(onClick = onConnect) { Text("Connect") }
+        when {
+            row.connected -> OutlinedButton(onClick = onDisconnect) { Text("Disconnect") }
+            row.errorRemedy == REMEDY_EDIT_ADDRESS && linkIsEditable(row) ->
+                Button(onClick = onEdit) { Text("Edit") }
+            else -> Button(onClick = onConnect) { Text("Connect") }
         }
         Box {
             IconButton(onClick = { menuOpen = true }) {
@@ -649,4 +659,11 @@ fun LinksScreen(modifier: Modifier = Modifier) {
             },
         )
     }
+}
+
+internal const val REMEDY_EDIT_ADDRESS = "editAddress"
+
+internal fun remedyText(remedy: String): String? = when (remedy) {
+    REMEDY_EDIT_ADDRESS -> "Nothing is listening at that address. Retrying will not help until it is changed."
+    else -> null
 }

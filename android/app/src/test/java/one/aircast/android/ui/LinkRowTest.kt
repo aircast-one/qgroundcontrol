@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,5 +35,22 @@ class LinkRowTest {
         val live = linkRows(JSONObject(TWO_LINKS)).single { it.name == "Packet radio" }
         assertTrue(live.heard)
         assertFalse(live.goneQuiet)
+    }
+}
+
+class RemedyTest {
+    @Test
+    fun `an address that nothing answers says retrying will not help`() {
+        assertEquals(
+            "Nothing is listening at that address. Retrying will not help until it is changed.",
+            remedyText(REMEDY_EDIT_ADDRESS),
+        )
+    }
+
+    @Test
+    fun `a retryable error adds no advice, because Connect already says it`() {
+        assertNull(remedyText("retry"))
+        assertNull(remedyText(""))
+        assertNull(remedyText("somethingTheCoreAddedLater"))
     }
 }
