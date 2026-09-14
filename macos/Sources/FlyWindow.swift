@@ -376,7 +376,9 @@ struct FlyPanel: View {
                 if !video.camera.batteryText.isEmpty {
                     GroupRow(title: "Camera battery", value: video.camera.batteryText)
                 }
-                GroupRow(title: "Storage", value: video.camera.storageText)
+                if video.camera.showsStorage {
+                    GroupRow(title: "Storage", value: video.camera.storageText)
+                }
             }
             if !video.camera.modeKnown {
                 Text("The camera has not said which mode it is in.")

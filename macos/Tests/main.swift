@@ -4558,6 +4558,32 @@ func checkTheLinkEditorStopsDroppingWhatItRejects() {
 }
 checkTheLinkEditorStopsDroppingWhatItRejects()
 
+func checkTheStorageRowHidesOnlyOnAPositiveRefusal() {
+    let tracks = CameraControl(["present": true as NSNumber, "storageText": "12 GB",
+                                "reportsStorage": true as NSNumber])
+    expect(tracks.showsStorage, "a camera that tracks storage shows the row")
+
+    let doesNot = CameraControl(["present": true as NSNumber,
+                                 "storageText": CameraControl.storageNotTracked,
+                                 "reportsStorage": false as NSNumber])
+    expect(!doesNot.showsStorage,
+           "and one that has POSITIVELY answered NOT_SUPPORTED hides it, which is what QGC's own "
+           + "PhotoVideoControl does -- the row had been showing that camera a permanent "
+           + "\"Not reported\"")
+
+    let silent = CameraControl(["present": true as NSNumber])
+    expect(silent.showsStorage,
+           "but a camera that has not answered YET keeps its row. Hiding on silence is the failure "
+           + "this gate was deliberately not built on top of: while absence was served as "
+           + "NOT_SUPPORTED, this would have hidden storage for every camera in every default "
+           + "build, and the cause would have been a default four files away in another language")
+
+    expect(CameraControl.absent.showsStorage,
+           "and an answer with no reportsStorage at all is an older core, not a camera making a "
+           + "claim -- the default is true in both directions on purpose")
+}
+checkTheStorageRowHidesOnlyOnAPositiveRefusal()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.

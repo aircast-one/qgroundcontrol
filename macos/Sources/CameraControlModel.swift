@@ -33,6 +33,7 @@ struct CameraControl: Equatable {
     let lapseCount: Int?
     let lapseUnlimited: Bool
     let canStopPhoto: Bool
+    let reportsStorage: Bool
 
     // PhotoVideoControl.qml:115 offers the toggle on hasModes alone, and the core's
     // canChangeMode says a camera sitting in a third mode WILL accept the change whenever video
@@ -76,6 +77,7 @@ struct CameraControl: Equatable {
         lapseCount = nil
         lapseUnlimited = false
         canStopPhoto = false
+        reportsStorage = true
     }
 
     init(_ json: [String: Any]) {
@@ -109,6 +111,7 @@ struct CameraControl: Equatable {
         lapseCount = (json["lapseCount"] as? NSNumber)?.intValue
         lapseUnlimited = flag("lapseUnlimited")
         canStopPhoto = flag("canStopPhoto")
+        reportsStorage = (json["reportsStorage"] as? NSNumber)?.boolValue ?? true
     }
 
     // One place decides whether each control exists, so the store's guard and the view's
@@ -188,4 +191,19 @@ struct CaptureStart: Equatable {
         guard let lapseCount, lapseCount > 0 else { return "Started an interval capture\(every)." }
         return "Started \(lapseCount) shots\(every)."
     }
+}
+
+// The storage row is hidden only when the camera has POSITIVELY said it does not track storage.
+// QGC's PhotoVideoControl does the same on `storageStatus !== STORAGE_NOT_SUPPORTED`, and the row
+// was showing "Not reported" for that camera forever.
+//
+// The default is true on purpose, in both directions. A camera that has not answered yet keeps its
+// row: hiding on silence is the failure this gate was deliberately not built on top of a month --
+// an hour -- ago, when absence was served as NOT_SUPPORTED and the row would have vanished for
+// every camera in every default build. And an answer with no reportsStorage at all is an older
+// core, not a camera making a claim.
+extension CameraControl {
+    var showsStorage: Bool { reportsStorage }
+
+    static let storageNotTracked = "This camera does not report storage."
 }

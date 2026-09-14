@@ -298,6 +298,7 @@ refused
 removeInvokable
 repeat
 report
+reportsStorage
 request
 requestingList
 required
@@ -352,6 +353,7 @@ status
 statusLine
 statusText
 step
+storageStatus
 storageText
 stream
 streaming
