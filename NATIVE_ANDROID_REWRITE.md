@@ -3074,8 +3074,29 @@ The other candidate is `undecodableFrames` itself — if it counts framing failu
 unknown message ids, a message the parser cannot map is invisible to it, and that zero means
 less than it appears.
 
-Not resolved. Recorded this far so the next person starts from a narrowed chain rather than
-from "it does not work", and so the screen's honest caveat has evidence behind it.
+**Resolved, 2026-09-14: the core's tlog parser drops CAMERA_FEEDBACK and says nothing.**
+
+    2026-09-14 08-08-41.tlog, 179928 bytes
+    an independent frame walker:  4031 frames, 454 heartbeats, 32 x msgid 180
+    view.geoTag:                  readable true, triggerCount 0, undecodableFrames 0
+
+Same file. The walker was validated before being believed — a sane heartbeat count for the
+session length, and id180=0 on an earlier log where the core also says zero.
+
+The frames are MAVLink2 with **payload length 43 against pymavlink's declared 47**, which is
+legal trailing-zero truncation of the `completed_captures` extension. A conformant parser
+zero-extends. That is a lead rather than a diagnosis — I have not read the crate's decode path.
+
+**`undecodableFrames` stayed 0 for all 32**, so a message the parser cannot map is
+indistinguishable from one that was never sent. I trusted that zero for hours.
+
+**Why four earlier attempts failed, which is the reusable part.** My checks were about four
+different artefacts — the wire, the app's parser, the code path, and *a file* — and nothing
+established that the file I read was the file being written during injection. It was not. QGC
+writes to `cache/FlightData*.mavlink` and only moves it into `Telemetry/` on close, so every
+log picked from the listing was an earlier session. Pulling the temp file mid-injection showed
+21 frames immediately. Four true statements about four things, read as one statement about the
+last of them.
 
 ### Geotagging: the head should use the core, not Qt's controller, 2026-09-14
 
