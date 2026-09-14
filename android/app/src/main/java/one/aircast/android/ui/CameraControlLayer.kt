@@ -29,7 +29,6 @@ import one.aircast.android.bridge.qgcStrings
 private const val REFUSAL_MS = 4000L
 
 private const val MANAGER = "vehicle.cameraManager"
-private const val CAMERA = "$MANAGER.currentCameraInstance"
 
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
@@ -79,7 +78,12 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                         selected = false,
                         enabled = camera.canChangeMode,
                         onClick = {
-                            offMainDetached { refused = Qgc.refusalOf("$CAMERA.toggleCameraMode") }
+                            offMainDetached {
+                                refused = Qgc.refusalOf(
+                                    CAMERA_SET_MODE,
+                                    if (camera.isVideoMode) "photo" else "video",
+                                )
+                            }
                         },
                         label = { Text(label) },
                     )
@@ -88,12 +92,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
 
             Button(
                 onClick = {
-                    offMainDetached {
-                        refused = when {
-                            camera.isVideoMode -> Qgc.refusalOf("$CAMERA.toggleVideoRecording")
-                            else -> Qgc.refusalOf("$CAMERA.takePhoto")
-                        }
-                    }
+                    offMainDetached { refused = Qgc.refusalOf(shutter.action) }
                 },
                 enabled = shutter.enabled,
                 colors = if (shutter.recording) {
@@ -104,6 +103,14 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                     ButtonDefaults.buttonColors()
                 },
             ) { Text(shutter.label) }
+
+            lapsePlan(camera)?.let { plan ->
+                Text(
+                    text = plan,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         refused?.let { sentence ->

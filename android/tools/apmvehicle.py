@@ -37,6 +37,7 @@ ACCELCAL_POSITIONS = [1, 2, 3, 4, 5, 6]
 CAMERA_FEEDBACK_EVERY = int(os.environ.get("CAMERA_FEEDBACK_EVERY", "0"))
 ADSB_CONTACTS = int(os.environ.get("ADSB_CONTACTS", "0"))
 ORBIT_RADIUS_M = float(os.environ.get("ORBIT", "0"))
+CAM_INTERVAL = os.environ.get("CAM_INTERVAL") == "1"
 ADSB_SQUAWK = int(os.environ.get("ADSB_SQUAWK", "1200"))
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
@@ -289,7 +290,8 @@ def main():
             for comp, cam_link in links.items():
                 cam_link.camera_capture_status_send(
                     int((time.time() - boot) * 1000),
-                    0, 1 if cam_recording[0] else 0, 0.0, 0, 0, 0)
+                    3 if CAM_INTERVAL else 0,
+                    1 if cam_recording[0] else 0, 5.0, 0, 0, 0)
                 cam_link.heartbeat_send(mavlink.MAV_TYPE_CAMERA,
                                         mavlink.MAV_AUTOPILOT_INVALID, 0, 0,
                                         mavlink.MAV_STATE_ACTIVE)

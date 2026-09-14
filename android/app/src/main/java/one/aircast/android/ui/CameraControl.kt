@@ -17,6 +17,7 @@ data class CameraShutter(
     val label: String,
     val recording: Boolean,
     val enabled: Boolean,
+    val action: String,
 )
 
 
@@ -32,6 +33,11 @@ internal data class CameraReading(
     val canRecord: Boolean,
     val isTakingPhoto: Boolean,
     val isVideoMode: Boolean,
+    val timelapse: Boolean,
+    val canStopPhoto: Boolean,
+    val lapseSeconds: Double?,
+    val lapseCount: Int?,
+    val lapseUnlimited: Boolean,
 )
 
 internal fun cameraReading(view: JSONObject?): CameraReading? {
@@ -47,19 +53,50 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         isTakingPhoto = view.optBoolean("isTakingPhoto"),
         isVideoMode = view.optInt("mode", CAM_MODE_UNDEFINED) == CAM_MODE_VIDEO &&
             view.optBoolean("modeKnown"),
+        timelapse = view.optText("photoMode") == "timelapse",
+        canStopPhoto = view.optBoolean("canStopPhoto"),
+        lapseSeconds = view.optDouble("lapseSeconds").takeIf { it.isFinite() },
+        lapseCount = if (view.isNull("lapseCount")) null else view.optInt("lapseCount"),
+        lapseUnlimited = view.optBoolean("lapseUnlimited"),
     )
 }
 
+internal const val CAMERA_PHOTO = "camera.takePhoto"
+internal const val CAMERA_RECORD = "camera.toggleRecording"
+internal const val CAMERA_STOP_PHOTO = "camera.stopPhoto"
+internal const val CAMERA_SET_MODE = "camera.setMode"
+
+internal fun lapsePlan(camera: CameraReading): String? {
+    if (!camera.timelapse) return null
+    val every = camera.lapseSeconds?.takeIf { it > 0 }?.let { "every ${trimmed(it)} s" }
+    val many = when {
+        camera.lapseUnlimited -> "until stopped"
+        else -> camera.lapseCount?.takeIf { it > 0 }?.let { "$it shots" }
+    }
+    return listOfNotNull(every, many).joinToString(", ").ifBlank { "interval capture" }
+}
+
+private fun trimmed(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else "%.1f".format(value)
+
 internal fun shutterFor(camera: CameraReading): CameraShutter? = when {
+    camera.canStopPhoto -> CameraShutter(
+        label = "Stop lapse",
+        recording = true,
+        enabled = true,
+        action = CAMERA_STOP_PHOTO,
+    )
     camera.isVideoMode && camera.canRecord -> CameraShutter(
         label = if (camera.isRecording) "Stop" else "Record",
         recording = camera.isRecording,
         enabled = true,
+        action = CAMERA_RECORD,
     )
     !camera.isVideoMode && camera.canPhoto -> CameraShutter(
-        label = "Take Photo",
+        label = if (camera.timelapse) "Start lapse" else "Take Photo",
         recording = false,
         enabled = !camera.isTakingPhoto,
+        action = CAMERA_PHOTO,
     )
     else -> null
 }

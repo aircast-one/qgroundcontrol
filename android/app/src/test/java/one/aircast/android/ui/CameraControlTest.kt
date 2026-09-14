@@ -102,3 +102,68 @@ class CameraModeChangeTest {
         assertFalse(cameraReading(view(""""mode":1"""))!!.canChangeMode)
     }
 }
+
+class CameraTimelapseTest {
+
+    private fun view(
+        photoMode: String = "\"timelapse\"",
+        canStopPhoto: Boolean = false,
+        lapseSeconds: String = "5.0",
+        lapseCount: String = "10",
+        lapseUnlimited: Boolean = false,
+        mode: Int = CAM_MODE_PHOTO,
+    ) = JSONObject(
+        """{"kind":"object","class":"Camera","present":true,"hasModes":true,"canChangeMode":true,
+           "modeText":"Photo","isRecording":false,"canPhoto":true,"canRecord":true,
+           "isTakingPhoto":false,"mode":$mode,"modeKnown":true,"photoMode":$photoMode,
+           "canStopPhoto":$canStopPhoto,"lapseSeconds":$lapseSeconds,"lapseCount":$lapseCount,
+           "lapseUnlimited":$lapseUnlimited}""",
+    )
+
+    @Test
+    fun `a single-shot camera plans nothing and keeps its old button`() {
+        val single = cameraReading(view(photoMode = "\"single\"", lapseSeconds = "null", lapseCount = "null"))!!
+
+        assertNull(lapsePlan(single))
+        assertEquals("Take Photo", shutterFor(single)!!.label)
+        assertEquals(CAMERA_PHOTO, shutterFor(single)!!.action)
+    }
+
+    @Test
+    fun `a shutter that starts ten shots does not say Take Photo`() {
+        val lapsing = cameraReading(view())!!
+
+        assertEquals("Start lapse", shutterFor(lapsing)!!.label)
+        assertEquals("every 5 s, 10 shots", lapsePlan(lapsing))
+    }
+
+    @Test
+    fun `an unlimited lapse says it will not stop on its own`() {
+        val forever = cameraReading(view(lapseCount = "0", lapseUnlimited = true))!!
+
+        assertEquals("every 5 s, until stopped", lapsePlan(forever))
+    }
+
+    @Test
+    fun `a running interval capture offers the only control that ends it`() {
+        val running = cameraReading(view(canStopPhoto = true, lapseUnlimited = true, lapseCount = "0"))!!
+        val shutter = shutterFor(running)!!
+
+        assertEquals("Stop lapse", shutter.label)
+        assertEquals(CAMERA_STOP_PHOTO, shutter.action)
+        assertEquals(true, shutter.enabled)
+    }
+
+    @Test
+    fun `stopping outranks recording, because a lapse runs in photo mode and cannot wait`() {
+        val muddled = cameraReading(view(canStopPhoto = true, mode = CAM_MODE_VIDEO))!!
+
+        assertEquals(CAMERA_STOP_PHOTO, shutterFor(muddled)!!.action)
+    }
+
+    @Test
+    fun `a whole-second interval is not written with a decimal`() {
+        assertEquals("every 5 s, 10 shots", lapsePlan(cameraReading(view())!!))
+        assertEquals("every 2.5 s, 10 shots", lapsePlan(cameraReading(view(lapseSeconds = "2.5"))!!))
+    }
+}
