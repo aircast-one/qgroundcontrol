@@ -57,6 +57,31 @@ from head_models import MODELS  # noqa: E402
 # Every field the core serves that this head does not read, and why that is right. A view the head
 # does not read AT ALL is not listed here -- view-fields.py already carries a reason for each of
 # those, and repeating them would be two tables to keep true instead of one.
+# An acceptance is a statement about ONE head: "this head draws the text variant instead" is
+# true here and false next door. Kept shared, a reason written for one head silences a real
+# finding for the other - which is what happened to distanceToVehicle, accepted from
+# Android's position while macOS drew neither it nor the text beside it.
+ACCEPTED_BY_HEAD = {
+    "android": {
+        "silentReason": "MEASURED and waiting on a token. The two cases it distinguishes - no vehicle, "
+            "and a vehicle that sends no VIBRATION message - are both drawn on Android today, each with "
+            "a title AND a sentence telling the operator what to do about it. Adopting the served "
+            "sentence as the title would leave the head unable to pick the right body, because the only "
+            "thing separating the two cases would be the wording of a translatable string. followMe "
+            "serves a token beside its sentence for exactly this; when silentReason does too, this head "
+            "reads it",
+        "distanceToVehicle": "MEASURED. This head draws distanceToVehicleText, which is the same "
+            "quantity already converted and spelled in the operator's unit. The raw metres and the unit "
+            "name beside it are for a head that formats its own numbers, and formatting a second time "
+            "here is the defect two-coordinate-serialisers removed",
+        "distanceToVehicleMeters": "See distanceToVehicle - the raw quantity behind the text this head "
+            "already draws",
+        "distanceToVehicleUnits": "See distanceToVehicle - the unit name behind the text this head "
+            "already draws",
+    },
+    "macos": {},
+}
+
 ACCEPTED = {
     "spinsPropeller": "MEASURED and deliberately not decoded. calibration.rs began serving it with "
         "CompassMot, the first routine that spins the propellers. The WARNING text beside it "
@@ -96,6 +121,7 @@ ACCEPTED = {
         "only be spelled here, so adopting it would put two precision rules on one control. The "
         "core agreed and declined to serve separate ends",
 }
+ACCEPTED = {**ACCEPTED, **ACCEPTED_BY_HEAD[HEAD]}
 
 
 # A view this head does not read AT ALL already has a reason in view-fields.py's UNDRAWN table.
