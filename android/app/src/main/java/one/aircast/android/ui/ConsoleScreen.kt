@@ -33,14 +33,20 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMain
 import one.aircast.android.bridge.qgcBool
-import one.aircast.android.bridge.qgcStrings
+import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.optText
 
 private const val CONSOLE_ROOT = "mavlinkConsole"
-private const val CONSOLE_LINES = "mavlinkConsole.lines"
+private const val CONSOLE_VIEW = "view.mavlinkConsole"
 
-internal fun consoleEmptyText(sent: Boolean): String = when (sent) {
-    true -> "Sent. Nothing back from the vehicle yet."
-    false -> "No output yet. Send a command, for example help."
+// The core answers "why is this empty" about the VEHICLE - connected or not - and this screen
+// knows something the core cannot: whether the operator has sent anything yet. Its own wording
+// is better once there is a vehicle, and the core's is the only correct answer when there is
+// not, which this screen never used to give.
+internal fun consoleEmptyText(sent: Boolean, connected: Boolean, servedReason: String): String = when {
+    !connected && servedReason.isNotBlank() -> servedReason
+    sent -> "Sent. Nothing back from the vehicle yet."
+    else -> "No output yet. Send a command, for example help."
 }
 
 internal fun visibleConsoleLines(lines: List<String>): List<String> =
@@ -73,7 +79,10 @@ internal fun shouldFollowTail(lastVisibleIndex: Int?, count: Int): Boolean =
 fun ConsoleScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val isPx4 by qgcBool("vehicle.px4Firmware")
-    val rawLines by qgcStrings(CONSOLE_LINES)
+    val consoleJson by qgcPath(CONSOLE_VIEW)
+    val rawLines = remember(consoleJson) { consoleLines(consoleJson) }
+    val emptyReason = remember(consoleJson) { consoleJson?.optText("emptyReason").orEmpty() }
+    val consoleConnected = remember(consoleJson) { consoleJson?.optBoolean("connected") == true }
     var command by remember { mutableStateOf("") }
     var sentAnything by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -127,7 +136,7 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
 
         if (lines.isEmpty()) {
             Text(
-                text = consoleEmptyText(sentAnything),
+                text = consoleEmptyText(sentAnything, consoleConnected, emptyReason),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -170,4 +179,9 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
             Button(onClick = { send() }, enabled = command.isNotBlank()) { Text("Send") }
         }
     }
+}
+
+internal fun consoleLines(view: org.json.JSONObject?): List<String> {
+    val array = view?.optJSONArray("lines") ?: return emptyList()
+    return (0 until array.length()).map { array.optString(it) }
 }

@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -34,13 +35,13 @@ class ConsoleScreenTest {
     fun `before anything is sent the empty console says what to try`() {
         assertEquals(
             "No output yet. Send a command, for example help.",
-            consoleEmptyText(sent = false),
+            consoleEmptyText(sent = false, connected = true, servedReason = ""),
         )
     }
 
     @Test
     fun `after a command goes out the silence is the vehicle's, not the operator's`() {
-        assertEquals("Sent. Nothing back from the vehicle yet.", consoleEmptyText(sent = true))
+        assertEquals("Sent. Nothing back from the vehicle yet.", consoleEmptyText(sent = true, connected = true, servedReason = ""))
     }
 }
 
@@ -83,5 +84,38 @@ class ConsoleFollowTailTest {
     @Test
     fun `scrolling up by two lines is enough to stop the yank`() {
         assertFalse(shouldFollowTail(lastVisibleIndex = 7, count = 10))
+    }
+}
+
+class ConsoleEmptyReasonTest {
+    @Test
+    fun `with no vehicle the core's sentence is the only correct one`() {
+        assertEquals(
+            "Connect to a vehicle to open a shell on it.",
+            consoleEmptyText(sent = false, connected = false, servedReason = "Connect to a vehicle to open a shell on it."),
+        )
+    }
+
+    @Test
+    fun `once the operator has sent something this screen knows more than the core does`() {
+        assertEquals(
+            "Sent. Nothing back from the vehicle yet.",
+            consoleEmptyText(sent = true, connected = true, servedReason = "The vehicle has printed nothing."),
+        )
+    }
+
+    @Test
+    fun `connected and nothing sent keeps the invitation to type, not the core's flat statement`() {
+        assertEquals(
+            "No output yet. Send a command, for example help.",
+            consoleEmptyText(sent = false, connected = true, servedReason = "The vehicle has printed nothing."),
+        )
+    }
+
+    @Test
+    fun `lines come from the served array`() {
+        assertEquals(listOf("a", "b"), consoleLines(JSONObject("""{"lines":["a","b"]}""")))
+        assertEquals(emptyList<String>(), consoleLines(JSONObject("{}")))
+        assertEquals(emptyList<String>(), consoleLines(null))
     }
 }
