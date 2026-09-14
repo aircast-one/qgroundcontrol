@@ -60,10 +60,15 @@ pub fn enum_choice(fact: &Value) -> Option<i64> {
 }
 
 pub fn shown_text(fact: &Value) -> Option<String> {
+    // The synthetic label is skipped rather than shown. Fact::enumStringValue appends
+    // tr("Unknown: %1") and then returns it, so enumOrValueString for a value outside the declared
+    // set is that placeholder - and control.rs already falls back to valueString there. Two views
+    // spelling the same fact differently is worse than either spelling.
+    let synthetic = text(fact, "unknownEnumLabel");
     ["enumOrValueString", "valueString"]
         .iter()
         .filter_map(|key| fact.get(key).and_then(Value::as_str))
-        .find(|shown| !shown.is_empty())
+        .find(|shown| !shown.is_empty() && (synthetic.is_empty() || *shown != synthetic))
         .map(str::to_string)
 }
 
@@ -255,6 +260,9 @@ mod measure_tests {
         let chosen = json!({ "kind": "fact", "enumStrings": ["No change", "Take photo"], "enumValues": [0, 6], "enumIndex": 1, "valueString": "6", "enumOrValueString": "Take photo" });
         assert_eq!(enum_choice(&chosen), Some(1));
         assert_eq!(shown_text(&chosen).as_deref(), Some("Take photo"), "enumValues here are 0,6,... so valueString is the raw 6 and indexing the label list by it would name a different action entirely");
+
+        let outside = json!({ "kind": "fact", "enumStrings": ["Manual", "Stabilize", "Unknown: 7"], "enumValues": [0, 1, 7], "enumIndex": 2, "unknownEnumLabel": "Unknown: 7", "valueString": "7", "enumOrValueString": "Unknown: 7" });
+        assert_eq!(shown_text(&outside).as_deref(), Some("7"), "enumStringValue appends the placeholder and then returns it, so enumOrValueString IS the placeholder for a value outside the declared set - control.rs falls back to valueString there and these must not spell the same fact two ways");
 
         let unlabelled = json!({ "kind": "fact", "valueString": "", "enumOrValueString": "" });
         assert_eq!(shown_text(&unlabelled), None, "a fact with no metadata answers empty to both, which is not the string \"\"");
