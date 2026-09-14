@@ -100,6 +100,7 @@ fn split(paths_csv: *const c_char) -> Vec<String> {
 pub unsafe extern "C" fn qgc_core_set_event_handler(handler: EventFn) {
     *HEAD.lock().unwrap() = handler;
     *crate::detections::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_detections) as std::sync::Arc<dyn Fn() + Send + Sync>);
+    *crate::adsb::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_adsb) as std::sync::Arc<dyn Fn() + Send + Sync>);
     // Deliberately no pump. It exists to service links the core owns and commands it has in
     // flight, and it can never be stopped once started, so a head that only wants one view pushed
     // was getting a thread that wakes every hundred milliseconds and holds the hub and the
@@ -373,6 +374,11 @@ fn announce_detections() {
     announce("view.detections", &snapshot);
 }
 
+fn announce_adsb() {
+    let snapshot = crate::adsb::lock().snapshot(crate::hub::now_ms()).to_string();
+    announce("view.adsbTraffic", &snapshot);
+}
+
 type LinkBytesSinkFn = Option<unsafe extern "C" fn(u32, *const u8, usize, *mut std::ffi::c_void)>;
 type LinkStateSinkFn = Option<unsafe extern "C" fn(u32, bool, *const c_char, *mut std::ffi::c_void)>;
 
@@ -460,3 +466,4 @@ pub unsafe extern "C" fn qgc_core_tile_hash(provider: i32, x: i32, y: i32, z: i3
 pub unsafe extern "C" fn qgc_core_tile_provider(name: *const c_char) -> i32 {
     crate::tilecache::provider_hash(&text(name)).unwrap_or(0)
 }
+

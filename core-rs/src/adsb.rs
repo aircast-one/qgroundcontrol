@@ -1115,4 +1115,30 @@ mod tests {
         assert_eq!(own(&json!({ "kind": "coordinate", "valid": true, "latitude": 0.0, "longitude": 0.0 }).to_string()), None, "null island is what an autopilot publishes before it has a fix");
         assert_eq!(own(&json!({ "kind": "null" }).to_string()), None);
     }
+    #[test]
+    fn every_on_change_hook_has_an_installer() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
+        let abi = std::fs::read_to_string(format!("{dir}/abi.rs")).unwrap();
+
+        let declaring: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+            .filter_map(|path| {
+                let source = std::fs::read_to_string(&path).ok()?;
+                let module = path.file_stem()?.to_string_lossy().to_string();
+                source.split("#[cfg(test)]").next()?.contains("pub static ON_CHANGE").then_some(module)
+            })
+            .collect();
+
+        assert!(declaring.len() >= 2, "only {declaring:?} declare a change hook, so a clean result would mean nothing");
+
+        let uninstalled: Vec<&String> = declaring.iter().filter(|module| !abi.contains(&format!("crate::{module}::ON_CHANGE"))).collect();
+        assert!(
+            uninstalled.is_empty(),
+            "a producer calls changed() and the hook it reaches for is None, so the event is built and dropped: nothing errors, nothing logs, and the view only moves when something polls it. {uninstalled:?} declare a hook that qgc_core_set_event_handler never installs"
+        );
+    }
+
 }
