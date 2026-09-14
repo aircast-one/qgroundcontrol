@@ -77,6 +77,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
         .iter()
         .map(|(group, name)| {
             let fact = object(&backend.get(&fact_path(group, name)));
+            let resolves = fact.get("found").and_then(Value::as_bool) != Some(false);
             let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
             let fresh = converted(backend, &fact);
             let held = fact.get("valueString").and_then(Value::as_str).filter(|v| !v.is_empty());
@@ -93,6 +94,11 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
                 "missing": value.is_none(),
+                "missingReason": match (value.is_none(), resolves) {
+                    (false, _) => Value::Null,
+                    (true, false) => json!("noSuchFact"),
+                    (true, true) => json!("notReported"),
+                },
             })
         })
         .collect();
@@ -103,6 +109,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
         "items": items,
     })
 }
+
 
 #[cfg(test)]
 mod tests {
