@@ -140,8 +140,8 @@ internal fun settingsSections(page: JSONObject?): List<SettingsSectionRows> {
                 title = section.optText("title"),
                 group = section.optText("group"),
                 note = section.optText("note"),
-                blocks = (0 until (subs?.length() ?: 0)).mapNotNull { index ->
-                    subs!!.optJSONObject(index)?.let { block ->
+                blocks = (0 until (subs?.length() ?: 0)).mapNotNull { sub ->
+                    subs!!.optJSONObject(sub)?.let { block ->
                         val controls = block.optJSONArray("controls")
                         SettingsBlock(
                             title = block.optText("title"),
