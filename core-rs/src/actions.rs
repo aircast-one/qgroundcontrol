@@ -11,9 +11,10 @@ const ACTIVATE: &str = "vehicles.setActive";
 const PHOTO: &str = "camera.takePhoto";
 const RECORD: &str = "camera.toggleRecording";
 const MODE: &str = "camera.setMode";
+const STOP_PHOTO: &str = "camera.stopPhoto";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -80,7 +81,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         REMOVE => remove(backend, args),
         ORBIT => orbit(backend, args),
         ACTIVATE => activate(backend, args),
-        PHOTO | RECORD | MODE => camera(backend, path, args),
+        PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
 }
@@ -115,6 +116,7 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let (allowed, refusal, invokable) = match path {
         PHOTO => (gate("canPhoto"), photo_refusal(&view), "takePhoto".to_string()),
         RECORD => (gate("canRecord"), "This camera cannot record video in the mode it is in.".to_string(), "toggleVideoRecording".to_string()),
+        STOP_PHOTO => (gate("canStopPhoto"), "The camera is not taking an interval capture.".to_string(), "stopTakePhoto".to_string()),
         MODE => match mode {
             Some(wanted) => (gate("canChangeMode"), mode_refusal(&view), format!("setCameraMode{wanted}")),
             None => return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" }),
@@ -137,10 +139,18 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     // to tell them apart is worse than none: a head toggling record would read false and conclude
     // it failed. The action answers whether the command was taken; view.camera is watched and is
     // where the state comes from when the vehicle confirms it.
+    // A shutter press in timelapse mode starts lapseCount shots at lapseSeconds apart, and with a
+    // count of zero it does not stop on its own. Answering ok for that and for one photo is the
+    // same button meaning two things, so the answer says which capture it began.
+    let timelapse = path == PHOTO && view.get("photoMode").and_then(Value::as_str) == Some("timelapse");
     json!({
         "ok": took,
         "result": took,
         "reason": match took { true => Value::Null, false => json!("The camera did not carry out the command.") },
+        "started": match (took, timelapse) { (false, _) => Value::Null, (true, true) => json!("timelapse"), (true, false) => json!("single") },
+        "lapseCount": timelapse.then(|| view.get("lapseCount").cloned().unwrap_or(Value::Null)),
+        "lapseSeconds": timelapse.then(|| view.get("lapseSeconds").cloned().unwrap_or(Value::Null)),
+        "lapseUnlimited": timelapse.then(|| view.get("lapseUnlimited").cloned().unwrap_or(Value::Null)),
     })
 }
 
@@ -528,6 +538,29 @@ mod tests {
         assert!(run(&nonsense, MODE, "[]")["reason"].as_str().unwrap().contains("photo or video"));
         assert_eq!(run(&None_, MODE, "[\"panorama\"]")["unknown"], "panorama", "a mode the core cannot name is a malformed call whether or not a camera is attached; answering it with the rig's state hides the caller's bug");
 
+        let lapsing = cam(json!({ "cameraMode": 0, "photoCaptureMode": 1, "photoLapse": 5.0, "photoLapseCount": 0 }));
+        let answer = run(&lapsing, PHOTO, "[]");
+        assert_eq!(answer["ok"], true);
+        assert_eq!(answer["started"], "timelapse", "takePhoto sends photoLapse and photoLapseCount when the mode is timelapse, so this press began a run of shots rather than taking one");
+        assert_eq!(answer["lapseUnlimited"], true, "count zero is MAV_CMD_IMAGE_START_CAPTURE's unlimited, so nothing stops this until someone stops it");
+        assert_eq!(answer["lapseSeconds"], 5.0);
+        assert_eq!(*lapsing.fired.borrow(), vec![format!("{CAMERA}.takePhoto")], "and it is the same invokable, which is exactly why the answer has to say which capture it started");
+
+        let single = cam(json!({ "cameraMode": 0 }));
+        assert_eq!(run(&single, PHOTO, "[]")["started"], "single");
+        assert_eq!(run(&cam(json!({ "cameraMode": 0 })), PHOTO, "[]")["lapseCount"], Value::Null, "a single shot has no interval to report, and a count beside it would read as one");
+
+        let mid_interval = cam(json!({ "cameraMode": 0, "photoCaptureStatus": 3 }));
+        let answer = run(&mid_interval, STOP_PHOTO, "[]");
+        assert_eq!(answer["ok"], true, "stopTakePhoto is the only way to end an unlimited timelapse and nothing in QGC's QML calls it");
+        assert_eq!(*mid_interval.fired.borrow(), vec![format!("{CAMERA}.stopTakePhoto")]);
+
+        let idle = cam(json!({ "cameraMode": 0 }));
+        let answer = run(&idle, STOP_PHOTO, "[]");
+        assert_eq!(answer["ok"], false, "stopTakePhoto refuses unless the status is one of the two interval states");
+        assert!(answer["reason"].as_str().unwrap().contains("interval"));
+        assert!(idle.fired.borrow().is_empty());
+
         struct Refusing;
         impl Backend for Refusing {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
@@ -557,7 +590,7 @@ mod tests {
         assert!(run(&None_, PHOTO, "[]")["reason"].as_str().unwrap().contains("No camera"), "no camera is not the same refusal as a camera that will not");
         assert!(run(&None_, MODE, "[\"photo\"]")["reason"].as_str().unwrap().contains("No camera"), "a well-formed call with no camera still gets the rig's answer");
 
-        assert!(owns(PHOTO) && owns(RECORD) && owns(MODE), "the router only reaches these if owns says so, which is how qgc_core_guided ended up defined with no caller");
+        assert!(owns(PHOTO) && owns(RECORD) && owns(MODE) && owns(STOP_PHOTO), "the router only reaches these if owns says so, which is how qgc_core_guided ended up defined with no caller");
     }
     #[test]
     fn a_zoom_write_says_what_the_camera_actually_took() {

@@ -463,7 +463,7 @@ void QGCCoreCTest::_aCameraActionIsRoutedByTheCoreAndNotThePassthrough()
     // behaviour these actions exist to replace. The rig has no camera, so the answer here is the
     // no-camera refusal; that it is the CORE's sentence and not an empty passthrough result is the
     // whole assertion.
-    for (const char *path : { "camera.takePhoto", "camera.toggleRecording" }) {
+    for (const char *path : { "camera.takePhoto", "camera.toggleRecording", "camera.stopPhoto" }) {
         const QJsonObject answer = take(qgc_core_invoke(path, "[]"));
         QVERIFY2(answer.contains(QStringLiteral("reason")), qPrintable(QStringLiteral("%1 returned no reason, so owns() does not claim it and it fell through to the bridge").arg(path)));
         QCOMPARE(answer.value(QStringLiteral("ok")).toBool(true), false);

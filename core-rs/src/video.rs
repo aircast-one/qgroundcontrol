@@ -4,7 +4,7 @@ use crate::read::{flag, integer, object, text};
 use crate::router::Backend;
 
 pub const VIDEO_DEPS: &[&str] = &["video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,batteryRemaining,hasZoom,zoomLevel";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
@@ -18,6 +18,9 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.storageFreeStr",
     "vehicle.cameraManager.currentCameraInstance.capturesPhotos",
     "vehicle.cameraManager.currentCameraInstance.photosInVideoMode",
+    "vehicle.cameraManager.currentCameraInstance.photoCaptureMode",
+    "vehicle.cameraManager.currentCameraInstance.photoLapse",
+    "vehicle.cameraManager.currentCameraInstance.photoLapseCount",
     "vehicle.cameraManager.currentCameraInstance.videoInPhotoMode",
     "vehicle.cameraManager.currentCameraInstance.capturesVideo",
     "vehicle.cameraManager.currentCameraInstance.hasModes",
@@ -35,6 +38,7 @@ const PHOTO_CAPTURE_INTERVAL_IDLE: i64 = 2;
 const PHOTO_CAPTURE_INTERVAL_IN_PROGRESS: i64 = 3;
 const VIDEO_CAPTURE_STOPPED: i64 = 0;
 const VIDEO_CAPTURE_RUNNING: i64 = 1;
+const TIMELAPSE: i64 = 1;
 const PHOTO_MODE: i64 = 0;
 const VIDEO_MODE: i64 = 1;
 const SURVEY_MODE: i64 = 2;
@@ -192,6 +196,17 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // greyed out, and a camera mid-capture had a live button whose tap returns false in silence.
         "canRecord": present && captures_video && (!has_modes || mode != PHOTO_MODE || flag(&camera, "videoInPhotoMode")),
         "canPhoto": present && captures_photos && (!has_modes || mode != VIDEO_MODE || flag(&camera, "photosInVideoMode")) && photo_status == PHOTO_CAPTURE_IDLE,
+        // takePhoto sends `_photoMode == PHOTO_CAPTURE_SINGLE ? 0 : _photoLapse` and
+        // `? 1 : _photoLapseCount`, so the same shutter press either takes one photo or starts an
+        // interval capture of lapseCount shots. Serving only canPhoto makes those one button with
+        // one meaning, and a count of zero is unlimited - the press that never stops on its own.
+        "photoMode": match integer(&camera, "photoCaptureMode") { Some(TIMELAPSE) => "timelapse", _ => "single" },
+        "lapseSeconds": camera.get("photoLapse").and_then(Value::as_f64),
+        "lapseCount": integer(&camera, "photoLapseCount"),
+        "lapseUnlimited": integer(&camera, "photoCaptureMode") == Some(TIMELAPSE) && integer(&camera, "photoLapseCount") == Some(0),
+        // stopTakePhoto refuses unless the status is one of the two interval states, and nothing in
+        // QGC's QML calls it - so a head that starts a timelapse today cannot end it.
+        "canStopPhoto": present && matches!(photo_status, PHOTO_CAPTURE_INTERVAL_IDLE | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS),
         "hasModes": has_modes,
         "canChangeMode": present && has_modes && can_change_mode(mode, photo_status, video_status),
     })
