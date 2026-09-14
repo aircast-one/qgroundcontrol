@@ -36,6 +36,7 @@ const PHOTO_CAPTURE_IDLE: i64 = 0;
 const PHOTO_CAPTURE_IN_PROGRESS: i64 = 1;
 const PHOTO_CAPTURE_INTERVAL_IDLE: i64 = 2;
 const PHOTO_CAPTURE_INTERVAL_IN_PROGRESS: i64 = 3;
+const STORAGE_NOT_SUPPORTED: i64 = 3;
 const VIDEO_CAPTURE_STOPPED: i64 = 0;
 const VIDEO_CAPTURE_RUNNING: i64 = 1;
 const TIMELAPSE: i64 = 1;
@@ -155,7 +156,11 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let photo_status = integer(&camera, "photoCaptureStatus").unwrap_or(PHOTO_CAPTURE_IDLE);
     let video_status = integer(&camera, "videoCaptureStatus").unwrap_or(VIDEO_CAPTURE_STOPPED);
     let record_time = text(&camera, "recordTimeStr");
-    let storage_status = integer(&camera, "storageStatus").unwrap_or(3);
+    // STORAGE_STATUS_NOT_SUPPORTED is 3 and means "Camera does not supply storage status
+    // information" - a claim about the hardware, not a neutral placeholder. Defaulting absence to
+    // it turned a camera that had not answered yet into one that had declared it does not track
+    // storage, and PhotoVideoControl.qml:423 hides the whole storage row on that value.
+    let storage_status = integer(&camera, "storageStatus");
     let storage_free = text(&camera, "storageFreeStr");
     let (captures_photos, captures_video, has_modes) = (flag(&camera, "capturesPhotos"), flag(&camera, "capturesVideo"), flag(&camera, "hasModes"));
     let battery = integer(&camera, "batteryRemaining").unwrap_or(-1);
@@ -184,7 +189,16 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         },
         "clockText": if is_recording && !record_time.is_empty() { record_time.clone() } else { IDLE_CLOCK.to_string() },
         "storageStatus": storage_status,
-        "storageText": match storage_status { 0 => "No card".to_string(), 1 => "Not formatted".to_string(), 2 => if storage_free.is_empty() { "Ready".to_string() } else { storage_free.clone() }, _ => "Not reported".to_string() },
+        // A camera answering NOT_SUPPORTED did report - it reported that this is not a thing it
+        // tracks. "Not reported" is the sentence for silence, and both wore it.
+        "reportsStorage": storage_status != Some(STORAGE_NOT_SUPPORTED),
+        "storageText": match storage_status {
+            Some(0) => "No card".to_string(),
+            Some(1) => "Not formatted".to_string(),
+            Some(2) => if storage_free.is_empty() { "Ready".to_string() } else { storage_free.clone() },
+            Some(STORAGE_NOT_SUPPORTED) => "This camera does not report storage.".to_string(),
+            _ => "Not reported".to_string(),
+        },
         "shots": shots,
         "shotsText": format!("{shots:05}"),
         "shotPoints": shot_points(backend),
@@ -296,6 +310,21 @@ mod tests {
         assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 2 }))["canPhoto"], false,
             "the wait between interval shots is idle enough to change mode but not to fire: takePhoto tests against IDLE alone, and the two questions have different answers");
         assert_eq!(cam(json!({ "cameraMode": 0 }))["canPhoto"], true);
+
+        let silent = cam(json!({ "cameraMode": 0 }));
+        assert_eq!(silent["storageStatus"], Value::Null, "STORAGE_STATUS_NOT_SUPPORTED is 3 and asserts the camera does not track storage, so defaulting silence to it makes a claim about hardware the core has heard nothing from");
+        assert_eq!(silent["reportsStorage"], true, "a camera that has not answered has not said it cannot answer, and PhotoVideoControl.qml hides the whole storage row on the value this used to default to");
+        assert_eq!(silent["storageText"], "Not reported");
+
+        let unsupported = cam(json!({ "cameraMode": 0, "storageStatus": 3 }));
+        assert_eq!(unsupported["reportsStorage"], false);
+        assert_eq!(unsupported["storageText"], "This camera does not report storage.", "this camera DID report - it reported that storage is not a thing it tracks, which is not silence");
+        assert_ne!(unsupported["storageText"], silent["storageText"]);
+
+        let ready = cam(json!({ "cameraMode": 0, "storageStatus": 2, "storageFreeStr": "12 GB" }));
+        assert_eq!(ready["storageText"], "12 GB");
+        assert_eq!(ready["reportsStorage"], true);
+        assert_eq!(cam(json!({ "cameraMode": 0, "storageStatus": 0 }))["storageText"], "No card");
 
         let configured = cam(json!({ "cameraMode": 0, "photoCaptureMode": 0, "photoLapse": 5.0, "photoLapseCount": 10 }));
         assert_eq!(configured["photoMode"], "single");
