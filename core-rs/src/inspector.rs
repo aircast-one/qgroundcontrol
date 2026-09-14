@@ -3,7 +3,13 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages"];
+// activeSystem.id is CONSTANT on QGCMAVLinkSystem, so declaring the path would only have polled a
+// value that never changes. What changes is WHICH system, and activeSystemChanged is a zero-argument
+// notify on the controller, so the @ form binds where the path could not. Without it two systems that
+// have both received no messages serialise to the same JSON, the poll sees no change, nothing emits,
+// and the view keeps serving the previous system's id beside the new system's empty message list.
+pub const DEPS: &[&str] =
+    &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages", "mavlinkInspector@activeSystemChanged"];
 const FIELDS: &str = "id,compId,name,count,actualRateHz,targetRateHz,selected";
 const RATE_DISABLED: i64 = -1;
 const RATE_DEFAULT: i64 = 0;
@@ -34,6 +40,7 @@ pub fn shown_rate(rate: i64) -> i64 {
 
 pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
+    let system = crate::read::integer(&object(&backend.get("mavlinkInspector.activeSystem.id")), "value");
     let messages: Vec<Value> = model
         .get("elements")
         .and_then(Value::as_array)
@@ -71,6 +78,7 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "MavlinkInspector",
         "available": model.get("kind").and_then(Value::as_str) == Some("object"),
+        "systemId": system,
         "messages": messages,
         "rateChoices": RATE_CHOICES.iter().map(|r| json!({ "rate": r, "title": rate_title(*r) })).collect::<Vec<_>>(),
     })
@@ -152,6 +160,8 @@ mod tests {
 
     #[test]
     fn the_view_describes_the_system_the_write_will_act_on() {
+        assert!(DEPS.iter().any(|dep| dep == &"mavlinkInspector@activeSystemChanged"), "the id is CONSTANT on the system and the system object is what swaps, so the only thing that can fire on a swap is the controller's own signal");
+        assert!(DEPS.iter().all(|dep| !dep.contains("activeSystem.id")), "declaring the id path would bind nothing and poll a value that cannot change");
         assert!(DEPS.iter().all(|dep| !dep.contains("systems.0")), "systems.0 is whichever vehicle connected first; setMessageInterval acts on activeSystem, and with two vehicles those are different aircraft");
         assert!(DEPS.iter().any(|dep| dep.contains("activeSystem")));
         assert!(DEPS.iter().any(|dep| dep.contains("messages")), "the messages the view lists come from that same system");
