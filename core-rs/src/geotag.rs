@@ -854,9 +854,13 @@ pub fn geotag_view(_backend: &dyn Backend, args: &[String]) -> Value {
     };
     let Ok(bytes) = std::fs::read(path) else { return json!({ "kind": "object", "class": "GeoTag", "path": path, "readable": false }) };
     let log = triggers_from_tlog(&bytes);
+    let (found, undecodable) = (log.triggers.len(), log.undecodable_frames);
     let tolerance_s = clamp_tolerance(args.get(1).and_then(|a| a.parse::<f64>().ok()).unwrap_or(DEFAULT_TOLERANCE_S));
     let timestamps = parse_image_timestamps(args.get(2..).unwrap_or_default());
-    merge(run(log, tolerance_s, &timestamps).snapshot(), json!({ "path": path, "readable": true, "bytes": bytes.len() }))
+    merge(
+        run(log, tolerance_s, &timestamps).snapshot(),
+        json!({ "path": path, "readable": true, "bytes": bytes.len(), "triggerCount": found, "undecodableFrames": undecodable }),
+    )
 }
 
 #[cfg(test)]
@@ -1602,4 +1606,33 @@ mod tests {
         );
         assert_eq!(session.percent(), Some(CALIBRATE_END));
     }
+    #[test]
+    fn the_log_is_counted_even_when_no_images_were_offered_to_match_against() {
+        struct Ignored;
+        impl Backend for Ignored {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let bytes = tlog::record(1_700_000_000_000_000, &frame(camera_feedback(1_700_000_000_000_000, 470_000_000, CameraFeedbackFlags::CAMERA_FEEDBACK_PHOTO)));
+        assert_eq!(triggers_from_tlog_at(&bytes, 1_800_000_000_000_000).triggers.len(), 1, "the parser finds it, which is the premise of the rest");
+
+        let path = std::env::temp_dir().join("qgc-core-geotag-no-images.tlog");
+        std::fs::write(&path, &bytes).unwrap();
+        let view = geotag_view(&Ignored, &[path.display().to_string()]);
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(
+            view["triggerCount"], json!(1),
+            "a screen that asks about a log before choosing any images gets start(0) refused, which short-circuits set_triggers and leaves the session holding none - so this used to answer 0 for a log with triggers in it, and 0 is what an operator reads as 'this flight took no photos'"
+        );
+        assert_eq!(view["readable"], json!(true), "and it says nothing is wrong with the file, which is what makes the wrong count credible");
+        assert_eq!(view["refusal"], json!("noImages"), "the count travels WITH the reason nothing was matched against it, so a log full of triggers and nothing tagged is one coherent answer rather than two contradictory ones");
+        assert_eq!(view["triggers"], json!([]), "triggerCount answers what is in the FILE and this list answers what the session matched, so they are allowed to disagree here - a head that treats the list's length as the count is reading the wrong field");
+        assert_eq!(view["usableTriggerCount"], json!(0), "and none of them is usable, because usable means matched against an image");
+    }
+
 }
