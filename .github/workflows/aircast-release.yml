@@ -710,6 +710,7 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release
               -DQGC_STABLE_BUILD=ON
               -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../msvc2022_64"
+              -DPKG_CONFIG_EXECUTABLE=C:/ProgramData/chocolatey/bin/pkg-config.exe
 
       - name: Build
         working-directory: ${{ runner.temp }}\shadow_build_dir
