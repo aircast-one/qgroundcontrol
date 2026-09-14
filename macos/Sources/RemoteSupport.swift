@@ -30,7 +30,7 @@ final class RemoteSupportStore: ObservableObject, Probeable, WriteReporting {
     func refresh() {
         let read = RemoteSupport(
             host: (Bridge.group(RemoteSupportStore.hostPath)["valueString"] as? String) ?? "",
-            forwarding: (Bridge.group("links")["mavlinkSupportForwardingEnabled"] as? NSNumber)?
+            forwarding: (Bridge.group("view.links")["supportForwarding"] as? NSNumber)?
                 .boolValue ?? false)
         if read != state { state = read }
     }

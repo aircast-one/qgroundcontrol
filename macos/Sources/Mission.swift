@@ -180,12 +180,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if offered != patterns { patterns = offered }
 
         let listed = readItems()
-        let plan = Bridge.group("plan")
-        let busy = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
+        let busy = PlanSync.busy(planView["sync"])
         if busy != syncing { syncing = busy }
-        let changed = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+        let changed = (planView["dirty"] as? NSNumber)?.boolValue ?? false
         if changed != dirty { dirty = changed }
-        let file = (plan["currentPlanFile"] as? String) ?? ""
+        let file = (planView["file"] as? String) ?? ""
         if file != planFile { planFile = file }
         let bar = MissionMap.lastScale["plan"] ?? .none
         if bar != scaleBar { scaleBar = bar }
@@ -218,8 +217,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         speedUnits = (cruiseFact["units"] as? String)
             ?? (hoverFact["units"] as? String) ?? ItemSpeed.metresPerSecond
         launch = LaunchPosition(planningForHome: planningFor?["home"], item: listed.first ?? [:])
-        canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
-        canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
+        canUndo = (planView["canUndo"] as? NSNumber)?.boolValue ?? false
+        canRedo = (planView["canRedo"] as? NSNumber)?.boolValue ?? false
         let vehicle = Bridge.group("vehicle")
         connected = vehicle["kind"] as? String == "object"
         let identity = (vehicle["id"] as? NSNumber)?.intValue
@@ -297,7 +296,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func refreshUndo() {
-        let plan = Bridge.group("plan")
+        let plan = Bridge.group("view.plan")
         let undo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         let redo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         let unsent = (plan["dirty"] as? NSNumber)?.boolValue ?? false

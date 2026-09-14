@@ -161,9 +161,8 @@ struct LogDownloadView: View {
 
     var body: some View {
         SetupPageBody(title: "Log Download",
-                      note: store.savePath.isEmpty
-                          ? "Flight logs stored on the vehicle."
-                          : "Flight logs stored on the vehicle. Downloads are saved to \(store.savePath).") {
+                      note: LogSavePath.note(path: store.savePath,
+                                             reason: store.savePathReason)) {
             GroupCard {
                 if !store.status.isEmpty {
                     EmptyStateRow(text: store.status)

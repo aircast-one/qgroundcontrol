@@ -71,3 +71,18 @@ struct LogEntry: Identifiable, Equatable {
         return formatter
     }()
 }
+
+// AppSettings::logSavePath returns an empty string both when no directory was ever chosen and
+// when the chosen one has since disappeared. The note used to say the same thing for both, so an
+// operator whose folder had been deleted read a page that simply did not mention downloads.
+enum LogSavePath {
+    static func note(path: String, reason: String) -> String {
+        let stored = "Flight logs stored on the vehicle."
+        if !path.isEmpty { return "\(stored) Downloads are saved to \(path)." }
+        switch reason {
+        case "missing": return "\(stored) The download folder has gone -- choose another before downloading."
+        case "notChosen": return "\(stored) No download folder has been chosen yet."
+        default: return stored
+        }
+    }
+}

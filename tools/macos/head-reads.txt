@@ -56,11 +56,13 @@ canErase
 canPhoto
 canProceed
 canRecord
+canRedo
 canRefresh
 canRemoveVertex
 canSend
 canSet
 canStopPhoto
+canUndo
 cancelEnabled
 carriesValue
 category
@@ -319,6 +321,8 @@ route
 rssiUnit
 running
 save
+savePath
+savePathReason
 scaleMaximum
 secondaryText
 sectors
@@ -366,6 +370,7 @@ stored
 stream
 streaming
 summary
+supportForwarding
 surfaceDistanceText
 target
 targetMeters

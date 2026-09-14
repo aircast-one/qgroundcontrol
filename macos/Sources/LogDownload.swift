@@ -9,6 +9,7 @@ final class LogDownloadStore: ObservableObject, Probeable {
     @Published private(set) var downloading = false
     @Published private(set) var status = ""
     @Published private(set) var savePath = ""
+    @Published private(set) var savePathReason = ""
     @Published private(set) var canRefresh = false
     @Published private(set) var canDownload = false
     @Published private(set) var canCancel = false
@@ -61,8 +62,10 @@ final class LogDownloadStore: ObservableObject, Probeable {
         if text("emptyText") != emptyText { emptyText = text("emptyText") }
         if text("eraseWarning") != eraseWarning { eraseWarning = text("eraseWarning") }
 
-        let path = (Bridge.group("settings.appSettings")["logSavePath"] as? String) ?? ""
+        let path = text("savePath")
         if path != savePath { savePath = path }
+        let why = text("savePathReason")
+        if why != savePathReason { savePathReason = why }
         if !status.isEmpty { status = "" }
     }
 

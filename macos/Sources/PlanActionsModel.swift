@@ -1,5 +1,13 @@
 import Foundation
 
+// view.plan composes three states where plan.syncInProgress is one flag: offline, busy, ready.
+// Only busy is syncing -- offline is NOT, and the raw flag this replaced could not tell them apart.
+enum PlanSync {
+    static func busy(_ json: Any?) -> Bool {
+        ((json as? [String: Any])?["state"] as? String) == "busy"
+    }
+}
+
 struct PlanActions: Equatable {
     let open: Bool
     let save: Bool

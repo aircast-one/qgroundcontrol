@@ -2194,6 +2194,38 @@ func checkAnEnumFactReadsItsNameRatherThanItsIndex() {
 
 checkAnEnumFactReadsItsNameRatherThanItsIndex()
 
+func checkOfflineIsNotSyncingAndAMissingFolderIsNotAnUnchosenOne() {
+    expect(PlanSync.busy(["state": "busy", "refusal": "Already syncing, wait for it to finish."]),
+           "view.plan composes three states where plan.syncInProgress was one flag, and busy is "
+           + "the one this head draws a sync spinner for")
+    expect(PlanSync.busy(["state": "offline", "refusal": "No vehicle is connected."]) == false,
+           "OFFLINE IS NOT SYNCING. The raw flag this replaced could not tell them apart -- the "
+           + "core folds \"no vehicle\" into the same field, so reading syncInProgress alone "
+           + "asked a question the served answer had already settled")
+    expect(PlanSync.busy(["state": "ready", "refusal": ""]) == false, "and ready is not syncing")
+    expect(PlanSync.busy(nil) == false,
+           "and a plan view carrying no sync object at all is not a syncing one")
+
+    expect(LogSavePath.note(path: "/Users/p/Logs", reason: ""),
+           "Flight logs stored on the vehicle. Downloads are saved to /Users/p/Logs.",
+           "a chosen folder is named")
+    expect(LogSavePath.note(path: "", reason: "missing"),
+           "Flight logs stored on the vehicle. The download folder has gone -- choose another "
+           + "before downloading.",
+           "A FOLDER THAT HAS GONE IS NOT A FOLDER NOBODY CHOSE. AppSettings::logSavePath returns "
+           + "an empty string for both, so this page used to print the same sentence at an "
+           + "operator whose download folder had been deleted")
+    expect(LogSavePath.note(path: "", reason: "notChosen"),
+           "Flight logs stored on the vehicle. No download folder has been chosen yet.",
+           "and one nobody has chosen says so instead of saying nothing")
+    expect(LogSavePath.note(path: "", reason: ""),
+           "Flight logs stored on the vehicle.",
+           "and a reason this head does not know falls back to the line that asserts nothing, "
+           + "because a reader must not fail closed on a token it has not met")
+}
+
+checkOfflineIsNotSyncingAndAMissingFolderIsNotAnUnchosenOne()
+
 func checkFlyDetail() {
     let battery = [
         FactReading(name: "voltage", value: "12.60", units: "v"),
