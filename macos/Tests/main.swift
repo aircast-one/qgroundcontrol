@@ -2169,6 +2169,31 @@ func checkGuidedRange() {
 
 checkGuidedRange()
 
+func checkAnEnumFactReadsItsNameRatherThanItsIndex() {
+    expect(FactReading(json: ["name": "lock", "valueString": "3",
+                             "enumOrValueString": "3D Lock"])?.value ?? "", "3D Lock",
+           "THE GPS CHIP SHOWED \"3 · 11 sats\" ON A CONNECTED VEHICLE. cbf5c8aef stopped this "
+           + "head spelling fix names itself, which was right, but took valueString -- the field "
+           + "carrying the NUMBER -- where enumOrValueString carries what the number MEANS")
+
+    expect(FactReading(json: ["name": "voltage", "valueString": "11.10",
+                             "enumOrValueString": "11.10", "units": "V"])?.value ?? "", "11.10",
+           "and a plain numeric fact is unchanged, which is why this belongs in the decoder "
+           + "rather than at the one call site: measured over 40 facts in seven groups, "
+           + "enumOrValueString was identical on 39 and different only on gps.lock")
+
+    expect(FactReading(json: ["name": "lock", "valueString": "3"])?.value ?? "", "3",
+           "A READER MUST NOT FAIL CLOSED ON THE ABSENCE OF ITS OWN PREFERRED KEY. The bridge "
+           + "serves Fact fields from an allowlist, so a future field could vanish the way a new "
+           + "one is invisible until added -- falling back beats decoding to nil")
+
+    expect(FactReading(json: ["name": "lock"]) == nil,
+           "but a fact carrying NEITHER string is still no reading, rather than one whose value "
+           + "is the empty string")
+}
+
+checkAnEnumFactReadsItsNameRatherThanItsIndex()
+
 func checkFlyDetail() {
     let battery = [
         FactReading(name: "voltage", value: "12.60", units: "v"),
