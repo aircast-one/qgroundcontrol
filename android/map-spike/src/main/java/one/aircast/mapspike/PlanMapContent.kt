@@ -38,6 +38,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -674,6 +675,18 @@ internal fun MapSpikeScreen(
                         fenceDetail(selected, fences, circles)?.let {
                             Text(it, style = MaterialTheme.typography.labelSmall)
                             GroupBreak()
+                        }
+
+                        waypoint?.let { item ->
+                            val camera by produceState<String?>(null, item.index) {
+                                value = withContext(Dispatchers.Default) {
+                                    itemCameraText(ItemCameraBridge.read(item.index))
+                                }
+                            }
+                            camera?.let {
+                                Text(it, style = MaterialTheme.typography.labelSmall)
+                                GroupBreak()
+                            }
                         }
 
                         landingText(selectedLanding(selected, landingList))?.let {
