@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -156,6 +158,13 @@ def after_the_verdict(line):
     return safe[:90] or "start"
 
 
+def tool_settings():
+    body = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()[:12]
+    return (f"run-tests.py {body} quiet={QUIET_SECONDS}s max={MAX_TRACES} "
+            f"per-suite={PER_SUITE_TRACES} reserve={LATE_RESERVE}@{RESERVE_OPENS_AFTER} "
+            f"confirm=+{CONFIRM_AFTER}s")
+
+
 def trace_hang(pid, note, pass_number=1):
     TRACE_DIR.mkdir(parents=True, exist_ok=True)
     suffix = "" if pass_number == 1 else f"-still-here-{CONFIRM_AFTER}s-later"
@@ -166,6 +175,8 @@ def trace_hang(pid, note, pass_number=1):
         lldb = subprocess.run(["lldb", "-p", str(pid), "-batch", "-o", "bt all", "-o", "detach"],
                               capture_output=True, text=True, timeout=120)
         path.write_text(lldb.stdout + lldb.stderr)
+    path.write_text(f"# {RUN_ID} pass {pass_number} :: {tool_settings()}\n"
+                    + path.read_text(errors="replace"))
     path = name_for_what_it_shows(path, note, pass_number)
     print(f"HANG TRACE: {QUIET_SECONDS}s of silence after {note!r} - stacks in {path}",
           file=sys.stderr)
@@ -318,6 +329,7 @@ def record(summary, verdicts, incomplete=False):
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "run": RUN_ID,
+        "tool": tool_settings(),
         "suites": summary["suites"],
         "expected": len(expected_suites()),
         "passed": summary["passed"],
