@@ -67,4 +67,22 @@ mod tests {
         assert_eq!(humanise("heading"), "Heading");
         assert_eq!(humanise("GPS"), "GPS");
     }
+
+    #[test]
+    fn the_view_answers_without_asking_the_backend_anything() {
+        struct Forbidden;
+        impl crate::router::Backend for Forbidden {
+            fn get(&self, path: &str) -> String { panic!("view.label read {path}") }
+            fn get_fields(&self, path: &str, _f: &str) -> String { panic!("view.label read {path}") }
+            fn set(&self, path: &str, _v: &str) -> String { panic!("view.label wrote {path}") }
+            fn invoke(&self, path: &str, _a: &str) -> String { panic!("view.label invoked {path}") }
+            fn watch(&self, _p: &[String]) { panic!("view.label watched something") }
+        }
+
+        assert_eq!(super::label_view(&Forbidden, &["gpsLock".to_string()])["value"], "GPS Lock");
+        assert!(
+            super::DEPS.is_empty(),
+            "the empty dep list is only honest while the compute is pure, and two things downstream rest on that: nothing would ever wake a consumer of this view, and the macOS head memoises humanise output in Labels.cache with no invalidation. A backend read added here goes stale in both places and neither says so"
+        );
+    }
 }
