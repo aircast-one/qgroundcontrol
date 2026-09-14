@@ -39,6 +39,34 @@ pub fn text(object: &Value, key: &str) -> String {
     object.get(key).and_then(Value::as_str).unwrap_or("").to_string()
 }
 
+pub fn enum_labels(fact: &Value) -> Vec<String> {
+    let synthetic = text(fact, "unknownEnumLabel");
+    fact.get("enumStrings")
+        .and_then(Value::as_array)
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|label| synthetic.is_empty() || *label != synthetic)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn enum_choice(fact: &Value) -> Option<i64> {
+    let chosen = integer(fact, "enumIndex").filter(|index| *index >= 0)?;
+    (usize::try_from(chosen).ok()? < enum_labels(fact).len()).then_some(chosen)
+}
+
+pub fn shown_text(fact: &Value) -> Option<String> {
+    ["enumOrValueString", "valueString"]
+        .iter()
+        .filter_map(|key| fact.get(key).and_then(Value::as_str))
+        .find(|shown| !shown.is_empty())
+        .map(str::to_string)
+}
+
 pub fn value_number(json: &str) -> Option<f64> {
     object(json).get("value")?.as_f64().filter(|v| v.is_finite())
 }
@@ -164,7 +192,8 @@ pub fn format_measure(value: f64, units: &str) -> String {
 
 #[cfg(test)]
 mod measure_tests {
-    use super::format_measure;
+    use super::{enum_choice, enum_labels, format_measure, shown_text};
+    use serde_json::json;
 
     #[test]
     fn a_range_and_a_signed_change_do_not_carry_a_minus_before_nothing() {
@@ -203,5 +232,31 @@ mod measure_tests {
         assert_eq!(format_measure(100.0, "ft"), "100 ft");
         assert_eq!(format_measure(99.96, "m"), "100.0 m");
         assert_eq!(format_measure(40.0, "m"), "40.0 m");
+    }
+
+    #[test]
+    fn an_index_the_bridge_reports_before_it_appends_the_synthetic_label_is_not_served() {
+        let unknown = json!({ "kind": "fact", "enumStrings": ["Manual", "Stabilize"], "enumIndex": 2, "valueString": "7" });
+        assert_eq!(enum_choice(&unknown), None, "factJson serialises enumStrings BEFORE enumIndex, and reading enumIndex is what appends the synthetic entry - so on the first read of an out-of-range value the same JSON carries two labels and an index of 2, and a head indexing by it reads off the end");
+        assert_eq!(shown_text(&unknown).as_deref(), Some("7"), "the value still has to travel; only the label is unavailable");
+
+        let settled = json!({ "kind": "fact", "enumStrings": ["Manual", "Stabilize", "Unknown: 7"], "enumIndex": 2, "unknownEnumLabel": "Unknown: 7", "valueString": "7" });
+        assert_eq!(enum_labels(&settled), vec!["Manual", "Stabilize"], "the synthetic entry is Fact's own placeholder, not a mode anyone can pick");
+        assert_eq!(enum_choice(&settled), None, "once the synthetic entry is filtered out the index addresses nothing, which is the same answer as before Fact appended it");
+    }
+
+    #[test]
+    fn a_plain_number_is_told_apart_from_an_enum_with_no_labels_yet() {
+        let plain = json!({ "kind": "fact", "value": 12.0, "valueString": "12", "enumOrValueString": "12", "enumIndex": -1 });
+        assert_eq!(enum_labels(&plain), Vec::<String>::new());
+        assert_eq!(enum_choice(&plain), None, "Fact::enumIndex answers -1 for anything with no enumValues");
+        assert_eq!(shown_text(&plain).as_deref(), Some("12"));
+
+        let chosen = json!({ "kind": "fact", "enumStrings": ["No change", "Take photo"], "enumValues": [0, 6], "enumIndex": 1, "valueString": "6", "enumOrValueString": "Take photo" });
+        assert_eq!(enum_choice(&chosen), Some(1));
+        assert_eq!(shown_text(&chosen).as_deref(), Some("Take photo"), "enumValues here are 0,6,... so valueString is the raw 6 and indexing the label list by it would name a different action entirely");
+
+        let unlabelled = json!({ "kind": "fact", "valueString": "", "enumOrValueString": "" });
+        assert_eq!(shown_text(&unlabelled), None, "a fact with no metadata answers empty to both, which is not the string \"\"");
     }
 }
