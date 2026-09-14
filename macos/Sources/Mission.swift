@@ -18,6 +18,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
     @Published private(set) var commandCategories: [String] = []
+    private var commandsReadFor: Int?
     @Published var pickingCommandFor: Int?
 
     @Published private(set) var pickerCategory = ""
@@ -219,12 +220,17 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         launch = LaunchPosition(planningForHome: planningFor?["home"], item: listed.first ?? [:])
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
+        let vehicle = Bridge.group("vehicle")
+        connected = vehicle["kind"] as? String == "object"
+        let identity = (vehicle["id"] as? NSNumber)?.intValue
+        if !SettingsSection.cacheSurvives(vehicle: commandsReadFor, now: identity) {
+            commandCategories = []
+        }
+        commandsReadFor = identity
         loadCommands()
         loadSelectedFacts()
-        connected = Bridge.group("vehicle")["kind"] as? String == "object"
         status = items.isEmpty ? "This plan has no items." : ""
 
-        let vehicle = Bridge.group("vehicle")
         let coordinate = vehicle["coordinate"] as? [String: Any]
         let heading = ((vehicle["facts"] as? [[String: Any]]) ?? [])
             .first { ($0["name"] as? String) == "heading" }
