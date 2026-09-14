@@ -849,7 +849,7 @@ struct PlanInspector: View {
                                          .labelsHidden()
                                          .disabled(fact.readOnly)
                                      } else if fact.options.isEmpty {
-                                         ValueField(value: fact.value, units: fact.units) {
+                                         ValueField(value: fact.display, units: fact.units) {
                                              mission.setFact(fact, to: $0)
                                          }
                                          .disabled(fact.readOnly)
@@ -858,7 +858,7 @@ struct PlanInspector: View {
                                              get: { fact.value },
                                              set: { mission.setFact(fact, to: $0) })
                                          ) {
-                                             ForEach(fact.options, id: \.self) { Text($0).tag($0) }
+                                             ForEach(fact.options) { Text($0.label).tag($0.raw) }
                                          }
                                          .labelsHidden()
                                          .frame(maxWidth: 150)

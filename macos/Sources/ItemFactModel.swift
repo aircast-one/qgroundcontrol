@@ -47,6 +47,13 @@ struct FactRange: Equatable {
     }
 }
 
+struct ItemFactOption: Identifiable, Equatable {
+    let label: String
+    let raw: String
+
+    var id: String { raw }
+}
+
 struct ItemFact: Identifiable, Equatable {
     let pathSuffix: String
     let name: String
@@ -54,7 +61,8 @@ struct ItemFact: Identifiable, Equatable {
     let isBool: Bool
     let value: String
     let units: String
-    let options: [String]
+    let display: String
+    let options: [ItemFactOption]
     let readOnly: Bool
     let range: FactRange
     var group = ItemFact.itemGroup
@@ -87,18 +95,23 @@ struct ItemFact: Identifiable, Equatable {
         let described = (object["shortDescription"] as? String) ?? ""
         title = described.isEmpty ? label(name) : described
         isBool = (object["typeIsBool"] as? NSNumber)?.boolValue ?? false
-        // enumOrValueString, not valueString, for the same reason FlyDetailModel prefers it: on an
-        // ENUM fact valueString is the raw number and this is the label. The item editor binds a
-        // Picker's selection to this value and tags each row with its enumStrings entry, so with
-        // the number the selection matched NO tag and a camera action rendered with nothing chosen.
-        // The core's own fixture spells it out -- cameraAction carries valueString "6" beside
-        // enumOrValueString "Take photo" -- and enumStrings[6] is "Stop recording video", which is
-        // what a head indexing by that number would have drawn instead. On a fact with no enum the
-        // two are identical (gimbalPitch is "-90" in both), so this is right for every fact.
-        value = (object["enumOrValueString"] as? String)
-            ?? (object["valueString"] as? String) ?? ""
+        // The RAW value, because this is what the picker selects by and what setFact writes, and
+        // setFact refuses anything Measure.numberRefusal cannot read as a number. The LABEL lives
+        // on the option beside it -- two fields, two jobs, the same split ParameterOption uses.
+        value = (object["valueString"] as? String) ?? ""
+        display = (object["enumOrValueString"] as? String) ?? value
         units = (object["units"] as? String) ?? ""
-        options = (object["enumStrings"] as? [String]) ?? []
+        // Paired rather than labels alone. A picker tagged with labels binds a selection the write
+        // path cannot accept: setFact runs numberRefusal first, so choosing "Take photo" answered
+        // "Take photo is not a number." and set nothing. Guarded on equal counts for the reason
+        // ParameterModel is -- FactMetaData::_parseEnums refuses a mismatch outright, so this
+        // cannot fire through the known path, and pairing a wrong label to a wrong value in an
+        // editor that writes a mission item is worse than offering no list at all.
+        let labels = (object["enumStrings"] as? [String]) ?? []
+        let raws = (object["enumValues"] as? [Any]) ?? []
+        options = labels.count == raws.count
+            ? zip(labels, raws).map { ItemFactOption(label: $0.0, raw: Parameter.rawText($0.1)) }
+            : []
         readOnly = (object["readOnly"] as? NSNumber)?.boolValue ?? false
         range = FactRange(object, title: title)
     }

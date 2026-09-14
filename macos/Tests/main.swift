@@ -1712,22 +1712,28 @@ func checkItemFacts() {
     let facts = ItemFact.from([
         ["name": "Delay", "valueString": "45", "units": "secs"],
         ["name": "Mode", "valueString": "1", "enumOrValueString": "Continue", "units": "",
-         "enumStrings": ["Hold", "Continue"]],
+         "enumStrings": ["Hold", "Continue"], "enumValues": [0 as NSNumber, 1 as NSNumber]],
         ["valueString": "12"],
     ], list: "textFieldFacts", label: { "<\($0)>" })
 
     expect(facts.count == 2, "a fact with no name is dropped")
     expect(facts[0].id, "textFieldFacts.0", "a fact is addressed by its list and position")
     expect(facts[1].id, "textFieldFacts.1", "positions follow the order the controller reported")
-    expect(facts[1].value, "Continue",
-           "an ENUM fact shows its LABEL, because valueString on one is the raw number. This "
-           + "fixture used to say valueString \"Hold\" -- a label where the bridge sends a number "
-           + "-- and agreeing with the reader is how the defect survived it: the item editor binds "
-           + "a Picker's selection to this and tags each row with an enumStrings entry, so the "
-           + "number matched no tag and a camera action drew with nothing chosen")
-    expect(facts[0].value, "45",
-           "and a fact with no enum is unchanged, because enumOrValueString falls through to the "
-           + "cooked value when there is no enum to name")
+    expect(facts[1].value, "1",
+           "the value an ENUM fact carries is the RAW one, because the picker selects by it and "
+           + "setFact writes it -- and setFact runs numberRefusal first, so a label reached the "
+           + "operator as \"Take photo is not a number.\" and set nothing")
+    expect(facts[1].display, "Continue",
+           "while the LABEL is what a reader shows. This fixture used to say valueString \"Hold\" "
+           + "-- a label where the bridge sends a number -- and agreeing with the reader is how "
+           + "both halves survived it")
+    expect(facts[1].options.map(\.label).joined(separator: ","), "Hold,Continue",
+           "each option carries the label it shows")
+    expect(facts[1].options.map(\.raw).joined(separator: ","), "0,1",
+           "and the raw it tags with, so the selection round-trips through a write that only "
+           + "accepts numbers. Labels alone bound a picker whose every choice was refused")
+    expect(facts[0].value, "45", "a fact with no enum carries its cooked value")
+    expect(facts[0].display, "45", "and displays the same, because there is no enum to name")
 
     let owned = ItemFact.owned([
         ["name": "Grid angle", "property": "gridAngle", "valueString": "0", "units": "deg"],
