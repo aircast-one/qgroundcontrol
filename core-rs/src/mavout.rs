@@ -270,4 +270,40 @@ mod tests {
         let expected = mavlink::calculate_crc(&bytes[1..16], 89);
         assert_eq!(u16::from_le_bytes([bytes[16], bytes[17]]), expected);
     }
+    #[test]
+    fn every_command_and_frame_the_core_can_send_is_the_one_the_dialect_names() {
+        use mavlink::dialects::ardupilotmega::{MavCmd, MavFrame};
+
+        [
+            (crate::gimbal::CMD_DO_GIMBAL_MANAGER_PITCHYAW, MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW),
+            (crate::gimbal::CMD_DO_GIMBAL_MANAGER_CONFIGURE, MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE),
+            (crate::sensorcal::CMD_PREFLIGHT_CALIBRATION, MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION),
+            (crate::sensorcal::CMD_DO_START_MAG_CAL, MavCmd::MAV_CMD_DO_START_MAG_CAL),
+            (crate::sensorcal::CMD_DO_CANCEL_MAG_CAL, MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL),
+            (crate::sensorcal::CMD_ACCELCAL_VEHICLE_POS, MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS),
+            (crate::structurescan::CMD_DO_SET_ROI_WPNEXT_OFFSET, MavCmd::MAV_CMD_DO_SET_ROI_WPNEXT_OFFSET),
+            (crate::structurescan::CMD_DO_SET_ROI_NONE, MavCmd::MAV_CMD_DO_SET_ROI_NONE),
+            (crate::surveyitems::CMD_NAV_WAYPOINT, MavCmd::MAV_CMD_NAV_WAYPOINT),
+            (crate::surveyitems::CMD_DO_SET_CAM_TRIGG_DIST, MavCmd::MAV_CMD_DO_SET_CAM_TRIGG_DIST),
+            (crate::plantransfer::CMD_FENCE_RETURN_POINT, MavCmd::MAV_CMD_NAV_FENCE_RETURN_POINT),
+            (crate::plantransfer::CMD_FENCE_POLYGON_INCLUSION, MavCmd::MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION),
+            (crate::plantransfer::CMD_FENCE_POLYGON_EXCLUSION, MavCmd::MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION),
+        ]
+        .iter()
+        .for_each(|(number, named)| {
+            assert_eq!(MavCmd::from_u32(*number as u32), Some(*named), "{number} is what goes on the wire and {named:?} is what it is meant to mean");
+        });
+
+        [
+            (crate::surveyitems::FRAME_GLOBAL, MavFrame::MAV_FRAME_GLOBAL),
+            (crate::surveyitems::FRAME_MISSION, MavFrame::MAV_FRAME_MISSION),
+            (crate::surveyitems::FRAME_GLOBAL_RELATIVE_ALT, MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT),
+            (crate::surveyitems::FRAME_GLOBAL_TERRAIN_ALT, MavFrame::MAV_FRAME_GLOBAL_TERRAIN_ALT),
+        ]
+        .iter()
+        .for_each(|(number, named)| {
+            assert_eq!(MavFrame::from_u8(*number), Some(*named), "a wrong frame reinterprets an altitude rather than rejecting it, which is the kind of mistake that flies");
+        });
+    }
+
 }
