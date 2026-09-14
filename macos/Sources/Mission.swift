@@ -24,6 +24,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var selectedSpeed = ItemSpeed.unavailable
     @Published private(set) var selectedLanding = LandingPattern.none
+    @Published private(set) var selectedCamera = ItemCamera.none
     @Published private(set) var patternTransects: [[GeoPoint]] = []
     @Published private(set) var patternGeometries: [PatternGeometry] = []
     @Published private(set) var launch = LaunchPosition.unknown
@@ -487,6 +488,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         guard let item = items.first(where: \.isSelected) else {
             selectedFacts = []
             selectedLanding = LandingPattern.none
+            selectedCamera = ItemCamera.none
             camera = CameraChoice.empty
             distanceMode = AltitudeMode.none
             distanceModes = []
@@ -524,6 +526,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             ? LandingPattern.none
             : LandingPattern(Bridge.group("view.landingPattern(\(item.index))"))
         if pattern != selectedLanding { selectedLanding = pattern }
+
+        let camera = ItemCamera(Bridge.group("view.itemCamera(\(item.index))")) ?? .none
+        if camera != selectedCamera { selectedCamera = camera }
         let distanceOffers = AltitudeMode.offers(
             Bridge.group("view.altitudeModes(\(context),\(distanceMode))"))
         if distanceOffers != distanceModes { distanceModes = distanceOffers }
@@ -1006,6 +1011,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "summary": ["rows": summary.rows.map { ["label": $0.label, "value": $0.value] },
                      "altitudeRange": summary.altitudeRange, "reason": summary.reason,
                      "describes": summary.describes],
+         "itemCamera": ["available": selectedCamera.available,
+                        "commandsGimbal": selectedCamera.commandsGimbal,
+                        "rows": selectedCamera.rows.map(\.label),
+                        "action": selectedCamera.actionRow?.value ?? ""],
          "camera": ["brand": camera.brand, "model": camera.model,
                     "brands": camera.brands.count, "models": camera.models.count,
                     "describes": camera.describes],

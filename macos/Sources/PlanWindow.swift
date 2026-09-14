@@ -337,6 +337,14 @@ struct PlanInspector: View {
         }
     }
 
+    private var cameraCard: some View {
+        GroupCard {
+            ForEach(mission.selectedCamera.rows) { row in
+                GroupRow(title: row.label, value: row.value)
+            }
+        }
+    }
+
     private var commandPicker: some View {
         VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
             Text("Choose what this item does").font(.title3.weight(.semibold))
@@ -559,6 +567,10 @@ struct PlanInspector: View {
 
         if mission.selectedSpeed.shown(missionStart: showsMissionSettings, vehicle: mission.vehicle) {
             speedCard
+        }
+
+        if !mission.selectedCamera.rows.isEmpty {
+            cameraCard
         }
 
         ForEach([ItemFact.cameraGroup, ItemFact.itemGroup], id: \.self) { group in

@@ -22,6 +22,7 @@ MODELS = {
     "CalibrationState": "view.calibration",
     "CameraControl": "view.camera",
     "FollowMe": "view.followMe",
+    "ItemCamera": "view.itemCamera",
     "FenceShape": "view.fences",
     "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",

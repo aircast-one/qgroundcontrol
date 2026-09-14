@@ -4584,6 +4584,39 @@ func checkTheStorageRowHidesOnlyOnAPositiveRefusal() {
 }
 checkTheStorageRowHidesOnlyOnAPositiveRefusal()
 
+func checkAnItemThatDoesNotCommandTheGimbalShowsNoAngles() {
+    let commands = ItemCamera(["class": "ItemCamera", "available": true as NSNumber,
+                               "commandsGimbal": true as NSNumber,
+                               "gimbalPitch": ["text": "-90", "units": "deg"],
+                               "gimbalYaw": ["text": "45", "units": "deg"],
+                               "cameraAction": ["text": "Take photo", "units": ""]])
+    expect(String(commands?.gimbalRows.count ?? 0), "2",
+           "an item that commands the gimbal shows both angles")
+    expect(commands?.actionRow?.value ?? "", "Take photo",
+           "and a camera action with a real label is shown as that label")
+
+    let silentGimbal = ItemCamera(["class": "ItemCamera", "available": true as NSNumber,
+                                   "commandsGimbal": false as NSNumber,
+                                   "gimbalPitch": ["text": "-90", "units": "deg"],
+                                   "gimbalYaw": ["text": "45", "units": "deg"]])
+    expect(String(silentGimbal?.gimbalRows.count ?? -1), "0",
+           "but an item that does NOT command the gimbal shows neither, even with angles sitting "
+           + "right there -- the angles are Facts and a Fact always carries a number, so reading "
+           + "them alone tells the operator the gimbal points somewhere for an item that never "
+           + "touches it. specifyGimbal is a plain bool and does not travel beside them")
+
+    let unlabelled = ItemCamera(["class": "ItemCamera", "available": true as NSNumber,
+                                 "cameraAction": ["text": "0.000", "units": ""]])
+    expect(unlabelled?.actionRow == nil,
+           "a camera action whose text is a bare number is the Fact's raw value with no enum "
+           + "label bound to it. \"0.000\" is a number about a menu, and showing it is worse than "
+           + "showing nothing because it looks like a setting somebody chose")
+
+    expect(ItemCamera(["class": "Something else"]) == nil,
+           "and an answer that is not an ItemCamera is not one")
+}
+checkAnItemThatDoesNotCommandTheGimbalShowsNoAngles()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.

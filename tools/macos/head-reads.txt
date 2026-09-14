@@ -46,6 +46,7 @@ busy
 calibrating
 calibration
 camera
+cameraAction
 cameraShots
 canCancel
 canChangeMode
@@ -79,6 +80,7 @@ clockwise
 collision
 commLost
 command
+commandsGimbal
 complexName
 component
 configured
@@ -150,6 +152,8 @@ fraction
 generation
 geometry
 geometryProperty
+gimbalPitch
+gimbalYaw
 gotoLoiterRadius
 groundKnown
 group
