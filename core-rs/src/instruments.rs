@@ -80,7 +80,14 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
             let resolves = fact.get("found").and_then(Value::as_bool) != Some(false);
             let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
             let fresh = converted(backend, &fact);
-            let held = crate::read::shown_text(&fact);
+            // Qt prints "--.--" for a numeric fact whose cooked value is NaN - Fact::_variantToString
+            // does it for valueTypeFloat and valueTypeDouble - and that is a value, not an absence.
+            // JSON cannot carry NaN, so the bridge sends value: null while valueString still holds
+            // the placeholder. Taking the string there put "--.-- ft" on the flight row with
+            // missing: false, which tells every head it is a real reading. distanceToHome on a
+            // vehicle that has sent no HOME_POSITION is the case Android hit.
+            let unset = matches!(fact.get("value"), Some(Value::Null));
+            let held = (!unset).then(|| crate::read::shown_text(&fact)).flatten();
             let value = fresh.as_ref().map(|(shown, _)| shown.clone()).or_else(|| held.map(crate::read::settled));
             let units = match &fresh {
                 Some((_, name)) => display_units(name.as_str()),
@@ -165,6 +172,31 @@ mod tests {
         }
         let view = instruments_view(&Resting, &["vehicle/altitudeRelative".to_string()]);
         assert_eq!(view["items"][0]["value"], "0.0", "Qt spells the fact and a vehicle sitting on the ground reports a hair under zero, so valueString arrives as -0.0 - and neither of us formats that string, so nothing stripped the sign before it reached an altimeter reading as below the launch point");
+    }
+
+    #[test]
+    fn a_placeholder_is_an_absent_reading_and_not_a_value() {
+        struct Homeless;
+        impl Backend for Homeless {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.distanceToHome" => json!({ "kind": "fact", "name": "distanceToHome", "shortDescription": "Distance to Home", "value": null, "valueString": "--.--", "units": "ft", "rawUnits": "m" }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = instruments_view(&Homeless, &["vehicle/distanceToHome".to_string()]);
+        let row = &view["items"][0];
+        assert_eq!(row["missing"], true, "Qt writes --.-- when a numeric fact is NaN, and a vehicle that has sent no HOME_POSITION cannot compute a distance to it - serving the placeholder drew \"--.-- ft\" on the flight row as a reading");
+        assert_eq!(row["missingReason"], "notReported", "the fact resolves and the vehicle will report it once home is set, so this is not a fact that does not exist");
+        assert_eq!(row["value"], "\u{2014}", "the head gets the absent marker it already draws correctly");
+        assert_eq!(row["units"], "", "and no unit, because a unit beside an absence is what made the placeholder look measured");
+        assert_eq!(view["available"], false);
     }
 
     #[test]
