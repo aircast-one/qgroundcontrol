@@ -3,7 +3,9 @@ use serde_json::{Value, json};
 use crate::read::{flag, integer, object, text};
 use crate::router::Backend;
 
-pub const VIDEO_DEPS: &[&str] = &["settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
+pub const VIDEO_DEPS: &[&str] = &[
+    "video.isStreamSource",
+    "video.hasMultipleVideoSources","settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
 pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
@@ -211,6 +213,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "model": model,
         "labels": labels,
         "choices": labels.len(),
+        "selected": crate::read::value_number(&backend.get("vehicle.cameraManager.currentCamera")).map(|n| n as i64),
         "vendor": vendor,
         "mode": mode,
         "modeKnown": mode != UNDEFINED_MODE,
