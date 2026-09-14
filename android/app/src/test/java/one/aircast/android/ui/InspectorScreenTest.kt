@@ -164,3 +164,31 @@ class InspectorRateTest {
         assertEquals("10 Hz", inspectorMessages(view)[0].targetRateTitle)
     }
 }
+
+class InspectorSystemTest {
+
+    @Test
+    fun `the inspector names the system its messages came from`() {
+        val view = JSONObject(
+            """{"kind":"object","class":"MavlinkInspector","available":true,"systemId":1,
+               "messages":[]}""",
+        )
+
+        assertEquals("System 1", inspectorSystemText(view))
+    }
+
+    @Test
+    fun `no system yet is no line rather than System 0`() {
+        assertNull(
+            inspectorSystemText(
+                JSONObject("""{"kind":"object","class":"MavlinkInspector","available":true,"systemId":0}"""),
+            ),
+        )
+        assertNull(
+            inspectorSystemText(
+                JSONObject("""{"kind":"object","class":"MavlinkInspector","available":false,"systemId":3}"""),
+            ),
+        )
+        assertNull(inspectorSystemText(null))
+    }
+}

@@ -38,6 +38,11 @@ import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.optText
 
 private const val INSPECTOR_MESSAGES = "mavlinkInspector.activeSystem.messages"
+
+internal fun inspectorSystemText(view: JSONObject?): String? {
+    val system = view?.takeIf { it.optBoolean("available") }?.optInt("systemId", 0) ?: 0
+    return if (system > 0) "System $system" else null
+}
 private const val INSPECTOR_VIEW = "view.inspector"
 
 internal data class InspectorMessage(
@@ -235,6 +240,14 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
     val shown = messages.filter { it.name.contains(filter, ignoreCase = true) }
 
     Column(modifier.fillMaxSize()) {
+        inspectorSystemText(inspectorJson)?.let { line ->
+            Text(
+                line,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
         OutlinedTextField(
             value = filter,
             onValueChange = { filter = it },

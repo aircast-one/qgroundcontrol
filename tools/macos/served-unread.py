@@ -63,6 +63,12 @@ from head_models import MODELS  # noqa: E402
 # Android's position while macOS drew neither it nor the text beside it.
 ACCEPTED_BY_HEAD = {
     "android": {
+        "apmFirmware": "MEASURED. Nothing in this head branches on airframe or firmware family - "
+            "grep for multiRotor, vtol or apmFirmware across both modules returns nothing. What "
+            "the plan editor offers is gated by view.plan.actions, which is the core deciding what "
+            "this vehicle accepts rather than the head inferring it from a type flag. The day a "
+            "screen here needs to draw something differently for a VTOL, it reads these",
+        "vtol": "See apmFirmware - the same block, and the same reason",
         "defaultValue": "MEASURED. The four bound and default keys on view.plan.defaults are the "
             "served form of what the settings screen already draws from raw fact reads - "
             "factConstraintNote spells 'Min 5 . Max 120 . Default 10' from minString, maxString and "
