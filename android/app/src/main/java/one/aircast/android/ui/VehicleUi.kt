@@ -184,16 +184,16 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FlightActions(modifier: Modifier = Modifier) {
-    val available = hasVehicle()
-    val armed by qgcBool("vehicle.armed")
+    val stateJson by qgcPath(FLY_STATE)
+    val state = remember(stateJson) { flyState(stateJson) }
+    val available = state?.connected == true
+    val armed = state?.armed == true
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
     var refusal by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var takeoffTarget by remember { mutableStateOf<Double?>(null) }
     var takeoffSettled by remember { mutableStateOf<Double?>(null) }
     var takeoffRange by remember { mutableStateOf<GuidedTakeoff?>(null) }
-    val flying by qgcBool("vehicle.flying")
-    val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
     var altitudeTarget by remember { mutableStateOf<Double?>(null) }
     var altitudeSettled by remember { mutableStateOf<Double?>(null) }
     var altitudeRange by remember { mutableStateOf<GuidedAltitude?>(null) }
@@ -615,10 +615,9 @@ private fun Offered(offer: GuidedOffer?, content: @Composable () -> Unit) {
     }
 }
 
-private fun armedNow(): Boolean = Qgc.get("vehicle.armed").opt("value") == true
+private fun armedNow(): Boolean = flyState(Qgc.get(FLY_STATE))?.armed == true
 
-private fun flightModeNow(): String =
-    Qgc.get("vehicle.flightMode").opt("value")?.toString().orEmpty()
+private fun flightModeNow(): String = flyState(Qgc.get(FLY_STATE))?.mode.orEmpty()
 
 private fun CoroutineScope.attemptCommand(
     action: String,

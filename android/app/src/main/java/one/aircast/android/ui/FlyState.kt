@@ -11,6 +11,7 @@ internal const val FLY_STATE = "view.flyState"
 
 internal data class FlyState(
     val connected: Boolean,
+    val armed: Boolean,
     val contactLost: Boolean,
     val state: String,
     val stateText: String,
@@ -25,6 +26,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
     if (view == null || view.optText("class") != "FlyState") return null
     return FlyState(
         connected = view.optBoolean("connected"),
+        armed = view.optBoolean("armed"),
         contactLost = view.optBoolean("contactLost"),
         state = view.optText("state"),
         stateText = view.optText("stateText"),

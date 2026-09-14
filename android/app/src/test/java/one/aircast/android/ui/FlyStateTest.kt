@@ -78,7 +78,7 @@ class VehicleSubtitleTest {
         contactLost: Boolean = false,
         stateText: String = "Disarmed",
         mode: String = "Stabilize",
-    ) = FlyState(connected, contactLost, "disarmed", stateText, "", mode, false, "", null)
+    ) = FlyState(connected, false, contactLost, "disarmed", stateText, "", mode, false, "", null)
 
     @Test
     fun `the header keeps the flight mode the core reports separately`() {
@@ -102,5 +102,27 @@ class VehicleSubtitleTest {
     @Test
     fun `a blank mode does not leave a dangling separator`() {
         assertEquals("Armed", vehicleSubtitle(state(stateText = "Armed", mode = "")))
+    }
+}
+
+class FlyStateArmedTest {
+
+    private fun view(armed: Boolean, connected: Boolean = true) = flyState(
+        JSONObject(
+            """{"kind":"object","class":"FlyState","connected":$connected,"armed":$armed,
+               "contactLost":false,"state":"armed","stateText":"Armed","staleNotice":"",
+               "mode":"Stabilize","rcSupported":false,"rcSignal":null,"rcSignalText":null}""",
+        ),
+    )
+
+    @Test
+    fun `armed comes from the view rather than a second read of the vehicle`() {
+        assertTrue(view(armed = true)!!.armed)
+        assertFalse(view(armed = false)!!.armed)
+    }
+
+    @Test
+    fun `no vehicle is not an armed vehicle`() {
+        assertFalse(flyState(JSONObject("""{"kind":"object","class":"FlyState","connected":false}"""))!!.armed)
     }
 }
