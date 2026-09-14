@@ -1298,7 +1298,7 @@ constexpr int kMockStatusTextCount = 9;
 const char *const kViewPaths[] = {
     "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
-    "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.vehicles", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
+    "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.vehicles", "view.label(altitudeRelative)", "view.instruments", "view.instrumentGroups", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.control(settings.appSettings.qLocaleLanguage)", "view.links", "view.linkForm(udp,,14550)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
@@ -1337,6 +1337,63 @@ static QString _shapeDifference(const QJsonObject &was, const QJsonObject &now)
         }
     }
     return moved.isEmpty() ? QStringLiteral("nested or ordering only") : moved.join(QStringLiteral(", "));
+}
+
+void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
+{
+#ifdef QGC_RUST_CORE
+    // kViewPaths is hand written and nothing tied it to the registry, so a view added to VIEWS was
+    // simply absent from the contract - its shape pinned by nothing, and indistinguishable from the
+    // eighteen absent on purpose. view.instrumentGroups was added and recorded nothing until this
+    // guard was written. Each excuse below is a decision; a view that stops matching its reason
+    // should be recorded rather than left here.
+    static const QMap<QString, QString> kNotRecorded = {
+        { QStringLiteral("view.cameraDefinition"), QStringLiteral("takes a camera definition file path and the recorder has none to give") },
+        { QStringLiteral("view.geoTag"), QStringLiteral("takes a telemetry log path plus one timestamp per image") },
+        { QStringLiteral("view.kmlFile"), QStringLiteral("takes a file path") },
+        { QStringLiteral("view.missionFile"), QStringLiteral("takes a file path") },
+        { QStringLiteral("view.planFile"), QStringLiteral("takes a file path") },
+        { QStringLiteral("view.planFromWaypoints"), QStringLiteral("takes a file path") },
+        { QStringLiteral("view.shapeFile"), QStringLiteral("takes a file path") },
+        { QStringLiteral("view.terrainTile"), QStringLiteral("takes a file path plus a latitude and longitude") },
+        { QStringLiteral("view.tlog"), QStringLiteral("takes a file path") },
+        { QStringLiteral("view.waypointsFile"), QStringLiteral("takes a file path") },
+        { QStringLiteral("view.coreVehicle"), QStringLiteral("the core hub is fed only by links the core hosts, and coreLinks is off in the recorder") },
+        { QStringLiteral("view.coreGuided"), QStringLiteral("same: no core-hosted vehicle exists to answer for") },
+        { QStringLiteral("view.coreMission"), QStringLiteral("same") },
+        { QStringLiteral("view.coreParameter"), QStringLiteral("same, and no vehicle means no parameter name to ask for") },
+        { QStringLiteral("view.coreParameters"), QStringLiteral("same") },
+        { QStringLiteral("view.coreRemoteId"), QStringLiteral("same") },
+        { QStringLiteral("view.transports"), QStringLiteral("lists links the core hosts, and it hosts none while coreLinks is off") },
+        { QStringLiteral("view.dependencies"), QStringLiteral("describes the registry itself, and its content is already pinned inside other recordings") },
+        { QStringLiteral("view.contract"), QStringLiteral("enumerates VIEWS and their enumerations, so recording its shape pins the fixture against itself") },
+    };
+
+    QSet<QString> recorded;
+    for (const char *path : kViewPaths) {
+        recorded.insert(QString::fromUtf8(path).section(QLatin1Char('('), 0, 0));
+    }
+
+    const QJsonArray views = take(qgc_core_get("view.dependencies")).value(QStringLiteral("views")).toArray();
+    QVERIFY2(views.count() > 40, "the registry parsed, so an empty answer below would mean nothing");
+
+    QStringList unpinned;
+    for (const QJsonValue &view : views) {
+        const QString path = view.toObject().value(QStringLiteral("path")).toString();
+        if (!recorded.contains(path) && !kNotRecorded.contains(path)) {
+            unpinned.append(path);
+        }
+    }
+    QVERIFY2(unpinned.isEmpty(), qPrintable(QStringLiteral("registered and recorded nowhere, so every field a head reads from them is pinned by nothing and the absence looks exactly like the eighteen deliberate ones: %1. Add them to kViewPaths, or name them above with the reason they cannot be recorded").arg(unpinned.join(QStringLiteral(", ")))));
+
+    QStringList stale;
+    for (auto it = kNotRecorded.begin(); it != kNotRecorded.end(); ++it) {
+        if (recorded.contains(it.key())) {
+            stale.append(it.key());
+        }
+    }
+    QVERIFY2(stale.isEmpty(), qPrintable(QStringLiteral("recorded AND excused, so the reason carried here is no longer true: %1").arg(stale.join(QStringLiteral(", ")))));
+#endif
 }
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
