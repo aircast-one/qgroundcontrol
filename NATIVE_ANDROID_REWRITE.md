@@ -7747,3 +7747,42 @@ reads exactly like an upload that never happened. The fake prints `UPLOAD start`
 Seventh instance today of an instrument answering honestly about a question
 narrowed wrongly — and the first where a wrong answer would have sent a peer
 chasing a failure that did not exist.
+
+### Packet radio builds for Android; enumeration is the whole remaining job, 2026-09-14
+
+`b7ae5471b` excluded packet radio from Android. That call has been reversed - the
+handset is the ground station people carry - and the build now follows:
+`f37267c73` compiles `libwfblink.a`, `491ba71eb` links the app, and `nm` finds
+`PacketRadioManager::_enumerate` plus 284 wfb symbols in
+`libAircastQGC_arm64-v8a.so`.
+
+Three things were in the way, none of them Apple-bound:
+
+| wall | cause | fix |
+|---|---|---|
+| six `udphdr` errors | Bionic keeps `struct udphdr` in `<netinet/udp.h>`; Android defines `__linux__` so the code took `<linux/udp.h>` | include both on Android |
+| `libusb-1.0/libusb.h` not found | CPM libusb exports `<libusb.h>`; pkg-config platforms give the prefixed spelling | generate a one-line header at the prefixed path |
+| `pcap.h` not found, then `-lpcap` | compat headers were PRIVATE to wfblink, and the pcap stubs sat inside the file's `_WIN32` block | export the compat dir, share the stubs with Android, do not link pcap there |
+
+**What remains is one thing, and it is not a build problem.** `WfbngLink::get_device_list()`
+calls `libusb_get_device_list`, and Android returns nothing from it: the platform
+does not permit raw USB enumeration. The route is the one
+`QGCUsbSerialManager.java` already uses for serial radios -
+`UsbManager.getDeviceList()`, `requestPermission`, `openDevice`,
+`getFileDescriptor()` - handed to libusb as:
+
+    libusb_set_option(ctx, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
+    libusb_wrap_sys_device(ctx, fd, &handle);
+
+So the work is a Java side that already has a working precedent in this tree, a
+JNI hop, and an Android branch in `get_device_list` that reports the device the
+descriptor belongs to instead of scanning for it. **`uses-feature
+android.hardware.usb.host` is also still missing** from
+`deploy/android/AndroidManifest.xml`; the Kotlin head's own manifest already
+declares the `USB_DEVICE_ATTACHED` intent filter.
+
+**Not startable blind.** None of it can be measured without the handset AND a wfb
+adapter attached to it; the OnePlus dropped off USB during this session. A page
+drawn before the descriptor plumbing lands would list no adapter on any device,
+which is why `settings-groups.py` still carries PacketRadio as exempt and now
+says so in those words.
