@@ -23,12 +23,6 @@ import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.mapspike.optText
 
-internal data class ParameterSection(
-    val title: String,
-    val names: List<String>,
-    val note: String = "",
-)
-
 internal data class ParameterRows(
     val title: String,
     val facts: List<Fact>,

@@ -9,6 +9,20 @@ KNOWN = ("canPhoto", 1)
 KNOWN_CLASS = ("Instrument", ["label", "reading"])
 
 ACCEPTED = {
+    "InspectorMessage.compId": "MEASURED and already inside the title. inspector.rs folds it in as "
+        "'HEARTBEAT (comp 1)' when a message name repeats across components, and the screen draws "
+        "title. Reading the raw number as well would be this head re-deciding when the distinction "
+        "matters, which is the judgement the core made",
+    "CalibrationSide.key": "MEASURED and unused because the list is not keyed. SensorsScreen "
+        "chunks the sides two to a row and draws them positionally, so Compose has no identity to "
+        "preserve. It becomes the right thing the moment that list can reorder or animate",
+    "GuidedOffer.carriesValue": "MEASURED and currently unreachable. It marks takeoff, altitude, "
+        "speed and pause - the actions that need a number before they can be sent. This head never "
+        "asks: the three value actions have their own dialogs on the flight row, and the one that "
+        "reaches the more-actions sheet is pause, special-cased by id because the flag cannot say "
+        "WHICH dialog an action wants. A guard for an action the core adds to the sheet that this "
+        "head has no dialog for would be the use, and SHEET_ACTIONS is a head-side allowlist, so "
+        "that case cannot arise until the allowlist grows",
     "TerrainProfile.highestText": "MEASURED and redundant here. bandText is range_text(min, max) - "
         "'474 m to 596 m' - and that is what profileLabel draws when the route is not flat, so the "
         "highest already reaches the operator inside it. lowestText is drawn alone for a flat "
