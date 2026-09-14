@@ -598,7 +598,7 @@ jobs:
   # x64 release must not depend on it.
   build-windows-arm64:
     needs: setup
-    runs-on: windows-11-arm
+    runs-on: windows-2022
     timeout-minutes: 60
     continue-on-error: true
     env:
@@ -665,8 +665,8 @@ jobs:
           echo "GSTREAMER_1_0_ROOT_MSVC_ARM64=C:\gstreamer" >> $env:GITHUB_ENV
           echo "C:\gstreamer\bin" >> $env:GITHUB_PATH
 
-      - name: Install NSIS
-        run: choco install nsis -y
+      - name: Install NSIS and an x64 pkg-config
+        run: choco install nsis pkgconfiglite -y
         shell: pwsh
 
       - name: Setup Caching
@@ -677,13 +677,24 @@ jobs:
           build-type: Release
           cpm-modules: ${{ runner.temp }}\shadow_build_dir\cpm_modules
 
-      - name: Install Qt for Windows (ARM64)
+      - name: Install Qt host tools
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          host: windows_arm64
+          host: windows
           target: desktop
-          arch: win64_msvc2022_arm64
+          arch: win64_msvc2022_64
+          dir: ${{ runner.temp }}
+          modules: qtshadertools
+          cache: true
+
+      - name: Install Qt for Windows (ARM64 cross)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_arm64_cross_compiled
           dir: ${{ runner.temp }}
           modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
           cache: true
@@ -691,13 +702,14 @@ jobs:
       - name: Set up Visual Studio shell
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: arm64
+          arch: amd64_arm64
 
       - name: Configure
         working-directory: ${{ runner.temp }}\shadow_build_dir
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DQGC_STABLE_BUILD=ON
+              -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../msvc2022_64"
 
       - name: Build
         working-directory: ${{ runner.temp }}\shadow_build_dir
