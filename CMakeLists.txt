@@ -187,7 +187,6 @@ find_package(Qt6
         Location
         Multimedia
         Network
-        OpenGL
         Positioning
         Qml
         QmlIntegration
