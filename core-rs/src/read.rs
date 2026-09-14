@@ -39,6 +39,18 @@ pub fn text(object: &Value, key: &str) -> String {
     object.get(key).and_then(Value::as_str).unwrap_or("").to_string()
 }
 
+// rawValue is the fact's value in whatever unit its metadata declares - metres for an altitude,
+// but degrees, seconds or a bare count elsewhere - so a field named for metres has to be null
+// unless it IS metres. The four spellings are the ones FactMetaData translates as a length:
+// cm/px is centimetres per pixel and m^2 is an area, and neither is a distance a caller can use.
+// Null rather than a number a reader has to remember to check: a wrong length in a geo layer
+// places a marker somewhere real and nothing downstream can tell.
+pub fn metres(fact: &Value) -> Option<f64> {
+    matches!(text(fact, "rawUnits").as_str(), "m" | "meter" | "meters" | "vertical m")
+        .then(|| fact.get("rawValue").and_then(Value::as_f64).filter(|value| value.is_finite()))
+        .flatten()
+}
+
 pub fn enum_labels(fact: &Value) -> Vec<String> {
     let synthetic = text(fact, "unknownEnumLabel");
     fact.get("enumStrings")

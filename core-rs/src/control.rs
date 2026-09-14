@@ -84,6 +84,7 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         "label": if described.is_empty() { humanise(&name) } else { described },
         "control": control,
         "value": fact.get("value").cloned().unwrap_or(Value::Null),
+        "valueMeters": crate::read::metres(fact),
         "valueString": text("valueString"),
         "display": display,
         "units": text("units"),
@@ -199,6 +200,26 @@ mod tests {
         let open = decode(&json!({ "kind": "fact", "name": "X", "min": -32768, "max": 32767, "minIsDefaultForType": true, "maxIsDefaultForType": true }), "p");
         assert_eq!(open["minimum"], Value::Null);
         assert_eq!(open["maximum"], Value::Null);
+    }
+
+    #[test]
+    fn only_a_fact_measured_in_metres_carries_a_value_in_metres() {
+        let altitude = decode(&json!({ "kind": "fact", "name": "RTL_ALT", "value": 328.0, "rawValue": 100.0, "rawUnits": "vertical m", "units": "ft" }), "p");
+        assert_eq!(altitude["valueMeters"], 100.0, "value is cooked to the operator's display unit, so on an imperial profile it is 328 - a map annotation fed that number places the marker three times too high");
+        assert_eq!(altitude["value"], 328.0, "and the cooked value still travels for the label beside it");
+
+        ["m", "meter", "meters"].iter().for_each(|spelling| {
+            let horizontal = decode(&json!({ "kind": "fact", "name": "D", "rawValue": 7.5, "rawUnits": spelling }), "p");
+            assert_eq!(horizontal["valueMeters"], 7.5, "{spelling} is a length QGC translates, and all three spellings appear in its own table");
+        });
+
+        [("deg", 45.0), ("secs", 30.0), ("m/s", 12.0), ("m^2", 400.0), ("cm/px", 2.0)].iter().for_each(|(unit, raw)| {
+            let other = decode(&json!({ "kind": "fact", "name": "X", "rawValue": raw, "rawUnits": unit }), "p");
+            assert_eq!(other["valueMeters"], Value::Null, "{unit} is not a distance, and a field named for metres holding {raw} of something else is worse than no field - m^2 is an area and cm/px is a ground resolution, so neither is rescued by being metric");
+        });
+
+        let unmeasured = decode(&json!({ "kind": "fact", "name": "X", "rawUnits": "m" }), "p");
+        assert_eq!(unmeasured["valueMeters"], Value::Null, "a length with no raw value reported is absent rather than zero");
     }
 
     #[test]
