@@ -21,11 +21,25 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         let fact = Bridge.group(VideoStore.sourcesPath)
         let cameras = ((Bridge.group("view.video")["cameras"] as? [Any]) ?? [])
             .compactMap(VideoCamera.init)
-        let listed = VideoSources.decode((fact["valueString"] as? String) ?? "", cameras: cameras)
+        let stored = (fact["valueString"] as? String) ?? ""
+        let readable = VideoSources.readable(stored)
+        if readable != sourcesReadable { sourcesReadable = readable }
+        if stored != storedSources { storedSources = stored }
+        let listed = VideoSources.decode(stored, cameras: cameras)
         if listed != sources { sources = listed }
     }
 
+    @Published private(set) var sourcesReadable = true
+    @Published private(set) var storedSources = ""
+
+    // Refuses rather than writing, because the list it would write is [] -- the empty list decode
+    // hands back for a string it could not parse, which would replace the operator's configuration
+    // with nothing and make the loss permanent.
     func write(_ replacement: VideoSource) {
+        guard sourcesReadable else {
+            writeFailure = VideoSources.unreadable
+            return
+        }
         let updated = VideoSources.replacing(sources, at: replacement.slot, with: replacement)
         write(VideoStore.sourcesPath, VideoSources.encode(updated), "the video source")
         loadSources()

@@ -3318,6 +3318,21 @@ func checkVideoSources() {
     expect(VideoSources.decode("not json").isEmpty, "a corrupt setting yields no slots, not a crash")
     expect(VideoSources.decode("").isEmpty, "nor does an empty one")
 
+    // The assertions above were the whole story here and they pinned the defect: both cases give
+    // [], and treating that as one fact is what let a corrupt setting present as a fresh install.
+    expect(VideoSources.readable(""),
+           "an empty setting is READABLE -- it says there are no extra sources, which is a fact "
+           + "about the configuration rather than a failure to read it")
+    expect(!VideoSources.readable("not json"),
+           "but an unparseable one is not, and the difference matters because write() encodes "
+           + "whatever list it holds: one edit after the corruption and [] replaces the operator's "
+           + "cameras permanently. A display bug becomes a data-loss bug at that line")
+    expect(!VideoSources.readable("{\"name\":\"Nose\"}"),
+           "valid JSON that is not an array is unreadable too -- an object is not a list of "
+           + "sources, and parsing successfully is not the same as parsing into the right shape")
+    expect(VideoSources.readable("[]"),
+           "and an explicit empty array is readable: somebody configured no extras")
+
     expect(VideoSources.looksLikeAddress("0.0.0.0:5691"), "a host and port is an address")
     expect(VideoSources.looksLikeAddress("rtsp://camera/live"), "so is a URL")
     expect(!VideoSources.looksLikeAddress("Front camera"), "a human name is not")

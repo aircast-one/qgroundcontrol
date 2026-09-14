@@ -294,6 +294,7 @@ rcSignal
 rcSignalText
 rcSupported
 readOnly
+readable
 ready
 reason
 receiving
@@ -361,6 +362,7 @@ statusText
 step
 storageStatus
 storageText
+stored
 stream
 streaming
 summary

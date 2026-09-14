@@ -42,6 +42,23 @@ enum VideoSources {
         }
     }
 
+    // decode returns [] for a corrupt setting AND for no extra sources, and those are not the same
+    // fact. Told apart nowhere, an unparseable string presents as a fresh install -- and because
+    // write() encodes whatever list it is holding, the very next edit persists [] OVER the original
+    // text. A display bug becomes a data-loss bug at that line, so the store must know which case
+    // it is in before it is allowed to write.
+    //
+    // Valid JSON that is not an array is unreadable too: {"name":"Nose"} is not a list of sources.
+    static let unreadable = "The saved video sources could not be read, so they have not been "
+        + "changed. Editing them now would replace what is stored."
+
+    static func readable(_ json: String) -> Bool {
+        guard !json.isEmpty else { return true }
+        guard let data = json.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) else { return false }
+        return parsed is [Any]
+    }
+
     static func encode(_ sources: [VideoSource]) -> String {
         let listed = sources.map { ["name": $0.name, "source": $0.source, "url": $0.url] }
         guard let data = try? JSONSerialization.data(withJSONObject: listed),
