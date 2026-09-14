@@ -3406,6 +3406,9 @@
         "view.video.class",
         "view.video.configuredCount",
         "view.video.decoding",
+        "view.video.extraSources.readable",
+        "view.video.extraSources.sources.#",
+        "view.video.extraSources.stored",
         "view.video.gstreamer",
         "view.video.kind",
         "view.video.multipleSources",
@@ -4940,6 +4943,9 @@
         "view.video.class",
         "view.video.configuredCount",
         "view.video.decoding",
+        "view.video.extraSources.readable",
+        "view.video.extraSources.sources.#",
+        "view.video.extraSources.stored",
         "view.video.gstreamer",
         "view.video.kind",
         "view.video.multipleSources",
@@ -7314,6 +7320,13 @@
         "class": "string",
         "configuredCount": "number",
         "decoding": "bool",
+        "extraSources": {
+            "readable": "bool",
+            "sources": [
+                "empty"
+            ],
+            "stored": "string"
+        },
         "gstreamer": "bool",
         "kind": "string",
         "multipleSources": "bool",

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, integer, object, text};
 use crate::router::Backend;
 
-pub const VIDEO_DEPS: &[&str] = &["video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
+pub const VIDEO_DEPS: &[&str] = &["settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
 pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
@@ -83,6 +83,41 @@ fn shot_points(backend: &dyn Backend) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+// extraVideoSources is a JSON array kept in a string setting, and VideoSourceModel.swift:30
+// returns [] for every parse failure - which is the same value as "no extra sources configured".
+// A corrupted or hand-edited string therefore makes an operator's cameras vanish looking exactly
+// like a fresh install, and the next edit calls encode() on the empty list and writes it back, so
+// the original is destroyed rather than merely hidden. Empty and unreadable have to be different
+// answers, and the second one has to travel far enough for a head to refuse to overwrite.
+fn extra_sources(backend: &dyn Backend) -> Value {
+    let stored = text(&object(&backend.get("settings.videoSettings.extraVideoSources")), "valueString");
+    let trimmed = stored.trim();
+    if trimmed.is_empty() {
+        return json!({ "readable": true, "sources": [], "stored": stored });
+    }
+    let listed = serde_json::from_str::<Value>(trimmed).ok().and_then(|parsed| parsed.as_array().cloned());
+    match listed {
+        Some(entries) => json!({
+            "readable": true,
+            "sources": entries.iter().enumerate().map(|(slot, entry)| json!({
+                "slot": slot,
+                "name": text(entry, "name"),
+                "source": text(entry, "source"),
+                "url": text(entry, "url"),
+            })).collect::<Vec<_>>(),
+            "stored": stored,
+        }),
+        // The stored text travels back so a head can show what is there and let someone repair it
+        // rather than silently replacing it with an empty list.
+        None => json!({
+            "readable": false,
+            "sources": [],
+            "stored": stored,
+            "reason": "The extra video sources setting is not a readable list, so the cameras it holds cannot be shown. Editing them now would replace it.",
+        }),
+    }
+}
+
 pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording"));
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
@@ -130,6 +165,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "configuredCount": configured,
         "summary": video_summary(available, decoding, recording, any_connecting, configured),
         "cameras": cameras,
+        "extraSources": extra_sources(backend),
     })
 }
 
@@ -283,6 +319,7 @@ mod tests {
         assert_eq!(video_summary(true, false, false, false, 2), "Not streaming.");
         let two_slots = Fake { enabled: vec![true, true, false], configured: vec![true, false, true], ..Fake::new(json!({ "kind": "object", "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": ["Connecting", "Waiting", "Waiting"], "cameraConnecting": [true, false, false], "cameraRecording": [] }), json!({ "kind": "null" })) };
         let view = video_view(&two_slots, &[]);
+        assert!(view["extraSources"]["readable"].is_boolean(), "video_view has to CARRY the block; a head reads view.video and never calls extra_sources, so testing that function alone leaves the wiring unpinned - fifth time tonight");
         assert_eq!(view["sourceSize"], Value::Null, "a size only counts while a frame is decoding");
         let decoding = video_view(&Fake::new(json!({ "kind": "object", "hasVideo": true, "decoding": true, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": [], "cameraConnecting": [], "cameraRecording": [] }), json!({ "kind": "null" })), &[]);
         assert_eq!(decoding["sourceSize"], json!({ "width": 640, "height": 480 }));
@@ -292,6 +329,46 @@ mod tests {
         assert_eq!(view["cameras"][2]["enabled"], false);
         assert_eq!(view["configuredCount"], 1);
         assert_eq!(view["summary"], "Waiting for a stream.");
+    }
+
+    #[test]
+    fn an_unreadable_source_list_is_not_an_empty_one() {
+        struct Stored(&'static str);
+        impl Backend for Stored {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "settings.videoSettings.extraVideoSources" => json!({ "kind": "fact", "name": "extraVideoSources", "valueString": self.0 }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let two = extra_sources(&Stored(r#"[{"name":"Nose","source":"RTSP","url":"rtsp://a"},{"name":"Belly","source":"UDP","url":"udp://b"}]"#));
+        assert_eq!(two["readable"], true);
+        assert_eq!(two["sources"].as_array().unwrap().len(), 2);
+        assert_eq!(two["sources"][1]["name"], "Belly");
+        assert_eq!(two["sources"][1]["slot"], 1);
+
+        let none = extra_sources(&Stored("[]"));
+        assert_eq!(none["readable"], true, "an empty list is a readable answer: the operator has configured no extras");
+        assert_eq!(none["sources"].as_array().unwrap().len(), 0);
+
+        let unset = extra_sources(&Stored(""));
+        assert_eq!(unset["readable"], true, "an unset setting is not a corrupt one");
+
+        let broken = extra_sources(&Stored(r#"[{"name":"Nose","url":"rtsp://a"#));
+        assert_eq!(broken["readable"], false, "VideoSourceModel.swift returns [] here, which is the same value as no-extras - so an operator's cameras vanish looking exactly like a fresh install");
+        assert_eq!(broken["sources"].as_array().unwrap().len(), 0);
+        assert!(broken["stored"].as_str().unwrap().contains("Nose"), "the stored text travels so a head can show what is there and offer a repair; encode() over an empty list destroys it");
+        assert!(broken["reason"].as_str().unwrap().contains("replace"));
+
+        let wrong_shape = extra_sources(&Stored(r#"{"name":"Nose"}"#));
+        assert_eq!(wrong_shape["readable"], false, "valid JSON that is not an array is not a list of sources either");
+        assert_ne!(broken["readable"], none["readable"], "the whole point is that these two answer differently");
     }
 
     #[test]
