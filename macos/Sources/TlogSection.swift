@@ -22,12 +22,6 @@ final class TlogStore: ObservableObject, Probeable {
 
     func load(_ path: String) {
         chosen = path
-        guard TlogSummary.encodable(path) else {
-            summary = nil
-            problem = "A log whose name contains a comma or a bracket cannot be addressed yet. "
-                + "Rename it or move it, and the reading will be right rather than absent."
-            return
-        }
         problem = ""
         summary = TlogSummary(Bridge.group("view.tlog(\(path))"))
         if summary == nil {
