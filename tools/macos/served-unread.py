@@ -31,7 +31,18 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SOURCES = ROOT / "macos/Sources"
+# The head to check, so this answers the same question of Android as of macOS. There is no
+# tools/android/, and sixteen of the seventeen instruments here hardcode macos/Sources -- which is
+# why every fine-grained finding in the plan is a macOS finding and Android's had to be derived by
+# hand. Android is the head with MORE to measure: 53 raw reads against macOS's 25.
+HEADS = {
+    "macos": (ROOT / "macos/Sources", "*.swift"),
+    "android": (ROOT / "android/app/src/main", "*.kt"),
+}
+HEAD = sys.argv[1] if len(sys.argv) > 1 else "macos"
+if HEAD not in HEADS:
+    raise SystemExit(f"unknown head {HEAD!r}: expected one of {', '.join(sorted(HEADS))}")
+SOURCES, SUFFIX = HEADS[HEAD]
 CONTRACT = ROOT / "test/Bridge/fixtures/view-shapes.json"
 
 # The last contract this head has reconciled. Move it forward when the additions
@@ -121,7 +132,7 @@ def contract_at(revision):
 
 
 def names_the_head_uses():
-    text = "\n".join(path.read_text() for path in sorted(SOURCES.glob("*.swift")))
+    text = "\n".join(path.read_text(errors="replace") for path in sorted(SOURCES.rglob(SUFFIX)))
     return set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', text)) | set(
         re.findall(r"\b([a-z][A-Za-z0-9_]*)\b", text))
 
