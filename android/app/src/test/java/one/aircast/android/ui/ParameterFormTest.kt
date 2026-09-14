@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.text.input.KeyboardType
 import one.aircast.android.bridge.Fact
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -242,5 +243,44 @@ class ReadOnlyNoteTest {
     fun `the page path carries the name and no separators the watch would split`() {
         assertEquals("view.setup(Flight Modes)", setupPagePath("Flight Modes"))
         assertEquals(false, setupPagePath("Flight Modes").contains(","))
+    }
+}
+
+class ControlBoundsTest {
+
+    private fun control(minimum: String, maximum: String, default: String) = factFromControl(
+        JSONObject(
+            """{"kind":"object","class":"Control","control":"number","name":"FENCE_ALT_MAX",
+               "label":"Fence maximum altitude","path":"p","units":"m","value":100.0,
+               "valueString":"100.00","options":[],"bits":[],"readOnly":false,
+               "minimum":$minimum,"maximum":$maximum,"defaultValue":$default}""",
+        ),
+    )!!
+
+    @Test
+    fun `a control that declares bounds carries them into the fact`() {
+        val fact = control("10.0", "1000.0", "100.0")
+
+        assertEquals("Min 10 · Max 1000 · Default 100", factConstraintNote(fact))
+    }
+
+    @Test
+    fun `a bound the fact does not declare is not printed as the type's extreme`() {
+        val fact = control("10.0", "null", "100.0")
+
+        assertEquals("Min 10 · Default 100", factConstraintNote(fact))
+        assertTrue(fact.maxIsDefaultForType)
+        assertFalse(fact.minIsDefaultForType)
+    }
+
+    @Test
+    fun `a control with no bounds at all has no note rather than an empty one`() {
+        assertNull(factConstraintNote(control("null", "null", "null")))
+    }
+
+    @Test
+    fun `a bound that can go negative asks for a keyboard that can type a minus`() {
+        assertEquals(KeyboardType.Text, factKeyboard(control("-180.0", "180.0", "0.0")))
+        assertEquals(KeyboardType.Decimal, factKeyboard(control("0.0", "180.0", "0.0")))
     }
 }
