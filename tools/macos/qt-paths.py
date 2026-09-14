@@ -212,6 +212,16 @@ SWIFT_CONSTANT = re.compile(r'\b(?:static\s+)?let\s+([A-Za-z_][A-Za-z0-9_]*[Pp]a
 
 APP_STORAGE = re.compile(r'@AppStorage\(')
 
+# The views whose stores are fed only by Hub::on_frame, which QGC_CORE_LINKS gates off by default. A
+# survey that compares the served contract against what a head reads will report these as covered: the
+# fixture was recorded WITH the flag, so every key is present. Six of 69 findings in the 2026-09-14
+# survey cited one, and one of them would have moved a GPS satellite count onto a view that answers
+# nothing -- presenting as "GPS stopped working" rather than as a bad migration.
+# NOT view.control: it takes a fact path and reads through the Qt backend like any other view. It sat
+# in the first draft of this set for one commit, which would have mislabelled a working view as inert.
+HUB_GATED = {"coreVehicle", "coreGuided", "coreParameter", "coreParameters", "coreMission",
+             "coreRemoteId", "coreCalibration", "operatorControl"}
+
 SUFFIXES = (".swift", ".kt")
 
 
@@ -349,6 +359,14 @@ def main():
           f"argument is expanded when a const val NAME names a root path")
     print()
     print(f"  served (view.*)      {len(served):4}   distinct, the migration's numerator")
+    gated = sorted(v for v in served if v.split(".")[1] in HUB_GATED)
+    if gated:
+        print(f"  ...of which HUB-GATED {len(gated):4}   these answer NOTHING in a default build, because the store "
+              f"behind them is fed only by Hub::on_frame and QGC_CORE_LINKS is off. A served-versus-read "
+              f"comparison CANNOT see that -- the contract fixture was recorded in a build that has the flag, "
+              f"so the keys are present and the values never arrive. Do not read a head migrating onto one of "
+              f"these as progress:")
+        print("    " + ", ".join(gated))
     print(f"  claimed actions      {len(claimed):4}   distinct, of {len(owned)} the core owns -- "
           f"these reach Qt through the core, so they are the destination and not the debt")
     # Named rather than counted, because this line's input is the SHAPE of someone else's source
