@@ -213,3 +213,40 @@ class CameraDetailsTest {
         assertEquals(emptyList<String>(), cameraReading(view(labels = "[]"))!!.labels)
     }
 }
+
+class CameraZoomTest {
+
+    private fun camera(hasZoom: Boolean = true, level: Double = 50.0) = cameraReading(
+        JSONObject(
+            """{"kind":"object","class":"CameraControl","present":true,"hasModes":true,
+               "canChangeMode":true,"modeText":"Photo","isRecording":false,"canPhoto":true,
+               "canRecord":true,"isTakingPhoto":false,"mode":0,"modeKnown":true,
+               "hasZoom":$hasZoom,"zoomLevel":$level}""",
+        ),
+    )!!
+
+    @Test
+    fun `a camera without zoom offers no control at all`() {
+        assertNull(zoomText(camera(hasZoom = false)))
+        assertNull(zoomStep(camera(hasZoom = false), 10.0))
+    }
+
+    @Test
+    fun `a step moves by the tick and states where it is`() {
+        assertEquals("Zoom 50%", zoomText(camera()))
+        assertEquals(60.0, zoomStep(camera(), 10.0)!!, 1e-9)
+        assertEquals(40.0, zoomStep(camera(), -10.0)!!, 1e-9)
+    }
+
+    @Test
+    fun `a step past either end lands on the end rather than beyond it`() {
+        assertEquals(100.0, zoomStep(camera(level = 95.0), 10.0)!!, 1e-9)
+        assertEquals(0.0, zoomStep(camera(level = 5.0), -10.0)!!, 1e-9)
+    }
+
+    @Test
+    fun `a camera already at an end cannot step that way, so the control goes dead`() {
+        assertNull(zoomStep(camera(level = 100.0), 10.0))
+        assertNull(zoomStep(camera(level = 0.0), -10.0))
+    }
+}

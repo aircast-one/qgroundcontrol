@@ -44,6 +44,8 @@ internal data class CameraReading(
     val storageText: String,
     val shotsText: String,
     val batteryText: String,
+    val hasZoom: Boolean,
+    val zoomLevel: Double,
 )
 
 internal fun cameraReading(view: JSONObject?): CameraReading? {
@@ -72,8 +74,23 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         storageText = view.optText("storageText"),
         shotsText = view.optText("shotsText"),
         batteryText = view.optText("batteryText"),
+        hasZoom = view.optBoolean("hasZoom"),
+        zoomLevel = view.optDouble("zoomLevel", ZOOM_LOWEST).takeIf { it.isFinite() } ?: ZOOM_LOWEST,
     )
 }
+
+internal const val ZOOM_LOWEST = 0.0
+internal const val ZOOM_HIGHEST = 100.0
+internal const val CAMERA_ZOOM = "vehicle.cameraManager.currentCameraInstance.zoomLevel"
+
+internal fun zoomStep(camera: CameraReading, by: Double): Double? {
+    if (!camera.hasZoom) return null
+    val wanted = (camera.zoomLevel + by).coerceIn(ZOOM_LOWEST, ZOOM_HIGHEST)
+    return wanted.takeIf { it != camera.zoomLevel }
+}
+
+internal fun zoomText(camera: CameraReading): String? =
+    if (camera.hasZoom) "Zoom ${camera.zoomLevel.toInt()}%" else null
 
 internal const val CAMERA_PHOTO = "camera.takePhoto"
 internal const val CAMERA_RECORD = "camera.toggleRecording"

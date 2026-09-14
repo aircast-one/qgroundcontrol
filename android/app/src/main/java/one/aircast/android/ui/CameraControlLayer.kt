@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import one.aircast.android.bridge.qgcDouble
 
 private const val REFUSAL_MS = 4000L
+private const val ZOOM_TICK = 10.0
 
 private const val MANAGER = "vehicle.cameraManager"
 
@@ -87,6 +88,30 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                         label = { Text(label) },
                     )
                 }
+            }
+
+            zoomText(camera)?.let { label ->
+                FilterChip(
+                    selected = false,
+                    enabled = zoomStep(camera, -ZOOM_TICK) != null,
+                    onClick = {
+                        zoomStep(camera, -ZOOM_TICK)?.let { level ->
+                            offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
+                        }
+                    },
+                    label = { Text("\u2212") },
+                )
+                Text(label, style = MaterialTheme.typography.labelSmall)
+                FilterChip(
+                    selected = false,
+                    enabled = zoomStep(camera, ZOOM_TICK) != null,
+                    onClick = {
+                        zoomStep(camera, ZOOM_TICK)?.let { level ->
+                            offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
+                        }
+                    },
+                    label = { Text("+") },
+                )
             }
 
             Button(

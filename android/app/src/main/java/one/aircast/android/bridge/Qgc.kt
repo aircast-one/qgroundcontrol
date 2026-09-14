@@ -150,6 +150,12 @@ object Qgc {
         return false
     }
 
+    fun writeRefusal(path: String, value: Any?): String? = refusal(
+        runCatching {
+            JSONObject(timed("set $path") { QGCBridge.set(path, JSONObject().put("value", value).toString()) })
+        }.getOrNull(),
+    )
+
     fun invoke(path: String, vararg args: Any?): Boolean {
         val ok = call(path, *args)?.optBoolean("ok") ?: false
         if (!ok) Log.w(TAG, "invoke $path failed")
