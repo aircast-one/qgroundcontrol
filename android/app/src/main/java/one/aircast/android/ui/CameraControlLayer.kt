@@ -3,6 +3,10 @@ package one.aircast.android.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -24,7 +28,6 @@ import one.aircast.android.bridge.qgcPath
 import androidx.compose.runtime.remember
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcStrings
 
 private const val REFUSAL_MS = 4000L
 
@@ -33,11 +36,11 @@ private const val MANAGER = "vehicle.cameraManager"
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
-    val labels by qgcStrings("$MANAGER.cameraLabels")
     val current by qgcDouble("$MANAGER.currentCamera", 0.0)
     val cameraJson by qgcPath(CAMERA_VIEW)
     val camera = remember(cameraJson) { cameraReading(cameraJson) }
     var refused by remember { mutableStateOf<String?>(null) }
+    var details by remember { mutableStateOf(false) }
 
     LaunchedEffect(refused) {
         if (refused != null) {
@@ -61,16 +64,13 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (labels.size > 1) {
-                FilterChip(
-                    selected = false,
-                    onClick = {
-                        val next = (current.toInt() + 1) % labels.size
-                        offMainDetached { Qgc.set("$MANAGER.currentCamera", next) }
-                    },
-                    label = { Text(labels.getOrElse(current.toInt()) { "Camera" }) },
-                )
-            }
+            FilterChip(
+                selected = false,
+                onClick = { details = true },
+                label = {
+                    Text(camera.labels.getOrElse(current.toInt()) { camera.title.ifBlank { "Camera" } })
+                },
+            )
 
             if (camera.hasModes) {
                 camera.modeText.ifBlank { null }?.let { label ->
@@ -113,6 +113,18 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             }
         }
 
+        if (details) {
+            CameraDetailsSheet(
+                camera = camera,
+                current = current.toInt(),
+                onSelect = { index ->
+                    offMainDetached { Qgc.set("$MANAGER.currentCamera", index) }
+                    details = false
+                },
+                onDismiss = { details = false },
+            )
+        }
+
         refused?.let { sentence ->
             Text(
                 text = sentence,
@@ -121,5 +133,47 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CameraDetailsSheet(
+    camera: CameraReading,
+    current: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            camera.title.ifBlank { "Camera" },
+            Modifier.padding(horizontal = 20.dp),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        cameraDetails(camera).forEach { (label, reading) ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(label, style = MaterialTheme.typography.bodyMedium)
+                Text(reading, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        if (camera.labels.size > 1) {
+            Text(
+                "Cameras",
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            camera.labels.forEachIndexed { index, label ->
+                FilterChip(
+                    selected = index == current,
+                    onClick = { onSelect(index) },
+                    label = { Text(label) },
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+            }
+        }
+        Spacer(Modifier.padding(bottom = 24.dp))
     }
 }

@@ -167,3 +167,49 @@ class CameraTimelapseTest {
         assertEquals("every 2.5 s, 10 shots", lapsePlan(cameraReading(view(lapseSeconds = "2.5"))!!))
     }
 }
+
+class CameraDetailsTest {
+
+    private fun view(
+        reportsStorage: Boolean = true,
+        storageText: String = "\"3.2 GB\"",
+        shotsText: String = "\"00042\"",
+        batteryText: String = "\"87%\"",
+        labels: String = """["SimCam","Thermal"]""",
+    ) = JSONObject(
+        """{"kind":"object","class":"CameraControl","present":true,"title":"SimCam",
+           "labels":$labels,"stateText":"Idle","reportsStorage":$reportsStorage,
+           "storageText":$storageText,"shotsText":$shotsText,"batteryText":$batteryText,
+           "mode":0,"modeKnown":true,"canPhoto":true}""",
+    )
+
+    @Test
+    fun `the sheet lists what the camera actually reports`() {
+        val details = cameraDetails(cameraReading(view())!!)
+
+        assertEquals(
+            listOf("State" to "Idle", "Storage" to "3.2 GB", "Photos" to "00042", "Battery" to "87%"),
+            details,
+        )
+    }
+
+    @Test
+    fun `a camera that does not report storage gets no storage row rather than a blank one`() {
+        val quiet = cameraDetails(cameraReading(view(reportsStorage = false))!!)
+
+        assertEquals(listOf("State", "Photos", "Battery"), quiet.map { it.first })
+    }
+
+    @Test
+    fun `a camera with no battery reading drops that row too`() {
+        val flat = cameraDetails(cameraReading(view(batteryText = "\"\""))!!)
+
+        assertEquals(listOf("State", "Storage", "Photos"), flat.map { it.first })
+    }
+
+    @Test
+    fun `the labels come from the view, not from a second read of the manager`() {
+        assertEquals(listOf("SimCam", "Thermal"), cameraReading(view())!!.labels)
+        assertEquals(emptyList<String>(), cameraReading(view(labels = "[]"))!!.labels)
+    }
+}

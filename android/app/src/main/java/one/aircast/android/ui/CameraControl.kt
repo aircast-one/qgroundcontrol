@@ -38,6 +38,13 @@ internal data class CameraReading(
     val lapseSeconds: Double?,
     val lapseCount: Int?,
     val lapseUnlimited: Boolean,
+    val title: String,
+    val labels: List<String>,
+    val stateText: String,
+    val reportsStorage: Boolean,
+    val storageText: String,
+    val shotsText: String,
+    val batteryText: String,
 )
 
 internal fun cameraReading(view: JSONObject?): CameraReading? {
@@ -58,6 +65,15 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         lapseSeconds = view.optDouble("lapseSeconds").takeIf { it.isFinite() },
         lapseCount = if (view.isNull("lapseCount")) null else view.optInt("lapseCount"),
         lapseUnlimited = view.optBoolean("lapseUnlimited"),
+        title = view.optText("title"),
+        labels = view.optJSONArray("labels").let { listed ->
+            (0 until (listed?.length() ?: 0)).map { listed?.optString(it).orEmpty() }
+        },
+        stateText = view.optText("stateText"),
+        reportsStorage = view.optBoolean("reportsStorage"),
+        storageText = view.optText("storageText"),
+        shotsText = view.optText("shotsText"),
+        batteryText = view.optText("batteryText"),
     )
 }
 
@@ -65,6 +81,13 @@ internal const val CAMERA_PHOTO = "camera.takePhoto"
 internal const val CAMERA_RECORD = "camera.toggleRecording"
 internal const val CAMERA_STOP_PHOTO = "camera.stopPhoto"
 internal const val CAMERA_SET_MODE = "camera.setMode"
+
+internal fun cameraDetails(camera: CameraReading): List<Pair<String, String>> = listOfNotNull(
+    "State" to camera.stateText,
+    ("Storage" to camera.storageText).takeIf { camera.reportsStorage && camera.storageText.isNotBlank() },
+    ("Photos" to camera.shotsText).takeIf { camera.shotsText.isNotBlank() },
+    ("Battery" to camera.batteryText).takeIf { camera.batteryText.isNotBlank() },
+)
 
 internal fun lapsePlan(camera: CameraReading): String? {
     if (!camera.timelapse) return null
