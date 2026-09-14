@@ -33,6 +33,8 @@ INT_PARAMS = frozenset(
 MAGCAL_MASK = 0b011
 ACCELCAL_POSITIONS = [1, 2, 3, 4, 5, 6]
 CAMERA_FEEDBACK_EVERY = int(os.environ.get("CAMERA_FEEDBACK_EVERY", "0"))
+ADSB_CONTACTS = int(os.environ.get("ADSB_CONTACTS", "0"))
+ADSB_SQUAWK = int(os.environ.get("ADSB_SQUAWK", "1200"))
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
 DEFAULT_TAKEOFF_ALTITUDE = 10.0
@@ -560,6 +562,25 @@ def main():
                         "p%d=%.2f" % (n, getattr(message, "param%d" % n, 0.0))
                         for n in range(1, 8))), flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+
+        for contact in range(ADSB_CONTACTS):
+            bearing = 2 * math.pi * contact / max(1, ADSB_CONTACTS) + elapsed * 0.05
+            spread = 0.01 + 0.01 * contact
+            magcal.adsb_vehicle_send(
+                0xABCDE0 + contact,
+                int((lat + spread * math.cos(bearing)) * 1e7),
+                int((lon + spread * math.sin(bearing)) * 1e7),
+                apm.ADSB_ALTITUDE_TYPE_GEOMETRIC,
+                int((300 + 150 * contact) * 1000),
+                int(((math.degrees(bearing) + 180.0) % 360.0) * 100),
+                int(60 * 100), int(2 * 100),
+                ("BAW%03d" % contact).encode().ljust(9, b"\0"),
+                apm.ADSB_EMITTER_TYPE_LIGHT,
+                1,
+                apm.ADSB_FLAGS_VALID_COORDS | apm.ADSB_FLAGS_VALID_ALTITUDE
+                | apm.ADSB_FLAGS_VALID_HEADING | apm.ADSB_FLAGS_VALID_VELOCITY
+                | apm.ADSB_FLAGS_VALID_CALLSIGN | apm.ADSB_FLAGS_VALID_SQUAWK,
+                ADSB_SQUAWK if contact == 0 else 1200)
 
         if CAMERA_FEEDBACK_EVERY and tick % CAMERA_FEEDBACK_EVERY == 0:
             magcal.camera_feedback_send(

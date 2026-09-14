@@ -74,6 +74,7 @@ import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
 import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
+import one.aircast.android.ui.TrafficReadout
 import one.aircast.android.ui.VehicleTitle
 import one.aircast.mapspike.FlyMap
 import one.aircast.android.ui.VideoSourceLayer
@@ -318,6 +319,7 @@ fun AircastShell(quickView: QtQuickView) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ObstacleReadout()
+                        TrafficReadout()
                         VideoSourceLayer()
                         CameraControlLayer()
                         RcControlsLayer()
