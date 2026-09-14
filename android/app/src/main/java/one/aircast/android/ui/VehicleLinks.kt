@@ -9,7 +9,6 @@ internal data class VehicleLink(val name: String, val primary: Boolean, val comm
 
 internal data class VehicleLinks(
     val available: Boolean,
-    val watching: Boolean,
     val primary: String,
     val contactLost: Boolean?,
     val reason: String,
@@ -21,7 +20,6 @@ internal fun vehicleLinks(view: JSONObject?): VehicleLinks? {
     val listed = view.optJSONArray("links")
     return VehicleLinks(
         available = view.optBoolean("available"),
-        watching = view.optBoolean("watching"),
         primary = view.optText("primary"),
         contactLost = if (view.isNull("contactLost")) null else view.optBoolean("contactLost"),
         reason = view.optText("reason"),

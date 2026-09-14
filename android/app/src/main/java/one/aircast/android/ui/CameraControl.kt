@@ -24,7 +24,6 @@ data class CameraShutter(
 internal const val CAMERA_VIEW = "view.camera"
 
 internal data class CameraReading(
-    val present: Boolean,
     val hasModes: Boolean,
     val canChangeMode: Boolean,
     val modeText: String,
@@ -50,7 +49,6 @@ internal data class CameraReading(
 internal fun cameraReading(view: JSONObject?): CameraReading? {
     if (view == null || !view.optBoolean("present")) return null
     return CameraReading(
-        present = true,
         hasModes = view.optBoolean("hasModes"),
         canChangeMode = view.optBoolean("canChangeMode"),
         modeText = view.optText("modeText"),
