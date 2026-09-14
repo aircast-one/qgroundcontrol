@@ -197,7 +197,7 @@ internal fun FactRow(
                     horizontalAlignment = Alignment.End,
                 ) {
                     Text(
-                        text = fact.valueString,
+                        text = enumLabel(fact),
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,

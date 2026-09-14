@@ -1,11 +1,13 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
@@ -101,18 +103,21 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
 
     val batteryJson by qgcPath(BATTERY)
     val battery = remember(batteryJson) { batteryReading(batteryJson) }
+    val linksJson by qgcPath(VEHICLE_LINKS)
+    val links = remember(linksJson) { linkCell(vehicleLinks(linksJson)) }
     val satellites by qgcString("$GPS.count")
     val lock by qgcDouble("$GPS.lock")
     val fix = fixLevel(lock)
 
     Row(
-        modifier.alpha(if (live) 1f else 0.45f),
+        modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) }
         fix?.let { InlineCell("${satsText(it, satellites)} sats", gpsColour(it)) }
         rcCell(state)?.let { InlineCell(it.text, if (it.lost) CRITICAL else Color.Unspecified) }
+        links?.let { InlineCell(it.text, if (it.degraded) CAUTION else Color.Unspecified) }
     }
 }
 

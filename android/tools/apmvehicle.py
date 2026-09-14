@@ -77,16 +77,26 @@ class Sender:
 
     SECOND_PORT adds a second udp port on the same host. QGC treats each port it
     hears the same system on as its own link, which is the only way this rig can
-    show a vehicle carried by more than one radio.
+    show a vehicle carried by more than one radio. SECOND_PORT_SECONDS then goes
+    quiet on that port, which is a vehicle that has lost one of its two radios
+    and is still flying on the other.
     """
 
     def __init__(self, sock, target):
         self.sock = sock
         second = os.environ.get("SECOND_PORT")
-        self.targets = [target] + ([(target[0], int(second))] if second else [])
+        self.started = time.time()
+        self.primary = target
+        self.second = (target[0], int(second)) if second else None
+        self.quiet_after = float(os.environ.get("SECOND_PORT_SECONDS", "1e9"))
+
+    def targets(self):
+        if self.second is None or time.time() - self.started > self.quiet_after:
+            return [self.primary]
+        return [self.primary, self.second]
 
     def write(self, data):
-        for target in self.targets:
+        for target in self.targets():
             self.sock.sendto(data, target)
 
 

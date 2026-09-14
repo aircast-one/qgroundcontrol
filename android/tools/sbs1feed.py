@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 
-PORT = int(os.environ.get("SBS_PORT", "30003"))
+PORT = int(os.environ.get("SBS_PORT", "30099"))
 CONTACTS = int(os.environ.get("SBS_CONTACTS", "3"))
 ALERT = os.environ.get("SBS_ALERT") == "1"
 CENTRE_LAT = float(os.environ.get("SIM_LAT", "41.7151"))
