@@ -7786,3 +7786,26 @@ adapter attached to it; the OnePlus dropped off USB during this session. A page
 drawn before the descriptor plumbing lands would list no adapter on any device,
 which is why `settings-groups.py` still carries PacketRadio as exempt and now
 says so in those words.
+
+### The traffic sheet's no-vehicle path, measured on the emulator, 2026-09-14
+
+The handset dropped off USB, so the emulator took over for anything not needing
+a vehicle. It reached a state the handset never showed, because the handset
+always had the rig running:
+
+    view.adsbTraffic   connected true, count 3, ownPositionKnown false
+    sheet              "No vehicle position, so nothing can be ranged"
+                       SWR000  bearing unknown  1000 ft  alerting
+                       SWR001  bearing unknown  1500 ft
+
+Three things verified at once. The caption written for exactly this case is the
+one that appears. Rows fall back to absolute altitude when the core withholds
+range and bearing, rather than drawing a zero that would put the aircraft on top
+of the operator. And the altitude round-trips through two unit conversions and
+comes back where it started - `sbs1feed.py` sends 1000 in the SBS-1 altitude
+field, which is feet, the core takes it to metres, and the emulator's imperial
+profile brings it back to "1000 ft".
+
+**The emulator's profile being imperial is the useful part.** A metric handset
+cannot tell a working conversion from a missing one, because both print the same
+number. Every unit path worth doubting should be looked at there.
