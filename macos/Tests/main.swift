@@ -1069,6 +1069,35 @@ func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
 
 checkAPlanWithNoVehicleChosenIsNotANamelessVehicle()
 
+func checkATailsittersBadgeIsAWordRatherThanASentence() {
+    func planning(_ type: String, vtol: Bool, multiRotor: Bool) -> MissionVehicle? {
+        MissionVehicle(planningFor: ["type": type, "firmware": "ArduPilot",
+                                     "multiRotor": multiRotor as NSNumber,
+                                     "vtol": vtol as NSNumber,
+                                     "apmFirmware": true as NSNumber])
+    }
+
+    let tailsitter = "Quad-rotor VTOL using a V-shaped quad config in vertical operation. Tailsitter"
+    expect(planning(tailsitter, vtol: true, multiRotor: false)?.badge ?? "", "VTOL",
+           "QGC's mavTypeToString serves the MAVLink enum DESCRIPTION for both VTOL types -- 78 "
+           + "and 83 characters with a full stop in the middle -- and this row is a badge slot "
+           + "beside Firmware. Measured on a real tailsitter through the rig, not invented")
+    expect(planning(tailsitter, vtol: true, multiRotor: false)?.type ?? "", tailsitter,
+           "and the sentence survives on the model for the tooltip, so nothing is lost")
+
+    expect(planning("Quadrotor", vtol: false, multiRotor: true)?.badge ?? "", "Quadrotor",
+           "A MULTIROTOR IS NOT OVERRIDDEN. Quadrotor, Hexarotor and Octorotor say more than any "
+           + "label a flag could produce, so replacing them with \"Multirotor\" would lose the "
+           + "one thing the string gets right")
+    expect(planning("Ground rover", vtol: false, multiRotor: false)?.badge ?? "", "Ground rover",
+           "AND THE THIRD CASE IS SERVED UNCHANGED RATHER THAN NAMED. multiRotor and vtol both "
+           + "false covers fixed wing, rover, boat, submarine and airship, which the two flags "
+           + "cannot tell apart -- calling that \"Fixed wing\" would be a plausible default that "
+           + "asserts, which is worse than the long string it replaced")
+}
+
+checkATailsittersBadgeIsAWordRatherThanASentence()
+
 func checkAHomeTheVehicleNeverSetIsAbsentRatherThanNowhere() {
     let item: [String: Any] = ["altitude": 50.0 as NSNumber, "altitudeEditUnits": "m",
                                "altitudeText": "50.0",

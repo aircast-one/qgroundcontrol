@@ -744,8 +744,9 @@ struct PlanInspector: View {
                     GroupRow(title: "Firmware", value: mission.vehicle.firmware, showSeparator: false)
                 }
                 if !mission.vehicle.type.isEmpty {
-                    GroupRow(title: "Type", value: mission.vehicle.type,
+                    GroupRow(title: "Type", value: mission.vehicle.badge,
                              showSeparator: !mission.vehicle.firmware.isEmpty)
+                        .help(mission.vehicle.type)
                 }
                 if mission.vehicle.showsCruiseSpeed {
                     GroupRow(title: "Cruise speed", showSeparator: mission.vehicle.isDescribed, trailing: {

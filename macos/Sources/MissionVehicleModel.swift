@@ -30,6 +30,15 @@ struct MissionVehicle: Equatable {
         apmFirmware = (json["apmFirmware"] as? NSNumber)?.boolValue ?? false
     }
 
+    // QGC's mavTypeToString is a hand-written map whose values are inconsistent in kind: short
+    // names for most classes, but the two VTOL entries are the MAVLink enum DESCRIPTIONS, 78 and
+    // 83 characters with a full stop in the middle. Only vtol is overridden. multiRotor's served
+    // names -- Quadrotor, Hexarotor, Octorotor -- say more than a flag could, and the remaining
+    // case covers fixed wing, rover, boat and submarine, which the flags cannot tell apart, so
+    // naming it from them would assert. Every entry is tr()-wrapped, which is why this keys on
+    // the served boolean and never on the string.
+    var badge: String { vtol ? "VTOL" : type }
+
     var showsCruiseSpeed: Bool { !multiRotor }
     var showsHoverSpeed: Bool { multiRotor || vtol }
     var isDescribed: Bool { !firmware.isEmpty || !type.isEmpty }
