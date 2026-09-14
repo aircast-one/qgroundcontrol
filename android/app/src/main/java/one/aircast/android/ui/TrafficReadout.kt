@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,13 +23,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
 
-private const val LISTED = 5
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrafficReadout(modifier: Modifier = Modifier) {
     val view by qgcPath(TRAFFIC_VIEW)
     val reading = remember(view) { trafficReading(view) } ?: return
-    var expanded by remember { mutableStateOf(false) }
+    var listed by remember { mutableStateOf(false) }
 
     if (!trafficShown(reading)) {
         return
@@ -40,55 +42,51 @@ fun TrafficReadout(modifier: Modifier = Modifier) {
     }
 
     Surface(
-        modifier = modifier.clickable { expanded = !expanded },
+        modifier = modifier.clickable(enabled = reading.contacts.isNotEmpty()) { listed = true },
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
     ) {
-        Column(
-            Modifier.padding(horizontal = 10.dp, vertical = 6.dp).widthIn(max = 320.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = listOf(trafficSummary(reading), trafficEmergencyText(reading.emergency))
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · "),
-                style = MaterialTheme.typography.labelLarge,
-                color = summaryColour,
-            )
+        Text(
+            text = listOf(trafficSummary(reading), trafficEmergencyText(reading.emergency))
+                .filter { it.isNotBlank() }
+                .joinToString(" · "),
+            style = MaterialTheme.typography.labelLarge,
+            color = summaryColour,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+    }
 
-            if (expanded) {
-                if (reading.contacts.isNotEmpty()) {
-                    Text(
-                        text = trafficCaption(reading),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                reading.contacts.take(LISTED).forEach { contact ->
+    if (listed && reading.contacts.isNotEmpty()) {
+        ModalBottomSheet(onDismissRequest = { listed = false }) {
+            Text(
+                trafficSummary(reading),
+                Modifier.padding(horizontal = 20.dp),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                trafficCaption(reading),
+                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                items(reading.contacts, key = { it.icaoAddress }) { contact ->
                     val colour = if (trafficContactUrgent(contact)) urgent else Color.Unspecified
                     Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text(
-                            text = contact.name,
-                            style = MaterialTheme.typography.labelMedium,
+                            contact.name,
+                            style = MaterialTheme.typography.labelLarge,
                             color = colour,
-                            maxLines = 1,
                         )
                         Text(
-                            text = trafficContactText(contact, reading.units),
-                            style = MaterialTheme.typography.bodySmall,
+                            trafficContactText(contact, reading.units),
+                            style = MaterialTheme.typography.bodyMedium,
                             color = colour,
-                            maxLines = 2,
                             modifier = Modifier.weight(1f),
                         )
                     }
-                }
-                if (reading.contacts.size > LISTED) {
-                    Text(
-                        text = "${reading.contacts.size - LISTED} more",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                 }
             }
         }
