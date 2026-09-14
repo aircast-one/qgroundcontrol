@@ -85,9 +85,21 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         ask("camera.setMode", [photo ? "photo" : "video"])
     }
 
+    @Published private(set) var captureNotice = ""
+
     func takePhoto() {
         guard camera.offersShutter else { return }
-        ask("camera.takePhoto", [])
+        let answer = ask("camera.takePhoto", [])
+        captureNotice = CaptureStart(answer)?.notice ?? ""
+    }
+
+    // The gate is the core's canStopPhoto, which is true only in the two interval states --
+    // exactly what stopTakePhoto itself refuses outside of. Nothing in QGC's QML ever called it,
+    // so before this a head that started an unlimited timelapse had no way to end it.
+    func stopPhoto() {
+        guard camera.canStopPhoto else { return }
+        ask("camera.stopPhoto", [])
+        captureNotice = ""
     }
 
     func toggleRecording() {
@@ -95,9 +107,12 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         ask("camera.toggleRecording", [])
     }
 
-    private func ask(_ action: String, _ args: [Any]) {
-        writeFailure = CameraRefusal.sentence(Bridge.invoke(action, args))
+    @discardableResult
+    private func ask(_ action: String, _ args: [Any]) -> [String: Any] {
+        let answer = Bridge.invoke(action, args)
+        writeFailure = CameraRefusal.sentence(answer)
         loadCamera()
+        return answer
     }
 
     // The C++ owns the rotation order and persists the choice; the head only asks for the next one.
@@ -196,7 +211,12 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
                     "state": camera.stateText, "storage": camera.storageText,
                      "shots": camera.shotsText, "clock": camera.clockText,
                      "battery": camera.batteryText, "hasZoom": camera.hasZoom,
-                    "recording": camera.isRecording, "labels": cameraLabels],
+                    "recording": camera.isRecording, "labels": cameraLabels,
+                    "captureMode": camera.captureMode, "canStopPhoto": camera.canStopPhoto,
+                    "lapseCount": Int(camera.lapseCount ?? -1),
+                    "lapseSeconds": Double(camera.lapseSeconds ?? -1),
+                    "lapseUnlimited": camera.lapseUnlimited,
+                    "captureNotice": captureNotice],
          "sources": sources.map { ["slot": $0.slot, "name": $0.name, "source": $0.source,
                                    "url": $0.url, "summary": $0.summary,
                                    "misconfigured": $0.misconfigured] },

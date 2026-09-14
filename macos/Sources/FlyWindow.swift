@@ -292,6 +292,13 @@ struct FlyPanel: View {
             .help(check.hint)
     }
 
+    // A shutter that starts an interval capture must not be labelled the same as one that takes a
+    // photo. The label is the last thing an operator reads before pressing it.
+    private var shutterTitle: String {
+        if video.camera.isTakingPhoto { return "Taking\u{2026}" }
+        return video.camera.captureMode == "timelapse" ? "Start interval" : "Take photo"
+    }
+
     private var cameraCard: some View {
         VStack(alignment: .leading, spacing: Overlay.unit * 0.3) {
             SectionLabel(text: "Camera")
@@ -329,10 +336,20 @@ struct FlyPanel: View {
                 if video.camera.offersShutter {
                     GroupRow(title: "Shutter", trailing: {
                         Button(action: video.takePhoto) {
-                            Label(video.camera.isTakingPhoto ? "Taking\u{2026}" : "Take photo",
-                                  systemImage: "camera.shutter.button")
+                            Label(shutterTitle, systemImage: "camera.shutter.button")
                         }
                     })
+                }
+                if video.camera.canStopPhoto {
+                    GroupRow(title: "Interval capture", trailing: {
+                        Button(action: video.stopPhoto) {
+                            Label("Stop", systemImage: "stop.circle.fill")
+                        }
+                        .tint(Overlay.vehicle)
+                    })
+                }
+                if !video.captureNotice.isEmpty {
+                    GroupRow(title: "", value: video.captureNotice)
                 }
                 if video.camera.offersRecord {
                     GroupRow(title: "Recording", trailing: {

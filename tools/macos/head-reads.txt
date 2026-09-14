@@ -58,6 +58,7 @@ canRefresh
 canRemoveVertex
 canSend
 canSet
+canStopPhoto
 cancelEnabled
 carriesValue
 category
@@ -189,6 +190,9 @@ landing
 landingAltitudeMetres
 landingDistanceMetres
 landingHeadingDegrees
+lapseCount
+lapseSeconds
+lapseUnlimited
 last
 lastError
 lastKnownLatitude
@@ -256,6 +260,7 @@ pause
 pausesFirst
 percent
 percentText
+photoMode
 placementHint
 polling
 port

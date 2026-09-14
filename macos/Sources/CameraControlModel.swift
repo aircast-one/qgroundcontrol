@@ -24,6 +24,15 @@ struct CameraControl: Equatable {
     let canPhoto: Bool
     let hasModes: Bool
     let canChangeMode: Bool
+    // The core calls this photoMode; here it is captureMode, because CameraControl.photoMode
+    // already means the camera being in photo rather than video. These are different questions --
+    // one is which of the two modes the camera is in, the other is what a shutter press does
+    // inside photo mode -- and one name for both is the fault this file keeps finding elsewhere.
+    let captureMode: String
+    let lapseSeconds: Double?
+    let lapseCount: Int?
+    let lapseUnlimited: Bool
+    let canStopPhoto: Bool
 
     // PhotoVideoControl.qml:115 offers the toggle on hasModes alone, and the core's
     // canChangeMode says a camera sitting in a third mode WILL accept the change whenever video
@@ -62,6 +71,11 @@ struct CameraControl: Equatable {
         canPhoto = false
         hasModes = false
         canChangeMode = false
+        captureMode = ""
+        lapseSeconds = nil
+        lapseCount = nil
+        lapseUnlimited = false
+        canStopPhoto = false
     }
 
     init(_ json: [String: Any]) {
@@ -90,6 +104,11 @@ struct CameraControl: Equatable {
         canPhoto = flag("canPhoto")
         hasModes = flag("hasModes")
         canChangeMode = flag("canChangeMode")
+        captureMode = text("photoMode")
+        lapseSeconds = (json["lapseSeconds"] as? NSNumber)?.doubleValue
+        lapseCount = (json["lapseCount"] as? NSNumber)?.intValue
+        lapseUnlimited = flag("lapseUnlimited")
+        canStopPhoto = flag("canStopPhoto")
     }
 
     // One place decides whether each control exists, so the store's guard and the view's
@@ -136,3 +155,37 @@ enum CameraRefusal {
 // camera declining the level are three distinguishable answers where there was one generic line.
 // If a camera ever reports its own range, this is where the decoder goes and `clamped` is already
 // being sent.
+
+// What a shutter press STARTED, read from the action's answer and never from view.camera. The
+// camera's configured mode can change between the press and the next poll, so a sentence built
+// from the view would eventually report "started 10 shots" for a press that took one. The answer
+// describes the command; the view describes the camera now.
+struct CaptureStart: Equatable {
+    let started: String
+    let lapseSeconds: Double?
+    let lapseCount: Int?
+    let lapseUnlimited: Bool
+
+    init?(_ answer: [String: Any]) {
+        guard let started = answer["started"] as? String, !started.isEmpty else { return nil }
+        self.started = started
+        lapseSeconds = (answer["lapseSeconds"] as? NSNumber)?.doubleValue
+        lapseCount = (answer["lapseCount"] as? NSNumber)?.intValue
+        lapseUnlimited = (answer["lapseUnlimited"] as? NSNumber)?.boolValue ?? false
+    }
+
+    var timelapse: Bool { started == "timelapse" }
+
+    // A single photo says nothing: the shot counter moves and the operator watched themselves
+    // press it. An interval capture has to announce itself, because it keeps going after the press
+    // and -- unlimited -- until something stops it. Same press, and only one of the two is news.
+    var notice: String {
+        guard timelapse else { return "" }
+        let every = lapseSeconds.map { " every \(Measure.settled(String(format: "%.0f", $0))) s" } ?? ""
+        // lapseCount 0 is MAV_CMD_IMAGE_START_CAPTURE's UNLIMITED, so printing the number says
+        // precisely the opposite of what it means: "0 shots" reads as nothing was started.
+        guard !lapseUnlimited else { return "Started an interval capture\(every). It will not stop on its own." }
+        guard let lapseCount, lapseCount > 0 else { return "Started an interval capture\(every)." }
+        return "Started \(lapseCount) shots\(every)."
+    }
+}

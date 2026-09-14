@@ -4473,6 +4473,33 @@ func checkFollowMeNamesWhoseProblemItIs() {
 }
 checkFollowMeNamesWhoseProblemItIs()
 
+func checkTheShutterSaysWhichCaptureItStarted() {
+    expect(CaptureStart(["ok": true as NSNumber, "started": "single"])?.notice ?? "", "",
+           "one photo says nothing -- the shot counter moves and the operator watched themselves "
+           + "press it; only the capture that keeps going after the press is news")
+
+    let counted = CaptureStart(["started": "timelapse", "lapseCount": 10 as NSNumber,
+                                "lapseSeconds": 5 as NSNumber,
+                                "lapseUnlimited": false as NSNumber])
+    expect(counted?.notice ?? "", "Started 10 shots every 5 s.",
+           "but the same button in timelapse mode starts an interval capture, and answering ok for "
+           + "both is one button meaning two things")
+
+    let endless = CaptureStart(["started": "timelapse", "lapseCount": 0 as NSNumber,
+                                "lapseSeconds": 5 as NSNumber,
+                                "lapseUnlimited": true as NSNumber])
+    expect(endless?.notice.contains("not stop on its own") == true,
+           "a lapseCount of 0 is MAV_CMD_IMAGE_START_CAPTURE's UNLIMITED, so printing the number "
+           + "says precisely the opposite of what it means -- \"0 shots\" reads as nothing having "
+           + "been started, when it is the one case that never ends by itself")
+    expect(endless?.notice.contains("0 shots") == false,
+           "so the count is not printed at all in that case")
+
+    expect(CaptureStart(["ok": false as NSNumber, "reason": "No camera is connected."]) == nil,
+           "a command that started nothing produces no notice, rather than a notice about nothing")
+}
+checkTheShutterSaysWhichCaptureItStarted()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.
