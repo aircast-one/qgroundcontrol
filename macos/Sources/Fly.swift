@@ -115,12 +115,14 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         reading.heading = facts["heading"]
 
         let gpsGroup = Bridge.group("vehicle.gps")
-        let readGps = FlyDetail.gps(FactReading.from((gpsGroup["facts"] as? [Any]) ?? []))
+        let gpsFacts = FactReading.from((gpsGroup["facts"] as? [Any]) ?? [])
+        let readGps = FlyDetail.gps(gpsFacts)
         if readGps != gpsDetail { gpsDetail = readGps }
 
         let gps = FlyStore.facts(gpsGroup)
         reading.satellites = gps["count"].map { Int($0) }
         reading.gpsLock = gps["lock"].map { Int($0) }
+        reading.gpsLockText = gpsFacts.first { $0.name == "lock" }?.value ?? ""
 
         let batteryView = Bridge.group("view.battery")
         let packs = (batteryView["packs"] as? [[String: Any]]) ?? []

@@ -2615,14 +2615,33 @@ func checkFlyTelemetry() {
            "and a level this head does not recognise is unknown rather than the safest-looking one")
 
     reading.gpsLock = 6
+    reading.gpsLockText = "3D RTK GPS Lock (fixed)"
     reading.satellites = 10
     expect(reading.gpsLevel == .good, "an RTK fix is good")
-    expect(reading.gpsText, "RTK fixed \u{00B7} 10 sats", "and names the fix and the count")
+    expect(reading.gpsText, "3D RTK GPS Lock (fixed) \u{00B7} 10 sats",
+           "and the fix is named in QGC's own words, translated, rather than in a table this head "
+           + "keeps -- GPSFact.json already carries the whole enum")
+
+    reading.gpsLock = 7
+    reading.gpsLockText = "Static (fixed)"
+    expect(reading.gpsText, "Static (fixed) \u{00B7} 10 sats",
+           "7 is GPS_FIX_TYPE_STATIC -- a BASE STATION, not a rover holding an RTK solution. The "
+           + "hand-written table defaulted everything past RTK float to \"RTK fixed\", so a base "
+           + "station read as the best fix there is: the wrong answer was also the flattering one")
+
+    reading.gpsLock = 8
+    reading.gpsLockText = ""
+    expect(reading.gpsText, "10 sats",
+           "and GPS_FIX_TYPE_PPP has no string in QGC's metadata at all, so it reports the count "
+           + "alone rather than borrowing the label of a fix it is not")
+
     reading.gpsLock = 2
+    reading.gpsLockText = "2D Lock"
     expect(reading.gpsLevel == .warning, "a 2D fix is not enough to trust a position")
     reading.gpsLock = 0
+    reading.gpsLockText = "None"
     expect(reading.gpsLevel == .critical, "no fix is critical")
-    expect(reading.gpsText, "No fix \u{00B7} 10 sats", "and says so plainly")
+    expect(reading.gpsText, "None \u{00B7} 10 sats", "and says so in the words the Fact carries")
 
 }
 

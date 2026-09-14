@@ -22,6 +22,7 @@ struct FlyTelemetry: Equatable {
     var heading: Double?
     var satellites: Int?
     var gpsLock: Int?
+    var gpsLockText = ""
 
     var batteryLevel = Level.unknown
 
@@ -34,19 +35,17 @@ struct FlyTelemetry: Equatable {
         return .critical
     }
 
+    // The lock's words are QGC's, not this head's. GPSFact.json carries the whole table --
+    // translated, and it already names 7 "Static (fixed)", which is a BASE STATION rather than a
+    // rover holding an RTK solution. A hand-written table here defaulted anything past RTK float
+    // to "RTK fixed", so a base station and GPS_FIX_TYPE_PPP both read as the best fix there is:
+    // the wrong answer was also the flattering one. The Fact arrives with its valueString beside
+    // its number and this now spells nothing itself.
     var gpsText: String {
-        guard let gpsLock else { return "—" }
-        let fix: String
-        switch gpsLock {
-        case 0, 1: fix = "No fix"
-        case 2: fix = "2D"
-        case 3: fix = "3D"
-        case 4: fix = "DGPS"
-        case 5: fix = "RTK float"
-        default: fix = "RTK fixed"
-        }
-        guard let satellites else { return fix }
-        return "\(fix) · \(satellites) sats"
+        guard gpsLock != nil else { return "—" }
+        let fix = gpsLockText
+        guard let satellites else { return fix.isEmpty ? "—" : fix }
+        return fix.isEmpty ? "\(satellites) sats" : "\(fix) · \(satellites) sats"
     }
 
     var batteryText = "—"
