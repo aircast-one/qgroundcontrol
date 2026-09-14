@@ -51,16 +51,18 @@ pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let worst = axes.iter().filter_map(|(_, v)| *v).fold(None, |acc: Option<f64>, v| Some(acc.map_or(v, |a| a.max(v))));
     let clip_counts: Vec<Value> = ["clipCount1", "clipCount2", "clipCount3"].iter().map(|name| json!(number(name).map(|v| v as i64).unwrap_or(0))).collect();
     let units = fact("xAxis").and_then(|f| f.get("units")).and_then(Value::as_str).unwrap_or("");
+    let silence = match (axes.iter().any(|(_, v)| v.is_some()), connected) {
+        (true, _) => None,
+        (false, false) => Some(("noVehicle", "No vehicle is connected.")),
+        (false, true) => Some(("notReported", "This vehicle reports no vibration measurements.")),
+    };
     json!({
         "kind": "object",
         "class": "Vibration",
         "connected": connected,
         "available": axes.iter().all(|(_, v)| v.is_some()),
-        "silentReason": match (axes.iter().any(|(_, v)| v.is_some()), connected) {
-            (true, _) => Value::Null,
-            (false, false) => json!("No vehicle is connected."),
-            (false, true) => json!("This vehicle reports no vibration measurements."),
-        },
+        "silentReason": silence.map(|(token, _)| json!(token)).unwrap_or(Value::Null),
+        "silentText": silence.map(|(_, sentence)| json!(sentence)).unwrap_or(Value::Null),
         "units": units,
         "scaleMaximum": SCALE_MAXIMUM,
         "warningLevel": WARNING_LEVEL,
@@ -94,11 +96,13 @@ mod tests {
     fn no_axes_says_whether_there_is_a_vehicle_to_have_them() {
         let gone = vibration_view(&Quiet(false), &[]);
         assert_eq!(gone["connected"], false);
-        assert!(gone["silentReason"].as_str().unwrap().contains("No vehicle"), "a head fetching this flag itself races the axes it qualifies, so it travels in the same read");
+        assert_eq!(gone["silentReason"], "noVehicle", "a head fetching this flag itself races the axes it qualifies, so it travels in the same read");
+        assert!(gone["silentText"].as_str().unwrap().contains("No vehicle"), "the sentence still travels beside the token; a head that wants to spell it its own way now can, and one that does not has the wording");
 
         let mute = vibration_view(&Quiet(true), &[]);
         assert_eq!(mute["connected"], true);
-        assert!(mute["silentReason"].as_str().unwrap().contains("no vibration measurements"), "connected and not reporting is a different thing from absent, and available:false spells them the same");
+        assert_eq!(mute["silentReason"], "notReported", "connected and not reporting is a different thing from absent, and available:false spells them the same");
+        assert!(mute["silentText"].as_str().unwrap().contains("no vibration measurements"));
         assert_ne!(mute["silentReason"], gone["silentReason"]);
     }
 
