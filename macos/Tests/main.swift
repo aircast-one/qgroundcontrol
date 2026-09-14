@@ -8134,8 +8134,10 @@ func checkBreachReturnAltitude() {
            + "higher than the operator asked for -- the same magnitude as the keep-out fence in "
            + "b9ddbdbf7. The key is the fact's rawValue: it is whatever the fact counts, so it "
            + "would answer just as confidently for one measured in degrees, and only the producer "
-           + "can gate that -- 0a3b35375 adopted a served valueMeters that did so, from a peer's "
-           + "uncommitted tree, and it was withdrawn before this was noticed")
+           + "can gate that. 0a3b35375 moved this onto a served field that gated it. NO SUCH FIELD "
+           + "HAS EVER EXISTED IN ANY COMMIT -- it was read from a peer's uncommitted working tree, "
+           + "which the source, a contract grep, the build and a live probe all agreed on because "
+           + "all four were that same tree. Do not adopt one again without git show HEAD:")
     expect(BreachReturn.shownAltitude(feet) == 246.06,
            "while the field the operator types into keeps their own number, because an EDITED "
            + "value belongs in the unit they set")

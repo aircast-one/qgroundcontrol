@@ -38,6 +38,23 @@ that reads it.
 Two limits compound: this reports only fields ADDED since SINCE, so a name-collision from before
 that line is invisible on both counts.
 
+The MIRROR of this tool -- a head reading a key nothing serves -- has no cheap detector either,
+and two designs were measured and rejected rather than guessed at. It is not hypothetical: 0a3b35375
+migrated onto a valueMeters that existed only in a peer's uncommitted tree, and the head read nil
+for an hour. (1) head-reads.txt cannot carry it: head-reads.py intersects the head's names with the
+contract's _observed before writing, so a read of an unserved name is silently DROPPED from the
+artefact rather than reported -- checked, the name is absent from that file at both 0a3b35375 and
+its revert. (2) Comparing the head's dictionary-subscript keys against the contract at HEAD reports
+104 of 459, essentially all legitimate: raw Qt fact keys this head still decodes (minString,
+enumStrings, maxIsDefaultForType), write-payload keys (lat, lon, breachReturnPoint), probe argument
+keys, Info.plist keys, and the array-element fields the contract records as ["empty"]. valueMeters
+would have sat in that list indistinguishable from minString. What separates the two is WHICH path
+the dictionary came from, which is the per-view scoping rejected above.
+
+So the guard that contains this class is not a sweep: it is that a write fed by a served number
+must REFUSE rather than default. See addBreachReturn, where ?? 0 turned a nil metric altitude into
+sea level, and MissionItem.launchAltitudeMetres.
+
 Usage: python3 tools/macos/served-unread.py
 """
 import json

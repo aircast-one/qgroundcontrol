@@ -219,9 +219,10 @@ enum PlanShapeAbsence {
 // for the other is invisible in metric and 3.28x wrong in feet, so the two are named apart here
 // rather than both being "the altitude". The metric half is the fact's rawValue, which is not a
 // guarded answer -- rawValue is whatever the fact counts, so it would answer a question about
-// metres for one measured in degrees just as confidently. A served valueMeters gated on the unit
-// would be the guard this head cannot reach; 0a3b35375 adopted one that existed only in a peer's
-// uncommitted tree and was withdrawn, so this reads rawValue again until such a field lands.
+// metres for one measured in degrees just as confidently. A served field gated on the unit would
+// be the guard this head cannot reach. 0a3b35375 adopted one -- it has never existed in any
+// commit, and what it was read from was a peer's uncommitted working tree, since reverted. This
+// reads rawValue until a gated field lands COMMITTED, checked with git show HEAD:.
 enum BreachReturn {
     static func shownAltitude(_ control: [String: Any]) -> Double? {
         (control["value"] as? NSNumber)?.doubleValue
