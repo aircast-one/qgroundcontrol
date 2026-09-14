@@ -255,4 +255,20 @@ mod tests {
         assert!(!headings.is_empty(), "no vehicle fact messages in the sample log");
         assert!(headings.iter().all(|h| (0.0..360.0).contains(h) && h.fract() == 0.0));
     }
+
+    #[test]
+    fn an_angle_that_is_not_a_number_leaves_by_the_arm_that_cannot_loop() {
+        [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1e300, -1e300].iter().for_each(|angle| {
+            assert!(
+                super::limit_angle_to_pm_pi(*angle).is_nan(),
+                "the -20pi..20pi guard is the only thing keeping NaN and the infinities out of the two (0..) searches below it, which have no upper bound and never match: {angle} must leave by the modulo arm. Measured: widening that guard makes this spin for 27s and then panic in core::iter::range with 'attempt to add with overflow', because (0..) is i32 and the predicate never matches"
+            );
+        });
+
+        let (pi, eps) = (std::f32::consts::PI as f64, f32::EPSILON as f64);
+        [0.0, pi, -pi, 3.0 * pi, -3.0 * pi, 19.0 * pi, -19.0 * pi].iter().for_each(|angle| {
+            let wrapped = super::limit_angle_to_pm_pi(*angle);
+            assert!(wrapped <= pi + eps && wrapped > -(pi + eps), "{angle} wrapped to {wrapped}, outside the range the searches are written to reach");
+        });
+    }
 }
