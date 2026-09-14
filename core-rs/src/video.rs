@@ -471,4 +471,45 @@ mod tests {
         assert_eq!(none["title"], "Camera");
         assert_eq!(none["canRecord"], false);
     }
+    #[test]
+    fn the_camera_status_numbers_are_the_ones_the_cpp_and_the_dialect_declare() {
+        let header = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/Camera/MavlinkCameraControl.h")).unwrap_or_default();
+        assert!(header.contains("enum PhotoCaptureStatus"), "this guard reads MavlinkCameraControl.h, which declares the states these gates branch on; without it the two copies drift in silence");
+
+        let ordinals = |name: &str| -> Vec<(String, i64)> {
+            header
+                .split_once(&format!("enum {name}"))
+                .and_then(|(_, rest)| rest.split_once('{'))
+                .and_then(|(_, body)| body.split_once('}'))
+                .map(|(body, _)| body.to_string())
+                .unwrap_or_default()
+                .split(',')
+                .map(|entry| entry.split("//").next().unwrap_or("").trim().to_string())
+                .filter(|entry| !entry.is_empty())
+                .scan(0i64, |next, entry| {
+                    let (name, value) = match entry.split_once('=') {
+                        Some((name, given)) => (name.trim().to_string(), given.trim().parse().unwrap_or(*next)),
+                        None => (entry.clone(), *next),
+                    };
+                    *next = value + 1;
+                    Some((name, value))
+                })
+                .collect()
+        };
+
+        let photo = ordinals("PhotoCaptureStatus");
+        let at = |list: &[(String, i64)], name: &str| list.iter().find(|(n, _)| n == name).map(|(_, v)| *v);
+        assert_eq!(at(&photo, "PHOTO_CAPTURE_IDLE"), Some(PHOTO_CAPTURE_IDLE), "canPhoto is refused unless the camera is idle, so this number decides whether the shutter is offered at all");
+        assert_eq!(at(&photo, "PHOTO_CAPTURE_IN_PROGRESS"), Some(PHOTO_CAPTURE_IN_PROGRESS));
+        assert_eq!(at(&photo, "PHOTO_CAPTURE_INTERVAL_IDLE"), Some(PHOTO_CAPTURE_INTERVAL_IDLE), "and the two interval states are the only ones canStopPhoto accepts, so a wrong one hides the stop button mid-timelapse");
+        assert_eq!(at(&photo, "PHOTO_CAPTURE_INTERVAL_IN_PROGRESS"), Some(PHOTO_CAPTURE_INTERVAL_IN_PROGRESS));
+        assert_eq!(at(&ordinals("VideoCaptureStatus"), "VIDEO_CAPTURE_STATUS_STOPPED"), Some(VIDEO_CAPTURE_STOPPED));
+
+        assert_eq!(
+            STORAGE_NOT_SUPPORTED,
+            mavlink::dialects::ardupilotmega::StorageStatus::STORAGE_STATUS_NOT_SUPPORTED as i64,
+            "the C++ aliases its StorageStatus straight to the MAVLink one, so the dialect is the source here rather than the header"
+        );
+    }
+
 }
