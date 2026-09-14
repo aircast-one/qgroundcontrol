@@ -4327,6 +4327,21 @@ func checkPreflight() {
     expect(PreflightCheck(["name": "GPS"]) == nil,
            "and one with no verdict is dropped rather than read as passing")
     expect(Preflight.groups(nil).isEmpty, "no answer is no checklist")
+
+    let stopped = PreflightCheck(["name": "Battery", "prompt": "Battery connector firmly plugged?",
+                                  "verdict": "failing", "blocked": true as NSNumber,
+                                  "reason": "No vehicle is reporting a battery."])
+    expect(stopped?.hint ?? "", "No vehicle is reporting a battery.",
+           "A BLOCKING CHECK SAYS WHAT IS WRONG. Measured on the rig with nothing connected: the "
+           + "core serves that exact sentence and this head printed \"Fix this before it can be "
+           + "checked off\" -- an instruction nobody can act on against an aircraft that is not "
+           + "there. The warning branch was already using reason; only the blocking one, where "
+           + "the operator most needs it, threw it away")
+    expect(PreflightCheck(["name": "Battery", "prompt": "P", "verdict": "failing",
+                           "blocked": true as NSNumber])?.hint ?? "",
+           PreflightCheck.blockedWithoutReason,
+           "and a blocking check with no reason keeps the generic line, because a reader must not "
+           + "fail closed on the absence of the field it prefers")
 }
 checkPreflight()
 

@@ -58,11 +58,19 @@ struct PreflightCheck: Identifiable, Equatable {
         met(ticked: ticked) ? "checkmark.circle.fill" : symbol
     }
 
+    // The blocking branch used to discard reason and print the generic sentence alone, which is
+    // the one case where an operator most needs to know WHAT is wrong: with nothing connected the
+    // core says "No vehicle is reporting a battery." and this said "Fix this before it can be
+    // checked off", an instruction nobody can act on against an aircraft that is not there. The
+    // warning branch was already using reason. Keeping the generic line as the fallback, because
+    // a reader must not fail closed when the field it prefers is empty.
     var hint: String {
-        if blocks { return "Fix this before it can be checked off" }
+        if blocks { return reason.isEmpty ? PreflightCheck.blockedWithoutReason : reason }
         if warns { return "\(reason) Check it off to fly anyway." }
         return prompt
     }
+
+    static let blockedWithoutReason = "Fix this before it can be checked off"
 }
 
 struct PreflightGroup: Identifiable, Equatable {
