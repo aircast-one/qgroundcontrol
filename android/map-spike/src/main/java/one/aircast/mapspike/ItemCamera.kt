@@ -6,6 +6,26 @@ import org.mavlink.qgroundcontrol.QGCBridge
 object ItemCameraBridge {
     fun read(index: Int): JSONObject? =
         runCatching { JSONObject(QGCBridge.get("view.itemCamera($index)")) }.getOrNull()
+
+    fun chooseAction(index: Int, choice: Int): Boolean =
+        runCatching {
+            JSONObject(
+                QGCBridge.set(
+                    "plan.missionController.visualItems.$index.cameraSection.cameraAction.enumIndex",
+                    JSONObject().put("value", choice).toString(),
+                ),
+            ).optBoolean("ok")
+        }.getOrDefault(false)
+}
+
+internal data class CameraChoices(val labels: List<String>, val chosen: Int)
+
+internal fun cameraChoices(view: JSONObject?): CameraChoices? {
+    val measure = view?.takeIf { it.optBoolean("available") }?.optJSONObject("cameraAction")
+    val listed = measure?.optJSONArray("enumStrings") ?: return null
+    val labels = (0 until listed.length()).map { listed.optString(it) }.filter { it.isNotBlank() }
+    if (labels.isEmpty()) return null
+    return CameraChoices(labels, measure.optInt("enumIndex", -1))
 }
 
 internal fun measureText(view: JSONObject?, key: String): String {
@@ -19,9 +39,14 @@ internal fun measureText(view: JSONObject?, key: String): String {
 internal fun namedAction(text: String): String =
     if (text.isBlank() || text.trim().toDoubleOrNull() != null) "" else text
 
+internal fun actionLabel(view: JSONObject?): String {
+    val choices = cameraChoices(view)
+    return choices?.labels?.getOrNull(choices.chosen) ?: namedAction(measureText(view, "cameraAction"))
+}
+
 internal fun itemCameraText(view: JSONObject?): String? {
     if (view == null || !view.optBoolean("available")) return null
-    val action = namedAction(measureText(view, "cameraAction"))
+    val action = actionLabel(view)
     val gimbal = when {
         !view.optBoolean("commandsGimbal") -> ""
         else -> listOf(measureText(view, "gimbalPitch"), measureText(view, "gimbalYaw"))

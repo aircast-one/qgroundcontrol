@@ -78,3 +78,51 @@ class ItemCameraTest {
         assertEquals("Take photo", itemCameraText(unitless))
     }
 }
+
+class CameraChoicesTest {
+
+    private val enums = """["No change","Take photo","Take photos (time)","Stop taking photos"]"""
+
+    private fun view(action: String) = JSONObject(
+        """{"kind":"object","class":"ItemCamera","index":2,"available":true,
+           "commandsGimbal":false,"cameraAction":$action,"gimbalPitch":null,"gimbalYaw":null}""",
+    )
+
+    @Test
+    fun `a fact with choices offers them and says which is chosen`() {
+        val choices = cameraChoices(
+            view("""{"value":1,"text":"Take photo","units":"","enumStrings":$enums,"enumIndex":1}"""),
+        )!!
+
+        assertEquals(4, choices.labels.size)
+        assertEquals(1, choices.chosen)
+    }
+
+    @Test
+    fun `a plain numeric fact offers nothing, because it is not a choice`() {
+        assertNull(cameraChoices(view("""{"value":-45.0,"text":"-45.0","units":"deg"}""")))
+        assertNull(cameraChoices(view("""{"value":0,"text":"0","units":"","enumStrings":[]}""")))
+        assertNull(cameraChoices(null))
+    }
+
+    @Test
+    fun `the label comes from the choice list when there is one`() {
+        val named = view("""{"value":1,"text":"1.000","units":"","enumStrings":$enums,"enumIndex":1}""")
+
+        assertEquals("Take photo", actionLabel(named))
+        assertEquals("Take photo", itemCameraText(named))
+    }
+
+    @Test
+    fun `a fact with no metadata keeps whatever its text could render`() {
+        assertEquals("Something", actionLabel(view("""{"value":3,"text":"Something","units":""}""")))
+    }
+
+    @Test
+    fun `an index outside the list falls back rather than crashing`() {
+        val odd = view("""{"value":9,"text":"9.000","units":"","enumStrings":$enums,"enumIndex":9}""")
+
+        assertEquals("", actionLabel(odd))
+        assertNull(itemCameraText(odd))
+    }
+}

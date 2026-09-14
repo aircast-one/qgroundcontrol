@@ -30,6 +30,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import org.json.JSONObject
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.OutlinedTextField
@@ -646,6 +649,7 @@ internal fun MapSpikeScreen(
 
                 }
 
+                var cameraMenuFor by remember { mutableStateOf<Int?>(null) }
                 val survey = selectedSurvey(selected, surveyList)
                 val waypoint = (selected as? MapHit.Waypoint)
                     ?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
@@ -678,13 +682,36 @@ internal fun MapSpikeScreen(
                         }
 
                         waypoint?.let { item ->
-                            val camera by produceState<String?>(null, item.index) {
+                            var cameraRevision by remember(item.index) { mutableStateOf(0) }
+                            val camera by produceState<JSONObject?>(null, item.index, cameraRevision) {
                                 value = withContext(Dispatchers.Default) {
-                                    itemCameraText(ItemCameraBridge.read(item.index))
+                                    ItemCameraBridge.read(item.index)
                                 }
                             }
-                            camera?.let {
+                            itemCameraText(camera)?.let {
                                 Text(it, style = MaterialTheme.typography.labelSmall)
+                            }
+                            cameraChoices(camera)?.let { choices ->
+                                TextButton(onClick = { cameraMenuFor = item.index }) {
+                                    Text(choices.labels.getOrElse(choices.chosen) { "Camera…" })
+                                }
+                                DropdownMenu(
+                                    expanded = cameraMenuFor == item.index,
+                                    onDismissRequest = { cameraMenuFor = null },
+                                ) {
+                                    choices.labels.forEachIndexed { at, label ->
+                                        DropdownMenuItem(
+                                            text = { Text(label) },
+                                            onClick = {
+                                                cameraMenuFor = null
+                                                onBridge("Setting the camera action") {
+                                                    ItemCameraBridge.chooseAction(item.index, at)
+                                                }
+                                                cameraRevision += 1
+                                            },
+                                        )
+                                    }
+                                }
                                 GroupBreak()
                             }
                         }
