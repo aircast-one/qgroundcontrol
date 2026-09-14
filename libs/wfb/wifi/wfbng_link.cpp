@@ -199,6 +199,14 @@ std::string query_product_name(libusb_device *dev, const libusb_device_descripto
 std::vector<DeviceId> WfbngLink::get_device_list() {
     std::vector<DeviceId> list;
 
+#ifdef __ANDROID__
+    // Android forbids raw USB enumeration: libusb has to be handed a descriptor the Java side
+    // opened, through LIBUSB_OPTION_NO_DEVICE_DISCOVERY and libusb_wrap_sys_device. Calling
+    // libusb_get_device_list on a context that never got one does not return empty - it segfaults
+    // inside usbi_log, on the Qt main thread, before the first frame.
+    return list;
+#endif
+
     // Initialize libusb
     libusb_context *find_ctx;
     libusb_init(&find_ctx);
