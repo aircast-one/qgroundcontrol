@@ -5065,3 +5065,39 @@ instead of guessing. `core-rs` cannot do this itself: it is Rust and has no `tr(
 **Resolved in `2d680fdf0`, exactly as asked.** `Fact::unknownEnumLabel` returns the `tr("Unknown: %1").arg(rawValue())` expression, and `enumIndex()` now BUILDS the synthetic entry from that same function rather than from a second copy of it - so the label a consumer compares against and the label that was added are one expression, not two that agree today. `ParameterModel` keys on it and the English prefix is gone.
 
 Recorded rather than papered over while it was open. A head-side heuristic would have been a fallback dressed as a fix, and the reason it could not work is the reason the C++ side was the right place.
+
+## An integer parameter accepts a fractional entry and truncates it in silence (open, 2026-09-14)
+
+Type `3.7` into an integer parameter. QGC's own dialog refuses it: `ParameterEditorDialog.qml`
+calls `fact.validate(valueField.text, ...)` with the TEXT, `convertAndValidateCooked` reaches
+`QVariant("3.7").toInt(&convertOk)`, a QString with a decimal point does not convert, and the
+dialog shows "Invalid number" and does not write.
+
+This head accepts it. `Parameter.refusal` checks two things — that the entry parses as a number,
+and that it is inside the served range — and `3.7` passes both. `Parameters.write` then sends
+`Double(value) ?? value`, so the bridge receives a Double rather than a String, calls
+`Fact::setCookedValue`, and lands in `Fact::setRawValue`, which calls `convertAndValidateRaw`
+with **`convertOnly = true`**. That path takes `rawValue.toInt(&convertOk)` on a QVariant already
+holding 3.7, which converts to 3 with `convertOk` true. **The vehicle gets 3, the field shows 3.7,
+and nothing anywhere says so.** The bridge returns `{"ok": true}` after `setCookedValue`
+unconditionally, so even the probe cannot see it — `ok` means the setter ran.
+
+**No head can fix this today, and that is the point of recording it.** `Fact` exposes exactly two
+type predicates as Q_PROPERTYs — `typeIsString` and `typeIsBool` (`Fact.h:61-62`). There is no
+integer predicate, so `QGCBridgeCore.cc`'s `kFactProperties` allowlist cannot carry one, `view.control`
+cannot serve one, and no head is told whether a fact is an integer. QGC's QML is not doing anything
+clever; it is simply running in C++ with the metadata in hand.
+
+**Rejected head-side fixes, both for the same reason.** Keying on `decimalPlaces == 0` is a plausible
+default standing in for a fact nobody served, and a float fact may legitimately declare zero decimals.
+Sending the entry as a String instead of a Double would make `toInt` fail and the write silently do
+nothing — QGC's refusal minus the message, which is a different silence, and it would change every
+fact write in the app to buy it.
+
+**The ask:** one Q_PROPERTY on `Fact` naming the number kind — integer or real — then the allowlist,
+then `view.control`. `Parameter.refusal` and `SettingsControl.refusal` can then refuse a fractional
+entry on an integer fact the way the dialog does, in every locale, with the message on the field.
+
+Neighbouring dead end, checked so nobody re-checks it: `FactMetaData::_customCookedValidator` runs
+before the type conversion and would be a second source of refusals, but `setCustomCookedValidator`
+is called nowhere in the tree. It is a hook with no installer, the same shape as `batteriesRequired`.
