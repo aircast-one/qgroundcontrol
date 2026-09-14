@@ -125,3 +125,40 @@ extension LinkConfig {
         needsAddressEdit ? "Retrying will not help until the address is changed." : ""
     }
 }
+
+// The core validates a link's type, host and port together and says what is wrong. This head was
+// doing it inline and silently: an out-of-range port fell through `if let port = Int($0)` and
+// nothing happened -- no write, no sentence, no sign the keystroke was rejected. An empty host on
+// a TCP link was accepted outright, which is the exact state that later produces the editAddress
+// remedy, so the editor was creating the failure the row exists to explain.
+struct LinkFormCheck: Equatable {
+    let valid: Bool
+    let error: String
+    let name: String
+
+    static let unencodable = LinkFormCheck(
+        valid: false,
+        error: "An address containing a comma or a bracket cannot be checked yet.",
+        name: "")
+
+    init(valid: Bool, error: String, name: String) {
+        self.valid = valid
+        self.error = error
+        self.name = name
+    }
+
+    init?(_ json: [String: Any]) {
+        guard json["class"] as? String == "LinkForm" else { return nil }
+        valid = (json["valid"] as? NSNumber)?.boolValue ?? false
+        error = (json["error"] as? String) ?? ""
+        name = (json["name"] as? String) ?? ""
+    }
+
+    // view.linkForm takes its three arguments inside the view name, and view::split cuts on commas
+    // at paren depth zero. A host is free text, so unlike the tlog path this is something an
+    // operator can type by accident -- and an address arriving truncated at a comma would be
+    // validated as a different address and answered confidently about the wrong one.
+    static func encodable(_ parts: String...) -> Bool {
+        parts.allSatisfy { !$0.contains(",") && !$0.contains("(") && !$0.contains(")") }
+    }
+}

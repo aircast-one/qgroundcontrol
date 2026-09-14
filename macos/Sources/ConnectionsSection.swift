@@ -143,8 +143,16 @@ struct ConnectionsSection: View {
     }
 
     private func portField(_ link: LinkConfig) -> some View {
-        LabelledField(label: "Port", value: link.portText) {
-            if let port = Int($0), (1...65535).contains(port) { store.setPort(link, port) }
+        VStack(alignment: .leading, spacing: 2) {
+            LabelledField(label: "Port", value: link.portText) { typed in
+                let check = store.checkForm(link.typeLabel, link.host, typed)
+                store.formError = check.error
+                guard check.valid, let port = Int(typed) else { return }
+                store.setPort(link, port)
+            }
+            if !store.formError.isEmpty {
+                Text(store.formError).font(.caption).foregroundColor(.red)
+            }
         }
     }
 
@@ -154,7 +162,11 @@ struct ConnectionsSection: View {
             LabelledField(label: "Name", value: link.name) { store.rename(link, to: $0) }
             switch link.editing {
             case .hostAndPort:
-                LabelledField(label: "Host", value: link.host) { store.setHost(link, $0) }
+                LabelledField(label: "Host", value: link.host) { typed in
+                    let check = store.checkForm(link.typeLabel, typed, link.portText)
+                    store.formError = check.error
+                    store.setHost(link, typed)
+                }
                 portField(link)
             case .portOnly:
                 portField(link)

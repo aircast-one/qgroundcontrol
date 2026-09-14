@@ -4526,6 +4526,38 @@ func checkALinkThatCannotConnectIsNotOfferedConnect() {
 }
 checkALinkThatCannotConnectIsNotOfferedConnect()
 
+func checkTheLinkEditorStopsDroppingWhatItRejects() {
+    let refused = LinkFormCheck(["class": "LinkForm", "valid": false as NSNumber,
+                                 "error": "Port must be a number between 1 and 65535.",
+                                 "name": "TCP 99999"])
+    expect(refused?.error ?? "", "Port must be a number between 1 and 65535.",
+           "an out-of-range port used to fall through `if let port = Int($0)` and do nothing at "
+           + "all -- no write, no sentence, no sign the keystroke had been rejected")
+
+    let missingHost = LinkFormCheck(["class": "LinkForm", "valid": false as NSNumber,
+                                     "error": "A TCP link needs the address of the device to call.",
+                                     "name": "TCP 5760"])
+    expect(missingHost?.valid == false,
+           "and an empty host on a TCP link was accepted outright, which is the exact state that "
+           + "later raises the editAddress remedy -- the editor was creating the failure the row "
+           + "exists to explain")
+
+    expect(LinkFormCheck.encodable("tcp", "127.0.0.1", "5760"),
+           "an ordinary address goes through the view's argument list unharmed")
+    expect(!LinkFormCheck.encodable("tcp", "a,b", "5760"),
+           "but a host is free text and view::split cuts on commas at paren depth zero, so an "
+           + "address with one would be validated as a DIFFERENT address and answered confidently "
+           + "about the wrong one -- unlike the tlog path, this is something an operator types")
+    expect(LinkFormCheck.unencodable.valid == false,
+           "so it refuses rather than guessing, and says why")
+
+    expect(LinkFormCheck(["class": "Something else"]) == nil,
+           "an answer that is not a LinkForm is not one, and the caller treats that as no opinion "
+           + "rather than as a rejection -- a validator that fails closed on its own absence would "
+           + "make every field unusable the moment the view went missing")
+}
+checkTheLinkEditorStopsDroppingWhatItRejects()
+
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reported on every run so the number travels with the green line.

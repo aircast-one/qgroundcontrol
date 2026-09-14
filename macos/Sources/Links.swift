@@ -98,6 +98,17 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
         reload()
     }
 
+    // Asked before every write to a link's address or port, so an operator learns a port is out
+    // of range as they type it rather than by watching nothing happen. The core owns the rules --
+    // serial rates come from what the radio offers, which this head has no way to know.
+    @Published var formError = ""
+
+    func checkForm(_ type: String, _ host: String, _ port: String) -> LinkFormCheck {
+        guard LinkFormCheck.encodable(type, host, port) else { return .unencodable }
+        return LinkFormCheck(Bridge.group("view.linkForm(\(type),\(host),\(port))"))
+            ?? LinkFormCheck(valid: true, error: "", name: "")
+    }
+
     func setHost(_ link: LinkConfig, _ host: String) {
         write("\(link.path).host", host, "the host")
         reload()
