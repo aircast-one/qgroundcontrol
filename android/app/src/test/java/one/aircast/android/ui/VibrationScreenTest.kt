@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VibrationScreenTest {
@@ -69,5 +70,51 @@ class VibrationScreenTest {
     fun `a blank unit leaves no empty brackets in the heading`() {
         assertEquals("Vibration (m/s²)", vibrationHeading("m/s²"))
         assertEquals("Vibration", vibrationHeading(""))
+    }
+}
+
+class SilentStateTest {
+
+    private fun view(reason: String, text: String) = JSONObject(
+        """{"kind":"object","class":"Vibration","connected":true,"available":false,
+           "silentReason":$reason,"silentText":$text,"axes":[],"units":"m/s^2"}""",
+    )
+
+    @Test
+    fun `a reporting vehicle has no empty state`() {
+        assertNull(silentState(view("null", "null")))
+    }
+
+    @Test
+    fun `the title is the core's sentence and the body is this head's instruction`() {
+        val gone = silentState(view("\"noVehicle\"", "\"No vehicle is connected.\""))!!
+
+        assertEquals("No vehicle is connected.", gone.title)
+        assertEquals("Connect a vehicle from the Fly view to see its vibration levels.", gone.body)
+    }
+
+    @Test
+    fun `connected and silent gets the other instruction, chosen by token not by wording`() {
+        val mute = silentState(
+            view("\"notReported\"", "\"This vehicle reports no vibration measurements.\""),
+        )!!
+
+        assertEquals("This vehicle reports no vibration measurements.", mute.title)
+        assertTrue(mute.body.startsWith("The autopilot has not sent a VIBRATION message"))
+    }
+
+    @Test
+    fun `a token this head has never seen still gets a body`() {
+        val odd = silentState(view("\"somethingNew\"", "\"Something new happened.\""))!!
+
+        assertEquals("Something new happened.", odd.title)
+        assertTrue(odd.body.isNotBlank())
+    }
+
+    @Test
+    fun `no view at all is the disconnected case`() {
+        val nothing = silentState(null)!!
+
+        assertEquals("No vehicle connected", nothing.title)
     }
 }

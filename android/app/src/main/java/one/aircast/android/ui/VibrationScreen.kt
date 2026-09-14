@@ -61,6 +61,31 @@ private fun JSONObject.doubleOrNull(key: String): Double? =
 private fun JSONObject.stringOrNull(key: String): String? =
     if (isNull(key)) null else optString(key).ifBlank { null }
 
+internal data class SilentState(val title: String, val body: String)
+
+internal fun silentState(view: JSONObject?): SilentState? {
+    val token = view?.optText("silentReason").orEmpty()
+    if (view == null) {
+        return SilentState("No vehicle connected", CONNECT_PROMPT)
+    }
+    if (token.isBlank()) {
+        return null
+    }
+    val title = view.optText("silentText").ifBlank { "Vibration is not being reported" }
+    return SilentState(
+        title,
+        when (token) {
+            "noVehicle" -> CONNECT_PROMPT
+            "notReported" ->
+                "The autopilot has not sent a VIBRATION message. " +
+                    "Not all firmware and airframes publish one."
+            else -> "Nothing has reported a vibration level on this vehicle."
+        },
+    )
+}
+
+private const val CONNECT_PROMPT = "Connect a vehicle from the Fly view to see its vibration levels."
+
 internal fun vibrationReading(view: JSONObject?): VibrationReading? {
     if (view == null || !view.optBoolean("available")) return null
     val axes = view.optJSONArray("axes") ?: return null
@@ -193,26 +218,11 @@ private fun EmptyState(message: String, detail: String, modifier: Modifier = Mod
 
 @Composable
 fun VibrationScreen(modifier: Modifier = Modifier) {
-    val hasVehicle = hasVehicle()
     val view by qgcPath(VIBRATION)
     val reading = remember(view) { vibrationReading(view) }
-    val reporting = reading?.axes?.any { it.value != null } == true
 
-    if (!hasVehicle) {
-        EmptyState(
-            "No vehicle connected",
-            "Connect a vehicle from the Fly view to see its vibration levels.",
-            modifier,
-        )
-        return
-    }
-
-    if (!reporting) {
-        EmptyState(
-            "This vehicle is not reporting vibration",
-            "The autopilot has not sent a VIBRATION message. Not all firmware and airframes publish one.",
-            modifier,
-        )
+    silentState(view)?.let { state ->
+        EmptyState(state.title, state.body, modifier)
         return
     }
 

@@ -63,13 +63,6 @@ from head_models import MODELS  # noqa: E402
 # Android's position while macOS drew neither it nor the text beside it.
 ACCEPTED_BY_HEAD = {
     "android": {
-        "silentReason": "MEASURED and waiting on a token. The two cases it distinguishes - no vehicle, "
-            "and a vehicle that sends no VIBRATION message - are both drawn on Android today, each with "
-            "a title AND a sentence telling the operator what to do about it. Adopting the served "
-            "sentence as the title would leave the head unable to pick the right body, because the only "
-            "thing separating the two cases would be the wording of a translatable string. followMe "
-            "serves a token beside its sentence for exactly this; when silentReason does too, this head "
-            "reads it",
         "distanceToVehicle": "MEASURED. This head draws distanceToVehicleText, which is the same "
             "quantity already converted and spelled in the operator's unit. The raw metres and the unit "
             "name beside it are for a head that formats its own numbers, and formatting a second time "
