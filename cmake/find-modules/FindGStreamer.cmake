@@ -1,6 +1,8 @@
 if(NOT DEFINED GStreamer_FIND_VERSION)
     if(LINUX)
         set(GStreamer_FIND_VERSION 1.20)
+    elseif(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^([Aa][Rr][Mm]64|aarch64|AARCH64)$")
+        set(GStreamer_FIND_VERSION 1.28.6)
     else()
         set(GStreamer_FIND_VERSION 1.22.12)
     endif()

@@ -698,7 +698,6 @@ jobs:
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DQGC_STABLE_BUILD=ON
-              -DGStreamer_FIND_VERSION=${{ env.GST_VERSION }}
 
       - name: Build
         working-directory: ${{ runner.temp }}\shadow_build_dir
