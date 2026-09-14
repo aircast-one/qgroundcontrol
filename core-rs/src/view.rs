@@ -510,6 +510,51 @@ mod deps_cover_reads {
             || deps.iter().any(|dep| *dep == full || dep == path || full.starts_with(&format!("{dep}.")) || dep.starts_with(&format!("{full}.")))
     }
 
+    fn whole_reads(body: &str) -> Vec<String> {
+        body.match_indices("backend.get(\"")
+            .filter_map(|(at, _)| {
+                let tail = &body[at + "backend.get(\"".len()..];
+                let close = tail.find('"')?;
+                tail[close + 1..].starts_with(')').then(|| tail[..close].to_string())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_path_a_view_reads_whole_is_one_it_watches() {
+        const WATCHED_THROUGH_A_SIBLING: &[(&str, &str)] = &[
+            ("vehicle.healthAndArmingCheckReport.problemsForCurrentMode", "vehicle.healthAndArmingCheckReport.supported"),
+        ];
+
+        let seen: usize = MODULES
+            .iter()
+            .filter_map(|(_, source)| Some(whole_reads(source.split("#[cfg(test)]").next()?).len()))
+            .sum();
+        assert!(seen > 25, "the parser found only {seen} whole-path reads, so a clean result would mean nothing");
+
+        let unwatched: Vec<String> = MODULES
+            .iter()
+            .filter_map(|(name, source)| {
+                let body = source.split("#[cfg(test)]").next()?;
+                let deps = deps_of(body)?;
+                Some(whole_reads(body)
+                    .into_iter()
+                    .filter(|read| {
+                        !WATCHED_THROUGH_A_SIBLING.iter().any(|(path, sibling)| path == read && deps.contains(*sibling))
+                            && !deps.iter().any(|dep| {
+                                let dep = dep.split('@').next().unwrap_or(dep);
+                                dep == read || dep.starts_with(&format!("{read}.")) || read.starts_with(&format!("{dep}."))
+                            })
+                    })
+                    .map(|read| format!("{name} reads {read} and nothing it watches covers it"))
+                    .collect::<Vec<_>>())
+            })
+            .flatten()
+            .collect();
+
+        assert!(unwatched.is_empty(), "a view reading a subject it does not watch renders once and then holds whatever that read said: {}", unwatched.join("; "));
+    }
+
     #[test]
     fn a_view_that_shows_a_unit_watches_the_setting_that_chooses_it() {
         const CHOSEN_BY: &[(&str, &str)] = &[
