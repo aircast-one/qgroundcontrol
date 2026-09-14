@@ -231,11 +231,13 @@ mapped
 max
 maxAltitudeMeters
 maximum
+maximumText
 method
 min
 minAltitudeMeters
 minimum
 minimumHorizontalAccuracy
+minimumText
 minimumVertices
 missing
 missingReason

@@ -4,6 +4,13 @@ struct FactBound: Equatable {
     let limit: Double
     let text: String
 
+    // Already gated by the producer, so the only question left is whether a number arrived.
+    init?(served limit: Any?, text: Any?) {
+        guard let value = (limit as? NSNumber)?.doubleValue, value.isFinite else { return nil }
+        self.limit = value
+        self.text = (text as? String) ?? ""
+    }
+
     init?(_ limit: Any?, text: Any?, filledIn: Any?) {
         guard (filledIn as? NSNumber)?.boolValue == false,
               let value = (limit as? NSNumber)?.doubleValue, value.isFinite else { return nil }
@@ -23,6 +30,18 @@ struct FactRange: Equatable {
                            filledIn: json["minIsDefaultForType"])
         highest = FactBound(json["max"], text: json["maxString"],
                             filledIn: json["maxIsDefaultForType"])
+    }
+
+    // view.control has already made the judgement the raw initialiser makes here: it serves
+    // minimum/maximum null where the fact declares no bound, and minimumText/maximumText null
+    // through the SAME gate, so the pair can never disagree. The bridge fills minString whatever
+    // minIsDefaultForType says -- a fact with no floor carries the smallest number its type can
+    // hold -- so reading the raw strings off a view would have spelled "at least -3.4e38".
+    // Nothing to decide here, which is the point: the decision moved to the producer.
+    init(control: [String: Any], title: String) {
+        self.title = title
+        lowest = FactBound(served: control["minimum"], text: control["minimumText"])
+        highest = FactBound(served: control["maximum"], text: control["maximumText"])
     }
 
     func refusal(_ entry: String) -> String? {

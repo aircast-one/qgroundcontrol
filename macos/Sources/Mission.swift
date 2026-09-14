@@ -201,19 +201,23 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         watchViews()
         let read = MissionSummary(Bridge.group("view.missionSummary"))
         if read != summary { summary = read }
-        let altitudeFact = Bridge.group("settings.appSettings.defaultMissionItemAltitude")
+        // Three settings facts that were read raw for their value, unit and bounds. view.control
+        // carries all three, and its minimumText/maximumText are gated on the same flags as
+        // minimum/maximum -- which the raw minString is NOT, so the strings these used to reach
+        // for would have spelled a floor of -3.4e38 on any fact that declares none.
+        let altitudeFact = Bridge.group("view.control(settings.appSettings.defaultMissionItemAltitude)")
         defaultAltitude = (altitudeFact["valueString"] as? String) ?? ""
         defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.defaultUnits
-        altitudeRange = FactRange(altitudeFact, title: "The altitude for new items")
+        altitudeRange = FactRange(control: altitudeFact, title: "The altitude for new items")
 
         let planningFor = planView["planningFor"] as? [String: Any]
         vehicle = MissionVehicle(planningFor: planningFor) ?? .unknown
-        let cruiseFact = Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")
+        let cruiseFact = Bridge.group("view.control(settings.appSettings.offlineEditingCruiseSpeed)")
         cruiseSpeed = (cruiseFact["valueString"] as? String) ?? ""
-        cruiseRange = FactRange(cruiseFact, title: "Cruise speed")
-        let hoverFact = Bridge.group("settings.appSettings.offlineEditingHoverSpeed")
+        cruiseRange = FactRange(control: cruiseFact, title: "Cruise speed")
+        let hoverFact = Bridge.group("view.control(settings.appSettings.offlineEditingHoverSpeed)")
         hoverSpeed = (hoverFact["valueString"] as? String) ?? ""
-        hoverRange = FactRange(hoverFact, title: "Hover speed")
+        hoverRange = FactRange(control: hoverFact, title: "Hover speed")
         speedUnits = (cruiseFact["units"] as? String)
             ?? (hoverFact["units"] as? String) ?? ItemSpeed.metresPerSecond
         launch = LaunchPosition(planningForHome: planningFor?["home"], item: listed.first ?? [:])

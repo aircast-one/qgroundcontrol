@@ -27,6 +27,7 @@ MODELS = {
     "FenceShape": "view.fences",
     "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",
+    "FactRange": "view.control(settings.appSettings.defaultMissionItemAltitude)",
     "InstrumentGroup": "view.instrumentGroups",
     "LinkFormCheck": "view.linkForm(udp,127.0.0.1,14550)",
     "MavlinkConsole": "view.mavlinkConsole",
