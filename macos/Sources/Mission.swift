@@ -1038,7 +1038,13 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          }]
     }
 
+    // Cleared at the START of every probe action, so the sentence a run reads back belongs to the
+    // action it just asked for. The alert clears this on dismiss and a probe never dismisses one,
+    // so without this a single refusal makes every later read report it -- which cost one wrong
+    // inference: an addWaypoint correctly refused with "a takeoff has to come before anything
+    // else" left createPlan looking refused too, and the two are indistinguishable from outside.
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
+        writeFailure = nil
         switch action {
         case "reload": reload()
         case "tile":
