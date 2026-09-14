@@ -313,4 +313,19 @@ mod tests {
         let events = core.on_event("vehicle.armed", "{\"kind\":\"value\",\"value\":true}");
         assert_eq!(events, vec![("vehicle.armed".to_string(), "{\"kind\":\"value\",\"value\":true}".to_string())]);
     }
+
+    #[test]
+    fn a_file_path_carrying_a_comma_survives_routing_and_reaches_the_file() {
+        let dir = std::env::temp_dir().join("qgc-core-router-comma");
+        std::fs::create_dir_all(&dir).unwrap();
+        let awkward = dir.join("Flights, 2026 (2).tlog");
+        std::fs::write(&awkward, b"not a real tlog, but a real file").unwrap();
+
+        let core = Core::new(Fake::default());
+        let read = parsed(&core.get(&format!("view.tlog({})", awkward.display())));
+        std::fs::remove_file(&awkward).ok();
+
+        assert_eq!(read["path"], awkward.display().to_string(), "split() returning one argument is not the same as the file being read, so this drives the whole door - owns, lookup, split, compute, std::fs - and the path echoed back has to be the whole name");
+        assert_eq!(read["readable"], true, "and it opened: a truncated path reads as a missing file, which is exactly how this failed before");
+    }
 }
