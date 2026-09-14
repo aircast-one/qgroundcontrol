@@ -39,3 +39,32 @@ class InstrumentsTest {
         assertEquals(emptyList<Instrument>(), instruments(view("{}")))
     }
 }
+
+class InstrumentMissingTest {
+
+    private fun item(reason: String) = instruments(
+        JSONObject(
+            """{"items":[{"label":"Alt (Rel)","value":"25.0","units":"m","missing":false},
+               {"label":"Distance to Home","value":"","units":"","missing":true,
+                "missingReason":$reason}]}""",
+        ),
+    )
+
+    @Test
+    fun `a fact the vehicle has not reported yet keeps its place and waits`() {
+        val shown = item("\"notReported\"")
+
+        assertEquals(listOf("Alt (Rel)", "Distance to Home"), shown.map { it.label })
+        assertEquals("\u2014", shown[1].reading)
+    }
+
+    @Test
+    fun `a fact this vehicle does not have is left out, because it will never fill in`() {
+        assertEquals(listOf("Alt (Rel)"), item("\"noSuchFact\"").map { it.label })
+    }
+
+    @Test
+    fun `a missing item with no reason is left out rather than waiting forever`() {
+        assertEquals(listOf("Alt (Rel)"), item("null").map { it.label })
+    }
+}

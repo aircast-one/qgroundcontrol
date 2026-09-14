@@ -81,16 +81,22 @@ internal fun operatorDistance(view: JSONObject?): List<Instrument> =
         ?.let { listOf(Instrument(label = "From you", reading = it)) }
         ?: emptyList()
 
+internal const val AWAITING_READING = "\u2014"
+
+internal fun instrumentReading(item: JSONObject): String? {
+    if (!item.optBoolean("missing")) {
+        val units = item.optText("units")
+        val value = item.optText("value")
+        return if (units.isBlank()) value else "$value $units"
+    }
+    return AWAITING_READING.takeIf { item.optText("missingReason") == "notReported" }
+}
+
 internal fun instruments(view: JSONObject?): List<Instrument> {
     val items = view?.optJSONArray("items") ?: return emptyList()
     return (0 until items.length()).mapNotNull { index ->
-        items.optJSONObject(index)?.takeIf { !it.optBoolean("missing") }?.let { item ->
-            val units = item.optText("units")
-            val value = item.optText("value")
-            Instrument(
-                label = item.optText("label"),
-                reading = if (units.isBlank()) value else "$value $units",
-            )
+        items.optJSONObject(index)?.let { item ->
+            instrumentReading(item)?.let { Instrument(label = item.optText("label"), reading = it) }
         }
     }
 }

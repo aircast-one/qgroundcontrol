@@ -63,6 +63,16 @@ from head_models import MODELS  # noqa: E402
 # Android's position while macOS drew neither it nor the text beside it.
 ACCEPTED_BY_HEAD = {
     "android": {
+        "defaultValue": "MEASURED. The four bound and default keys on view.plan.defaults are the "
+            "served form of what the settings screen already draws from raw fact reads - "
+            "factConstraintNote spells 'Min 5 . Max 120 . Default 10' from minString, maxString and "
+            "defaultValueString. They land when that screen moves onto view.settings controls, "
+            "which is 25 raw settings paths and the largest single retirement left on this head. "
+            "Reading them into the plan tab as well would put the same three numbers on two screens "
+            "from two sources",
+        "defaultText": "See defaultValue - part of the same settings-screen migration",
+        "minimumText": "See defaultValue - part of the same settings-screen migration",
+        "maximumText": "See defaultValue - part of the same settings-screen migration",
         "distanceToVehicle": "MEASURED. This head draws distanceToVehicleText, which is the same "
             "quantity already converted and spelled in the operator's unit. The raw metres and the unit "
             "name beside it are for a head that formats its own numbers, and formatting a second time "
