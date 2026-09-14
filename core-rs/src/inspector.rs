@@ -81,6 +81,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_dropped_message_does_not_shift_the_indices_after_it() {
+        struct System(Value);
+        impl Backend for System {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "mavlinkInspector.activeSystem.messages" => self.0.to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        // The head reads the selected message's fields from the RAW Qt path
+        // mavlinkInspector.activeSystem.messages.N.fields using the index served here, so this
+        // index has to be the position in Qt's list rather than in the filtered output.
+        // enumerate() before filter_map() is what makes that true, and rewriting it the other way
+        // round would compile, pass every other test, and show the fields of a different message.
+        let view = inspector_view(&System(json!({ "kind": "object", "elements": [
+            { "name": "HEARTBEAT", "id": 0, "compId": 1, "count": 10, "actualRateHz": 1.0 },
+            { "name": "", "id": 1, "compId": 1, "count": 0 },
+            { "name": "ATTITUDE", "id": 30, "compId": 1, "count": 99, "actualRateHz": 50.0 },
+        ] })), &[]);
+
+        let listed = view["messages"].as_array().unwrap();
+        assert_eq!(listed.len(), 2, "the unnamed entry is not shown");
+        assert_eq!(listed[0]["name"], "HEARTBEAT");
+        assert_eq!(listed[1]["name"], "ATTITUDE");
+        assert_eq!(listed[1]["index"], 2, "ATTITUDE sits at Qt index 2 even though it is the second row drawn; serving 1 here would read the unnamed message's fields");
+        assert_eq!(listed[1]["path"], "mavlinkInspector.activeSystem.messages.2");
+    }
+
+    #[test]
     fn rates_read_as_hertz_with_a_floor_and_a_dash() {
         assert_eq!(rate_text(0.0), "\u{2014}");
         assert_eq!(rate_text(0.02), "<0.1 Hz");
