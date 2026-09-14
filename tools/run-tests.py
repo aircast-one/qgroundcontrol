@@ -116,8 +116,21 @@ def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
-    proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
-    return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
+    # capture_output buffers in MEMORY, and a crash loop writes without pause: a peer's run emitted
+    # 1.4 million signal lines in a few minutes. Unhandled, TimeoutExpired then threw away every
+    # result the run had already produced -- an hour of running and nothing reported, which is worse
+    # than the crash. Its partial output is kept and returned as a run that stopped, so the
+    # started-vs-finished guard sees an incomplete run rather than a traceback.
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
+        return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
+    except subprocess.TimeoutExpired as ran_out:
+        partial = (ran_out.output or "") + (ran_out.stderr or "")
+        signals = partial.count("Received signal")
+        print(f"TIMED OUT after {ran_out.timeout:.0f}s with {len(partial):,} characters captured"
+              + (f" and {signals:,} signal lines -- this is the crash-loop shape, not a slow suite"
+                 if signals > 1000 else ""), file=sys.stderr)
+        return partial, time.monotonic() - started, -9999
 
 
 def parse(output):
@@ -211,6 +224,8 @@ SIGNAL_CAUSE = {
         "this, find the pattern that matches "
         + SUITE_NAME + ".",
     -11: "crashed (SIGSEGV). This is a real defect, not a flake.",
+    -9999: "ran past the hour timeout and was killed. Everything it printed before that is below; "
+           "a suite that started and never finished is the guard's business either way.",
     -6: "aborted (SIGABRT) - an assertion or unhandled exception.",
 }
 
