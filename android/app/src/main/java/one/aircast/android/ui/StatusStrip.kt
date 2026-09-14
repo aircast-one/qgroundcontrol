@@ -1,12 +1,7 @@
 package one.aircast.android.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,13 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcPath
-import one.aircast.android.bridge.Qgc
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
@@ -57,10 +50,11 @@ internal fun batteryReading(view: JSONObject?): BatteryReading? {
 }
 
 
-internal fun rcSignalText(supportsRadio: Boolean, rssi: Int?): String? = when {
-    !supportsRadio || rssi == null || rssi > 100 -> null
-    rssi == 0 -> "No signal"
-    else -> "$rssi%"
+internal data class RcCell(val text: String, val lost: Boolean)
+
+internal fun rcCell(state: FlyState?): RcCell? {
+    if (state == null || !state.rcSupported || state.rcSignalText.isBlank()) return null
+    return RcCell("${state.rcSignalText} RC", state.rcSignal == 0)
 }
 
 internal enum class FixLevel { None, TwoD, Good }
@@ -102,11 +96,10 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     if (!available) return
 
     val stateJson by qgcPath(FLY_STATE)
-    val live = remember(stateJson) { flyState(stateJson)?.staleNotice.isNullOrBlank() }
+    val state = remember(stateJson) { flyState(stateJson) }
+    val live = state?.staleNotice.isNullOrBlank()
 
     val batteryJson by qgcPath(BATTERY)
-    val rcRssi by qgcDouble("vehicle.rcRSSI", Double.NaN)
-    val supportsRadio by qgcBool("vehicle.supportsRadio")
     val battery = remember(batteryJson) { batteryReading(batteryJson) }
     val satellites by qgcString("$GPS.count")
     val lock by qgcDouble("$GPS.lock")
@@ -119,10 +112,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     ) {
         battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) }
         fix?.let { InlineCell("${satsText(it, satellites)} sats", gpsColour(it)) }
-        val rssi = rcRssi.takeIf { !it.isNaN() }?.toInt()
-        rcSignalText(supportsRadio, rssi)?.let {
-            InlineCell("$it RC", if (rssi == 0) CRITICAL else Color.Unspecified)
-        }
+        rcCell(state)?.let { InlineCell(it.text, if (it.lost) CRITICAL else Color.Unspecified) }
     }
 }
 

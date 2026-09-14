@@ -6,36 +6,48 @@ import org.json.JSONObject
 import org.junit.Test
 
 class RcSignalTest {
+
+    private fun state(
+        rcSupported: Boolean = true,
+        rcSignal: String = "72",
+        rcSignalText: String = "\"72%\"",
+    ) = flyState(
+        JSONObject(
+            """{"kind":"object","class":"FlyState","connected":true,"contactLost":false,
+               "state":"disarmed","stateText":"Disarmed","staleNotice":"","mode":"Stabilize",
+               "rcSupported":$rcSupported,"rcSignal":$rcSignal,"rcSignalText":$rcSignalText}""",
+        ),
+    )
+
     @Test
-    fun `the 255 the firmware sends for unknown is not a signal strength`() {
-        assertNull(rcSignalText(supportsRadio = true, rssi = 255))
+    fun `the sentinel the firmware sends for unknown reaches this head as no text at all`() {
+        assertNull(rcCell(state(rcSignal = "null", rcSignalText = "null")))
     }
 
     @Test
     fun `zero is a reading the vehicle chose to send and says the link is dead`() {
-        assertEquals("No signal", rcSignalText(supportsRadio = true, rssi = 0))
+        val cell = rcCell(state(rcSignal = "0", rcSignalText = "\"No signal\""))!!
+
+        assertEquals("No signal RC", cell.text)
+        assertEquals(true, cell.lost)
     }
 
     @Test
-    fun `a real reading is shown as a percentage`() {
-        assertEquals("1%", rcSignalText(true, 1))
-        assertEquals("72%", rcSignalText(true, 72))
-        assertEquals("100%", rcSignalText(true, 100))
-    }
+    fun `a real reading is the core's sentence, not a percentage this head formats`() {
+        val cell = rcCell(state())!!
 
-    @Test
-    fun `anything above 100 is nonsense and hidden`() {
-        assertNull(rcSignalText(true, 101))
+        assertEquals("72% RC", cell.text)
+        assertEquals(false, cell.lost)
     }
 
     @Test
     fun `a vehicle with no radio never shows the cell`() {
-        assertNull(rcSignalText(supportsRadio = false, rssi = 72))
+        assertNull(rcCell(state(rcSupported = false)))
     }
 
     @Test
-    fun `a missing reading shows nothing`() {
-        assertNull(rcSignalText(true, null))
+    fun `no vehicle is no cell`() {
+        assertNull(rcCell(null))
     }
 }
 

@@ -12,6 +12,9 @@ internal data class FlyState(
     val stateText: String,
     val staleNotice: String,
     val mode: String,
+    val rcSupported: Boolean,
+    val rcSignalText: String,
+    val rcSignal: Int?,
 )
 
 internal fun flyState(view: JSONObject?): FlyState? {
@@ -23,6 +26,9 @@ internal fun flyState(view: JSONObject?): FlyState? {
         stateText = view.optText("stateText"),
         staleNotice = view.optText("staleNotice"),
         mode = view.optText("mode"),
+        rcSupported = view.optBoolean("rcSupported"),
+        rcSignalText = view.optText("rcSignalText"),
+        rcSignal = if (view.isNull("rcSignal")) null else view.optInt("rcSignal"),
     )
 }
 
