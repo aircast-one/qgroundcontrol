@@ -26,6 +26,11 @@ final class MotorsStore: ObservableObject, Probeable {
     }
 
     func refresh() {
+        // armed is served by view.flyState and stays raw for the same reason mode does in
+        // MapClick: these four are read together, built into one value and compared as a whole,
+        // so they have to come from one snapshot. Splitting armed out would leave a count and a
+        // firmware flag from one moment beside an armed flag from another, in the screen that
+        // decides whether a motor may be spun.
         let vehicle = Bridge.group("vehicle")
         let read = MotorTest(
             reportedCount: (vehicle["motorCount"] as? NSNumber)?.intValue ?? MotorTest.unknownCount,

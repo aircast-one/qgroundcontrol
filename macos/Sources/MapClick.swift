@@ -55,6 +55,12 @@ final class MapClickStore: ObservableObject, Probeable {
         let home = vehicle["homePosition"] as? [String: Any]
         let homeAltitude = (home?["altitude"] as? NSNumber)?.doubleValue
         let bits = (vehicle["sensorsPresentBits"] as? NSNumber)?.intValue ?? 0
+        // view.flyState serves this, and taking it from there would be WRONG here rather than
+        // tidier. Every use of it below is a COMPARISON against another field of this same
+        // snapshot -- against the mode names in BusyModes, and against gotoFlightMode -- and a
+        // comparison only holds if both operands share a frame. Two reads a second apart can
+        // straddle a mode change and answer about different moments, which is the disagreement
+        // migrating one half of a pair invites. It stays raw until the pair can move together.
         let mode = (vehicle["flightMode"] as? String) ?? ""
 
         var read = MapClickState()
