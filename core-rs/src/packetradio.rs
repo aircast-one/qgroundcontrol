@@ -629,6 +629,14 @@ pub fn packet_radio_view(_backend: &dyn crate::router::Backend, args: &[String])
 mod tests {
     use super::*;
 
+    static THE_REPORTED_HOST: Mutex<()> = Mutex::new(());
+
+    fn holding_the_reported_host() -> MutexGuard<'static, ()> {
+        let held = THE_REPORTED_HOST.lock().unwrap_or_else(PoisonError::into_inner);
+        host_forgotten();
+        held
+    }
+
     fn settings() -> Settings {
         Settings {
             enabled: true,
@@ -664,6 +672,7 @@ mod tests {
 
     #[test]
     fn the_status_sentence_travels_beside_the_token() {
+        let _host = holding_the_reported_host();
         assert!(host_report(&json!({ "status": "noAdapter", "statusText": "No supported Wi-Fi adapter found" })));
         let view = packet_radio_view(&Nothing, &[]);
         assert_eq!(view["status"], "noAdapter", "the token is the state a head keys on");
@@ -942,6 +951,7 @@ mod tests {
 
     #[test]
     fn the_view_answers_from_its_arguments_alone_and_refuses_the_ones_it_cannot_read() {
+        let _host = holding_the_reported_host();
         let args = strings(&["receiving", "ALFA AWUS036ACM [1]", "38/26", "12/6", "1800/1650", "4", "2048"]);
         let view = packet_radio_view(&Nothing, &args);
         assert_eq!(view["status"], "receiving");
