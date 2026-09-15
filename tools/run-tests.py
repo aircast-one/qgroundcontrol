@@ -142,6 +142,7 @@ def refresh_clone():
 
 
 QUIET_SECONDS = 15
+TRUNCATED_NOTE = "... (more output followed; this capture stops at 12 lines)"
 MAX_TRACES = 8
 PER_SUITE_TRACES = 2
 LATE_RESERVE = 2
@@ -214,6 +215,12 @@ def watch_for_silence(proc, latest, taken):
         room = (sum(taken.values()) < budget_now(len(latest["suites"]))
                 and taken.get(suite, 0) < PER_SUITE_TRACES)
         quiet = time.monotonic() - silent_since
+        if quiet > QUIET_SECONDS and silent_since not in seen and not room:
+            seen[silent_since] = 0
+            print(f"TRACE REFUSED: {suite} went quiet past {QUIET_SECONDS}s and was not sampled - "
+                  f"{sum(taken.values())} of {budget_now(len(latest['suites']))} traces spent, "
+                  f"{taken.get(suite, 0)} of {PER_SUITE_TRACES} for this suite. "
+                  f"This silence has no record beyond this line.", file=sys.stderr)
         if quiet > QUIET_SECONDS and silent_since not in seen and room:
             seen[silent_since] = 1
             written = trace_hang(proc.pid, note)
@@ -286,8 +293,11 @@ def parse(output):
             if suite not in suite_order:
                 suite_order.append(suite)
             continue
-        if speaking and line and len(said[speaking]) < 12:
-            said[speaking].append(line)
+        if speaking and line:
+            kept = said[speaking]
+            kept.append(line) if len(kept) < 12 else None
+            if len(kept) == 12 and kept[-1] != TRUNCATED_NOTE:
+                kept.append(TRUNCATED_NOTE)
         totals = TOTALS_RE.match(line)
         if totals and current:
             durations[current] = int(totals.group(5))
@@ -465,6 +475,8 @@ def report(summary, verdicts, history, stale, contention=None, missing=(), exit_
             spoke = [said for case in in_full
                      for said in summary.get("said", {}).get((suite, case), [])[1:]]
             lines.extend(f"      {said}" for said in spoke[:8])
+            if len(spoke) > 8:
+                lines.append(f"      ... {len(spoke) - 8} further captured line(s) not shown here")
             if spoke:
                 lines.append("      (captured from the full run - the isolated re-runs passed, "
                              "so this is the only copy)")
