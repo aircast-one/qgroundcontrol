@@ -192,12 +192,8 @@ struct SettingsControl: Identifiable, Equatable {
 
     var rangeHint: String {
         guard kind == .number else { return "" }
-        switch (minimum.map(SettingsControl.spell), maximum.map(SettingsControl.spell)) {
-        case let (low?, high?): return "\(low) to \(high)"
-        case let (low?, nil): return "at least \(low)"
-        case let (nil, high?): return "at most \(high)"
-        default: return ""
-        }
+        return FactRange.hint(lowest: minimum.map(SettingsControl.spell),
+                              highest: maximum.map(SettingsControl.spell))
     }
 
     static func spell(_ limit: Double) -> String {

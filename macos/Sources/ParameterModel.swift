@@ -106,6 +106,11 @@ extension Parameter {
 
     var isString: Bool { kind == .text }
 
+    // A string parameter has no band to state and a numeric one usually does: ATC_RAT_RLL_D is
+    // capped at 0.03 against a stock 0.0036, so a single slipped digit leaves the range. The
+    // refusal already spells the limits -- afterwards. This is the same fact before the write.
+    var rangeHint: String { isString ? "" : range.hint }
+
     // ARMING_CHECK read "82" on a setup page and in the parameter list: a number an operator has to
     // decompose in their head to find out that the compass check is off. The settings window has
     // drawn named toggles since the bitmask control existed; the two screens that show vehicle

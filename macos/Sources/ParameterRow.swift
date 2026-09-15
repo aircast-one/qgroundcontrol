@@ -46,11 +46,13 @@ struct ParameterEditor: View {
     let options: [ParameterOption]
     let selectedRaw: String
     var offersManualEntry = false
+    var rangeHint = ""
     let commit: (String) -> Void
 
     @ViewBuilder var body: some View {
         if options.isEmpty {
             ValueField(value: value, units: units, commit: commit)
+                .help(rangeHint)
         } else {
             HStack(spacing: Overlay.unit / 2) {
                 Picker("", selection: Binding(get: { selectedRaw }, set: { commit($0) })) {
@@ -99,6 +101,7 @@ struct ParameterRow: View {
     var offersManualEntry = false
     var showSeparator = true
     let bits: [ControlBit]
+    var rangeHint = ""
     var togglesDisabled = false
     // A form row draws the bits; a list row states them and stays one row tall.
     var expandsBits = true
@@ -117,6 +120,7 @@ struct ParameterRow: View {
         units = parameter.units
         options = parameter.options
         offersManualEntry = parameter.offersManualEntry
+        rangeHint = parameter.rangeHint
         selectedRaw = parameter.selectedOption?.raw ?? ""
         bits = parameter.drawsBits ? parameter.bits : []
         summary = parameter.drawsBits && !expandsBits ? parameter.bitSummary : ""
@@ -135,6 +139,7 @@ struct ParameterRow: View {
         units = control.units
         options = control.parameterOptions
         offersManualEntry = control.offersManualEntry
+        rangeHint = control.rangeHint
         selectedRaw = control.valueString
         bits = control.drawsBits ? control.bits : []
         summary = ""
@@ -154,7 +159,8 @@ struct ParameterRow: View {
                 if bits.isEmpty || !expandsBits {
                     ParameterEditor(value: value, units: units, options: options,
                                     selectedRaw: selectedRaw,
-                                    offersManualEntry: offersManualEntry, commit: commit)
+                                    offersManualEntry: offersManualEntry,
+                                    rangeHint: rangeHint, commit: commit)
                 } else {
                     BitmaskToggles(bits: bits, disabled: togglesDisabled) {
                         commit(toggle($0, $1))

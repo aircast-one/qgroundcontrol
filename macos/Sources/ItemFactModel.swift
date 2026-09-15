@@ -56,6 +56,20 @@ struct FactRange: Equatable {
         return FactRange.sentence(title, lowest: lowest?.text, highest: highest?.text)
     }
 
+    // The band an operator needs BEFORE the write, in the same grammar wherever the bounds come
+    // from: SettingsControl keeps its own doubles and FactRange keeps the producer's served text,
+    // so they cannot share a store, but they must not tell an operator the limits two ways.
+    static func hint(lowest: String?, highest: String?) -> String {
+        switch (lowest, highest) {
+        case let (low?, high?): return "\(low) to \(high)"
+        case let (low?, nil): return "at least \(low)"
+        case let (nil, high?): return "at most \(high)"
+        default: return ""
+        }
+    }
+
+    var hint: String { FactRange.hint(lowest: lowest?.text, highest: highest?.text) }
+
     static func sentence(_ what: String, lowest: String?, highest: String?) -> String? {
         switch (lowest, highest) {
         case let (low?, high?): return "\(what) must be within \(low) and \(high)."

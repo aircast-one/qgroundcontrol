@@ -2080,6 +2080,26 @@ func checkASettingsControlRefusesWhatItsOwnHintForbids() {
            "a control that is not a number is measured against no range at all -- a toggle's "
            + "valueString is \"true\", and comparing that to a bound would be nonsense")
     expect(muted.rangeHint, "", "and offers no hint either, from the same guard")
+
+    let gain = Parameter(name: "ATC_RAT_RLL_D", componentId: 1,
+                         json: ["control": "number", "label": "Roll axis rate controller D gain",
+                                "display": "0.003600", "value": 0.0036,
+                                "minimum": 0.0, "maximum": 0.03,
+                                "minimumText": "0.000000", "maximumText": "0.030000"])
+
+    expect(gain.rangeHint, "0.000000 to 0.030000",
+           "a vehicle parameter states its band in the SAME grammar a settings fact does -- the "
+           + "Vehicle Setup pages draw both kinds of row through one ParameterRow and an "
+           + "operator must not meet two ways of being told the limits")
+    expect(gain.refusal("0.036") ?? "",
+           "ATC_RAT_RLL_D must be within 0.000000 and 0.030000.",
+           "and one slipped digit on a D gain is a tenfold write that the same two numbers refuse")
+
+    let named = Parameter(name: "SERIAL0_PROTOCOL", componentId: 1,
+                          json: ["control": "text", "label": "Serial protocol", "display": "mavlink"])
+    expect(named.rangeHint, "",
+           "a string parameter legitimately holds anything and has no band to state, the same "
+           + "guard that keeps its refusal silent")
 }
 
 checkASettingsControlRefusesWhatItsOwnHintForbids()
