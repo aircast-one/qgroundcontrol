@@ -19,9 +19,10 @@ class PlanSummaryTest {
         selected: MapHit? = null,
         itemCount: Int = items.size,
         shape: List<String> = emptyList(),
+        offline: Boolean = true,
     ) = planSummary(
         itemCount, shape, items, emptyList(), circles, emptyList(), emptyList(),
-        summaryText, selected,
+        summaryText, selected, offline,
     )
 
     @Test
@@ -40,6 +41,23 @@ class PlanSummaryTest {
     @Test
     fun `an empty plan says how to start one`() {
         assertEquals("Empty plan · long press to add", summary())
+    }
+
+    @Test
+    fun `with an aircraft connected an empty plan does not imply the aircraft has none`() {
+        assertEquals(
+            "the head shows an empty plan on every connection without ever sending a " +
+                "MISSION_REQUEST_LIST - PlanMasterController forces initialPlanRequestComplete and " +
+                "the mission controller publishes the empty list it holds - so offering only " +
+                "\"long press to add\" reads as a fact about the aircraft that was never established",
+            "Empty plan · Download the aircraft's, or long press to add",
+            summary(offline = false),
+        )
+    }
+
+    @Test
+    fun `with no aircraft there is nothing to download from and the original line stands`() {
+        assertEquals("Empty plan · long press to add", summary(offline = true))
     }
 
     @Test

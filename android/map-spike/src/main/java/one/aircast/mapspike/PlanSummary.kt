@@ -10,6 +10,7 @@ fun planSummary(
     surveys: List<Survey>,
     summaryText: String,
     selected: MapHit?,
+    offline: Boolean = true,
 ): String {
     val counts = listOfNotNull(
         itemCount.takeIf { it > 0 }?.let {
@@ -22,7 +23,11 @@ fun planSummary(
         surveys.sumOf { it.transects.size }.takeIf { it > 0 }?.let { "$it scan pts" },
     )
     if (counts.isEmpty()) {
-        return "Empty plan · long press to add"
+        return if (offline) {
+            "Empty plan · long press to add"
+        } else {
+            "Empty plan · Download the aircraft's, or long press to add"
+        }
     }
 
     return (counts + listOfNotNull(

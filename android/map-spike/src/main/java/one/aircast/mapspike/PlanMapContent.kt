@@ -407,7 +407,7 @@ internal fun MapSpikeScreen(
                         } else {
                             planSummary(
                                 itemCount, shape, items, fences, circles, rally, surveyList,
-                                missionSummaryText(missionSummaryView), selected,
+                                missionSummaryText(missionSummaryView), selected, planOffline,
                             )
                         },
                         style = MaterialTheme.typography.bodySmall,
