@@ -103,9 +103,6 @@ enum MapCentre: String, CaseIterable, Identifiable {
     }
 
     static let noSource = "noSource"
-    static let stalePrefix = "stale"
-
-    static let waitingToken = "waiting"
 
     // Accuracy is asked FIRST because it is the only thing that now keeps a position off this
     // map. Staleness used to, and the sentence order still reflected that: a reading that was
