@@ -8070,3 +8070,45 @@ of twelve list entries. And `probe.sh get` re-issues its deep link whenever
 a read interleaved with navigation moves the screen out from under the
 comparison. Anything checking a screen against a fact has to take both without
 a probe call between them.
+
+### What Plan entry actually costs, 2026-09-15
+
+Risk 4 records a ~1 s Qt-thread stall on Plan entry with five causes ruled out
+and the real one *"still unidentified"*. Measured directly this time, sampling
+`/proc/<pid>/task/<qtMainLoopThread>/stat` every 50 ms across a cold start and a
+tap at a known coordinate:
+
+```
+21:01:57.775  S  utime 48      idle before the tap
+21:01:58.783                   TAP Plan
+21:01:58.911  R  utime 51
+21:01:59.142  R  utime 72      ~240 ms of CPU inside ~370 ms of wall clock
+21:02:00.675  S  utime 73      flat again
+```
+
+**The thread is running, not blocked** - it burns close to a full core for about
+a third of a second and then goes quiet. That is the half of the question the
+earlier note could not answer, because "busy" and "waiting" look the same from a
+read that came back late.
+
+**But the stall itself did not reproduce, so this is not a cause for it.** The
+head logs any bridge call over 250 ms itself, and **no `bridge call blocked`
+line fired at the tap at all** - against 864 ms recorded on 2026-09-10. Either
+the cost has fallen since the views moved into the core, or the precondition
+differs. It differs in at least one way that matters: **no vehicle was
+connected.** The reverse forwards for the TCP rig are in place but nothing is
+listening on them, so Plan had no mission, no vehicle and nothing to sync.
+
+**Two instrument notes, because both nearly produced a wrong answer.**
+
+- The first run sampled the thread asleep and would have reported "blocked, not
+  busy". `ui.sh pick` dumps the UI before it taps, so its tap lands a second or
+  more after the call - **outside the window being measured**. Tapping a known
+  coordinate and printing the tap's own timestamp is what made the samples mean
+  anything.
+- A sample that does not overlap the symptom describes a different moment, so
+  the `bridge call blocked` line is the precondition: without it in the log,
+  the thread samples say nothing about Risk 4 and must not be read as if they do.
+
+Open: repeat with a vehicle connected and a mission loaded before deciding
+whether Risk 4 is stale or merely unreproduced here.
