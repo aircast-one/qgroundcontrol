@@ -7909,6 +7909,11 @@ choosing another vehicle from the sheet.** Nothing served separates them; only
 whether this head asked. Every unit test passed with the wrong rule because
 they were written from the same assumption about the ordering.
 
+**Both halves verified end to end once the core watched what it served.** With
+`3c52b1e96` in, a vehicle going quiet reaches the header on its own - *"Quadrotor
+2 is not answering"* appeared with nothing touched, where before it needed an
+unrelated change to force a recompute.
+
 **And two instruments could not have found any of it.** `view.vehicles` watched
 `count` and `vehicle.id` and nothing else it served, so a vehicle losing
 contact never reached a head - the sheet described a vehicle that had stopped
