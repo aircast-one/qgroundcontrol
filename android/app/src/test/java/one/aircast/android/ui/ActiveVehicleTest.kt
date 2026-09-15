@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -84,5 +85,45 @@ class ActiveVehicleTest {
     fun `a vehicle the core did not name still has something to tap`() {
         val nameless = JSONObject("""{"ambiguous":true,"vehicles":[{"id":7,"active":false}]}""")
         assertEquals("Vehicle 7", vehicleChoices(nameless).choices.single().name)
+    }
+
+    @Test
+    fun `a vehicle that stopped answering is named even while another is being flown`() {
+        val lost = lostVehicles(vehicleChoices(two))
+        assertEquals(listOf(2), lost.map { it.id })
+        assertEquals(
+            "QGC announces this by voice and nowhere else, so the screen is the only place an operator can see it",
+            "Quadrotor 2 is not answering",
+            lostVehiclesText(lost),
+        )
+    }
+
+    @Test
+    fun `the vehicle being flown is not counted among the silent ones`() {
+        val activeLost = JSONObject(
+            """{"ambiguous":true,"vehicles":[
+                 {"id":1,"name":"Quadrotor 1","active":true,"contactLost":true},
+                 {"id":2,"name":"Quadrotor 2","active":false,"contactLost":false}]}""",
+        )
+        assertTrue(
+            "the header already says Communication lost for the one in command, and saying it twice reads as two failures",
+            lostVehicles(vehicleChoices(activeLost)).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `more than one silent vehicle is counted rather than listed`() {
+        val many = JSONObject(
+            """{"ambiguous":true,"vehicles":[
+                 {"id":1,"name":"Quadrotor 1","active":true,"contactLost":false},
+                 {"id":2,"name":"Quadrotor 2","active":false,"contactLost":true},
+                 {"id":3,"name":"Quadrotor 3","active":false,"contactLost":true}]}""",
+        )
+        assertEquals("2 other vehicles are not answering", lostVehiclesText(lostVehicles(vehicleChoices(many))))
+    }
+
+    @Test
+    fun `nothing is said when every vehicle is answering`() {
+        assertNull(lostVehiclesText(lostVehicles(vehicleChoices(one))))
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -83,6 +84,15 @@ internal fun vehicleChoiceLine(choice: VehicleChoice): String = when {
     else -> listOfNotNull(choice.state.ifBlank { null }, choice.link.ifBlank { null }).joinToString(" · ")
 }
 
+internal fun lostVehicles(choices: VehicleChoices): List<VehicleChoice> =
+    choices.choices.filter { it.contactLost && !it.active }
+
+internal fun lostVehiclesText(lost: List<VehicleChoice>): String? = when (lost.size) {
+    0 -> null
+    1 -> "${lost.single().name} is not answering"
+    else -> "${lost.size} other vehicles are not answering"
+}
+
 internal fun activeVehicleTitle(choices: VehicleChoices, subtitle: String): String = when {
     !choices.ambiguous -> subtitle
     else -> listOfNotNull(choices.active?.name, subtitle.ifBlank { null }).joinToString(" · ")
@@ -113,10 +123,15 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             maxLines = 1,
         )
         if (choices.ambiguous) {
+            val silent = lostVehiclesText(lostVehicles(choices))
             Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = "Choose which vehicle to fly",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                imageVector = if (silent == null) Icons.Default.KeyboardArrowDown else Icons.Default.Warning,
+                contentDescription = silent ?: "Choose which vehicle to fly",
+                tint = if (silent == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
             )
         }
     }
@@ -124,7 +139,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     if (picking) {
         ModalBottomSheet(onDismissRequest = { picking = false }) {
             Text(
-                text = "Flying",
+                text = lostVehiclesText(lostVehicles(choices)) ?: "Flying",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
