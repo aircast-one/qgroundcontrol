@@ -551,16 +551,16 @@ struct RadioView: View {
                 }
             }
 
-            if !store.state.liveChannels.isEmpty {
+            if !store.state.channelRows.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     SectionLabel(text: "Channels")
                     GroupCard {
-                        ForEach(Array(store.state.liveChannels.enumerated()), id: \.element.id) { row, channel in
+                        ForEach(Array(store.state.channelRows.enumerated()), id: \.element.id) { row, channel in
                             GroupRow(title: "Channel \(channel.label)",
                                      showSeparator: row > 0,
                                      trailing: {
                                          HStack(spacing: Overlay.step) {
-                                             RadioBar(fraction: channel.fraction, live: true)
+                                             RadioBar(fraction: channel.fraction, live: channel.live)
                                              Text(channel.valueText)
                                                  .font(.caption.monospacedDigit())
                                                  .foregroundColor(Overlay.value)

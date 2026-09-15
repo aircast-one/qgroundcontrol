@@ -3426,8 +3426,8 @@ func checkRadio() {
     expect(!RadioState([:]).connected, "and a read that returned nothing is not connected")
 
     let state = RadioState([
-        "connected": true as NSNumber, "channelCount": 16 as NSNumber,
-        "summary": "16 channels reported, 8 carrying a signal.", "shortfall": "",
+        "connected": true as NSNumber, "channelCount": 10 as NSNumber,
+        "summary": "10 channels reported, 8 carrying a signal.", "shortfall": "",
         "calibrating": false as NSNumber, "nextText": "Calibrate",
         "nextEnabled": true as NSNumber, "transmitterMode": 2 as NSNumber,
         "channels": [channel(0, 1500), channel(1, 1500), channel(2, 1000), channel(3, 1500),
@@ -3436,10 +3436,21 @@ func checkRadio() {
         "sticks": [stick("roll", "Roll", 1500), stick("pitch", "Pitch", 1500),
                    stick("yaw", "Yaw", 1500, true, true), stick("throttle", "Throttle", 1000)],
     ])
-    expect(state.channelCount == 16, "the reported channel count is the core's")
-    expect(state.liveChannels.count == 8,
-           "only channels carrying a signal are listed; the silent ones are not drawn as empty bars")
-    expect(state.summary, "16 channels reported, 8 carrying a signal.", "and the summary says both")
+    expect(state.channelCount == 10,
+           "the reported channel count is the core's -- and this fixture said 16 with ten channels "
+           + "in it, a shape QGC cannot emit: rcValues() reserves _chanCount and loops to it, so "
+           + "the array is always exactly as long as the count it reports")
+    expect(state.liveChannels.count == 8, "eight of them are carrying a signal")
+    expect(state.channelRows.count == 10,
+           "and all ten are listed. Drawing only the live ones answered \"is my channel 9 switch "
+           + "reaching the vehicle\" by omission, which reads as there being no channel 9")
+    expect(state.rowsMatchReportedCount,
+           "the list and the summary describe the same transmitter, which is the rule the filter "
+           + "broke: it said ten reported and then showed eight")
+    expect(state.channelRows.first { $0.label == "9" }?.live == false,
+           "the silent ones are drawn, and drawn as silent -- RadioBar takes a live: flag for "
+           + "exactly this and the Channels section passed a hardcoded true")
+    expect(state.summary, "10 channels reported, 8 carrying a signal.", "and the summary says both")
     expect(state.shortfall, "", "so nothing is wanting")
     expect(!state.calibrating, "an idle controller is not calibrating")
     expect(state.channels[0].fraction == 0.5, "centre sits in the middle of the bar")

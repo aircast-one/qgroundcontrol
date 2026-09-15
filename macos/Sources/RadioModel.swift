@@ -102,5 +102,22 @@ struct RadioState: Equatable {
         sticks = ((json["sticks"] as? [Any]) ?? []).compactMap(RadioStick.init)
     }
 
+    // The count the summary line quotes. Still a real question -- "how many are arriving" -- and
+    // the probe reports it. What it is NOT is the list to draw.
     var liveChannels: [RadioChannel] { channels.filter(\.live) }
+
+    // A reported channel sending nothing is the answer somebody opened this page for: "is my
+    // channel 6 switch reaching the vehicle". Drawing only the live ones answered that by
+    // omission, which reads as "there is no channel 6" -- and with the receiver off the whole
+    // section disappeared rather than saying eight channels are reported and none is arriving.
+    // rcValues is exactly channelCount long, measured on the rig at 8 for 8, so every entry is a
+    // channel the transmitter reports and none of these rows is a phantom slot.
+    // The core already answers the silent case -- valueText is an em dash and live is false -- and
+    // RadioBar's live: parameter exists to draw it grey. The section that needed it passed a
+    // hardcoded true, because the list had been filtered to make that true.
+    var channelRows: [RadioChannel] { channels }
+
+    // The list and the summary have to describe the same transmitter. This is the rule the filter
+    // broke: it said eight were reported and then showed however many were arriving.
+    var rowsMatchReportedCount: Bool { channelRows.count == channelCount }
 }
