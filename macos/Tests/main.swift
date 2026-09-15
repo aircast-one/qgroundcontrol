@@ -909,8 +909,9 @@ func checkSilenceAndAnEmptySkyAreDifferentAnswers() {
     expect(traffic([:])?.quiet == false, "a receiving feed with no contacts is the empty sky")
 
     expect(traffic(["alertUnknown": 2 as NSNumber])?.alertsKnown == false,
-           "and the panel can say when some aircraft have not reported their alert state, "
-           + "rather than implying it polled every one of them")
+           "and the panel knows when some aircraft have not reported their alert state -- this "
+           + "is the answer level turns into caution, not a separate sentence, and saying it "
+           + "was a sentence is how it sat here for weeks with level re-deriving it inline")
 
     expect(AdsbTraffic(["kind": "null"]) == nil,
            "a refused view is no traffic rather than traffic reporting everything off, which "

@@ -175,7 +175,7 @@ struct AdsbTraffic: Equatable {
         guard available, enabled else { return .unknown }
         if !emergency.isEmpty { return .critical }
         if alerting > 0 { return .warning }
-        if quiet || alertUnknown > 0 { return .caution }
+        if quiet || !alertsKnown { return .caution }
         return .good
     }
 
