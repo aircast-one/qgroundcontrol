@@ -94,6 +94,7 @@ private slots:
     void _aTakeoffReportedInsertedHasAPlaceOnTheMap();
     void _theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge();
     void _changingTheUnitPreferenceRespellsTheTelemetryStrip();
+    void _qtReadsBackEveryValueTheRustWriterSpells();
 
 private:
     static bool _unavailable(const char *path);

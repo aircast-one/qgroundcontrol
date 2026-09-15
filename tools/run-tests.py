@@ -514,7 +514,16 @@ def report(summary, verdicts, history, stale, contention=None, missing=(), exit_
                 lines.append("      (captured from the full run - the isolated re-runs passed, "
                              "so this is the only copy)")
 
-    if not real and not flaky and not unstable:
+    unclassified = [f for f in summary["failures"]
+                    if f[0] not in real and f[0] not in flaky and f[0] not in unstable]
+    if unclassified:
+        lines.append("")
+        lines.append(f"FAILED, NOT CLASSIFIED ({len(unclassified)}) - no isolation re-runs were done, "
+                     f"so these are neither confirmed real nor confirmed flaky:")
+        for suite, case in unclassified:
+            lines.append(f"  {suite}: {case}")
+            lines.extend(f"    {said}" for said in summary.get("said", {}).get((suite, case), [])[1:4])
+    if not real and not flaky and not unstable and not unclassified:
         lines.append("No failures.")
     return "\n".join(lines)
 

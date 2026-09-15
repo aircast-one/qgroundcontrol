@@ -1,4 +1,10 @@
 #include "QGCCoreCTest.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSettings>
+#include <QTemporaryDir>
 #include "QGCApplication.h"
 #include "QGCMapUrlEngine.h"
 #include "Vehicle.h"
@@ -4222,4 +4228,38 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
+}
+
+void QGCCoreCTest::_qtReadsBackEveryValueTheRustWriterSpells()
+{
+    const QString golden = QFileInfo(QString::fromUtf8(__FILE__)).dir()
+        .filePath(QStringLiteral("../../core-rs/tests/fixtures/writer-golden.ini"));
+    QVERIFY2(QFile::exists(golden), qPrintable(QStringLiteral("the writer golden is missing: ") + golden));
+
+    QTemporaryDir scratch;
+    QVERIFY(scratch.isValid());
+    const QString copy = scratch.filePath(QStringLiteral("writer-golden.ini"));
+    QVERIFY2(QFile::copy(golden, copy), "could not stage the golden for QSettings to open");
+
+    QSettings settings(copy, QSettings::IniFormat);
+
+    QString bell = QStringLiteral("bell");
+    bell.append(QChar(ushort(0x07)));
+    bell.append(QStringLiteral("end"));
+    QCOMPARE(settings.value(QStringLiteral("Probe/bell")).toString(), bell);
+
+    QCOMPARE(settings.value(QStringLiteral("Probe/atEndingInAQuote")).toString(), QStringLiteral("@x\""));
+    QCOMPARE(settings.value(QStringLiteral("Probe/blobEndingInAQuote")).toByteArray(), QByteArray("ab\"", 3));
+    QVERIFY2(!settings.value(QStringLiteral("Probe/gone")).isValid(),
+             "@Invalid() came back as a value rather than an invalid QVariant");
+    QCOMPARE(settings.value(QStringLiteral("Probe/hosts")).toStringList(),
+             QStringList({QStringLiteral("a"), QStringLiteral("b, c")}));
+    QCOMPARE(settings.value(QStringLiteral("Probe/url")).toString(), QStringLiteral("rtsp://h:554/a/b"));
+    QCOMPARE(settings.value(QStringLiteral("LinkConfigurations/Link0/name")).toString(), QStringLiteral("radio 1"));
+
+    const QString backslash = QStringLiteral("Probe/back\\slash");
+    QVERIFY2(settings.contains(backslash),
+             qPrintable(QStringLiteral("a key holding a literal backslash did not survive; keys matching 'back': %1")
+                            .arg(settings.allKeys().filter(QStringLiteral("back")).join(QStringLiteral(" | ")))));
+    QCOMPARE(settings.value(backslash).toString(), QStringLiteral("1"));
 }
