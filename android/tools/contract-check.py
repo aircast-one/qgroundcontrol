@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import subprocess
 import sys
 
 CONTRACT = os.environ.get(
@@ -15,6 +16,19 @@ HELPER_DEF = re.compile(r'fun JSON(?:Object|Array)\.([a-zA-Z][A-Za-z0-9]*)\(\s*[
 TAKES_KEY = re.compile(
     r'fun ([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: JSON(?:Object|Array)\??\s*,\s*key: String'
 )
+
+
+def fixture_provenance():
+    # Four sessions share this checkout, so the fixture on disk can be a peer's uncommitted
+    # recording of a producer that is also uncommitted. Both then agree and neither exists,
+    # which is exactly the state that makes a field look landed.
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    rel = os.path.relpath(CONTRACT, repo)
+    dirty = subprocess.run(
+        ["git", "-C", repo, "status", "--porcelain", "--", rel],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    return rel if dirty else ""
 
 
 def served(node, into):
@@ -336,6 +350,12 @@ def main():
         print(f"\n  {len(unbuilt)} field(s) in {len(views)} view(s) this head has no screen for:")
         print(f"    {', '.join(views)}")
         print("  These are whole features, not fields missed beside ones we read - a different call.")
+    uncommitted = fixture_provenance()
+    if uncommitted:
+        print(f"\n  UNCOMMITTED FIXTURE: {uncommitted} differs from HEAD.")
+        print("  Every count above includes keys recorded from a producer that may not be committed")
+        print("  either. Verify with git show HEAD:<path> before calling any field served.")
+
     nullable = nullable_bools(json.load(open(CONTRACT)), "", {})
     # A parse that finds nothing reports a clean head, so prove it can still see a known
     # bool|null before believing an empty result. view.flyState.contactLost has been one
