@@ -40,13 +40,41 @@ if (( ${#phantom} )); then
     print "refreshing ${#phantom} stale index entr$( (( ${#phantom} == 1 )) && print "y" || print "ies") left by a private-index commit: ${phantom}"
     git reset -q HEAD -- "${phantom[@]}"
 fi
+# "differs in both" was read as "therefore a real staging" and that inference is wrong. A peer who
+# lands through a private index and then keeps editing leaves an entry that is stale AND has a
+# changed worktree, which git status spells MM exactly like a live staging. Twice in one day that
+# sentence sent someone looking for work in flight that had already landed -- and a plain `git add
+# -A` on top of it would have re-applied the reverse diff of a landed commit for the second time.
+# What separates them is not the worktree: it is whether the INDEX blob is the file's content at a
+# commit HEAD already contains. A deliberate staging is content that has never been committed.
+staleAtAncestor() {
+    local blob=$(git ls-files -s -- "$1" | awk '{print $2}')
+    [[ -n $blob ]] || return 1
+    local commit
+    for commit in ${(f)"$(git rev-list -n 50 HEAD -- "$1")"}; do
+        [[ $(git rev-parse -q --verify "$commit:$1" 2>/dev/null) == $blob ]] && return 0
+    done
+    return 1
+}
 if (( ${#real} )); then
+    stale=()
+    deliberate=()
+    for staged in "${real[@]}"; do
+        if staleAtAncestor "$staged"; then stale+=("$staged"); else deliberate+=("$staged"); fi
+    done
     print -u2 "the shared index is armed against someone and this commit would carry it:"
     print -u2 "$(git diff --cached HEAD --stat -- "${real[@]}")"
     print -u2 ""
-    print -u2 "these differ from HEAD in the index AND in the working tree, so they are a real"
-    print -u2 "staging rather than a stale-index phantom."
-    print -u2 "check it is not a deliberate staging of yours, then: git reset -q HEAD -- <files>"
+    if (( ${#stale} )); then
+        print -u2 "STALE, NOT STAGED: the index entry for ${stale} is that file's content at a commit"
+        print -u2 "HEAD already contains, so it is a private-index leftover whose worktree has moved on"
+        print -u2 "-- not work in flight. Committing over it with git add -A re-applies a landed revert."
+    fi
+    if (( ${#deliberate} )); then
+        print -u2 "NEVER COMMITTED: ${deliberate} holds index content matching no ancestor, so somebody"
+        print -u2 "staged it deliberately. Ask before touching it."
+    fi
+    print -u2 "index only, worktree untouched either way: git reset -q HEAD -- <files>"
     exit 1
 fi
 
