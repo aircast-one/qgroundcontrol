@@ -12,21 +12,26 @@ getting a weaker one. Four instances so far, one of them dangerous:
 A capability flag says the thing exists. A readiness flag says it is allowed
 right now. Gating on the first is how a head offers what the core refused.
 
-Every hit is a question. Two known-good reasons a key lands here:
+Every hit is a question. Three known-good reasons a key lands here:
 a rule the head reimplements correctly for the narrower case it uses (fences'
 cornerRemovable), and the hub family, which is empty unless the core owns the
-link and which no head consumes.
+link and which no head consumes, and a threshold constant served so a head
+could word a sentence, where the head shows the core's own reason instead.
 """
 import re
 import sys
 from pathlib import Path
 
-QGC = Path(__file__).resolve().parents[2] / "qgroundcontrol"
+QGC = Path(__file__).resolve().parents[2]
 HEAD = Path(__file__).resolve().parents[1]
 
 READINESS = re.compile(r"^(can[A-Z]|ready$|ready[A-Z]|is[A-Z].*(Valid|Allowed|Permitted)$|allowed|permitted)")
 KNOWN = {"canRemoveVertex": "fences: head's minimum of 3 matches on the handset - offered at 4 corners, withheld at 3",
-         "canBeSet": "hub family - empty unless the core owns the link, no head consumes it"}
+         "canBeSet": "hub family - empty unless the core owns the link, no head consumes it",
+         "allowedFixAgeMs": "a THRESHOLD, not a verdict: followme.rs serves the constant so a head "
+                            "could word its own sentence, and serves fixFresh and wouldSend beside "
+                            "it. This head reads wouldSend and the core's reason, and never touches "
+                            "fixAgeMs, so it re-derives nothing"}
 
 
 def head_reads():

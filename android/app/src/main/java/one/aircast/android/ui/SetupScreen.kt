@@ -36,7 +36,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 import one.aircast.mapspike.optText
 
-private const val PLUGIN = "vehicle.autopilotPlugin"
 
 internal fun firmwareSummary(
     firmwareType: String,
@@ -114,7 +113,6 @@ private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun SetupScreen(modifier: Modifier = Modifier) {
-    val setupComplete by qgcBool("$PLUGIN.setupComplete")
     val setupJson by qgcPath(SETUP)
     val setup = remember(setupJson) { setupReadiness(setupJson) }
     val hasVehicle = setup?.connected == true
