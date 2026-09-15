@@ -4628,6 +4628,21 @@ func checkRestartNoticeReachesTheRow() {
            + "sentence while the gate opens, and a row explaining why it is off while it is on "
            + "is worse than silence -- the flag decides, never the presence of the string")
 
+    expect(gated(["readOnly": true as NSNumber])
+            .rowDescription(label: "Enforce preflight checklist"),
+           "enforceChecklist \u{00B7} Read-only",
+           "A CONTROL THAT CANNOT BE WRITTEN AND ONE WHOSE WRITE DOES NOTHING LOOK IDENTICAL TO A "
+           + "FINGER. Both grey out and neither said why; the gated one got its sentence first "
+           + "and read-only was left as the silent half of the same defect")
+
+    expect(gated(["readOnly": true as NSNumber, "enabled": false as NSNumber,
+                  "disabledReason": "Has no effect while the preflight checklist is off."])
+            .rowDescription(label: "Enforce preflight checklist"),
+           "enforceChecklist \u{00B7} Read-only",
+           "and read-only LEADS when both are true, because it is the stronger claim: the fact "
+           + "stays read-only whatever the gate does, so pointing the operator at a switch that "
+           + "would not unlock it anyway is a wasted trip")
+
     expect(gated(["readOnly": true as NSNumber]).acceptsWrite == false,
            "readOnly still refuses on its own: it is the FACT'S property and answers whether the "
            + "value can be written at all, where enabled answers whether writing would do "

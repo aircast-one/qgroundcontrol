@@ -122,7 +122,7 @@ struct SettingsControl: Identifiable, Equatable {
     // so on the same line rather than in a place an operator has to go looking for.
     func rowDescription(label: String) -> String {
         let parts = [label.isEmpty ? "" : name, restartNotice,
-                     enabled ? "" : disabledReason].filter { !$0.isEmpty }
+                     refusal].filter { !$0.isEmpty }
         return parts.joined(separator: " \u{00B7} ")
     }
 
@@ -131,6 +131,17 @@ struct SettingsControl: Identifiable, Equatable {
     // either, and asking the two separately at four call sites is how a branch gets missed --
     // readOnly was already honoured in only two of four here once before.
     var acceptsWrite: Bool { !readOnly && enabled }
+
+    // A control that CANNOT be written and one whose write would DO NOTHING look identical to a
+    // finger, and they are not the same answer: one is the fact's own nature, the other is a
+    // condition somewhere else the operator can go and change. readOnly leads because it is the
+    // stronger claim -- a read-only fact stays read-only whatever the gate says.
+    static let readOnlyNote = "Read-only"
+
+    var refusal: String {
+        if readOnly { return SettingsControl.readOnlyNote }
+        return enabled ? "" : disabledReason
+    }
 
     var drawsBits: Bool { FactWrite.drawsBits(kind, bits) }
 
