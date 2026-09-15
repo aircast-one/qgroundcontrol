@@ -8625,3 +8625,21 @@ The guard that would have caught it is the one already used for the vehicle:
 **assert the screen you believe you are on before trusting anything captured
 from it.** Checking for a vehicle was not enough, because the vehicle was
 genuinely there the whole time.
+
+**And the modal is only half of it. `ui.sh pick` reported every one of those
+failures and my scripts threw the report away.**
+
+```
+ui.sh pick "text=ThisNodeDoesNotExist"   -> exit 1
+ui.sh pick "text=Fly"                    -> exit 0
+```
+
+Every navigation line I wrote was `tools/ui.sh pick "text=$tab" >/dev/null 2>&1`
+with no status check, so a tap the tool *knew* had missed became silence. The
+modal caused the misses; **discarding the tool's own answer is what made them
+invisible**, across four different scripts.
+
+Which is the night's own theme pointed at my tooling: **`optBoolean` turns a
+JSON null into `false`, and `>/dev/null 2>&1` turns "I could not do that" into
+nothing at all.** Both are a consumer discarding an answer a producer took care
+to give. The fix is the same in both places - keep the absence and act on it.
