@@ -8045,6 +8045,17 @@ func checkTerrainMarkers() {
     expect(climb.markers.count == 2,
            "and they are one mark, not two at the same place")
 
+    let scattered = profile([point(0, 0), point(0, 1), point(0, 3), point(0, 107),
+                             point(0.6, 2), point(0.78, 4)])
+    expect(scattered.markers.map(\.label).joined(separator: " | "), "0\u{2013}1, 3, 107 | 2 | 4",
+           "measured on the populated plan: four items share the launch point and two of them are "
+           + "not consecutive, so the mark lists its runs -- printing first and last as a range "
+           + "read as a hundred and eight items, and claimed 2, which is drawn six tenths along")
+    expect(TerrainMarker.spans([4, 2, 3]) == ["2\u{2013}4"],
+           "the sequences arrive in the order the samples do, so a run is only a run after sorting")
+    expect(TerrainMarker.spans([]) == [],
+           "and a mark with no sequence behind it is spelled with nothing rather than a zero")
+
     let unstamped = profile([point(0, 0), ["x": 0.5 as NSNumber,
                                            "missionAltitude": 100.0 as NSNumber]])
     expect(unstamped.markers.map(\.label) == ["0"],

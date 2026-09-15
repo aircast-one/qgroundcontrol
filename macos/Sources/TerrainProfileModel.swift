@@ -25,9 +25,25 @@ struct TerrainMarker: Equatable, Identifiable {
 
     var id: Int { sequences.first ?? -1 }
 
+    // An en dash is range notation, and these sequences share an x rather than a run: the
+    // populated plan groups 0, 1, 3 and 107 at the launch point, which the old label spelled
+    // "0-107" -- a claim about a hundred and eight items, two of which are elsewhere on the axis.
     var label: String {
-        guard let first = sequences.first, let last = sequences.last else { return "" }
-        return first == last ? "\(first)" : "\(first)\u{2013}\(last)"
+        TerrainMarker.spans(sequences).joined(separator: ", ")
+    }
+
+    static func spans(_ sequences: [Int]) -> [String] {
+        sequences.sorted()
+            .reduce(into: [[Int]]()) { runs, sequence in
+                guard let end = runs.last?.last, sequence == end + 1 else {
+                    return runs.append([sequence])
+                }
+                runs[runs.count - 1].append(sequence)
+            }
+            .compactMap { run in
+                guard let first = run.first, let last = run.last else { return nil }
+                return first == last ? "\(first)" : "\(first)\u{2013}\(last)"
+            }
     }
 }
 
