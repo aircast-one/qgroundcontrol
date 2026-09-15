@@ -32,6 +32,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ListItem
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
@@ -56,8 +66,6 @@ import one.aircast.mapspike.optText
 
 private const val GCS_POSITION = "view.gcsPosition"
 
-private const val INSTRUMENTS =
-    "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)"
 
 internal data class GuidedAction(
     val name: String,
@@ -121,10 +129,13 @@ fun VehicleTitle() {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TelemetryRow(modifier: Modifier = Modifier) {
-    val view by qgcPath(INSTRUMENTS)
+    val context = LocalContext.current
+    var chosen by remember { mutableStateOf(readChosen(context)) }
+    var choosing by remember { mutableStateOf(false) }
+    val view by qgcPath(instrumentsPath(chosen))
     val gcsJson by qgcPath(GCS_POSITION)
     val shown = remember(view, gcsJson) { instruments(view) + operatorDistance(gcsJson) }
     val stateJson by qgcPath(FLY_STATE)
@@ -142,9 +153,21 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
         )
     }
 
+    if (choosing) {
+        InstrumentSheet(
+            chosen = chosen,
+            onToggle = { name ->
+                chosen = withInstrument(chosen, name)
+                writeChosen(context, chosen)
+            },
+            onDismiss = { choosing = false },
+        )
+    }
+
     FlowRow(
         modifier
             .fillMaxWidth()
+            .combinedClickable(onClick = {}, onLongClick = { choosing = true })
             .padding(8.dp)
             .alpha(if (silent) 0.45f else 1f),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -726,3 +749,41 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit) {
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InstrumentSheet(
+    chosen: List<String>,
+    onToggle: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var groups by remember { mutableStateOf(emptyList<InstrumentGroup>()) }
+    LaunchedEffect(Unit) {
+        groups = withContext(Dispatchers.Default) { instrumentGroups(Qgc.get(INSTRUMENT_GROUPS)) }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        SectionHeader("Readings on the flight screen")
+        FootNote(instrumentChoiceNote(chosen))
+        if (groups.isEmpty()) {
+            FootNote("Connect a vehicle to see what it can report.")
+            return@ModalBottomSheet
+        }
+        LazyColumn(Modifier.fillMaxWidth()) {
+            groups.forEach { group ->
+                item(key = "head${group.group}") { SectionHeader(group.title) }
+                items(group.facts, key = { "${group.group}.${it.name}" }) { fact ->
+                    val picked = fact.path in chosen
+                    ListItem(
+                        headlineContent = { Text(fact.label) },
+                        trailingContent = {
+                            Checkbox(checked = picked, onCheckedChange = { onToggle(fact.path) })
+                        },
+                        modifier = Modifier.clickable { onToggle(fact.path) },
+                    )
+                }
+            }
+        }
+    }
+}
+
