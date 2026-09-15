@@ -240,6 +240,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
     val extras = remember(offers) { moreActions(offers) }
+    val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
 
     if (!available) {
         Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp))
@@ -564,7 +565,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                                 if (offer.id == PAUSE) {
                                     openAltitude(true)
                                 } else {
-                                    guidedCommand(offer.id)?.let { command ->
+                                    guidedCommand(offer.id, resumeFrom)?.let { command ->
                                         pending = GuidedAction(
                                             name = offer.title,
                                             confirm = offer.prompt,

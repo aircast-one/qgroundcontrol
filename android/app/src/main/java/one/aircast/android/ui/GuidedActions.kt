@@ -41,6 +41,9 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
     }.toMap()
 }
 
+internal fun resumeFromSequence(view: JSONObject?): Int? =
+    view?.takeIf { !it.isNull("resumeFromSequence") }?.optInt("resumeFromSequence")?.takeIf { it > 0 }
+
 internal val PRIMARY_ACTIONS = listOf("arm", "disarm", "takeoff", "land", "rtl")
 
 internal fun primaryBlockedReason(offers: Map<String, GuidedOffer>): String? =
