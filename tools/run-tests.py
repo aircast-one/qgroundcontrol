@@ -52,12 +52,25 @@ def ancestry():
     return climb(str(os.getpid()), {str(os.getpid())})
 
 
+def foreign_suites(mine):
+    listed = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
+    rows = [line.split(None, 1) for line in listed.splitlines() if line.split(None, 1)]
+    running = re.compile(r"/(QGCSuite\w*|FRun\w*|AircastQGC)(\s|$)")
+    return [(pid, cmd) for pid, cmd in rows
+            if pid not in mine and "-axo" not in cmd and running.search(cmd)
+            and SUITE_NAME not in cmd]
+
+
 def sibling_run():
     mine = ancestry()
     listed = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
     rows = [line.split(None, 1) for line in listed.splitlines() if line.split(None, 1)]
+    invoked = re.compile(r"(?:^|\s)(?:\S*/)?(?:python3?\s+\S*|sh\s+\S*|zsh\s+\S*|\S*)"
+                         r"(?:run-tests\.py|run-suite-f\.sh)(?:\s|$)")
     others = [(pid, cmd) for pid, cmd in rows
-              if pid not in mine and any(name in cmd for name in SIBLING_RUNNERS) and "-axo" not in cmd]
+              if pid not in mine and "-axo" not in cmd and invoked.search(cmd)
+              and "-c " not in cmd]
+    others = others + foreign_suites(mine | {str(os.getpid())})
     if not others:
         return None
     return (f"another suite is already running: pid {others[0][0]} - {others[0][1][:70]}. "
