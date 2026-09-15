@@ -43,6 +43,23 @@ PORT = 8777
 # and a gate that moves has to move this line with it. Without this table the steady
 # state is four hits nobody reads, which is how an instrument stops being believed.
 ACCEPTED = {
+    ("PlanReadiness", "reason"): "MEASURED at HEAD. plan.rs:145 serves the reason a plan is not "
+        "ready and null when it IS -- readiness_json's `reason` is None for state 0 -- so null "
+        "means there is nothing to explain, and the empty string is the same statement. The "
+        "banner keys on the sentence being non-empty, so both spellings draw no banner.",
+    ("PlanUpload", "refusal"): "MEASURED at HEAD. plan.rs:149 returns None for state 0, the state "
+        "that means send it, and a sentence for every other. 61d51a3ff changed this from \"\" to "
+        "None deliberately, because the empty string was being read as a refusal nobody could "
+        "name. Null and empty both mean no refusal here and the head gates the button on canSend.",
+    ("PlanUpload", "heading"): "MEASURED at HEAD, and it is DERIVED: plan.rs:161 is "
+        "`refusal.map(|_| ...)`, so the heading is null exactly when the refusal is. It cannot "
+        "disagree with a field already accepted above, and PlanSummaryModel:54-57 records why the "
+        "head must not gate on it -- Android showed a wrong title by keying an alert on the "
+        "heading, and this head keys on canSend instead.",
+    ("PlanUpload", "proceedTitle"): "MEASURED at HEAD. plan.rs:149-153 gives a proceed title only "
+        "to states 2 and 3, the two where can_proceed is true, and None everywhere else. The head "
+        "shows the proceed button on canProceed rather than on the title being non-empty, so a "
+        "null that becomes \"\" labels a button that is not drawn.",
     ("VibrationReading", "silentReason"): "MEASURED, and this check was RIGHT about it until "
         "33ba4db30 -- it found the defect and the fix did not remove the fallback, it gave the "
         "fallback a meaning. vibration.rs sets the token only when NO axis has a value, so null "
@@ -258,12 +275,16 @@ stale += [f"{key!r} is accepted for {model}, and {model} no longer falls back on
           and key not in {read for read, _, _ in fallbacks(body_of(model)[1] or "")}]
 
 # This reads a LIVE app, and the app was compiled from whatever was in the tree at build time --
-# which on a shared checkout includes another session's UNCOMMITTED work. It has already misled once:
-# four view.plan sentence fields reported as "sent as null" while HEAD's producer spells them "",
-# because core-rs/src/plan.rs was modified and not committed. Acting on that would have accepted a
-# shape that is not in the contract and would be wrong the moment the peer reverted, which is exactly
-# how 0a3b35375 had to be backed out. The tool cannot tell which producer it is talking to, so it
-# says when it cannot.
+# which on a shared checkout includes another session's UNCOMMITTED work. The tool cannot tell which
+# producer it is talking to, so it says when it cannot.
+#
+# The example that used to sit here is now a better lesson than the one it was written for. It said
+# four view.plan sentence fields reported null while HEAD spelled them "" -- true when written, and
+# FALSE since 61d51a3ff turned `Some(0) => ("", "")` into `Some(0) => (None, None)`. The producer
+# moved under the caveat, and a reader trusting it would have thrown away four genuine hits as a
+# known artefact. A written-down reason to dismiss a finding decays exactly like an acceptance does,
+# and nothing was checking this one. Those four are now in ACCEPTED with reasons that name the
+# producer's line, so the next reader argues with the current code instead of with this comment.
 dirty = subprocess.run(["git", "status", "--porcelain", "--", "core-rs/"],
                        capture_output=True, text=True).stdout.strip()
 if dirty:
@@ -277,6 +298,14 @@ for why in unchecked + stale:
 for name, model, key, default, line in hits:
     print(f"  NULL AS VALUE {name} {model} reads {key!r}, which {MODELS[model]} sent as null, "
           f"and falls back to {default}: {line[:90]}", file=sys.stderr)
+
+# A run that reached nothing still printed "0 turn one into a value", which reads as a clean result
+# and is a statement about a rig that was not running. text-fields.py grew this guard after the same
+# failure; this one did not have it.
+if reached == 0:
+    raise SystemExit(f"none of the {len(MODELS)} views answered: this script reads a RUNNING app "
+                     "and has measured nothing here rather than found nothing. Start one with "
+                     "tools/macos/build-run.sh")
 
 print(f"read {reached} of {len(MODELS)} views live and checked what each model does with the "
       f"keys that came back null: {len(hits)} turn one into a value, "
