@@ -8364,3 +8364,34 @@ Raised with the core session rather than changed here: the head currently falls
 back to `setupComplete` when `ready` is null (`SetupScreen.kt:228`), so serving
 `None` without changing that fallback would swap one unearned verdict for
 another. Both halves have to move together.
+
+### Every other nullable boolean the head reads is already handled, 2026-09-15
+
+`optBoolean` flattens JSON null to `false`, which turned `readiness()`'s
+deliberate `None` into *"Not ready to fly"* (fixed in `887bb1f8e`). The obvious
+worry is that every nullable boolean the core serves is at the same risk, so:
+all 108 keys the head reads with `optBoolean`, against every key the core can
+serve as a genuine `Option` or `Value::Null`.
+
+**Five survive the intersection, and four were already right.**
+
+| field | verdict |
+|---|---|
+| `clockwise` | `Orbit.kt:22` already does the `isNull` check |
+| `orbiting` | `Orbit.kt:20` likewise |
+| `commLost` | `VehicleLinks.kt:8` types it `Boolean?` |
+| `contactLost` | nullable in `view.vehicles` and read as `Boolean?`; the `view.flyState` one is a plain `bool` (`connected && flag(..)`), so `optBoolean` is correct there |
+| `lapseUnlimited` | nullable in `actions.rs:188`, but the head reads `view.camera`, which is `video::camera_view` where it is `timelapse && photoLapseCount == 0` - a plain bool |
+
+**`ready` was the only one, and `FlyState.kt` shows the file already knew the
+rule** - it spells out `rcSignal = if (view.isNull("rcSignal")) null else ...`
+two lines below three bare `optBoolean` calls, because `rcSignal` is the only
+nullable field in that view. The care was applied per-field by someone who
+checked, which is why one miss in a different file is the whole population.
+
+**The first intersection was wrong and over-reported.** Matching `.map(`,
+`is_some_and` and `then(` as "nullable" returned 17 candidates including
+`stale`, `blocked` and `available` - all of which produce plain bools, because
+`is_some_and` returns a bool rather than an Option. **A pattern that matches the
+shape of an expression rather than its type finds things that are not there**,
+and the four dangerous-sounding ones evaporated on reading the producer.
