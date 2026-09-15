@@ -32,6 +32,11 @@ struct Parameter: Identifiable {
     // a string-valued parameter from a numeric one, which is why 37226d051 could tighten
     // SettingsControl.refusal -- it guards on kind first -- and had to leave FactRange alone.
     let isString: Bool
+    // typeIsInteger was added to Fact and to kFactProperties for exactly this, and control.rs turns
+    // the same answer into wholeNumbersOnly. NOT decimalPlaces: a real-typed fact declaring zero
+    // decimals is what you write for a percentage, and keying on it would refuse fractions the
+    // vehicle accepts -- the head-side fix rejected in dd04e0470.
+    let wholeNumbersOnly: Bool
 
     var id: String { "\(componentId)/\(name)" }
     var path: String { "vehicle.parameterManager.getParameter(\(componentId),\(name))" }
@@ -45,6 +50,7 @@ struct Parameter: Identifiable {
         self.name = name
         self.componentId = componentId
         isString = (json["typeIsString"] as? NSNumber)?.boolValue ?? false
+        wholeNumbersOnly = (json["typeIsInteger"] as? NSNumber)?.boolValue ?? false
         units = (json["units"] as? String) ?? ""
         description = (json["shortDescription"] as? String) ?? ""
         range = FactRange(json, title: name)
@@ -75,6 +81,10 @@ extension Parameter {
     func refusal(_ entry: String) -> String? {
         guard !isString else { return nil }
         if let refused = Measure.numberRefusal(entry) { return refused }
+        if let refused = FactWrite.wholeNumberRefusal(entry, required: wholeNumbersOnly,
+                                                      subject: name) {
+            return refused
+        }
         return range.refusal(entry)
     }
 

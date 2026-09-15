@@ -18,6 +18,22 @@ struct ControlOption: Identifiable, Equatable {
 }
 
 enum FactWrite {
+    // QGC refuses this at the type conversion, BEFORE the range check: ParameterEditorDialog passes
+    // the TEXT to Fact::validate and QVariant("3.7").toInt() fails on a string carrying a decimal
+    // point. This head sent a Double instead, so Fact::setRawValue ran convertAndValidateRaw with
+    // convertOnly -- the range check skipped entirely -- and QVariant(3.7).toInt() answered 3 with
+    // convertOk true. The field showed 3.7, the vehicle got 3, and the bridge answered ok:true
+    // because the setter had run. Recorded as unfixable in dd04e0470 because no head was told which
+    // facts are integers; typeIsInteger and wholeNumbersOnly are that answer.
+    // Int(entry) is the same test QVariant makes: "5" converts, "5.0" does not, and QGC refuses
+    // "5.0" on an integer fact too. The order matches convertAndValidateCooked -- parseable, then
+    // type, then range -- so an out-of-range fraction is told it is not a whole number first.
+    static func wholeNumberRefusal(_ entry: String, required: Bool, subject: String) -> String? {
+        let typed = entry.trimmingCharacters(in: .whitespaces)
+        guard required, !typed.isEmpty, Double(typed) != nil, Int(typed) == nil else { return nil }
+        return "\(subject) takes a whole number."
+    }
+
     static let readOnly = "That value is read-only, so it was not written."
 }
 
@@ -71,6 +87,7 @@ struct SettingsControl: Identifiable, Equatable {
     let restartNotices: [String]
     let options: [ControlOption]
     let bits: [ControlBit]
+    let wholeNumbersOnly: Bool
     let minimum: Double?
     let maximum: Double?
 
@@ -126,6 +143,7 @@ struct SettingsControl: Identifiable, Equatable {
         restartNotices = ((json["restartNotices"] as? [Any]) ?? []).compactMap { $0 as? String }
         options = ((json["options"] as? [Any]) ?? []).compactMap(ControlOption.init)
         bits = ((json["bits"] as? [Any]) ?? []).compactMap(ControlBit.init)
+        wholeNumbersOnly = (json["wholeNumbersOnly"] as? NSNumber)?.boolValue ?? false
         minimum = (json["minimum"] as? NSNumber)?.doubleValue
         maximum = (json["maximum"] as? NSNumber)?.doubleValue
     }
@@ -143,6 +161,10 @@ struct SettingsControl: Identifiable, Equatable {
     func refusal(_ entry: String) -> String? {
         guard kind == .number else { return nil }
         if let refused = Measure.numberRefusal(entry) { return refused }
+        if let refused = FactWrite.wholeNumberRefusal(entry, required: wholeNumbersOnly,
+                                                      subject: label.isEmpty ? name : label) {
+            return refused
+        }
         guard let typed = Double(entry.trimmingCharacters(in: .whitespaces)) else { return nil }
         let under = minimum.map { typed < $0 } ?? false
         let over = maximum.map { typed > $0 } ?? false

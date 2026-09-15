@@ -423,6 +423,7 @@ vtol
 warning
 warningLevel
 watching
+wholeNumbersOnly
 worst
 wouldSend
 x

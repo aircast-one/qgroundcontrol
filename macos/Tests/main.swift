@@ -2734,6 +2734,7 @@ func checkMissionItemKinds() {
     checkADragKeepsTheItemsHeight()
     checkAnEnumParameterCanStillBeTypedInto()
     checkAStoppedParameterLoadStopsSayingItIsLoading()
+    checkAnIntegerFactRefusesAFraction()
     checkCameraBrandSelection()
     checkBatteryHeadlines()
     checkResumeSequence()
@@ -8122,6 +8123,45 @@ func checkModeSlotNaming() {
     expect(FlightModePosition.present(in: rover).first?.pwmRange ?? "", "up to 1230",
            "the PWM bands are fixed in firmware and keyed on the POSITION, not the parameter "
            + "name, so they are identical on both")
+}
+
+func checkAnIntegerFactRefusesAFraction() {
+    // The fixture keys are the producer's: typeIsInteger is what kFactProperties serves on a raw
+    // fact and what control.rs turns into wholeNumbersOnly, and the core's own test builds
+    // SR0_POSITION the same way.
+    let counted = Parameter(name: "SR0_POSITION", componentId: 1, json: [
+        "typeIsInteger": true as NSNumber, "valueString": "4", "decimalPlaces": 0])
+    expect(counted.refusal("3.7") ?? "", "SR0_POSITION takes a whole number.",
+           "THE DEFECT dd04e0470 RECORDED AS UNFIXABLE: QGC refuses this at the type conversion, "
+           + "before the range check, because it validates the TEXT. This head sent a Double, so "
+           + "convertAndValidateRaw ran with convertOnly, the range check never ran, and "
+           + "QVariant(3.7).toInt() answered 3 with convertOk true -- the field showed 3.7, the "
+           + "vehicle got 3, and the bridge answered ok:true because the setter had run")
+    expect(counted.refusal("4") == nil, "a whole number is written")
+    expect(counted.refusal("5.0") ?? "", "SR0_POSITION takes a whole number.",
+           "and 5.0 is refused too, which is not pedantry: QVariant(\"5.0\").toInt() fails on a "
+           + "string carrying a decimal point, so QGC refuses it on an integer fact as well")
+
+    let real = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
+        "valueString": "5.0", "decimalPlaces": 0])
+    expect(real.refusal("3.7") == nil,
+           "A REAL-TYPED FACT DECLARING ZERO DECIMALS IS WHAT YOU WRITE FOR A PERCENTAGE, so "
+           + "keying on decimalPlaces would refuse fractions the vehicle accepts. This is the "
+           + "head-side fix I rejected in dd04e0470, and the fixture carries decimalPlaces 0 "
+           + "precisely so it would fail if anyone reached for it again")
+
+    let text = Parameter(name: "rtspUrl", componentId: 1, json: [
+        "typeIsString": true as NSNumber, "typeIsInteger": true as NSNumber, "valueString": "rtsp://x"])
+    expect(text.refusal("3.7") == nil,
+           "a string parameter is let through whatever else it claims, because the string guard "
+           + "runs first and a URL is not a number to be whole")
+
+    expect(FactWrite.wholeNumberRefusal("abc", required: true, subject: "X") == nil,
+           "an unparseable entry is NOT this rule's business -- Measure.numberRefusal already "
+           + "refused it with a better sentence, and answering twice would replace the specific "
+           + "complaint with a vaguer one")
+    expect(FactWrite.wholeNumberRefusal("3.7", required: false, subject: "X") == nil,
+           "and a fact that never said it counts in whole numbers refuses nothing")
 }
 
 func checkAStoppedParameterLoadStopsSayingItIsLoading() {
