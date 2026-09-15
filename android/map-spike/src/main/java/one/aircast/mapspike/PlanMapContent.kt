@@ -339,16 +339,10 @@ internal fun MapSpikeScreen(
             landings = landingList,
             editable = true,
             onAdd = { lat, lon ->
-                val refusal = insertable.firstOrNull { it.id == KIND_WAYPOINT }
-                    ?.takeIf { !it.enabled }?.disabledReason?.ifBlank { null }
-                if (refusal != null) {
-                    say(refusal)
-                } else {
-                    addMissionItem(
-                        KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon),
-                        insertAfter(selected, allItems),
-                    )
-                }
+                addMissionItem(
+                    KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon),
+                    insertAfter(selected, allItems),
+                )
             },
             onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally) } },
             onWaypointSelected = { hit ->
@@ -414,6 +408,7 @@ internal fun MapSpikeScreen(
                             planSummary(
                                 itemCount, shape, items, fences, circles, rally, surveyList,
                                 missionSummaryText(missionSummaryView), selected, planOffline,
+                                canAddByHand = kindAllows(insertable, KIND_WAYPOINT),
                             )
                         },
                         style = MaterialTheme.typography.bodySmall,

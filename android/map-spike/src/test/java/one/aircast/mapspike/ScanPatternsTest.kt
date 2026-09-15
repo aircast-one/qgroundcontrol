@@ -9,27 +9,26 @@ import org.junit.Test
 
 class ScanPatternsTest {
     @Test
-    fun `a long press is refused where every button for the same kind is`() {
-        val kinds = missionKinds(
-            JSONObject(
-                """{"kinds":[
-                  {"id":"takeoff","simple":true,"enabled":true},
-                  {"id":"waypoint","simple":true,"enabled":false,
-                   "disabledReason":"This mission starts from the ground, so a takeoff has to come before anything else."}]}""",
-            ),
+    fun `the empty plan names the item that can actually be added`() {
+        val blocked = planSummary(
+            0, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(),
+            "", null, offline = true, canAddByHand = false,
+        )
+        val open = planSummary(
+            0, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(),
+            "", null, offline = true, canAddByHand = true,
         )
 
-        assertFalse(
-            "missionkinds.rs refuses every kind but takeoff on an empty ground-start mission, and " +
-                "the Survey, ROI and Land buttons honour that. The map's long press added a " +
-                "waypoint regardless - and the summary line telling the operator to long press is " +
-                "the most prominent instruction on the screen",
-            kindAllows(kinds, KIND_WAYPOINT),
+        assertEquals(
+            "missionkinds.rs allows only a takeoff first, so telling the operator to long press " +
+                "sends them at the gesture the core refuses - and addMissionItem suppresses that " +
+                "refusal as a duplicate of the sentence already on screen, so the press looks " +
+                "like nothing happened",
+            "Empty plan \u00b7 add a takeoff to start",
+            blocked,
         )
-        assertTrue(kindAllows(kinds, KIND_TAKEOFF))
+        assertEquals("Empty plan \u00b7 long press to add", open)
     }
-
-
 
     private val served = JSONObject(
         """{"kind":"object","kinds":[

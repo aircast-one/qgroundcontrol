@@ -11,6 +11,7 @@ fun planSummary(
     summaryText: String,
     selected: MapHit?,
     offline: Boolean = true,
+    canAddByHand: Boolean = true,
 ): String {
     val counts = listOfNotNull(
         itemCount.takeIf { it > 0 }?.let {
@@ -23,10 +24,11 @@ fun planSummary(
         surveys.sumOf { it.transects.size }.takeIf { it > 0 }?.let { "$it scan pts" },
     )
     if (counts.isEmpty()) {
+        val add = if (canAddByHand) "long press to add" else "add a takeoff to start"
         return if (offline) {
-            "Empty plan · long press to add"
+            "Empty plan · $add"
         } else {
-            "Empty plan · Download the aircraft's, or long press to add"
+            "Empty plan · Download the aircraft's, or $add"
         }
     }
 
