@@ -787,7 +787,7 @@ private fun InstrumentSheet(
         SectionHeader("Readings on the flight screen")
         FootNote(instrumentChoiceNote(chosen))
         if (groups.isEmpty()) {
-            FootNote("Connect a vehicle to see what it can report.")
+            FootNote(emptyCatalogueText(connected))
             return@ModalBottomSheet
         }
         LazyColumn(Modifier.fillMaxWidth()) {

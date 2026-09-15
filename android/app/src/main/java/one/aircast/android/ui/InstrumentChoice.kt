@@ -69,6 +69,11 @@ internal fun withInstrument(chosen: List<String>, name: String): List<String> = 
     else -> chosen + name
 }
 
+internal fun emptyCatalogueText(connected: Boolean): String = when {
+    connected -> "This vehicle reported no readings this screen can ask for."
+    else -> "Connect a vehicle to see what it can report."
+}
+
 internal fun instrumentChoiceNote(chosen: List<String>): String = when (chosen.size) {
     0 -> "Nothing chosen. The flight screen shows no readings."
     MOST_INSTRUMENTS -> "$MOST_INSTRUMENTS is as many as the row fits. Remove one to add another."

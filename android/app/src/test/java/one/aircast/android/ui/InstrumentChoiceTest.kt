@@ -127,4 +127,16 @@ class InstrumentChoiceTest {
         assertNull(vehicleOwnGroup(JSONObject("""{"kind":"object","facts":[]}""")))
         assertNull(vehicleOwnGroup(null))
     }
+
+    @Test
+    fun `an empty catalogue with a vehicle connected does not tell the operator to connect one`() {
+        assertEquals(
+            "every fact is dropped when none carries a selection, which is what an older library " +
+                "looks like - and a connect prompt in front of a connected vehicle reads as a " +
+                "regression rather than as the head refusing to guess",
+            "This vehicle reported no readings this screen can ask for.",
+            emptyCatalogueText(connected = true),
+        )
+        assertEquals("Connect a vehicle to see what it can report.", emptyCatalogueText(connected = false))
+    }
 }
