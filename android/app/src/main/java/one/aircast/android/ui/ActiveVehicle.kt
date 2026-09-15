@@ -27,76 +27,14 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.VEHICLES_VIEW
 import one.aircast.mapspike.VehicleBridge
-import one.aircast.mapspike.optText
-
-internal const val VEHICLES_VIEW = "view.vehicles"
-
-internal data class VehicleChoice(
-    val id: Int,
-    val name: String,
-    val state: String,
-    val link: String,
-    val contactLost: Boolean,
-    val active: Boolean,
-)
-
-internal data class VehicleChoices(
-    val ambiguous: Boolean,
-    val choices: List<VehicleChoice>,
-) {
-    val active: VehicleChoice? = choices.firstOrNull { it.active }
-}
-
-internal fun vehicleChoices(view: JSONObject?): VehicleChoices {
-    val listed = view?.optJSONArray("vehicles")
-    return VehicleChoices(
-        ambiguous = view?.optBoolean("ambiguous") == true,
-        choices = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
-            listed!!.optJSONObject(index)?.let { entry ->
-                val id = entry.optInt("id", -1).takeIf { it >= 0 } ?: return@mapNotNull null
-                VehicleChoice(
-                    id = id,
-                    name = entry.optText("name").ifBlank { "Vehicle $id" },
-                    state = vehicleChoiceState(entry),
-                    link = entry.optText("link"),
-                    contactLost = !entry.isNull("contactLost") && entry.optBoolean("contactLost"),
-                    active = entry.optBoolean("active"),
-                )
-            }
-        },
-    )
-}
-
-private fun vehicleChoiceState(entry: JSONObject): String = listOfNotNull(
-    entry.optText("flightMode").ifBlank { null },
-    when {
-        entry.optBoolean("flying") -> "Flying"
-        entry.optBoolean("armed") -> "Armed"
-        else -> "Disarmed"
-    },
-).joinToString(" · ")
-
-internal fun vehicleChoiceLine(choice: VehicleChoice): String = when {
-    choice.contactLost -> "No contact · ${choice.link}"
-    else -> listOfNotNull(choice.state.ifBlank { null }, choice.link.ifBlank { null }).joinToString(" · ")
-}
-
-internal fun lostVehicles(choices: VehicleChoices): List<VehicleChoice> =
-    choices.choices.filter { it.contactLost && !it.active }
-
-internal fun lostVehiclesText(lost: List<VehicleChoice>): String? = when (lost.size) {
-    0 -> null
-    1 -> "${lost.single().name} is not answering"
-    else -> "${lost.size} other vehicles are not answering"
-}
-
-internal fun activeVehicleTitle(choices: VehicleChoices, subtitle: String): String = when {
-    !choices.ambiguous -> subtitle
-    else -> listOfNotNull(choices.active?.name, subtitle.ifBlank { null }).joinToString(" · ")
-}
+import one.aircast.mapspike.activeVehicleTitle
+import one.aircast.mapspike.lostVehicles
+import one.aircast.mapspike.lostVehiclesText
+import one.aircast.mapspike.vehicleChoiceLine
+import one.aircast.mapspike.vehicleChoices
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

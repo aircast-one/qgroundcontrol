@@ -1,4 +1,4 @@
-package one.aircast.android.ui
+package one.aircast.mapspike
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -125,5 +125,33 @@ class ActiveVehicleTest {
     @Test
     fun `nothing is said when every vehicle is answering`() {
         assertNull(lostVehiclesText(lostVehicles(vehicleChoices(one))))
+    }
+
+    private fun gate(heading: String) = UploadGate(
+        canSend = true, canProceed = true, pausesFirst = false,
+        heading = heading, refusal = "", proceedTitle = "Upload",
+    )
+
+    @Test
+    fun `the upload names the aircraft it is about to send to`() {
+        assertEquals(
+            "a mission is being written to one of two aircraft and the dialog covers the header that says which",
+            "Upload this plan to Quadrotor 1?",
+            uploadHeading(gate(""), vehicleChoices(two)),
+        )
+        assertEquals(
+            "Send the plan to the vehicle to Quadrotor 1",
+            uploadHeading(gate("Send the plan to the vehicle"), vehicleChoices(two)),
+        )
+    }
+
+    @Test
+    fun `one vehicle leaves the core's question exactly as it was`() {
+        assertEquals("Upload this plan?", uploadHeading(gate(""), vehicleChoices(one)))
+        assertEquals(
+            "the core writes this heading when a plan is being replaced, and a name on the only aircraft connected adds nothing",
+            "Replace the plan on the vehicle?",
+            uploadHeading(gate("Replace the plan on the vehicle?"), vehicleChoices(one)),
+        )
     }
 }

@@ -223,6 +223,7 @@ internal fun MapSpikeScreen(
     val planStatus by mapPath("view.plan")
     val support = planSupport(planStatus)
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
+    val vehiclesJson by mapPath(VEHICLES_VIEW)
     var patternWanted by remember { mutableStateOf<List<MissionKind>>(emptyList()) }
     val missionSummaryView by mapPath("view.missionSummary")
     val terrainView by mapPath(TERRAIN_VIEW)
@@ -484,7 +485,7 @@ internal fun MapSpikeScreen(
                     uploadAsk?.let { gate ->
                         AlertDialog(
                             onDismissRequest = { uploadAsk = null },
-                            title = { Text(gate.heading.ifBlank { "Upload this plan?" }) },
+                            title = { Text(uploadHeading(gate, vehicleChoices(vehiclesJson))) },
                             text = { Text(gate.refusal) },
                             confirmButton = {
                                 TextButton(onClick = {
