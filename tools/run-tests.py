@@ -353,7 +353,7 @@ def record(summary, verdicts, incomplete=False, load=(None, None), why="full"):
         "run": RUN_ID,
         "why": why,
         "last_suite": where_it_stopped(summary)[0],
-        "stopped_at_fraction": where_it_stopped(summary)[1],
+        "stopped_at_fraction": where_it_stopped(summary)[1] if incomplete else None,
         "tool": tool_settings(),
         "load_started": load[0],
         "load_finished": load[1],
