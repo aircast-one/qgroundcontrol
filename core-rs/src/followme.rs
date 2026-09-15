@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::read::{flag, integer, object, text, value_number};
 use crate::router::Backend;
@@ -12,6 +13,18 @@ pub const GCS_TIMESTAMP: &str = "positionManager.gcsPositionTimestamp";
 pub const DEPS: &[&str] = &[SETTING, "vehicles.vehicles.count", "vehicle.id", "vehicle.flightMode", "vehicle.homePosition", GCS_POSITION, GCS_HEADING, GCS_HORIZONTAL_ACCURACY, GCS_TIMESTAMP];
 
 const FIELDS: &str = "id,flightMode,followFlightMode,apmFirmware,homePosition";
+const MAX_FOLLOWED: usize = 16;
+const WATCHED_PER_FOLLOWED: [&str; 2] = ["flightMode", "homePosition"];
+static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
+
+pub fn deps() -> Vec<String> {
+    DEPS.iter()
+        .map(|d| d.to_string())
+        .chain((0..VEHICLES_SEEN.load(Ordering::Relaxed).min(MAX_FOLLOWED)).flat_map(|index| {
+            WATCHED_PER_FOLLOWED.iter().map(move |name| format!("vehicles.vehicles.{index}.{name}"))
+        }))
+        .collect()
+}
 
 pub const MOTION_INTERVAL_MS: u64 = 250;
 pub const ALLOWED_FIX_AGE_MS: u64 = 5000;
@@ -415,6 +428,7 @@ pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
 
 pub fn fleet_of(backend: &dyn Backend) -> Vec<Target> {
     let count = integer(&object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
+    VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), Ordering::Relaxed);
     (0..count).filter_map(|index| target_of(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS)))).collect()
 }
 
@@ -426,6 +440,10 @@ pub fn follow_me_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    static FLEET_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn fleet_guard() -> std::sync::MutexGuard<'static, ()> {
+        FLEET_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     fn fix() -> Fix {
         Fix { valid: true, latitude: 47.5, longitude: 8.5, altitude_amsl_m: Some(400.0), heading_deg: Some(90.0), ground_speed_m_s: Some(4.0), ..Default::default() }
@@ -511,6 +529,7 @@ mod tests {
 
     #[test]
     fn a_corrupt_setting_reads_differently_from_a_missing_one() {
+        let _fleet = fleet_guard();
         let fleet = vec![px4(1, "Follow Me")];
         let corrupt = follow_me_view(&placed(json!(7), fleet.clone(), 0), &[]);
         let missing = follow_me_view(&placed(Value::Null, fleet, 0), &[]);
@@ -654,6 +673,7 @@ mod tests {
 
     #[test]
     fn a_vehicle_read_that_failed_is_not_a_vehicle_to_follow() {
+        let _fleet = fleet_guard();
         let raced = Fake { count: Some(3), ..placed(json!(1), vec![px4(1, "Hold")], 0) };
         let view = follow_me_view(&raced, &[]);
         assert_eq!(view["count"], json!(1), "a count that outran the reads must not list a vehicle nothing could read");
@@ -669,6 +689,7 @@ mod tests {
 
     #[test]
     fn the_view_reads_the_fix_from_the_position_manager_and_ages_it_from_the_manager_s_own_clock() {
+        let _fleet = fleet_guard();
         assert!(DEPS.contains(&GCS_POSITION) && DEPS.contains(&GCS_TIMESTAMP) && DEPS.contains(&GCS_HEADING), "a head watching the view is woken by the fix itself, or its panel freezes at whatever the last unrelated change left behind");
         let backend = placed(json!(2), vec![apm(1, "Follow Me", true), px4(2, "Hold")], 120);
         let view = follow_me_view(&backend, &[]);
@@ -686,5 +707,18 @@ mod tests {
         let dark = follow_me_view(&Fake { setting: json!(2), fleet: vec![px4(1, "Follow Me")], ..Default::default() }, &[]);
         assert_eq!((dark["reason"].as_str(), &dark["fixAgeMs"]), (Some("noFix"), &Value::Null), "a position manager with no fix yet has no age at all");
         assert_eq!(gcs_fix(&placed(json!(1), vec![], 0), wall_ms()).unwrap().ground_speed_m_s, None, "the manager publishes no ground speed today, and unknown stays unknown rather than becoming a standstill");
+    }
+
+    #[test]
+    fn a_second_vehicle_entering_follow_mode_is_watched_rather_than_waited_for() {
+        let _fleet = fleet_guard();
+        fleet_of(&Fake::default());
+        assert!(deps().iter().all(|d| !d.starts_with("vehicles.vehicles.0.")), "with no vehicle there is nothing to watch, and a path that resolves to nothing binds to no signal and is silently downgraded to the idle poll");
+
+        fleet_of(&Fake { fleet: vec![px4(1, "Follow Me"), px4(2, "Hold")], ..Default::default() });
+        let after = deps();
+        ["flightMode", "homePosition"].iter().for_each(|name| {
+            assert!(after.contains(&format!("vehicles.vehicles.1.{name}")), "{name} travels per vehicle, and vehicle.{name} in DEPS is the ACTIVE one - so a second aircraft changing it fires nothing");
+        });
     }
 }

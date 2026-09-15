@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::read::{flag, integer, nested_coordinate, object, text};
 use crate::router::Backend;
@@ -6,9 +7,28 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicle.id"];
 
 const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,coordinate";
+const MAX_VEHICLES: usize = 16;
+const WATCHED_PER_VEHICLE: [&str; 4] = ["armed", "flying", "flightMode", "coordinate"];
+static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
+
+pub fn deps() -> Vec<String> {
+    DEPS.iter().map(|d| d.to_string()).chain(per_vehicle_paths()).collect()
+}
+
+fn per_vehicle_paths() -> Vec<String> {
+    (0..VEHICLES_SEEN.load(Ordering::Relaxed).min(MAX_VEHICLES))
+        .flat_map(|index| {
+            WATCHED_PER_VEHICLE
+                .iter()
+                .map(move |name| format!("vehicles.vehicles.{index}.{name}"))
+                .chain(std::iter::once(format!("vehicles.vehicles.{index}.vehicleLinkManager.communicationLost")))
+        })
+        .collect()
+}
 
 pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let count = integer(&object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
+    VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), Ordering::Relaxed);
     let active = integer(&object(&backend.get_fields("vehicle", "id")), "id");
     let listed: Vec<Value> = (0..count)
         .map(|index| {
@@ -52,6 +72,10 @@ fn name_of(read: &Value, id: Option<i64>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    static FLEET_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn fleet_guard() -> std::sync::MutexGuard<'static, ()> {
+        FLEET_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     struct Fleet(Vec<Value>, Option<i64>);
 
@@ -99,6 +123,7 @@ mod tests {
 
     #[test]
     fn every_vehicle_carries_where_it_is_so_a_map_can_draw_more_than_the_active_one() {
+        let _fleet = fleet_guard();
         let view = vehicles_view(&Fleet(vec![aircraft(1, "Multi-Rotor", "SITL"), grounded(2)], Some(1)), &[]);
         assert_eq!(view["vehicles"][0]["coordinate"]["latitude"], 47.397, "the inactive vehicle is the one a head could not draw before, so the position has to travel per vehicle rather than for the active one alone");
         assert_eq!(view["vehicles"][1]["coordinate"], Value::Null, "an invalid coordinate arrives from a nested read as a null rather than as valid:false, so keying on the flag alone would draw a marker at nowhere");
@@ -113,6 +138,7 @@ mod tests {
 
     #[test]
     fn one_vehicle_is_never_ambiguous() {
+        let _fleet = fleet_guard();
         let view = vehicles_view(&Fleet(vec![aircraft(1, "Multi-Rotor", "SITL")], Some(1)), &[]);
         assert_eq!(view["count"], 1);
         assert_eq!(view["ambiguous"], false);
@@ -123,6 +149,7 @@ mod tests {
 
     #[test]
     fn two_vehicles_are_named_and_one_is_marked() {
+        let _fleet = fleet_guard();
         let fleet = Fleet(vec![aircraft(1, "Multi-Rotor", "Radio"), aircraft(2, "Fixed Wing", "UDP")], Some(2));
         let view = vehicles_view(&fleet, &[]);
         assert_eq!(view["count"], 2);
@@ -136,6 +163,7 @@ mod tests {
 
     #[test]
     fn no_vehicle_is_an_empty_fleet_rather_than_an_absent_answer() {
+        let _fleet = fleet_guard();
         let view = vehicles_view(&Fleet(Vec::new(), None), &[]);
         assert_eq!(view["count"], 0);
         assert_eq!(view["ambiguous"], false);
@@ -145,6 +173,7 @@ mod tests {
 
     #[test]
     fn a_vehicle_with_no_type_is_still_named_by_its_number() {
+        let _fleet = fleet_guard();
         let view = vehicles_view(&Fleet(vec![json!({ "kind": "object", "id": 7 })], Some(7)), &[]);
         assert_eq!(view["vehicles"][0]["name"], "Vehicle 7", "an aircraft that has not said what it is still has to be tellable from the other one");
         assert_eq!(view["vehicles"][0]["active"], true);
@@ -152,8 +181,24 @@ mod tests {
 
     #[test]
     fn an_active_vehicle_the_list_does_not_hold_marks_nothing() {
+        let _fleet = fleet_guard();
         let view = vehicles_view(&Fleet(vec![aircraft(1, "Multi-Rotor", "Radio")], Some(9)), &[]);
         assert!(view["vehicles"].as_array().unwrap().iter().all(|v| v["active"] == false), "marking the wrong row active is worse than marking none");
         assert_eq!(view["activeId"], 9);
+    }
+
+    #[test]
+    fn a_second_vehicle_is_watched_field_by_field_and_not_only_counted() {
+        let _fleet = fleet_guard();
+        vehicles_view(&Fleet(vec![], None), &[]);
+        assert!(deps().iter().all(|d| !d.starts_with("vehicles.vehicles.0.")), "with no vehicle there is nothing to watch, and a path that resolves to nothing binds to no signal and is silently downgraded to the idle poll");
+
+        vehicles_view(&Fleet(vec![aircraft(1, "Multi-Rotor", "SITL"), grounded(2)], Some(1)), &[]);
+        let after = deps();
+        ["armed", "flying", "flightMode", "coordinate"].iter().for_each(|name| {
+            assert!(after.contains(&format!("vehicles.vehicles.1.{name}")), "{name} on the second vehicle is served by this view, so nothing recomputes it unless it is watched");
+        });
+        assert!(after.contains(&"vehicles.vehicles.1.vehicleLinkManager.communicationLost".to_string()), "contactLost is the field a head draws a stale marker from, and it is the one a count-only watch misses for the longest");
+        assert!(after.contains(&"vehicles.vehicles.count".to_string()), "the count stays watched, because it is what makes the list re-derive when the fleet changes");
     }
 }

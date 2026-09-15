@@ -277,6 +277,8 @@ impl View {
             "view.instruments" => instruments::deps_for(args),
             "view.battery" => battery::deps(),
             "view.coreRemoteId" => crate::remoteidview::deps(),
+            "view.vehicles" => vehicles::deps(),
+            "view.followMe" => followme::deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }
@@ -309,7 +311,7 @@ fn dependencies_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "ViewDependencies",
         "count": VIEWS.len(),
-        "views": VIEWS.iter().map(|view| json!({ "path": view.path, "deps": view.deps })).collect::<Vec<_>>(),
+        "views": VIEWS.iter().map(|view| json!({ "path": view.path, "deps": view.deps_for(&[]) })).collect::<Vec<_>>(),
         "argumentModes": ARGUMENT_MODES.iter().map(|(path, shape)| json!({ "path": path, "arguments": shape })).collect::<Vec<_>>(),
     })
 }
@@ -653,6 +655,57 @@ mod deps_cover_reads {
             "these read the backend and declare no DEPS, so the check that every read is watched skips them entirely and passes. \
              Declare the paths, or move the read behind something that does: {silent:?}"
         );
+    }
+
+    #[test]
+    fn a_view_that_lists_a_runtime_sized_collection_derives_its_dependencies_at_call_time() {
+        let overridden: BTreeSet<&str> = include_str!("view.rs")
+            .split("pub fn deps_for")
+            .nth(1)
+            .and_then(|tail| tail.split("_ =>").next())
+            .map(|arms| arms.split("=> ").skip(1).filter_map(|arm| arm.split("::").next()).map(str::trim).collect())
+            .unwrap_or_default();
+
+        let indexed = |body: &str| {
+            body.match_indices("&format!(\"").any(|(at, _)| {
+                let tail = &body[at + "&format!(\"".len()..];
+                tail.find('"').is_some_and(|close| tail[..close].contains("{index}") || tail[..close].contains("{i}"))
+            })
+        };
+
+        let frozen: Vec<&str> = MODULES
+            .iter()
+            .filter(|(name, source)| {
+                let body = source.split("#[cfg(test)]").next().unwrap_or("");
+                deps_of(body).is_some_and(|deps| !deps.iter().any(|dep| dep.contains('@')))
+                    && body.contains(".count\")")
+                    && indexed(body)
+                    && !overridden.contains(name)
+            })
+            .map(|(name, _)| *name)
+            .collect();
+
+        assert!(
+            frozen.is_empty(),
+            "these read a count from the backend and then index a path with it, so the set they depend on is only known at run time - \
+             a static DEPS list cannot name it, and the view is recomputed only when the count itself changes. Every member field is \
+             then a snapshot from whenever a member was last added or removed. Watch the members - give the module a `pub fn deps()` \
+             and route deps_for to it, the way view.battery does for packs - or watch a controller signal that fires when a member \
+             changes, which is what a module with an @ dep is already doing: {frozen:?}"
+        );
+    }
+
+    #[test]
+    fn the_runtime_dependency_check_can_fail() {
+        let overridden: BTreeSet<&str> = include_str!("view.rs")
+            .split("pub fn deps_for")
+            .nth(1)
+            .and_then(|tail| tail.split("_ =>").next())
+            .map(|arms| arms.split("=> ").skip(1).filter_map(|arm| arm.split("::").next()).map(str::trim).collect())
+            .unwrap_or_default();
+        assert!(overridden.contains("vehicles"), "the parser has to actually find the arms, or the check above passes because it found none");
+        assert!(overridden.contains("battery"));
+        assert!(!overridden.contains("preflight"), "a module with no arm must not read as overridden");
     }
 
     #[test]
