@@ -857,10 +857,25 @@ public:
             return;
         }
         _timer.start();
-        _poll();
+        // Binding stays inline: it connects signals and calls nobody, and watch_status() is read
+        // synchronously right after a watch. Only the EMISSIONS are queued - _poll() ran them on
+        // whatever thread called watch, so a head's handler was invoked inside its own subscribe
+        // call. Android calls qgc_core_watch from a Compose DisposableEffect on the UI thread, and
+        // a handler that updates state which recomposes then re-enters watch from inside itself.
+        for (const QString &path : std::as_const(_paths)) {
+            (void) _bind(path);
+        }
+        QMetaObject::invokeMethod(this, &Watcher::_emitAll, Qt::QueuedConnection);
     }
 
 private:
+    void _emitAll()
+    {
+        for (const QString &path : std::as_const(_paths)) {
+            _emit(path);
+        }
+    }
+
     void _poll()
     {
         if (!g_eventHandler) {

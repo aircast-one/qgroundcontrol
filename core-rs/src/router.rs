@@ -83,10 +83,22 @@ impl<B: Backend> Core<B> {
             watching.last.retain(|path, _| asked.contains(path));
             asked
         };
-        self.rewatch(&asked);
+        let fresh = paths.iter().any(|path| view::lookup(path).is_some());
+        self.rewatch(&asked, fresh);
+        // A watch used to register paths and nothing else. Two views spawn the thread that
+        // produces their data inside their own compute - view.adsbTraffic and view.detections -
+        // so a head that only watches never ran the compute, never started the feed, and received
+        // nothing at all, for as long as it was open. Dropping `last` for the paths this client
+        // asked for is what makes the next upstream emission deliver them rather than dedupe
+        // against a value the client never saw; the render itself still happens on Qt's thread,
+        // through the ordinary event route, because the bridge queues its first poll.
+        let mut watching = self.watching.lock().unwrap();
+        paths.iter().filter(|path| view::lookup(path).is_some()).for_each(|path| {
+            watching.last.remove(path);
+        });
     }
 
-    fn rewatch(&self, asked: &BTreeSet<String>) {
+    fn rewatch(&self, asked: &BTreeSet<String>, force: bool) {
         let upstream: Vec<String> = asked
             .iter()
             .flat_map(|path| match view::lookup(path) {
@@ -102,7 +114,11 @@ impl<B: Backend> Core<B> {
             watching.upstream = upstream.clone();
             changed
         };
-        if changed {
+        // Re-asking for a set the backend already holds is what makes a subscribe deliver: the
+        // Qt watcher clears what it last saw and re-emits every path, and only then does a view
+        // whose dependencies were already watched by some other view get recomputed. Without it a
+        // second subscriber to an already-watched set is registered and never served.
+        if changed || force {
             self.backend.watch(&upstream);
         }
     }
@@ -130,7 +146,7 @@ impl<B: Backend> Core<B> {
             (changed, watching.asked())
         };
         if !dependents.is_empty() {
-            self.rewatch(&asked);
+            self.rewatch(&asked, false);
         }
         direct.then(|| (path.to_string(), json.to_string())).into_iter().chain(changed).collect()
     }
@@ -327,5 +343,28 @@ mod tests {
 
         assert_eq!(read["path"], awkward.display().to_string(), "split() returning one argument is not the same as the file being read, so this drives the whole door - owns, lookup, split, compute, std::fs - and the path echoed back has to be the whole name");
         assert_eq!(read["readable"], true, "and it opened: a truncated path reads as a missing file, which is exactly how this failed before");
+    }
+
+    #[test]
+    fn subscribing_to_a_view_whose_dependencies_are_already_watched_still_asks_the_backend() {
+        let core = Core::new(Fake::default());
+        core.watch("fly", &["view.messages".to_string()]);
+        let first = core.backend.watched.borrow().clone();
+
+        core.backend.watched.borrow_mut().clear();
+        core.watch("plan", &["view.messages".to_string()]);
+        assert_eq!(*core.backend.watched.borrow(), first, "a second client asking for a view the first already watches changes no upstream path, so the backend was never re-asked - and the Qt watcher's re-emit is the only thing that runs the compute. view.adsbTraffic and view.detections spawn their feed inside that compute, so a head that only watches received nothing at all");
+    }
+
+    #[test]
+    fn a_watched_view_is_delivered_again_rather_than_deduped_against_a_value_this_client_never_saw() {
+        let core = Core::new(Fake::default());
+        core.watch("fly", &["view.messages".to_string()]);
+        assert!(!core.on_event("vehicle.formattedMessages", "{}").is_empty(), "the first event after a subscribe has to reach the subscriber");
+
+        assert!(core.on_event("vehicle.formattedMessages", "{}").is_empty(), "and an unchanged value after that is still deduped, or every dep tick becomes a delivery");
+
+        core.watch("plan", &["view.messages".to_string()]);
+        assert!(!core.on_event("vehicle.formattedMessages", "{}").is_empty(), "a new subscriber drops the remembered value, because last is what the LAST client was sent and this one has been sent nothing");
     }
 }
