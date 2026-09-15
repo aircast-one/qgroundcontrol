@@ -46,8 +46,14 @@ final class OrbitAnnotation: NSObject, MKAnnotation {
     }
 }
 
+// The BOUNDARY token, not the inclusion bool it is derived from. FenceShape.boundary answers
+// keepIn / keepOut / enforced, and its tests say why -- "the map drew both in the same orange,
+// because the renderer took an inclusion flag and then ignored it". Those assertions were pinning
+// a property the renderer never consulted, so one colour for both would have left every one of
+// them green. Storing the token is what makes them reach the thing they describe, and it leaves
+// room for a third kind rather than a Bool that cannot express one.
 final class FencePolygon: MKPolygon {
-    var inclusion = false
+    var boundary = FenceShape.keepIn
 }
 
 final class SurveyPolygon: MKPolygon {}
@@ -57,7 +63,7 @@ final class TransectPolyline: MKPolyline {}
 final class TrackPolyline: MKPolyline {}
 
 final class FenceCircle: MKCircle {
-    var inclusion = false
+    var boundary = FenceShape.keepIn
 }
 
 final class FirmwareFenceCircle: MKCircle {}
@@ -439,7 +445,7 @@ struct MissionMap: NSViewRepresentable {
                 center: CLLocationCoordinate2D(latitude: centre.latitude,
                                                longitude: centre.longitude),
                 radius: radius)
-            circle.inclusion = shape.inclusion
+            circle.boundary = shape.boundary
             return circle
         }
 
@@ -448,7 +454,7 @@ struct MissionMap: NSViewRepresentable {
             CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
         }
         let polygon = FencePolygon(coordinates: &coordinates, count: coordinates.count)
-        polygon.inclusion = shape.inclusion
+        polygon.boundary = shape.boundary
         return polygon
     }
 
@@ -707,7 +713,7 @@ struct MissionMap: NSViewRepresentable {
             }
             if let polygon = overlay as? FencePolygon {
                 return Coordinator.fenceRenderer(MKPolygonRenderer(polygon: polygon),
-                                                 inclusion: polygon.inclusion)
+                                                 boundary: polygon.boundary)
             }
             if let enforced = overlay as? FirmwareFenceCircle {
                 let renderer = MKCircleRenderer(circle: enforced)
@@ -719,7 +725,7 @@ struct MissionMap: NSViewRepresentable {
             }
             if let circle = overlay as? FenceCircle {
                 return Coordinator.fenceRenderer(MKCircleRenderer(circle: circle),
-                                                 inclusion: circle.inclusion)
+                                                 boundary: circle.boundary)
             }
             if let flown = overlay as? TrackPolyline {
                 let renderer = MKPolylineRenderer(polyline: flown)
@@ -734,8 +740,9 @@ struct MissionMap: NSViewRepresentable {
             return renderer
         }
 
-        static func fenceRenderer(_ renderer: MKOverlayPathRenderer, inclusion: Bool) -> MKOverlayRenderer {
-            let colour = inclusion ? NSColor.systemOrange : NSColor.systemRed
+        static func fenceRenderer(_ renderer: MKOverlayPathRenderer,
+                                  boundary: String) -> MKOverlayRenderer {
+            let colour = boundary == FenceShape.keepIn ? NSColor.systemOrange : NSColor.systemRed
             renderer.strokeColor = colour
             renderer.fillColor = colour.withAlphaComponent(0.12)
             renderer.lineWidth = 2
