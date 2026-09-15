@@ -29,6 +29,7 @@ private data class FlownPlan(
     val rally: List<RallyPoint> = emptyList(),
     val surveys: List<Survey> = emptyList(),
     val operator: TrackPoint? = null,
+    val shots: List<TrackPoint> = emptyList(),
 )
 
 @Composable
@@ -59,6 +60,7 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
                         rally = rallyPoints(fences),
                         surveys = SurveyBridge.surveysFrom(raw),
                         operator = operatorPoint(OperatorBridge.read()),
+                        shots = shotPoints(VideoBridge.read()),
                     )
                 }
                 plan = next
@@ -80,6 +82,7 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
             rallyPoints = plan.rally,
             operator = plan.operator,
             surveys = plan.surveys,
+            shots = plan.shots,
             editable = false,
         )
     }

@@ -183,6 +183,31 @@ private fun fenceColour(): Expression = Expression.switchCase(
     Expression.literal(KEEP_OUT_COLOUR),
 )
 
+const val SHOT_SOURCE = "aircast-shots"
+const val SHOT_LAYER = "aircast-shots-dots"
+const val SHOT_COLOUR = "#FFFFFF"
+
+fun installShotLayer(style: Style) {
+    if (style.getSource(SHOT_SOURCE) == null) {
+        style.addSource(GeoJsonSource(SHOT_SOURCE))
+    }
+    if (style.getLayer(SHOT_LAYER) == null) {
+        style.addLayer(
+            CircleLayer(SHOT_LAYER, SHOT_SOURCE).withProperties(
+                PropertyFactory.circleRadius(3f),
+                PropertyFactory.circleColor(SHOT_COLOUR),
+                PropertyFactory.circleStrokeWidth(1f),
+                PropertyFactory.circleStrokeColor("#37474F"),
+            ),
+        )
+    }
+}
+
+fun shotFeatures(points: List<TrackPoint>): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        points.map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+    )
+
 fun installFenceLayers(style: Style) {
     if (style.getSource(FENCE_SOURCE) == null) {
         style.addSource(GeoJsonSource(FENCE_SOURCE))

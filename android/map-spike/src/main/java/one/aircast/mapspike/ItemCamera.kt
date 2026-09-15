@@ -18,6 +18,20 @@ object ItemCameraBridge {
         }.getOrDefault(false)
 }
 
+const val VIDEO_VIEW_PATH = "view.video"
+
+object VideoBridge {
+    fun read(): JSONObject? =
+        runCatching { JSONObject(QGCBridge.get(VIDEO_VIEW_PATH)) }.getOrNull()
+}
+
+fun shotPoints(view: JSONObject?): List<TrackPoint> {
+    val listed = view?.optJSONArray("shotPoints") ?: return emptyList()
+    return (0 until listed.length()).mapNotNull { index ->
+        listed.optJSONObject(index)?.let(::coordinate)
+    }
+}
+
 internal data class CameraChoices(val labels: List<String>, val chosen: Int)
 
 internal fun cameraChoices(view: JSONObject?): CameraChoices? {

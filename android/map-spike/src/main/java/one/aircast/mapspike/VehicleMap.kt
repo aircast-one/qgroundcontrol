@@ -139,6 +139,7 @@ fun VehicleMap(
     rallyPoints: List<RallyPoint> = emptyList(),
     operator: TrackPoint? = null,
     surveys: List<Survey> = emptyList(),
+    shots: List<TrackPoint> = emptyList(),
     landings: List<LandingPattern> = emptyList(),
     editable: Boolean = false,
     selectedWaypoint: Int? = null,
@@ -231,6 +232,7 @@ fun VehicleMap(
                 installSurveyLayers(loadedStyle)
                     installLandingLayers(loadedStyle)
                     installMidpointLayer(loadedStyle)
+                installShotLayer(loadedStyle)
                 installFenceLayers(loadedStyle)
                 installMissionLayers(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
@@ -248,6 +250,11 @@ fun VehicleMap(
             }
         }
         onDispose { }
+    }
+
+    LaunchedEffect(style, shots) {
+        val shotStyle = style ?: return@LaunchedEffect
+        (shotStyle.getSource(SHOT_SOURCE) as? GeoJsonSource)?.setGeoJson(shotFeatures(shots))
     }
 
     LaunchedEffect(style, latitude, longitude, heading, home, linkLost, fleet) {
