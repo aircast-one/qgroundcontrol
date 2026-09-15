@@ -8735,3 +8735,32 @@ redesign questions: the core already computes them and the head does not ask.
 A page mapping Qt's FlyView onto this head should know that gimbal and joystick
 have a served view waiting, and that `operatorControl` has no Qt equivalent to
 port because it is newer than the QML.
+
+### Four traffic fields the core serves and the row omits, 2026-09-16
+
+Found by reading the macOS head's `af52de02e` - *"the traffic row never showed
+an aircraft's speed, and a test said it did"* - and asking the same question
+here. Per contact `adsb.rs` serves:
+
+```
+icaoAddress  callsign  latitude  longitude  altitudeMetres  altitudeType
+headingDegrees  velocityMetresPerSecond  verticalVelocityMetresPerSecond
+squawk  emergency  alert  emitterType  secondsSinceLastSeen
+```
+
+The row draws distance, bearing, relative height, emergency, alerting and
+stale. **It never decodes `velocityMetresPerSecond`, `headingDegrees`, `squawk`
+or `emitterType`.**
+
+**`headingDegrees` is the notable one, and it is not the same as the bearing the
+row already shows.** Bearing is the direction *to* the contact; heading is the
+direction it is *going*. Distance and bearing say where something is; heading
+and speed say whether it is closing. A collision readout that answers only the
+first is answering half the question.
+
+**But unlike the macOS case this is a gap and not a false claim.** Their commit
+fixed a row whose test asserted a speed it never drew; here the fixtures carry a
+`velocity` unit label and **no test claims a speed is shown**, so nothing in
+this head says something untrue. Recorded rather than built: the Fly screen is
+held pending the parity review, the row is already dense, and which of the four
+earn their space is a design question rather than a defect.
