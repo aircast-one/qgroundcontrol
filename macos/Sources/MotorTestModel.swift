@@ -47,6 +47,13 @@ struct MotorTest: Equatable {
 
     func canTest(safetyOff: Bool) -> Bool { connected && safetyOff && !armed }
 
+    // Stop is not a test and must not inherit a test's gate. stopAll() guards on connected alone --
+    // correctly, since sending zero throttle needs nothing else -- while the button sat inside the
+    // canTest group, so the two conditions that are REASONS TO STOP both disabled it: arm the
+    // vehicle while the motors are turning, or drop the safety switch, and the one control an
+    // operator reaches for greys out. A control is enabled by what its own action requires.
+    var canStop: Bool { connected }
+
     static func timeout(throttle: Double) -> Int {
         throttle <= minimumThrottle ? 0 : timeoutSeconds
     }

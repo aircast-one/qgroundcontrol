@@ -284,14 +284,18 @@ struct MotorsView: View {
                 GroupCard {
                     GroupRow(title: "Spin", showSeparator: false, trailing: {
                         HStack(spacing: 6) {
-                            ForEach(Array(motors.state.names.enumerated()), id: \.offset) { index, name in
-                                Button(name) { motors.test(motor: index) }
-                                    .controlSize(.small)
+                            HStack(spacing: 6) {
+                                ForEach(Array(motors.state.names.enumerated()), id: \.offset) { index, name in
+                                    Button(name) { motors.test(motor: index) }
+                                        .controlSize(.small)
+                                }
+                                Button("All") { motors.testAll() }.controlSize(.small)
                             }
-                            Button("All") { motors.testAll() }.controlSize(.small)
-                            Button("Stop") { motors.stopAll() }.controlSize(.small)
+                            .disabled(!motors.state.canTest(safetyOff: motors.safetyOff))
+                            Button("Stop") { motors.stopAll() }
+                                .controlSize(.small)
+                                .disabled(!motors.state.canStop)
                         }
-                        .disabled(!motors.state.canTest(safetyOff: motors.safetyOff))
                     })
                 }
             }

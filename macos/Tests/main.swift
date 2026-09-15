@@ -5292,6 +5292,9 @@ func checkMotorTest() {
     expect(!armed.armedRefusal.isEmpty, "which the page says rather than just disabling the buttons")
     expect(apm.armedRefusal, "", "a disarmed vehicle is not scolded")
 
+    expect(armed.canStop, "a vehicle arming while the motors turn is a reason to stop, not to grey Stop out")
+    expect(!MotorTest.disconnected.canStop, "only a link is required, and there is none")
+
     expect(MotorTest.timeout(throttle: 0) == 0,
            "a motor asked for no throttle is stopped, not run for three seconds")
     expect(MotorTest.timeout(throttle: 20) == MotorTest.timeoutSeconds,
