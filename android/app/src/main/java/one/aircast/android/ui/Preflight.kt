@@ -51,6 +51,11 @@ internal fun preflight(view: JSONObject?): Preflight? {
     )
 }
 
+internal fun checklistOffered(armed: Boolean): String? = when {
+    armed -> "The checks are for before the flight"
+    else -> null
+}
+
 internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): String {
     if (preflight == null) return "Connect a vehicle to run its preflight checks."
     val checks = preflight.groups.flatMap { it.checks }

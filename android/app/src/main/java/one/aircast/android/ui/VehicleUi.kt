@@ -531,21 +531,26 @@ fun FlightActions(modifier: Modifier = Modifier) {
             title = { Text("Actions") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val checklistPast = checklistOffered(armed)
                     TextButton(
                         onClick = {
                             showMore = false
                             showChecklist = true
                         },
+                        enabled = checklistPast == null,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(Modifier.fillMaxWidth()) {
                             Text(
                                 text = "Pre-Flight Checklist",
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = when (checklistPast) {
+                                    null -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             )
                             Text(
-                                text = preflightSummary(checks, checklistTicked),
+                                text = checklistPast ?: preflightSummary(checks, checklistTicked),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
