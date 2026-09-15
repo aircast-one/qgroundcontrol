@@ -2733,6 +2733,7 @@ func checkMissionItemKinds() {
     checkLaunchAltitudeComesFromTheItem()
     checkADragKeepsTheItemsHeight()
     checkAnEnumParameterCanStillBeTypedInto()
+    checkAStoppedParameterLoadStopsSayingItIsLoading()
     checkCameraBrandSelection()
     checkBatteryHeadlines()
     checkResumeSequence()
@@ -8121,6 +8122,42 @@ func checkModeSlotNaming() {
     expect(FlightModePosition.present(in: rover).first?.pwmRange ?? "", "up to 1230",
            "the PWM bands are fixed in firmware and keyed on the POSITION, not the parameter "
            + "name, so they are identical on both")
+}
+
+func checkAStoppedParameterLoadStopsSayingItIsLoading() {
+    // The four cases are setup.rs parameter_state's own returns, not four I invented: connected
+    // false gives noVehicle with no text, ready gives "" with no text, requestUnanswered gives
+    // unanswered WITH the sentence, and neither gives loading with no text.
+    let stopped = "This vehicle has not answered the request for its parameters, and the retries are finished."
+
+    expect(VehicleSetupText.parameters(reason: "loading", served: ""),
+           "Reading parameters from the vehicle\u{2026}",
+           "a load still running says so, which is what every setup screen said in ALL THREE "
+           + "states before the core could tell them apart")
+    expect(VehicleSetupText.parameters(reason: "", served: ""), "",
+           "and a load that finished says nothing, because the parameters are on the screen")
+    expect(VehicleSetupText.parameters(reason: "noVehicle", served: ""),
+           "Connect a vehicle to see its parameters.",
+           "no vehicle is a third thing again, and it is the one the core answers during a "
+           + "disconnect rather than leaving a stale unanswered behind")
+
+    expect(VehicleSetupText.parameters(reason: "unanswered", served: stopped),
+           stopped + " " + VehicleSetupText.reconnectToAsk,
+           "THE CASE THAT WAS UNSAYABLE: QGC tries FTP, falls back to five retries and then "
+           + "announces the failure only through a dialog, so this screen said it was still "
+           + "reading for ever. The core's sentence says what the VEHICLE did and the second says "
+           + "what the OPERATOR can do, which is the head's half because only the head knows its "
+           + "own screens offer it -- ConnectionsSection draws a per-link Disconnect and Connect")
+    expect(VehicleSetupText.parameters(reason: "unanswered", served: "") ==
+           VehicleSetupText.reconnectToAsk,
+           "with no served sentence the operator still gets the action, because a reader must not "
+           + "fail closed on the producer's silence when it already knows what to suggest")
+
+    expect(VehicleSetupText.parameters(reason: "somethingLater", served: "") ==
+           VehicleSetupText.reconnectToAsk,
+           "and a reason this head does not know reads as STOPPED rather than as ready or as "
+           + "still asking. Ready would hide a dead load behind silence and still-asking is the "
+           + "defect being fixed, so an unknown state is closer to stopped than to either")
 }
 
 func checkAnEnumParameterCanStillBeTypedInto() {

@@ -9,7 +9,7 @@ struct ParametersView: View {
             filters
             Divider()
             if store.loading {
-                EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters"))
+                EmptyStateRow(text: store.parameterStatus)
                     .frame(maxHeight: .infinity)
             } else if !store.status.isEmpty {
                 EmptyStateRow(text: store.status).frame(maxHeight: .infinity)
@@ -201,7 +201,7 @@ struct SafetyView: View {
                       note: "What the vehicle does when something goes wrong.",
                       connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if sections.isEmpty {
                 GroupCard {
                     EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
@@ -350,7 +350,7 @@ struct PowerView: View {
             }
 
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if sections.isEmpty {
                 GroupCard {
                     EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
@@ -378,7 +378,7 @@ struct LightsView: View {
                       note: "The channels the vehicle drives its lights from.",
                       connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if sections.isEmpty {
                 GroupCard {
                     EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
@@ -402,7 +402,7 @@ struct CameraView: View {
                       note: "The gimbal the vehicle carries and how it triggers a camera.",
                       connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if sections.isEmpty {
                 GroupCard {
                     EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
@@ -426,7 +426,7 @@ struct TuningView: View {
                       note: "The gains that decide how the vehicle answers the sticks. Change one thing at a time and fly it.",
                       connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if sections.isEmpty {
                 GroupCard {
                     EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
@@ -584,7 +584,7 @@ struct FrameView: View {
                       note: "Which airframe this is, and what the firmware made of it.",
                       connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if sections.isEmpty {
                 GroupCard {
                     EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
@@ -638,7 +638,7 @@ struct FlightModesView: View {
                       note: "Which mode each position of the transmitter switch selects.",
                       connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if positions.isEmpty {
                 GroupCard { EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
                     "does not report a six-position mode switch.")) }
@@ -828,7 +828,7 @@ struct ParameterSectionsView: View {
                       note: "Settings the vehicle groups under \(page.lowercased()).",
                       connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+                GroupCard { EmptyStateRow(text: store.parameterStatus) }
             } else if sections.isEmpty {
                 GroupCard {
                     EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,

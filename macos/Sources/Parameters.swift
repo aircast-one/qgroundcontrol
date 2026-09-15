@@ -25,16 +25,25 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
         Array(Set(parameters.map(\.group))).sorted()
     }
 
+    @Published private(set) var parameterStatus = ""
+
     func load() {
         guard !loading else { return }
-        let vehicle = Bridge.group("vehicle")
-        connected = vehicle["kind"] as? String == "object"
-        let identity = (vehicle["id"] as? NSNumber)?.intValue
+        // connected and the load state come from ONE read. They were two -- Bridge.group("vehicle")
+        // for the flag and Bridge.group("vehicle.parameterManager") for the gate, three lines apart
+        // so they looked like one operation -- and a disconnect between them reads a dead vehicle's
+        // manager beside a fresh connected. view.setup composes both, and answers noVehicle in that
+        // gap rather than a stale unanswered.
+        let setup = Bridge.group("view.setup")
+        connected = (setup["connected"] as? NSNumber)?.boolValue ?? false
+        let identity = (Bridge.group("vehicle")["id"] as? NSNumber)?.intValue
         if !SettingsSection.cacheSurvives(vehicle: cachedFor, now: identity) { setupCache.removeAll() }
         cachedFor = identity
-        let manager = Bridge.group("vehicle.parameterManager")
-        guard (manager["parametersReady"] as? NSNumber)?.boolValue == true else {
-            status = VehicleSetupText.waiting(connected: connected, for: "parameters")
+        parameterStatus = VehicleSetupText.parameters(
+            reason: (setup["parametersReason"] as? String) ?? "",
+            served: (setup["parametersText"] as? String) ?? "")
+        guard (setup["parametersReady"] as? NSNumber)?.boolValue == true else {
+            status = parameterStatus
             parameters = []
             refilter()
             return

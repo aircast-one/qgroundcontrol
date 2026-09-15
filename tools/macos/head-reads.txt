@@ -271,6 +271,9 @@ packetLossUnit
 packs
 page
 parameterSections
+parametersReady
+parametersReason
+parametersText
 path
 pause
 pausesFirst
