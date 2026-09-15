@@ -8551,3 +8551,22 @@ banner earlier tonight.
 **What is verified is the head half alone**, by unit test and mutation: invert
 the null handling and exactly one test of 542 fails. The pairing is inference
 until someone sees it.
+
+**The transient window is harder to reach than it sounds - two routes tried,
+neither produced the precondition.** Tapping Disconnect in the UI did not take,
+and the poll that followed read a steady connected state rather than a
+reconnect, which looks identical to a window that is too brief. Killing the
+vehicle behind the relay left `connected: true` for **54 s** and counting: QGC
+holds a vehicle well past its last heartbeat, which is the same latching that
+keeps `vehicle.latitude` alive after a link drops.
+
+So **plan on a vehicle that answers heartbeats and refuses `PARAM_REQUEST_LIST`**
+rather than on catching the window. The transient exists, but reaching it needs
+a hard socket close and then a re-dial, and the TCP link does not retry by
+itself - `lastError` records the remote close and stops.
+
+**And the verification is gated on the AAR regardless**: the installed library
+predates `6b80a47c0`, so even a perfect window would show `ready: false` rather
+than null. Checking whether the window was reachable *before* spending a build
+on it was worth doing - it is the same discipline as establishing a precondition
+before trusting a number, applied to whether the measurement is possible at all.
