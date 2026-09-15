@@ -123,6 +123,20 @@ for path in registry:
 
 undrawn = sorted(name for name in served
                  if f'"{name}"' not in named and name not in ACCEPTED)
+# The guard above refuses when the HEAD is unreachable and said why: a predicate that cannot
+# reach a head has measured nothing, not found nothing. The producer side had no such guard, so
+# with no app answering, every path landed in `silent`, `served` stayed empty, and this printed
+# "-4 drawn" -- the same negative that the Android-root bug produced, from the opposite input.
+# The rule was applied to one half of its own premise.
+#
+# Counting the silences rather than the survivors is what separates the two causes: a rig that
+# answered and carries no *Text field is a real measurement, while a rig that answered nothing
+# has not measured anything. Only the second is a refusal.
+if silent and len(silent) == len(registry):
+    raise SystemExit(f"none of the {len(registry)} views answered: this script reads a running app "
+                     "and has measured nothing here rather than found nothing. Start one with "
+                     "tools/macos/build-run.sh")
+
 # `served` is what THIS RUN's rig state actually produced, so a name missing from it has two
 # causes and they are opposite: the core stopped serving it, or nothing in this rig state carries
 # it. layerSpanText is the example -- missionitems.rs serves it only for a STRUCTURE SCAN, so a
