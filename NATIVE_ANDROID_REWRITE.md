@@ -8395,3 +8395,45 @@ checked, which is why one miss in a different file is the whole population.
 `is_some_and` returns a bool rather than an Option. **A pattern that matches the
 shape of an expression rather than its type finds things that are not there**,
 and the four dangerous-sounding ones evaporated on reading the producer.
+
+### The emulator can decode video after all, and the detection overlay draws, 2026-09-15
+
+Every detection check tonight stopped at the same wall: `DetectionOverlay`
+composes only while `video.decoding` is true, and nothing on this emulator could
+produce a decodable stream. That made the whole feature unverifiable and made a
+watched-vs-pushed sweep structurally blind to it.
+
+**`android/tools/videofeed.sh` removes the wall.** The head supports a TCP-MPEG2
+source, and `adb reverse` forwards TCP device to host, so GStreamer on the Mac
+can serve it:
+
+```
+videotestsrc is-live ! x264enc tune=zerolatency ! mpegtsmux ! tcpserversink port=5600
+adb reverse tcp:5600 tcp:5600
+```
+
+Then Settings > Video > **TCP-MPEG2 Video Stream**, url `127.0.0.1:5600`, Set.
+**TCP rather than UDP because `adb reverse` forwards TCP only** - the obvious
+`udpUrl 0.0.0.0:5600` route cannot be fed from the host at all.
+
+**With it, the full detections chain is witnessed end to end for the first
+time**, on a fresh launch with zero debug-API requests served:
+
+```
+"car 91%"      <- boxCaption() from DetectionOverlay
+"person 47%"
+```
+
+video decodes → `video.decoding` true → the overlay composes → `qgcPath`
+subscribes → the router's compute runs → the feed thread spawns → frames arrive
+→ boxes draw. **Every link, in the operator's own path**, rather than a
+Kotlin-only watch standing in for one.
+
+**One crash, not attributed.** The first time video started, SIGSEGV on a
+`gstglcontext` thread with **the program counter itself holding UTF-16 text**
+(`pc 0x0065006200610068`), one frame below `libEGL.so
+eglCreateWindowSurfaceTmpl`. EGL dispatched through a function pointer
+containing string data; the app supplies no such pointer, and this emulator has
+a software EGL driver. Did not reproduce, and video has run since. **Recorded
+rather than chased** - and worth knowing before someone reads a one-off video
+crash here as a head defect.
