@@ -985,7 +985,8 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
                      "ownPositionKnown": true as NSNumber,
                      "count": 0 as NSNumber, "alerting": 0 as NSNumber,
                      "alertUnknown": 0 as NSNumber, "emergency": "",
-                     "units": ["distance": "ft", "altitude": "ft", "heading": "deg"],
+                     "units": ["distance": "ft", "altitude": "ft", "velocity": "kn",
+                               "heading": "deg"],
                      "contacts": []]
             .merging(overrides) { _, override in override }) ?? .none
     }
@@ -1020,7 +1021,17 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
            "a contact is labelled by callsign, which is also its row identity")
     expect(traffic(["contacts": [placed]]).rows().first?.value ?? "",
            "17060 ft  31 deg  6890 ft",
-           "and reads range, bearing and altitude in the operator's units")
+           "and reads range, bearing and altitude in the operator's units -- a contact whose "
+           + "speed the receiver did not report drops that quantity rather than padding the row")
+
+    let fast = placed.merging(["velocity": 243.0 as NSNumber]) { _, b in b }
+    expect(traffic(["contacts": [fast]]).rows().first?.value ?? "",
+           "17060 ft  31 deg  6890 ft  243 kn",
+           "AND SPEED IS ON THE ROW, because range alone does not say how long the operator "
+           + "has: a 243 kn airliner and a 40 kn ultralight at the same distance are different "
+           + "decisions. The core converts velocity and names its unit in the block for exactly "
+           + "this row, and velocityText was asserted against and then never called -- so the "
+           + "served-but-unread sweep counted the field as drawn while no operator ever saw it")
 
     let unplaced = placed.merging(["distance": NSNull(), "distanceMetres": NSNull(),
                                    "bearingDegrees": NSNull()]) { _, b in b }
