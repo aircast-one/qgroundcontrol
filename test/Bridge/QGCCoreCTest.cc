@@ -1310,7 +1310,7 @@ const char *const kViewPaths[] = {
     "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
-    "view.adsbTraffic", "view.followMe", "view.gcsPosition", "view.gimbal",
+    "view.adsbTraffic", "view.followMe", "view.frame", "view.gcsPosition", "view.gimbal",
     "view.cameraProtocol", "view.joystickMapping",
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
     "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",

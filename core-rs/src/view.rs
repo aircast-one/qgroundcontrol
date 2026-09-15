@@ -30,6 +30,7 @@ use crate::cameraproto;
 use crate::joystick;
 use crate::detections;
 use crate::followme;
+use crate::frame;
 use crate::console;
 use crate::itemcamera;
 use crate::gcsposition;
@@ -191,6 +192,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.cameraProtocol", deps: &[], compute: cameraproto::protocol_view },
     View { path: "view.joystickMapping", deps: &[], compute: joystick::joystick_view },
     View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
+    View { path: "view.frame", deps: frame::DEPS, compute: frame::frame_view },
     View { path: "view.gcsPosition", deps: gcsposition::DEPS, compute: gcsposition::gcs_position_view },
     View { path: "view.gimbal", deps: &[], compute: gimbal::gimbal_view },
     View { path: "view.debugApi", deps: debugapi::DEPS, compute: debugapi::debug_api_view },
@@ -375,6 +377,7 @@ mod deps_cover_reads {
             ("flightmodes", include_str!("flightmodes.rs")),
             ("flystate", include_str!("flystate.rs")),
             ("followme", include_str!("followme.rs")),
+        ("frame", include_str!("frame.rs")),
             ("ftp", include_str!("ftp.rs")),
             ("gcsposition", include_str!("gcsposition.rs")),
             ("geo", include_str!("geo.rs")),
