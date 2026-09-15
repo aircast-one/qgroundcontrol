@@ -221,6 +221,18 @@ fun AircastShell(quickView: QtQuickView) {
         }
     }
 
+    val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    var lastVehicles by remember {
+        mutableStateOf<one.aircast.mapspike.VehicleChoices?>(null)
+    }
+
+    LaunchedEffect(vehiclesJson) {
+        val now = one.aircast.mapspike.vehicleChoices(vehiclesJson)
+        val notice = one.aircast.mapspike.handoverNotice(lastVehicles, now, one.aircast.mapspike.VehicleBridge.lastAsked)
+        lastVehicles = now
+        notice?.let { said -> noticeScope.launch { snackbars.showSnackbar(said) } }
+    }
+
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
             Qgc.invoke("video.setNativeRendering", true)

@@ -7,8 +7,12 @@ object VehicleBridge {
     var lastRefusal: String? = null
         private set
 
+    var lastAsked: Int? = null
+        private set
+
     fun askFor(id: Int): Boolean =
         runCatching {
+            lastAsked = id
             val answer = JSONObject(QGCBridge.invoke("vehicles.setActive", "[$id]"))
             lastRefusal = answer.optText("reason").takeIf { it.isNotBlank() }
             answer.optBoolean("ok")
@@ -89,3 +93,14 @@ fun uploadHeading(gate: UploadGate, choices: VehicleChoices): String {
         else -> "$asked to $target"
     }
 }
+
+fun handoverNotice(before: VehicleChoices?, now: VehicleChoices, asked: Int?): String? {
+    val left = before?.active ?: return null
+    val arrived = now.active ?: return null
+    if (left.id == arrived.id || arrived.id == asked) return null
+    return when (now.choices.any { it.id == left.id }) {
+        true -> "${left.name} stopped answering. Now flying ${arrived.name}."
+        false -> "${left.name} is gone. Now flying ${arrived.name}."
+    }
+}
+

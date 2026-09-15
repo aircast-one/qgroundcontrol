@@ -154,4 +154,61 @@ class ActiveVehicleTest {
             uploadHeading(gate("Replace the plan on the vehicle?"), vehicleChoices(one)),
         )
     }
+
+    private fun listOfVehicles(vararg ids: Int, activeId: Int) = vehicleChoices(
+        JSONObject(
+            """{"ambiguous":${ids.size > 1},"vehicles":[""" +
+                ids.joinToString(",") {
+                    """{"id":$it,"name":"Quadrotor $it","active":${it == activeId}}"""
+                } + "]}",
+        ),
+    )
+
+    @Test
+    fun `the aircraft is handed over before the one that left is removed`() {
+        assertEquals(
+            "QGC promotes the survivor FIRST and deletes the departing vehicle a moment later, " +
+                "so a rule keyed on the old one being gone never fires - measured on the emulator",
+            "Quadrotor 1 stopped answering. Now flying Quadrotor 2.",
+            handoverNotice(listOfVehicles(1, 2, activeId = 1), listOfVehicles(1, 2, activeId = 2), asked = null),
+        )
+        assertEquals(
+            "Quadrotor 1 is gone. Now flying Quadrotor 2.",
+            handoverNotice(listOfVehicles(1, 2, activeId = 1), listOfVehicles(2, activeId = 2), asked = null),
+        )
+    }
+
+    @Test
+    fun `an operator switching vehicles is told nothing, having just done it`() {
+        assertNull(
+            "the same list change as a handover, and only the head knows it asked for this one",
+            handoverNotice(listOfVehicles(1, 2, activeId = 1), listOfVehicles(1, 2, activeId = 2), asked = 2),
+        )
+    }
+
+    @Test
+    fun `an old request does not silence the next handover`() {
+        assertEquals(
+            "Quadrotor 2 stopped answering. Now flying Quadrotor 1.",
+            handoverNotice(listOfVehicles(1, 2, activeId = 2), listOfVehicles(1, 2, activeId = 1), asked = 2),
+        )
+    }
+
+    @Test
+    fun `the other vehicle leaving is not a handover`() {
+        assertNull(
+            "the one being flown did not change, and its silence is already on the header",
+            handoverNotice(listOfVehicles(1, 2, activeId = 1), listOfVehicles(1, activeId = 1), asked = null),
+        )
+    }
+
+    @Test
+    fun `the last vehicle leaving says nothing, because No vehicle already does`() {
+        assertNull(handoverNotice(listOfVehicles(1, activeId = 1), vehicleChoices(null), asked = null))
+    }
+
+    @Test
+    fun `the first reading announces nothing`() {
+        assertNull(handoverNotice(null, listOfVehicles(1, 2, activeId = 1), asked = null))
+    }
 }
