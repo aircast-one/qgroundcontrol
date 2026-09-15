@@ -154,12 +154,19 @@ print -r -- "$message" | GIT_INDEX_FILE="$private" git commit -F -
 # the paths committed, which is the arming this script exists to stop anyone else inheriting.
 git reset -q HEAD -- "$@"
 
+# EXIT 3, NOT 1. Every refusal above this line means nothing was committed and the fix is to fix
+# the thing and run again. These two run AFTER the commit is in history, so 1 here would tell a
+# caller the same thing as a refusal and invite a retry that lands the work twice. Proven that a
+# zsh script can finish its work and still exit non-zero: a script edited while running completes
+# on the buffered text and then dies parsing the tail, which is how a peer's gate reported failure
+# for suites that had all passed. The exit code has to say which side of the commit it failed on.
 for check in "git diff --cached HEAD --stat" "git diff HEAD --stat -- $*"; do
     left="$(eval "$check")"
     if [[ -n "$left" ]]; then
-        print -u2 "after committing, '$check' is not empty:"
+        print -u2 "THE COMMIT LANDED -- do not run this again, it would commit twice."
+        print -u2 "But afterwards '$check' is not empty:"
         print -u2 "$left"
-        exit 1
+        exit 3
     fi
 done
 print "committed; shared index clean and the working tree matches HEAD"
