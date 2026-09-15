@@ -27,6 +27,7 @@ Usage: python3 tools/macos/null-fallbacks.py [sources-dir]
 import json
 import pathlib
 import re
+import subprocess
 import sys
 import urllib.request
 
@@ -255,6 +256,21 @@ stale = [f"{key!r} is accepted for {model}, which is not a model this file check
 stale += [f"{key!r} is accepted for {model}, and {model} no longer falls back on it"
           for model, key in sorted(ACCEPTED) if model in MODELS
           and key not in {read for read, _, _ in fallbacks(body_of(model)[1] or "")}]
+
+# This reads a LIVE app, and the app was compiled from whatever was in the tree at build time --
+# which on a shared checkout includes another session's UNCOMMITTED work. It has already misled once:
+# four view.plan sentence fields reported as "sent as null" while HEAD's producer spells them "",
+# because core-rs/src/plan.rs was modified and not committed. Acting on that would have accepted a
+# shape that is not in the contract and would be wrong the moment the peer reverted, which is exactly
+# how 0a3b35375 had to be backed out. The tool cannot tell which producer it is talking to, so it
+# says when it cannot.
+dirty = subprocess.run(["git", "status", "--porcelain", "--", "core-rs/"],
+                       capture_output=True, text=True).stdout.strip()
+if dirty:
+    print(f"  UNCOMMITTED PRODUCER: core-rs has {len(dirty.splitlines())} modified file(s), so the "
+          f"running app may serve a shape that is NOT at HEAD. Check `git show HEAD:<file>` before "
+          f"acting on anything below -- a hit against an uncommitted producer is not a finding.",
+          file=sys.stderr)
 
 for why in unchecked + stale:
     print(f"  NOT CHECKED {why}", file=sys.stderr)
