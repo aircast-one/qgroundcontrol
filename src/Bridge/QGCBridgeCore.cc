@@ -995,6 +995,10 @@ private:
     }
 
 private slots:
+    // Emitting every path bound to the sender, rather than only the one whose signal fired, is
+    // load-bearing beyond this class. core-rs/src/view.rs accepts an @signal dep on an ancestor as
+    // proof that a view watching that object is woken for the paths it reads underneath - narrow
+    // this and that guard stays green while those views stop waking.
     void _notified()
     {
         const QStringList paths = _byObject.value(sender());

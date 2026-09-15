@@ -239,7 +239,11 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
             _ => "Not reported".to_string(),
         },
         "shots": shots,
-        "shotsText": format!("{shots:05}"),
+        // Zero-padded to five digits for a DSLR-style fixed-width reading, which this is not:
+        // shots is vehicle.cameraTriggerPoints.count, trigger points received rather than a
+        // camera's own frame counter. A fresh session read "Photos taken 00000". survey.rs spells
+        // the same quantity plainly and is the one to match.
+        "shotsText": if shots > 0 { shots.to_string() } else { "\u{2014}".to_string() },
         "shotPoints": shot_points(backend),
         "batteryRemaining": battery,
         "batteryText": if battery >= 0 { format!("{battery}%") } else { String::new() },
@@ -474,7 +478,7 @@ mod tests {
         assert_eq!(view["stateText"], "Recording 00:01:15");
         assert_eq!(view["clockText"], "00:01:15");
         assert_eq!(view["storageText"], "12 GB");
-        assert_eq!(view["shotsText"], "00042");
+        assert_eq!(view["shotsText"], "42", "shots is trigger points received, not a frame counter, so the fixed-width reading that would justify padding is not what the number is");
         assert_eq!(view["shotPoints"].as_array().unwrap().len(), 2, "the core counted the photos and never said where they were taken - a head could report 42 shots and draw none of them, while QGC marks every one on the map");
         assert_eq!(view["shotPoints"][0]["latitude"], 47.397);
         assert_eq!(view["batteryText"], "80%");
@@ -526,4 +530,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_session_that_has_taken_no_photographs_says_so_rather_than_counting_to_five_digits() {
+        struct Fresh;
+        impl Backend for Fresh {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle.cameraTriggerPoints" => json!({ "kind": "object", "count": 0 }).to_string(),
+                    "vehicle.cameraManager.currentCameraInstance" => json!({ "kind": "object", "modelName": "ZR30" }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        assert_eq!(camera_view(&Fresh, &[])["shotsText"], "\u{2014}", "zero padded to five digits read 'Photos taken 00000' on a fresh session - the padding suits a camera's own frame counter and shots is vehicle.cameraTriggerPoints.count, which is trigger points received");
+    }
 }

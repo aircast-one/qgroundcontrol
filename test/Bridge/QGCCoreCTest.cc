@@ -1120,7 +1120,10 @@ void QGCCoreCTest::_videoAndCameraAreServed()
     QVERIFY(video.value(QStringLiteral("cameras")).isArray());
     const QJsonObject camera = take(qgc_bridge_get("view.camera"));
     QCOMPARE(camera.value(QStringLiteral("present")).toBool(true), false);
-    QCOMPARE(camera.value(QStringLiteral("shotsText")).toString(), QStringLiteral("00000"));
+    // Was QStringLiteral("00000") - a session that has taken no photographs, asserted as the
+    // answer. The padding suits a camera's own frame counter and shots is the count of trigger
+    // points received, so there was never a fixed-width reading to line up.
+    QCOMPARE(camera.value(QStringLiteral("shotsText")).toString(), QStringLiteral("\u2014"));
 
     const QJsonObject enabled = take(qgc_bridge_invoke("settings.videoSettings.sourceEnabled", "[0]"));
     QVERIFY2(enabled.value(QStringLiteral("ok")).toBool(false), "the core asks the settings object whether a slot is enabled instead of comparing a translated status string");

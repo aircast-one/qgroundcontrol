@@ -712,6 +712,63 @@ mod deps_cover_reads {
     }
 
     #[test]
+    fn a_path_a_view_builds_with_format_is_under_something_it_watches() {
+        // The literal sweeps cannot see a constructed read, which is how
+        // vehicle.vehicleLinkManager.communicationLostEnabled was read and unwatched in two views:
+        // the guard saw the literal read in one and not the format!-built one in the other. A
+        // prefix match is weaker than a full path match and strictly stronger than not looking.
+        // Two prefixes are too short to prove anything - vehicle. and settings. match nearly every
+        // dep there is - so those are reported as unverifiable rather than passed silently.
+        // vehicle. and settings. match nearly every dep there is, so a prefix that short proves
+        // nothing. A prefix containing ( is a call expression rather than a path - modeslots reads
+        // vehicle.parameterManager.getParameter(-1,{name}) - and splitting it as a path mis-parses.
+        const UNVERIFIABLE: &[&str] = &["vehicle", "settings", "plan", "vehicles"];
+
+        let prefixes = |body: &str| -> Vec<String> {
+            body.match_indices("&format!(\"")
+                .filter_map(|(at, _)| {
+                    let tail = &body[at + "&format!(\"".len()..];
+                    let brace = tail.find('{')?;
+                    let quote = tail.find('"')?;
+                    (brace < quote).then(|| tail[..brace].trim_end_matches('.').to_string())
+                })
+                .filter(|prefix| !prefix.is_empty() && prefix.contains('.') && !prefix.contains('('))
+                .collect()
+        };
+
+        let seen: usize = MODULES.iter().filter_map(|(_, source)| Some(prefixes(source.split("#[cfg(test)]").next()?).len())).sum();
+        assert!(seen > 5, "the parser found only {seen} constructed reads with a literal prefix, so a clean result would mean nothing");
+
+        let unwatched: Vec<String> = MODULES
+            .iter()
+            .filter_map(|(name, source)| {
+                let body = source.split("#[cfg(test)]").next()?;
+                let deps = deps_of(body)?;
+                Some(prefixes(body)
+                    .into_iter()
+                    .filter(|prefix| !UNVERIFIABLE.contains(&prefix.as_str()))
+                    // A signal dep is an object-level wildcard: _notified looks up every path
+                    // bound to the sending object and emits all of them, so one @ dep on an
+                    // ancestor wakes anything read under it. Two things follow and neither is a
+                    // defect today. Accepting it is only sound while that fan-out stays whole - a
+                    // _notified narrowed for performance would leave this green on views that had
+                    // stopped waking. And it proves coverage without bounding it: a view watching
+                    // an object by signal and reading three fields under it will never be told it
+                    // could have watched three paths instead.
+                    .filter(|prefix| !deps.iter().any(|dep| {
+                        dep.starts_with(&format!("{prefix}.")) || *dep == *prefix
+                            || dep.split_once('@').is_some_and(|(object, _)| prefix.starts_with(object))
+                    }))
+                    .map(|prefix| format!("{name} builds a read under {prefix} and watches nothing there"))
+                    .collect::<Vec<_>>())
+            })
+            .flatten()
+            .collect();
+
+        assert!(unwatched.is_empty(), "a path built with format! is invisible to the literal sweeps, so nothing else checks it: {}", unwatched.join("; "));
+    }
+
+    #[test]
     fn the_module_list_covers_every_module_that_declares_dependencies() {
         // The list above is hand-written and include_str! needs a literal, so it cannot enumerate
         // itself. It had drifted to 18 of 55 modules - the check that every field a view reads is
