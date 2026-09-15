@@ -70,6 +70,33 @@ for (file, owner, name) in fields:
     own = len(bare.findall(code[file]))
     rows.append((sum(hits.values()), own, file, owner, name, hits))
 
+# Every one of these was reported, read, and SETTLED. Before this table those decisions lived only
+# in a loop prompt and in commit messages, so each run re-surfaced eight findings with no record of
+# which were already answered -- and 1d73e4db0 is what happens when a reason to dismiss sits
+# somewhere nothing checks it. The guard below fails if an entry stops matching a decoded-and-unread
+# field, so the table cannot outlive the code it excuses.
+ACCEPTED = {
+    ("AdsbContact", "squawk"): "CONSUMED, not orphaned. adsb.rs:211 turns a squawk into the "
+        "emergency token the panel already draws, so the meaningful part is extracted upstream. "
+        "Four digits of raw transponder code on every contact row is jargon, not an answer.",
+    ("ObstacleReading", "sector"): "A WIRE TOKEN. The core serves \"aheadRight\" here and the "
+        "cooked words in sectorText, which the panel draws. A head that renders the raw id puts "
+        "wire vocabulary in front of an operator -- the same call as the emergency token above.",
+    ("ObstacleReading", "bearing"): "The degrees behind that sector. Drawing both is two ways to "
+        "say one fact, which is how a header and a label end up disagreeing.",
+    ("Kind", "at"): "HostNotice's arrival time, epoch ms from QGCHostNotices.cc:90. Drawing it "
+        "needs either a clock time -- locale-dependent, and this head leaves locale spelling to "
+        "the core -- or a relative age, which rides a poll that STOPS when the window closes, so "
+        "\"2m ago\" would freeze. Both are design decisions, not a gap closed by wiring a field.",
+    ("JoystickSetting", "enumValues"): "NO JOYSTICK PANEL BY DESIGN. JoystickModel.swift's header "
+        "says the decoder exists to pin the catalogue's rules under swift-checks until the live "
+        "half is served; a panel on the catalogue alone would draw a settings schema with no "
+        "values beside it and no device to apply them to.",
+    ("JoystickFunction", "rcChannel"): "Same: no joystick panel by design.",
+    ("JoystickAction", "repeats"): "Same: no joystick panel by design.",
+    ("JoystickMapping", "transmitterModes"): "Same: no joystick panel by design.",
+}
+
 rows.sort(key=lambda r: (r[1], r[0]))
 print("DECODED FROM THE CORE, RANKED BY HOW LITTLE READS THEM.")
 print()
@@ -86,10 +113,18 @@ print("used because SwiftUI's .alert() modifier exists, and that is why the orph
 print("surfaced it. Low rows are CANDIDATES TO READ, never findings. The `own` column counts")
 print("unqualified uses in the declaring file, which includes the init that assigns it.")
 print(f"\n{len(rows)} decoded fields across {len({r[2] for r in rows})} files\n")
-dead = [r for r in rows if r[0] == 0 and r[1] <= 2]
+unread = {(owner, name) for total, own, file, owner, name, hits in rows if total == 0 and own <= 2}
+dead = [r for r in rows if r[0] == 0 and r[1] <= 2 and (r[3], r[4]) not in ACCEPTED]
 for total, own, file, owner, name, hits in dead:
     print(f"  {owner+'.'+name:38s} {file.replace('.swift','')}")
-print(f"\n{len(dead)} of {len(rows)} decoded fields are read by NOTHING: no qualified `.name`")
+
+stale = [f"{owner}.{name} is accepted here and is no longer decoded-and-unread -- either it grew a "
+         f"reader or it went away, and the reason has outlived the code"
+         for owner, name in sorted(ACCEPTED) if (owner, name) not in unread]
+for why in stale:
+    print(f"  STALE ACCEPTANCE {why}")
+print(f"\n{len(dead)} of {len(rows)} decoded fields are read by NOTHING and unaccounted for; "
+      f"{len(ACCEPTED)} more are read by nothing and ACCEPTED with a reason above. No qualified `.name`")
 print("anywhere, and own=2 is the declaration plus the init line that assigns it. own>2 means a")
 print("sibling in the same file reads it unqualified -- FleetVehicle.active sits at own=3 because")
 print("listTitle reads it, which is the fix that put it there.")
