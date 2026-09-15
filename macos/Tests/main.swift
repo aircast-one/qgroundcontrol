@@ -5350,6 +5350,29 @@ func checkRemoteSupport() {
     expect(!RemoteSupport(host: "", forwarding: false).canConnect,
            "a button that would forward to nowhere is refused rather than offered")
     expect(!RemoteSupport.empty.canConnect, "same before the setting has been read")
+
+    let shipped = RemoteSupport(host: "support.ardupilot.org:xxxx", forwarding: false)
+    expect(!shipped.canConnect,
+           "the string QGC SHIPS as the default is the example from its own longDesc, and every "
+           + "factory install arrived here with Connect live against it")
+    expect(shipped.hostRefusal, "xxxx is not a port number. The support engineer gives you the port.",
+           "the page says which half is wrong rather than greying the button and leaving the "
+           + "operator to guess, the same reason armedRefusal exists on the Motors page")
+
+    let bare = RemoteSupport(host: "support.ardupilot.org", forwarding: false)
+    expect(bare.canConnect,
+           "a host with no colon is not broken: UDPConfiguration::addHost falls back to the "
+           + "link's own local port for it, so refusing one would reject what QGC accepts")
+
+    expect(RemoteSupport(host: "support.ardupilot.org:0", forwarding: false).hostRefusal.isEmpty == false,
+           "port 0 is the value the bad parse PRODUCED, so it cannot be the value that passes")
+    expect(RemoteSupport(host: "support.ardupilot.org:65535", forwarding: false).canConnect,
+           "and the top of the range is a real port")
+    expect(RemoteSupport(host: "support.ardupilot.org:70000", forwarding: false).canConnect == false,
+           "past it is not, which toUInt would have wrapped rather than refused")
+    expect(RemoteSupport(host: "a:b:c", forwarding: false).hostRefusal,
+           "a:b:c is not a host name and port.",
+           "and addHost's own two-part rule is the one used here, not a second opinion")
 }
 
 func checkSetupPages() {

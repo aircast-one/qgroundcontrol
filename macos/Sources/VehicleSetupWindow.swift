@@ -326,6 +326,13 @@ struct RemoteSupportView: View {
                         .disabled(!support.state.canConnect && !support.state.canStop)
                     })
                 }
+                if !support.state.hostRefusal.isEmpty {
+                    Label(support.state.hostRefusal, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundColor(FlyPanel.colour(FlyTelemetry.Level.warning))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Overlay.horizontalPadding)
+                }
             }
         }
         .onAppear(perform: support.startWatching)
