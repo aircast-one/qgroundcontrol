@@ -525,6 +525,13 @@ impl Traffic {
     }
 
     pub fn snapshot(&self, now_ms: u64) -> Value {
+        self.snapshot_in(now_ms, &Units::metric())
+    }
+
+    // Only the push calls this. Making it a separate entry point rather than teaching snapshot()
+    // to consult the static keeps every test that does not care about units off a process-wide
+    // value another test can be writing at the same time.
+    pub fn announced(&self, now_ms: u64) -> Value {
         self.snapshot_in(now_ms, &remembered_units())
     }
 
@@ -1179,11 +1186,11 @@ mod tests {
         traffic.receive(&Report { icao_address: 1, altitude_metres: Some(300.0), latitude: Some(47.01), longitude: Some(8.0), ..Report::default() }, 0);
 
         *LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner) = None;
-        let metric = traffic.snapshot(0);
+        let metric = traffic.announced(0);
         assert_eq!(metric["units"]["altitude"], "m", "with no view computed yet the push falls back to metric, which is what it always did");
 
         adsb_traffic_view(&Imperial, &[]);
-        let imperial = traffic.snapshot(0);
+        let imperial = traffic.announced(0);
         assert_eq!(imperial["units"]["altitude"], "ft", "announce() runs on the thread that receives traffic and cannot read the backend, so a head watching this view was served metres with an m label while the same read through get came back in feet - and the push arrives every frame, so the wrong one wins");
         assert_ne!(imperial["contacts"][0]["altitude"], imperial["contacts"][0]["altitudeMetres"]);
     }

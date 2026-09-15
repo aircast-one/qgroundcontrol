@@ -375,7 +375,7 @@ fn announce_detections() {
 }
 
 fn announce_adsb() {
-    let snapshot = crate::adsb::lock().snapshot(crate::hub::now_ms()).to_string();
+    let snapshot = crate::adsb::lock().announced(crate::hub::now_ms()).to_string();
     announce("view.adsbTraffic", &snapshot);
 }
 
