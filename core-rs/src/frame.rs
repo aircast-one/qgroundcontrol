@@ -143,13 +143,13 @@ mod tests {
 
     #[test]
     fn a_link_nobody_is_watching_is_neither_lost_nor_fine() {
-        struct Link(bool, bool, bool);
+        struct Link { watching: bool, lost: bool }
         impl Backend for Link {
             fn get(&self, _p: &str) -> String { json!({ "kind": "value", "value": true }).to_string() }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicle" => vehicle("multiRotor", 4).to_string(),
-                    "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLostEnabled": self.1, "communicationLost": self.2 }).to_string(),
+                    "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLostEnabled": self.watching, "communicationLost": self.lost }).to_string(),
                     _ => json!({ "kind": "null" }).to_string(),
                 }
             }
@@ -158,8 +158,8 @@ mod tests {
             fn watch(&self, _p: &[String]) {}
         }
 
-        assert_eq!(frame_view(&Link(true, true, true), &[])["contactLost"], true);
-        assert_eq!(frame_view(&Link(true, true, false), &[])["contactLost"], false);
-        assert_eq!(frame_view(&Link(true, false, false), &[])["contactLost"], Value::Null, "with the watch off the flag stays false however long the vehicle has been silent, so serving it raw would call an unmonitored link healthy on the page that decides whether a motor may spin");
+        assert_eq!(frame_view(&Link { watching: true, lost: true }, &[])["contactLost"], true);
+        assert_eq!(frame_view(&Link { watching: true, lost: false }, &[])["contactLost"], false);
+        assert_eq!(frame_view(&Link { watching: false, lost: false }, &[])["contactLost"], Value::Null, "with the watch off the flag stays false however long the vehicle has been silent, so serving it raw would call an unmonitored link healthy on the page that decides whether a motor may spin");
     }
 }

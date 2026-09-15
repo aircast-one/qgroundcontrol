@@ -375,6 +375,17 @@ mod tests {
     }
 
     #[test]
+    fn the_rewritten_fixture_is_what_this_writer_produces_from_the_one_qt_wrote() {
+        let written_by_qt = include_str!("../tests/fixtures/qgc-settings.ini");
+        let recorded = include_str!("../../test/Bridge/fixtures/qgc-settings-rewritten.ini");
+        assert_eq!(
+            write(&read(written_by_qt)),
+            recorded,
+            "QGCCoreCTest::_qtSeesTheSameSettingsAfterTheCoreRewritesThem opens that fixture with a real QSettings and compares every key against the original - but it reads a recorded file, so the core does not rewrite anything at test time and a writer change leaves the check green against an artifact of some earlier run. This is the assertion that makes the fixture stale the moment the writer moves, which is when it has to be regenerated and put back in front of Qt"
+        );
+    }
+
+    #[test]
     fn the_writer_produces_the_golden_file_a_real_qsettings_is_tested_against() {
         let golden = include_str!("../tests/fixtures/writer-golden.ini");
         assert_eq!(write(&golden_map()), golden, "this file is the contract between this writer and the C++ test that opens it with a real QSettings; neither side regenerates it, so a change here has to be made deliberately and re-checked against Qt");

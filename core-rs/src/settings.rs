@@ -40,6 +40,10 @@ const PAGES: &[Page] = &[
 const HIDDEN: &[&str] = &["firstRunPromptIdsShown", "instrumentQmlFile2", "deviceName"];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
 
+const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.";
+
+const GATED: &[(&str, &str, &str)] = &[("enforceChecklist", "useChecklist", CHECKLIST_OFF)];
+
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
     ("appSettings", &[
         ("Appearance", &["indoorPalette", "appFontPointSize", "overlayGlassFrost", "qLocaleLanguage"]),
@@ -86,6 +90,7 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
         .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n)))
         .map(|f| decode(f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .collect();
+    let shown = gated(&shown, &facts);
     let desktop_only: Vec<&str> = facts.iter().filter_map(|f| f.get("name").and_then(Value::as_str)).filter_map(|n| DESKTOP_ONLY.iter().find(|(d, _)| *d == n).map(|(_, label)| *label)).collect();
     let note = match desktop_only.is_empty() {
         true => String::new(),
@@ -98,6 +103,25 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
         "note": note,
         "subsections": subsections(group, &named_apart(shown)),
     })
+}
+
+fn gated(controls: &[Value], facts: &[Value]) -> Vec<Value> {
+    let value_of = |name: &str| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)).and_then(|f| f.get("value").cloned());
+    controls
+        .iter()
+        .map(|control| {
+            let name = control.get("name").and_then(Value::as_str).unwrap_or("");
+            let blocked = GATED
+                .iter()
+                .find(|(gated, _, _)| *gated == name)
+                .filter(|(_, requires, _)| value_of(requires).as_ref().and_then(Value::as_bool) == Some(false))
+                .map(|(_, _, reason)| *reason);
+            let mut with_gate = control.clone();
+            with_gate["enabled"] = json!(blocked.is_none());
+            with_gate["disabledReason"] = blocked.map_or(Value::Null, |reason| json!(reason));
+            with_gate
+        })
+        .collect()
 }
 
 // Two settings can carry the same shortDesc - the brand image pair differ only in a longDesc
@@ -167,6 +191,53 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn enforcing_a_checklist_nobody_is_using_is_offered_as_a_switch_that_does_nothing() {
+        struct Checklist(Option<bool>);
+        impl Backend for Checklist {
+            fn get(&self, path: &str) -> String {
+                let facts: Vec<Value> = [
+                    Some(json!({ "kind": "fact", "name": "enforceChecklist", "typeIsBool": true, "value": true })),
+                    self.0.map(|on| json!({ "kind": "fact", "name": "useChecklist", "typeIsBool": true, "value": on })),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                match path {
+                    "settings.appSettings" => json!({ "kind": "object", "facts": facts }),
+                    _ => json!({ "kind": "object", "facts": [] }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let enforce = |using: Option<bool>| {
+            settings_view(&Checklist(using), &["General".to_string()])["sections"][0]["subsections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|sub| sub["controls"].as_array().unwrap().clone())
+                .find(|c| c["name"] == "enforceChecklist")
+                .expect("the control has to be in the section at all, or every assertion below passes by not finding it")
+        };
+
+        let on = enforce(Some(true));
+        assert_eq!(on["enabled"], true);
+        assert_eq!(on["disabledReason"], Value::Null);
+
+        let off = enforce(Some(false));
+        assert_eq!(off["enabled"], false, "FlyViewSettings.qml binds this row's enabled to useChecklist.value and GuidedActionsController ANDs the two, so with the checklist off the switch is live, writes a value, and changes nothing anywhere");
+        assert_eq!(off["disabledReason"], CHECKLIST_OFF, "the reason states what is true of the setting rather than telling the operator which switch to find - the head owns the call to action and phrases it where the other switch actually is");
+        assert_eq!(off["readOnly"], on["readOnly"], "readOnly is the Fact's own property and means the settings file said so; borrowing it for this would tell a head the setting cannot be written when it can");
+
+        let absent = enforce(None);
+        assert_eq!(absent["enabled"], true, "a gate whose required setting is not in the payload leaves the control alone, and this case is asserted rather than left to a fixture that happens to omit the key: a rule that disables on absence would grey out every row the moment a group is read with a field list that excludes its gate");
     }
 
     #[test]

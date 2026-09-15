@@ -1,9 +1,11 @@
+use std::sync::{Mutex, PoisonError};
+
 use serde_json::{Value, json};
 
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.model"];
+pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.model", "vehicle.id"];
 
 pub fn human_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["bytes", "KB", "MB", "GB"];
@@ -35,12 +37,41 @@ pub fn erase_warning(count: usize) -> String {
     }
 }
 
-pub fn empty_text(connected: bool, requesting: bool) -> &'static str {
-    match (requesting, connected) {
-        (true, _) => "Asking the vehicle for its logs\u{2026}",
-        (false, true) => "No logs listed yet. Refresh to ask the vehicle.",
-        (false, false) => "Connect a vehicle to list its logs.",
+pub fn empty_text(connected: bool, requesting: bool, answered: bool) -> &'static str {
+    match (requesting, connected, answered) {
+        (true, ..) => "Asking the vehicle for its logs\u{2026}",
+        (false, false, _) => "Connect a vehicle to list its logs.",
+        (false, true, true) => "This vehicle has no logs.",
+        (false, true, false) => "No logs listed yet. Refresh to ask the vehicle.",
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Phase {
+    Idle,
+    Asking,
+    Answered,
+}
+
+static ASKED: Mutex<Option<(i64, Phase)>> = Mutex::new(None);
+
+fn advance(previous: Phase, requesting: bool) -> Phase {
+    match (requesting, previous) {
+        (true, _) => Phase::Asking,
+        (false, Phase::Idle) => Phase::Idle,
+        (false, _) => Phase::Answered,
+    }
+}
+
+fn answered(vehicle: Option<i64>, requesting: bool) -> bool {
+    let Some(id) = vehicle else {
+        return false;
+    };
+    let mut asked = ASKED.lock().unwrap_or_else(PoisonError::into_inner);
+    let previous = asked.filter(|(known, _)| *known == id).map_or(Phase::Idle, |(_, phase)| phase);
+    let phase = advance(previous, requesting);
+    *asked = Some((id, phase));
+    phase == Phase::Answered
 }
 
 pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -50,6 +81,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let save_path = saving.get("logSavePath").and_then(Value::as_str).unwrap_or("").to_string();
     let chosen = crate::read::text(saving.get("savePath").unwrap_or(&Value::Null), "valueString");
     let requesting = flag(&root, "requestingList");
+    let vehicle = object(&backend.get("vehicle.id")).get("value").and_then(Value::as_i64);
     let downloading = flag(&root, "downloadingLogs");
     let entries: Vec<Value> = object(&backend.get("logDownload.model"))
         .get("elements")
@@ -104,7 +136,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canCancel": busy,
         "canErase": connected && !entries.is_empty() && !busy,
         "anyDownloaded": entries.iter().any(|e| e["statusId"] == "downloaded"),
-        "emptyText": empty_text(connected, requesting),
+        "emptyText": empty_text(connected, requesting, answered(vehicle, requesting)),
         "eraseWarning": erase_warning(entries.len()),
         "entries": entries,
     })
@@ -127,6 +159,55 @@ mod tests {
         assert_eq!(time_state(true, ""), "unknown");
         assert!(erase_warning(1).starts_with("The one log"));
         assert!(erase_warning(3).starts_with("All 3 logs"));
+    }
+
+    #[test]
+    fn a_vehicle_that_answered_with_no_logs_is_not_a_vehicle_nobody_asked() {
+        assert_eq!(empty_text(false, false, false), "Connect a vehicle to list its logs.");
+        assert_eq!(empty_text(true, true, false), "Asking the vehicle for its logs\u{2026}");
+        assert_eq!(empty_text(true, false, false), "No logs listed yet. Refresh to ask the vehicle.");
+        assert_eq!(empty_text(true, false, true), "This vehicle has no logs.", "one line stood for both, so an operator whose vehicle had answered was told to redo the request that had already produced the true answer");
+
+        assert_eq!(advance(Phase::Idle, false), Phase::Idle, "a vehicle nobody has asked stays unasked however long it sits there - this is the branch that keeps the latch from claiming an answer it never heard");
+        assert_eq!(advance(Phase::Idle, true), Phase::Asking);
+        assert_eq!(advance(Phase::Asking, false), Phase::Answered, "requestingList going true then false IS the answer arriving; LogDownloadController clears it whether the vehicle listed ten logs or none");
+        assert_eq!(advance(Phase::Answered, false), Phase::Answered);
+        assert_eq!(advance(Phase::Answered, true), Phase::Asking, "a refresh puts it back to asking, so a second request that returns nothing does not read as still holding the first answer");
+    }
+
+    #[test]
+    fn the_answered_latch_belongs_to_one_vehicle() {
+        struct Named(i64, bool);
+        impl Backend for Named {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.id" => json!({ "kind": "value", "value": self.0 }),
+                    _ => json!({ "kind": "object", "elements": [] }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    "settings.appSettings" => json!({ "kind": "object", "logSavePath": "/Users/p/Logs" }),
+                    _ => json!({ "kind": "object", "requestingList": self.1, "downloadingLogs": false }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        assert_eq!(logs_view(&Named(9001, false), &[])["emptyText"], "No logs listed yet. Refresh to ask the vehicle.", "a vehicle that has just connected has answered nothing");
+        assert_eq!(logs_view(&Named(9001, true), &[])["emptyText"], "Asking the vehicle for its logs\u{2026}");
+        assert_eq!(logs_view(&Named(9001, false), &[])["emptyText"], "This vehicle has no logs.");
+        assert_eq!(
+            logs_view(&Named(9002, false), &[])["emptyText"],
+            "No logs listed yet. Refresh to ask the vehicle.",
+            "the latch is a fact about one vehicle, and a second one connecting inherits nothing - without the id it would be told it has no logs on the strength of a request sent to a different aircraft"
+        );
+        assert_eq!(logs_view(&Named(9001, false), &[])["emptyText"], "No logs listed yet. Refresh to ask the vehicle.", "and coming back to the first vehicle does not resurrect the old answer either: the latch holds one vehicle, so a reconnect asks again rather than reporting what the last session heard");
     }
 
     #[test]
