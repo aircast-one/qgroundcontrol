@@ -324,7 +324,18 @@ def main():
             print(f"  {line}", file=sys.stderr)
         sys.exit(1)
 
-    differ = [(what, mine, theirs) for what, mine, theirs in checks if str(mine) != str(theirs)]
+    # The core withholds a sentence it has no reason to send -- readiness.reason is null exactly
+    # when the plan IS ready -- and this head decodes that to "". Both draw nothing, so they are
+    # the same statement and not a disagreement. null-fallbacks.py already accepts the same four
+    # view.plan fields for the same reason, naming plan.rs:145 and :149; without this, two of my
+    # own tools contradict each other about one field.
+    #
+    # Deliberately one-directional. The core saying SOMETHING while the head draws nothing is the
+    # defect this whole script exists to catch, and that still differs.
+    def agrees(mine, theirs):
+        return str(mine) == str(theirs) or (mine == "" and theirs is None)
+
+    differ = [(what, mine, theirs) for what, mine, theirs in checks if not agrees(mine, theirs)]
     print(f"compared {len(checks)} facts against the core: "
           f"{len(checks) - len(differ)} agree, {len(differ)} DIFFER")
     for what, mine, theirs in differ:
