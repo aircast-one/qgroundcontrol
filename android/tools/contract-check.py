@@ -10,6 +10,7 @@ CONTRACT = os.environ.get(
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-baseline.txt")
 READS = re.compile(r'\.opt(?:Text|Boolean|Int|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 NAMES_VIEW = re.compile(r'"(view\.[A-Za-z]+)')
+HELPER_DEF = re.compile(r'fun JSON(?:Object|Array)\.([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: String')
 
 
 def served(node, into):
@@ -103,16 +104,30 @@ ACCEPTED_FLAT = {
 }
 
 def head_keys(root):
-    found = {}
+    sources = {}
     for base, _, names in os.walk(root):
         if "/build/" in base or "/test/" in base:
             continue
         for name in names:
-            if not name.endswith(".kt"):
-                continue
-            path = os.path.join(base, name)
-            for key in READS.findall(open(path).read()):
-                found.setdefault(key, set()).add(name)
+            if name.endswith(".kt"):
+                sources[os.path.join(base, name)] = open(os.path.join(base, name)).read()
+
+    # A read through a hand-written JSONObject extension is a read. bound("radiusMaximum") and
+    # text("minString") were counted unread for as long as this check has existed, because the
+    # pattern only knew the optX family. The helper names are derived from their own definitions
+    # rather than listed, so a new one starts counting the day it is written.
+    helpers = {h for src in sources.values() for h in HELPER_DEF.findall(src)}
+    through = re.compile(
+        r'\.(?:' + "|".join(sorted(helpers)) + r')\(\s*"([A-Za-z][A-Za-z0-9]*)"'
+    ) if helpers else None
+
+    found = {}
+    for path, src in sources.items():
+        keys = set(READS.findall(src))
+        if through:
+            keys |= set(through.findall(src))
+        for key in keys:
+            found.setdefault(key, set()).add(os.path.basename(path))
     return found
 
 
@@ -127,6 +142,14 @@ ACCEPTED = {
         "where the four readings the flight screen starts with live, so without reading it the"
         "picker cannot draw them as chosen or let them be turned off. The macOS head builds the"
         "same group the same way",
+    "defaultValueString": "Fact metadata read by path",
+    "maxString": "Fact metadata read by path",
+    "minString": "Fact metadata read by path",
+    "unknownEnumLabel": "Fact metadata read by path",
+    "alert": "per-contact and invisible here because view.adsbTraffic.contacts records EMPTY, "
+        "the blind spot this check prints below. Read in TrafficView.kt",
+    "bearingDegrees": "per-contact, see alert",
+    "relativeAltitude": "per-contact, see alert",
     "enumStrings": "Fact metadata read by path",
     "enumIndex": "Fact metadata read by path",
     "bitmaskStrings": "Fact metadata read by path",
