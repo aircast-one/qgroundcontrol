@@ -26,17 +26,17 @@ final class MotorsStore: ObservableObject, Probeable {
     }
 
     func refresh() {
-        // armed is served by view.flyState and stays raw for the same reason mode does in
-        // MapClick: these four are read together, built into one value and compared as a whole,
-        // so they have to come from one snapshot. Splitting armed out would leave a count and a
-        // firmware flag from one moment beside an armed flag from another, in the screen that
-        // decides whether a motor may be spun.
-        let vehicle = Bridge.group("vehicle")
+        // These four are read together, built into one value and compared as a whole, so they have
+        // to come from one snapshot: a count and a firmware flag from one moment beside an armed
+        // flag from another, on the screen that decides whether a motor may be spun. view.frame
+        // carries all four for that reason, which is why armed is taken from here and not from
+        // view.flyState where this head reads it everywhere else.
+        let frame = Bridge.group("view.frame")
         let read = MotorTest(
-            reportedCount: (vehicle["motorCount"] as? NSNumber)?.intValue ?? MotorTest.unknownCount,
-            letterIndices: (vehicle["apmFirmware"] as? NSNumber)?.boolValue ?? false,
-            connected: vehicle["kind"] as? String == "object",
-            armed: (vehicle["armed"] as? NSNumber)?.boolValue ?? false)
+            reportedCount: (frame["motorCount"] as? NSNumber)?.intValue,
+            letterIndices: (frame["apmFirmware"] as? NSNumber)?.boolValue ?? false,
+            connected: (frame["connected"] as? NSNumber)?.boolValue ?? false,
+            armed: (frame["armed"] as? NSNumber)?.boolValue ?? false)
         if read != state { state = read }
         if !state.canTest(safetyOff: safetyOff), safetyOff {
             safetyOff = false
@@ -75,7 +75,7 @@ final class MotorsStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["connected": state.connected, "armed": state.armed,
-         "motorCount": state.reportedCount, "motors": state.motors,
+         "motorCount": state.reportedCount as Any, "motors": state.motors,
          "names": state.names, "countWarning": state.countWarning,
          "armedRefusal": state.armedRefusal,
          "safetyOff": safetyOff, "throttle": throttle,

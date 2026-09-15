@@ -1,23 +1,31 @@
 import Foundation
 
 struct MotorTest: Equatable {
-    static let unknownCount = -1
     static let fallbackMotors = 8
     static let timeoutSeconds = 3
     static let minimumThrottle = 0.0
     static let maximumThrottle = 100.0
 
-    let reportedCount: Int
+    // ABSENT, not a sentinel. view.frame answers null where QGC answers -1 -- fixed wing, rover,
+    // boat, airship, anything it does not enumerate -- and null for a submarine until its
+    // parameters arrive, where motorCount reads a confident 6 off a default fact. That 6 is the
+    // case a sign test cannot see: it is positive, plausible, and nobody reported it.
+    // The sentinel this replaces was -1, which is also what QGC returns, and no fixture built from
+    // it could tell a sign test from an equality one.
+    let reportedCount: Int?
     let letterIndices: Bool
     let connected: Bool
     let armed: Bool
 
-    static let disconnected = MotorTest(reportedCount: unknownCount, letterIndices: false,
+    static let disconnected = MotorTest(reportedCount: nil, letterIndices: false,
                                         connected: false, armed: false)
 
-    var countKnown: Bool { reportedCount > 0 }
+    // The sign test stays alongside the absence: the core filters -1 but nothing makes a served 0
+    // impossible, and a zero motor count would otherwise draw an empty grid with no warning. Both
+    // answers mean the same thing to an operator -- the vehicle has not said.
+    var countKnown: Bool { (reportedCount ?? 0) > 0 }
 
-    var motors: Int { countKnown ? reportedCount : MotorTest.fallbackMotors }
+    var motors: Int { countKnown ? (reportedCount ?? 0) : MotorTest.fallbackMotors }
 
     var countWarning: String {
         connected && !countKnown

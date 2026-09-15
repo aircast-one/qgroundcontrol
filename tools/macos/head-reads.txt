@@ -340,6 +340,7 @@ secondaryText
 sectors
 segments
 selected
+selection
 sends
 sentence
 sequence

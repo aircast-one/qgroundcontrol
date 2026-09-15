@@ -27,6 +27,8 @@ MODELS = {
     "FenceShape": "view.fences",
     "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",
+    "FrameSetup": "view.frame",
+    "MotorTest": "view.frame",
     "FactRange": "view.control(settings.appSettings.defaultMissionItemAltitude)",
     "InstrumentGroup": "view.instrumentGroups",
     "LinkFormCheck": "view.linkForm(udp,127.0.0.1,14550)",

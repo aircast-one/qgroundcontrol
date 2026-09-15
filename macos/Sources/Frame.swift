@@ -21,15 +21,19 @@ final class FrameStore: ObservableObject, Probeable {
     }
 
     func refresh() {
-        let vehicle = Bridge.group("vehicle")
-        guard vehicle["kind"] as? String == "object" else {
+        let frame = Bridge.group("view.frame")
+        guard (frame["connected"] as? NSNumber)?.boolValue == true else {
             if setup != .unknown { setup = .unknown }
             return
         }
 
+        // vehicleTypeText, not vehicleType: the token is the untranslated class and the text is the
+        // tr() spelling an operator reads. The token is null while disconnected rather than
+        // "Generic", because Generic is a vehicle QGC could not classify and no vehicle at all is a
+        // different state -- this guard returns before either is consulted.
         let reading = FrameSetup(
-            vehicleType: (vehicle["vehicleTypeString"] as? String) ?? "",
-            motorCount: (vehicle["motorCount"] as? NSNumber)?.intValue ?? 0)
+            vehicleType: (frame["vehicleTypeText"] as? String) ?? "",
+            motorCount: (frame["motorCount"] as? NSNumber)?.intValue)
         if reading != setup { setup = reading }
     }
 

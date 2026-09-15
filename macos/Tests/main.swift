@@ -3779,6 +3779,16 @@ checkMavlinkMessage()
 
 func checkFrameSetup() {
     expect(!FrameSetup.unknown.known, "no vehicle reports no frame")
+    expect(FrameSetup(vehicleType: "Submarine", motorCount: nil).motorText, "—",
+           "a count the vehicle never reported is absent, and the summary says so rather than "
+           + "printing a number off a default fact")
+    expect(!FrameSetup(vehicleType: "", motorCount: nil).known,
+           "and with neither a type nor a count there is nothing to summarise")
+    expect(!FrameSetup(vehicleType: "", motorCount: 0).known,
+           "NOR WITH A COUNT OF ZERO, which is a different absence from null and has to land the "
+           + "same way. Without this fixture `known` could ask `motorCount != nil` and every other "
+           + "assertion here would still pass -- the mutation was green until this line existed")
+
     let quad = FrameSetup(vehicleType: "Quadrotor", motorCount: 4)
     expect(quad.known, "a reported type and motor count is a frame")
     expect(quad.motorText, "4 motors", "motors are counted")
@@ -5165,7 +5175,7 @@ func checkMotorTest() {
     let px4 = MotorTest(reportedCount: 6, letterIndices: false, connected: true, armed: false)
     expect(px4.names.joined(separator: ","), "1,2,3,4,5,6", "PX4 numbers them instead")
 
-    let unknown = MotorTest(reportedCount: MotorTest.unknownCount, letterIndices: false,
+    let unknown = MotorTest(reportedCount: nil, letterIndices: false,
                             connected: true, armed: false)
     expect(unknown.motors == MotorTest.fallbackMotors,
            "a vehicle that never said how many motors it has gets eight buttons, as QGC does")
@@ -5176,23 +5186,24 @@ func checkMotorTest() {
            + "probe anyway -- an instrument reporting a sentence the window cannot show is the "
            + "reason a defect was nearly filed against it")
 
-    let fixedWing = MotorTest(reportedCount: -1, letterIndices: false, connected: true, armed: false)
-    expect(fixedWing.motors == MotorTest.fallbackMotors,
-           "-1 IS A NUMBER QGC ACTUALLY RETURNS -- fixed wing, rover, boat, airship, anything it "
-           + "does not enumerate -- and the `as? NSNumber` fallback does NOT catch it, because the "
-           + "cast succeeds. What catches it is that countKnown is a SIGN test, so every reading "
-           + "that means `no answer` lands on the unknown side without this head enumerating them. "
-           + "A peer read the dead fallback as a motor grid drawn with a negative count and I "
-           + "passed that on sharpened before checking my own file; it is wrong, and the reason it "
-           + "is wrong is one character wide")
-    expect(fixedWing.names.count == MotorTest.fallbackMotors,
-           "THIS ASSERTION IS THE ONE THAT HAS TO EVALUATE THE RANGE. Relaxing countKnown to "
-           + "`!= 0` traps here with `Range requires lowerBound <= upperBound` rather than failing, "
-           + "which is the shape of the defect the peer described -- reachable, just not by the "
-           + "route they traced. -1 against unknownCount cannot pin this: they are the same number, "
-           + "so no fixture spelled that way can tell a sign test from an equality one")
-    expect(!fixedWing.countWarning.isEmpty,
-           "and it says the vehicle never reported a count, which is exactly what -1 means")
+    let submarine = MotorTest(reportedCount: 0, letterIndices: false, connected: true, armed: false)
+    expect(submarine.motors == MotorTest.fallbackMotors,
+           "THE SIGN TEST STAYS ALONGSIDE THE ABSENCE. view.frame filters QGC's -1 to null, so the "
+           + "sentinel is gone and with it the fixture that could not see its own rule -- but "
+           + "nothing makes a served 0 impossible, and a zero count would otherwise draw an empty "
+           + "grid with no warning at all. Both answers mean the same thing to an operator")
+    expect(submarine.names.count == MotorTest.fallbackMotors,
+           "and the grid it draws is eight buttons rather than none. Relaxing countKnown to a bare "
+           + "`!= nil` reds this by drawing an EMPTY grid -- a screen offering no motor to test and "
+           + "no sentence saying why. The earlier version of this test used -1 and said the same "
+           + "relaxation TRAPS on `Range requires lowerBound <= upperBound`; that was true of a "
+           + "negative count and is not true of this one, and the sentence did not survive the "
+           + "fixture changing under it")
+    expect(!submarine.countWarning.isEmpty,
+           "and it says the vehicle never reported a count, which is what both absence and zero "
+           + "mean. THE CASE THIS IS NAMED FOR IS THE ONE A SIGN TEST ALONE COULD NOT SEE: a "
+           + "submarine before its parameters arrive reads a confident 6 off a default fact, and "
+           + "the core serves null for it so this head never has to recognise a plausible number")
 
     expect(!apm.canTest(safetyOff: false), "nothing spins until the safety switch is on")
     expect(apm.canTest(safetyOff: true), "with it on and the vehicle disarmed a motor can be tested")
