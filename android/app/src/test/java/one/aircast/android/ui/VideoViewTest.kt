@@ -82,11 +82,11 @@ class VideoViewTest {
 
 class VideoPanelVisibilityTest {
     @Test
-    fun `a build that cannot show video should not hold map space explaining that`() {
+    fun `a source that is not configured should not hold map space explaining that`() {
         val off = videoReading(
             org.json.JSONObject(
                 """{"class":"Video","available":false,"decoding":false,
-                    "summary":"This build cannot show video.","activeSource":0,
+                    "summary":"No stream URL is set.","activeSource":0,
                     "multipleSources":false}""",
             ),
         )

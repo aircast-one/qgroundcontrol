@@ -58,13 +58,13 @@ pub fn can_change_mode(mode: i64, photo_status: i64, video_status: i64) -> bool 
     }
 }
 
-pub fn video_summary(available: bool, decoding: bool, recording: bool, connecting: bool, configured: usize) -> &'static str {
-    match (available, decoding, recording, connecting, configured) {
+pub fn video_summary(build_shows_video: bool, available: bool, decoding: bool, recording: bool, connecting: bool, configured: usize) -> &'static str {
+    match (build_shows_video, available, decoding, recording, connecting, configured) {
         (false, ..) => "This build cannot show video.",
-        (true, true, true, ..) => "Streaming and recording.",
-        (true, true, false, ..) => "Streaming.",
-        (true, false, _, true, _) => "Waiting for a stream.",
-        (true, false, _, false, 0) => "No stream URL is set.",
+        (true, true, true, true, ..) => "Streaming and recording.",
+        (true, true, true, false, ..) => "Streaming.",
+        (true, true, false, _, true, _) => "Waiting for a stream.",
+        (true, false, .., 0) => "No stream URL is set.",
         _ => "Not streaming.",
     }
 }
@@ -165,7 +165,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "multipleSources": flag(&video, "hasMultipleVideoSources"),
         "anyConnecting": any_connecting,
         "configuredCount": configured,
-        "summary": video_summary(available, decoding, recording, any_connecting, configured),
+        "summary": video_summary(flag(&video, "gstreamerEnabled"), available, decoding, recording, any_connecting, configured),
         "cameras": cameras,
         "extraSources": extra_sources(backend),
     })
@@ -315,16 +315,27 @@ mod tests {
 
     #[test]
     fn the_video_summary_follows_the_stream_state() {
-        assert_eq!(video_summary(false, false, false, false, 0), "This build cannot show video.");
-        assert_eq!(video_summary(true, true, true, false, 1), "Streaming and recording.");
-        assert_eq!(video_summary(true, false, false, true, 1), "Waiting for a stream.");
-        assert_eq!(video_summary(true, false, false, false, 0), "No stream URL is set.");
-        assert_eq!(video_summary(true, false, false, false, 2), "Not streaming.");
-        let two_slots = Fake { enabled: vec![true, true, false], configured: vec![true, false, true], ..Fake::new(json!({ "kind": "object", "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": ["Connecting", "Waiting", "Waiting"], "cameraConnecting": [true, false, false], "cameraRecording": [] }), json!({ "kind": "null" })) };
+        assert_eq!(video_summary(false, false, false, false, false, 0), "This build cannot show video.");
+        assert_eq!(video_summary(true, true, true, true, false, 1), "Streaming and recording.");
+        assert_eq!(video_summary(true, true, true, false, false, 1), "Streaming.");
+        assert_eq!(video_summary(true, true, false, false, true, 1), "Waiting for a stream.");
+        assert_eq!(
+            "No stream URL is set.",
+            video_summary(true, false, false, false, false, 0),
+            "hasVideo is streamEnabled && streamConfigured - both settings - so an operator who has \
+             picked no source has to be told to pick one, not that their build cannot do video"
+        );
+        assert_eq!(video_summary(true, false, false, false, false, 2), "Not streaming.");
+        assert_eq!(
+            "This build cannot show video.",
+            video_summary(false, true, true, false, false, 1),
+            "only the build flag may claim a build limitation, whatever the stream is doing"
+        );
+        let two_slots = Fake { enabled: vec![true, true, false], configured: vec![true, false, true], ..Fake::new(json!({ "kind": "object", "gstreamerEnabled": true, "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": ["Connecting", "Waiting", "Waiting"], "cameraConnecting": [true, false, false], "cameraRecording": [] }), json!({ "kind": "null" })) };
         let view = video_view(&two_slots, &[]);
         assert!(view["extraSources"]["readable"].is_boolean(), "video_view has to CARRY the block; a head reads view.video and never calls extra_sources, so testing that function alone leaves the wiring unpinned - fifth time tonight");
         assert_eq!(view["sourceSize"], Value::Null, "a size only counts while a frame is decoding");
-        let decoding = video_view(&Fake::new(json!({ "kind": "object", "hasVideo": true, "decoding": true, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": [], "cameraConnecting": [], "cameraRecording": [] }), json!({ "kind": "null" })), &[]);
+        let decoding = video_view(&Fake::new(json!({ "kind": "object", "gstreamerEnabled": true, "hasVideo": true, "decoding": true, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": [], "cameraConnecting": [], "cameraRecording": [] }), json!({ "kind": "null" })), &[]);
         assert_eq!(decoding["sourceSize"], json!({ "width": 640, "height": 480 }));
         assert_eq!(view["cameras"][0]["configured"], true);
         assert_eq!(view["cameras"][1]["configured"], false, "an enabled slot with no address is not configured");
