@@ -49,6 +49,47 @@ def recorded_empty(node, path, into):
     return into
 
 
+def nullable_bools(node, path, into):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(value, str) and "null" in value.split("|") and "bool" in value.split("|"):
+                into.setdefault(key, set()).add(path or key)
+            else:
+                nullable_bools(value, path or key, into)
+    elif isinstance(node, list):
+        for item in node:
+            nullable_bools(item, path, into)
+    return into
+
+
+def flattened(root, nullable):
+    # optBoolean returns false for JSON null, so a field the core declares bool|null and the
+    # head reads this way cannot hold the absence - and false is the reassuring direction for
+    # every one of them so far: "contact is fine", "checked and not ready", "nothing to hide".
+    bare = re.compile(r'\.optBoolean\(\s*"([A-Za-z][A-Za-z0-9]*)"\s*\)')
+    hits = {}
+    for base, _, names in os.walk(root):
+        if "/build/" in base or "/test/" in base:
+            continue
+        for name in names:
+            if not name.endswith(".kt"):
+                continue
+            body = open(os.path.join(base, name)).read()
+            for key in bare.findall(body):
+                if key in nullable and key not in ACCEPTED_FLAT and f'isNull("{key}")' not in body:
+                    hits.setdefault(key, set()).add(name)
+    return hits
+
+
+# A field name can be bool in the view a file reads and bool|null in another, so this check
+# matches names rather than paths and needs the collisions named.
+ACCEPTED_FLAT = {
+    "ready": "PlanFileRules and VehicleSync read the plan's own ready, not view.setup.ready -"
+        " SetupView.kt is the one that reads that, and it holds it as Boolean?",
+    "stale": "view.detections.stale and an adsbTraffic contact's stale are both plain bool;"
+        " only view.obstacle.stale is an Option, and ObstacleDistance.kt names its choice",
+}
+
 def head_keys(root):
     found = {}
     for base, _, names in os.walk(root):
@@ -146,7 +187,15 @@ def main():
         for name, near in sorted(fresh.items()):
             print(f"    UNREAD BESIDE {', '.join(sorted(near))}: {name}")
         print("  A field the core adds to a shape you consume is invisible to every other check here.")
-    return 1 if unexplained or stale or fresh else 0
+    nullable = nullable_bools(json.load(open(CONTRACT)), "", {})
+    flat = flattened(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), nullable)
+    if flat:
+        print(f"\n  {len(flat)} field(s) the core can serve as null, read as a bare Boolean:")
+        for name, where in sorted(flat.items()):
+            print(f"    FLATTENED {name}: {', '.join(sorted(where))} - contract says {sorted(nullable[name])[0]} is bool|null")
+        print("  optBoolean turns JSON null into false, and false is the reassuring answer every time.")
+
+    return 1 if unexplained or stale or fresh or flat else 0
 
 
 if __name__ == "__main__":
