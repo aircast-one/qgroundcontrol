@@ -97,6 +97,14 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
 internal fun linkIsEditable(row: LinkRow): Boolean =
     !row.connected && row.editing in setOf("hostAndPort", "portOnly", "serial")
 
+internal val CREATABLE_LINK_TYPES = listOf("udp", "tcp", "serial")
+
+internal fun addableLinkTypes(view: JSONObject?): List<String> {
+    val listed = view?.optJSONArray("linkTypeIds") ?: return CREATABLE_LINK_TYPES
+    val served = (0 until listed.length()).map { listed.optString(it) }.toSet()
+    return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES }
+}
+
 internal fun editWrites(
     editing: String,
     name: String,
@@ -350,6 +358,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     val ports = remember(portPaths, portLabels) { serialPortChoices(portPaths, portLabels) }
     val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
     val taken = remember(linksJson) { linkRows(linksJson).map { it.name } }
+    val offered = remember(linksJson) { addableLinkTypes(linksJson) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -360,21 +369,13 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = type == "udp",
-                        onClick = { type = "udp" },
-                        label = { Text("UDP") },
-                    )
-                    FilterChip(
-                        selected = type == "tcp",
-                        onClick = { type = "tcp" },
-                        label = { Text("TCP") },
-                    )
-                    FilterChip(
-                        selected = type == "serial",
-                        onClick = { type = "serial" },
-                        label = { Text("Serial") },
-                    )
+                    offered.forEach { id ->
+                        FilterChip(
+                            selected = type == id,
+                            onClick = { type = id },
+                            label = { Text(if (id == "serial") "Serial" else id.uppercase()) },
+                        )
+                    }
                 }
                 Text(
                     text = when (type) {
