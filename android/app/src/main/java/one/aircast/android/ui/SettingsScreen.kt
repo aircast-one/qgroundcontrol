@@ -530,7 +530,7 @@ internal fun factValueLines(fact: Fact): Int = if (fact.isString) 4 else 1
 
 internal fun truncationRefusal(fact: Fact, text: String): String? {
     if (!fact.wholeNumbersOnly) return null
-    val typed = text.trim().toDoubleOrNull() ?: return null
+    val typed = text.trim().toDoubleOrNull()?.takeIf { it.isFinite() } ?: return null
     return if (typed == floor(typed)) null else "This setting takes whole numbers only."
 }
 

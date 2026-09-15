@@ -107,6 +107,13 @@ class FactKeyboardTest {
     fun `text that is not a number is left to the vehicle's own validator`() {
         assertNull(truncationRefusal(fact("0", whole = true), "not a number"))
         assertNull(truncationRefusal(fact("0", whole = true), ""))
+        assertNull(
+            "Kotlin parses these to a Double, and NaN == floor(NaN) is false, so the fraction " +
+                "message fires for something that is not a fraction - and steals a specific " +
+                "complaint from the validator that can actually name the problem",
+            truncationRefusal(fact("-5", whole = true), "NaN"),
+        )
+        assertNull(truncationRefusal(fact("-5", whole = true), "Infinity"))
     }
 
     @Test

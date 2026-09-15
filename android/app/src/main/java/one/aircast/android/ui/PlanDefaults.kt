@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
 import org.json.JSONObject
@@ -30,7 +31,7 @@ internal fun planDefaultsNote(facts: List<Fact>): String =
 
 @Composable
 internal fun PlanDefaultsDialog(view: JSONObject?, onDismiss: () -> Unit) {
-    val facts = planDefaults(view)
+    val facts = remember(view) { planDefaults(view) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
