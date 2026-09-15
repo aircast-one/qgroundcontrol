@@ -19,9 +19,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import one.aircast.android.bridge.qgcPath
 
 enum class AnalyzePage(
     val label: String,
@@ -50,6 +53,18 @@ enum class AnalyzePage(
     ;
 }
 
+internal fun analyzeNote(
+    page: AnalyzePage,
+    connected: Boolean,
+    px4: Boolean,
+    vibrationAvailable: Boolean,
+): String? = when {
+    !connected -> null
+    page == AnalyzePage.Console && !px4 -> "The shell answers on PX4; this vehicle reports another autopilot"
+    page == AnalyzePage.Vibration && !vibrationAvailable -> "This vehicle is not reporting vibration"
+    else -> null
+}
+
 @Composable
 private fun AnalyzeHeader(title: String, onBack: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface) {
@@ -69,11 +84,29 @@ private fun AnalyzeHeader(title: String, onBack: () -> Unit) {
 
 @Composable
 private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier = Modifier) {
+    val setupJson by qgcPath(SETUP)
+    val vibrationJson by qgcPath(VIBRATION_VIEW)
+    val connected = hasVehicle()
+    val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
+    val vibrating = remember(vibrationJson) { vibrationJson?.optBoolean("available") == true }
+
     LazyColumn(modifier.fillMaxSize()) {
         items(AnalyzePage.entries, key = { it.name }) { page ->
+            val note = analyzeNote(page, connected, px4, vibrating)
             ListItem(
                 headlineContent = { Text(page.label) },
-                supportingContent = { Text(page.description) },
+                supportingContent = {
+                    Column {
+                        Text(page.description)
+                        note?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
                 modifier = Modifier.clickable { onSelect(page) },
             )
             HorizontalDivider()

@@ -33,7 +33,7 @@ import one.aircast.mapspike.optText
 private val VIBE_HIGH_COLOR = Color(0xFFFF5252)
 private val VIBE_WARN_COLOR = Color(0xFFFFA000)
 
-private const val VIBRATION = "view.vibration"
+internal const val VIBRATION_VIEW = "view.vibration"
 private const val SCALE_STEPS = 4
 
 private val AXIS_WIDTH = 32.dp
@@ -218,7 +218,7 @@ private fun EmptyState(message: String, detail: String, modifier: Modifier = Mod
 
 @Composable
 fun VibrationScreen(modifier: Modifier = Modifier) {
-    val view by qgcPath(VIBRATION)
+    val view by qgcPath(VIBRATION_VIEW)
     val reading = remember(view) { vibrationReading(view) }
 
     silentState(view)?.let { state ->
