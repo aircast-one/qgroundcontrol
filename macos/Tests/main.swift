@@ -3374,6 +3374,27 @@ func checkPlanSummary() {
            + "is that same figure a third time -- measured, the strip printed 14.11 km four "
            + "times across a sidebar that then wrapped every cell, rendering the distance as "
            + "\"14.\" over \"11\" over \"km\"")
+    let survey = MissionSummary(["available": true as NSNumber, "reason": "",
+                                 "rows": [["id": "distance", "label": "Distance",
+                                           "value": "23.41 km"],
+                                          ["id": "planned", "label": "Planned",
+                                           "value": "41.74 km"],
+                                          ["id": "time", "label": "Time", "value": "2:20:23"],
+                                          ["id": "hover", "label": "Hover",
+                                           "value": "41.74 km"],
+                                          ["id": "furthest",
+                                           "label": "Furthest from launch",
+                                           "value": "18.33 km"]]])
+    expect(survey.extraRows.map(\.label).joined(separator: ","), "Planned",
+           "AND TWO EXTRAS CANNOT REPEAT EACH OTHER EITHER. The filter deduped against the three "
+           + "the strip draws itself and not against the rest, so this plan -- measured on the "
+           + "rig, a survey with 101 commands -- printed Planned 41.74 km AND Hover 41.74 km. "
+           + "One number under two labels, costing the width that then truncated BOTH to "
+           + "\"P...\" and \"...\", which is worse than either of them being absent")
+    expect(survey.extraRows.count == 1,
+           "the first keeps the figure, because the core's order is the answer to which label it "
+           + "belongs to and this head does not get to choose")
+
     expect(!read.extraRows.isEmpty,
            "and the case above keeps two rows, without which an extraRows that always answered "
            + "empty would satisfy the assertion here for the wrong reason")

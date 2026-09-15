@@ -56,9 +56,18 @@ struct MissionSummary: Equatable {
 
     var describes: Bool { available && !rows.isEmpty }
 
+    // The strip already refuses to repeat a figure the three named rows are drawing. It did not
+    // refuse to repeat one EXTRA with another: a copter plan measured here has Planned and Hover
+    // both at 41.74 km, and both were drawn. Two labels over one number is the same figure said
+    // twice, and on a strip that has to fit they cost the width that truncated them BOTH to
+    // "P..." and "...". First one wins, because the core's order is the answer to which label
+    // that figure belongs to.
     var extraRows: [MissionSummaryRow] {
         let shown = [MissionSummary.distance, MissionSummary.time, MissionSummary.furthest]
-        let figures = Set(shown.compactMap(value))
-        return rows.filter { !shown.contains($0.id) && !figures.contains($0.value) }
+        var figures = Set(shown.compactMap(value))
+        return rows.filter { row in
+            guard !shown.contains(row.id), figures.insert(row.value).inserted else { return false }
+            return true
+        }
     }
 }

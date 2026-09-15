@@ -445,9 +445,6 @@ struct PlanInspector: View {
                               ? MissionSummary.unknownTimeHelp
                               : "How long the mission takes")
                         .layoutPriority(2)
-                    ForEach(mission.summary.extraRows) { row in
-                        Text("\(row.label) \(row.value)").help(row.label)
-                    }
                     Spacer(minLength: 0)
                     if let furthest = mission.summary.value(MissionSummary.furthest) {
                         Text("\(furthest) from launch")
@@ -460,13 +457,27 @@ struct PlanInspector: View {
                 .labelStyle(.titleAndIcon)
                 .lineLimit(1)
 
-                if !mission.summary.altitudeRange.isEmpty {
-                    Label(mission.summary.altitudeRange, systemImage: "mountain.2")
-                        .help("The lowest and highest the mission flies")
-                        .font(.caption.monospacedDigit())
-                        .foregroundColor(.secondary)
-                        .labelStyle(.titleAndIcon)
-                        .lineLimit(1)
+                // The extras share the second line rather than competing on the first. They lost
+                // that fight every time -- default layout priority against 2, 2 and 1 -- and a
+                // measured survey plan rendered them as "P..." and "...", two labels with no
+                // numbers eating the width that would have carried one. This line holds only the
+                // altitude range and had room the whole time.
+                if !mission.summary.altitudeRange.isEmpty || !mission.summary.extraRows.isEmpty {
+                    HStack(spacing: Overlay.step) {
+                        if !mission.summary.altitudeRange.isEmpty {
+                            Label(mission.summary.altitudeRange, systemImage: "mountain.2")
+                                .help("The lowest and highest the mission flies")
+                                .layoutPriority(1)
+                        }
+                        ForEach(mission.summary.extraRows) { row in
+                            Text("\(row.label) \(row.value)").help(row.label)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+                    .labelStyle(.titleAndIcon)
+                    .lineLimit(1)
                 }
             }
         }
