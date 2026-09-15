@@ -46,7 +46,7 @@ internal fun firmwareSummary(
     versionType: String,
 ): String {
     val version = if (major < 0) "" else "$major.$minor.$patch"
-    val suffix = versionType.takeIf { it.isNotBlank() && !it.equals("Official", true) }
+    val suffix = versionType.takeIf { it.isNotBlank() }
     return listOfNotNull(
         firmwareType.takeIf { it.isNotBlank() },
         version.takeIf { it.isNotEmpty() },

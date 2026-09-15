@@ -8,7 +8,21 @@ import org.junit.Test
 class SetupScreenTest {
     @Test
     fun `a released firmware reads as type and version`() {
-        assertEquals("ArduPilot 4.5.7", firmwareSummary("ArduPilot", 4, 5, 7, "Official"))
+        assertEquals(
+            "QGCMAVLink.cc:362 maps FIRMWARE_VERSION_TYPE_OFFICIAL, and the default, to the EMPTY " +
+                "string - never the word Official. The head carried a case for that word, which " +
+                "nothing could reach, kept alive by this test asserting a value the producer " +
+                "cannot send",
+            "ArduPilot 4.5.7",
+            firmwareSummary("ArduPilot", 4, 5, 7, ""),
+        )
+    }
+
+    @Test
+    fun `every version type the producer can send`() {
+        assertEquals("PX4 1.15.0 dev", firmwareSummary("PX4", 1, 15, 0, "dev"))
+        assertEquals("PX4 1.15.0 alpha", firmwareSummary("PX4", 1, 15, 0, "alpha"))
+        assertEquals("PX4 1.15.0 rc", firmwareSummary("PX4", 1, 15, 0, "rc"))
     }
 
     @Test
