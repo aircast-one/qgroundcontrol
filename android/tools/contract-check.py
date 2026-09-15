@@ -9,6 +9,7 @@ CONTRACT = os.environ.get(
 )
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-baseline.txt")
 READS = re.compile(r'\.opt(?:Text|Boolean|Int|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
+NAMES_VIEW = re.compile(r'"(view\.[A-Za-z]+)')
 
 
 def served(node, into):
@@ -23,17 +24,28 @@ def served(node, into):
     return into
 
 
-def groups(node, into):
+def groups(node, root, into):
     if isinstance(node, dict):
         names = {k for k in node if "." not in k}
         if len(names) > 1:
-            into.append(names)
+            into.append((root, names))
         for value in node.values():
-            groups(value, into)
+            groups(value, root, into)
     elif isinstance(node, list):
         for item in node:
-            groups(item, into)
+            groups(item, root, into)
     return into
+
+
+def head_views(root):
+    found = set()
+    for base, _, names in os.walk(root):
+        if "/build/" in base or "/test/" in base:
+            continue
+        for name in names:
+            if name.endswith(".kt"):
+                found.update(NAMES_VIEW.findall(open(os.path.join(base, name)).read()))
+    return found
 
 
 def recorded_empty(node, path, into):
@@ -106,6 +118,9 @@ def head_keys(root):
 
 ACCEPTED = {
     "ok": "the invoke envelope, not a view field",
+    "simulated": "served per contact at adsb.rs:386 and invisible here because"
+        "view.adsbTraffic.contacts records EMPTY - the same blind spot this check already"
+        "prints above. Read in TrafficView.kt since 457dbdda7",
     "elements": "the bridge's list envelope",
     "shortDescription": "the vehicle's own fact group, read as a raw object because"
         "view.instrumentGroups enumerates the vehicle's CHILD groups and skips its own. That is"
@@ -178,13 +193,28 @@ def main():
     for where in sorted(blind):
         print(f"    EMPTY WHEN RECORDED: {where}")
 
-    beside = {}
-    for names in groups(json.load(open(CONTRACT)), []):
+    tree = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    drawn = head_views(tree)
+    # A shape shares class and kind with every other view, so matching key NAMES alone counts a
+    # view the head has no screen for as one it consumes. That folded 60 fields from packetRadio,
+    # joystickMapping, gimbal and gpsRtkBase into a count of omissions beside fields we read.
+    if not drawn:
+        print("  REFUSING: no view path found in any .kt, so every shape would look unconsumed")
+        return 1
+
+    shapes = []
+    for key, value in json.load(open(CONTRACT)).items():
+        groups(value, key.split("(")[0], shapes)
+
+    beside, absent = {}, {}
+    for root, names in shapes:
         known = names & set(reads)
         if not known:
             continue
+        target = beside if root in drawn else absent
         for name in sorted(names - set(reads) - ACCEPTED.keys()):
-            beside.setdefault(name, set()).update(sorted(known)[:3])
+            target.setdefault(name, set()).add(root)
+    absent = {k: v for k, v in absent.items() if k not in beside}
 
     seen = set()
     if os.path.exists(BASELINE):
@@ -192,14 +222,21 @@ def main():
     fresh = {k: v for k, v in beside.items() if k not in seen}
     if "--baseline" in sys.argv:
         with open(BASELINE, "w") as handle:
-            handle.write("\n".join(sorted(beside)) + "\n")
-        print(f"\n  baseline written: {len(beside)} fields unread beside ones this head reads")
+            handle.write("\n".join(sorted(set(beside) | set(absent))) + "\n")
+        print(f"\n  baseline written: {len(beside)} beside a read view, {len(absent)} in views with no screen")
         return 0
     if fresh:
         print(f"\n  {len(fresh)} field(s) NEWLY served beside ones this head already reads:")
         for name, near in sorted(fresh.items()):
             print(f"    UNREAD BESIDE {', '.join(sorted(near))}: {name}")
         print("  A field the core adds to a shape you consume is invisible to every other check here.")
+
+    unbuilt = {k: v for k, v in absent.items() if k not in seen}
+    if unbuilt:
+        views = sorted({r for roots in unbuilt.values() for r in roots})
+        print(f"\n  {len(unbuilt)} field(s) in {len(views)} view(s) this head has no screen for:")
+        print(f"    {', '.join(views)}")
+        print("  These are whole features, not fields missed beside ones we read - a different call.")
     nullable = nullable_bools(json.load(open(CONTRACT)), "", {})
     # A parse that finds nothing reports a clean head, so prove it can still see a known
     # bool|null before believing an empty result. view.flyState.contactLost has been one
