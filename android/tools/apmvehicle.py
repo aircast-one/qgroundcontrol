@@ -39,6 +39,7 @@ ADSB_CONTACTS = int(os.environ.get("ADSB_CONTACTS", "0"))
 ORBIT_RADIUS_M = float(os.environ.get("ORBIT", "0"))
 CAM_INTERVAL = os.environ.get("CAM_INTERVAL") == "1"
 ADSB_SQUAWK = int(os.environ.get("ADSB_SQUAWK", "1200"))
+ADSB_SIMULATED = int(os.environ.get("ADSB_SIMULATED", "0"))
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
 DEFAULT_TAKEOFF_ALTITUDE = 10.0
@@ -609,7 +610,8 @@ def main():
                 1,
                 apm.ADSB_FLAGS_VALID_COORDS | apm.ADSB_FLAGS_VALID_ALTITUDE
                 | apm.ADSB_FLAGS_VALID_HEADING | apm.ADSB_FLAGS_VALID_VELOCITY
-                | apm.ADSB_FLAGS_VALID_CALLSIGN | apm.ADSB_FLAGS_VALID_SQUAWK,
+                | apm.ADSB_FLAGS_VALID_CALLSIGN | apm.ADSB_FLAGS_VALID_SQUAWK
+                | (apm.ADSB_FLAGS_SIMULATED if contact < ADSB_SIMULATED else 0),
                 ADSB_SQUAWK if contact == 0 else 1200)
 
         if ORBIT_RADIUS_M:
