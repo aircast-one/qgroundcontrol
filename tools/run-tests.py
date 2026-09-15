@@ -158,6 +158,10 @@ def after_the_verdict(line):
     return safe[:90] or "start"
 
 
+def load_now():
+    return os.getloadavg()[0]
+
+
 def tool_settings():
     body = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()[:12]
     return (f"run-tests.py {body} quiet={QUIET_SECONDS}s max={MAX_TRACES} "
@@ -324,12 +328,14 @@ def flake_rate(history, suite):
     return len(flaked), len(seen)
 
 
-def record(summary, verdicts, incomplete=False):
+def record(summary, verdicts, incomplete=False, load=(None, None)):
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "run": RUN_ID,
         "tool": tool_settings(),
+        "load_started": load[0],
+        "load_finished": load[1],
         "suites": summary["suites"],
         "expected": len(expected_suites()),
         "passed": summary["passed"],
@@ -367,7 +373,8 @@ def why_it_stopped(exit_code):
     return f"binary exited {exit_code}"
 
 
-def report(summary, verdicts, history, stale, contention=None, missing=(), exit_code=0):
+def report(summary, verdicts, history, stale, contention=None, missing=(), exit_code=0,
+           load=(None, None)):
     lines = []
     if exit_code < 0 and not missing:
         lines.append(f"CRASHED WITH NOTHING MISSING - {why_it_stopped(exit_code)}")
@@ -384,6 +391,8 @@ def report(summary, verdicts, history, stale, contention=None, missing=(), exit_
                      + (f" and {len(missing) - 6} more" if len(missing) > 6 else ""))
         lines.append("  do not read the totals below as a pass.")
         lines.append("")
+    if load[0] is not None:
+        lines.append(f"load: started {load[0]:.2f}, finished {load[1]:.2f}  |  {tool_settings()}")
     if contention:
         lines.append(f"WARNING: {contention}")
         lines.append("")
@@ -447,6 +456,7 @@ def main():
               or "  no flakes recorded")
         return 0
 
+    began_at_load = load_now()
     contention = sibling_run() or port_contention()
     if contention and not args.allow_stale:
         print(f"REFUSING: {contention}", file=sys.stderr)
@@ -461,14 +471,15 @@ def main():
         return 2
 
     output, _, exit_code = run_suite(args.suite)
+    load = (began_at_load, load_now())
     summary = parse(output)
     missing = [] if args.suite else missing_suites(summary)
 
     verdicts = ({} if args.no_retry or not summary["failures"]
                 else classify(summary["failures"], args.repeats, verbose=True))
 
-    entry = record(summary, verdicts, bool(missing)) if not args.suite else None
-    print(report(summary, verdicts, history, stale, contention, missing, exit_code))
+    entry = record(summary, verdicts, bool(missing), load) if not args.suite else None
+    print(report(summary, verdicts, history, stale, contention, missing, exit_code, load))
     if entry:
         print(f"\nrecorded to {HISTORY.relative_to(REPO)}")
 
