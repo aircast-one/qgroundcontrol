@@ -8242,5 +8242,32 @@ only because the rig owner first connected a test client to the same live
 process and watched the log record a real request. An absence from an unchecked
 instrument would have proved nothing.
 
-Open: the discriminator. Let the initial load finish before opening Plan and see
-whether the request appears in that order and not the other.
+**Correction, same night: the trigger is not the Plan tab. It is the Fly tab,
+and it fires on every connection with no operator action at all.**
+
+The discriminator - connect, stay on Fly for 75 s, never touch Plan - found
+`initialPlanRequestComplete` **already true before Plan was opened**, which
+kills "opening Plan forces it". The reason is one dependency:
+
+```
+core-rs/src/guided.rs      view.guidedActions deps include "plan.missionController.containsItems"
+QGCBridgeCore rootObject   resolving "plan" CONSTRUCTS PlanMasterController and start()s it
+```
+
+**`view.guidedActions` is watched the moment the Fly tab composes**, which is
+app start. So the plan controller exists before any vehicle arrives, and the
+instant one connects, `_activeVehicleChanged` runs the Plan-view branch while
+the vehicle's state machine genuinely has not reached the mission step and its
+mission manager genuinely is not syncing. **Both terms of the force hold, on the
+default screen, every time.**
+
+That also explains why opening Plan first changed nothing: the controller had
+already been constructed by Fly in both orders, so the experiment varied
+something that had already happened.
+
+**Mislocated, not weakened - and the corrected version is more serious.** A
+tab-order bug can be avoided by habit; this one cannot be avoided at all.
+
+Still inferred: that `syncInProgress` is false at the force instant. The wire
+log showing no request at all is the evidence for it, since nothing that never
+started syncing can be syncing.
