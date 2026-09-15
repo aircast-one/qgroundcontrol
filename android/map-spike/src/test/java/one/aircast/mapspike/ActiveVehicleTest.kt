@@ -187,6 +187,28 @@ class ActiveVehicleTest {
     }
 
     @Test
+    fun `a request stops counting once the vehicle it asked for is the active one`() {
+        val switched = listOfVehicles(1, 2, activeId = 2)
+        assertTrue(
+            "the operator's own switch has landed, so the request has been answered and must not " +
+                "silence a later handover that promotes the same vehicle again",
+            askSatisfied(2, switched),
+        )
+        assertFalse(askSatisfied(2, listOfVehicles(1, 2, activeId = 1)))
+        assertFalse("nothing was asked for", askSatisfied(null, switched))
+    }
+
+    @Test
+    fun `a handover back to a vehicle the operator once chose is still announced`() {
+        assertEquals(
+            "asked for 2 an hour ago, flew 1, then 1 died - measured on the emulator, where a kept " +
+                "request swallowed the notice entirely",
+            "Quadrotor 1 stopped answering. Now flying Quadrotor 2.",
+            handoverNotice(listOfVehicles(1, 2, activeId = 1), listOfVehicles(1, 2, activeId = 2), asked = null),
+        )
+    }
+
+    @Test
     fun `an old request does not silence the next handover`() {
         assertEquals(
             "Quadrotor 2 stopped answering. Now flying Quadrotor 1.",
@@ -210,5 +232,38 @@ class ActiveVehicleTest {
     @Test
     fun `the first reading announces nothing`() {
         assertNull(handoverNotice(null, listOfVehicles(1, 2, activeId = 1), asked = null))
+    }
+
+    @Test
+    fun `the gap between one vehicle leaving and the next being promoted is not a reading`() {
+        val flying = listOfVehicles(1, 2, activeId = 1)
+        val gap = vehicleChoices(
+            JSONObject("""{"ambiguous":false,"vehicles":[{"id":2,"name":"Quadrotor 2","active":false}]}"""),
+        )
+        val promoted = listOfVehicles(2, activeId = 2)
+
+        assertEquals(
+            "measured on the emulator: killing the active vehicle's link emits THREE times - two " +
+                "vehicles with 1 active, one vehicle with NO active, then 2 promoted. Keeping the " +
+                "middle one loses who was being flown and the handover goes unannounced",
+            flying,
+            rememberedChoices(flying, gap),
+        )
+        assertEquals(promoted, rememberedChoices(flying, promoted))
+        assertEquals(
+            "by the time the survivor is promoted the old vehicle has already left the list",
+            "Quadrotor 1 is gone. Now flying Quadrotor 2.",
+            handoverNotice(rememberedChoices(flying, gap), promoted, asked = null),
+        )
+    }
+
+    @Test
+    fun `losing every vehicle forgets the one that was being flown`() {
+        val flying = listOfVehicles(1, activeId = 1)
+        assertNull(
+            "No vehicle is already on the header, and the next aircraft to connect is a new flight " +
+                "rather than a handover from the one that went away",
+            rememberedChoices(flying, vehicleChoices(null)),
+        )
     }
 }

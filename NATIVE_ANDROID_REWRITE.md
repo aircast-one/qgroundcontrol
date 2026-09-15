@@ -7885,3 +7885,35 @@ The second one is the trap already written down as
 because it made my own shipped instruction look wrong. Gating the read on the
 core's `connected` is both the fix and the better behaviour: during the gap the
 view says `noVehicle` rather than a stale `unanswered`.
+
+### Two vehicles, and four defects in an hour, 2026-09-15
+
+`view.vehicles` carried *"built and unverifiable: no second vehicle has ever
+connected here"* from the day it was written. A `SYSID` knob on the TCP source
+and a second instance on another port ended that, and the head failed four
+different ways in the first hour.
+
+| state | what the head did | fix |
+|---|---|---|
+| two connected | named neither; Arm, Takeoff and every action went to one of them unsaid | `20f22e17d` the header names the aircraft and taps through to a chooser |
+| one not answering, the other being flown | nothing at all - QGC announces this by SPEAKING it and puts it nowhere on screen | `f382b2520` the chevron becomes a warning naming which one |
+| upload with two connected | "Upload this plan?" - a mission written to one of them, unsaid, in the dialog covering the header that says which | `2cecf142f` the dialog names its target |
+| the one being flown vanishes | header kept the same words while its subject became a different aircraft | `df76605d4` a snackbar names both |
+
+**The fourth is the one to remember, and my first rule for it was wrong.** I
+keyed the handover on the previous vehicle being absent from the new list, and
+it never fired. QGC promotes the survivor FIRST and deletes the departing
+vehicle a moment later, so at the instant the active id changes the old one is
+still in the list, and **the transition is byte-identical to an operator
+choosing another vehicle from the sheet.** Nothing served separates them; only
+whether this head asked. Every unit test passed with the wrong rule because
+they were written from the same assumption about the ordering.
+
+**And two instruments could not have found any of it.** `view.vehicles` watched
+`count` and `vehicle.id` and nothing else it served, so a vehicle losing
+contact never reached a head - the sheet described a vehicle that had stopped
+answering a minute earlier as flying normally. `view.missionItems` has the
+same shape and neither head can witness it: this one polls the view every
+700 ms with no subscription at all, which is why its deps were never
+load-bearing.
+

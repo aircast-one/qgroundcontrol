@@ -10,6 +10,10 @@ object VehicleBridge {
     var lastAsked: Int? = null
         private set
 
+    fun forget() {
+        lastAsked = null
+    }
+
     fun askFor(id: Int): Boolean =
         runCatching {
             lastAsked = id
@@ -102,5 +106,14 @@ fun handoverNotice(before: VehicleChoices?, now: VehicleChoices, asked: Int?): S
         true -> "${left.name} stopped answering. Now flying ${arrived.name}."
         false -> "${left.name} is gone. Now flying ${arrived.name}."
     }
+}
+
+fun askSatisfied(asked: Int?, now: VehicleChoices): Boolean =
+    asked != null && now.active?.id == asked
+
+fun rememberedChoices(previous: VehicleChoices?, now: VehicleChoices): VehicleChoices? = when {
+    now.choices.isEmpty() -> null
+    now.active != null -> now
+    else -> previous
 }
 
