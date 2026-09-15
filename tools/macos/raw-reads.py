@@ -41,36 +41,39 @@ CORE = ROOT / "core-rs/src"
 
 # A raw read kept on purpose. Each reason names what the view does NOT cover, and a view that
 # grows to cover it has to move this line with it.
-ACCEPTED = {
-    "geoTag": "MEASURED, and the answer to this checker's own question -- ask what that view "
-        "refuses. view.geoTag refuses everything except the tagging RUN: it wants the path of a "
-        "telemetry log, a tolerance in seconds and one epoch timestamp per image. The head reads "
-        "the controller's JOB STATE from Qt -- logFile, imageDirectory, saveDirectory, progress, "
-        "inProgress -- which that view does not serve and cannot be asked for. The names collide "
-        "on a subject; the questions do not overlap at all. Same shape as the plan and links "
-        "entries below, and view-fields.py carries the mirror of this reason",
-    "plan": "MEASURED: the head takes syncInProgress and canUndo from here. The undo half still "
-        "has nowhere to defer to -- no view carries undo or redo state. The SYNC half of this "
-        "reason was false when audited on 2026-09-13: plan.rs:64 serves view.plan.sync as "
-        "{state, refusal}, and the sentence said the core served no sync flag. It was written "
-        "before that field existed and nothing made it go red when it appeared. The raw read "
-        "still stands, for a reason that is about this head rather than about the core: the "
-        "boolean gates offersUndo, offersRedo and offersDownload, which are statements about "
-        "what THIS head can offer, and the core's sync carries a REFUSAL SENTENCE for a head "
-        "that explains itself where this one disables the control instead. Take the sentence "
-        "the day this head starts explaining",
-    "links": "MEASURED: the head takes connectingLinkName and serialPortStrings from here -- "
-        "a transient connection attempt and the machine's serial ports. view.links is the "
-        "list of CONFIGURED links, which Links.swift also reads and draws. Different subjects "
-        "under one name",
-    "vehicle.batteries": "MEASURED: Fly.swift reads this for the per-pack DETAIL ROWS and "
-        "reads view.battery ten lines later for the line and the levels. The raw read takes "
-        "each Fact's valueString, which is the same locale-aware string the core builds "
-        "voltage_text from, so the two do NOT disagree in spelling -- this is a duplicated "
-        "SOURCE, not a duplicated derivation. view.battery names six facts per pack and caps "
-        "the count; the detail panel shows temperature, power and mAh consumed, which the view "
-        "does not carry. Revisit if the view grows those",
+# Per head, because the answer differs per tree and a shared table reported four of macOS's
+# acceptances as stale the first time this ran against Android -- the same defect served-unread.py
+# had, found the same way. Each entry names the file that reads it, which is the tell for whose
+# bucket it belongs in.
+ACCEPTED_BY_HEAD = {
+    "android": {},
+    "macos": {
+
+        "geoTag": "MEASURED, and the answer to this checker's own question -- ask what that view "
+            "refuses. view.geoTag refuses everything except the tagging RUN: it wants the path of a "
+            "telemetry log, a tolerance in seconds and one epoch timestamp per image. The head reads "
+            "the controller's JOB STATE from Qt -- logFile, imageDirectory, saveDirectory, progress, "
+            "inProgress -- which that view does not serve and cannot be asked for. The names collide "
+            "on a subject; the questions do not overlap at all. Same shape as the plan and links "
+            "entries below, and view-fields.py carries the mirror of this reason",
+        "plan": "MEASURED: the head takes syncInProgress and canUndo from here. The undo half still "
+            "has nowhere to defer to -- no view carries undo or redo state. The SYNC half of this "
+            "reason was false when audited on 2026-09-13: plan.rs:64 serves view.plan.sync as "
+            "{state, refusal}, and the sentence said the core served no sync flag. It was written "
+            "before that field existed and nothing made it go red when it appeared. The raw read "
+            "still stands, for a reason that is about this head rather than about the core: the "
+            "boolean gates offersUndo, offersRedo and offersDownload, which are statements about "
+            "what THIS head can offer, and the core's sync carries a REFUSAL SENTENCE for a head "
+            "that explains itself where this one disables the control instead. Take the sentence "
+            "the day this head starts explaining",
+        "links": "MEASURED: the head takes connectingLinkName and serialPortStrings from here -- "
+            "a transient connection attempt and the machine's serial ports. view.links is the "
+            "list of CONFIGURED links, which Links.swift also reads and draws. Different subjects "
+            "under one name",
+    },
 }
+
+ACCEPTED = ACCEPTED_BY_HEAD["android" if SUFFIX == "*.kt" else "macos"]
 
 
 def views():
@@ -86,13 +89,17 @@ served = {fold(v.split(".", 1)[1].split("(")[0]): v for v in views() if "." in v
 
 reads = {}
 for source in sorted(SOURCES.rglob(SUFFIX)):
-    # Bridge.group on the Swift head, Qgc.group on the Kotlin one. The predicate is deliberately
-    # narrow -- it does not follow the typed helpers (qgcBool, qgcDouble, qgcString, qgcPath), so
-    # this undercounts BOTH heads and is a floor rather than a census. Widening it changes the
-    # macOS answer and is the head author's call, not this edit's.
-    for match in re.finditer(r'(?:Bridge|Qgc)\.group\("([^"]+)"', source.read_text(errors="replace")):
+    # Bridge.group on the Swift head. The Kotlin head calls Qgc.group nowhere and reads through
+    # typed helpers instead, so scanning for the same call reported nothing and said so rather
+    # than reporting zero. The helpers are included for *.kt only: widening the Swift predicate
+    # would move the macOS answer, which is that head author's call rather than this one's.
+    KOTLIN_READS = r'(?:qgcBool|qgcDouble|qgcString|qgcStrings|qgcValue|qgcPath|qgcFacts|Qgc\.get)'
+    pattern = rf'(?:{KOTLIN_READS}|Qgc\.group)\("([^"]+)"' if SUFFIX == "*.kt" else r'Bridge\.group\("([^"]+)"'
+    for match in re.finditer(pattern, source.read_text(errors="replace")):
         path = match.group(1)
-        if path.startswith("view.") or "\\(" in path:
+        # A Swift interpolation is \(, a Kotlin one is $. Both name a path built at runtime,
+        # which this check cannot resolve and must not guess at.
+        if path.startswith("view.") or "\\(" in path or "$" in path:
             continue
         reads.setdefault(path, set()).add(source.name)
 
