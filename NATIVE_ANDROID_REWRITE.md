@@ -8479,3 +8479,16 @@ know which control to poke is the discoverability defect in another costume** -
 the same one that makes an unasked-for empty plan look like an empty aircraft.
 Here the head reconnects, the overlay recomposes, and the detections feed
 retargets on its own.
+
+**Two more surfaces exercised for the first time, both correct.**
+
+- **Expanding the video and dismissing it again works**, which the layout does
+  not make obvious: when expanded, `VideoSurface` is deliberately *not*
+  clickable and the dismiss `Box` sits **underneath** it, so collapsing depends
+  on the `SurfaceView` passing the touch through. It does - the flight controls
+  hide on expand and return on the dismiss tap. Worth recording because the code
+  reads like a trap and is not one, and the next reader will wonder.
+- **The camera mode chip says *"Not set"*** for a mode that is none of Photo,
+  Video or Survey (`video.rs:220`, `_ =>`). That is the vocabulary the six
+  missing-absence cases lacked, used correctly: it names the absence instead of
+  choosing a plausible mode.
