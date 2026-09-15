@@ -468,6 +468,11 @@ void ParameterManager::refreshAllParameters(uint8_t componentId)
         _initialRequestTimeoutTimer.start();
     }
 
+    if (_requestUnanswered) {
+        _requestUnanswered = false;
+        emit requestUnansweredChanged(_requestUnanswered);
+    }
+
     if (_tryftp && ((componentId == MAV_COMP_ID_ALL) || (componentId == MAV_COMP_ID_AUTOPILOT1))) {
         FTPManager *const ftpManager = _vehicle->ftpManager();
         (void) connect(ftpManager, &FTPManager::downloadComplete, this, &ParameterManager::_ftpDownloadComplete);
@@ -1154,7 +1159,15 @@ void ParameterManager::_initialRequestTimeout()
         qCDebug(ParameterManagerLog) << _logVehiclePrefix(-1) << "Retrying initial parameter request list";
         refreshAllParameters();
         _initialRequestTimeoutTimer.start();
-    } else if (!_vehicle->genericFirmware()) {
+        return;
+    }
+
+    if (!_requestUnanswered) {
+        _requestUnanswered = true;
+        emit requestUnansweredChanged(_requestUnanswered);
+    }
+
+    if (!_vehicle->genericFirmware()) {
         const QString errorMsg = tr("Vehicle %1 did not respond to request for parameters. "
                                     "This will cause %2 to be unable to display its full user interface.").arg(_vehicle->id()).arg(QCoreApplication::applicationName());
         qCDebug(ParameterManagerLog) << errorMsg;

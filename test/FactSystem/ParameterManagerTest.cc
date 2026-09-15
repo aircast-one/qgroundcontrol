@@ -55,6 +55,9 @@ void ParameterManagerTest::_noFailureWorker(MockConfiguration::FailureMode_t fai
     arguments = spyProgress.takeLast();
     QCOMPARE(arguments.count(), 1);
     QCOMPARE(arguments.at(0).toFloat(), 0.0f);
+
+    QVERIFY2(!vehicle->parameterManager()->requestUnanswered(),
+             "a load that succeeded never gave up, and a flag stuck on would gate every setup screen on a vehicle that answered");
 }
 
 
@@ -90,10 +93,15 @@ void ParameterManagerTest::_requestListNoResponse(void)
 
     QSignalSpy spyParamsReady(vehicleMgr, SIGNAL(parameterReadyVehicleAvailableChanged(bool)));
     QSignalSpy spyProgress(vehicle->parameterManager(), SIGNAL(loadProgressChanged(float)));
+    QSignalSpy spyUnanswered(vehicle->parameterManager(), SIGNAL(requestUnansweredChanged(bool)));
 
     // We should not get any progress bar updates, nor a parameter ready signal
     QCOMPARE(spyProgress.wait(500), false);
     QCOMPARE(spyParamsReady.wait(40000), false);
+
+    QVERIFY2(vehicle->parameterManager()->requestUnanswered(),
+             "the retries are finite and nothing arrives after them, but parametersReady alone reads the same as a load still running");
+    QCOMPARE(spyUnanswered.count(), 1);
 }
 
 // MockLink will fail to send a param on initial request, it will also fail to send it on subsequent
@@ -170,6 +178,9 @@ void ParameterManagerTest::_FTPnoFailure()
     arguments = spyProgress.takeLast();
     QCOMPARE(arguments.count(), 1);
     QCOMPARE(arguments.at(0).toFloat(), 0.0f);
+
+    QVERIFY2(!vehicle->parameterManager()->requestUnanswered(),
+             "a load that succeeded never gave up, and a flag stuck on would gate every setup screen on a vehicle that answered");
 }
 
 #if 0

@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -64,4 +65,32 @@ class SetupScreenTest {
         assertEquals(emptyList<String>(), remainingSetup(components).map { it.name })
     }
 
+    @Test
+    fun `a parameter load that has stopped is not drawn as one still running`() {
+        val view = { reason: String, ready: Boolean ->
+            org.json.JSONObject(
+                """{"parametersReady":$ready,"parametersReason":"$reason",
+                    "parametersText":"This vehicle has not answered the request for its parameters, and the retries are finished."}""",
+            )
+        }
+
+        assertEquals("Loading parameters from the vehicle.", parameterWait(view("loading", false))?.title)
+        assertEquals("", parameterWait(view("loading", false))?.body)
+
+        val stopped = parameterWait(view("unanswered", false))
+        assertEquals(
+            "the core states what the vehicle did",
+            "This vehicle has not answered the request for its parameters, and the retries are finished.",
+            stopped?.title,
+        )
+        assertEquals(
+            "and this head owns the only thing an operator can act on from here",
+            "Setup needs them. Disconnect and connect the link to ask again.",
+            stopped?.body,
+        )
+
+        assertNull("a ready vehicle waits for nothing", parameterWait(view("", true)))
+        assertNull(parameterWait(view("noVehicle", false)))
+        assertNull("the screen already says to connect a vehicle", parameterWait(null))
+    }
 }

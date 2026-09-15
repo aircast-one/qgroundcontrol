@@ -62,6 +62,20 @@ internal data class SetupComponent(
     val blockedReason: String? = null,
 )
 
+internal data class ParameterWait(val title: String, val body: String)
+
+internal fun parameterWait(view: JSONObject?): ParameterWait? {
+    if (view == null || view.optBoolean("parametersReady")) return null
+    return when (view.optText("parametersReason")) {
+        "loading" -> ParameterWait("Loading parameters from the vehicle.", "")
+        "unanswered" -> ParameterWait(
+            view.optText("parametersText"),
+            "Setup needs them. Disconnect and connect the link to ask again.",
+        )
+        else -> null
+    }
+}
+
 internal fun remainingSetup(components: List<SetupComponent>): List<SetupComponent> =
     components.filterNot { it.needsAttention }
 
@@ -95,7 +109,6 @@ private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun SetupScreen(modifier: Modifier = Modifier) {
-    val parametersReady by qgcBool("vehicle.parameterManager.parametersReady")
     val setupComplete by qgcBool("$PLUGIN.setupComplete")
     val setupJson by qgcPath(SETUP)
     val setup = remember(setupJson) { setupReadiness(setupJson) }
@@ -126,8 +139,19 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    if (!parametersReady) {
-        SetupNotice("Loading parameters from the vehicle.", modifier)
+    parameterWait(setupJson)?.let { waiting ->
+        Column(modifier.fillMaxSize()) {
+            SetupNotice(waiting.title)
+            if (waiting.body.isNotBlank()) {
+                Text(
+                    text = waiting.body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                )
+            }
+        }
         return
     }
 

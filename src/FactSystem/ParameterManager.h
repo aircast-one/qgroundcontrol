@@ -35,6 +35,7 @@ class ParameterManager : public QObject
     Q_PROPERTY(bool     missingParameters   READ missingParameters  NOTIFY missingParametersChanged)    ///< true: Parameters are missing from firmware response, false: all parameters received from firmware
     Q_PROPERTY(double   loadProgress        READ loadProgress       NOTIFY loadProgressChanged)
     Q_PROPERTY(bool     pendingWrites       READ pendingWrites      NOTIFY pendingWritesChanged)        ///< true: There are still pending write updates against the vehicle
+    Q_PROPERTY(bool     requestUnanswered   READ requestUnanswered  NOTIFY requestUnansweredChanged)
     friend class ParameterEditorController;
 
 public:
@@ -45,6 +46,8 @@ public:
 
     bool parametersReady() const { return _parametersReady; }
     bool missingParameters() const { return _missingParameters; }
+
+    bool requestUnanswered() const { return _requestUnanswered; }
     double loadProgress() const { return _loadProgress; }
 
     /// @return Directory of parameter caches
@@ -102,6 +105,7 @@ signals:
     void missingParametersChanged(bool missingParameters);
     void loadProgressChanged(float value);
     void pendingWritesChanged(bool pendingWrites);
+    void requestUnansweredChanged(bool requestUnanswered);
     void factAdded(int componentId, Fact *fact);
 
 private slots:
@@ -150,6 +154,7 @@ private:
     double _loadProgress = 0;                   ///< Parameter load progess, [0.0,1.0]
     bool _parametersReady = false;              ///< true: parameter load complete
     bool _missingParameters = false;            ///< true: parameter missing from initial load
+    bool _requestUnanswered = false;
     bool _initialLoadComplete = false;          ///< true: Initial load of all parameters complete, whether successful or not
     bool _waitingForDefaultComponent = false;   ///< true: last chance wait for default component params
     bool _saveRequired = false;                 ///< true: _saveToEEPROM should be called

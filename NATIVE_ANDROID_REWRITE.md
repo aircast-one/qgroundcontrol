@@ -7855,3 +7855,33 @@ complete rig cannot, because apmvehicle.py sends all of those.
 Every defect on this list is a case where something the vehicle did not send
 reached the screen as a value rather than an absence. Two of the four screens
 were shipped earlier tonight and had never been seen in these states.
+
+### A load that had already stopped, 2026-09-15
+
+A vehicle that never answers PARAM_REQUEST_LIST leaves `parametersReady` false
+for ever. QGC tries the FTP parameter download, falls back to five conventional
+retries, gives up, and says so **only** through `showAppMessage` - a translated
+dialog string. Every consumer downstream sees one state where there are two,
+and the Android Setup tab promised *"Loading parameters from the vehicle."*
+indefinitely. Measured end to end on the emulator against a source sending
+HEARTBEAT, SYS_STATUS and GLOBAL_POSITION_INT: `noVehicle` -> `loading` at 6s
+-> `unanswered` at 51s.
+
+The fix had to be at the producer. `ParameterManager` gained
+`requestUnanswered`, `view.setup` serves `parametersReady`,
+`parametersReason` and `parametersText`, and the head draws the core's sentence
+about the vehicle above its own line about what to do next.
+
+**Three measurement errors on the way, all worth keeping.**
+
+| what I believed | what was true |
+|---|---|
+| the give-up takes 25s, from `_maxInitialRequestListRetry` x 5s | 51s. The FTP attempt runs first and its fallback resets the retry count, so the arithmetic described the second phase |
+| the flag survived a reconnect, so the head's instruction was a lie | `vehicle.*` latches after a disconnect. I was reading the outgoing vehicle's flag. `allLinksRemoved` deletes the Vehicle, so a reconnect builds a fresh manager with the flag clear |
+| a passing `_requestListNoResponse` pins the behaviour | it pins one direction. An implementation that returned true always would pass the whole class, so `_noFailureWorker` now asserts the flag is clear after a load that worked |
+
+The second one is the trap already written down as
+`vehicle-position-stays-after-the-vehicle-goes`, and it cost half an hour
+because it made my own shipped instruction look wrong. Gating the read on the
+core's `connected` is both the fix and the better behaviour: during the gap the
+view says `noVehicle` rather than a stale `unanswered`.

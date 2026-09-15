@@ -5,7 +5,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior"];
 const APM_ONLY: &[&str] = &["Camera", "Lights", "Remote Support"];
@@ -251,15 +251,31 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
         .collect()
 }
 
+fn parameter_state(backend: &dyn Backend, connected: bool) -> (bool, &'static str, &'static str) {
+    if !connected {
+        return (false, "noVehicle", "");
+    }
+    let manager = object(&backend.get_fields("vehicle.parameterManager", "parametersReady,requestUnanswered"));
+    match (flag(&manager, "parametersReady"), flag(&manager, "requestUnanswered")) {
+        (true, _) => (true, "", ""),
+        (false, true) => (false, "unanswered", "This vehicle has not answered the request for its parameters, and the retries are finished."),
+        (false, false) => (false, "loading", ""),
+    }
+}
+
 fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let components = vehicle_components(backend);
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), c.needs_attention)).collect();
     let (ready, headline, detail) = readiness(connected, &named, &faults);
+    let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
     json!({
         "kind": "object",
         "class": "VehicleSetup",
         "connected": connected,
+        "parametersReady": parameters_ready,
+        "parametersReason": parameters_reason,
+        "parametersText": parameters_text,
         "firmware": if !connected { "none" } else if px4 { "px4" } else { "apm" },
         "ready": ready,
         "headline": headline,
@@ -478,6 +494,55 @@ mod components {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    struct Params {
+        ready: bool,
+        unanswered: bool,
+        connected: bool,
+    }
+
+    impl Backend for Params {
+        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            match path {
+                "vehicle" if self.connected => json!({ "kind": "object", "px4Firmware": false }).to_string(),
+                "vehicle.parameterManager" => json!({
+                    "kind": "object",
+                    "parametersReady": self.ready,
+                    "requestUnanswered": self.unanswered,
+                }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_parameter_load_that_has_stopped_does_not_read_as_one_still_running() {
+        let state = |ready, unanswered, connected| {
+            let view = setup_view(&Params { ready, unanswered, connected }, &[]);
+            (view["parametersReady"].as_bool().unwrap(), view["parametersReason"].as_str().unwrap().to_string())
+        };
+
+        assert_eq!(state(false, false, true), (false, "loading".to_string()));
+        assert_eq!(
+            state(false, true, true),
+            (false, "unanswered".to_string()),
+            "QGC gives up after five unanswered requests and says so only in a translated dialog, so parametersReady alone cannot tell a head whether to keep promising a load",
+        );
+        assert_eq!(state(true, false, true), (true, String::new()));
+        assert_eq!(state(true, true, true), (true, String::new()), "a load that finished after a failed first attempt is ready, and the stale flag must not outrank it");
+        assert_eq!(state(false, false, false), (false, "noVehicle".to_string()), "with no vehicle there is nothing to wait for");
+
+        let waiting = setup_view(&Params { ready: false, unanswered: true, connected: true }, &[]);
+        assert!(waiting["parametersText"].as_str().unwrap().contains("has not answered"), "the sentence states what the VEHICLE did; what to do about it is the head's line to write");
+        assert!(setup_view(&Params { ready: false, unanswered: false, connected: true }, &[])["parametersText"].as_str().unwrap().is_empty());
+
+        assert!(DEPS.contains(&"vehicle.parameterManager.requestUnanswered"), "without the dep the view never re-emits when the retries run out and the head waits forever anyway");
+        assert!(DEPS.contains(&"vehicle.parameterManager.parametersReady"));
     }
 
     struct Flying {
