@@ -50,6 +50,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
     val syncing by qgcBool("plan.syncInProgress")
     val containsItems by qgcBool("plan.containsItems")
     val planStatus by qgcPath("view.plan")
+    var showDefaults by remember { mutableStateOf(false) }
     val can = planActions(planStatus)
     val history = planHistory(planStatus)
     var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -68,6 +69,10 @@ fun PlanTab(modifier: Modifier = Modifier) {
             delay(NOTICE_MILLIS)
             notice = null
         }
+    }
+
+    if (showDefaults) {
+        PlanDefaultsDialog(planStatus) { showDefaults = false }
     }
 
     pending?.let { kind ->
@@ -160,6 +165,11 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         text = { Text("Import boundary…") },
                         enabled = can.open,
                         onClick = { menuOpen = false; files.importBoundary() },
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Defaults…") },
+                        onClick = { menuOpen = false; showDefaults = true },
                     )
                     HorizontalDivider()
                     DropdownMenuItem(
