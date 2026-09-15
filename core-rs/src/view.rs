@@ -713,15 +713,6 @@ mod deps_cover_reads {
 
     #[test]
     fn a_path_a_view_builds_with_format_is_under_something_it_watches() {
-        // The literal sweeps cannot see a constructed read, which is how
-        // vehicle.vehicleLinkManager.communicationLostEnabled was read and unwatched in two views:
-        // the guard saw the literal read in one and not the format!-built one in the other. A
-        // prefix match is weaker than a full path match and strictly stronger than not looking.
-        // Two prefixes are too short to prove anything - vehicle. and settings. match nearly every
-        // dep there is - so those are reported as unverifiable rather than passed silently.
-        // vehicle. and settings. match nearly every dep there is, so a prefix that short proves
-        // nothing. A prefix containing ( is a call expression rather than a path - modeslots reads
-        // vehicle.parameterManager.getParameter(-1,{name}) - and splitting it as a path mis-parses.
         const UNVERIFIABLE: &[&str] = &["vehicle", "settings", "plan", "vehicles"];
 
         let prefixes = |body: &str| -> Vec<String> {
@@ -736,6 +727,8 @@ mod deps_cover_reads {
                 .collect()
         };
 
+        let under = |prefix: &str, path: &str| path == prefix || path.starts_with(&format!("{prefix}."));
+
         let seen: usize = MODULES.iter().filter_map(|(_, source)| Some(prefixes(source.split("#[cfg(test)]").next()?).len())).sum();
         assert!(seen > 5, "the parser found only {seen} constructed reads with a literal prefix, so a clean result would mean nothing");
 
@@ -747,17 +740,8 @@ mod deps_cover_reads {
                 Some(prefixes(body)
                     .into_iter()
                     .filter(|prefix| !UNVERIFIABLE.contains(&prefix.as_str()))
-                    // A signal dep is an object-level wildcard: _notified looks up every path
-                    // bound to the sending object and emits all of them, so one @ dep on an
-                    // ancestor wakes anything read under it. Two things follow and neither is a
-                    // defect today. Accepting it is only sound while that fan-out stays whole - a
-                    // _notified narrowed for performance would leave this green on views that had
-                    // stopped waking. And it proves coverage without bounding it: a view watching
-                    // an object by signal and reading three fields under it will never be told it
-                    // could have watched three paths instead.
                     .filter(|prefix| !deps.iter().any(|dep| {
-                        dep.starts_with(&format!("{prefix}.")) || *dep == *prefix
-                            || dep.split_once('@').is_some_and(|(object, _)| prefix.starts_with(object))
+                        under(prefix, dep) || dep.split_once('@').is_some_and(|(object, _)| under(object, prefix))
                     }))
                     .map(|prefix| format!("{name} builds a read under {prefix} and watches nothing there"))
                     .collect::<Vec<_>>())
@@ -765,7 +749,11 @@ mod deps_cover_reads {
             .flatten()
             .collect();
 
-        assert!(unwatched.is_empty(), "a path built with format! is invisible to the literal sweeps, so nothing else checks it: {}", unwatched.join("; "));
+        assert!(
+            unwatched.is_empty(),
+            "a path built with format! is invisible to the literal sweeps - that is how vehicle.vehicleLinkManager.communicationLostEnabled was read and unwatched in two views, seen as a literal in one and not as a constructed read in the other. A prefix match is weaker than a full path match and strictly stronger than not looking. vehicle. and settings. match nearly every dep there is, so a prefix that short is reported as unverifiable rather than passed silently, and a prefix containing ( is a call expression rather than a path. An @signal dep on an ancestor counts because Watcher::_notified in src/Bridge/QGCBridgeCore.cc emits every path bound to the sending object, not only the one whose signal fired - narrowing that fan-out for performance leaves this green on views that have stopped waking: {}",
+            unwatched.join("; ")
+        );
     }
 
     #[test]

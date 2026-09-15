@@ -10,28 +10,23 @@ const ACRONYMS: &[&str] = &[
 
 pub fn humanise(identifier: &str) -> String {
     let chars: Vec<char> = identifier.chars().collect();
-    // px4HiddenFlightModesMultiRotor read as "Px 4Hidden Flight Modes Multi Rotor": the digit
-    // started a word, and nothing split at an uppercase letter whose predecessor was a digit, so
-    // the rest never split again and PX4 was never a chunk the acronym table could see. The shape
-    // alone cannot fix it - px4 and esc1 are both letters, digit, uppercase, and the digit names
-    // the thing in one and indexes it in the other. The table is what knows the difference.
     let spelt_acronym = |from: usize, at: usize| -> bool {
         ACRONYMS.contains(&chars[from..at + 1].iter().collect::<String>().to_uppercase().as_str())
     };
-    let word_start = std::cell::Cell::new(0usize);
-    let starts_word = |i: usize| -> bool {
+    let starts_word = |start: usize, i: usize| -> bool {
         let (c, previous) = (chars[i], chars[i - 1]);
         let next = chars.get(i + 1).copied();
-        let starts = (c.is_uppercase() && previous.is_lowercase())
+        (c.is_uppercase() && previous.is_lowercase())
             || (c.is_uppercase() && previous.is_uppercase() && next.is_some_and(|n| n.is_lowercase()))
-            || (c.is_uppercase() && previous.is_numeric() && !spelt_acronym(word_start.get(), i))
-            || (c.is_numeric() && previous.is_alphabetic() && !previous.is_uppercase() && !spelt_acronym(word_start.get(), i));
-        if starts {
-            word_start.set(i);
-        }
-        starts
+            || (c.is_uppercase() && previous.is_numeric() && !spelt_acronym(start, i))
+            || (c.is_numeric() && previous.is_alphabetic() && !previous.is_uppercase() && !spelt_acronym(start, i))
     };
-    let boundaries: Vec<usize> = (1..chars.len()).filter(|i| starts_word(*i)).collect();
+    let boundaries: Vec<usize> = (1..chars.len())
+        .fold((0usize, Vec::new()), |(start, found), i| match starts_word(start, i) {
+            true => (i, [found, vec![i]].concat()),
+            false => (start, found),
+        })
+        .1;
     let starts = std::iter::once(0).chain(boundaries.iter().copied());
     let ends = boundaries.iter().copied().chain(std::iter::once(chars.len()));
     starts

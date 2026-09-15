@@ -239,10 +239,6 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
             _ => "Not reported".to_string(),
         },
         "shots": shots,
-        // Zero-padded to five digits for a DSLR-style fixed-width reading, which this is not:
-        // shots is vehicle.cameraTriggerPoints.count, trigger points received rather than a
-        // camera's own frame counter. A fresh session read "Photos taken 00000". survey.rs spells
-        // the same quantity plainly and is the one to match.
         "shotsText": if shots > 0 { shots.to_string() } else { "\u{2014}".to_string() },
         "shotPoints": shot_points(backend),
         "batteryRemaining": battery,
