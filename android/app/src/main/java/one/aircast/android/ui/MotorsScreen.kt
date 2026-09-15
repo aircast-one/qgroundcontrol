@@ -22,17 +22,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.qgcDouble
+import one.aircast.android.bridge.qgcPath
+
+private const val FRAME_VIEW = "view.frame"
 
 private const val TIMEOUT_SECONDS = 3
 private const val UNKNOWN_MOTOR_COUNT = 8
 
-internal fun motorCount(reported: Double): Int =
-    if (reported.isNaN() || reported < 1) UNKNOWN_MOTOR_COUNT else reported.toInt()
+internal fun reportedMotors(view: JSONObject?): Int? =
+    view?.takeIf { !it.isNull("motorCount") }?.optInt("motorCount")?.takeIf { it >= 1 }
 
-internal fun motorCountNotice(reported: Double): String? =
-    if (reported.isNaN() || reported < 1) {
+internal fun motorCount(reported: Int?): Int = reported ?: UNKNOWN_MOTOR_COUNT
+
+internal fun motorCountNotice(reported: Int?): String? =
+    if (reported == null) {
         "No motor layout is published for this airframe, so eight are offered. " +
             "Test only the motors it actually has."
     } else {
@@ -47,7 +52,8 @@ internal fun spin(motor: Int, percent: Int) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MotorsScreen(modifier: Modifier = Modifier) {
-    val reported by qgcDouble("vehicle.motorCount", Double.NaN)
+    val frameJson by qgcPath(FRAME_VIEW)
+    val reported = remember(frameJson) { reportedMotors(frameJson) }
     val motors = motorCount(reported)
     var propsOff by remember { mutableStateOf(false) }
     var throttle by remember { mutableFloatStateOf(20f) }
