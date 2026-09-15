@@ -8005,9 +8005,8 @@ reading it see two different answers, and the frequent one is the unchecked one.
 
 **Detections is the one that costs a screen, and the payload was never the
 problem.** `detections_view` is the only thing that spawns and retargets the
-feed thread. `announce_detections` never calls it, so a head that subscribes and
-never gets never starts the feed, and `changed()` has nothing to fire on.
-Measured on the emulator with the push funnel logged:
+feed thread, and `announce_detections` never calls it, so `changed()` has
+nothing to fire on. Measured on the emulator with the push funnel logged:
 
 ```
 15s subscribed, before any get     0 pushes   (16 host, 8 view.followMe meanwhile)
@@ -8030,3 +8029,44 @@ thread, not abandoned.
 **A live wrong value and a frozen right one look identical from the outside.**
 Both symptoms here were first attributed to a stale subscription, from the dep
 list alone. Neither was stale. One log line on the push funnel settled both.
+
+
+### The sweep that could not see its own answer, 2026-09-15
+
+Logging every push and every watch set and diffing them says *watched but never
+pushed* - which sounds like the instrument for the defect above and is not.
+**`announce()` calls the head's handler directly and never consults the watch
+set** (`abi.rs:359`), so for the four announced paths a push proves nothing
+about a subscription and absence from a watch set proves nothing about
+delivery. The sweep is the wrong shape for exactly the paths that need it.
+
+It reported 28 watched / 28 pushed across five tabs, and that number is worth
+nothing on its own: `view.detections` never appears in a watch set at all,
+because `DetectionOverlay` composes only when `video.decoding` is true. **A
+clean result from an instrument that cannot see the known answer is not
+evidence.** Configuring a video source did not rescue it either - there is no
+stream on the emulator, so nothing decodes.
+
+**What the attempt did establish is worse than what it set out to check.**
+
+- `qgcPath` calls `Qgc.watch` and nothing else. Watching never runs the
+  router's compute.
+- The head performs no `get` on any of the four announced paths. Grepped: none.
+- So nothing in this head ever runs `detections_view`, the feed thread is never
+  spawned, and no frame ever arrives - **even once video decodes and the
+  overlay finally composes**. The feature cannot work in normal operation, and
+  the earlier reading that showed boxes moving came from the probe's own `get`s.
+
+That is the argument for subscribe-compute in one line: **watching is the only
+thing this head ever does, so a watch that does not run the compute is a watch
+of something that was never started.**
+
+**Two traps on the way, both caught before they were reported.** A flat
+`uiautomator` text dump showed *"Video source | MPEG-TS Video Stream"* against
+a fact reading `Video Stream Disabled`; the structured tree showed the row was
+correct and the dump had caught an **open enum picker**, where MPEG-TS was one
+of twelve list entries. And `probe.sh get` re-issues its deep link whenever
+`/status` does not answer, which restarts the activity on the default tab - so
+a read interleaved with navigation moves the screen out from under the
+comparison. Anything checking a screen against a fact has to take both without
+a probe call between them.
