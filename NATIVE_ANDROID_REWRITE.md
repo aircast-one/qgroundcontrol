@@ -8663,7 +8663,29 @@ new hit is a new finding.
 files found, nothing reads any field, so every acceptance looked obsolete. They
 vanished with the fix.
 
-**What is left is real and is not tonight's: 92 fields the core has added beside
+**First slice of the 92 triaged, and the headline overstates it.** A field is
+"unread" whenever the head consumes a *derived* field instead of the inputs it
+was derived from - which is the core-owns-the-derivation design working, not a
+gap. `armingChecks` is the clearest case: the head does not read it, and reads
+`armingBlocker` instead (`VehicleMessages.kt:88`), which is the single
+error-severity message the core picks out of exactly that list
+(`warnings.rs:94`). **Reading both would be the head re-deriving what the core
+already decided.**
+
+Most of the rest are internals - `keyPath`, `keySource`, `hostOwned`, `driver`,
+`adapter` - or the raw half of such a pair, like `distanceToVehicleMeters` and
+`distanceToVehicleUnits` beside the `distanceToVehicleText` the head draws.
+
+**One genuine gap in the slice: `view.operatorControl` is never read at all.**
+`inControl` (`operatorcontrol.rs:46`) answers whether this station holds control
+of the vehicle, as an `Option<bool>` - null when it cannot be known. With more
+than one ground station that is an operational fact, and this head does not show
+it. A feature that was never built rather than a defect.
+
+**So the number to act on is smaller than 92**, and the triage has to ask *is
+this the input to something already read* before calling any of them missing.
+
+**The remaining context: 92 fields the core has added beside
 ones this head already reads, none of them read.** `unread-baseline.txt` has 313
 entries and dates from `0d4809a0f`, the commit that moved this module into the
 repo - so 92 have accumulated since. **Refreshing the baseline would silence all
