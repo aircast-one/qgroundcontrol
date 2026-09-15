@@ -5188,6 +5188,15 @@ func checkTheFleetListAppearsOnlyWhenTheScreenIsAmbiguous() {
            "and a lost vehicle outranks whatever it was doing -- what it was doing when contact "
            + "went is no longer a fact about now")
 
+    expect(two?.vehicles.first?.listTitle ?? "", "Quadrotor 1 \u{00B7} active",
+           "AND THE LIST SAYS WHICH ONE THE SCREEN IS ABOUT. It appears only when the screen has "
+           + "gone ambiguous, so resolving that is its whole job -- and every row drew an "
+           + "identical name, state and dot, leaving the operator to pick between two vehicles "
+           + "with nothing to pick on")
+    expect(two?.vehicles.last?.listTitle ?? "", "Quadrotor 2",
+           "and the vehicles the screen is NOT about carry no mark: marking every row marks "
+           + "none of them")
+
     let unwatched = FleetVehicle(["id": 3 as NSNumber, "name": "Quadrotor 3"])
     expect(unwatched?.contactKnown == false,
            "contactLost arrives only when communicationLostEnabled is on, so null is NOT 'in "

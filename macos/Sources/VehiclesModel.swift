@@ -47,6 +47,8 @@ struct FleetVehicle: Equatable {
         return flightMode.isEmpty ? "Idle" : flightMode
     }
 
+    var listTitle: String { active ? "\(name) \u{00B7} active" : name }
+
     var level: FlyTelemetry.Level {
         if lost { return .warning }
         if !contactKnown { return .unknown }
@@ -82,6 +84,4 @@ struct Fleet: Equatable {
     // the rest of the screen has become ambiguous about which vehicle it is describing, which is
     // the question `ambiguous` answers.
     var worthShowing: Bool { ambiguous }
-
-    var others: [FleetVehicle] { vehicles.filter { !$0.active } }
 }
