@@ -248,6 +248,7 @@ mode
 modeKnown
 modeText
 model
+motorCount
 movable
 msSinceUpdate
 multiRotor
@@ -414,6 +415,8 @@ valueMeters
 valueString
 valueText
 vehicleId
+vehicleType
+vehicleTypeText
 velocity
 verdict
 visible

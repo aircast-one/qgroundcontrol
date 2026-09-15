@@ -5163,6 +5163,24 @@ func checkMotorTest() {
            + "probe anyway -- an instrument reporting a sentence the window cannot show is the "
            + "reason a defect was nearly filed against it")
 
+    let fixedWing = MotorTest(reportedCount: -1, letterIndices: false, connected: true, armed: false)
+    expect(fixedWing.motors == MotorTest.fallbackMotors,
+           "-1 IS A NUMBER QGC ACTUALLY RETURNS -- fixed wing, rover, boat, airship, anything it "
+           + "does not enumerate -- and the `as? NSNumber` fallback does NOT catch it, because the "
+           + "cast succeeds. What catches it is that countKnown is a SIGN test, so every reading "
+           + "that means `no answer` lands on the unknown side without this head enumerating them. "
+           + "A peer read the dead fallback as a motor grid drawn with a negative count and I "
+           + "passed that on sharpened before checking my own file; it is wrong, and the reason it "
+           + "is wrong is one character wide")
+    expect(fixedWing.names.count == MotorTest.fallbackMotors,
+           "THIS ASSERTION IS THE ONE THAT HAS TO EVALUATE THE RANGE. Relaxing countKnown to "
+           + "`!= 0` traps here with `Range requires lowerBound <= upperBound` rather than failing, "
+           + "which is the shape of the defect the peer described -- reachable, just not by the "
+           + "route they traced. -1 against unknownCount cannot pin this: they are the same number, "
+           + "so no fixture spelled that way can tell a sign test from an equality one")
+    expect(!fixedWing.countWarning.isEmpty,
+           "and it says the vehicle never reported a count, which is exactly what -1 means")
+
     expect(!apm.canTest(safetyOff: false), "nothing spins until the safety switch is on")
     expect(apm.canTest(safetyOff: true), "with it on and the vehicle disarmed a motor can be tested")
     expect(!MotorTest.disconnected.canTest(safetyOff: true),
