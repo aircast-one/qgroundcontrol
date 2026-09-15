@@ -415,6 +415,29 @@ def main():
             print(f"    FLATTENED {name}: {', '.join(sorted(where))} - contract says {sorted(nullable[name])[0]} is bool|null")
         print("  optBoolean turns JSON null into false, and false is the reassuring answer every time.")
 
+    # The fixture is a RECORDING. A field whose producer returns Option but whose null the rig
+    # could never make is typed bool here, and the check above cannot fire on it -- which is the
+    # class it exists to catch. The core session measured 142 of 212 plain-bool fields never
+    # varying across the suite. view.contract is to gain nullableUnwitnessed, a producer-derived
+    # list; read it here when it lands and treat those paths as bool|null whatever the type says.
+    def plain_bools(node, root, into):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if value == "bool":
+                    into.add((root, key))
+                else:
+                    plain_bools(value, root, into)
+        elif isinstance(node, list):
+            for item in node:
+                plain_bools(item, root, into)
+        return into
+
+    declared = set()
+    for key, value in json.load(open(CONTRACT)).items():
+        plain_bools(value, key.split("(")[0], declared)
+    print(f"\n  {len(declared)} view/field pair(s) are typed bool from observation alone.")
+    print("  A bool here means the rig never saw a null, not that the producer cannot send one.")
+
     return 1 if unexplained or stale or fresh or flat or escaped or unknown else 0
 
 
