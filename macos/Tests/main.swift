@@ -4572,6 +4572,45 @@ func checkRestartNoticeReachesTheRow() {
            "Application restart required after change",
            "a control with no label puts its name in the title, so the description is the notice "
            + "by itself rather than the name written twice")
+
+    func gated(_ overrides: [String: Any]) -> SettingsControl {
+        SettingsControl(["path": "App.enforceChecklist", "name": "enforceChecklist",
+                         "label": "Enforce preflight checklist", "control": "toggle",
+                         "valueString": "true"]
+            .merging(overrides) { _, b in b })!
+    }
+
+    let off = gated(["enabled": false as NSNumber,
+                     "disabledReason": "Has no effect while the preflight checklist is off."])
+    expect(off.rowDescription(label: "Enforce preflight checklist"),
+           "enforceChecklist \u{00B7} Has no effect while the preflight checklist is off.",
+           "A GREYED ROW WITH NO REASON IS THE DEFECT, NOT THE FIX. FlyViewSettings.qml:78 binds "
+           + "this row to useChecklist and GuidedActionsController.qml:139 ANDs the two, so both "
+           + "heads drew a live switch that writes a value and changes nothing. Greying it alone "
+           + "would tell an operator it is broken; the reason tells them what to go and turn on")
+    expect(off.acceptsWrite == false, "and the control refuses the write")
+
+    expect(gated([:]).acceptsWrite,
+           "A CONTROL THE CORE SAYS NOTHING ABOUT IS ENABLED. enabled and disabledReason are "
+           + "additive, so every control served before they existed -- and every one the core "
+           + "never gates -- arrives without them. Defaulting absence to DISABLED would grey the "
+           + "whole of Settings the moment a group is read with a field list excluding the gate")
+    expect(gated([:]).rowDescription(label: "Enforce preflight checklist"), "enforceChecklist",
+           "and says nothing about a gate it has not got")
+
+    expect(gated(["enabled": true as NSNumber,
+                  "disabledReason": "Has no effect while the preflight checklist is off."])
+            .rowDescription(label: "Enforce preflight checklist"),
+           "enforceChecklist",
+           "A REASON ARRIVING BESIDE AN ENABLED CONTROL IS NOT DRAWN. The core may keep the "
+           + "sentence while the gate opens, and a row explaining why it is off while it is on "
+           + "is worse than silence -- the flag decides, never the presence of the string")
+
+    expect(gated(["readOnly": true as NSNumber]).acceptsWrite == false,
+           "readOnly still refuses on its own: it is the FACT'S property and answers whether the "
+           + "value can be written at all, where enabled answers whether writing would do "
+           + "anything. One refusal for both, because asking separately at four call sites is "
+           + "how a branch gets missed -- readOnly was honoured in two of four here once before")
 }
 
 checkRestartNoticeReachesTheRow()

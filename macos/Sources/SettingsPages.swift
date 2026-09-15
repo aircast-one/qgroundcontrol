@@ -100,6 +100,8 @@ struct SettingsControl: Identifiable, Equatable {
     let display: String
     let units: String
     let readOnly: Bool
+    let enabled: Bool
+    let disabledReason: String
     let restartNotices: [String]
     let options: [ControlOption]
     let bits: [ControlBit]
@@ -119,9 +121,16 @@ struct SettingsControl: Identifiable, Equatable {
     // The row shows the setting's own name under its label; a setting that needs a restart says
     // so on the same line rather than in a place an operator has to go looking for.
     func rowDescription(label: String) -> String {
-        let parts = [label.isEmpty ? "" : name, restartNotice].filter { !$0.isEmpty }
+        let parts = [label.isEmpty ? "" : name, restartNotice,
+                     enabled ? "" : disabledReason].filter { !$0.isEmpty }
         return parts.joined(separator: " \u{00B7} ")
     }
+
+    // readOnly is the FACT'S own property and answers whether the value can be written at all.
+    // enabled answers whether writing it would do anything right now. A row must refuse on
+    // either, and asking the two separately at four call sites is how a branch gets missed --
+    // readOnly was already honoured in only two of four here once before.
+    var acceptsWrite: Bool { !readOnly && enabled }
 
     var drawsBits: Bool { FactWrite.drawsBits(kind, bits) }
 
@@ -156,6 +165,8 @@ struct SettingsControl: Identifiable, Equatable {
         display = (json["display"] as? String) ?? ""
         units = (json["units"] as? String) ?? ""
         readOnly = (json["readOnly"] as? NSNumber)?.boolValue ?? false
+        enabled = (json["enabled"] as? NSNumber)?.boolValue ?? true
+        disabledReason = (json["disabledReason"] as? String) ?? ""
         restartNotices = ((json["restartNotices"] as? [Any]) ?? []).compactMap { $0 as? String }
         options = ((json["options"] as? [Any]) ?? []).compactMap(ControlOption.init)
         bits = ((json["bits"] as? [Any]) ?? []).compactMap(ControlBit.init)

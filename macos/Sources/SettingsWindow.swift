@@ -70,7 +70,7 @@ struct SettingsView: View {
                                              FactControl(fact: fact,
                                                          write: { store.write(fact, $0) },
                                                          refuse: { store.writeFailure = $0 })
-                                                 .disabled(fact.readOnly)
+                                                 .disabled(!fact.acceptsWrite)
                                                  .frame(width: 200, alignment: .trailing)
                                          })
                             }
@@ -241,7 +241,7 @@ struct FactControl: View {
         case .toggle:
             Toggle("", isOn: Binding(get: { fact.boolValue }, set: { write($0) }))
                 .labelsHidden()
-                .disabled(fact.readOnly)
+                .disabled(!fact.acceptsWrite)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
         case .choice:
@@ -254,7 +254,7 @@ struct FactControl: View {
                 }
             }
             .labelsHidden()
-            .disabled(fact.readOnly)
+            .disabled(!fact.acceptsWrite)
 
         case .bitmask where fact.drawsBits:
             VStack(alignment: .leading, spacing: 2) {
@@ -262,7 +262,7 @@ struct FactControl: View {
                     Toggle(bit.label, isOn: Binding(
                         get: { bit.set },
                         set: { write(fact.toggling(bit, on: $0)) }))
-                        .disabled(fact.readOnly)
+                        .disabled(!fact.acceptsWrite)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
