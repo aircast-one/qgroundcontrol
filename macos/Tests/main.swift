@@ -2088,6 +2088,21 @@ func checkASettingsControlRefusesWhatItsOwnHintForbids() {
            + "valueString is \"true\", and comparing that to a bound would be nonsense")
     expect(muted.rangeHint, "", "and offers no hint either, from the same guard")
 
+    let modes = SettingsControl(["path": "settings.flightModeSettings.apmHiddenFlightModesMultiRotor",
+                                 "control": "text", "name": "apmHiddenFlightModesMultiRotor",
+                                 "label": "APM Hidden Flight Modes Multi Rotor",
+                                 "valueString": "Acro,Circle,Drift,Sport,Flip,Brake,Throw,Guided"])!
+    expect(modes.valueHelp, "Acro,Circle,Drift,Sport,Flip,Brake,Throw,Guided",
+           "a text value is offered whole under the pointer, because the field draws it "
+           + "right-aligned and cut -- and reading the rest means clicking INTO the control that "
+           + "sets it, which is how you write what you came to check")
+    expect(font.valueHelp, "6 to 48",
+           "a number keeps the band instead: those do not overflow, and the limits are the more "
+           + "useful thing to find there")
+    expect(muted.valueHelp, "",
+           "and a toggle offers neither, so the help stays empty rather than showing the word "
+           + "\"true\" to somebody hovering a switch they can already see")
+
     let gain = Parameter(name: "ATC_RAT_RLL_D", componentId: 1,
                          json: ["control": "number", "label": "Roll axis rate controller D gain",
                                 "display": "0.003600", "value": 0.0036,

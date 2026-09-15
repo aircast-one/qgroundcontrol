@@ -190,6 +190,18 @@ struct SettingsControl: Identifiable, Equatable {
                                   highest: maximum.map(SettingsControl.spell))
     }
 
+    // A settings value is drawn in a fixed, right-aligned field and a comma-separated list
+    // overflows it -- Flight Modes shows "Acro,Circle,Drift,Sport,Flip,Bra...". Reading the rest
+    // means clicking INTO the field, which is an editable control: entering it to read is how you
+    // write what you came to check. The help is the one place the value can be read without
+    // touching the thing that sets it.
+    //
+    // Unconditional for a text fact rather than keyed on a length, because the row cannot know its
+    // own rendered width and so cannot know whether THIS value was cut; a threshold would be a
+    // number with nothing behind it. A number keeps its range hint instead -- those do not
+    // overflow, and the band is the more useful thing to find under the pointer.
+    var valueHelp: String { kind == .text ? valueString : rangeHint }
+
     var rangeHint: String {
         guard kind == .number else { return "" }
         return FactRange.hint(lowest: minimum.map(SettingsControl.spell),

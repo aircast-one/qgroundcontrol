@@ -278,7 +278,7 @@ struct FactControl: View {
                 .onChange(of: editing) { focused in
                     if focused { draft = fact.valueString } else { commit() }
                 }
-                .help(fact.rangeHint)
+                .help(fact.valueHelp)
         }
     }
 
