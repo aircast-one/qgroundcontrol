@@ -183,8 +183,8 @@ object PlanBridge {
 
     fun sendToVehicle() = invokeOk("$PLAN_ROOT.sendToVehicle")
 
-    fun setAltitude(index: Int, metres: Double): Boolean =
-        setOk("$PLAN_ITEMS.$index.altitude", settingJson("$metres"))
+    fun setAltitude(index: Int, shown: Double): Boolean =
+        setOk("$PLAN_ITEMS.$index.altitude", settingJson("$shown"))
 
     fun setAltitudeMode(index: Int, raw: Int): Boolean =
         setOk(altitudeModePath(index), settingJson("$raw"))

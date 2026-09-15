@@ -90,8 +90,8 @@ object SurveyBridge {
             JSONObject(QGCBridge.get(altitudePath(itemIndex))).optText("units")
         }.getOrDefault("")
 
-    fun setAltitude(itemIndex: Int, metres: Double): Boolean =
-        setOk(altitudePath(itemIndex), settingJson("$metres"))
+    fun setAltitude(itemIndex: Int, shown: Double): Boolean =
+        setOk(altitudePath(itemIndex), settingJson("$shown"))
 
     fun setGridAngle(itemIndex: Int, degrees: Double): Boolean =
         setOk("$PLAN_ITEMS.$itemIndex.gridAngle", settingJson("$degrees"))

@@ -752,12 +752,12 @@ internal fun MapSpikeScreen(
                                     ),
                                     keyboardActions = KeyboardActions(
                                         onDone = {
-                                            val metres = parsedAltitude(typed)
-                                            if (metres == null) {
+                                            val shown = parsedAltitude(typed)
+                                            if (shown == null) {
                                                 say("Not an altitude")
                                             } else {
                                                 onBridge("Setting altitude") {
-                                                    PlanBridge.setAltitude(item.index, metres)
+                                                    PlanBridge.setAltitude(item.index, shown)
                                                 }
                                             }
                                         },
@@ -826,13 +826,13 @@ internal fun MapSpikeScreen(
                             var surveyAlt by remember(hit.item) { mutableStateOf("") }
                             var surveyUnit by remember(hit.item) { mutableStateOf("m") }
                             LaunchedEffect(hit.item) {
-                                val metres = withContext(Dispatchers.Default) {
+                                val shown = withContext(Dispatchers.Default) {
                                     SurveyBridge.altitude(hit.item)
                                 }
                                 val unit = withContext(Dispatchers.Default) {
                                     SurveyBridge.altitudeUnits(hit.item)
                                 }
-                                surveyAlt = altitudeFieldText(metres)
+                                surveyAlt = altitudeFieldText(shown)
                                 surveyUnit = unit.ifBlank { "m" }
                             }
                             OutlinedTextField(
@@ -846,12 +846,12 @@ internal fun MapSpikeScreen(
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        val metres = parsedAltitude(surveyAlt)
-                                        if (metres == null) {
+                                        val shown = parsedAltitude(surveyAlt)
+                                        if (shown == null) {
                                             say("Not an altitude")
                                         } else {
                                             onBridge("Setting survey altitude") {
-                                                SurveyBridge.setAltitude(hit.item, metres)
+                                                SurveyBridge.setAltitude(hit.item, shown)
                                             }
                                         }
                                     },
