@@ -66,7 +66,11 @@ def head_keys(root):
 ACCEPTED = {
     "ok": "the invoke envelope, not a view field",
     "elements": "the bridge's list envelope",
-    "facts": "a Fact object read by path, not through a view",
+    "shortDescription": "the vehicle's own fact group, read as a raw object because"
+        "view.instrumentGroups enumerates the vehicle's CHILD groups and skips its own. That is"
+        "where the four readings the flight screen starts with live, so without reading it the"
+        "picker cannot draw them as chosen or let them be turned off. The macOS head builds the"
+        "same group the same way",
     "enumStrings": "Fact metadata read by path",
     "enumIndex": "Fact metadata read by path",
     "bitmaskStrings": "Fact metadata read by path",
