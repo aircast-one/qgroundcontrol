@@ -32,6 +32,21 @@ from head_models import MODELS, views
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCES = ROOT / "macos/Sources"
+
+
+def refuse_on_empty_inputs(swift, rust):
+    # Pointed at a Sources directory that does not exist, this reported 46 views as "served by the
+    # core and named nowhere" and printed "checked 0 of 55 models" beside them -- the count that
+    # reveals the problem, drowned by the findings it contradicts. Every one of those 46 was a view
+    # this head reads perfectly well. Guard the INPUTS rather than a drop in the count: how much
+    # change is too much is a guess, whether either side came back empty is a fact.
+    if swift and rust:
+        return
+    print(f"  REFUSING to judge: found {len(swift)} Swift sources and {len(rust)} core modules. An "
+          f"empty side means this could not read its inputs, not that the head stopped reading "
+          f"views -- every view would otherwise be reported as unread and every model as unchecked.",
+          file=sys.stderr)
+    sys.exit(2)
 CORE = ROOT / "core-rs/src"
 
 
@@ -268,6 +283,8 @@ def keys_a_model_reads(name):
         return keys
     return None
 
+
+refuse_on_empty_inputs(sorted(SOURCES.glob("*.swift")), sorted(CORE.glob("*.rs")))
 
 registry = views_to_modules()
 gone, unchecked = [], []

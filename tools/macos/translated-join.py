@@ -68,7 +68,18 @@ def translated():
 
 
 def compared():
-    for path in sorted((ROOT / "macos/Sources").glob("*.swift")):
+    swift = sorted((ROOT / "macos/Sources").glob("*.swift"))
+    # With an empty Sources directory this printed "STALE <file> no longer compares against <text>;
+    # drop the entry" for EVERY accepted entry, beside a summary reading "0 hits, 0 unexplained".
+    # An instruction to delete correct data, and the reassuring half of the same run agreeing with
+    # it. Guard the input: an empty side means this could not read, not that the head stopped
+    # comparing.
+    if not swift:
+        print(f"  REFUSING to judge: no *.swift under {ROOT / 'macos/Sources'}. Every accepted "
+              f"entry would otherwise be reported stale with an instruction to delete it.",
+              file=sys.stderr)
+        sys.exit(2)
+    for path in swift:
         for match in re.finditer(r'[!=]=\s*"([^"\\]{2,60})"', path.read_text(errors="ignore")):
             yield path.name, match.group(1)
 
