@@ -8192,3 +8192,55 @@ visible follows `useChecklist`, enabled follows `!armed`.
 **The shape to look for is a conditional setting read as an affirmative one**,
 and the tell is a sentence that is true, accurate, well-worded, and about a
 feature the reader never asked for.
+
+### The Plan tab shows an empty plan as the aircraft's, 2026-09-15
+
+Connect a vehicle, open Plan, and the head draws an empty mission with no sign
+that anything went wrong. **No `MISSION_REQUEST_LIST` is ever sent.** Confirmed
+from the other side of the wire: the rig's log, verified working by connecting
+a test client to the same live process, recorded no request at all.
+
+```
+PlanMasterController.cc:708   if (!initialPlanRequestComplete() && !syncInProgress())
+                                  // Something went wrong with initial load ... just force it off
+Vehicle.cc:3571               forceInitialPlanRequestComplete()
+MissionController.cc:2360     // Fake a _newMissionItemsAvailable with the current items
+```
+
+Open Plan while the vehicle's initial load is still in flight and both terms
+hold: the flag is false because the state machine has not reached the mission
+step, and `syncInProgress` is false because the mission manager has not started.
+**QGC reads *idle and incomplete* as *failed*, forces the flag, and the mission
+controller then takes its simulate-signal branch and publishes the empty list it
+is holding.** The head believes it has the aircraft's plan.
+
+**The consequence is not a blank screen.** An operator who edits from there and
+uploads writes an empty mission over whatever the aircraft actually had.
+
+**The logic is shared and the Qt head never reaches it.** Nothing in the C++ is
+wrong for the head it was written for: Qt builds `PlanMasterController` early,
+so by the time anyone opens Plan the initial load has long finished and the race
+is unreachable. **A native head constructs it on tab open**, because the bridge
+creates the `plan` root lazily on first use - so the normal order here is
+exactly the order that hits the force path. A latent bug made reachable by an
+architectural difference, which is why reading the C++ for correctness will
+never find it.
+
+**Two hypotheses died on the way, and how each died is the useful part.**
+
+- *Parameters stall the state machine before the mission step.* Died on
+  **measurement**: `initialPlanRequestComplete` was already true at t+20s while
+  the socket had seen no request - only possible if something set it directly.
+- *A controller built after the vehicle is already active misses
+  `_activeVehicleChanged`.* Died on **reading**: `start()` calls
+  `_activeVehicleChanged(activeVehicle())` inline before connecting the signal,
+  six lines above the branch being quoted, precisely to handle that case.
+
+**A confirmed absence from a verified instrument is a positive result.** The
+empty log eliminated everything downstream of the wire in one observation - but
+only because the rig owner first connected a test client to the same live
+process and watched the log record a real request. An absence from an unchecked
+instrument would have proved nothing.
+
+Open: the discriminator. Let the initial load finish before opening Plan and see
+whether the request appears in that order and not the other.
