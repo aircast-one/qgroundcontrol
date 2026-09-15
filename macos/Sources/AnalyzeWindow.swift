@@ -312,8 +312,8 @@ struct MavlinkInspectorView: View {
                                     Button {
                                         store.select(message)
                                     } label: {
-                                        GroupRow(title: message.title,
-                                                 description: "#\(message.messageId)",
+                                        GroupRow(title: message.listTitle,
+                                                 description: message.listDetail,
                                                  value: message.rateText,
                                                  showSeparator: row > 0,
                                                  current: message.selected)

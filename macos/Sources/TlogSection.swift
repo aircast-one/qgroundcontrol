@@ -58,7 +58,7 @@ struct TlogView: View {
     @ObservedObject var store: TlogStore
 
     var body: some View {
-        SetupPageBody(title: "Telemetry Log") {
+        SetupPageBody(title: "Telemetry Log", note: TelemetryLog.note) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Button("Choose a Log…", action: store.choose)

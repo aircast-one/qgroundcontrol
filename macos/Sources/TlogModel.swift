@@ -66,3 +66,13 @@ struct TlogSummary: Equatable {
         return "\(printed) \(units[step])"
     }
 }
+
+enum TelemetryLog {
+    // The only content page in either window that stated no purpose, and the one that most needed
+    // to: in QGC, Analyze's "Telemetry Log" is the REPLAY -- it builds a LogReplayLink and flies
+    // the recording through the app. This page opens the file, counts what is in it and closes it.
+    // An operator arriving from QGC picks a log here expecting a replay, gets a table of frame
+    // counts, and has no way to tell whether the replay failed or was never on offer.
+    static let note = "Opens a flight recording and counts what is in it. "
+        + "This reads the file; it does not replay it."
+}

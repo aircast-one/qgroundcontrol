@@ -1371,6 +1371,13 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
     expect(TlogSummary(["kind": "null"]) == nil,
            "a refusal with no path at all is no summary, rather than one describing a log at "
            + "the empty string")
+
+    expect(TelemetryLog.note.contains("does not replay"),
+           "the page has to say what it is NOT. In QGC, Analyze's Telemetry Log builds a "
+           + "LogReplayLink and flies the recording through the app; this one opens the file, "
+           + "counts it and closes it. It was the only content page in either window stating no "
+           + "purpose, and the one whose name already means something else")
+    expect(!TelemetryLog.note.isEmpty, "and every content page states one")
 }
 
 checkAnUnreadableLogIsNotAnEmptyOne()
@@ -3820,7 +3827,24 @@ func checkMavlinkMessage() {
     expect(first?.messageId == second?.messageId,
            "even though the message id they report is the same one")
     expect(first?.title ?? "", "CAMERA_CAPTURE_STATUS (comp 100)",
-           "and the core says which component each row is, so the list is readable")
+           "and the core says which component each row is")
+
+    expect(first?.listTitle ?? "", "CAMERA_CAPTURE_STATUS",
+           "but the ROW draws the bare name: the list card is 260pt and the title went on one "
+           + "line, so on a name this long the (comp 100) was the first thing truncation ate and "
+           + "the two rows read identically -- the core saying it is not the same as it being read")
+    expect(first?.listDetail ?? "", "#262  \u{00B7}  comp 100",
+           "the component moves to the second line, which already carried the message id and had "
+           + "room")
+    expect(second?.listDetail ?? "", "#262  \u{00B7}  comp 101",
+           "and that is the only thing separating the two rows on screen")
+
+    expect(message([:])?.listDetail ?? "", "#30",
+           "a message the core did NOT disambiguate stays a plain id -- appending comp 1 to every "
+           + "unique row would spend the line on a number that separates nothing")
+    expect(message([:])?.disambiguated == false,
+           "and the head keys on the core HAVING disambiguated rather than recounting duplicates: "
+           + "which names repeat is a judgement over the whole list, and a row cannot see the list")
     expect(message([:])?.title ?? "", "ATTITUDE",
            "while a message only one component sends keeps its bare name")
 

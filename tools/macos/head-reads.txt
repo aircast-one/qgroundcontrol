@@ -85,6 +85,7 @@ collision
 commLost
 command
 commandsGimbal
+compId
 complexName
 component
 configured

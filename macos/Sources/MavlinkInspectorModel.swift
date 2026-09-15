@@ -5,6 +5,7 @@ struct MavlinkMessage: Identifiable, Equatable {
     let path: String
     let messageId: Int
     let name: String
+    let componentId: Int
     let title: String
     let count: Int
     let rateText: String
@@ -19,6 +20,23 @@ struct MavlinkMessage: Identifiable, Equatable {
 
     var countText: String { "\(count)" }
 
+    // The core appends "(comp N)" to the title ONLY when a name repeats -- the suffix exists to
+    // disambiguate and nothing else in the row does it. The list card is 260pt wide and drew the
+    // whole title on one line, so on a long name that suffix was the FIRST thing truncation ate:
+    // two CAMERA_CAPTURE_STATUS rows at #262, identical on screen, differing only in the part cut
+    // off. The second line already carries the message id and has room to spare.
+    //
+    // Keyed on the core HAVING disambiguated -- title differing from name -- rather than on the
+    // head recounting the duplicates itself. Which names repeat is the judgement the producer
+    // already made over the whole list, and a row cannot see the list.
+    var disambiguated: Bool { title != name }
+
+    var listTitle: String { name }
+
+    var listDetail: String {
+        disambiguated ? "#\(messageId)  \u{00B7}  comp \(componentId)" : "#\(messageId)"
+    }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let path = json["path"] as? String, !path.isEmpty,
@@ -27,6 +45,7 @@ struct MavlinkMessage: Identifiable, Equatable {
         self.name = name
         index = (json["index"] as? NSNumber)?.intValue ?? 0
         messageId = (json["id"] as? NSNumber)?.intValue ?? 0
+        componentId = (json["compId"] as? NSNumber)?.intValue ?? 0
         title = (json["title"] as? String) ?? name
         count = (json["count"] as? NSNumber)?.intValue ?? 0
         rateText = (json["rateText"] as? String) ?? ""
