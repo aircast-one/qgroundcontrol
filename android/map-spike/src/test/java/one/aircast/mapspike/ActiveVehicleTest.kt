@@ -273,4 +273,14 @@ class ActiveVehicleTest {
             rememberedChoices(flying, vehicleChoices(null)),
         )
     }
+
+    @Test
+    fun `the chooser is titled as the question it answers, not as a state`() {
+        assertEquals(
+            "it read Flying, which is a word for what the aircraft is doing - and the sheet opens " +
+                "just as readily on a disarmed one sitting on the ground",
+            "Fly which aircraft?",
+            CHOOSER_TITLE,
+        )
+    }
 }

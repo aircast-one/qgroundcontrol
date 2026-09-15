@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.CHOOSER_TITLE
 import one.aircast.mapspike.VEHICLES_VIEW
 import one.aircast.mapspike.VehicleBridge
 import one.aircast.mapspike.activeVehicleTitle
@@ -77,7 +78,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     if (picking) {
         ModalBottomSheet(onDismissRequest = { picking = false }) {
             Text(
-                text = lostVehiclesText(lostVehicles(choices)) ?: "Flying",
+                text = lostVehiclesText(lostVehicles(choices)) ?: CHOOSER_TITLE,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )

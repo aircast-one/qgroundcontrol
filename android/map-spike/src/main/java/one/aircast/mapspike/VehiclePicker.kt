@@ -24,6 +24,8 @@ object VehicleBridge {
 
 const val VEHICLES_VIEW = "view.vehicles"
 
+const val CHOOSER_TITLE = "Fly which aircraft?"
+
 data class VehicleChoice(
     val id: Int,
     val name: String,
