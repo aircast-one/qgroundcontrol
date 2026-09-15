@@ -4643,6 +4643,19 @@ func checkInstrumentGroups() {
            "the vehicle lists itself among its children, so that one alias goes, and two GPS "
            + "units share a schema so both stay and both are named by the core")
 
+    expect(InstrumentGroup.assemble(
+        [(InstrumentSelection.vehicleGroup, ["facts": [["name": "heading"]]])],
+        label: { "<\($0)>" }).count == 1,
+           "THE GROUP discoverGroups BUILDS `own` WITH MUST BE ONE assemble KEEPS, and the obvious "
+           + "first step of a migration -- renaming vehicleGroup to \"vehicle\" so it matches the "
+           + "core's id -- makes the guard above fire and deletes the Vehicle group entirely, "
+           + "taking every default reading with it. The rename does red the stored-format check "
+           + "below, but that one reports a changed string and says nothing about a vanished "
+           + "group, which is the consequence somebody would have to work back to. The call site "
+           + "is in Instruments.swift, which swift-checks does not compile, and the guard's own "
+           + "test uses literals rather than the constant. A peer traced these two as equal "
+           + "BECAUSE THEY ARE NAMED FOR THE SAME THING; this says they are not")
+
     let mismatched = InstrumentGroup.assemble(
         [("escStatus", ["facts": [["name": "rpm1", "property": "rpmFirst", "shortDescription": ""],
                                   ["name": "", "property": "current1", "shortDescription": ""]]])],
