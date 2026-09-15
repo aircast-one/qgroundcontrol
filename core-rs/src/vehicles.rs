@@ -20,7 +20,7 @@ fn per_vehicle_paths() -> Vec<String> {
             WATCHED_PER_VEHICLE
                 .iter()
                 .map(move |name| format!("vehicles.vehicles.{index}.{name}"))
-                .chain(std::iter::once(format!("vehicles.vehicles.{index}.vehicleLinkManager.communicationLost")))
+                .chain(["communicationLost", "communicationLostEnabled"].map(move |flag| format!("vehicles.vehicles.{index}.vehicleLinkManager.{flag}")))
         })
         .collect()
 }
@@ -198,6 +198,7 @@ mod tests {
             assert!(after.contains(&format!("vehicles.vehicles.1.{name}")), "{name} on the second vehicle is served by this view, so nothing recomputes it unless it is watched");
         });
         assert!(after.contains(&"vehicles.vehicles.1.vehicleLinkManager.communicationLost".to_string()), "contactLost is the field a head draws a stale marker from, and it is the one a count-only watch misses for the longest");
+        assert!(after.contains(&"vehicles.vehicles.1.vehicleLinkManager.communicationLostEnabled".to_string()), "and the flag that decides whether contactLost means anything - turning link monitoring off changes a served true or false into a null, and a view that does not watch it keeps reporting a verdict nobody is checking any more");
         assert!(after.contains(&"vehicles.vehicles.count".to_string()), "the count stays watched, because it is what makes the list re-derive when the fleet changes");
     }
 

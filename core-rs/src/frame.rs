@@ -15,6 +15,8 @@ pub const DEPS: &[&str] = &[
     "vehicle.fixedWing",
     "vehicle.airship",
     "vehicle.parameterManager.parametersReady",
+    "vehicle.vehicleLinkManager.communicationLost",
+    "vehicle.vehicleLinkManager.communicationLostEnabled",
     "vehicle.parameterManager.getParameter(-1,FRAME_CONFIG).rawValue",
 ];
 
@@ -31,6 +33,15 @@ fn token(vehicle: &Value) -> &'static str {
         _ if flag(vehicle, "airship") => "Airship",
         _ => "Generic",
     }
+}
+
+// The motor test compares connected, armed, apmFirmware and the count as a whole, so the fifth
+// field it needs has to arrive in the same read - view.flyState and view.vehicles both serve this
+// fact, and taking it from either would be a second snapshot at a different instant. Null means
+// the link is not being monitored, which is neither lost nor fine: a head must not read it as fine.
+fn contact_lost(backend: &dyn Backend) -> Option<bool> {
+    let link = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled"));
+    flag(&link, "communicationLostEnabled").then(|| flag(&link, "communicationLost"))
 }
 
 fn motors(vehicle: &Value, parameters_ready: bool) -> Option<i64> {
@@ -51,6 +62,7 @@ pub fn frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "motorCount": connected.then(|| motors(&vehicle, ready)).flatten(),
         "apmFirmware": flag(&vehicle, "apmFirmware"),
         "armed": flag(&vehicle, "armed"),
+        "contactLost": connected.then(|| contact_lost(backend)).flatten(),
     })
 }
 
@@ -126,5 +138,27 @@ mod tests {
     #[test]
     fn a_submarine_that_is_re_framed_recounts_its_motors() {
         assert!(DEPS.contains(&"vehicle.parameterManager.getParameter(-1,FRAME_CONFIG).rawValue"), "FRAME_CONFIG is the only input to a motor count that an operator can change while connected, and parametersReady does not fire again when they do - without it a re-framed sub keeps the count it had");
+    }
+
+    #[test]
+    fn a_link_nobody_is_watching_is_neither_lost_nor_fine() {
+        struct Link(bool, bool, bool);
+        impl Backend for Link {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "value", "value": true }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle" => vehicle("multiRotor", 4).to_string(),
+                    "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLostEnabled": self.1, "communicationLost": self.2 }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        assert_eq!(frame_view(&Link(true, true, true), &[])["contactLost"], true);
+        assert_eq!(frame_view(&Link(true, true, false), &[])["contactLost"], false);
+        assert_eq!(frame_view(&Link(true, false, false), &[])["contactLost"], Value::Null, "with the watch off the flag stays false however long the vehicle has been silent, so serving it raw would call an unmonitored link healthy on the page that decides whether a motor may spin");
     }
 }

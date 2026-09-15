@@ -157,10 +157,17 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     }
 }
 
-pub fn readiness(connected: bool, components: &[(String, bool)], sensor_faults: &[String]) -> (Option<bool>, String, String) {
+pub fn readiness(connected: bool, parameters_ready: bool, components: &[(String, bool)], sensor_faults: &[String]) -> (Option<bool>, String, String) {
     let outstanding: Vec<&str> = components.iter().filter(|(_, needs)| *needs).map(|(n, _)| n.as_str()).collect();
     if !connected {
         return (None, "No vehicle connected".into(), "Connect a vehicle to check what it needs.".into());
+    }
+    // needs_attention is parameter-derived, and ParameterManager hands back a default Fact reading
+    // zero for a parameter it does not hold - so with parameters outstanding a component reports
+    // needing setup on evidence the vehicle never sent. The Option exists because no vehicle is no
+    // verdict; parameters not yet answered is the same thing and reached the same false.
+    if !parameters_ready {
+        return (None, "Waiting for this vehicle's parameters".into(), "Its setup cannot be checked until it has answered.".into());
     }
     let ready = Some(outstanding.is_empty() && sensor_faults.is_empty() && !components.is_empty());
     let headline = match (outstanding.len(), sensor_faults.len(), components.is_empty()) {
@@ -267,8 +274,8 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let components = vehicle_components(backend);
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), c.needs_attention)).collect();
-    let (ready, headline, detail) = readiness(connected, &named, &faults);
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
+    let (ready, headline, detail) = readiness(connected, parameters_ready, &named, &faults);
     json!({
         "kind": "object",
         "class": "VehicleSetup",
@@ -359,17 +366,17 @@ mod tests {
 
     #[test]
     fn readiness_reads_like_the_summary_page() {
-        assert_eq!(readiness(false, &[], &[]).0, None, "no vehicle is no verdict; the same false that means \"checked and not ready\" drew an amber Check pill beside an instruction to connect one, an imperative verb with nothing behind it");
-        assert_eq!(readiness(false, &[], &[]).1, "No vehicle connected");
-        assert_eq!(readiness(true, &[], &[]).0, Some(false), "a connected vehicle reporting no components has been checked and is not ready, which is a different answer from having nothing to check");
-        let ok = readiness(true, &[("Sensors".into(), false)], &[]);
+        assert_eq!(readiness(false, true, &[], &[]).0, None, "no vehicle is no verdict; the same false that means \"checked and not ready\" drew an amber Check pill beside an instruction to connect one, an imperative verb with nothing behind it");
+        assert_eq!(readiness(false, true, &[], &[]).1, "No vehicle connected");
+        assert_eq!(readiness(true, true, &[], &[]).0, Some(false), "a connected vehicle reporting no components has been checked and is not ready, which is a different answer from having nothing to check");
+        let ok = readiness(true, true, &[("Sensors".into(), false)], &[]);
         assert_eq!(ok, (Some(true), "Ready to fly".into(), "Setup complete and all enabled sensors are healthy.".into()));
-        let two = readiness(true, &[("Sensors".into(), true), ("Radio".into(), true)], &[]);
+        let two = readiness(true, true, &[("Sensors".into(), true), ("Radio".into(), true)], &[]);
         assert_eq!(two.1, "2 components need setup");
         assert_eq!(two.2, "Sensors, Radio");
-        let faults = readiness(true, &[("Sensors".into(), false)], &["GPS".into()]);
+        let faults = readiness(true, true, &[("Sensors".into(), false)], &["GPS".into()]);
         assert_eq!(faults.1, "1 sensor reporting a fault");
-        assert_eq!(readiness(true, &[], &[]).1, "This vehicle reports no setup components");
+        assert_eq!(readiness(true, true, &[], &[]).1, "This vehicle reports no setup components");
     }
 
     #[test]
@@ -462,7 +469,7 @@ mod tests {
         assert_eq!(done, vec![("Radio".to_string(), false)]);
         let irrelevant = component(json!({ "elements": [ { "name": "Summary" } ] }));
         assert_eq!(irrelevant, vec![("Summary".to_string(), false)], "a component that never asked for setup is not chased for it");
-        assert_eq!(readiness(true, &silent, &[]).1, "1 component needs setup");
+        assert_eq!(readiness(true, true, &silent, &[]).1, "1 component needs setup");
     }
 }
 
@@ -487,6 +494,7 @@ mod components {
                 Some(component) => component.to_string(),
                 None => match path {
                     "vehicle" => json!({ "kind": "object", "px4Firmware": true, "apmFirmware": false }).to_string(),
+                    "vehicle.parameterManager" => json!({ "kind": "object", "parametersReady": true, "requestUnanswered": false }).to_string(),
                     _ => json!({ "kind": "null" }).to_string(),
                 },
             }
@@ -683,5 +691,31 @@ mod components {
         assert_eq!(blocked_by(&permits(true, false), true, false, false), None, "a component that says it can be set up while armed is the whole point of the flag");
         assert_eq!(blocked_by(&strict, false, true, true), None, "a rover's flying flag means nothing, and a head reading the raw permissions would have to know that too");
         assert_eq!(blocked_by(&strict, true, true, true), Some("armed"), "the rover exemption is only about flying");
+    }
+
+    #[test]
+    fn a_verdict_is_withheld_until_the_vehicle_has_answered_for_its_parameters() {
+        struct Silent;
+        impl Backend for Silent {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle" => json!({ "kind": "object", "px4Firmware": true }).to_string(),
+                    "vehicle.parameterManager" => json!({ "kind": "object", "parametersReady": false, "requestUnanswered": false }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let view = setup_view(&Silent, &[]);
+        assert_eq!(view["ready"], Value::Null, "needs_attention is parameter-derived and getParameter hands back a default Fact reading zero for one it does not hold, so a component reports needing setup on evidence the vehicle never sent - and the head drew Not ready to fly from it, on every connect, while the parameters were still arriving");
+        assert_eq!(view["parametersReady"], false, "and the same payload says why, so a head can put the reason where the verdict would have been");
+        assert!(view["headline"].as_str().unwrap().contains("parameters"));
+
+        assert_eq!(readiness(true, true, &[("Radio".into(), false)], &[]).0, Some(true), "once the parameters are in, a verdict is owed");
+        assert_eq!(readiness(true, false, &[("Radio".into(), false)], &[]).0, None);
     }
 }
