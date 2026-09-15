@@ -95,6 +95,12 @@ from head_models import MODELS  # noqa: E402
 # Android's position while macOS drew neither it nor the text beside it.
 ACCEPTED_BY_HEAD = {
     "android": {
+        "wholeNumbersOnly": "MEASURED. It is served on view.plan.defaults, which this head draws"
+            "nowhere - the plan tab writes altitude and speed through the fact's own path and reads"
+            "neither the defaults block nor its bounds. Same reason as decimalPlaces and defaultValue"
+            "one field over. It becomes worth reading the day a settings CONTROL carries it, because"
+            "an integer setting offered a decimal keyboard invites the value the core just stopped"
+            "the vehicle from truncating",
         "showsPacketRadio": "MEASURED. The settings list now comes from view.settings, so the "
             "Packet Radio page is offered and its settings are drawn like any other group. The flag "
             "says a head should draw a BESPOKE radio block - adapter picker and status line - and "
@@ -138,6 +144,28 @@ ACCEPTED_BY_HEAD = {
             "already draws",
     },
     "macos": {
+        "goneQuiet": "MEASURED, and my first note about this field was wrong twice over. It is on "
+            "view.links, not view.vehicleLinks, and the core told me it was not built there -- "
+            "links.rs:79 builds it, matching a configured link's name against the quiet list. What "
+            "makes it legitimately unread is the next line: gone_quiet feeds the `state` match that "
+            "becomes statusLine, and ConnectionsSection already DRAWS statusLine beside every link's "
+            "type. Reading the flag as well would be this head re-deriving a sentence the core owns. "
+            "The per-link answer for the CONNECTED vehicle is commLost on view.vehicleLinks, which "
+            "this head decodes and names in 47b375ff9",
+        "spinsPropeller": "MEASURED and deliberately not decoded. calibration.rs began serving it with "
+            "CompassMot, the first routine that spins the propellers. The WARNING text beside it "
+            "carries the same fact in words an operator reads, and this head has no structural use "
+            "for the flag -- no confirmation step it would gate. Decoding it to store it would be the "
+            "unread-field debt removed in c485b1aac. A confirmation before starting a routine is what "
+            "would earn the decode",
+        "layers": "the COUNT of a structure scan's stacked circuits, already on screen as the Layers "
+            "fact in the item's own editor, and two stacked circuits are ONE SHAPE on a flat map -- "
+            "drawing the ring twice puts identical points on identical points. Android reached the "
+            "opposite decision correctly, because their head shows a structure scan's facts nowhere",
+        "layerSpanText": "the band a structure scan sweeps, spelled RELATIVE to launch. The item row "
+            "already draws the same band as AMSL from altitudeBandText -- 485 m launch, so "
+            "\"62.5 m to 87.5 m\" and \"548 m to 572 m AMSL\" are one measurement in two frames. A "
+            "SCREENSHOT proved it; the two strings never appear side by side in any payload",
         "rebootRequired": "MEASURED AT THE PRODUCER. The three plan defaults are "
             "defaultMissionItemAltitude, offlineEditingCruiseSpeed and offlineEditingHoverSpeed, and "
             "none of the three declares a reboot or restart key in App.SettingsGroup.json -- so "
@@ -167,28 +195,6 @@ ACCEPTED_BY_HEAD = {
 }
 
 ACCEPTED = {
-    "spinsPropeller": "MEASURED and deliberately not decoded. calibration.rs began serving it with "
-        "CompassMot, the first routine that spins the propellers. The WARNING text beside it "
-        "carries the same fact in words an operator reads, and this head has no structural use "
-        "for the flag -- no confirmation step it would gate. Decoding it to store it would be the "
-        "unread-field debt removed in c485b1aac. A confirmation before starting a routine is what "
-        "would earn the decode",
-    "layers": "the COUNT of a structure scan's stacked circuits, already on screen as the Layers "
-        "fact in the item's own editor, and two stacked circuits are ONE SHAPE on a flat map -- "
-        "drawing the ring twice puts identical points on identical points. Android reached the "
-        "opposite decision correctly, because their head shows a structure scan's facts nowhere",
-    "layerSpanText": "the band a structure scan sweeps, spelled RELATIVE to launch. The item row "
-        "already draws the same band as AMSL from altitudeBandText -- 485 m launch, so "
-        "\"62.5 m to 87.5 m\" and \"548 m to 572 m AMSL\" are one measurement in two frames. A "
-        "SCREENSHOT proved it; the two strings never appear side by side in any payload",
-    "goneQuiet": "MEASURED, and my first note about this field was wrong twice over. It is on "
-        "view.links, not view.vehicleLinks, and the core told me it was not built there -- "
-        "links.rs:79 builds it, matching a configured link's name against the quiet list. What "
-        "makes it legitimately unread is the next line: gone_quiet feeds the `state` match that "
-        "becomes statusLine, and ConnectionsSection already DRAWS statusLine beside every link's "
-        "type. Reading the flag as well would be this head re-deriving a sentence the core owns. "
-        "The per-link answer for the CONNECTED vehicle is commLost on view.vehicleLinks, which "
-        "this head decodes and names in 47b375ff9",
     "autoDisconnect": "whether the vehicle drops its link by itself after contact is lost. It is "
         "a SETTING, and this head neither draws it nor may write it -- FirmwareUpgrade.qml is the "
         "only place upstream that touches it, and it WRITES it as part of a flow this head does "
