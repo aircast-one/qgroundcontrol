@@ -8437,3 +8437,30 @@ containing string data; the app supplies no such pointer, and this emulator has
 a software EGL driver. Did not reproduce, and video has run since. **Recorded
 rather than chased** - and worth knowing before someone reads a one-off video
 crash here as a head defect.
+
+### A video drop takes the detection boxes with it, which is right, 2026-09-15
+
+With `videofeed.sh` the stream can be killed mid-flight for the first time. The
+head handles it:
+
+```
+stream up      "car 91%"  "person 47%"        boxes over live video
+stream killed  "Waiting for a stream."        and the boxes are gone
+crashes        0
+```
+
+**The boxes disappearing is the safety-relevant half.** A detection box is a
+claim about where something is *in the picture*; over a frozen or absent picture
+it is a claim about a moment that has passed. An operator seeing a target marked
+on a dead feed would be acting on a position nothing is still reporting.
+
+**And it is the `video.decoding` gate that does it** - `DetectionOverlay`
+composes only while decoding, so the feed stopping removes the overlay rather
+than freezing it. That gate is the same one that made the whole feature
+untestable until tonight, and made a watched-vs-pushed sweep blind to it: **the
+condition that frustrated the measurement is the condition that makes the
+behaviour correct.** Worth recording as a reason not to "fix" it later.
+
+The video panel says *"Waiting for a stream."* rather than holding the last
+frame silently, which is `video_summary`'s connecting branch - untouched by
+`1f5562d89`, which only corrected the arm that claimed a build limitation.
