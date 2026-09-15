@@ -56,10 +56,20 @@ struct VibrationReading: Equatable {
     // string and it should be an instruction -- silentText states what is true, which is the right
     // half for a screen that has room for both and the wrong half for a screen that has room for
     // one. An unrecognised token falls back to the prompt that still asks the operator to look.
+    // A null silentReason does NOT mean the core had nothing to say: vibration.rs sets it only when
+    // NO axis has a value, so null means at least one does. This screen needs all three to draw its
+    // three bars, so a vehicle reporting two of them lands in the empty state with no reason token
+    // -- and the old rule read that as noVehicle and said "Connect a vehicle", to somebody looking
+    // at a connected one. The core said what the vehicle did; what this screen cannot draw is the
+    // head's own business and the head has to say it.
     var emptyText: String {
-        silentReason == "notReported"
-            ? "This vehicle is not reporting vibration."
+        switch silentReason {
+        case "notReported": return "This vehicle is not reporting vibration."
+        case "": return connected
+            ? "This vehicle is reporting only some vibration axes."
             : VehicleSetupText.connectPrompt(for: "vibration")
+        default: return VehicleSetupText.connectPrompt(for: "vibration")
+        }
     }
 
     private init() {

@@ -278,6 +278,17 @@ expect(VibrationReading(view: ["connected": true as NSNumber,
        + "fact, and silentReason IS the meaning, in the same read as the axes it qualifies. I "
        + "accepted this field this morning saying a token beside the sentence would be read; the "
        + "core split it and the acceptance would otherwise have outlived its reason")
+expect(VibrationReading(view: ["connected": true as NSNumber]).emptyText,
+       "This vehicle is reporting only some vibration axes.",
+       "A NULL silentReason IS NOT SILENCE. vibration.rs sets the token only when NO axis has a "
+       + "value, so null means at least one does -- and this screen needs all three to draw its "
+       + "three bars, so a vehicle reporting two of them lands in the empty state with no token. "
+       + "The old rule read that as noVehicle and told somebody looking at a connected aircraft to "
+       + "connect one. Found by null-fallbacks.py against the live app, which is the whole class "
+       + "it exists for: a key the core still emits, whose null the head turned into \"\"")
+expect(VibrationReading(view: [:]).emptyText, "Connect a vehicle to see its vibration.",
+       "and with no read yet the token is empty AND connected is false, which is the state the "
+       + "prompt is actually for -- so the new branch must ask both, not just the token")
 expect(VibrationReading(view: ["connected": true as NSNumber,
                               "silentReason": "somethingNewer"]).emptyText,
        "Connect a vehicle to see its vibration.",
