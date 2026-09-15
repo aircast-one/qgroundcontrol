@@ -9,6 +9,7 @@ const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
 const val PLAN_VIEW = "view.missionItems(geometry)"
 
 const val KIND_LAND = "land"
+const val KIND_WAYPOINT = "waypoint"
 const val KIND_TAKEOFF = "takeoff"
 const val KIND_SURVEY = "survey"
 const val KIND_CORRIDOR = "corridor"

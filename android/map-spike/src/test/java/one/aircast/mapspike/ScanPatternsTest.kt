@@ -8,6 +8,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScanPatternsTest {
+    @Test
+    fun `a long press is refused where every button for the same kind is`() {
+        val kinds = missionKinds(
+            JSONObject(
+                """{"kinds":[
+                  {"id":"takeoff","simple":true,"enabled":true},
+                  {"id":"waypoint","simple":true,"enabled":false,
+                   "disabledReason":"This mission starts from the ground, so a takeoff has to come before anything else."}]}""",
+            ),
+        )
+
+        assertFalse(
+            "missionkinds.rs refuses every kind but takeoff on an empty ground-start mission, and " +
+                "the Survey, ROI and Land buttons honour that. The map's long press added a " +
+                "waypoint regardless - and the summary line telling the operator to long press is " +
+                "the most prominent instruction on the screen",
+            kindAllows(kinds, KIND_WAYPOINT),
+        )
+        assertTrue(kindAllows(kinds, KIND_TAKEOFF))
+    }
+
+
 
     private val served = JSONObject(
         """{"kind":"object","kinds":[
