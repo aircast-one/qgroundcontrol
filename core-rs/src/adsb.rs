@@ -48,6 +48,17 @@ impl Units {
     }
 }
 
+// The push runs on the thread that receives traffic, which cannot read the backend - the bridge
+// C ABI has to be called on Qt's thread - so snapshot() had no units to convert with and spelled
+// everything metric. A head watching this view was served metres with an "m" label while the same
+// read through get came back in feet, and the push arrives every frame, so the wrong one wins.
+// The view's compute runs on Qt's thread; it leaves what it read here for the push to use.
+static LAST_UNITS: Mutex<Option<Units>> = Mutex::new(None);
+
+fn remembered_units() -> Units {
+    LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner).clone().unwrap_or_else(Units::metric)
+}
+
 pub const EXPIRATION_MS: u64 = 120_000;
 pub const PUBLISH_INTERVAL_MS: u64 = 1_000;
 pub const STALE_MS: u64 = 3_000;
@@ -514,7 +525,7 @@ impl Traffic {
     }
 
     pub fn snapshot(&self, now_ms: u64) -> Value {
-        self.snapshot_in(now_ms, &Units::metric())
+        self.snapshot_in(now_ms, &remembered_units())
     }
 
     pub fn snapshot_in(&self, now_ms: u64, units: &Units) -> Value {
@@ -615,7 +626,9 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
         std::thread::Builder::new().name("qgc-core-adsb".to_string()).spawn(move || follow(source, generation)).expect("adsb thread");
     }
     traffic.expire(now_ms);
-    traffic.snapshot_in(now_ms, &Units::read(backend))
+    let units = Units::read(backend);
+    *LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner) = Some(units.clone());
+    traffic.snapshot_in(now_ms, &units)
 }
 
 #[cfg(test)]
@@ -1101,7 +1114,7 @@ mod tests {
         traffic.observe(Some(Own { latitude: 47.0, longitude: 8.0, altitude_metres: Some(100.0) }));
         traffic.receive(&Report { icao_address: 1, callsign: Some("TEST".into()), latitude: Some(47.01), longitude: Some(8.0), altitude_metres: Some(300.0), velocity_metres_per_second: Some(50.0), ..Report::default() }, 0);
 
-        let metric = traffic.snapshot(0);
+        let metric = traffic.snapshot_in(0, &Units::metric());
         let converted = traffic.snapshot_in(0, &Units::read(&Imperial));
         assert_eq!(metric["contacts"][0]["altitudeMetres"], converted["contacts"][0]["altitudeMetres"], "the raw SI number is the same measurement whatever the operator reads it in");
         assert_ne!(metric["units"]["altitude"], converted["units"]["altitude"], "and the units block has to name the one actually applied - it was a literal \"m\" whatever the setting said");
@@ -1141,4 +1154,37 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_push_spells_the_units_the_view_last_read() {
+        struct Imperial;
+        impl Backend for Imperial {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", fields: match fields {
+                        "appSettingsVerticalDistanceUnitsString" => "ft",
+                        "appSettingsHorizontalDistanceUnitsString" => "ft",
+                        _ => "mph",
+                    } }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 3.28084 }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let mut traffic = Traffic::default();
+        traffic.observe(Some(Own { latitude: 47.0, longitude: 8.0, altitude_metres: Some(100.0) }));
+        traffic.receive(&Report { icao_address: 1, altitude_metres: Some(300.0), latitude: Some(47.01), longitude: Some(8.0), ..Report::default() }, 0);
+
+        *LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        let metric = traffic.snapshot(0);
+        assert_eq!(metric["units"]["altitude"], "m", "with no view computed yet the push falls back to metric, which is what it always did");
+
+        adsb_traffic_view(&Imperial, &[]);
+        let imperial = traffic.snapshot(0);
+        assert_eq!(imperial["units"]["altitude"], "ft", "announce() runs on the thread that receives traffic and cannot read the backend, so a head watching this view was served metres with an m label while the same read through get came back in feet - and the push arrives every frame, so the wrong one wins");
+        assert_ne!(imperial["contacts"][0]["altitude"], imperial["contacts"][0]["altitudeMetres"]);
+    }
 }

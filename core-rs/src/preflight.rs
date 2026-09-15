@@ -247,12 +247,7 @@ pub fn preflight_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn offered(backend: &dyn Backend) -> bool {
-    // Both QML sites gate the checklist on the setting AND on the core plugin serving a checklist
-    // URL, so a head reading only the setting would offer the checks on a build that has none. The
-    // default URL is a non-empty qrc path, which is exactly why the missing half would never show.
-    let wanted = crate::read::fact_flag(&object(&backend.get_fields("settings.appSettings", "useChecklist")), "useChecklist");
-    let url = crate::read::text(&object(&backend.get_fields("corePlugin.options", "preFlightChecklistUrl")), "preFlightChecklistUrl");
-    wanted && !url.is_empty()
+    crate::read::fact_flag(&object(&backend.get_fields("settings.appSettings", "useChecklist")), "useChecklist")
 }
 
 fn read_inputs(backend: &dyn Backend) -> Inputs {
@@ -363,18 +358,13 @@ mod tests {
     }
 
     #[test]
-    fn the_checks_are_offered_only_when_the_setting_and_the_plugin_both_say_so() {
-        struct Gate(bool, &'static str);
+    fn the_checks_are_offered_when_the_operator_asked_for_them_and_not_when_a_head_cannot_draw_them() {
+        struct Gate(bool);
         impl Backend for Gate {
-            fn get(&self, path: &str) -> String {
-                match path {
-                    _ => json!({ "kind": "value", "value": null }).to_string(),
-                }
-            }
+            fn get(&self, _p: &str) -> String { json!({ "kind": "value", "value": null }).to_string() }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "settings.appSettings" => json!({ "kind": "object", "facts": [{ "name": "useChecklist", "value": self.0 }] }).to_string(),
-                    "corePlugin.options" => json!({ "kind": "object", "preFlightChecklistUrl": self.1 }).to_string(),
                     _ => json!({ "kind": "object", "multiRotor": true }).to_string(),
                 }
             }
@@ -383,9 +373,10 @@ mod tests {
             fn watch(&self, _p: &[String]) {}
         }
 
-        const URL: &str = "qrc:/qml/QGroundControl/FlightDisplay/PreFlightCheckList.qml";
-        assert_eq!(preflight_view(&Gate(true, URL), &[])["offered"], true);
-        assert_eq!(preflight_view(&Gate(false, URL), &[])["offered"], false, "an operator who turned the checklist off in Settings is still being offered it on every head that reads only the vehicle state");
-        assert_eq!(preflight_view(&Gate(true, ""), &[])["offered"], false, "GuidedActionsController and FlyViewPreFlightChecklistPopup both AND the setting with a non-empty preFlightChecklistUrl, and a head serving only the setting would offer checks on a build that has none - the default URL is non-empty, which is precisely why the missing half would never show");
+        assert_eq!(preflight_view(&Gate(true), &[])["offered"], true);
+        assert_eq!(preflight_view(&Gate(false), &[])["offered"], false, "an operator who turned the checklist off in Settings is still being offered it on every head that reads only the vehicle state");
+
+        let served = include_str!("preflight.rs").split("#[cfg(test)]").next().unwrap_or("");
+        assert!(!served.contains("preFlightChecklistUrl"), "QGC's own gate also requires corePlugin.options.preFlightChecklistUrl to be non-empty, and that is a statement about whether the QT head ships a checklist QML - a native head draws its own and can never load that qrc. Serving it here would let a build where one head cannot draw the checks disable a preference the operator never got to withdraw, on the same build where FlyViewSettings.qml hides the control they would withdraw it with");
     }
 }
