@@ -10,6 +10,7 @@ CONTRACT = os.environ.get(
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-baseline.txt")
 READS = re.compile(r'\.opt(?:Text|Boolean|Int|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 NAMES_VIEW = re.compile(r'"(view\.[A-Za-z]+)')
+NESTED = re.compile(r'\.optJSON(?:Object|Array)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 HELPER_DEF = re.compile(r'fun JSON(?:Object|Array)\.([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: String')
 TAKES_KEY = re.compile(
     r'fun ([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: JSON(?:Object|Array)\??\s*,\s*key: String'
@@ -49,6 +50,30 @@ def head_views(root):
         for name in names:
             if name.endswith(".kt"):
                 found.update(NAMES_VIEW.findall(open(os.path.join(base, name)).read()))
+    return found
+
+
+def recorded_null(node, into):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if value == "null":
+                into.add(key)
+            else:
+                recorded_null(value, into)
+    elif isinstance(node, list):
+        for item in node:
+            recorded_null(item, into)
+    return into
+
+
+def opened_as_container(root):
+    found = set()
+    for base, _, names in os.walk(root):
+        if "/build/" in base or "/test/" in base:
+            continue
+        for name in names:
+            if name.endswith(".kt"):
+                found |= set(NESTED.findall(open(os.path.join(base, name)).read()))
     return found
 
 
@@ -153,10 +178,13 @@ ONLY_IN = {
     "maxString": {"Qgc.kt"},
     "minString": {"Qgc.kt"},
     "unknownEnumLabel": {"Qgc.kt"},
+    "message": {"VehicleMessages.kt"},
 }
 
 ACCEPTED = {
     "ok": "the invoke envelope, not a view field",
+    "message": "a field of armingChecks, which the contract records as NULL - a null parent pins "
+        "its name and never its shape, so none of its children are here. Read in VehicleMessages.kt",
     "simulated": "served per contact at adsb.rs:386 and invisible here because"
         "view.adsbTraffic.contacts records EMPTY - the same blind spot this check already"
         "prints above. Read in TrafficView.kt since 457dbdda7",
@@ -253,6 +281,16 @@ def main():
         print(f"    EMPTY WHEN RECORDED: {where}")
 
     tree = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # An empty list hides its element fields; a key recorded NULL hides them just as completely,
+    # and this check reported only the first. These are the ones the head opens and reads INTO,
+    # so their children are decoded against a shape the contract does not carry.
+    unpinned = sorted(recorded_null(json.load(open(CONTRACT)), set()) & opened_as_container(tree))
+    if unpinned:
+        print(f"\n  {len(unpinned)} key(s) recorded NULL that the head opens as an object or array:")
+        print(f"    {', '.join(unpinned)}")
+        print("  Their children are in no contract either, for the same reason as the empty lists.")
+
     drawn = head_views(tree)
     # A shape shares class and kind with every other view, so matching key NAMES alone counts a
     # view the head has no screen for as one it consumes. That folded 60 fields from packetRadio,
