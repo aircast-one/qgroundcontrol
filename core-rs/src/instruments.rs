@@ -30,6 +30,11 @@ pub fn fact_path(group: &str, name: &str) -> String {
     }
 }
 
+pub fn fact_path_of(selection: &str) -> String {
+    let (group, name) = split_selection(selection);
+    fact_path(&group, &name)
+}
+
 fn split_selection(selection: &str) -> (String, String) {
     match selection.split_once('/') {
         Some((group, name)) => (group.to_string(), name.to_string()),
@@ -284,5 +289,13 @@ mod tests {
         assert!(deps_for(&[]).contains(&"vehicle.altitudeRelative".to_string()));
         assert_eq!(deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicles.activeVehicleAvailable"], "an empty name never turns into a read of the whole vehicle");
         assert!(instruments_view(&Fake, &["vehicle/".to_string()])["items"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_selection_stored_in_the_old_dotted_spelling_reaches_the_same_fact() {
+        assert_eq!(fact_path_of("gps/lon"), "vehicle.gps.lon");
+        assert_eq!(fact_path_of("gps.lon"), "vehicle.gps.lon", "a head that stored a fact as group.name before the slash form existed still resolves - the bare-name branch prefixes vehicle. and the dot the old format used is the dot the concatenation would have inserted. That is a coincidence of two independent decisions, not a design, and tightening this branch to reject a dotted name would silently invalidate every choice already stored on a device");
+        assert_eq!(fact_path_of("altitudeRelative"), "vehicle.altitudeRelative");
+        assert_eq!(fact_path_of("batteries.0/voltage"), "vehicle.batteries.0.voltage");
     }
 }

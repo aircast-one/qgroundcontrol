@@ -94,6 +94,12 @@ mod tests {
         let named: Vec<&str> = groups.iter().filter_map(|g| g["group"].as_str()).collect();
 
         assert_eq!(named, ["gps", "escStatus"], "parameterManager is one of vehicle's children and carries no facts, and the group literally named 'vehicle' is one the macOS head already builds itself under the id \"\" - serving it too would put two Vehicle groups in that picker over the same readings, and every default it has stored is in the other id's form");
+        let served = groups[0]["facts"][0]["selection"].as_str().unwrap();
+        assert_eq!(
+            crate::instruments::fact_path_of(served),
+            "vehicle.gps.lock",
+            "the selection is spelled here and parsed in instruments, and nothing but this stops the two drifting - a separator changed on one side would leave every picked reading resolving to a path the bridge does not have"
+        );
         assert_eq!(groups[0]["facts"][0]["selection"], "gps/lock", "a head handing back a bare name gets it split against the vehicle group by default, so gps/lon spelled as lon resolves to vehicle.lon and answers noSuchFact - serving the whole selection removes the guess rather than documenting it");
 
         let esc = &groups[1]["facts"][0];
