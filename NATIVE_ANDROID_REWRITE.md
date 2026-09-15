@@ -8517,3 +8517,37 @@ state nobody would fly*. **An absurd number is not evidence of a defect when the
 rig is absurd** - and a rig built to make a feature testable will make other
 features look wrong. Check what the producer is before calling a missing guard a
 bug.
+
+### The no-verdict pair is landed and not yet witnessed, 2026-09-15
+
+Both halves are in: the core answers `None` when parameters are outstanding
+(`6b80a47c0`), and the head can hold it (`887bb1f8e` - `optBoolean` was
+flattening JSON null to `false`, turning every `None` into *"Not ready to fly"*
+in error red).
+
+**Neither half has been seen working together on a device, and this rig cannot
+show it.** `apmvehicle.py` answers its parameter download properly:
+
+```
+view.setup -> connected true, parametersReady TRUE, ready false,
+              headline "1 component needs setup"
+```
+
+That `false` is a verdict properly reached, not the un-established one. The
+persistent case - a vehicle that never completes its parameters - came from a
+rig that no longer exists, and is what produced the *"Missing params: 1:FRAME"*
+banner earlier tonight.
+
+**Two ways to witness it, for whoever gets there first.**
+
+- **The transient window.** `parametersReady` is false between connect and the
+  end of the parameter download, so polling `view.setup` fast right after
+  connecting should catch `ready: null` with the headline *"Waiting for this
+  vehicle's parameters"*. Real, brief, and needs no special vehicle.
+- **A vehicle that stalls.** Anything that answers heartbeats and not
+  `PARAM_REQUEST_LIST` holds the state open indefinitely, which is the version
+  worth screenshotting.
+
+**What is verified is the head half alone**, by unit test and mutation: invert
+the null handling and exactly one test of 542 fails. The pairing is inference
+until someone sees it.
