@@ -3,6 +3,8 @@ package one.aircast.android
 import androidx.compose.ui.text.input.KeyboardType
 import one.aircast.android.bridge.Fact
 import one.aircast.android.ui.factKeyboard
+import one.aircast.android.ui.factValueLines
+import one.aircast.android.ui.typedValue
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -39,5 +41,33 @@ class FactKeyboardTest {
     fun `text and boolean facts are never given a number pad`() {
         assertEquals(KeyboardType.Text, factKeyboard(fact("0", isString = true)))
         assertEquals(KeyboardType.Text, factKeyboard(fact("0", isBool = true)))
+    }
+
+    @Test
+    fun `a text value is readable without entering the control that writes it`() {
+        assertEquals(
+            "a comma list overflows a single-line field - Flight Modes shows six rows of " +
+                "Acro,Circle,Drift,Sport,Flip,Bra... - and reading the rest means tapping into an " +
+                "editable field, which on a phone also raises the keyboard over the page",
+            4,
+            factValueLines(fact("0", isString = true)),
+        )
+    }
+
+    @Test
+    fun `a number keeps one line, because a number does not overflow`() {
+        assertEquals(1, factValueLines(fact("200")))
+        assertEquals(1, factValueLines(fact("-50")))
+        assertEquals(1, factValueLines(fact("0", isBool = true)))
+    }
+
+    @Test
+    fun `a wrapping field must not let the return key into a settings value`() {
+        assertEquals(
+            "the multi-line field is what puts Enter on the keyboard, so the newline is a hazard " +
+                "this change introduces rather than one it found",
+            "Acro,Circle",
+            typedValue("Acro,\nCircle"),
+        )
     }
 }

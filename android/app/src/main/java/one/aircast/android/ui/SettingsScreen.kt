@@ -526,6 +526,10 @@ private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
     }
 }
 
+internal fun factValueLines(fact: Fact): Int = if (fact.isString) 4 else 1
+
+internal fun typedValue(text: String): String = text.replace("\n", "")
+
 internal fun factKeyboard(fact: Fact): KeyboardType = when {
     fact.isString || fact.isBool -> KeyboardType.Text
     fact.minString.toDoubleOrNull()?.let { it < 0.0 } != false -> KeyboardType.Text
@@ -581,10 +585,11 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
         OutlinedTextField(
             value = editing ?: fact.valueString,
             onValueChange = {
-                editing = it
+                editing = typedValue(it)
                 rejection = null
             },
-            singleLine = true,
+            singleLine = factValueLines(fact) == 1,
+            maxLines = factValueLines(fact),
             isError = rejection != null,
             keyboardOptions = KeyboardOptions(keyboardType = factKeyboard(fact)),
             modifier = Modifier.fillMaxWidth(),
