@@ -57,7 +57,7 @@ struct FlyPanel: View {
                     }
                     if fly.fleet.worthShowing {
                         ForEach(fly.fleet.vehicles, id: \.id) { craft in
-                            GroupRow(title: craft.listTitle, value: craft.stateText,
+                            GroupRow(title: craft.listTitle, value: fly.fleet.detail(craft),
                                      showSeparator: true,
                                      leading: { dot(craft.level) })
                         }

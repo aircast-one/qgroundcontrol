@@ -84,4 +84,15 @@ struct Fleet: Equatable {
     // the rest of the screen has become ambiguous about which vehicle it is describing, which is
     // the question `ambiguous` answers.
     var worthShowing: Bool { ambiguous }
+
+    // The link earns a place on the row only when it TELLS THE TWO APART. One radio carrying the
+    // whole fleet prints the same string under every name, which is the noise the type field was
+    // kept off these rows for. Two links is when an operator needs it: a vehicle going quiet is a
+    // question about which path died, and the row is where they are already looking.
+    var linksDiffer: Bool { Set(vehicles.map(\.link).filter { !$0.isEmpty }).count > 1 }
+
+    func detail(_ craft: FleetVehicle) -> String {
+        guard linksDiffer, !craft.link.isEmpty else { return craft.stateText }
+        return craft.stateText + " \u{00B7} " + craft.link
+    }
 }

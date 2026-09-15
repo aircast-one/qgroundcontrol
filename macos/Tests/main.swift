@@ -5193,9 +5193,10 @@ func checkTheFleetListAppearsOnlyWhenTheScreenIsAmbiguous() {
                      "ambiguous": true as NSNumber,
                      "vehicles": [["id": 1 as NSNumber, "name": "Quadrotor 1",
                                    "active": true as NSNumber, "flying": true as NSNumber,
-                                   "flightMode": "Guided",
+                                   "flightMode": "Guided", "link": "UDP Link (AutoConnect)",
                                    "contactLost": false as NSNumber],
                                   ["id": 2 as NSNumber, "name": "Quadrotor 2",
+                                   "link": "UDP Link (AutoConnect)",
                                    "contactLost": true as NSNumber]]])
     expect(two?.worthShowing == true,
            "but the list earns its place the moment the rest of the screen has become ambiguous "
@@ -5214,6 +5215,48 @@ func checkTheFleetListAppearsOnlyWhenTheScreenIsAmbiguous() {
     expect(two?.vehicles.last?.listTitle ?? "", "Quadrotor 2",
            "and the vehicles the screen is NOT about carry no mark: marking every row marks "
            + "none of them")
+
+    expect(two.map { $0.detail($0.vehicles.first!) } ?? "", "Flying \u{00B7} Guided",
+           "ONE LINK CARRYING THE WHOLE FLEET PRINTS THE SAME STRING UNDER EVERY NAME, so it is "
+           + "not printed at all. This is the rig's own case, measured: two apmvehicle instances "
+           + "arrive on one UDP link and both rows would have read \"UDP Link (AutoConnect)\" -- "
+           + "the noise the type field was kept off these rows for")
+
+    let split = Fleet(["class": "Vehicles", "count": 2 as NSNumber,
+                       "ambiguous": true as NSNumber,
+                       "vehicles": [["id": 1 as NSNumber, "name": "Quadrotor 1",
+                                     "active": true as NSNumber, "flying": true as NSNumber,
+                                     "flightMode": "Guided", "link": "Telemetry Radio",
+                                     "contactLost": false as NSNumber],
+                                    ["id": 2 as NSNumber, "name": "Quadrotor 2",
+                                     "link": "UDP Link", "contactLost": true as NSNumber]]])
+    expect(split.map { $0.detail($0.vehicles.first!) } ?? "",
+           "Flying \u{00B7} Guided \u{00B7} Telemetry Radio",
+           "BUT TWO LINKS IS WHEN THE OPERATOR NEEDS IT. A vehicle going quiet is a question "
+           + "about which path died, and `link` was decoded and drawn nowhere -- so the row that "
+           + "exists to tell two vehicles apart could not say the one thing that separates them")
+    expect(split.map { $0.detail($0.vehicles.last!) } ?? "", "Contact lost \u{00B7} UDP Link",
+           "and the lost one names its link too, which is the row an operator reads first")
+
+    let unnamed = Fleet(["class": "Vehicles", "count": 2 as NSNumber,
+                         "ambiguous": true as NSNumber,
+                         "vehicles": [["id": 1 as NSNumber, "name": "Quadrotor 1",
+                                       "link": "Telemetry Radio"],
+                                      ["id": 2 as NSNumber, "name": "Quadrotor 2"]]])
+    expect(unnamed.map { $0.detail($0.vehicles.last!) } ?? "", "Idle",
+           "a vehicle the core named no link for says nothing rather than an empty separator, "
+           + "and its silence does not stop the other row naming its own")
+
+    let oneNamed = Fleet(["class": "Vehicles", "count": 3 as NSNumber,
+                          "ambiguous": true as NSNumber,
+                          "vehicles": [["id": 1 as NSNumber, "name": "A", "link": "UDP Link"],
+                                       ["id": 2 as NSNumber, "name": "B", "link": "UDP Link"],
+                                       ["id": 3 as NSNumber, "name": "C"]]])
+    expect(oneNamed.map { $0.detail($0.vehicles.first!) } ?? "", "Idle",
+           "AND A MISSING LINK IS NOT A SECOND LINK. Two vehicles on one radio and a third the "
+           + "core named nothing for is still ONE link, so nothing is told apart and nothing is "
+           + "printed. Without the empty filter the blank counts as a distinct link and both "
+           + "named rows start quoting a radio that separates them from nobody")
 
     let unwatched = FleetVehicle(["id": 3 as NSNumber, "name": "Quadrotor 3"])
     expect(unwatched?.contactKnown == false,
