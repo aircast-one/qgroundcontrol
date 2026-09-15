@@ -1156,6 +1156,19 @@ func checkObstacleSilenceIsNotClearAir() {
     expect(obstacle(["available": false as NSNumber]).level == .unknown,
            "no sensor is not a level at all")
 
+    expect(obstacle([:]).rows().map(\.value).joined(separator: " | "),
+           "13.8 ft | front right | 8 | On",
+           "AVOIDANCE SAYS ON AS WELL AS OFF. The row was drawn only when it was off, so its "
+           + "value read \"Off\" every time it appeared and its ABSENCE was the whole signal for "
+           + "the other state -- a convention an operator cannot learn from the panel. Asking "
+           + "\"will this vehicle steer around what it sees\" is the question the row exists for "
+           + "and it could only ever be answered no")
+    expect(obstacle(["enabled": false as NSNumber]).rows().map(\.value).last ?? "", "Off",
+           "and off still says off, which is the half that already worked")
+
+    expect(obstacle(["available": false as NSNumber]).rows().map(\.value) == ["No sensor reporting"],
+           "a panel with no sensor says so in one row rather than listing four empty ones")
+
     expect(ObstacleDistance(["kind": "null"]) == nil,
            "a refused view is no obstacle state rather than one reporting everything off")
 }

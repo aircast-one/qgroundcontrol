@@ -82,7 +82,7 @@ struct ObstacleDistance: Equatable {
         return [DetailRow(label: "Nearest", value: nearest.distanceText),
                 DetailRow(label: "Direction", value: nearest.sectorText),
                 DetailRow(label: "Sectors reporting", value: String(sectors)),
-                DetailRow(label: "Avoidance", value: enabled ? "" : "Off")]
+                DetailRow(label: "Avoidance", value: enabled ? "On" : "Off")]
             .filter { !$0.value.isEmpty }
     }
 }
