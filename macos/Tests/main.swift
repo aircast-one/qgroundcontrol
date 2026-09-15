@@ -7589,6 +7589,27 @@ func checkRefusedModesSayWhy() {
                                                           enabled: true, reason: "")]])
     expect(AltitudeMode.refusalNote(allOffered) == nil,
            "nothing refused says nothing at all")
+
+    expect(!AltitudeMode.offersChoice(listed),
+           "one survivor is not a choice. The Plan window drew a live picker holding the single "
+           + "enabled mode above a sentence saying the choice was not available yet -- the "
+           + "control and the words disagreed, and opening it told the operator nothing the "
+           + "sentence had not already said")
+    expect(!AltitudeMode.offersChoice(allOffered),
+           "and the same is true when nothing was refused at all, because what decides it is how "
+           + "many can be picked, not how many were turned down")
+
+    let two = AltitudeMode.offers(["modes": [
+        offer(1, "Relative To Launch", enabled: true, reason: ""),
+        offer(2, "AMSL", enabled: true, reason: ""),
+        offer(3, "Calculated Above Terrain", enabled: false, reason: needsItem)]])
+    expect(AltitudeMode.offersChoice(two),
+           "two live the moment the core offers a second, so this is a gate on the offer list "
+           + "and not a way of writing \"the plan is empty\" -- emptiness is why the core "
+           + "refuses today, and a head that re-derived that would stop agreeing with it")
+    expect(AltitudeMode.offersChoice(AltitudeMode.offers(["modes": []])) == false,
+           "no offers at all is not a choice either, and that arm is what a count test gets for "
+           + "free that a plan-is-empty test would have missed")
 }
 
 func checkCamerasTheOperatorTurnedOn() {

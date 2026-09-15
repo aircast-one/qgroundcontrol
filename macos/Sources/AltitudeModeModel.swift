@@ -54,6 +54,17 @@ enum AltitudeMode {
         offers.filter(\.enabled)
     }
 
+    // A picker holding one option cannot change anything. With no mission items the core enables
+    // only "Mixed Modes" and refuses the other four, all with the same sentence -- which the row
+    // already prints underneath, so the reason is on screen either way. Leaving the control live
+    // promises a choice it cannot deliver: the operator opens it, finds a single entry, and the
+    // page has told them nothing it did not already say in words.
+    //
+    // Counted rather than keyed on the plan being empty. Emptiness is why the core refuses here
+    // TODAY, but the offer list is the core's judgement and it may refuse for other reasons on
+    // another firmware -- a head that re-derived "no items" would stop agreeing with it.
+    static func offersChoice(_ offers: [AltitudeModeOffer]) -> Bool { choosable(offers).count > 1 }
+
     static func refusalNote(_ offers: [AltitudeModeOffer]) -> String? {
         let reasons = offers.filter { !$0.enabled && !$0.reason.isEmpty }.map(\.reason)
         let distinct = reasons.reduce(into: [String]()) { kept, reason in

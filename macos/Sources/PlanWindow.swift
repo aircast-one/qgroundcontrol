@@ -614,6 +614,7 @@ struct PlanInspector: View {
                     }
                     .labelsHidden()
                     .frame(maxWidth: 170)
+                    .disabled(!AltitudeMode.offersChoice(mission.missionModes))
                 })
 
                 GroupRow(title: "Altitude for new items", trailing: {
