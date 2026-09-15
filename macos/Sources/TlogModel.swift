@@ -38,6 +38,15 @@ struct TlogSummary: Equatable {
 
     var messageKinds: Int { byName.count }
 
+    // A recording carries no vehicle NAMES, only the system ids that sent the frames -- so this
+    // is the only thing in the file that answers "whose flight is this". The panel could say how
+    // long the log was and how many frames it held and never which aircraft flew it, which is the
+    // question an operator opening an unfamiliar recording actually has. Sorted because a set's
+    // order is not an answer, and silent when the log named nobody.
+    var vehiclesText: String {
+        systemIds.sorted().map(String.init).joined(separator: ", ")
+    }
+
     var busiest: (name: String, count: Int)? {
         byName.max { left, right in
             left.value == right.value ? left.key > right.key : left.value < right.value

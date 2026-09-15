@@ -1456,6 +1456,18 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            "the busiest message is what tells an operator what the log is mostly made of")
     expect(tlog([:])?.messageKinds == 2, "and the kind count is the shape of the log")
 
+    expect(tlog([:])?.vehiclesText ?? "", "1",
+           "WHOSE FLIGHT IS THIS. A recording carries no vehicle names, only the system ids that "
+           + "sent the frames, so this is the only thing in the file that answers it -- and the "
+           + "panel could say how long the log ran and how many frames it held while never "
+           + "naming the aircraft that flew it")
+    expect(tlog(["systemIds": [2 as NSNumber, 1 as NSNumber]])?.vehiclesText ?? "", "1, 2",
+           "a log of two aircraft names both, SORTED, because the order the core happened to see "
+           + "them in is not an answer and would make the same log read differently twice")
+    expect(tlog(["systemIds": []])?.vehiclesText ?? "", "",
+           "and a log that named nobody says nothing rather than an empty label: the row is drawn "
+           + "on presence, so a recording with no identifiable sender simply has no line")
+
     expect(TlogSummary(["kind": "null"]) == nil,
            "a refusal with no path at all is no summary, rather than one describing a log at "
            + "the empty string")
