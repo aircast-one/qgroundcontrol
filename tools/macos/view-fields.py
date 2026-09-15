@@ -168,12 +168,6 @@ UNDRAWN = [
                       "The view is readable but every state that distinguishes it from silence "
                       "requires the one action that is forbidden. PARITY GAP, recorded not "
                       "built"),
-    ("view.adsbTraffic", "MEASURED: available true but connected false, enabled false, count 0, "
-                         "contacts empty. Traffic comes from an ADSB receiver or a MAVLink feed "
-                         "and this rig has neither, and turning it on is a SETTINGS WRITE, "
-                         "which is forbidden here. So the list can only ever be empty and a "
-                         "contacts layer could not be seen to work. PARITY GAP, recorded not "
-                         "built"),
     ("view.debugApi", "INTROSPECTION, and pointed the other way: it answers count 10 and a "
                       "hostRoutes list naming /native/windows, /native/menu, /native/probe and the "
                       "rest -- routes THIS HEAD ITSELF SERVES, each with the reason it exists. The "

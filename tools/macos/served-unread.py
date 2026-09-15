@@ -138,6 +138,17 @@ ACCEPTED_BY_HEAD = {
             "already draws",
     },
     "macos": {
+        "rebootRequired": "MEASURED AT THE PRODUCER. The three plan defaults are "
+            "defaultMissionItemAltitude, offlineEditingCruiseSpeed and offlineEditingHoverSpeed, and "
+            "none of the three declares a reboot or restart key in App.SettingsGroup.json -- so "
+            "vehicleRebootRequired and applicationRestartRequired are false by construction and this, "
+            "their OR, is false with them. A notice drawn from any of the three could never appear. "
+            "Control against reading that absence as universal: 3 of the 35 facts in that same group "
+            "DO declare one. The mechanism is not missing either -- SettingsControl carries "
+            "restartNotices and the Settings window draws them -- so this is the fact never saying "
+            "so, not the head being unable to hear it",
+        "vehicleRebootRequired": "See rebootRequired -- the same three facts and the same check",
+        "applicationRestartRequired": "See rebootRequired -- the same three facts and the same check",
         "defaultText": "MEASURED and deliberately undrawn. It is the value a fact would return TO, "
             "and nothing in this head offers a reset: the plan defaults are three plain value fields "
             "and the settings pages edit in place. A row that showed what it would revert to without "
@@ -254,7 +265,21 @@ if before is None:
           file=sys.stderr)
     sys.exit(1)
 
-now, then = observed_fields(), observed_fields(before)
+# BOTH sides come from git, and the working copy is never read. Four sessions share this checkout,
+# so the fixture on disk routinely holds a re-recording somebody has not committed -- and this tool
+# compared that against a committed revision, which makes every in-flight field look newly served.
+# It reported six such fields in one run, three of them (parametersReason, parametersText,
+# wholeNumbersOnly) naming nothing that exists in any commit. Two heads would then have migrated
+# onto them, which is exactly what 0a3b35375 cost an hour for.
+# The question this tool asks is "what does the core serve", and in a shared checkout the only
+# honest answer is what has landed.
+latest = contract_at("HEAD")
+if latest is None:
+    print("  CANNOT READ the contract at HEAD, which is the only version this compares against",
+          file=sys.stderr)
+    sys.exit(1)
+
+now, then = observed_fields(latest), observed_fields(before)
 added = sorted((field, sorted(views)) for field, views in now.items()
                if field not in then and field not in used and field not in ACCEPTED)
 
