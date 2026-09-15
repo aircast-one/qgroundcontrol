@@ -4860,6 +4860,20 @@ func checkFollowMeNamesWhoseProblemItIs() {
            "and the one case with no reason at all is the working one, which says so rather than "
            + "showing the blank that every other state also shows")
     expect(sending?.sending == true, "it is sending")
+
+    expect(!FollowMe(["kind": "object", "mode": "followMe",
+                      "reason": "noVehicleInFollowMode", "wouldSend": false as NSNumber])!.worthShowing,
+           "A DEFAULT IS NOT AN EXPRESSED INTENTION. followTarget defaults to 2, \"When in Follow "
+           + "Me Flight Mode\", so on a factory install with nobody having configured anything the "
+           + "reason is noVehicleInFollowMode and the Fly view drew an AMBER row on the primary "
+           + "flight screen on every flight, forever. The row written to avoid noise WAS the noise. "
+           + "Found by looking at the rendered window and then asking what the setting defaults to "
+           + "-- the guard's PREMISE, not its logic")
+    expect(FollowMe(["kind": "object", "mode": "followMe", "reason": "fixStale",
+                     "wouldSend": false as NSNumber])!.worthShowing,
+           "and a reason meaning the operator DID ask and something is stopping it still earns the "
+           + "row, which is the case it exists for. Only the two resting tokens are excluded, so a "
+           + "future reason arrives shown rather than silently hidden")
 }
 checkFollowMeNamesWhoseProblemItIs()
 

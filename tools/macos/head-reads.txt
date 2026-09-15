@@ -263,6 +263,7 @@ nextEnabled
 nextText
 note
 offer
+offered
 open
 openable
 orbiting

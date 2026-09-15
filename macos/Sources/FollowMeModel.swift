@@ -92,7 +92,21 @@ struct FollowMe: Equatable {
     // is what an operator learns to stop reading. It earns its place when it is sending, or when
     // it is meant to be on and something is stopping it -- the case where silence would leave the
     // operator believing the vehicle is following them.
-    var worthShowing: Bool { sending || (reason != "modeNever" && !sentence.isEmpty) }
+    // THE PREMISE OF THAT GUARD WAS FALSE, and the default setting is what made it false.
+    // followTarget defaults to 2, "When in Follow Me Flight Mode" (App.SettingsGroup.json), which
+    // the core spells as mode "followMe" -- so on a factory install, with nobody having configured
+    // anything, the reason is noVehicleInFollowMode and this drew an amber row on the primary
+    // flight screen on every flight, forever. The row written to avoid noise WAS the noise. Found
+    // by looking at the rendered window and then asking what the setting defaults to.
+    //
+    // A default is not an expressed intention. These two tokens are the ones where nothing has been
+    // asked of Follow Me, and neither is a warning; every other reason means the operator asked and
+    // something is stopping it, which is the case this row exists for.
+    static let resting: Set<String> = ["modeNever", "noVehicleInFollowMode"]
+
+    var worthShowing: Bool {
+        sending || (!FollowMe.resting.contains(reason) && !sentence.isEmpty)
+    }
 
     var level: FlyTelemetry.Level {
         guard !sending else { return .good }
