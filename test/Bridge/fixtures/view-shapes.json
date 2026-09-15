@@ -213,6 +213,7 @@
         "view.plan.defaults.hover.valueMeters",
         "view.plan.file",
         "view.plan.planningFor.home",
+        "view.plan.unsupportedReason",
         "view.settings(General).sections.0.subsections.0.controls.0.maximum",
         "view.settings(General).sections.0.subsections.0.controls.0.maximumText",
         "view.settings(General).sections.0.subsections.0.controls.0.minimum",
@@ -2230,6 +2231,7 @@
         "view.preflight.groups.2.checks.2.verdict",
         "view.preflight.groups.2.name",
         "view.preflight.kind",
+        "view.preflight.offered",
         "view.radio.calibrating",
         "view.radio.cancelEnabled",
         "view.radio.channelCount",
@@ -5184,6 +5186,7 @@
         "view.preflight.groups[].checks[].verdict",
         "view.preflight.groups[].name",
         "view.preflight.kind",
+        "view.preflight.offered",
         "view.preflight.total",
         "view.radio.calibrating",
         "view.radio.cancelEnabled",
@@ -7484,22 +7487,22 @@
         "rallySupported": "bool",
         "readiness": {
             "ready": "bool",
-            "reason": "string",
+            "reason": "null|string",
             "state": "number"
         },
         "status": "string",
         "sync": {
-            "refusal": "string",
+            "refusal": "null|string",
             "state": "string"
         },
-        "unsupportedReason": "string",
+        "unsupportedReason": "null",
         "upload": {
             "canProceed": "bool",
             "canSend": "bool",
-            "heading": "string",
+            "heading": "null|string",
             "pausesFirst": "bool",
-            "proceedTitle": "string",
-            "refusal": "string",
+            "proceedTitle": "null|string",
+            "refusal": "null|string",
             "state": "number"
         }
     },
@@ -7550,6 +7553,7 @@
             }
         ],
         "kind": "string",
+        "offered": "bool",
         "total": "number"
     },
     "view.radio": {

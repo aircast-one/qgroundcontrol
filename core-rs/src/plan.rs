@@ -120,11 +120,11 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "fenceSupported": fences,
         "rallySupported": rally,
         "unsupportedReason": match (fences, rally) {
-            (None, _) | (_, None) => "This vehicle has not said what it accepts yet.",
-            (Some(false), Some(false)) => "This link accepts neither a geofence nor rally points.",
-            (Some(false), Some(true)) => "This link does not accept a geofence.",
-            (Some(true), Some(false)) => "This link does not accept rally points.",
-            (Some(true), Some(true)) => "",
+            (None, _) | (_, None) => Some("This vehicle has not said what it accepts yet."),
+            (Some(false), Some(false)) => Some("This link accepts neither a geofence nor rally points."),
+            (Some(false), Some(true)) => Some("This link does not accept a geofence."),
+            (Some(true), Some(false)) => Some("This link does not accept rally points."),
+            (Some(true), Some(true)) => None,
         },
         "sync": sync_json(offline, syncing),
         "status": status_text(name, dirty, offline, contains_items),
@@ -137,28 +137,28 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
 fn readiness_json(state: Option<i64>) -> Value {
     let reason = match state {
-        Some(0) => "",
-        Some(1) => "Waiting for terrain heights before the plan can be saved or sent.",
-        Some(2) => "An item is still being drawn, so the plan cannot be saved or sent.",
-        _ => "The plan could not be checked for saving.",
+        Some(0) => None,
+        Some(1) => Some("Waiting for terrain heights before the plan can be saved or sent."),
+        Some(2) => Some("An item is still being drawn, so the plan cannot be saved or sent."),
+        _ => Some("The plan could not be checked for saving."),
     };
     json!({ "state": state, "ready": state == Some(0), "reason": reason })
 }
 
 fn upload_json(state: Option<i64>) -> Value {
     let (refusal, proceed_title) = match state {
-        Some(0) => ("", ""),
-        Some(1) => ("No vehicle is connected, so there is nowhere to send this plan.", ""),
-        Some(2) => ("This plan was made for a different firmware or vehicle type. Uploading it can make the vehicle behave incorrectly.", "Upload anyway"),
-        Some(3) => ("The vehicle is flying this mission. It has to be paused before a new plan goes up.", "Pause and upload"),
-        _ => ("The plan could not be checked against the vehicle.", ""),
+        Some(0) => (None, None),
+        Some(1) => (Some("No vehicle is connected, so there is nowhere to send this plan."), None),
+        Some(2) => (Some("This plan was made for a different firmware or vehicle type. Uploading it can make the vehicle behave incorrectly."), Some("Upload anyway")),
+        Some(3) => (Some("The vehicle is flying this mission. It has to be paused before a new plan goes up."), Some("Pause and upload")),
+        _ => (Some("The plan could not be checked against the vehicle."), None),
     };
     let can_proceed = matches!(state, Some(2) | Some(3));
     json!({
         "state": state,
         "canSend": state == Some(0),
         "refusal": refusal,
-        "heading": if can_proceed { "Upload this plan?" } else { "This plan cannot be uploaded" },
+        "heading": refusal.map(|_| if can_proceed { "Upload this plan?" } else { "This plan cannot be uploaded" }),
         "proceedTitle": proceed_title,
         "canProceed": can_proceed,
         "pausesFirst": state == Some(3),
@@ -167,9 +167,9 @@ fn upload_json(state: Option<i64>) -> Value {
 
 fn sync_json(offline: bool, syncing: bool) -> Value {
     let (state, refusal) = match (offline, syncing) {
-        (true, _) => ("offline", "No vehicle is connected."),
-        (false, true) => ("busy", "Already syncing, wait for it to finish."),
-        (false, false) => ("ready", ""),
+        (true, _) => ("offline", Some("No vehicle is connected.")),
+        (false, true) => ("busy", Some("Already syncing, wait for it to finish.")),
+        (false, false) => ("ready", None),
     };
     json!({ "state": state, "refusal": refusal })
 }
@@ -278,7 +278,7 @@ mod tests {
 
         let takes_both = plan_view(&supporting(connected.clone(), true, true), &[]);
         assert_eq!(takes_both["actions"]["addFence"], true);
-        assert_eq!(takes_both["unsupportedReason"], "", "nothing to explain when the vehicle accepts both");
+        assert_eq!(takes_both["unsupportedReason"], Value::Null, "nothing to explain when the vehicle accepts both, and an empty sentence is a sentence a head will draw");
 
         let neither = plan_view(&supporting(connected.clone(), false, false), &[]);
         assert_eq!(neither["actions"]["addFence"], false, "PlanElementController::supported is a vehicle capability, and both heads were offering a button for something the vehicle refuses when pressed");
@@ -347,10 +347,10 @@ mod tests {
         );
         let view = plan_view(&backend, &[]);
         assert_eq!(view["readiness"]["ready"], true);
-        assert_eq!(view["readiness"]["reason"], "");
+        assert_eq!(view["readiness"]["reason"], Value::Null);
         assert_eq!(view["upload"]["canSend"], false);
         assert_eq!(view["upload"]["canProceed"], false);
-        assert_eq!(view["upload"]["heading"], "This plan cannot be uploaded");
+        assert_eq!(view["upload"]["heading"], "This plan cannot be uploaded", "state 1 is a genuine refusal - no vehicle - so there is a heading to draw");
         assert_eq!(view["actions"]["newPlan"], true);
         assert_eq!(view["actions"]["save"], false);
         assert_eq!(view["actions"]["clearMission"], false);
@@ -434,4 +434,23 @@ mod tests {
         assert_eq!((empty["canUndo"].clone(), empty["canRedo"].clone()), (json!(false), json!(false)), "an object that does not report them has nothing to undo, which is what a fresh plan is");
     }
 
+    #[test]
+    fn the_state_that_means_nothing_is_wrong_has_no_refusal_to_show() {
+        let ready = upload_json(Some(0));
+        assert_eq!(ready["canSend"], true);
+        assert_eq!(ready["heading"], Value::Null, "heading was a two-way choice on canProceed, so the state that means send it fell through the else and got the refusal sentence: canSend true beside 'This plan cannot be uploaded'");
+        assert_eq!(ready["refusal"], Value::Null);
+        assert_eq!(ready["proceedTitle"], Value::Null);
+
+        let no_vehicle = upload_json(Some(1));
+        assert_eq!(no_vehicle["heading"], "This plan cannot be uploaded", "a refusal with nothing to offer still needs a heading");
+        assert_eq!(no_vehicle["proceedTitle"], Value::Null, "and no button title, because there is no button");
+
+        let wrong_firmware = upload_json(Some(2));
+        assert_eq!(wrong_firmware["heading"], "Upload this plan?", "a question is only a question when there is something to answer");
+        assert_eq!(wrong_firmware["proceedTitle"], "Upload anyway");
+
+        let unchecked = upload_json(None);
+        assert_eq!(unchecked["heading"], "This plan cannot be uploaded", "an unknown state is a refusal, not a green light");
+    }
 }

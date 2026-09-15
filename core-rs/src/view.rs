@@ -480,6 +480,7 @@ mod deps_cover_reads {
     "vehicle.roiModeSupported",
     "vehicle.supportsRadio",
     "links.linkTypeIds",
+        "corePlugin.options.preFlightChecklistUrl",
         "links.serialBaudRates",
         "radioCal.channelCount",
         "vehicle.guidedModeSupported",
