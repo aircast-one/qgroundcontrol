@@ -1318,6 +1318,53 @@ const char *const kViewPaths[] = {
 
 } // namespace
 
+static QString _firstJsonDifference(const QJsonValue &expected, const QJsonValue &actual, const QString &path = QString())
+{
+    const QString here = path.isEmpty() ? QStringLiteral("<root>") : path;
+    const auto spell = [](const QJsonValue &value) {
+        return value.isString() ? value.toString()
+                                : QString::fromUtf8(QJsonDocument::fromVariant(value.toVariant()).toJson(QJsonDocument::Compact)).trimmed();
+    };
+
+    if (expected.type() != actual.type()) {
+        return QStringLiteral("%1: expected %2, got %3").arg(here, spell(expected), spell(actual));
+    }
+    if (expected.isObject()) {
+        const QJsonObject was = expected.toObject();
+        const QJsonObject now = actual.toObject();
+        for (const QString &key : was.keys()) {
+            if (!now.contains(key)) {
+                return QStringLiteral("%1.%2 is missing").arg(here, key);
+            }
+            const QString deeper = _firstJsonDifference(was.value(key), now.value(key), QStringLiteral("%1.%2").arg(here, key));
+            if (!deeper.isEmpty()) {
+                return deeper;
+            }
+        }
+        for (const QString &key : now.keys()) {
+            if (!was.contains(key)) {
+                return QStringLiteral("%1.%2 was not recorded").arg(here, key);
+            }
+        }
+        return QString();
+    }
+    if (expected.isArray()) {
+        const QJsonArray was = expected.toArray();
+        const QJsonArray now = actual.toArray();
+        if (was.count() != now.count()) {
+            return QStringLiteral("%1 has %2 entries, expected %3").arg(here).arg(now.count()).arg(was.count());
+        }
+        for (int index = 0; index < was.count(); ++index) {
+            const QString deeper = _firstJsonDifference(was.at(index), now.at(index), QStringLiteral("%1[%2]").arg(here).arg(index));
+            if (!deeper.isEmpty()) {
+                return deeper;
+            }
+        }
+        return QString();
+    }
+    return expected == actual ? QString() : QStringLiteral("%1: expected %2, got %3").arg(here, spell(expected), spell(actual));
+}
+
 static QString _shapeDifference(const QJsonObject &was, const QJsonObject &now)
 {
     QStringList moved;
@@ -2541,7 +2588,8 @@ void QGCCoreCTest::_polygonGeometryMatchesTheRecordedOracle()
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded polygon geometry; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
-    QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+    const QString difference = _firstJsonDifference(expected, recorded);
+    QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
@@ -2639,7 +2687,8 @@ void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded structure scan; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
-    QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+    const QString difference = _firstJsonDifference(expected, recorded);
+    QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
@@ -2924,7 +2973,8 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded structure scan upload; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
-    QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+    const QString difference = _firstJsonDifference(expected, recorded);
+    QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
