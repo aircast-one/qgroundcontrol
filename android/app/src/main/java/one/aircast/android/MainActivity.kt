@@ -64,6 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.ui.hasVehicle
 import one.aircast.android.ui.AnalyzePage
 import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.CameraControlLayer
@@ -346,8 +347,9 @@ fun AircastShell(quickView: QtQuickView) {
                 }
 
                 if (tab == Tab.Fly) {
+                    val controllable = hasVehicle()
                     Column(Modifier.align(Alignment.BottomCenter)) {
-                        Surface(
+                        if (controllable) Surface(
                             Modifier.align(Alignment.CenterHorizontally),
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                             shape = MaterialTheme.shapes.small,
@@ -363,7 +365,7 @@ fun AircastShell(quickView: QtQuickView) {
                                 )
                             }
                         }
-                        AnimatedVisibility(visible = controlsExpanded) {
+                        AnimatedVisibility(visible = controlsExpanded || !controllable) {
                             Surface(
                                 Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
                                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
