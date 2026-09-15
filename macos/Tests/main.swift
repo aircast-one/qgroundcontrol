@@ -97,6 +97,30 @@ expect(arming.map { $0.toggling($0.bits[3], on: false) } == 66,
 expect(arming.map { $0.toggling($0.bits[1], on: true) } == 82,
        "ticking a bit that is already set changes nothing, so a redraw cannot corrupt the value")
 
+// Every fixture above builds its value out of DECLARED bits only, so none of them can tell
+// "preserve the other bits this control knows about" from "preserve every bit in the value". The
+// distinction is the whole difference between this head and QGC: ParameterEditorDialog.qml's
+// bitmaskValue() starts from zero and ORs the checked declared bits back in, so a bit the metadata
+// does not name is CLEARED the moment the operator touches any checkbox. It is the same root cause
+// as the enum gap in ee2d41080 -- ArduPilot ships values ahead of the metadata that names them --
+// and on newer firmware an undeclared bit is the ordinary case, not the exotic one.
+let undeclared = SettingsControl([
+    "path": "vehicle.parameter.ARMING_CHECK", "name": "ARMING_CHECK", "control": "bitmask",
+    "value": 338 as NSNumber, "valueString": "338",
+    "bits": [["label": "Barometer", "raw": "2", "set": true as NSNumber],
+             ["label": "Compass", "raw": "4", "set": false as NSNumber],
+             ["label": "GPS lock", "raw": "16", "set": true as NSNumber],
+             ["label": "Parameters", "raw": "64", "set": true as NSNumber]],
+])
+expect(undeclared.map { $0.toggling($0.bits[1], on: true) } == 342,
+       "338 is 256 + 64 + 16 + 2, and 256 is a bit this control does not name. Ticking Compass "
+       + "leaves it exactly where it was, because toggling reads the value and changes ONE bit. "
+       + "Rebuilding the value from the checked boxes would answer 86 and quietly clear a bit the "
+       + "operator never saw, never touched and cannot get back")
+expect(undeclared.map { $0.toggling($0.bits[0], on: false) } == 336,
+       "and clearing a named bit leaves the unnamed one too, so the rule is about the VALUE rather "
+       + "than about the list of boxes")
+
 expect(SettingsControl(["path": "g.b", "control": "bitmask",
                         "bits": [["label": "None", "raw": "0", "set": false as NSNumber]]])?
     .bits.isEmpty == true,
