@@ -73,18 +73,22 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn watch(&self, client: &str, paths: &[String]) {
-        let asked: BTreeSet<String> = {
+        // Only paths this client did not already hold count as fresh. A head that re-subscribes on
+        // every recomposition asks for the same set repeatedly, and forcing a re-emit on each of
+        // those would turn one screen's lifecycle into a stream of identical deliveries.
+        let (asked, fresh): (BTreeSet<String>, Vec<String>) = {
             let mut watching = self.watching.lock().unwrap();
+            let held = watching.clients.get(client).cloned().unwrap_or_default();
             match paths.is_empty() {
                 true => watching.clients.remove(client),
                 false => watching.clients.insert(client.to_string(), paths.iter().cloned().collect()),
             };
             let asked = watching.asked();
             watching.last.retain(|path, _| asked.contains(path));
-            asked
+            let fresh = paths.iter().filter(|path| !held.contains(*path) && view::lookup(path).is_some()).cloned().collect();
+            (asked, fresh)
         };
-        let fresh = paths.iter().any(|path| view::lookup(path).is_some());
-        self.rewatch(&asked, fresh);
+        self.rewatch(&asked, !fresh.is_empty());
         // A watch used to register paths and nothing else. Two views spawn the thread that
         // produces their data inside their own compute - view.adsbTraffic and view.detections -
         // so a head that only watches never ran the compute, never started the feed, and received
@@ -93,7 +97,7 @@ impl<B: Backend> Core<B> {
         // against a value the client never saw; the render itself still happens on Qt's thread,
         // through the ordinary event route, because the bridge queues its first poll.
         let mut watching = self.watching.lock().unwrap();
-        paths.iter().filter(|path| view::lookup(path).is_some()).for_each(|path| {
+        fresh.iter().for_each(|path| {
             watching.last.remove(path);
         });
     }
@@ -366,5 +370,20 @@ mod tests {
 
         core.watch("plan", &["view.messages".to_string()]);
         assert!(!core.on_event("vehicle.formattedMessages", "{}").is_empty(), "a new subscriber drops the remembered value, because last is what the LAST client was sent and this one has been sent nothing");
+    }
+
+    #[test]
+    fn re_asking_for_a_set_this_client_already_holds_delivers_nothing_new() {
+        let core = Core::new(Fake::default());
+        core.watch("fly", &["view.messages".to_string()]);
+        core.on_event("vehicle.formattedMessages", "{}");
+
+        core.backend.watched.borrow_mut().clear();
+        core.watch("fly", &["view.messages".to_string()]);
+        assert!(core.backend.watched.borrow().is_empty(), "a head that re-subscribes on every recomposition asks for the same set repeatedly, and forcing a re-emit on each would turn one screen's lifecycle into a stream of identical deliveries");
+        assert!(core.on_event("vehicle.formattedMessages", "{}").is_empty(), "and the value it already has is still deduped");
+
+        core.watch("fly", &["view.messages".to_string(), "view.warnings".to_string()]);
+        assert!(!core.backend.watched.borrow().is_empty(), "adding a path to a set is a fresh subscription for that path, and it has to reach the backend");
     }
 }
