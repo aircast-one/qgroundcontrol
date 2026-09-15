@@ -8717,9 +8717,18 @@ paths by `format`, so "never named" is weaker evidence here than elsewhere.
 | `view.joystickMapping` | `joystick::joystick_view` |
 | `view.operatorControl` | `inControl` - whether this station holds control of the vehicle, `Option<bool>`, null when unknowable |
 
-**Three left to check** - `cameraProtocol`, `coreCalibration`, `videoSource` -
-each of which may be the raw half of something already drawn, the way
-`armingChecks` is to `armingBlocker`.
+**The last three are all siblings of something already drawn**, as suspected:
+`cameraProtocol` sits beside the `view.camera` that `CameraControl.kt` reads,
+`coreCalibration` beside the `view.calibration` of `CalibrationView.kt`, and
+`videoSource` beside the `view.video` of `VideoView.kt`. The latter two are
+parameterised as well. **Triage complete: 13 of the 18 are not gaps.**
+
+**And only one of the five is a Fly-view question.** `gimbal` is Fly. `packetRadio`
+is already recorded in this plan as unbuilt. `joystickMapping` and `gpsRtkBase`
+are Setup and Settings reads - real, wanted, and **not Fly gaps**, so a parity
+page for the flight screen correctly leaves them out. `operatorControl` is newer
+than the QML and has nothing to port. Worth writing down, because a list of five
+reads as five holes in one screen otherwise.
 
 **This bears directly on the parity scope being drawn up.** These are not
 redesign questions: the core already computes them and the head does not ask.
