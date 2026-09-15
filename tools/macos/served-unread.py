@@ -189,12 +189,6 @@ ACCEPTED = {
         "type. Reading the flag as well would be this head re-deriving a sentence the core owns. "
         "The per-link answer for the CONNECTED vehicle is commLost on view.vehicleLinks, which "
         "this head decodes and names in 47b375ff9",
-    "altitudeMetres": "the RAW quantity behind a mission item's altitude, served for a head that "
-        "would rather convert and write metres through the fact's rawValue setter. This head does "
-        "the opposite on purpose: 8110770d3 fixed an editable altitude wearing the wrong unit by "
-        "drawing the fact's OWN value beside the fact's OWN unit, and writing through setFact so "
-        "the conversion happens where the unit is defined. Decoding a metre quantity here would "
-        "put a second conversion in the head, which is the defect that fix removed",
     "autoDisconnect": "whether the vehicle drops its link by itself after contact is lost. It is "
         "a SETTING, and this head neither draws it nor may write it -- FirmwareUpgrade.qml is the "
         "only place upstream that touches it, and it WRITES it as part of a flow this head does "
@@ -290,8 +284,21 @@ served_anywhere = observed_fields(drawn_only=False)
 stale = [f"{field!r} is accepted and the core no longer serves it"
          for field in sorted(ACCEPTED) if field not in served_anywhere]
 
+# The other way an acceptance rots, and the one the NOT SERVED check cannot see: the field is
+# still served AND this head now reads it. The reason has been answered by the work rather than
+# by the core, so the entry excuses nothing -- until somebody deletes the read, when it silences
+# exactly the signal it was written to make explicit. An acceptance that is doing no work is not
+# harmless; it is a guard pre-disarmed for a defect nobody has written yet.
+answered = [f"{field!r} is accepted as undrawn and this head now reads it"
+            for field in sorted(ACCEPTED) if field in used]
+
 for why in stale:
     print(f"  NOT SERVED {why}", file=sys.stderr)
+for why in answered:
+    print(f"  ANSWERED {why}, so delete the acceptance rather than leaving it to excuse a "
+          f"future removal -- CHECK THE READ IS ON THE ACCEPTED VIEW FIRST, because this matches "
+          f"by NAME and a fifth of the contract's names appear under more than one view root",
+          file=sys.stderr)
 for field, views in added:
     where = ", ".join(views[:3]) + (" and more" if len(views) > 3 else "")
     print(f"  NEWLY SERVED {field!r} appeared in the contract for {where} since {SINCE}, and no "
@@ -301,4 +308,4 @@ for field, views in added:
 print(f"compared {len(now)} served field names against the contract at {SINCE}: "
       f"{len(now) - len(then)} added since, {len(added)} of them named nowhere in this head, "
       f"{len(ACCEPTED)} accepted with a reason")
-sys.exit(1 if added or stale else 0)
+sys.exit(1 if added or stale or answered else 0)
