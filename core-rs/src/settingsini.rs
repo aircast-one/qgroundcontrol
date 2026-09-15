@@ -171,6 +171,84 @@ pub fn read(text: &str) -> BTreeMap<String, Setting> {
     map
 }
 
+
+fn escape_key(key: &str) -> String {
+    key.chars()
+        .map(|c| match c {
+            '/' => "\\".to_string(),
+            '%' => "%25".to_string(),
+            '[' | ']' | '=' => format!("%{:02X}", c as u32),
+            c if c.is_ascii_graphic() || c == ' ' => c.to_string(),
+            c if (c as u32) < 0x100 => format!("%{:02X}", c as u32),
+            c => format!("%U{:04X}", c as u32),
+        })
+        .collect()
+}
+
+fn escape_item(item: &str) -> String {
+    // A \xNN escape consumes hex digits greedily on the way back in, so "bell\x7end" reads as
+    // \x7e followed by "nd". Closing and reopening the quotes ends the escape without adding a
+    // character: QSettings concatenates adjacent quoted runs, and so does the reader above.
+    let chars: Vec<char> = item.chars().collect();
+    let body: String = chars
+        .iter()
+        .enumerate()
+        .map(|(at, c)| {
+            let hex_follows = chars.get(at + 1).is_some_and(char::is_ascii_hexdigit);
+            match c {
+                '\\' => "\\\\".to_string(),
+                '"' => "\\\"".to_string(),
+                '\n' => "\\n".to_string(),
+                '\r' => "\\r".to_string(),
+                '\t' => "\\t".to_string(),
+                c if (*c as u32) < 0x20 || *c as u32 == 0x7f => {
+                    format!("\\x{:x}{}", *c as u32, if hex_follows { "\"\"" } else { "" })
+                }
+                c => c.to_string(),
+            }
+        })
+        .collect();
+    format!("\"{body}\"")
+}
+
+fn spell(setting: &Setting) -> String {
+    match setting {
+        Setting::Invalid => "@Invalid()".to_string(),
+        Setting::Variant(raw) => raw.clone(),
+        Setting::Bytes(bytes) => format!("@ByteArray({})", escape_item(&String::from_utf8_lossy(bytes)).trim_matches('"')),
+        Setting::Text(text) if text.starts_with('@') => format!("@{}", escape_item(text).trim_matches('"')),
+        Setting::Text(text) => escape_item(text),
+        Setting::List(items) => items.iter().map(|item| escape_item(item)).collect::<Vec<_>>().join(", "),
+    }
+}
+
+fn split_section(path: &str) -> (&str, &str) {
+    match path.split_once('/') {
+        Some((section, rest)) => (section, rest),
+        None => ("General", path),
+    }
+}
+
+pub fn write(settings: &BTreeMap<String, Setting>) -> String {
+    let sections: BTreeMap<&str, Vec<(&str, &Setting)>> =
+        settings.iter().fold(BTreeMap::new(), |mut grouped, (path, setting)| {
+            let (section, key) = split_section(path);
+            grouped.entry(section).or_default().push((key, setting));
+            grouped
+        });
+    sections
+        .iter()
+        .map(|(section, entries)| {
+            let lines: String = entries
+                .iter()
+                .map(|(key, setting)| format!("{}={}\n", escape_key(key), spell(setting)))
+                .collect();
+            format!("[{}]\n{lines}", escape_key(section))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +282,51 @@ mod tests {
         assert_eq!(value("say \\\"hi\\\""), Setting::Text("say \"hi\"".into()));
         assert_eq!(value("\\101\\x42-c"), Setting::Text("AB-c".into()));
         assert_eq!(value("@ByteArray(\\x1\\xd9)"), Setting::Bytes(vec![0x01, 0xC3, 0x99]));
+    }
+
+    #[test]
+    fn what_the_writer_produces_is_what_the_reader_understands() {
+        let once = read(SAMPLE);
+        let twice = read(&write(&once));
+        assert_eq!(twice, once, "a writer is only trustworthy if the parser it was derived from reads its output back unchanged, and that is the one property neither a fixture nor a rig can fake");
+
+        let spelled = write(&once);
+        assert!(spelled.contains("[General]"), "keys with no group belong to General, which QSettings writes without a prefix and reads back the same way");
+        assert!(spelled.contains("[LinkConfigurations]"));
+        assert!(spelled.contains("Link0\\name="), "a slash inside a key is a backslash in the file - the section is the first segment and every segment after it is part of the key");
+        assert!(spelled.contains("@Invalid()"), "an invalid setting is a value QSettings writes, not an absence");
+    }
+
+    #[test]
+    fn every_shape_the_reader_can_produce_survives_being_written() {
+        let awkward: BTreeMap<String, Setting> = [
+            ("Units/verticalDistanceUnits".to_string(), Setting::Text("1".into())),
+            ("plain".to_string(), Setting::Text("no quotes needed".into())),
+            ("comma".to_string(), Setting::Text("47.6, -122.1".into())),
+            ("quote".to_string(), Setting::Text("say \"hi\"".into())),
+            ("backslash".to_string(), Setting::Text("C:\\logs\\flight.tlog".into())),
+            ("newline".to_string(), Setting::Text("line\nnext".into())),
+            ("control".to_string(), Setting::Text("bell\u{7}end".into())),
+            ("at".to_string(), Setting::Text("@handle".into())),
+            ("list".to_string(), Setting::List(vec!["host1:14550".into(), "host two:14551".into()])),
+            ("gone".to_string(), Setting::Invalid),
+            ("Gro\u{DC}p\u{E9}/k\u{E9}y".to_string(), Setting::Text("unicode in both".into())),
+            ("has space/and more".to_string(), Setting::Text("spaced".into())),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(read(&write(&awkward)), awkward, "every value a head can store has to survive the round trip, or the first operator with a comma in a field loses it");
+    }
+
+    #[test]
+    fn a_settings_file_qt_actually_wrote_survives_the_round_trip() {
+        let written_by_qt = include_str!("../tests/fixtures/qgc-settings.ini");
+        let once = read(written_by_qt);
+        assert!(once.len() > 100, "the fixture parsed to {} keys, which is too few to be the whole file", once.len());
+        assert_eq!(read(&write(&once)), once, "a hand-written sample agrees with whatever the parser happens to do; this one was produced by QSettings and is the only input here that can disagree with it");
+        assert_eq!(once["LinkConfigurations/Link0/name"], Setting::Text("Recorder TCP".into()), "a backslash in the file is a slash in the flattened key, and this is the shape link configurations actually arrive in");
+        assert_eq!(once["FlyView/rcControls"], Setting::Text("[]".into()), "an empty JSON list is a two-character string and not a list, because QSettings never quoted or comma-separated it");
+        assert_eq!(once["Video/rtspUrl"], Setting::Text("rtsp://127.0.0.1:8554/fresh".into()));
     }
 }
