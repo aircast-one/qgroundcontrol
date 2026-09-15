@@ -46,6 +46,15 @@ ARGUMENTS = {
 }
 
 ACCEPTED = {
+    "silentText": "DELIBERATE and the reason is in VibrationReading.swift, not here: the core "
+                  "serves both a TOKEN and a SENTENCE for vibration silence, and this screen shows "
+                  "ONE string where it should be an instruction. silentText states what is true -- "
+                  "the right half for a screen with room for both, the wrong half for a screen with "
+                  "room for one -- so emptyText branches on the token and writes its own line, "
+                  "which is the head saying what the operator can do rather than re-spelling what "
+                  "the vehicle did. 33ba4db30 then gave the empty token a third meaning as well. "
+                  "Listed so this stops being reported every run: an accurate signal nobody can act "
+                  "on is what teaches a person to skim the tool",
     "bandText": "the terrain panel draws lowestText and highestText at the plot's two ends "
                 "rather than one sentence between them, so the joined spelling is a display "
                 "choice this head makes and not a figure it fails to show",
