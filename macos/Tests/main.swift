@@ -3785,9 +3785,12 @@ func checkFrameSetup() {
     expect(!FrameSetup(vehicleType: "", motorCount: nil).known,
            "and with neither a type nor a count there is nothing to summarise")
     expect(!FrameSetup(vehicleType: "", motorCount: 0).known,
-           "NOR WITH A COUNT OF ZERO, which is a different absence from null and has to land the "
-           + "same way. Without this fixture `known` could ask `motorCount != nil` and every other "
-           + "assertion here would still pass -- the mutation was green until this line existed")
+           "NOR WITH A COUNT OF ZERO. QGC cannot currently produce a 0 -- its motorCount returns "
+           + "1, 2, 3, 4, 5, 6, 8 or -1 -- so this fixture is defensive rather than a case seen in "
+           + "the wild, and it earns its place anyway: without it `known` could ask "
+           + "`motorCount != nil` and every other assertion in this function would still pass. The "
+           + "mutation was GREEN until this line existed, and it was run on the model that was not "
+           + "expected to fail")
 
     let quad = FrameSetup(vehicleType: "Quadrotor", motorCount: 4)
     expect(quad.known, "a reported type and motor count is a frame")
@@ -5188,10 +5191,11 @@ func checkMotorTest() {
 
     let submarine = MotorTest(reportedCount: 0, letterIndices: false, connected: true, armed: false)
     expect(submarine.motors == MotorTest.fallbackMotors,
-           "THE SIGN TEST STAYS ALONGSIDE THE ABSENCE. view.frame filters QGC's -1 to null, so the "
-           + "sentinel is gone and with it the fixture that could not see its own rule -- but "
-           + "nothing makes a served 0 impossible, and a zero count would otherwise draw an empty "
-           + "grid with no warning at all. Both answers mean the same thing to an operator")
+           "THE SIGN TEST STAYS ALONGSIDE THE ABSENCE, AND IT IS REDUNDANT TODAY. Every return in "
+           + "QGCMAVLink::motorCount is one of 1, 2, 3, 4, 5, 6, 8 and -1, read at HEAD rather "
+           + "than taken from a peer who said so -- there is no path to 0, and the core filters "
+           + "-1 to null. It stays because redundant against TODAY'S producer is not redundant, "
+           + "the cost is one comparison, and this head is where the empty grid would appear")
     expect(submarine.names.count == MotorTest.fallbackMotors,
            "and the grid it draws is eight buttons rather than none. Relaxing countKnown to a bare "
            + "`!= nil` reds this by drawing an EMPTY grid -- a screen offering no motor to test and "
