@@ -7,6 +7,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "mission"
 
     @Published private(set) var items: [MissionItem] = []
+    @Published private(set) var linksStartToHome = false
     @Published private(set) var status = ""
     @Published private(set) var syncing = false
     @Published private(set) var vehiclePosition: VehicleMarker?
@@ -384,6 +385,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private func applyItems(_ read: [String: Any]) -> [[String: Any]] {
         let elements = (read["items"] as? [[String: Any]]) ?? []
         let chosen = (read["selected"] as? NSNumber)?.intValue ?? -1
+        let fromHome = (read["linksStartToHome"] as? NSNumber)?.boolValue ?? false
+        if fromHome != linksStartToHome { linksStartToHome = fromHome }
         let listed = elements.map {
             MissionItem(view: $0, selected: chosen)
         }
@@ -951,7 +954,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "dirty": dirty, "connected": connected,
          "renderers": ["calls": MissionMap.rendererCalls,
                        "kinds": MissionMap.rendererKinds.sorted()],
-         "routePoints": MissionItem.routePoints(items).count,
+         "routePoints": MissionItem.routePoints(items, linkedToHome: linksStartToHome).count,
+         "linksStartToHome": linksStartToHome,
          "tiles": ["requested": CachedTileOverlay.requested,
                    "secondsSinceRequest": CachedTileOverlay.lastRequest
                        .map { Int(Date().timeIntervalSince($0)) } ?? -1,

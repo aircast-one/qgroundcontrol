@@ -934,7 +934,8 @@ struct FlyView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            MissionMap(owner: "fly", items: mission.items, vehicle: fly.position,
+            MissionMap(owner: "fly", items: mission.items,
+                       linksStartToHome: mission.linksStartToHome, vehicle: fly.position,
                        shapes: fenceRally.shapes, rallyPoints: [],
                        padding: NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 352),
                        select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in },

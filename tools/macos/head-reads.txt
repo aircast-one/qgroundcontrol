@@ -157,6 +157,7 @@ foldedCommands
 following
 footprintText
 fraction
+fromHome
 generation
 geometry
 geometryProperty
@@ -219,6 +220,7 @@ linkActive
 linkScore
 linkScoreMax
 linkScoreMin
+linksStartToHome
 listening
 liveChannels
 liveSlot

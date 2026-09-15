@@ -156,12 +156,22 @@ struct MissionItem: Identifiable, Equatable {
         return [entry, MissionPoint(latitude: exitLatitude, longitude: exitLongitude)]
     }
 
-    static func routePoints(_ items: [MissionItem]) -> [MissionPoint] {
-        route(items).flatMap(\.legPoints)
+    static func routePoints(_ items: [MissionItem], linkedToHome: Bool) -> [MissionPoint] {
+        route(items, linkedToHome: linkedToHome).flatMap(\.legPoints)
     }
 
-    static func route(_ items: [MissionItem]) -> [MissionItem] {
-        items.prefix(routeEnd(items)).filter { $0.flownLeg && $0.hasPosition }
+    // The settings row carries the planned home position and a coordinate, so it passed this
+    // filter and the line was drawn from home to the first item on EVERY plan. QGC draws that
+    // segment only when the mission starts from the ground -- a takeoff before any coordinate
+    // item, or a rover -- and suppresses it otherwise with
+    // `lastFlyThroughVI != _settingsItem || (homePositionValid && linkStartToHome)`
+    // (MissionController.cc:1392). A mission that begins at a waypoint is flown TO, not launched
+    // from home, and the leg claimed a flight nobody planned. hasPosition above is already the
+    // homePositionValid half, so only the flag was missing.
+    static func route(_ items: [MissionItem], linkedToHome: Bool) -> [MissionItem] {
+        let flown = items.prefix(routeEnd(items)).filter { $0.flownLeg && $0.hasPosition }
+        guard !linkedToHome else { return Array(flown) }
+        return Array(flown.drop { $0.kind == MissionItem.settingsKind })
     }
 
     static func unreached(_ items: [MissionItem]) -> Set<Int> {
@@ -170,8 +180,8 @@ struct MissionItem: Identifiable, Equatable {
 
     static let afterRoute = "Never flown to"
 
-    static func legs(_ items: [MissionItem]) -> Set<Int> {
-        Set(route(items).dropFirst().map(\.index))
+    static func legs(_ items: [MissionItem], linkedToHome: Bool) -> Set<Int> {
+        Set(route(items, linkedToHome: linkedToHome).dropFirst().map(\.index))
     }
 
     static func blockedItem(_ items: [MissionItem]) -> MissionItem? {

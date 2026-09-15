@@ -145,6 +145,7 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
 struct MissionMap: NSViewRepresentable {
     let owner: String
     let items: [MissionItem]
+    let linksStartToHome: Bool
     let vehicle: VehicleMarker?
     let shapes: [FenceShape]
     let rallyPoints: [RallyPointRow]
@@ -296,7 +297,7 @@ struct MissionMap: NSViewRepresentable {
 
         // The legs, not the markers. A region of interest earns a pin and no leg, and an item
         // after a return to launch is uploaded and never reached.
-        let route = MissionItem.routePoints(items).map {
+        let route = MissionItem.routePoints(items, linkedToHome: linksStartToHome).map {
             CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
         }
         if route.count > 1 {

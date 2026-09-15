@@ -696,7 +696,8 @@ struct PlanInspector: View {
 
     private var selectedLeg: MissionItem? {
         guard let item = mission.items.first(where: \.isSelected),
-              MissionItem.legs(mission.items).contains(item.index) else { return nil }
+              MissionItem.legs(mission.items, linkedToHome: mission.linksStartToHome)
+                  .contains(item.index) else { return nil }
         return item
     }
 
@@ -1214,7 +1215,9 @@ struct PlanView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            MissionMap(owner: "plan", items: mission.items, vehicle: mission.vehiclePosition,
+            MissionMap(owner: "plan", items: mission.items,
+                       linksStartToHome: mission.linksStartToHome,
+                       vehicle: mission.vehiclePosition,
                        shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints,
                        padding: PlanView.mapPadding,
                        select: mission.select(sequence:),

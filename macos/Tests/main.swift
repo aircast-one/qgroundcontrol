@@ -7057,8 +7057,12 @@ func checkFlownLeg() {
     expect(!unplaced.flownLeg && !unplaced.hasPosition,
            "an item with no place at all is neither a marker nor a leg")
 
+    // kind is set from the name because the settings row is the one the home-link rule turns on,
+    // and a fixture that left kind empty could not reach that rule at all: every assertion below
+    // would pass with the suppression present or absent.
     func leg(_ seq: Int, _ name: String, flown: Bool, ends: Bool = false) -> MissionItem {
         MissionItem(view: ["index": seq, "sequence": seq, "name": name,
+                           "kind": name == "Mission Start" ? "settings" : "waypoint",
                            "flownLeg": flown, "endsRoute": ends,
                            "coordinate": ["latitude": -35.3 - Double(seq) / 100,
                                           "longitude": 149.2]], selected: -1)
@@ -7067,7 +7071,7 @@ func checkFlownLeg() {
                 MissionItem(view: ["index": 3, "sequence": 3, "name": "Return To Launch",
                                    "flownLeg": false, "endsRoute": true], selected: -1),
                 leg(4, "Waypoint", flown: true)]
-    expect(MissionItem.route(past).map(\.sequence).map(String.init).joined(separator: ","), "0,2",
+    expect(MissionItem.route(past, linkedToHome: true).map(\.sequence).map(String.init).joined(separator: ","), "0,2",
            "the route stops where the mission does. The waypoint after the return is in the plan "
            + "and the vehicle never gets there, so a leg drawn to it is a line across the map")
     expect(past.filter(\.hasPosition).count == 3,
@@ -7076,14 +7080,30 @@ func checkFlownLeg() {
 
     let finishing = [leg(0, "Mission Start", flown: true), leg(1, "Waypoint", flown: true),
                      leg(2, "Land", flown: true, ends: true)]
-    expect(MissionItem.route(finishing).map(\.sequence).map(String.init).joined(separator: ","),
+    expect(MissionItem.route(finishing, linkedToHome: true).map(\.sequence).map(String.init).joined(separator: ","),
            "0,1",
            "a landing ends the route at the leg before it; nothing is drawn onward from where the "
            + "mission finishes")
 
     let plain = [leg(0, "Mission Start", flown: true), leg(1, "Waypoint", flown: true)]
-    expect(MissionItem.route(plain).count == 2,
+    expect(MissionItem.route(plain, linkedToHome: true).count == 2,
            "and a plan that never ends explicitly keeps every leg it has")
+
+    expect(MissionItem.route(plain, linkedToHome: false).map(\.sequence)
+               .map(String.init).joined(separator: ","), "1",
+           "a mission that begins at a waypoint is flown TO, not launched from home, so the "
+           + "settings row leaves the route and the home leg is not drawn. QGC suppresses the "
+           + "same segment with lastFlyThroughVI != _settingsItem, and this head drew it on "
+           + "every plan because the settings row carries a coordinate and passed the filter")
+    expect(MissionItem.legs(plain, linkedToHome: false).isEmpty,
+           "and it stops being a LEG, which is what I got wrong writing this: legs are the items "
+           + "a segment is drawn TO, and with no segment from home there is none. The first "
+           + "coordinate item of a flown-to mission is a destination with nothing leading to it, "
+           + "exactly as in QGC")
+    expect(MissionItem.route(past, linkedToHome: false).map(\.sequence)
+               .map(String.init).joined(separator: ","), "2",
+           "the two rules compose: the settings row goes from the front and the return still "
+           + "ends the route at the back")
 
     let atOrigin = MissionItem(view: ["index": 4, "sequence": 4, "name": "Waypoint",
                                       "flownLeg": true,
@@ -7681,7 +7701,7 @@ func checkARouteLeavesAPatternWhereItEnds() {
         return MissionItem(view: view, selected: -1)
     }
     func drawn(_ items: [MissionItem]) -> String {
-        MissionItem.routePoints(items)
+        MissionItem.routePoints(items, linkedToHome: true)
             .map { String(format: "%.4f,%.4f", $0.latitude, $0.longitude) }
             .joined(separator: " -> ")
     }
@@ -7698,7 +7718,7 @@ func checkARouteLeavesAPatternWhereItEnds() {
            "a waypoint is left where it was entered, so it contributes ONE point. The core sends "
            + "no exitCoordinate at all in that case -- it filters an exit equal to the entry "
            + "rather than making every head dedupe a point drawn on top of a point")
-    expect(MissionItem.routePoints([survey]).count == 2,
+    expect(MissionItem.routePoints([survey], linkedToHome: true).count == 2,
            "the pattern alone is still two points: entering and leaving are both real positions "
            + "even with nothing after it to fly to")
     expect(drawn([survey, place(1, "waypoint", 47.3995, 8.5480)])
@@ -7794,10 +7814,11 @@ func checkUnreachedItems() {
            "the vehicle turns for home at the return to launch, so both items after it are "
            + "uploaded and neither is reached -- the map already drew no leg to them while the "
            + "list presented them as ordinary waypoints")
-    expect(!MissionItem.route(endsLast).isEmpty,
+    expect(!MissionItem.route(endsLast, linkedToHome: true).isEmpty,
            "the fixture carries real positions, without which route() filters everything out and "
            + "the comparison below compares nothing to nothing")
-    expect(MissionItem.route(past).count == MissionItem.route(endsLast).count,
+    expect(MissionItem.route(past, linkedToHome: true).count
+           == MissionItem.route(endsLast, linkedToHome: true).count,
            "and the legs drawn are unchanged by appending past the end, because both answers "
            + "come from one routeEnd rather than two copies of the same rule")
 }
@@ -8098,18 +8119,18 @@ func checkLegsSpelled() {
     let reached = item(2, "waypoint", azimuth: "60\u{00B0}", distance: "14.11 km")
     let plan = [start, takeoff, reached]
 
-    expect(MissionItem.legs(plan) == [2],
+    expect(MissionItem.legs(plan, linkedToHome: true) == [2],
            "only the waypoint was reached by a leg: nothing flies to where the route begins, and "
            + "a takeoff the vehicle does not fly a leg to earns no figures either")
 
     let ended = plan + [item(3, "command", flown: false, ends: true),
                         item(4, "waypoint")]
-    expect(MissionItem.legs(ended) == [2],
+    expect(MissionItem.legs(ended, linkedToHome: true) == [2],
            "a waypoint after the return to launch is uploaded and never reached, so it has no leg "
            + "-- the same routeEnd rule the list and the map already share")
 
     let dueNorth = [start, item(1, "waypoint", azimuth: "0\u{00B0}", distance: "250 m")]
-    expect(MissionItem.legs(dueNorth) == [1],
+    expect(MissionItem.legs(dueNorth, linkedToHome: true) == [1],
            "a leg flown due north reads 0 degrees, which is why the rule is the route's and not "
            + "the figures': reading the core's zero as absence would hide this leg entirely")
 
