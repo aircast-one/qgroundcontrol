@@ -95,6 +95,7 @@ private slots:
     void _theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge();
     void _changingTheUnitPreferenceRespellsTheTelemetryStrip();
     void _qtReadsBackEveryValueTheRustWriterSpells();
+    void _qtSeesTheSameSettingsAfterTheCoreRewritesThem();
 
 private:
     static bool _unavailable(const char *path);

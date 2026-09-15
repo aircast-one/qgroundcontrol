@@ -4263,3 +4263,54 @@ void QGCCoreCTest::_qtReadsBackEveryValueTheRustWriterSpells()
                             .arg(settings.allKeys().filter(QStringLiteral("back")).join(QStringLiteral(" | ")))));
     QCOMPARE(settings.value(backslash).toString(), QStringLiteral("1"));
 }
+
+void QGCCoreCTest::_qtSeesTheSameSettingsAfterTheCoreRewritesThem()
+{
+    const QDir here = QFileInfo(QString::fromUtf8(__FILE__)).dir();
+    const QString original = here.filePath(QStringLiteral("../../core-rs/tests/fixtures/qgc-settings.ini"));
+    const QString rewritten = here.filePath(QStringLiteral("fixtures/qgc-settings-rewritten.ini"));
+    QVERIFY2(QFile::exists(original), qPrintable(QStringLiteral("missing: ") + original));
+    QVERIFY2(QFile::exists(rewritten), qPrintable(QStringLiteral("missing: ") + rewritten));
+
+    const auto describe = [](const QVariant &value) {
+        if (!value.isValid()) {
+            return QStringLiteral("<invalid>");
+        }
+        if (value.typeId() == QMetaType::QStringList) {
+            return QStringLiteral("list:") + value.toStringList().join(QStringLiteral("\x1f"));
+        }
+        if (value.typeId() == QMetaType::QByteArray) {
+            return QStringLiteral("bytes:") + QString::fromLatin1(value.toByteArray().toHex());
+        }
+        return QStringLiteral("str:") + value.toString();
+    };
+
+    QTemporaryDir scratch;
+    QVERIFY(scratch.isValid());
+    const QString before = scratch.filePath(QStringLiteral("before.ini"));
+    const QString after = scratch.filePath(QStringLiteral("after.ini"));
+    QVERIFY(QFile::copy(original, before));
+    QVERIFY(QFile::copy(rewritten, after));
+
+    QSettings qtWrote(before, QSettings::IniFormat);
+    QSettings coreWrote(after, QSettings::IniFormat);
+
+    const QStringList keys = qtWrote.allKeys();
+    QVERIFY2(keys.count() >= 100,
+             qPrintable(QStringLiteral("only %1 keys parsed from the fixture - a clean comparison over "
+                                       "nothing looks identical to a clean comparison over everything")
+                            .arg(keys.count())));
+    QCOMPARE(coreWrote.allKeys().count(), keys.count());
+
+    for (const QString &key : keys) {
+        QVERIFY2(describe(qtWrote.value(key)) == describe(coreWrote.value(key)),
+                 qPrintable(QStringLiteral("%1: Qt read '%2' from its own file and '%3' after the core "
+                                           "rewrote it - compared by what Qt understands, so quoting and "
+                                           "ordering are free and a changed type is not")
+                                .arg(key, describe(qtWrote.value(key)), describe(coreWrote.value(key)))));
+    }
+
+    qInfo("%d keys of real Qt output survived the core's parse and rewrite unchanged; shapes Qt never "
+          "writes are untested here, which is what the adversarial golden beside this covers",
+          int(keys.count()));
+}
