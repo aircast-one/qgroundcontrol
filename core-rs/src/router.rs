@@ -39,7 +39,7 @@ impl<B: Backend> Core<B> {
     pub fn get(&self, path: &str) -> String {
         match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render(&self.backend, path),
-            (true, None) => null(),
+            (true, None) => view::unknown(path).to_string(),
             (false, _) => self.backend.get(path),
         }
     }
@@ -47,7 +47,7 @@ impl<B: Backend> Core<B> {
     pub fn get_fields(&self, path: &str, fields: &str) -> String {
         match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render_fields(&self.backend, path, fields),
-            (true, None) => null(),
+            (true, None) => view::unknown(path).to_string(),
             (false, _) => self.backend.get_fields(path, fields),
         }
     }
@@ -203,6 +203,22 @@ mod tests {
 
     fn parsed(text: &str) -> serde_json::Value {
         serde_json::from_str(text).unwrap()
+    }
+
+    #[test]
+    fn a_view_path_that_does_not_exist_says_so_instead_of_answering_null() {
+        let core = Core::new(Fake::default());
+        let missing = parsed(&core.get("view.obstacleDistance"));
+        assert_eq!(missing["kind"], "null", "kind stays null so nothing switching on it changes, and the reason rides beside it");
+        assert_eq!(
+            missing["reason"],
+            "no such view: view.obstacleDistance - did you mean view.obstacle?",
+            "a refusal for a path that does not exist and a refusal for a path with nothing to say were the same bytes, and the core is the only thing that knows the difference - a head reading a mistyped name got kind:null twice in two turns and took it as data both times"
+        );
+
+        assert_eq!(parsed(&core.get("view.notAnythingAtAll"))["reason"], "no such view: view.notAnythingAtAll", "with no near name there is nothing to suggest, and suggesting something unrelated would be worse than suggesting nothing");
+        assert_eq!(parsed(&core.get_fields("view.obstacleDistance", "enabled"))["reason"], "no such view: view.obstacleDistance - did you mean view.obstacle?", "the field-list read refuses the same way, or a head that asks for fields learns nothing");
+        assert!(parsed(&core.get("view.obstacle")).get("reason").is_none(), "a view that exists and has nothing to say must not pick up a refusal, which would make every quiet answer look like a typo");
     }
 
     #[test]

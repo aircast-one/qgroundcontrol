@@ -221,6 +221,19 @@ pub fn lookup(path: &str) -> Option<&'static View> {
     VIEWS.iter().find(|view| view.path == base)
 }
 
+pub fn unknown(path: &str) -> Value {
+    let (base, _) = split(path);
+    let near: Vec<&str> = VIEWS
+        .iter()
+        .map(|view| view.path)
+        .filter(|known| known.starts_with(base) || base.starts_with(known))
+        .collect();
+    crate::read::refused(&match near.is_empty() {
+        true => format!("no such view: {base}"),
+        false => format!("no such view: {base} - did you mean {}?", near.join(" or ")),
+    })
+}
+
 pub fn split_paths(csv: &str) -> Vec<String> {
     let (paths, last, _) = csv.chars().fold((Vec::new(), String::new(), 0usize), |(mut paths, mut current, depth), c| match (c, depth) {
         (',', 0) => {

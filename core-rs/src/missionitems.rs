@@ -12,6 +12,7 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",
     "settings.unitsSettings.speedUnits",
+    "plan.controllerVehicle.rover",
 ];
 
 const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
@@ -29,7 +30,7 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
     if count <= 0 {
-        return json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": "This plan has no items yet." });
+        return json!({ "kind": "object", "class": "MissionItems", "available": false, "linksStartToHome": false, "items": [], "selected": -1, "reason": "This plan has no items yet." });
     }
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
@@ -65,10 +66,12 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
             })
             .collect(),
     };
+    let rover = flag(&object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
     json!({
         "kind": "object",
         "class": "MissionItems",
         "available": has_items,
+        "linksStartToHome": rover || starts_from_the_ground(&items),
         "editing": editable(backend, current),
         "selected": current,
         "items": items,
@@ -77,6 +80,18 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
             false => "This plan has no items yet.",
         },
     })
+}
+
+fn starts_from_the_ground(items: &[Value]) -> bool {
+    items
+        .iter()
+        .find_map(|item| match (item["command"].as_i64() == Some(RETURN_TO_LAUNCH), item["kind"] == "takeoff", item["flownLeg"] == true) {
+            (true, ..) => Some(false),
+            (_, true, _) => Some(true),
+            (_, _, true) => Some(false),
+            _ => None,
+        })
+        .unwrap_or(false)
 }
 
 fn placed(read: &Value) -> Option<Value> {
@@ -459,6 +474,50 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    struct Ground(Vec<Value>, bool);
+    impl Backend for Ground {
+        fn get(&self, path: &str) -> String { Plan(self.0.clone(), -1).get(path) }
+        fn get_fields(&self, path: &str, fields: &str) -> String {
+            match path {
+                "plan.controllerVehicle" => json!({ "kind": "object", "rover": self.1 }).to_string(),
+                _ => Plan(self.0.clone(), -1).get_fields(path, fields),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn command(number: i64) -> Value {
+        json!({ "kind": "object", "sequenceNumber": number, "abbreviation": "DO", "commandName": "Set Camera Mode",
+                "isSimpleItem": true, "specifiesCoordinate": false, "command": 530, "readyForSaveState": 0 })
+    }
+
+    fn returning() -> Value {
+        json!({ "kind": "object", "sequenceNumber": 9, "abbreviation": "RTL", "commandName": "Return To Launch",
+                "isSimpleItem": true, "specifiesCoordinate": false, "command": RETURN_TO_LAUNCH, "readyForSaveState": 0 })
+    }
+
+    #[test]
+    fn the_route_is_drawn_back_to_home_when_the_mission_starts_from_the_ground() {
+        let links = |items: Vec<Value>, rover: bool| items_view(&Ground(items, rover), &[])["linksStartToHome"].clone();
+
+        assert_eq!(links(vec![settings(), takeoff(), waypoint(2, 100.0)], false), json!(true), "MissionController links the first item back to home when a takeoff is reached before any coordinate item, because that is a mission starting from the ground");
+        assert_eq!(links(vec![settings(), waypoint(1, 100.0), waypoint(2, 100.0)], false), json!(false), "a mission that begins at a waypoint is flown to, not launched from home");
+
+        assert_eq!(
+            links(vec![settings(), command(1), takeoff(), waypoint(3, 100.0)], false),
+            json!(true),
+            "a DO_ command between the settings row and the takeoff does not specify a coordinate, so the takeoff is still the FIRST coordinate item - both heads were reading index 1 and would have missed this"
+        );
+        assert_eq!(links(vec![settings(), waypoint(1, 100.0), takeoff()], false), json!(false), "a takeoff AFTER the first coordinate item is not a mission starting from the ground, and firstCoordinateNotFound is what QGC tests");
+        assert_eq!(links(vec![settings(), returning(), takeoff()], false), json!(false), "the takeoff clause is guarded by !linkEndToHome, so an RTL earlier in the list suppresses it");
+
+        assert_eq!(links(vec![settings(), waypoint(1, 100.0)], true), json!(true), "a rover always links start to home whatever its items say - _controllerVehicle->rover() seeds the flag before the walk begins");
+        assert_eq!(items_view(&Ground(vec![], false), &[])["linksStartToHome"], json!(false), "an empty plan answers the question rather than omitting the key - the contract records this field on every missionItems read, and a head finding it absent has to invent what absence means");
+        assert_eq!(links(vec![settings(), waypoint(1, 100.0)], false), json!(false), "and the same plan on anything else does not, which is the half a head keying on the translated vehicle type string got wrong outside English");
     }
 
     fn at(latitude: f64, longitude: f64) -> Value {

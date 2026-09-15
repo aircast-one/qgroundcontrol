@@ -1896,6 +1896,7 @@
         "view.missionItems(geometry).items.0.speedChange",
         "view.missionItems(geometry).items.0.speedChangeText",
         "view.missionItems(geometry).kind",
+        "view.missionItems(geometry).linksStartToHome",
         "view.missionItems.class",
         "view.missionItems.items.0.abbreviation",
         "view.missionItems.items.0.altitudeBandText",
@@ -1937,6 +1938,7 @@
         "view.missionItems.items.0.speedChange",
         "view.missionItems.items.0.speedChangeText",
         "view.missionItems.kind",
+        "view.missionItems.linksStartToHome",
         "view.missionKinds(survey).className",
         "view.missionKinds(survey).complexName",
         "view.missionKinds(survey).geometry",
@@ -4917,6 +4919,7 @@
         "view.missionItems(geometry).items[].speedChange",
         "view.missionItems(geometry).items[].speedChangeText",
         "view.missionItems(geometry).kind",
+        "view.missionItems(geometry).linksStartToHome",
         "view.missionItems(geometry).reason",
         "view.missionItems(geometry).selected",
         "view.missionItems.available",
@@ -4990,6 +4993,7 @@
         "view.missionItems.items[].speedChange",
         "view.missionItems.items[].speedChangeText",
         "view.missionItems.kind",
+        "view.missionItems.linksStartToHome",
         "view.missionItems.reason",
         "view.missionItems.selected",
         "view.missionKinds(survey).atSequence",
@@ -7140,6 +7144,7 @@
             }
         ],
         "kind": "string",
+        "linksStartToHome": "bool",
         "reason": "string",
         "selected": "number"
     },
@@ -7253,6 +7258,7 @@
             }
         ],
         "kind": "string",
+        "linksStartToHome": "bool",
         "reason": "string",
         "selected": "number"
     },
