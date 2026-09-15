@@ -8155,3 +8155,40 @@ and it was not connected. **A limit you state survives being passed on; a limit
 you have silently stopped satisfying travels as a fact.** The script printed
 `"No vehicle"` in its own output either way - the label is what would have been
 quoted.
+
+### The Fly screen's standing lines, and which defaults produce them, 2026-09-15
+
+A status line that appears out of the box is worth more scrutiny than one an
+operator opted into, because nobody chose to see it. Checked every persistent
+line the Fly screen can draw against the default of the setting that gates it.
+
+| line | gate | default | verdict |
+|---|---|---|---|
+| *"Not following you — …"* | `followTarget` | **2, "When in Follow Me Flight Mode"** | **broken - fixed in `955b4c179`** |
+| *"Traffic: …"* / *"No traffic receiver"* | `adsbServerConnectEnabled` | `false` | silent by default, correct |
+| *"Detections: …"* | `rtspUrl` being set | blank | silent by default, correct |
+| Pre-Flight Checklist row | `useChecklist` | `false` | hidden by default, and that is QGC's own behaviour |
+
+**The Follow Me one is a tri-state read as a boolean.** `followTarget` ships at
+2, `Mode::from_setting` maps 2 to `followMe`, and `followMeAsked` treated that
+as the operator asking. But 2 is *conditional* - stream my position **if** the
+vehicle enters Follow Me mode - so not being in that mode is the resting state,
+not news. Every operator on a fresh install with a connected vehicle was told
+the app was not doing something they never turned on, in the middle of the
+flight screen.
+
+`always` still reports, because that is an unconditional request. And under the
+default every other reason still reports, because `reason()` returns
+`NoVehicleInFollowMode` **before** it examines the fix at all - so any other
+token means a vehicle *is* in Follow Me mode and the stream is failing anyway.
+
+**The checklist row needed the opposite check and passed it.** Gating it on
+`offered` removes it by default, since `useChecklist` is `false` - which looked
+like withdrawing a feature until `PreFlightCheckListShowAction.qml:16` settled
+it: `visible: _useChecklist`. **QGC hides its own checklist action by default.**
+This head had been more permissive than QGC, and now matches on both halves -
+visible follows `useChecklist`, enabled follows `!armed`.
+
+**The shape to look for is a conditional setting read as an affirmative one**,
+and the tell is a sentence that is true, accurate, well-worded, and about a
+feature the reader never asked for.
