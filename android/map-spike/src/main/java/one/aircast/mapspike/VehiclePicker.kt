@@ -31,6 +31,8 @@ data class VehicleChoice(
     val link: String,
     val contactLost: Boolean,
     val active: Boolean,
+    val latitude: Double = Double.NaN,
+    val longitude: Double = Double.NaN,
 )
 
 data class VehicleChoices(
@@ -54,6 +56,8 @@ fun vehicleChoices(view: JSONObject?): VehicleChoices {
                     link = entry.optText("link"),
                     contactLost = !entry.isNull("contactLost") && entry.optBoolean("contactLost"),
                     active = entry.optBoolean("active"),
+                    latitude = entry.optJSONObject("coordinate")?.optDouble("latitude") ?: Double.NaN,
+                    longitude = entry.optJSONObject("coordinate")?.optDouble("longitude") ?: Double.NaN,
                 )
             }
         },

@@ -39,9 +39,11 @@ import org.maplibre.geojson.Point
 private const val VEHICLE_SOURCE = "aircast-vehicle"
 private const val VEHICLE_LAYER = "aircast-vehicle-layer"
 private const val VEHICLE_HEADING_LAYER = "aircast-vehicle-heading-layer"
+private const val OTHER_VEHICLE_COLOUR = "#90A4AE"
 private const val VEHICLE_ARROW_IMAGE = "aircast-vehicle-arrow"
 
 const val HEADING_PROPERTY = "heading"
+const val ACTIVE_PROPERTY = "active"
 const val STALE_PROPERTY = "stale"
 private const val TRAIL_SOURCE = "aircast-trail"
 private const val HOME_SOURCE = "aircast-home"
@@ -95,14 +97,31 @@ fun vehicleFeatures(
         FeatureCollection.fromFeatures(emptyList())
     }
 
+fun fleetFeatures(fleet: List<VehicleChoice>, activeHeading: Double): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        fleet
+            .filter { isPlottable(it.latitude, it.longitude) }
+            .map { flown ->
+                vehicleFeature(
+                    latitude = flown.latitude,
+                    longitude = flown.longitude,
+                    heading = if (flown.active) activeHeading else Double.NaN,
+                    stale = flown.contactLost,
+                    active = flown.active,
+                )
+            },
+    )
+
 fun vehicleFeature(
     latitude: Double,
     longitude: Double,
     heading: Double,
     stale: Boolean = false,
+    active: Boolean = true,
 ): Feature =
     Feature.fromGeometry(Point.fromLngLat(longitude, latitude)).apply {
         addBooleanProperty(STALE_PROPERTY, stale)
+        addBooleanProperty(ACTIVE_PROPERTY, active)
         if (!heading.isNaN()) {
             addNumberProperty(HEADING_PROPERTY, ((heading % 360) + 360) % 360)
         }
@@ -143,6 +162,8 @@ fun VehicleMap(
     val heading by mapDouble("vehicle.heading")
     val home by mapCoordinate("vehicle.homePosition")
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
+    val fleetJson by mapPath(VEHICLES_VIEW)
+    val fleet = remember(fleetJson) { vehicleChoices(fleetJson).choices }
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -229,11 +250,16 @@ fun VehicleMap(
         onDispose { }
     }
 
-    LaunchedEffect(style, latitude, longitude, heading, home, linkLost) {
+    LaunchedEffect(style, latitude, longitude, heading, home, linkLost, fleet) {
         val currentStyle = style ?: return@LaunchedEffect
 
         (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
-            ?.setGeoJson(vehicleFeatures(latitude, longitude, heading, linkLost))
+            ?.setGeoJson(
+                when {
+                    fleet.isEmpty() -> vehicleFeatures(latitude, longitude, heading, linkLost)
+                    else -> fleetFeatures(fleet, heading)
+                },
+            )
 
         (currentStyle.getSource(HOME_SOURCE) as? GeoJsonSource)?.setGeoJson(
             home?.let { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) }
@@ -372,10 +398,16 @@ private fun installVehicleLayer(style: Style) {
                 PropertyFactory.circleColor(
                     Expression.switchCase(
                         Expression.get(STALE_PROPERTY), Expression.literal(STALE_COLOUR),
+                        Expression.not(Expression.get(ACTIVE_PROPERTY)), Expression.literal(OTHER_VEHICLE_COLOUR),
                         Expression.literal("#E53935"),
                     ),
                 ),
-                PropertyFactory.circleRadius(9f),
+                PropertyFactory.circleRadius(
+                    Expression.switchCase(
+                        Expression.get(ACTIVE_PROPERTY), Expression.literal(9f),
+                        Expression.literal(6f),
+                    ),
+                ),
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
                 PropertyFactory.circleStrokeWidth(2f),
             ),
