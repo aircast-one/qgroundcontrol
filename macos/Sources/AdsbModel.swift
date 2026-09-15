@@ -166,7 +166,22 @@ struct AdsbTraffic: Equatable {
         guard enabled else { return "Traffic off" }
         guard !quiet else { return "Silent" }
         guard !contacts.isEmpty else { return "Clear" }
-        return contacts.count == 1 ? "1 aircraft" : "\(contacts.count) aircraft"
+        return AdsbTraffic.count(real: contacts.count - synthetic, synthetic: synthetic)
+    }
+
+    var synthetic: Int { contacts.filter(\.simulated).count }
+
+    // THE SUMMARY IS THE LINE AN OPERATOR READS WITHOUT OPENING ANYTHING, and "3 aircraft" for a
+    // sky with none is the same claim 97287ec8e removed from the rows -- made where it is read
+    // more often. A synthetic feed is counted apart rather than filtered away: the contacts are
+    // arriving and saying so is not the same as saying aircraft are.
+    static func count(real: Int, synthetic: Int) -> String {
+        let aircraft = "\(real) aircraft"
+        switch (real, synthetic) {
+        case (0, let fake): return "\(fake) simulated"
+        case (_, 0): return aircraft
+        case (_, let fake): return aircraft + " \u{00B7} " + "\(fake) simulated"
+        }
     }
 
     // An aircraft squawking an emergency outranks a merely close one, and an alert nobody

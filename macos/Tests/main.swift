@@ -1082,7 +1082,21 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
            "a silent receiver is caution too -- it is not reporting danger, it is not reporting")
 
     expect(traffic(["contacts": [placed]]).summary, "1 aircraft",
-           "one aircraft is not 1 aircrafts")
+           "one aircraft is not 1 aircrafts -- and the singular branch that used to say so was "
+           + "DEAD: its two arms produced the identical string for a count of one, which is two "
+           + "assertions differing only in prose written as code")
+
+    let synthetic = placed.merging(["icaoAddress": 0x111111 as NSNumber, "callsign": "SIM1",
+                                    "simulated": true as NSNumber]) { _, b in b }
+    expect(traffic(["contacts": [placed, synthetic]]).summary, "1 aircraft \u{00B7} 1 simulated",
+           "THE SUMMARY IS THE LINE AN OPERATOR READS WITHOUT OPENING ANYTHING, so it cannot "
+           + "count a synthetic target as an aircraft. 97287ec8e took that claim off the rows "
+           + "and left it here, where it is read far more often")
+    expect(traffic(["contacts": [synthetic]]).summary, "1 simulated",
+           "a sky with nothing real in it says so rather than reporting one aircraft")
+    expect(traffic(["contacts": [synthetic]]).summary != "Clear",
+           "and it is NOT filtered away to \"Clear\" either: the contacts are arriving, and "
+           + "saying so is not the same as saying aircraft are")
 }
 
 checkTheTrafficPanelNeverGoesSilentlyBlank()
