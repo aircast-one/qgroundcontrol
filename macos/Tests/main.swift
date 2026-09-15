@@ -4875,6 +4875,20 @@ func checkFollowMeNamesWhoseProblemItIs() {
            + "row, which is the case it exists for. Only the two resting tokens are excluded, so a "
            + "future reason arrives shown rather than silently hidden")
 }
+expect(VehicleComponentInfo(["name": "Radio", "needsAttention": true as NSNumber])!.severity
+       == FlyTelemetry.Level.warning,
+       "ONE WEIGHT FOR ONE FACT. The Summary screen draws a component needing setup THREE times at "
+       + "once -- hero, \"Needs setup\" section, Components list -- and the section used a RED tile "
+       + "while the other two used amber, so the same Radio read as a failure in one row and a "
+       + "warning two rows below it. Amber is the two that agreed and the right weight: an "
+       + "unconfigured component is not a fault, and the Components list already spends amber on "
+       + "\"Reporting a fault\", which IS one. Spending red on the lesser of the two inverted them")
+expect(VehicleComponentInfo(["name": "Frame", "needsAttention": false as NSNumber])!.severity
+       == FlyTelemetry.Level.good,
+       "and a component with nothing outstanding is good, which is what the Components list already "
+       + "drew. The rule lives in the model because both call sites are in VehicleSetupWindow.swift, "
+       + "which swift-checks does not compile -- two drawings of one fact is how they diverged")
+
 checkFollowMeNamesWhoseProblemItIs()
 
 func checkTheShutterSaysWhichCaptureItStarted() {

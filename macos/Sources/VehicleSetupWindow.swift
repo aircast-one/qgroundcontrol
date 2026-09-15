@@ -728,7 +728,8 @@ struct SetupSummaryView: View {
                                 GroupRow(title: component.name,
                                          description: "Not configured on this vehicle",
                                          showSeparator: component.id != store.outstanding.first?.id,
-                                         leading: { Tile(symbol: "exclamationmark", colour: .red) })
+                                         leading: { Tile(symbol: "exclamationmark",
+                                                         colour: FlyPanel.colour(component.severity)) })
                             }
                         }
                     }

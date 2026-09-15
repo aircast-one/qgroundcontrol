@@ -14,6 +14,18 @@ struct VehicleComponentInfo: Identifiable, Equatable {
 
     var isSensors: Bool { VehicleComponentInfo.sensorClasses.contains(className) }
 
+    // ONE WEIGHT FOR ONE FACT. The Summary screen drew a component that needs setup THREE times at
+    // once -- the hero button, the "Needs setup" section and the Components list -- and the section
+    // used a RED tile while the other two used amber, so the same Radio read as a failure in one
+    // row and a warning two rows below it. Amber is the two that agreed and the right weight: a
+    // component nobody has configured is not a fault, and the Components list already spends amber
+    // on "Reporting a fault", which IS one. Spending red on the lesser of the two inverted them.
+    //
+    // The rule lives here rather than at the two call sites in VehicleSetupWindow.swift, which
+    // swift-checks does not compile, so a future third drawing of the same fact has somewhere to
+    // read the answer from instead of picking a colour.
+    var severity: FlyTelemetry.Level { needsAttention ? .warning : .good }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let name = json["name"] as? String, !name.isEmpty else { return nil }
