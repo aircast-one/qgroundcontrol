@@ -13,14 +13,13 @@ pub const GCS_TIMESTAMP: &str = "positionManager.gcsPositionTimestamp";
 pub const DEPS: &[&str] = &[SETTING, "vehicles.vehicles.count", "vehicle.id", "vehicle.flightMode", "vehicle.homePosition", GCS_POSITION, GCS_HEADING, GCS_HORIZONTAL_ACCURACY, GCS_TIMESTAMP];
 
 const FIELDS: &str = "id,flightMode,followFlightMode,apmFirmware,homePosition";
-const MAX_FOLLOWED: usize = 16;
 const WATCHED_PER_FOLLOWED: [&str; 2] = ["flightMode", "homePosition"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
 pub fn deps() -> Vec<String> {
     DEPS.iter()
         .map(|d| d.to_string())
-        .chain((0..VEHICLES_SEEN.load(Ordering::Relaxed).min(MAX_FOLLOWED)).flat_map(|index| {
+        .chain((0..VEHICLES_SEEN.load(Ordering::Relaxed)).flat_map(|index| {
             WATCHED_PER_FOLLOWED.iter().map(move |name| format!("vehicles.vehicles.{index}.{name}"))
         }))
         .collect()

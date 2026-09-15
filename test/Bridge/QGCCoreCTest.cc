@@ -1318,51 +1318,62 @@ const char *const kViewPaths[] = {
 
 } // namespace
 
-static QString _firstJsonDifference(const QJsonValue &expected, const QJsonValue &actual, const QString &path = QString())
+static void _collectJsonDifferences(const QJsonValue &expected, const QJsonValue &actual, const QString &path, QStringList &found)
 {
+    static const int kEnough = 8;
+    if (found.count() >= kEnough) {
+        return;
+    }
     const QString here = path.isEmpty() ? QStringLiteral("<root>") : path;
     const auto spell = [](const QJsonValue &value) {
-        return value.isString() ? value.toString()
-                                : QString::fromUtf8(QJsonDocument::fromVariant(value.toVariant()).toJson(QJsonDocument::Compact)).trimmed();
+        const QString text = value.isString() ? value.toString()
+                                              : QString::fromUtf8(QJsonDocument::fromVariant(value.toVariant()).toJson(QJsonDocument::Compact)).trimmed();
+        return text.length() > 120 ? text.left(120) + QStringLiteral("...") : text;
     };
 
     if (expected.type() != actual.type()) {
-        return QStringLiteral("%1: expected %2, got %3").arg(here, spell(expected), spell(actual));
+        found.append(QStringLiteral("%1: expected %2, got %3").arg(here, spell(expected), spell(actual)));
+        return;
     }
     if (expected.isObject()) {
         const QJsonObject was = expected.toObject();
         const QJsonObject now = actual.toObject();
         for (const QString &key : was.keys()) {
             if (!now.contains(key)) {
-                return QStringLiteral("%1.%2 is missing").arg(here, key);
+                found.append(QStringLiteral("%1.%2 is missing").arg(here, key));
+                continue;
             }
-            const QString deeper = _firstJsonDifference(was.value(key), now.value(key), QStringLiteral("%1.%2").arg(here, key));
-            if (!deeper.isEmpty()) {
-                return deeper;
-            }
+            _collectJsonDifferences(was.value(key), now.value(key), QStringLiteral("%1.%2").arg(here, key), found);
         }
         for (const QString &key : now.keys()) {
             if (!was.contains(key)) {
-                return QStringLiteral("%1.%2 was not recorded").arg(here, key);
+                found.append(QStringLiteral("%1.%2 was not recorded").arg(here, key));
             }
         }
-        return QString();
+        return;
     }
     if (expected.isArray()) {
         const QJsonArray was = expected.toArray();
         const QJsonArray now = actual.toArray();
         if (was.count() != now.count()) {
-            return QStringLiteral("%1 has %2 entries, expected %3").arg(here).arg(now.count()).arg(was.count());
+            found.append(QStringLiteral("%1 has %2 entries, expected %3").arg(here).arg(now.count()).arg(was.count()));
+            return;
         }
         for (int index = 0; index < was.count(); ++index) {
-            const QString deeper = _firstJsonDifference(was.at(index), now.at(index), QStringLiteral("%1[%2]").arg(here).arg(index));
-            if (!deeper.isEmpty()) {
-                return deeper;
-            }
+            _collectJsonDifferences(was.at(index), now.at(index), QStringLiteral("%1[%2]").arg(here).arg(index), found);
         }
-        return QString();
+        return;
     }
-    return expected == actual ? QString() : QStringLiteral("%1: expected %2, got %3").arg(here, spell(expected), spell(actual));
+    if (expected != actual) {
+        found.append(QStringLiteral("%1: expected %2, got %3").arg(here, spell(expected), spell(actual)));
+    }
+}
+
+static QString _jsonDifferences(const QJsonValue &expected, const QJsonValue &actual)
+{
+    QStringList found;
+    _collectJsonDifferences(expected, actual, QString(), found);
+    return found.join(QStringLiteral("; "));
 }
 
 static QString _shapeDifference(const QJsonObject &was, const QJsonObject &now)
@@ -2588,7 +2599,7 @@ void QGCCoreCTest::_polygonGeometryMatchesTheRecordedOracle()
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded polygon geometry; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
-    const QString difference = _firstJsonDifference(expected, recorded);
+    const QString difference = _jsonDifferences(expected, recorded);
     QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
 #else
     QSKIP("the Rust core is not linked into this build");
@@ -2687,7 +2698,7 @@ void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded structure scan; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
-    const QString difference = _firstJsonDifference(expected, recorded);
+    const QString difference = _jsonDifferences(expected, recorded);
     QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
 #else
     QSKIP("the Rust core is not linked into this build");
@@ -2973,7 +2984,7 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded structure scan upload; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
-    const QString difference = _firstJsonDifference(expected, recorded);
+    const QString difference = _jsonDifferences(expected, recorded);
     QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
 #else
     QSKIP("the Rust core is not linked into this build");

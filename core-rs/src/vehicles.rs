@@ -7,7 +7,6 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicle.id"];
 
 const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,coordinate";
-const MAX_VEHICLES: usize = 16;
 const WATCHED_PER_VEHICLE: [&str; 4] = ["armed", "flying", "flightMode", "coordinate"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
@@ -16,7 +15,7 @@ pub fn deps() -> Vec<String> {
 }
 
 fn per_vehicle_paths() -> Vec<String> {
-    (0..VEHICLES_SEEN.load(Ordering::Relaxed).min(MAX_VEHICLES))
+    (0..VEHICLES_SEEN.load(Ordering::Relaxed))
         .flat_map(|index| {
             WATCHED_PER_VEHICLE
                 .iter()
@@ -200,5 +199,13 @@ mod tests {
         });
         assert!(after.contains(&"vehicles.vehicles.1.vehicleLinkManager.communicationLost".to_string()), "contactLost is the field a head draws a stale marker from, and it is the one a count-only watch misses for the longest");
         assert!(after.contains(&"vehicles.vehicles.count".to_string()), "the count stays watched, because it is what makes the list re-derive when the fleet changes");
+    }
+
+    #[test]
+    fn a_seventeenth_vehicle_is_watched_like_the_rest() {
+        let _fleet = fleet_guard();
+        let fleet: Vec<Value> = (1..=17).map(|id| aircraft(id, "Multi-Rotor", "SITL")).collect();
+        vehicles_view(&Fleet(fleet, Some(1)), &[]);
+        assert!(deps().contains(&"vehicles.vehicles.16.armed".to_string()), "a cap on how many vehicles are watched stops at a number nothing reports, so the vehicles past it are stale with no tell - the count QGC gives is already bounded by what has connected");
     }
 }
