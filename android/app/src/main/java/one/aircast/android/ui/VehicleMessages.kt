@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
@@ -90,6 +91,21 @@ internal fun armingBlocker(view: JSONObject?): String? =
         ?.optText("armingBlocker")
         ?.ifBlank { null }
 
+internal data class ArmingCheck(val message: String, val description: String, val severity: String)
+
+internal fun armingChecks(view: JSONObject?): List<ArmingCheck>? {
+    val listed = view?.takeIf { !it.isNull("armingChecks") }?.optJSONArray("armingChecks") ?: return null
+    return (0 until listed.length()).mapNotNull { index ->
+        listed.optJSONObject(index)?.let { problem ->
+            ArmingCheck(
+                message = problem.optText("message"),
+                description = problem.optText("description"),
+                severity = problem.optText("severity"),
+            )
+        }
+    }.filter { it.message.isNotBlank() }
+}
+
 @Composable
 fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     val warnings by qgcPath(WARNINGS)
@@ -99,6 +115,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     var showing by remember { mutableStateOf(false) }
 
     val blocker = armingBlocker(warnings)
+    val checks = remember(warnings) { armingChecks(warnings).orEmpty() }
     val count = messages.size
     val hasError = messages.any { it.level == MessageSeverity.Error }
     val hasWarning = messages.any { it.level == MessageSeverity.Warning }
@@ -136,22 +153,47 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     }
 
     if (showing) {
-        VehicleMessageLog(messages = messages, onDismiss = { showing = false })
+        VehicleMessageLog(messages = messages, checks = checks, onDismiss = { showing = false })
     }
 }
 
 @Composable
-private fun VehicleMessageLog(messages: List<VehicleMessage>, onDismiss: () -> Unit) {
+private fun VehicleMessageLog(
+    messages: List<VehicleMessage>,
+    checks: List<ArmingCheck>,
+    onDismiss: () -> Unit,
+) {
     val lines = remember(messages) { messages.asReversed() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Vehicle messages") },
+        title = { Text(if (checks.isEmpty()) "Vehicle messages" else "Why it will not arm") },
         text = {
-            if (lines.isEmpty()) {
+            if (lines.isEmpty() && checks.isEmpty()) {
                 Text("The vehicle has not said anything yet.")
             } else {
                 LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(checks) { check ->
+                        Column(Modifier.padding(vertical = 6.dp)) {
+                            Text(
+                                text = check.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (check.severity == "error") {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.tertiary
+                                },
+                            )
+                            if (check.description.isNotBlank()) {
+                                Text(
+                                    text = check.description,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        androidx.compose.material3.HorizontalDivider()
+                    }
                     itemsIndexed(lines) { index, message ->
                         Column(Modifier.padding(vertical = 6.dp)) {
                             Text(
