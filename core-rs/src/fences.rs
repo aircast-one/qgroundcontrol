@@ -150,14 +150,6 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
                     .flatten()
                     .filter(|metres| metres.is_finite())
                     .map(|metres| crate::read::format_measure(vertical.show(metres), &vertical.name)),
-                // Dragging a rally point writes back a whole QGeoCoordinate, and QGC's own handler
-                // copies the existing altitude onto it first - RallyPointMapVisuals.qml:47 wires
-                // MissionItemIndicatorDrag for exactly that. So a head that moves one needs a height
-                // in the payload and the only one it had was cooked: on an imperial profile that is
-                // a number of feet, and the bridge would take it as metres. Gated by read::metres
-                // rather than trusting rawValue, so a fact whose raw unit is not a length answers
-                // null instead of a number that means something else.
-                "altitudeMetres": crate::read::metres(&altitude),
                 "altitudePath": format!("plan.rallyPointController.points.{i}.textFieldFacts.2"),
             }))
         })
@@ -257,7 +249,7 @@ mod tests {
                 "plan.geoFenceController.polygons" => json!({ "kind": "object", "elements": [ { "inclusion": false, "count": 4, "area": 25000.0, "path": [ {"latitude": 1.0, "longitude": 1.0}, {"latitude": 1.0, "longitude": 2.0}, {"latitude": 2.0, "longitude": 2.0}, {"latitude": 2.0, "longitude": 1.0} ] } ] }),
                 "plan.geoFenceController.circles" => json!({ "kind": "object", "elements": [ { "inclusion": true, "center": {"latitude": 47.0, "longitude": 8.0}, "facts": [ { "name": "Radius", "value": 150.0, "units": "m" } ] } ] }),
                 "plan.rallyPointController.points" => json!({ "kind": "object", "elements": [ { "coordinate": {"latitude": 47.1, "longitude": 8.1} } ] }),
-                "plan.rallyPointController.points.0.textFieldFacts.2" => json!({ "kind": "fact", "name": "RelativeAltitude", "value": 50.0, "units": "m", "rawValue": 50.0, "rawUnits": "vertical m" }),
+                "plan.rallyPointController.points.0.textFieldFacts.2" => json!({ "kind": "fact", "name": "RelativeAltitude", "value": 50.0, "units": "m" }),
                 "poly" => json!({ "kind": "object", "path": [ {"latitude": 0.0, "longitude": 0.0}, {"latitude": 0.0, "longitude": 2.0}, {"latitude": 2.0, "longitude": 2.0} ] }),
                 "line" => json!({ "kind": "object", "path": [ {"latitude": 0.0, "longitude": 0.0}, {"latitude": 0.0, "longitude": 2.0} ], "minVertexCount": 2 }),
                 _ => json!({ "kind": "null" }),
@@ -360,20 +352,10 @@ mod tests {
         assert_eq!(view["rallyPoints"][0]["path"], "plan.rallyPointController.points.0");
         assert_eq!((view["rallyPoints"][0]["altitude"].clone(), view["rallyPoints"][0]["altitudeUnits"].clone()), (json!(50.0), json!("m")));
         assert_eq!(view["rallyPoints"][0]["altitudeText"], "50.0 m", "the number and the unit stay beside it because a rally altitude is typed into, and a spelled string cannot be edited - but the head was spelling this itself from a copy of format_measure that had already drifted once by missing settled()");
-        assert_eq!(view["rallyPoints"][0]["altitudeMetres"], 50.0, "dragging a rally point writes back a whole coordinate and QGC copies the existing altitude onto it first, so a head that moves one needs a height the bridge will read as metres");
 
         struct Feet;
         impl Backend for Feet {
-            fn get(&self, path: &str) -> String {
-                // The bridge cooks value into the operator's unit and leaves rawValue in metres, so
-                // an imperial profile really does serve 164 beside a raw 50. Fake serves 50 for both,
-                // which cannot tell a cooked read from a raw one - and a test that cannot tell them
-                // apart passes whichever the code picks.
-                match path {
-                    "plan.rallyPointController.points.0.textFieldFacts.2" => json!({ "kind": "fact", "name": "RelativeAltitude", "value": 164.04199475065616, "units": "ft", "rawValue": 50.0, "rawUnits": "vertical m" }).to_string(),
-                    _ => Fake.get(path),
-                }
-            }
+            fn get(&self, path: &str) -> String { Fake.get(path) }
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 match path {
                     "units" => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
@@ -389,7 +371,6 @@ mod tests {
             }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(fences_view(&Feet, &[])["rallyPoints"][0]["altitudeMetres"], 50.0, "the cooked value is 164 on an imperial profile and the bridge reads a written altitude as metres, so a head dragging a rally point with the cooked number would drop it to a third of its height");
         assert_eq!(fences_view(&Feet, &[])["rallyPoints"][0]["altitudeText"], "164 ft", "the altitude is held in metres and spelled in the operator's unit, so a head reading the raw number and the fact's own CONSTANT units would still say 50.0 m after they chose feet");
         let metric = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
         assert_eq!(area_text(9999.0, &metric), "9999 m\u{b2}");

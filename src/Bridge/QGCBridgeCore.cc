@@ -365,7 +365,6 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("bitmaskStrings"),
         QStringLiteral("bitmaskValues"),
         QStringLiteral("typeIsBool"),
-        QStringLiteral("typeIsInteger"),
         QStringLiteral("typeIsString"),
         QStringLiteral("min"),
         QStringLiteral("max"),

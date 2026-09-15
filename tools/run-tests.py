@@ -216,8 +216,9 @@ def watch_for_silence(proc, latest, taken):
         quiet = time.monotonic() - silent_since
         if quiet > QUIET_SECONDS and silent_since not in seen and room:
             seen[silent_since] = 1
-            taken[suite] = taken.get(suite, 0) + 1
-            trace_hang(proc.pid, note)
+            written = trace_hang(proc.pid, note)
+            charged = suite_of(written.name.split("-", 2)[-1]) if written else suite
+            taken[charged] = taken.get(charged, 0) + 1
         elif quiet > QUIET_SECONDS + CONFIRM_AFTER and seen.get(silent_since) == 1:
             seen[silent_since] = 2
             trace_hang(proc.pid, note, pass_number=2)

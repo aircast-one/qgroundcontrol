@@ -50,11 +50,6 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         .zip(bit_values.iter())
         .filter_map(|(label, raw)| raw.as_i64().filter(|bit| *bit != 0).map(|bit| json!({ "label": label, "raw": raw_text(raw), "set": value_bits & bit != 0 })))
         .collect();
-    // A whole-number fact and a real one are the same "number" control to a head, and the difference
-    // is not cosmetic: convertAndValidateRaw truncates 3.7 to 3 on an integer fact and answers that
-    // it succeeded, so the operator asks for 3.7, the vehicle gets 3, and nothing anywhere says so.
-    // decimalPlaces is not this answer - a real-typed percentage legitimately declares zero.
-    let whole = flag("typeIsInteger");
     let control = match (flag("typeIsBool"), labels.is_empty(), bits.is_empty(), flag("typeIsString")) {
         (true, ..) => "toggle",
         (false, false, ..) => "choice",
@@ -97,7 +92,6 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         "options": options,
         "bits": bits,
         "decimalPlaces": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0),
-        "wholeNumbersOnly": whole,
         "minimum": bound("min", "minIsDefaultForType"),
         "maximum": bound("max", "maxIsDefaultForType"),
         "minimumText": bound_text("minString", "minIsDefaultForType"),
@@ -206,20 +200,6 @@ mod tests {
         let open = decode(&json!({ "kind": "fact", "name": "X", "min": -32768, "max": 32767, "minIsDefaultForType": true, "maxIsDefaultForType": true }), "p");
         assert_eq!(open["minimum"], Value::Null);
         assert_eq!(open["maximum"], Value::Null);
-    }
-
-    #[test]
-    fn a_whole_number_fact_says_so_before_anything_truncates_it() {
-        let counted = decode(&json!({ "kind": "fact", "name": "SR0_POSITION", "typeIsInteger": true, "value": 4, "decimalPlaces": 0 }), "p");
-        assert_eq!(counted["wholeNumbersOnly"], true, "FactMetaData::convertAndValidateRaw does QVariant(3.7).toInt() for an int fact - 3 with convertOk true - and setRawValue passes convertOnly so the range check never runs, so a head sending 3.7 is told it succeeded and the vehicle gets 3");
-        assert_eq!(counted["control"], "number");
-
-        let real = decode(&json!({ "kind": "fact", "name": "WPNAV_SPEED", "value": 5.0, "decimalPlaces": 0 }), "p");
-        assert_eq!(real["wholeNumbersOnly"], false, "decimalPlaces is not the same question - a real-typed fact declaring zero decimals is what you write for a percentage, and keying on it would refuse fractions the vehicle accepts");
-        assert_eq!(real["decimalPlaces"], 0, "which is why both travel");
-
-        let text = decode(&json!({ "kind": "fact", "name": "rtspUrl", "typeIsString": true, "valueString": "rtsp://x" }), "p");
-        assert_eq!(text["wholeNumbersOnly"], false, "a string is not a whole number, and a head gating a numeric keyboard on this must not get true for one");
     }
 
     #[test]
