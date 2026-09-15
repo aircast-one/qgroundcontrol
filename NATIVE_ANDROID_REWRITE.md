@@ -8464,3 +8464,18 @@ behaviour correct.** Worth recording as a reason not to "fix" it later.
 The video panel says *"Waiting for a stream."* rather than holding the last
 frame silently, which is `video_summary`'s connecting branch - untouched by
 `1f5562d89`, which only corrected the arm that claimed a build limitation.
+
+**And it recovers unaided.** Restarting the feed and touching nothing in the app
+brings the boxes back within 30 s:
+
+```
+stream up      "car 91%"  "person 47%"
+stream killed  "Waiting for a stream."   boxes gone
+stream back    "car 91%"  "person 47%"   no interaction, no crash
+```
+
+That matters more than it looks, because **recovery that needs an operator to
+know which control to poke is the discoverability defect in another costume** -
+the same one that makes an unasked-for empty plan look like an empty aircraft.
+Here the head reconnects, the overlay recomposes, and the detections feed
+retargets on its own.
