@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-QGC = Path(__file__).resolve().parents[2] / "qgroundcontrol"
+QGC = Path(__file__).resolve().parents[2]
 HEAD = Path(__file__).resolve().parents[1]
 
 
@@ -32,6 +32,9 @@ def produced():
     for path in (QGC / "core-rs/src").rglob("*.rs"):
         body = path.read_text(errors="ignore").split("#[cfg(test)]")[0]
         keys |= set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:', body))
+        # json["key"] = ... is emission too. gcsposition.rs and missionkinds.rs both build that
+        # way, and the colon pattern alone called two served fields unproduced.
+        keys |= set(re.findall(r'\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\]\s*=', body))
         for block in re.findall(r"struct\s+\w+\s*\{([^}]*)\}", body, re.S):
             fields = re.findall(r"(?:pub\s+)?([a-z_][a-z0-9_]*)\s*:", block)
             keys |= set(fields) | {camel(f) for f in fields}
@@ -85,7 +88,7 @@ def selftest():
 def core_is_present():
     if (QGC / "core-rs/src").is_dir():
         return True
-    print(f"skipped: no core-rs under {QGC} - this sweep checked nothing")
+    print(f"REFUSING: no core-rs under {QGC} - this sweep checked nothing")
     return False
 
 
@@ -93,6 +96,6 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         selftest()
     elif not core_is_present():
-        sys.exit(0)
+        sys.exit(2)
     else:
         sys.exit(1 if report() else 0)

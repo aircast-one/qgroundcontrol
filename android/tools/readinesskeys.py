@@ -70,7 +70,7 @@ def selftest():
 def core_is_present():
     if (QGC / "core-rs/src").is_dir():
         return True
-    print(f"skipped: no core-rs under {QGC} - this sweep checked nothing")
+    print(f"REFUSING: no core-rs under {QGC} - this sweep checked nothing")
     return False
 
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         selftest()
     elif not core_is_present():
-        sys.exit(0)
+        sys.exit(2)
     else:
         for view, key in flagged():
             note = KNOWN.get(key, "UNEXPLAINED - check what the head gates on instead")
