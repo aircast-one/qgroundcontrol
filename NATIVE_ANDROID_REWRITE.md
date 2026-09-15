@@ -8110,5 +8110,48 @@ listening on them, so Plan had no mission, no vehicle and nothing to sync.
   the `bridge call blocked` line is the precondition: without it in the log,
   the thread samples say nothing about Risk 4 and must not be read as if they do.
 
-Open: repeat with a vehicle connected and a mission loaded before deciding
-whether Risk 4 is stale or merely unreproduced here.
+**Repeated with a vehicle connected, and it reproduces on an empty plan.**
+
+```
+21:07:27.898              TAP Plan
+21:07:27.980  R utime 175
+21:07:28.276  R utime 203   bridge call blocked 291ms  set plan.undoTracking
+21:07:28.473  R utime 221   bridge call blocked 452ms  get view.missionItems
+21:07:32.076  S utime 222   flat
+```
+
+**460 ms of CPU inside ~500 ms of wall clock.** Both blocked calls sit entirely
+within the burst, and the 452 ms `get` returns one millisecond after the last
+running sample. So the queueing the 2026-09-10 note suspected is real, and what
+it queues behind is **CPU-bound work on the Qt thread** - not a lock and not an
+I/O wait. That was the unidentified half.
+
+| state | Qt CPU at Plan entry | calls over 250 ms |
+|---|---|---|
+| disconnected | ~240 ms | none |
+| connected, empty plan | ~460 ms | 2 (291 ms, 452 ms) |
+
+**The connection is the variable, not the items.** Connecting roughly doubles
+the cost and is what carries it over the threshold - so a mission is not needed
+to reproduce this, and `get view.missionItems` costs 452 ms on a plan holding
+**no items at all**. The original note ruled out item count and was right to,
+but it ruled it out offline; the figure above is empty *and* connected.
+
+Open: what the 460 ms is. The question is now well posed - CPU on one named
+thread, in a window with known boundaries - where before it was "something
+takes a second".
+
+**The rig trap that cost two runs.** The link was configured with the right host
+and port and the reverse was landing, and nothing had ever opened it:
+`autoConnect: False`, `connected: False`, `statusLine: "Not connected"`. **A link
+that has never been dialled looks identical to one that is dialling**, because
+`connected: False` beside a correct config reads as *about to*. One tap on
+Connect and it attached immediately.
+
+**And the run that nearly shipped a wrong number was the one labelled
+correctly-sounding.** Two runs were disconnected; the first I described as
+disconnected and it was harmless, the second I announced as "the connected run"
+and it was not connected. **A limit you state survives being passed on; a limit
+you have silently stopped satisfying travels as a fact.** The script printed
+`"No vehicle"` in its own output either way - the label is what would have been
+quoted.
