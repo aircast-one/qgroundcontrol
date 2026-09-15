@@ -141,7 +141,14 @@ def main():
         print(f"no contract at {CONTRACT}; set VIEW_SHAPES", file=sys.stderr)
         return 2
     contract = served(json.load(open(CONTRACT)), set())
-    reads = head_keys(".")
+    # An absolute root rather than ".", because run from anywhere but android/ this walked
+    # nothing and reported "0 read by the head" - a clean result from no data, which then
+    # called every ACCEPTED entry stale.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    reads = head_keys(root)
+    if not reads:
+        print(f"  REFUSING: no .kt reads found under {root}, so every count below would be meaningless")
+        return 1
     missing = {k: v for k, v in sorted(reads.items()) if k not in contract}
 
     for control, expected in [("altitudeFrame", True), ("foldedCommands", True), ("notAKeyAnyViewServes", False)]:
@@ -188,6 +195,12 @@ def main():
             print(f"    UNREAD BESIDE {', '.join(sorted(near))}: {name}")
         print("  A field the core adds to a shape you consume is invisible to every other check here.")
     nullable = nullable_bools(json.load(open(CONTRACT)), "", {})
+    # A parse that finds nothing reports a clean head, so prove it can still see a known
+    # bool|null before believing an empty result. view.flyState.contactLost has been one
+    # since f97d66e13, and it is the field that motivated this check.
+    if "contactLost" not in nullable:
+        print("  REFUSING: the contract parse found no bool|null fields, so an empty result means nothing")
+        return 1
     flat = flattened(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), nullable)
     if flat:
         print(f"\n  {len(flat)} field(s) the core can serve as null, read as a bare Boolean:")
