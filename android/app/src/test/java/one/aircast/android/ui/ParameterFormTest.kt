@@ -239,10 +239,11 @@ class ReadOnlyNoteTest {
     fun `the setup pages come from the core, grouped and flagged`() {
         val view = JSONObject("""{"groups":[
             {"title":"Vehicle","pages":[
-              {"name":"Frame","native":true,"parameterSections":true},
-              {"name":"Motors","native":false,"parameterSections":false}]},
+              {"name":"Frame","openable":true,"blockedReason":null,"parameterSections":true},
+              {"name":"Motors","openable":true,"blockedReason":null,"parameterSections":false}]},
             {"title":"Support","pages":[
-              {"name":"Remote Support","native":true,"parameterSections":false}]}]}""")
+              {"name":"Remote Support","openable":true,"blockedReason":null,
+               "parameterSections":false}]}]}""")
 
         assertEquals(listOf("Vehicle", "Support"), setupGroups(view).map { it.title })
         assertEquals(true, setupPage(view, "Frame")?.parameterSections)

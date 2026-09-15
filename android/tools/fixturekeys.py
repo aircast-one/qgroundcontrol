@@ -2,8 +2,11 @@
 """Flag JSON keys in head test fixtures that no producer actually emits.
 
 Every hit is a question, not a defect. Known-legitimate reasons a key lands here:
-a Compose item(key = ...) that happens to share the name, and a fixture that
-deliberately feeds an invented name to prove the decoder ignores it. Validate a
+a Compose item(key = ...) that happens to share the name; a fixture that
+deliberately feeds an invented name to prove the decoder ignores it
+(calibrations, orientations, inProgressNow, notice - all from two such tests);
+and a key the decoder must NOT read because it has to survive a round trip, read
+back with getString in the test that proves it (fit, orientation). Validate a
 hit against the producer before changing anything.
 
 The failure this exists to catch shipped once: LogDownloadScreen read timeText,
