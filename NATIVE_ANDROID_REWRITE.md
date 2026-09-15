@@ -8333,3 +8333,34 @@ the head deciding something about the vehicle, and a fallback is not a fix. The
 distinction can only be drawn where parameter readiness is known - the core
 already computes that for `view.setup` - so the honest answer is a third state
 from `view.calibration` rather than a bool that is confident in both directions.
+
+### "Not ready to fly" has a no-verdict state and does not use it for parameters, 2026-09-15
+
+`readiness()` returns `Option<bool>` and already answers `None` for *no vehicle*,
+with a test recording why: *"no vehicle is no verdict; the same false that means
+'checked and not ready' drew an amber Check pill beside an instruction to
+connect one"*. The three-state vocabulary is there and it was added for exactly
+this class of mistake.
+
+**It is not used for the case where the verdict's inputs have not arrived.** The
+components feeding `needs_attention` are parameter-derived - the same
+`accelSetupNeeded()` chain that reads a missing `INS_ACCOFFS` as zero - so with
+parameters outstanding, `ready` is `Some(false)` and the head draws **"Not ready
+to fly"** from inputs the vehicle has never supplied.
+
+`view.setup` already serves `parametersReady` beside it, so the head can be told
+both *"this vehicle has not answered the request for its parameters"* and
+*"not ready to fly"* in the same breath - the second being a verdict reached
+without the evidence the first says is missing.
+
+**The shape, for the fifth time tonight:** a sentence that is confident, correct
+in form, and about something never established. The others were `followTarget`'s
+conditional default, `hasVehicle` standing in for a build flag, `"Empty plan"`
+after no request was sent, and a zeroed accelerometer offset. **Here the fix is
+already designed and simply not reached** - `None` when `parametersReady` is
+false - which makes it the cheapest of the five and the easiest to argue for.
+
+Raised with the core session rather than changed here: the head currently falls
+back to `setupComplete` when `ready` is null (`SetupScreen.kt:228`), so serving
+`None` without changing that fallback would swap one unearned verdict for
+another. Both halves have to move together.
