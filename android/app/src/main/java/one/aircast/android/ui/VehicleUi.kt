@@ -532,7 +532,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val checklistPast = checklistOffered(armed)
-                    TextButton(
+                    if (preflightOffered(preflightJson)) TextButton(
                         onClick = {
                             showMore = false
                             showChecklist = true

@@ -56,6 +56,8 @@ internal fun checklistOffered(armed: Boolean): String? = when {
     else -> null
 }
 
+internal fun preflightOffered(view: JSONObject?): Boolean = view?.optBoolean("offered", true) ?: true
+
 internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): String {
     if (preflight == null) return "Connect a vehicle to run its preflight checks."
     val checks = preflight.groups.flatMap { it.checks }
