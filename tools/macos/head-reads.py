@@ -41,7 +41,24 @@ def referenced():
     return named
 
 
-listed = sorted(served_names() & referenced())
+served, named = served_names(), referenced()
+
+# This wrote whatever it computed and exited 0 whatever it computed, and commit.sh discarded the
+# only line that said how many names it found. So a run whose INPUTS were missing -- no .swift under
+# Sources, an _observed the contract no longer carries -- produced an empty artefact, and the commit
+# gate read that as "the names this head references changed" and committed it. Generator broke and
+# head changed are the same diff; the count that separates them was going to /dev/null.
+#
+# The guard is on the inputs rather than on a drop in the count, because a threshold is a guess
+# about how much change is too much and this is a fact about whether the run could work at all.
+if not served or not named:
+    print(f"REFUSING to rewrite {ARTEFACT.name}: read {len(served)} served names from the contract "
+          f"and {len(named)} identifiers from {SOURCES.name}. An empty side means this could not "
+          f"read its inputs, not that the head stopped referencing anything -- writing now would "
+          f"land an empty artefact that every sweep reading it would then agree with.", file=sys.stderr)
+    sys.exit(1)
+
+listed = sorted(served & named)
 ARTEFACT.write_text("\n".join(listed) + "\n")
 print(f"{ARTEFACT.relative_to(ROOT)}: {len(listed)} contract field names this head references")
 sys.exit(0)

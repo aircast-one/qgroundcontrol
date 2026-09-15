@@ -118,7 +118,10 @@ if print -rl -- "$@" | grep -q '^macos/'; then
         print -u2 "view-fields.py and null-fallbacks.py both skip what is not in it, silently."
         exit 1
     fi
-    python3 "$root/tools/macos/head-reads.py" > /dev/null
+    if ! python3 "$root/tools/macos/head-reads.py"; then
+        print -u2 "head-reads.py refused to rewrite its artefact; nothing committed."
+        exit 1
+    fi
     if ! git diff --quiet HEAD -- tools/macos/head-reads.txt; then
         set -- "$@" tools/macos/head-reads.txt
         print "including tools/macos/head-reads.txt: the names this head references changed"
