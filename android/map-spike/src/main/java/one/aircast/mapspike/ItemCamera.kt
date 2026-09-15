@@ -22,10 +22,10 @@ internal data class CameraChoices(val labels: List<String>, val chosen: Int)
 
 internal fun cameraChoices(view: JSONObject?): CameraChoices? {
     val measure = view?.takeIf { it.optBoolean("available") }?.optJSONObject("cameraAction")
-    val listed = measure?.optJSONArray("enumStrings") ?: return null
-    val labels = (0 until listed.length()).map { listed.optString(it) }.filter { it.isNotBlank() }
-    if (labels.isEmpty()) return null
-    return CameraChoices(labels, measure.optInt("enumIndex", -1))
+    val listed = measure?.optJSONArray("choices") ?: return null
+    val labels = (0 until listed.length()).map { listed.optString(it) }
+    if (labels.none { it.isNotBlank() }) return null
+    return CameraChoices(labels, measure.optInt("choice", -1))
 }
 
 internal fun measureText(view: JSONObject?, key: String): String {

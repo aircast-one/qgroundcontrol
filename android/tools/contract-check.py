@@ -11,6 +11,9 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-base
 READS = re.compile(r'\.opt(?:Text|Boolean|Int|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 NAMES_VIEW = re.compile(r'"(view\.[A-Za-z]+)')
 HELPER_DEF = re.compile(r'fun JSON(?:Object|Array)\.([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: String')
+TAKES_KEY = re.compile(
+    r'fun ([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: JSON(?:Object|Array)\??\s*,\s*key: String'
+)
 
 
 def served(node, into):
@@ -121,11 +124,20 @@ def head_keys(root):
         r'\.(?:' + "|".join(sorted(helpers)) + r')\(\s*"([A-Za-z][A-Za-z0-9]*)"'
     ) if helpers else None
 
+    # measureText(view, "gimbalPitch") is the same read with the object passed rather than
+    # received. ItemCamera reads both gimbal measures this way and neither was counted.
+    takers = {t for src in sources.values() for t in TAKES_KEY.findall(src)}
+    passed = re.compile(
+        r'\b(?:' + "|".join(sorted(takers)) + r')\(\s*[^,()]+,\s*"([A-Za-z][A-Za-z0-9]*)"'
+    ) if takers else None
+
     found = {}
     for path, src in sources.items():
         keys = set(READS.findall(src))
         if through:
             keys |= set(through.findall(src))
+        if passed:
+            keys |= set(passed.findall(src))
         for key in keys:
             found.setdefault(key, set()).add(os.path.basename(path))
     return found
