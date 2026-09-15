@@ -44,6 +44,7 @@ private const val CONSOLE_VIEW = "view.mavlinkConsole"
 // not, which this screen never used to give.
 internal fun consoleEmptyText(sent: Boolean, connected: Boolean, servedReason: String): String = when {
     !connected && servedReason.isNotBlank() -> servedReason
+    !connected -> "Connect a vehicle to open a shell on its autopilot."
     sent -> "Sent. Nothing back from the vehicle yet."
     else -> "No output yet. Send a command, for example help."
 }
@@ -112,7 +113,7 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
 
     if (!hasVehicle) {
         ConsoleNotice(
-            "Connect a vehicle to open a shell on its autopilot.",
+            consoleEmptyText(sent = false, connected = false, servedReason = emptyReason),
             modifier,
         )
         return

@@ -97,6 +97,23 @@ class ConsoleEmptyReasonTest {
     }
 
     @Test
+    fun `with no vehicle the core's sentence is the one shown, not this head's`() {
+        assertEquals(
+            "the screen returned early with its own wording before consoleEmptyText was reached, " +
+                "so the served branch could never fire and an operator read the head's sentence " +
+                "while the core had one - the same two-sentences-for-one-state fault PlanFileRules " +
+                "records having already been bitten by",
+            "Connect to a vehicle to open a shell on it.",
+            consoleEmptyText(false, connected = false, servedReason = "Connect to a vehicle to open a shell on it."),
+        )
+        assertEquals(
+            "a core too old to serve one still gets a sentence rather than the send-a-command text",
+            "Connect a vehicle to open a shell on its autopilot.",
+            consoleEmptyText(false, connected = false, servedReason = ""),
+        )
+    }
+
+    @Test
     fun `once the operator has sent something this screen knows more than the core does`() {
         assertEquals(
             "Sent. Nothing back from the vehicle yet.",
