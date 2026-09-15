@@ -146,7 +146,7 @@ TRUNCATED_NOTE = "... (more output followed; this capture stops at 12 lines)"
 MAX_TRACES = 8
 PER_SUITE_TRACES = 2
 LATE_RESERVE = 2
-RESERVE_OPENS_AFTER = 60
+RESERVE_OPENS_PAST = 0.5
 CONFIRM_AFTER = 30
 FLOOD_LINES = 5000
 TRACE_DIR = REPO / "build-test/hang-traces"
@@ -166,7 +166,7 @@ def load_now():
 def tool_settings():
     body = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()[:12]
     return (f"run-tests.py {body} quiet={QUIET_SECONDS}s max={MAX_TRACES} "
-            f"per-suite={PER_SUITE_TRACES} reserve={LATE_RESERVE}@{RESERVE_OPENS_AFTER} "
+            f"per-suite={PER_SUITE_TRACES} reserve={LATE_RESERVE}@{RESERVE_OPENS_PAST:.0%}-elapsed "
             f"confirm=+{CONFIRM_AFTER}s")
 
 
@@ -202,8 +202,15 @@ def suite_of(note):
     return note.split("::")[0] or "unknown"
 
 
-def budget_now(suites_seen):
-    return MAX_TRACES if suites_seen >= RESERVE_OPENS_AFTER else MAX_TRACES - LATE_RESERVE
+def expected_run_seconds():
+    runs = [r for r in load_history() if len(r.get("suites", [])) >= 90]
+    return max((sum(r["durations"].values()) / 1000 for r in runs), default=0.0)
+
+
+def budget_now(elapsed):
+    whole = expected_run_seconds()
+    past_half = whole and elapsed / whole >= RESERVE_OPENS_PAST
+    return MAX_TRACES if past_half else MAX_TRACES - LATE_RESERVE
 
 
 def watch_for_silence(proc, latest, taken):
@@ -212,13 +219,13 @@ def watch_for_silence(proc, latest, taken):
         silent_since = latest["at"]
         note = after_the_verdict(latest["line"])
         suite = suite_of(note)
-        room = (sum(taken.values()) < budget_now(len(latest["suites"]))
+        room = (sum(taken.values()) < budget_now(time.monotonic() - latest["began"])
                 and taken.get(suite, 0) < PER_SUITE_TRACES)
         quiet = time.monotonic() - silent_since
         if quiet > QUIET_SECONDS and silent_since not in seen and not room:
             seen[silent_since] = 0
             print(f"TRACE REFUSED: {suite} went quiet past {QUIET_SECONDS}s and was not sampled - "
-                  f"{sum(taken.values())} of {budget_now(len(latest['suites']))} traces spent, "
+                  f"{sum(taken.values())} of {budget_now(time.monotonic() - latest['began'])} traces spent, "
                   f"{taken.get(suite, 0)} of {PER_SUITE_TRACES} for this suite. "
                   f"This silence has no record beyond this line.", file=sys.stderr)
         if quiet > QUIET_SECONDS and silent_since not in seen and room:
@@ -254,7 +261,7 @@ def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
-    latest = {"at": time.monotonic(), "line": "", "lines": [], "signals": 0, "suites": set()}
+    latest = {"at": time.monotonic(), "line": "", "lines": [], "signals": 0, "suites": set(), "began": time.monotonic()}
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         reader = stream(proc, latest)
