@@ -100,7 +100,13 @@ struct VibrationReading: Equatable {
         warningLevel = (json["warningLevel"] as? NSNumber)?.doubleValue ?? 30
         dangerLevel = (json["dangerLevel"] as? NSNumber)?.doubleValue ?? 60
         axes = ((json["axes"] as? [Any]) ?? []).compactMap(VibrationAxis.init)
-        worst = Severity(json["worst"] as? String)
+        // The core takes the worst of the axes that ANSWERED, which is the only thing it can do and
+        // is right for what it says. On a partial set that is a verdict from incomplete data: two
+        // quiet axes and a missing third report "normal", and normal is the reassuring one. The
+        // window happens not to draw it -- its badge sits inside the `available` branch -- but the
+        // probe exports it unconditionally, so the instrument was already reporting a severity
+        // nobody could stand behind. A verdict this model cannot support is not one it should carry.
+        worst = available ? Severity(json["worst"] as? String) : nil
         clipCounts = ((json["clipCounts"] as? [Any]) ?? []).compactMap { ($0 as? NSNumber)?.intValue }
         clipping = (json["clipping"] as? NSNumber)?.boolValue ?? false
     }

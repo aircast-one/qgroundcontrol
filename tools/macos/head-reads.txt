@@ -184,6 +184,7 @@ hover
 id
 inProgress
 inclusion
+incomplete
 index
 initial
 interval

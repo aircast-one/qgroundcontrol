@@ -278,6 +278,18 @@ expect(VibrationReading(view: ["connected": true as NSNumber,
        + "fact, and silentReason IS the meaning, in the same read as the axes it qualifies. I "
        + "accepted this field this morning saying a token beside the sentence would be read; the "
        + "core split it and the acceptance would otherwise have outlived its reason")
+expect(VibrationReading(view: ["connected": true as NSNumber, "available": false as NSNumber,
+                              "worst": "normal"]).worst == nil,
+       "A SEVERITY FROM AN INCOMPLETE SET IS NOT A VERDICT. The core takes the worst of the axes "
+       + "that ANSWERED, which is right for what it says; on two of three that makes \"normal\" a "
+       + "reassurance derived from data nobody has. The window happens not to draw it -- its badge "
+       + "sits inside the available branch -- but Vibration.swift puts it in the probe "
+       + "unconditionally, so the instrument was already reporting it. Flagged by the core session "
+       + "from a test they wrote to pin MY premise, which is the second defect that pairing found")
+expect(VibrationReading(view: ["connected": true as NSNumber, "available": true as NSNumber,
+                              "worst": "danger"]).worst == .danger,
+       "and a complete set still reports its worst axis, which is the whole point of the badge")
+
 expect(VibrationReading(view: ["connected": true as NSNumber]).emptyText,
        "This vehicle is reporting only some vibration axes.",
        "A NULL silentReason IS NOT SILENCE. vibration.rs sets the token only when NO axis has a "
