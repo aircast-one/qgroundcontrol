@@ -114,15 +114,34 @@ for path in registry:
 
 undrawn = sorted(name for name in served
                  if f'"{name}"' not in named and name not in ACCEPTED)
-stale = sorted(name for name in ACCEPTED if name not in served)
+# `served` is what THIS RUN's rig state actually produced, so a name missing from it has two
+# causes and they are opposite: the core stopped serving it, or nothing in this rig state carries
+# it. layerSpanText is the example -- missionitems.rs serves it only for a STRUCTURE SCAN, so a
+# plan without one makes it vanish from every payload, and the old message called that "the core
+# no longer serves it". A peer read that, correctly did not touch my table, and reported it to me
+# as a finding. It was my tool asserting something about the producer from evidence about a state.
+#
+# The contract is the second source that separates them: it is recorded across states this run did
+# not reach. Present there means a state gap, absent from both means actually gone.
+recorded = (ROOT / "test/Bridge/fixtures/view-shapes.json").read_text()
+missing = [name for name in ACCEPTED if name not in served]
+stale = sorted(name for name in missing if f'"{name}"' not in recorded)
+unreached = sorted(name for name in missing if f'"{name}"' in recorded)
 
 for why in silent:
     print(f"  NOT READ {why}", file=sys.stderr)
 for name in undrawn:
     print(f"  UNDRAWN {name!r} is a text the core formatted for a screen and this head "
           f"names nowhere", file=sys.stderr)
+for name in unreached:
+    print(f"  NOT REACHED {name!r} is accepted and no view this run read carried it, but the "
+          f"contract still records it -- this rig state does not produce it, which is not the "
+          f"same as the core dropping it. Do NOT delete the acceptance on this evidence",
+          file=sys.stderr)
 for name in stale:
-    print(f"  NOT CHECKED {name!r} is accepted and the core no longer serves it",
+    print(f"  NOT CHECKED {name!r} is accepted, no view this run read carried it, AND the "
+          f"contract does not record it either -- two sources agreeing is what makes this a "
+          f"claim about the core rather than about the rig",
           file=sys.stderr)
 
 print(f"{len(served)} fields named *Text across {len(registry) - len(silent)} views this rig "
