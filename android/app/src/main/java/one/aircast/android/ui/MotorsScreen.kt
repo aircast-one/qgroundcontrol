@@ -44,6 +44,30 @@ internal fun motorCountNotice(reported: Int?): String? =
         null
     }
 
+internal data class MotorGate(
+    val connected: Boolean,
+    val armed: Boolean,
+    val contactKnownLost: Boolean,
+)
+
+internal fun motorGate(view: JSONObject?): MotorGate = MotorGate(
+    connected = view?.optBoolean("connected") == true,
+    armed = view?.optBoolean("armed") == true,
+    contactKnownLost = view?.takeIf { !it.isNull("contactLost") }?.optBoolean("contactLost") == true,
+)
+
+internal fun canTest(gate: MotorGate, propsOff: Boolean): Boolean =
+    gate.connected && propsOff && !gate.armed && !gate.contactKnownLost
+
+internal fun canStop(gate: MotorGate): Boolean = gate.connected
+
+internal fun motorRefusal(gate: MotorGate): String? = when {
+    !gate.connected -> "No vehicle is connected, so nothing will answer a motor test."
+    gate.armed -> "The vehicle is armed. Disarm it before testing a motor."
+    gate.contactKnownLost -> "The vehicle has stopped answering. Check the link before testing a motor."
+    else -> null
+}
+
 internal fun spin(motor: Int, percent: Int) {
     val seconds = if (percent == 0) 0 else TIMEOUT_SECONDS
     Qgc.invoke("vehicle.motorTest", motor, percent, seconds, true)
@@ -54,6 +78,7 @@ internal fun spin(motor: Int, percent: Int) {
 fun MotorsScreen(modifier: Modifier = Modifier) {
     val frameJson by qgcPath(FRAME_VIEW)
     val reported = remember(frameJson) { reportedMotors(frameJson) }
+    val gate = remember(frameJson) { motorGate(frameJson) }
     val motors = motorCount(reported)
     var propsOff by remember { mutableStateOf(false) }
     var throttle by remember { mutableFloatStateOf(20f) }
@@ -67,6 +92,9 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
         )
         motorCountNotice(reported)?.let {
             Text(it, style = MaterialTheme.typography.bodySmall)
+        }
+        motorRefusal(gate)?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         }
 
         Row(
@@ -85,13 +113,13 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
             value = throttle,
             onValueChange = { throttle = it },
             valueRange = 0f..100f,
-            enabled = propsOff,
+            enabled = canTest(gate, propsOff),
             modifier = Modifier.fillMaxWidth(),
         )
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (1..motors).forEach { motor ->
-                Button(onClick = { spin(motor, throttle.toInt()) }, enabled = propsOff) {
+                Button(onClick = { spin(motor, throttle.toInt()) }, enabled = canTest(gate, propsOff)) {
                     Text("$motor")
                 }
             }
@@ -100,11 +128,11 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = { (1..motors).forEach { spin(it, throttle.toInt()) } },
-                enabled = propsOff,
+                enabled = canTest(gate, propsOff),
             ) { Text("All") }
             OutlinedButton(
                 onClick = { (1..motors).forEach { spin(it, 0) } },
-                enabled = propsOff,
+                enabled = canStop(gate),
             ) { Text("Stop") }
         }
     }
