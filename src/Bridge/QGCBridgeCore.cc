@@ -455,6 +455,11 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compac
         }
         const bool wanted = everything || fields.contains(name);
 
+        const bool mightBeObject = property.metaType().flags().testFlag(QMetaType::PointerToQObject);
+        if (!wanted && !mightBeObject) {
+            continue;
+        }
+
         const QVariant value = property.read(object);
         ++gPropertiesRead;
 
