@@ -53,6 +53,8 @@ fun altitudeModesView(view: JSONObject?): AltitudeModesView? {
 fun choosable(view: AltitudeModesView?): List<AltitudeModeOffer> =
     view?.offers.orEmpty().filter { it.raw != ALT_MODE_MIXED }
 
+fun offersChoice(view: AltitudeModesView?): Boolean = choosable(view).count { it.enabled } > 1
+
 fun refusalFor(view: AltitudeModesView?, raw: Int): String? =
     view?.offers.orEmpty().firstOrNull { it.raw == raw }?.takeIf { !it.enabled }?.reason?.ifBlank { null }
 

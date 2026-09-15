@@ -18,7 +18,70 @@ private const val SERVED = """
  "omitted": []}
 """
 
+private const val EMPTY_PLAN = """
+{"class": "AltitudeModes", "context": "mission", "current": 0, "holdsAltitudeAboveTerrain": true,
+ "modes": [
+  {"raw": 1, "title": "Relative To Launch", "help": "", "enabled": false, "current": false,
+   "reason": "Add a mission item before choosing how its altitude is measured."},
+  {"raw": 2, "title": "AMSL", "help": "", "enabled": false, "current": false,
+   "reason": "Add a mission item before choosing how its altitude is measured."},
+  {"raw": 4, "title": "Terrain Frame", "help": "", "enabled": false, "current": false,
+   "reason": "Add a mission item before choosing how its altitude is measured."},
+  {"raw": 0, "title": "Mixed Modes", "help": "", "enabled": true, "current": true, "reason": ""}
+ ],
+ "omitted": []}
+"""
+
+private const val ONE_OPTION = """
+{"class": "AltitudeModes", "context": "mission", "current": 2, "holdsAltitudeAboveTerrain": false,
+ "modes": [
+  {"raw": 1, "title": "Relative To Launch", "help": "", "enabled": false, "current": false,
+   "reason": "This vehicle reports no launch position."},
+  {"raw": 2, "title": "AMSL", "help": "Above mean sea level.", "enabled": true, "current": true, "reason": ""},
+  {"raw": 4, "title": "Terrain Frame", "help": "", "enabled": false, "current": false,
+   "reason": "This vehicle does not hold an altitude above terrain."},
+  {"raw": 0, "title": "Mixed Modes", "help": "", "enabled": true, "current": false, "reason": ""}
+ ],
+ "omitted": []}
+"""
+
 class AltitudeModesTest {
+    @Test
+    fun `one pickable mode is the one already set, so the control changes nothing`() {
+        assertEquals(
+            "the single enabled entry is the current mode - opening the control offers the operator " +
+                "what they already have, and the two refusals are printed on the row either way",
+            false,
+            offersChoice(altitudeModesView(JSONObject(ONE_OPTION))),
+        )
+        assertEquals(1, choosable(altitudeModesView(JSONObject(ONE_OPTION))).count { it.enabled })
+    }
+
+    @Test
+    fun `a picker holding one option promises a choice it cannot deliver`() {
+        assertEquals(
+            "on an empty plan the core enables only Mixed, which is never offered, so opening the " +
+                "control shows entries that all refuse with the sentence the row already prints",
+            false,
+            offersChoice(altitudeModesView(JSONObject(EMPTY_PLAN))),
+        )
+    }
+
+    @Test
+    fun `a plan with real alternatives keeps the picker live`() {
+        assertTrue(offersChoice(altitudeModesView(JSONObject(SERVED))))
+    }
+
+    @Test
+    fun `the refused modes are still counted by the core's judgement, never by re-deriving why`() {
+        val view = altitudeModesView(JSONObject(EMPTY_PLAN))
+        assertEquals(3, choosable(view).size)
+        assertEquals(
+            "Add a mission item before choosing how its altitude is measured.",
+            refusalFor(view, 1),
+        )
+    }
+
     @Test
     fun `mixed modes is a state the plan can be in, never a mode to pick`() {
         val picks = choosable(altitudeModesView(JSONObject(SERVED)))

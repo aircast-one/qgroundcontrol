@@ -2,7 +2,6 @@ package one.aircast.mapspike
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,13 +23,14 @@ fun AltitudeModePicker(
     val json by mapPath(altitudeModesPath(MISSION_CONTEXT, item.altitudeMode))
     val view = altitudeModesView(json)
     val picks = choosable(view)
+    val live = offersChoice(view)
     val current = picks.firstOrNull { it.current }?.title
         ?: item.altitudeFrameText.ifBlank { FRAME_UNKNOWN }
 
-    TextButton(onClick = { open = true }, enabled = picks.isNotEmpty(), modifier = modifier) {
+    TextButton(onClick = { open = true }, enabled = live, modifier = modifier) {
         Text(current)
     }
-    DropdownMenu(expanded = open && picks.isNotEmpty(), onDismissRequest = { open = false }) {
+    DropdownMenu(expanded = open && live, onDismissRequest = { open = false }) {
         picks.forEach { offer ->
             DropdownMenuItem(
                 text = {
