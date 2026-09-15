@@ -12,6 +12,7 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-base
 READS = re.compile(r'\.opt(?:Text|Boolean|Int|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 NAMES_VIEW = re.compile(r'"(view\.[A-Za-z]+)')
 NESTED = re.compile(r'\.optJSON(?:Object|Array)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
+BARE_BOOL = re.compile(r'\.optBoolean\(\s*"([A-Za-z][A-Za-z0-9]*)"\s*\)')
 HELPER_DEF = re.compile(r'fun JSON(?:Object|Array)\.([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: String')
 TAKES_KEY = re.compile(
     r'fun ([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: JSON(?:Object|Array)\??\s*,\s*key: String'
@@ -434,9 +435,27 @@ def main():
 
     declared = set()
     for key, value in json.load(open(CONTRACT)).items():
-        plain_bools(value, key.split("(")[0], declared)
-    print(f"\n  {len(declared)} view/field pair(s) are typed bool from observation alone.")
-    print("  A bool here means the rig never saw a null, not that the producer cannot send one.")
+        if not key.startswith("_"):
+            plain_bools(value, key.split("(")[0], declared)
+    declared_paths = {f"{root}.{field}" for root, field in declared}
+    # The fixture carries the recorder's own witness lists. _neverVaried names every path that
+    # held one value for the whole suite, so a bool there was typed from a single observation.
+    # Narrowed to the ones THIS head reads with a bare optBoolean, which is its actual exposure.
+    witness = json.load(open(CONTRACT))
+    never = set(witness.get("_neverVaried", []))
+    bare = set()
+    for base, _, names in os.walk(tree):
+        if "/build/" in base or "/test/" in base:
+            continue
+        for name in names:
+            if name.endswith(".kt"):
+                bare |= set(BARE_BOOL.findall(open(os.path.join(base, name)).read()))
+    exposed = sorted(p for p in declared_paths if p.rsplit(".", 1)[-1] in bare and p in never)
+    print(f"\n  {len(declared)} view/field pair(s) are typed bool from observation alone,")
+    print(f"  {len(exposed)} of them read here with a bare optBoolean and never seen to vary.")
+    print("  That is a risk population, not a defect list: the rig has one vehicle in one state,")
+    print("  so most never varied for that reason. It needs the producer's own Option-ness to")
+    print("  separate them - view.contract is to gain nullableUnwitnessed for exactly that.")
 
     return 1 if unexplained or stale or fresh or flat or escaped or unknown else 0
 
