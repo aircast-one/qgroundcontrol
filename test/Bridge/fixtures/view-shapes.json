@@ -181,6 +181,7 @@
         "view.missionSummary.durationInputs",
         "view.missionSummary.maxTelemetryComputedMetres",
         "view.missionSummary.maxTelemetryInputs",
+        "view.obstacle.enabled",
         "view.obstacle.nearest",
         "view.operatorControl.holderSystemId",
         "view.operatorControl.inControl",
@@ -5109,6 +5110,7 @@
         "view.obstacle.nearest",
         "view.obstacle.sectors",
         "view.obstacle.stale",
+        "view.obstacle.supported",
         "view.operatorControl.available",
         "view.operatorControl.class",
         "view.operatorControl.holderSystemId",
@@ -7408,12 +7410,13 @@
     "view.obstacle": {
         "available": "bool",
         "class": "string",
-        "enabled": "bool",
+        "enabled": "null",
         "kind": "string",
         "msSinceUpdate": "null|number",
         "nearest": "null",
         "sectors": "number",
-        "stale": "bool|null"
+        "stale": "bool|null",
+        "supported": "bool|null"
     },
     "view.operatorControl": {
         "available": "bool",

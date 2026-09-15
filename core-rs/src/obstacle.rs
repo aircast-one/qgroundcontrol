@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, format_measure, integer, object};
+use crate::read::{Unit, flag as read_flag, format_measure, integer, object, result_flag};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -14,7 +14,11 @@ pub const DEPS: &[&str] = &[
     "vehicle.objectAvoidance.maxDistance",
     "vehicle.objectAvoidance.angleOffset",
     "settings.unitsSettings.horizontalDistanceUnits",
+    "vehicle.parameterManager.parametersReady",
+    "vehicle.parameterManager.getParameter(-1,CP_DIST).rawValue",
 ];
+
+const AVOIDANCE_PARAM: &str = "CP_DIST";
 
 const NO_READING: i64 = 65535;
 const STALE_AFTER_MS: i64 = 3000;
@@ -61,6 +65,8 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let whole = |key: &str| integer(&avoidance, key);
     let real = |key: &str| avoidance.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
     let available = flag("available");
+    let ready = read_flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
+    let supported = ready.then(|| result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, AVOIDANCE_PARAM]).to_string())));
     let ring: Vec<i64> = avoidance.get("distances").and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
     let (max_distance, min_distance) = (whole("maxDistance").unwrap_or(0), whole("minDistance").unwrap_or(0));
     let since = whole("msSinceUpdate");
@@ -88,7 +94,8 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "ObstacleDistance",
         "available": available,
-        "enabled": flag("enabled"),
+        "supported": supported,
+        "enabled": supported.unwrap_or(false).then(|| flag("enabled")),
         "stale": stale,
         "msSinceUpdate": since,
         "nearest": reading,
@@ -117,6 +124,52 @@ mod tests {
     fn ring(distances: Vec<i64>) -> Value {
         json!({ "kind": "object", "available": true, "enabled": true, "distances": distances,
                 "increment": 45.0, "minDistance": 100, "maxDistance": 1000, "angleOffset": 0.0, "msSinceUpdate": 200 })
+    }
+
+    #[test]
+    fn a_vehicle_with_no_collision_prevention_parameter_is_not_a_vehicle_with_it_switched_off() {
+        struct Avoidance { ready: bool, exists: bool, on: bool }
+        impl Backend for Avoidance {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.parameterManager.parametersReady" => json!({ "kind": "value", "value": self.ready }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle.objectAvoidance" => json!({ "kind": "object", "available": true, "enabled": self.on, "distances": [NO_READING],
+                                                        "increment": 45.0, "minDistance": 100, "maxDistance": 1000, "angleOffset": 0.0, "msSinceUpdate": 200 }).to_string(),
+                    _ => json!({ "kind": "object" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path {
+                    "vehicle.parameterManager.parameterExists" => {
+                        assert_eq!(args, json!([-1, "CP_DIST"]).to_string(), "the component id and the parameter name are what decide the answer, so a typo in either reads as an unfitted airframe");
+                        json!({ "ok": true, "result": self.exists }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = |ready: bool, exists: bool, on: bool| obstacle_view(&Avoidance { ready, exists, on }, &[]);
+
+        let unfitted = view(true, false, false);
+        assert_eq!(unfitted["supported"], false, "VehicleObjectAvoidance::enabled returns false when CP_DIST does not exist at all, so an airframe that has never had collision prevention reads exactly like one an operator switched off");
+        assert_eq!(unfitted["enabled"], Value::Null, "and off is a claim about a feature this vehicle does not have - a panel drawing Avoidance Off there invites an operator to look for a switch that is not anywhere");
+
+        let waiting = view(false, false, false);
+        assert_eq!(waiting["supported"], Value::Null, "parameterExists is false for the whole of the parameter load, which is the window a head is most likely to draw in");
+        assert_eq!(waiting["enabled"], Value::Null);
+
+        let off = view(true, true, false);
+        assert_eq!((off["supported"].clone(), off["enabled"].clone()), (json!(true), json!(false)), "a vehicle that HAS the parameter and is set below zero is the real off, and it is the only case that should read as one");
+
+        let on = view(true, true, true);
+        assert_eq!((on["supported"].clone(), on["enabled"].clone()), (json!(true), json!(true)));
     }
 
     #[test]
