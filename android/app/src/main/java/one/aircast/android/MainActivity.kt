@@ -37,7 +37,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,6 +64,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.ui.hasVehicle
+import one.aircast.mapspike.AircastTheme
 import one.aircast.android.ui.AnalyzePage
 import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.CameraControlLayer
@@ -244,7 +244,7 @@ fun AircastShell(quickView: QtQuickView) {
         }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    AircastTheme {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbars) },
             topBar = {

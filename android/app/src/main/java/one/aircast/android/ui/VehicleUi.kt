@@ -62,6 +62,7 @@ import org.json.JSONObject
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
+import one.aircast.mapspike.TelemetryNumber
 import one.aircast.mapspike.optText
 
 private const val GCS_POSITION = "view.gcsPosition"
@@ -182,8 +183,7 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
             ) {
                 Text(
                     instrument.reading,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = TelemetryNumber,
                 )
                 Text(
                     instrument.label,
