@@ -176,6 +176,7 @@ fn escape_key(key: &str) -> String {
     key.chars()
         .map(|c| match c {
             '/' => "\\".to_string(),
+            '\\' => "%5C".to_string(),
             '%' => "%25".to_string(),
             '[' | ']' | '=' => format!("%{:02X}", c as u32),
             c if c.is_ascii_graphic() || c == ' ' => c.to_string(),
@@ -185,12 +186,12 @@ fn escape_key(key: &str) -> String {
         .collect()
 }
 
-fn escape_item(item: &str) -> String {
+fn escaped_body(item: &str) -> String {
     // A \xNN escape consumes hex digits greedily on the way back in, so "bell\x7end" reads as
     // \x7e followed by "nd". Closing and reopening the quotes ends the escape without adding a
     // character: QSettings concatenates adjacent quoted runs, and so does the reader above.
     let chars: Vec<char> = item.chars().collect();
-    let body: String = chars
+    chars
         .iter()
         .enumerate()
         .map(|(at, c)| {
@@ -207,16 +208,19 @@ fn escape_item(item: &str) -> String {
                 c => c.to_string(),
             }
         })
-        .collect();
-    format!("\"{body}\"")
+        .collect()
+}
+
+fn escape_item(item: &str) -> String {
+    format!("\"{}\"", escaped_body(item))
 }
 
 fn spell(setting: &Setting) -> String {
     match setting {
         Setting::Invalid => "@Invalid()".to_string(),
         Setting::Variant(raw) => raw.clone(),
-        Setting::Bytes(bytes) => format!("@ByteArray({})", escape_item(&String::from_utf8_lossy(bytes)).trim_matches('"')),
-        Setting::Text(text) if text.starts_with('@') => format!("@{}", escape_item(text).trim_matches('"')),
+        Setting::Bytes(bytes) => format!("@ByteArray({})", escaped_body(&String::from_utf8_lossy(bytes))),
+        Setting::Text(text) if text.starts_with('@') => format!("@{}", escaped_body(text)),
         Setting::Text(text) => escape_item(text),
         Setting::List(items) => items.iter().map(|item| escape_item(item)).collect::<Vec<_>>().join(", "),
     }
@@ -328,5 +332,52 @@ mod tests {
         assert_eq!(once["LinkConfigurations/Link0/name"], Setting::Text("Recorder TCP".into()), "a backslash in the file is a slash in the flattened key, and this is the shape link configurations actually arrive in");
         assert_eq!(once["FlyView/rcControls"], Setting::Text("[]".into()), "an empty JSON list is a two-character string and not a list, because QSettings never quoted or comma-separated it");
         assert_eq!(once["Video/rtspUrl"], Setting::Text("rtsp://127.0.0.1:8554/fresh".into()));
+    }
+
+    #[test]
+    fn a_quote_at_the_end_of_a_byte_array_or_an_at_prefixed_string_is_not_eaten() {
+        let bytes = Setting::Bytes(b"ab\"".to_vec());
+        assert_eq!(value(&spell(&bytes)), bytes, "@ByteArray and @@ wrap a body rather than a quoted string, so stripping the quotes off a quoted one takes the escaped quote at the end with them and the last byte is lost");
+
+        let at = Setting::Text("@x\"".to_string());
+        assert_eq!(value(&spell(&at)), at);
+
+        let plain = Setting::Text("ends with a quote\"".to_string());
+        assert_eq!(value(&spell(&plain)), plain, "the same content is safe in a value that IS quoted, which is why this only bites the two prefixed forms");
+    }
+
+    #[test]
+    fn a_backslash_inside_a_key_is_not_a_path_separator() {
+        let awkward: BTreeMap<String, Setting> = [("Sec/back\\slash".to_string(), Setting::Text("1".into()))].into_iter().collect();
+        assert_eq!(read(&write(&awkward)), awkward, "a backslash in the file means a subgroup, so a key that contains one has to be percent-encoded or it comes back as two keys joined by a slash");
+        assert!(write(&awkward).contains("back%5Cslash"));
+    }
+
+    #[test]
+    fn the_general_section_has_no_prefix_in_either_direction() {
+        let named: BTreeMap<String, Setting> = [("General/x".to_string(), Setting::Text("1".into()))].into_iter().collect();
+        assert_eq!(read(&write(&named)).keys().collect::<Vec<_>>(), vec!["x"], "QSettings writes ungrouped keys under [General] and reads them back without the prefix, so General/x and x are the same setting - a head storing one and reading the other gets the value it wrote, and this is the format's rule rather than ours");
+    }
+
+    fn golden_map() -> BTreeMap<String, Setting> {
+        [
+            ("LinkConfigurations/Link0/name".to_string(), Setting::Text("radio 1".into())),
+            ("Probe/bell".to_string(), Setting::Text("bell\u{7}end".into())),
+            ("Probe/blobEndingInAQuote".to_string(), Setting::Bytes(b"ab\"".to_vec())),
+            ("Probe/atEndingInAQuote".to_string(), Setting::Text("@x\"".into())),
+            ("Probe/back\\slash".to_string(), Setting::Text("1".into())),
+            ("Probe/hosts".to_string(), Setting::List(vec!["a".into(), "b, c".into()])),
+            ("Probe/gone".to_string(), Setting::Invalid),
+            ("Probe/url".to_string(), Setting::Text("rtsp://h:554/a/b".into())),
+        ]
+        .into_iter()
+        .collect()
+    }
+
+    #[test]
+    fn the_writer_produces_the_golden_file_a_real_qsettings_is_tested_against() {
+        let golden = include_str!("../tests/fixtures/writer-golden.ini");
+        assert_eq!(write(&golden_map()), golden, "this file is the contract between this writer and the C++ test that opens it with a real QSettings; neither side regenerates it, so a change here has to be made deliberately and re-checked against Qt");
+        assert_eq!(read(golden), golden_map(), "and it still has to mean the same thing coming back, or the golden pins a spelling that has stopped being correct");
     }
 }
