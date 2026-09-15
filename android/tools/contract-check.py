@@ -334,6 +334,14 @@ def main():
         print("  Their children are in no contract either, for the same reason as the empty lists.")
 
     drawn = head_views(tree)
+
+    # A mistyped view path is invisible from here: the bridge answers the same bytes a real but
+    # empty view does. view.geoTag is real and takes a file path, so it was never recorded.
+    unknown = sorted(drawn - {k.split("(")[0] for k in json.load(open(CONTRACT))} - {"view.geoTag"})
+    if unknown:
+        print(f"\n  {len(unknown)} view path(s) this head names that the core does not serve:")
+        print(f"    {', '.join(unknown)}")
+        print("  A typo here reads as a view that exists and has nothing to say.")
     # A shape shares class and kind with every other view, so matching key NAMES alone counts a
     # view the head has no screen for as one it consumes. That folded 60 fields from packetRadio,
     # joystickMapping, gimbal and gpsRtkBase into a count of omissions beside fields we read.
@@ -407,7 +415,7 @@ def main():
             print(f"    FLATTENED {name}: {', '.join(sorted(where))} - contract says {sorted(nullable[name])[0]} is bool|null")
         print("  optBoolean turns JSON null into false, and false is the reassuring answer every time.")
 
-    return 1 if unexplained or stale or fresh or flat or escaped else 0
+    return 1 if unexplained or stale or fresh or flat or escaped or unknown else 0
 
 
 if __name__ == "__main__":

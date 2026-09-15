@@ -58,8 +58,7 @@ internal fun planItems(json: JSONObject?): JSONArray? = json?.optJSONArray("item
 fun planItemCount(json: JSONObject?): Int =
     ((planItems(json)?.length() ?: 0) - 1).coerceAtLeast(0)
 
-fun linksStartToHome(json: JSONObject?): Boolean =
-    planItems(json)?.optJSONObject(1)?.optText("kind") == KIND_TAKEOFF
+fun linksStartToHome(json: JSONObject?): Boolean = json?.optBoolean("linksStartToHome") == true
 
 fun planShape(json: JSONObject?): List<String> {
     val items = planItems(json) ?: return emptyList()

@@ -77,14 +77,34 @@ class MissionPathTest {
     }
 
     @Test
-    fun `the rule is the same one the distance uses`() {
-        val takeoffFirst = JSONObject(
-            """{"kind":"object","items":[{},{"kind":"takeoff"},{}]}""",
+    fun `the core decides whether the line starts at home, and this head no longer guesses`() {
+        val takeoffButRefused = JSONObject(
+            """{"kind":"object","linksStartToHome":false,"items":[{},{"kind":"takeoff"},{}]}""",
         )
-        val waypointFirst = JSONObject("""{"kind":"object","items":[{},{},{}]}""")
 
-        assertTrue(linksStartToHome(takeoffFirst))
-        assertFalse(linksStartToHome(waypointFirst))
+        assertFalse(
+            "the old rule here was items[1].kind == takeoff, which would say true for this. QGC " +
+                "also suppresses the link when an RTL came earlier, and missionitems.rs walks for " +
+                "that - a head re-deriving from the item list cannot see it",
+            linksStartToHome(takeoffButRefused),
+        )
+    }
+
+    @Test
+    fun `a rover links to home with no takeoff item anywhere`() {
+        val rover = JSONObject("""{"kind":"object","linksStartToHome":true,"items":[{},{},{}]}""")
+
+        assertTrue(
+            "QGC starts the rule at _controllerVehicle->rover(), the OFFLINE editing vehicle, and " +
+                "planningFor never served rover - this head could not have answered it at all",
+            linksStartToHome(rover),
+        )
+    }
+
+    @Test
+    fun `an empty plan says false rather than leaving the key out`() {
+        assertFalse(linksStartToHome(JSONObject("""{"kind":"object","linksStartToHome":false,"items":[]}""")))
+        assertFalse(linksStartToHome(JSONObject("""{"kind":"object"}""")))
         assertFalse(linksStartToHome(null))
     }
 }
