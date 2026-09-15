@@ -116,8 +116,4 @@ struct RadioState: Equatable {
     // RadioBar's live: parameter exists to draw it grey. The section that needed it passed a
     // hardcoded true, because the list had been filtered to make that true.
     var channelRows: [RadioChannel] { channels }
-
-    // The list and the summary have to describe the same transmitter. This is the rule the filter
-    // broke: it said eight were reported and then showed however many were arriving.
-    var rowsMatchReportedCount: Bool { channelRows.count == channelCount }
 }

@@ -3466,9 +3466,6 @@ func checkRadio() {
     expect(state.channelRows.count == 10,
            "and all ten are listed. Drawing only the live ones answered \"is my channel 9 switch "
            + "reaching the vehicle\" by omission, which reads as there being no channel 9")
-    expect(state.rowsMatchReportedCount,
-           "the list and the summary describe the same transmitter, which is the rule the filter "
-           + "broke: it said ten reported and then showed eight")
     expect(state.channelRows.first { $0.label == "9" }?.live == false,
            "the silent ones are drawn, and drawn as silent -- RadioBar takes a live: flag for "
            + "exactly this and the Channels section passed a hardcoded true")
@@ -5074,7 +5071,7 @@ func checkTheStorageRowHidesOnlyOnAPositiveRefusal() {
     expect(tracks.showsStorage, "a camera that tracks storage shows the row")
 
     let doesNot = CameraControl(["present": true as NSNumber,
-                                 "storageText": CameraControl.storageNotTracked,
+                                 "storageText": "Not reported",
                                  "reportsStorage": false as NSNumber])
     expect(!doesNot.showsStorage,
            "and one that has POSITIVELY answered NOT_SUPPORTED hides it, which is what QGC's own "

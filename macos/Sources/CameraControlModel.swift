@@ -204,6 +204,4 @@ struct CaptureStart: Equatable {
 // core, not a camera making a claim.
 extension CameraControl {
     var showsStorage: Bool { reportsStorage }
-
-    static let storageNotTracked = "This camera does not report storage."
 }
