@@ -2,7 +2,6 @@ package one.aircast.mapspike
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -113,13 +112,10 @@ val TelemetryNumber = TextStyle(
     lineHeight = 24.sp,
 )
 
-private val AircastTypography = Typography()
-
 @Composable
 fun AircastTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (dark) AircastDark else AircastLight,
-        typography = AircastTypography,
         content = content,
     )
 }
