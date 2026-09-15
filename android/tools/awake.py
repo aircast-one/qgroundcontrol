@@ -2,6 +2,9 @@ import sys
 
 from PIL import Image
 
+if len(sys.argv) < 2:
+    raise SystemExit("usage: awake.py <screenshot.png>")
+
 path = sys.argv[1]
 try:
     grey = Image.open(path).convert("L")
