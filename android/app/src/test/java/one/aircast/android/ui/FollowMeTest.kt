@@ -25,6 +25,48 @@ class FollowMeTest {
     }
 
     @Test
+    fun `the default setting does not announce that a feature nobody asked for is not happening`() {
+        assertNull(
+            "followTarget defaults to 2, which Mode::from_setting maps to followMe - so a fresh " +
+                "install with a connected vehicle that is not in Follow Me flight mode is the " +
+                "ordinary resting state, and every operator was being told about it on the Fly " +
+                "screen for a feature they never turned on",
+            followMeLabel(
+                followMeReading(
+                    view(mode = "\"followMe\"", wouldSend = false, reason = "\"noVehicleInFollowMode\""),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `asking for it always still reports that it is not happening`() {
+        assertEquals(
+            "Always is the operator asking unconditionally, so silence there would hide a feature " +
+                "they turned on and are not getting",
+            "Not following you \u2014 no vehicle is in Follow Me mode",
+            followMeLabel(
+                followMeReading(
+                    view(mode = "\"always\"", wouldSend = false, reason = "\"noVehicleInFollowMode\""),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `once a vehicle is in Follow Me mode every other trouble is still reported`() {
+        assertEquals(
+            "reason() returns NoVehicleInFollowMode before it looks at the fix at all, so any other " +
+                "reason means a vehicle IS in Follow Me mode and the stream is failing anyway - " +
+                "that is the operator's own request breaking, not a resting default",
+            "Not following you \u2014 this phone has no position yet",
+            followMeLabel(
+                followMeReading(view(mode = "\"followMe\"", wouldSend = false, reason = "\"noFix\"")),
+            ),
+        )
+    }
+
+    @Test
     fun `a vehicle taking the stream says so plainly`() {
         assertEquals("Following you", followMeLabel(followMeReading(view())))
     }
@@ -39,7 +81,9 @@ class FollowMeTest {
     @Test
     fun `switched on and not sending names the thing standing in the way`() {
         fun stuck(token: String) = followMeLabel(
-            followMeReading(view(enabled = false, wouldSend = false, reason = "\"$token\"")),
+            followMeReading(
+                view(mode = "\"always\"", enabled = false, wouldSend = false, reason = "\"$token\""),
+            ),
         )
 
         assertEquals("Not following you — this phone's position has stopped updating", stuck("fixStale"))
@@ -67,6 +111,7 @@ class FollowMeTest {
     @Test
     fun `enabled is the timer running, not the operator asking, so the chip cannot key on it`() {
         val asked = view(
+            mode = "\"always\"",
             enabled = false,
             wouldSend = false,
             reason = "\"noVehicleInFollowMode\"",
