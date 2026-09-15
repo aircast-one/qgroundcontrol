@@ -101,22 +101,6 @@ internal fun instruments(view: JSONObject?): List<Instrument> {
 }
 
 @Composable
-fun VehicleStateText(modifier: Modifier = Modifier) {
-    val json by qgcPath(FLY_STATE)
-    val fly = remember(json) { flyState(json) }
-    val lost = fly?.contactLost == true
-
-    Text(
-        text = vehicleSubtitle(fly),
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = if (lost) FontWeight.Bold else FontWeight.Normal,
-        color = if (lost) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-        maxLines = 1,
-        modifier = modifier,
-    )
-}
-
-@Composable
 fun VehicleTitle() {
     val json by qgcPath(FLY_STATE)
     val fly = remember(json) { flyState(json) }

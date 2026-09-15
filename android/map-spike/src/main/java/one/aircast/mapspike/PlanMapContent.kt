@@ -229,7 +229,6 @@ internal fun MapSpikeScreen(
     val profile = remember(terrainView) { terrainProfile(terrainView) }
     val mode by mapString("vehicle.flightMode")
     val vehicleId by mapInt("vehicle.id")
-    val vehicleCount by mapCount("vehicles.vehicles")
 
     fun placeAt(): TrackPoint? = when {
         isPlottable(latitude, longitude) -> TrackPoint(latitude, longitude)
@@ -503,33 +502,6 @@ internal fun MapSpikeScreen(
                                 TextButton(onClick = { uploadAsk = null }) { Text("Cancel") }
                             },
                         )
-                    }
-
-                    if (vehicleCount > 1) {
-                        var vehicles by remember(vehicleCount, vehicleId) {
-                            mutableStateOf<List<VehicleEntry>>(emptyList())
-                        }
-                        LaunchedEffect(vehicleCount, vehicleId) {
-                            vehicles = withContext(Dispatchers.Default) {
-                                VehicleBridge.entries()
-                            }
-                        }
-                        vehicles.filterNot { it.active }.forEach { entry ->
-                            TextButton(onClick = {
-                                scope.launch {
-                                    val switched = withContext(Dispatchers.Default) {
-                                        VehicleBridge.askFor(entry.id)
-                                    }
-                                    busy = if (switched) {
-                                        "Asked for vehicle ${entry.id}"
-                                    } else {
-                                        VehicleBridge.lastRefusal ?: "Could not switch vehicle"
-                                    }
-                                    delay(FAILURE_MESSAGE_MS)
-                                    busy = null
-                                }
-                            }) { Text("Vehicle ${entry.id}") }
-                        }
                     }
 
                     GroupBreak()

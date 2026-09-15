@@ -49,8 +49,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
-import one.aircast.android.ui.VehicleStateText
 import one.aircast.android.ui.StatusReadingsInline
+import one.aircast.android.ui.VehicleStateChip
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.Modifier
@@ -239,7 +239,7 @@ fun AircastShell(quickView: QtQuickView) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    VehicleStateText()
+                    VehicleStateChip()
                     if (tab == Tab.Fly) {
                         StatusReadingsInline(Modifier.weight(1f))
                     }
