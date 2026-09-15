@@ -143,6 +143,18 @@ def head_keys(root):
     return found
 
 
+ONLY_IN = {
+    "enumStrings": {"Qgc.kt"},
+    "enumIndex": {"Qgc.kt"},
+    "bitmaskStrings": {"Qgc.kt"},
+    "bitmaskValues": {"Qgc.kt"},
+    "typeIsBool": {"Qgc.kt"},
+    "defaultValueString": {"Qgc.kt"},
+    "maxString": {"Qgc.kt"},
+    "minString": {"Qgc.kt"},
+    "unknownEnumLabel": {"Qgc.kt"},
+}
+
 ACCEPTED = {
     "ok": "the invoke envelope, not a view field",
     "simulated": "served per contact at adsb.rs:386 and invisible here because"
@@ -213,7 +225,19 @@ def main():
             print(f"CONTROL FAILED: {control} in contract = {present}, expected {expected}")
             return 3
 
+    # An acceptance keyed by NAME exempts every file that reads it. "Fact metadata read by path"
+    # is true of Qgc.kt and was also covering ItemCamera.kt, which read enumStrings off a
+    # view-served measure that has never carried one - the picker it fed drew nothing for as long
+    # as it existed, and this check called it explained. Scoped acceptances are the fix.
+    escaped = {
+        k: sorted(v - ONLY_IN[k])
+        for k, v in missing.items()
+        if k in ONLY_IN and v - ONLY_IN[k]
+    }
     unexplained = {k: v for k, v in missing.items() if k not in ACCEPTED}
+    for key, files in sorted(escaped.items()):
+        print(f"  ACCEPTED ELSEWHERE: {key} is exempt in {', '.join(sorted(ONLY_IN[key]))}, "
+              f"but {', '.join(files)} reads it too - a different object with the same key name")
     stale = [k for k in ACCEPTED if k not in missing]
     print(f"{len(contract)} keys in the contract, {len(reads)} read by the head, "
           f"{len(missing)} not served, {len(unexplained)} unexplained")
@@ -286,7 +310,7 @@ def main():
             print(f"    FLATTENED {name}: {', '.join(sorted(where))} - contract says {sorted(nullable[name])[0]} is bool|null")
         print("  optBoolean turns JSON null into false, and false is the reassuring answer every time.")
 
-    return 1 if unexplained or stale or fresh or flat else 0
+    return 1 if unexplained or stale or fresh or flat or escaped else 0
 
 
 if __name__ == "__main__":
