@@ -13,8 +13,10 @@ class InstrumentChoiceTest {
         """
         {"available":true,"groups":[
           {"group":"gps","title":"GPS","facts":[
-            {"name":"lat","label":"Latitude"},{"name":"hdop","label":"HDOP"}]},
-          {"group":"wind","title":"Wind","facts":[{"name":"speed","label":"Wind Speed"}]},
+            {"name":"lat","label":"Latitude","selection":"gps/lat"},
+            {"name":"hdop","label":"HDOP","selection":"gps/hdop"}]},
+          {"group":"wind","title":"Wind","facts":[
+            {"name":"speed","label":"Wind Speed","selection":"wind/speed"}]},
           {"group":"empty","title":"Empty","facts":[]}
         ]}
         """,
@@ -26,15 +28,28 @@ class InstrumentChoiceTest {
     }
 
     @Test
-    fun `a fact is asked for by its group and name together`() {
+    fun `a fact is asked for by the selection the core spells`() {
         val gps = instrumentGroups(served).first()
         assertEquals(
-            "view.instruments answers noSuchFact for a bare lon and the head drops it silently, " +
-                "so an unqualified name reads as a reading that simply never appears",
-            listOf("gps.lat", "gps.hdop"),
+            "the head built this string itself until 7273d35a6 and got it wrong once already - a " +
+                "bare lon resolves against the vehicle group and answers noSuchFact, which this " +
+                "head drops silently, so the reading an operator picked never appeared",
+            listOf("gps/lat", "gps/hdop"),
             gps.facts.map { it.path },
         )
         assertEquals("Latitude", gps.facts.first().label)
+    }
+
+    @Test
+    fun `a fact the core did not spell a selection for is not offered`() {
+        val unspelled = JSONObject(
+            """{"available":true,"groups":[{"group":"gps","title":"GPS","facts":[
+                 {"name":"lat","label":"Latitude"}]}]}""",
+        )
+        assertTrue(
+            "a row that cannot be asked for is a row that silently does nothing when tapped",
+            instrumentGroups(unspelled).isEmpty(),
+        )
     }
 
     @Test

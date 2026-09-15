@@ -31,14 +31,13 @@ internal fun instrumentGroups(view: JSONObject?): List<InstrumentGroup> {
                 title = entry.optText("title"),
                 facts = (0 until (facts?.length() ?: 0)).mapNotNull { fact ->
                     facts!!.optJSONObject(fact)?.let {
-                        val name = it.optText("name")
                         InstrumentFact(
-                            name = name,
+                            name = it.optText("name"),
                             label = it.optText("label"),
-                            path = "${entry.optText("group")}.$name",
+                            path = it.optText("selection"),
                         )
                     }
-                }.filter { it.name.isNotBlank() },
+                }.filter { it.name.isNotBlank() && it.path.isNotBlank() },
             )
         }
     }.filter { it.facts.isNotEmpty() }
