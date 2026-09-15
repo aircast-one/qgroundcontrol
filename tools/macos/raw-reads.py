@@ -118,6 +118,31 @@ if not reads:
 stale = [f"{path!r} is accepted and this head no longer reads it"
          for path in sorted(ACCEPTED) if path not in reads]
 
+# The `plan` acceptance rotted in exactly this direction and nothing caught it: the sentence
+# said the core served no sync flag, plan.rs:64 gained view.plan.sync, and the reason went on
+# reading as settled for weeks because an acceptance explains why NOT to look. The stale check
+# above only asks whether the HEAD still reads the path; it cannot see the CORE growing the
+# field the reason rests on. ABSENT names, per acceptance, the module and the field names the
+# reason claims are not served -- if one appears, the acceptance stops being true and says so.
+ABSENT = {
+    "plan": ("plan.rs", ["undo", "redo"]),
+    "links": ("links.rs", ["connectingLinkName", "serialPortStrings"]),
+    "geoTag": ("geotag.rs", ["logFile", "imageDirectory", "saveDirectory", "progress",
+                             "inProgress"]),
+}
+
+for path, (module, fields) in sorted(ABSENT.items()):
+    source = CORE / module
+    if not source.exists():
+        stale.append(f"{path!r} is accepted against {module}, which does not exist -- this check "
+                     f"has been passing by reading nothing")
+        continue
+    text = source.read_text()
+    appeared = [f for f in fields if f'"{f}"' in text]
+    if appeared:
+        stale.append(f"{path!r} is accepted because the core serves none of {fields}, and "
+                     f"{module} now serves {appeared}. The reason is no longer true")
+
 for why in stale:
     print(f"  NOT CHECKED {why}", file=sys.stderr)
 for path, files, view in hits:
