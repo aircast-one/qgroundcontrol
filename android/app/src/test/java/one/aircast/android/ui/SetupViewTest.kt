@@ -9,6 +9,25 @@ import org.junit.Test
 
 class SetupViewTest {
     @Test
+    fun `with no vehicle the core's sentence is shown, not this head's`() {
+        assertEquals(
+            "setup.rs serves headline 'No vehicle connected' and detail 'Connect a vehicle to " +
+                "check what it needs.', and the connected path already draws both through " +
+                "ReadinessHeader. The no-vehicle branch returned early with its own wording, so " +
+                "the served one was unreachable in the one state it was written for",
+            "Connect a vehicle to check what it needs.",
+            setupNoVehicleText("Connect a vehicle to check what it needs."),
+        )
+    }
+
+    @Test
+    fun `a core too old to serve one still says something useful`() {
+        assertEquals("Connect a vehicle to set it up.", setupNoVehicleText(null))
+        assertEquals("Connect a vehicle to set it up.", setupNoVehicleText(""))
+    }
+
+
+    @Test
     fun `a core that declines to judge is not judged as not ready`() {
         assertNull(
             "readiness() answers Option<bool> and returns None when it has no basis for a verdict - " +

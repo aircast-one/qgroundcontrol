@@ -40,6 +40,9 @@ internal data class SetupReadiness(
     val firmware: String,
 )
 
+internal fun setupNoVehicleText(served: String?): String =
+    served?.ifBlank { null } ?: "Connect a vehicle to set it up."
+
 internal fun setupReadiness(view: JSONObject?): SetupReadiness? = view?.let {
     SetupReadiness(
         ready = if (it.isNull("ready")) null else it.optBoolean("ready"),

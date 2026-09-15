@@ -138,7 +138,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     if (!hasVehicle) {
-        SetupNotice("Connect a vehicle to set it up.", modifier)
+        SetupNotice(setupNoVehicleText(setup?.detail), modifier)
         return
     }
 
