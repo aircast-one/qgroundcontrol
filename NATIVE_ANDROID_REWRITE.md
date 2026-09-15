@@ -8578,3 +8578,26 @@ predates `6b80a47c0`, so even a perfect window would show `ready: false` rather
 than null. Checking whether the window was reachable *before* spending a build
 on it was worth doing - it is the same discipline as establishing a precondition
 before trusting a number, applied to whether the measurement is possible at all.
+
+### The same check for numbers earns nothing, 2026-09-15
+
+`optBoolean` flattening `bool|null` to `false` was worth mechanising
+(`37cb5a31b`). The obvious next step is `optInt`, which returns **0** for a JSON
+null, and 0 is a plausible altitude, count or satellite figure. Measured before
+building it: **40 fields are `number|null` in the contract, 3 are read with a
+bare `optInt`, and all 3 are correct.**
+
+| field | why the flattening is right |
+|---|---|
+| `view.links.port` | null for a serial link, and the port editor only renders when `editing == "hostAndPort"` - a serial link never draws it |
+| `view.missionItems.cameraShots` | the core is `.filter(\|shots\| *shots > 0)`, so null and 0 mean the same thing by construction |
+| `view.missionItems.command` | 0 is not a valid `MAV_CMD`, and the only comparison is against RTL |
+
+**So the number version would be three false positives and no findings, and it
+is not built.** The boolean case earns its check because `false` is a *claim* -
+contact is fine, checked and not ready, the reading is current. **Zero is
+usually a quantity nobody asserts**, and where it would be a claim the producer
+has already nulled it or the consumer never reads it.
+
+Worth recording so the next person does not build it on the symmetry. The two
+cases look identical from the type system and are not the same problem.
