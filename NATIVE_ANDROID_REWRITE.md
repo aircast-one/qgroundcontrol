@@ -7942,3 +7942,27 @@ head to draw. Turning it on means building against a Blender REST service,
 which is a network-facing feature with no test endpoint here, not a screen to
 port. Recorded so the next session can decide rather than discover.
 
+### The TCP source's knobs, and what each one found, 2026-09-15
+
+aircast-94 maintains it; the path is in their scratchpad. Every knob below was
+asked for because a state was unreachable, and every one found something.
+
+| knob | state | what it found |
+|---|---|---|
+| `SYSID` | a second vehicle | the head named neither of two connected aircraft while every action went to one of them |
+| `LAT`/`LON` | two aircraft apart | the map drew only the active one, so the other was invisible on the only display that says where anything is |
+| `SILENT_AFTER` | a link that goes quiet with its socket open | contact loss reached no screen at all, and `view.vehicles` watched almost nothing it served |
+| `ARMED` | armed and flying | the pre-flight checklist was offered to an aircraft flying on the props it asked about, and `view.plan.upload` contradicts itself in the one state where uploading matters |
+
+**Assert a knob by field name, never by offset.** My first check of `ARMED`
+read `base_mode` at payload offset 5 and got 3, which is
+`MAV_AUTOPILOT_ARDUPILOTMEGA` - a plausible number from the wrong field, which
+is the most dangerous shape a wrong reading takes. The selftest decodes with
+pymavlink and reads `beat.base_mode`, so no offset has to be right. Correct
+values are 1 unarmed and 129 armed, with `system_status` 3 to 4.
+
+**And the knob's own check has to follow the knob.** Adding `LAT`/`LON` broke
+the selftest's hardcoded New York assertion - the test failed for every run that
+used the knob, which is a red that means nothing. A knob and its check that
+disagree by construction are worse than neither.
+
