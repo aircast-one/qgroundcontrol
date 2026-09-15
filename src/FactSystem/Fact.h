@@ -60,6 +60,7 @@ class Fact : public QObject
     Q_PROPERTY(double       increment               READ cookedIncrement                                        CONSTANT)
     Q_PROPERTY(bool         typeIsString            READ typeIsString                                           CONSTANT)
     Q_PROPERTY(bool         typeIsBool              READ typeIsBool                                             CONSTANT)
+    Q_PROPERTY(bool         typeIsInteger           READ typeIsInteger                                          CONSTANT)
     Q_PROPERTY(bool         hasControl              READ hasControl                                             CONSTANT)
     Q_PROPERTY(bool         readOnly                READ readOnly                                               CONSTANT)
     Q_PROPERTY(bool         writeOnly               READ writeOnly                                              CONSTANT)
@@ -126,6 +127,27 @@ public:
     double cookedIncrement() const;
     bool typeIsString() const { return (type() == FactMetaData::valueTypeString); }
     bool typeIsBool() const { return (type() == FactMetaData::valueTypeBool); }
+    // convertAndValidateRaw truncates a fractional value onto an integer fact and reports success:
+    // QVariant(3.7).toInt() is 3 with convertOk true, and setRawValue passes convertOnly so the
+    // range check that would have complained never runs. The QML editor escapes this by validating
+    // the TEXT - a QString "3.7" fails toInt - but anything writing a typed number does not, and
+    // nothing told it the fact was an integer. typeIsString and typeIsBool were the only two type
+    // predicates declared, so a caller could tell those apart and nothing else.
+    bool typeIsInteger() const {
+        switch (type()) {
+        case FactMetaData::valueTypeUint8:
+        case FactMetaData::valueTypeInt8:
+        case FactMetaData::valueTypeUint16:
+        case FactMetaData::valueTypeInt16:
+        case FactMetaData::valueTypeUint32:
+        case FactMetaData::valueTypeInt32:
+        case FactMetaData::valueTypeUint64:
+        case FactMetaData::valueTypeInt64:
+            return true;
+        default:
+            return false;
+        }
+    }
     bool hasControl() const;
     bool readOnly() const;
     bool writeOnly() const;
