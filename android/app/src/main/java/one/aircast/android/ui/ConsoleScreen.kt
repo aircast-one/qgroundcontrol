@@ -183,5 +183,5 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
 
 internal fun consoleLines(view: org.json.JSONObject?): List<String> {
     val array = view?.optJSONArray("lines") ?: return emptyList()
-    return (0 until array.length()).map { array.optString(it) }
+    return (0 until array.length()).map { array.optText(it) }
 }

@@ -57,7 +57,7 @@ internal fun saveBlockedReason(view: org.json.JSONObject?): String? {
     if (readiness.optBoolean("ready")) {
         return null
     }
-    return readiness.optString("reason").ifBlank { "The plan could not be checked for saving." }
+    return readiness.optText("reason").ifBlank { "The plan could not be checked for saving." }
 }
 
 enum class PlanConfirm { Open, NewPlan, ClearMission }
@@ -89,7 +89,7 @@ internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
 }
 
 internal fun planStatusText(view: org.json.JSONObject?): String =
-    view?.optString("status").orEmpty()
+    view?.optText("status").orEmpty()
 
 internal val DRAWN_KINDS = setOf(
     "settings", "takeoff", "land", "waypoint", "command", "altitude", "roi",

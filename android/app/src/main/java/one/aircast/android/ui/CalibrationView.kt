@@ -125,7 +125,7 @@ internal fun sensorHealth(view: JSONObject?): SensorHealthReading? {
             }
         },
         failing = view.optJSONArray("failing")?.let { array ->
-            (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+            (0 until array.length()).map { array.optText(it) }.filter { it.isNotBlank() }
         } ?: emptyList(),
         status = view.optText("status"),
     )

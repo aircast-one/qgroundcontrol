@@ -223,5 +223,5 @@ object Qgc {
 internal fun refusal(answer: org.json.JSONObject?): String? = when {
     answer == null -> "The vehicle did not answer."
     answer.optBoolean("ok") -> null
-    else -> answer.optString("reason").takeIf { it.isNotBlank() } ?: "The vehicle refused."
+    else -> answer.optText("reason").takeIf { it.isNotBlank() } ?: "The vehicle refused."
 }

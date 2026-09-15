@@ -67,7 +67,7 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         lapseUnlimited = view.optBoolean("lapseUnlimited"),
         title = view.optText("title"),
         labels = view.optJSONArray("labels").let { listed ->
-            (0 until (listed?.length() ?: 0)).map { listed?.optString(it).orEmpty() }
+            (0 until (listed?.length() ?: 0)).map { listed?.optText(it).orEmpty() }
         },
         stateText = view.optText("stateText"),
         reportsStorage = view.optBoolean("reportsStorage"),
