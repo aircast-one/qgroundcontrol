@@ -93,4 +93,24 @@ class SetupScreenTest {
         assertNull(parameterWait(view("noVehicle", false)))
         assertNull("the screen already says to connect a vehicle", parameterWait(null))
     }
+
+    @Test
+    fun `a reason this head has never heard of reads as stopped, not as ready`() {
+        val future = JSONObject(
+            """{"parametersReady":false,"parametersReason":"refused","parametersText":"The vehicle refused the request."}""",
+        )
+        val waiting = parameterWait(future)
+        assertEquals("The vehicle refused the request.", waiting?.title)
+        assertEquals(
+            "ready would hide a dead load behind a normal screen and loading is the defect being fixed, so an unfamiliar state is closer to stopped than to either",
+            PARAMETERS_STOPPED,
+            waiting?.body,
+        )
+    }
+
+    @Test
+    fun `a reason with no sentence beside it still says something true`() {
+        val bare = JSONObject("""{"parametersReady":false,"parametersReason":"refused","parametersText":""}""")
+        assertEquals("This vehicle has not sent its parameters (refused).", parameterWait(bare)?.title)
+    }
 }

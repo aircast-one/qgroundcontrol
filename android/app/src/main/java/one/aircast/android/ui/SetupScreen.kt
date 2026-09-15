@@ -64,15 +64,20 @@ internal data class SetupComponent(
 
 internal data class ParameterWait(val title: String, val body: String)
 
+internal const val PARAMETERS_STOPPED = "Setup needs them. Disconnect and connect the link to ask again."
+
 internal fun parameterWait(view: JSONObject?): ParameterWait? {
     if (view == null || view.optBoolean("parametersReady")) return null
-    return when (view.optText("parametersReason")) {
+    return when (val reason = view.optText("parametersReason")) {
+        "" -> null
+        "noVehicle" -> null
         "loading" -> ParameterWait("Loading parameters from the vehicle.", "")
-        "unanswered" -> ParameterWait(
-            view.optText("parametersText"),
-            "Setup needs them. Disconnect and connect the link to ask again.",
+        else -> ParameterWait(
+            view.optText("parametersText").ifBlank {
+                "This vehicle has not sent its parameters ($reason)."
+            },
+            PARAMETERS_STOPPED,
         )
-        else -> null
     }
 }
 
