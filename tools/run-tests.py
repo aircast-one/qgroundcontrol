@@ -302,7 +302,10 @@ def classify(failures, repeats, verbose):
     for suite in suites:
         if verbose:
             print(f"  re-running {suite} alone x{repeats}...", file=sys.stderr)
-        runs = [parse(run_suite(suite)[0]) for _ in range(repeats)]
+        outcomes = [run_suite(suite) for _ in range(repeats)]
+        runs = [parse(text) for text, _, _ in outcomes]
+        [record(run, {}, stopped_early(run, code), (None, None), "isolation-retry")
+         for run, (_, _, code) in zip(runs, outcomes)]
         failed_runs = [run for run in runs if run["failures"]]
         cases = sorted({case for run in failed_runs for _, case in run["failures"]})
         verdicts[suite] = {
@@ -332,12 +335,12 @@ def stopped_early(summary, exit_code):
     return exit_code != 0 and not summary["failures"]
 
 
-def record(summary, verdicts, incomplete=False, load=(None, None)):
+def record(summary, verdicts, incomplete=False, load=(None, None), why="full"):
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "run": RUN_ID,
-        "scope": "suite" if len(summary["suites"]) == 1 else "full",
+        "why": why,
         "tool": tool_settings(),
         "load_started": load[0],
         "load_finished": load[1],
@@ -483,7 +486,8 @@ def main():
     verdicts = ({} if args.no_retry or not summary["failures"]
                 else classify(summary["failures"], args.repeats, verbose=True))
 
-    entry = record(summary, verdicts, bool(missing) or stopped_early(summary, exit_code), load)
+    entry = record(summary, verdicts, bool(missing) or stopped_early(summary, exit_code),
+                   load, "named" if args.suite else "full")
     print(report(summary, verdicts, history, stale, contention, missing, exit_code, load))
     if entry:
         print(f"\nrecorded to {HISTORY.relative_to(REPO)}")
