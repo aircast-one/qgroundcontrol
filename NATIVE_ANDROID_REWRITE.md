@@ -8643,3 +8643,30 @@ Which is the night's own theme pointed at my tooling: **`optBoolean` turns a
 JSON null into `false`, and `>/dev/null 2>&1` turns "I could not do that" into
 nothing at all.** Both are a consumer discarding an answer a producer took care
 to give. The fix is the same in both places - keep the absence and act on it.
+
+### contract-check runs clean again, and names a real backlog, 2026-09-16
+
+Fixing the cwd-relative walk (`bfff514a9`) made the tool report for the first
+time in a while. Two of its three sections are now clean and the third is a
+genuine finding.
+
+**The 5 "not served" were all recording artefacts.** `callsign`, `icaoAddress`
+and `altitudeType` live inside `view.adsbTraffic.contacts`, which was **empty
+when recorded**, so no contact shape is pinned; `live` is inside `slots[]`
+(`modeslots.rs:92`) and `triggerCount` is on a structure the recording has no
+instance of (`geotag.rs:757`). All five are served - a probe read `SWR000` off
+the live head. Accepted with reasons, in the same style as the existing
+`view.detections recorded with no box` entries, so the section reads clean and a
+new hit is a new finding.
+
+**The 13 "stale acceptance" lines were the broken walk itself.** With no `.kt`
+files found, nothing reads any field, so every acceptance looked obsolete. They
+vanished with the fix.
+
+**What is left is real and is not tonight's: 92 fields the core has added beside
+ones this head already reads, none of them read.** `unread-baseline.txt` has 313
+entries and dates from `0d4809a0f`, the commit that moved this module into the
+repo - so 92 have accumulated since. **Refreshing the baseline would silence all
+92 in one stroke**, which is why it has not been done: they want triage, not a
+`--baseline` run. The tool's own line says why it matters - *a field the core
+adds to a shape you consume is invisible to every other check here*.

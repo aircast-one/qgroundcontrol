@@ -133,6 +133,12 @@ ACCEPTED = {
     "w": "view.detections recorded with no box, so boxes[] pins no element shape",
     "h": "view.detections recorded with no box, so boxes[] pins no element shape",
     "confidence": "view.detections recorded with no box, so boxes[] pins no element shape",
+    "callsign": "view.adsbTraffic recorded with contacts[] empty, so no contact shape is pinned;"
+        " adsb.rs serves it and a probe read SWR000 from the live head",
+    "icaoAddress": "view.adsbTraffic recorded with contacts[] empty; adsb.rs serves it",
+    "altitudeType": "view.adsbTraffic recorded with contacts[] empty; adsb.rs serves it",
+    "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
+    "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",
 }
 
 
