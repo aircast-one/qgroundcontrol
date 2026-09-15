@@ -42,6 +42,15 @@ PORT = 8777
 # and a gate that moves has to move this line with it. Without this table the steady
 # state is four hits nobody reads, which is how an instrument stops being believed.
 ACCEPTED = {
+    ("VibrationReading", "silentReason"): "MEASURED, and this check was RIGHT about it until "
+        "33ba4db30 -- it found the defect and the fix did not remove the fallback, it gave the "
+        "fallback a meaning. vibration.rs sets the token only when NO axis has a value, so null "
+        "means at least one DID, and the empty string is now a third state the reader branches on "
+        "rather than a substituted default: emptyText asks \"notReported\" first, then \"\" AND "
+        "connected together, which is a vehicle reporting some axes but not the three this screen "
+        "needs. Reading it as an Optional would say the same thing in a shape this check cannot "
+        "flag, and that is the wrong reason to change a decode -- the entry stays so the signal "
+        "stays visible to whoever next reads the table",
     ("FlyState", "rcSignalText"): "MEASURED, and it only APPEARS with no vehicle connected -- "
         "which is itself worth knowing about this check: what it reports depends on the rig state, "
         "so one run does not enumerate the findings. flystate.rs:94 maps rc_signal over an Option, "
