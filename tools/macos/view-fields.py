@@ -113,6 +113,16 @@ FIELD = re.compile(r"\bpub\s+(\w+)\s*:")
 # MODELS is written by hand: view.obstacle arrived in abeca9f79 and was noticed only because
 # someone read the commit. These are the families this head deliberately does not decode, kept
 # as patterns rather than as 26 names so the table does not rot on every new file parser.
+# A view whose whole payload is {"kind": "value", "value": ...} carries ONE key and has no
+# shape to compare, so "its keys are unchecked" is true and says nothing. Both warnings this
+# used to raise -- KEYS UNCHECKED on the view and UNLISTED on the file beside it -- were about
+# a view that is in fact fully read. The guard below is what keeps this from becoming an
+# acceptance nobody re-reads: if the producer ever grows the payload into an object, the
+# reason stops being true and this file says so rather than staying quiet.
+SCALAR = {
+    "view.label": ("label.rs", "Labels.swift reads \"value\", which is the only key served"),
+}
+
 UNDRAWN = [
     ("view.core", "A PREFIX, NOT A PATH -- it silences SEVEN registered views at once: "
                   "view.coreVehicle, coreGuided, coreParameter, coreParameters, coreMission, "
@@ -335,7 +345,8 @@ for source in sorted(SOURCES.glob("*Model*.swift")):
     # view.geoTag is the tagging computation, and VideoSource is a settings-slot list while
     # view.videoSource is a parser. A view carrying an UNDRAWN reason is an explicit statement
     # that this head does not read it, and that outranks a guess made from a name.
-    if served in registry and not declared & set(MODELS) and not undrawn_reason(served):
+    if (served in registry and not declared & set(MODELS)
+            and served not in SCALAR and not undrawn_reason(served)):
         unlisted.append((source.name, served))
 for name, served in unlisted:
     print(f"  UNLISTED {name} decodes {served}, which the core serves, and no struct in it is in "
@@ -358,7 +369,8 @@ print(f"every one of the {len(registry)} views the core serves is either read he
 # key on. I quoted "79/79 views" for weeks meaning the first and measuring the second.
 covered = {v.split("(")[0] for declared in MODELS.values() for v in views(declared)}
 named_only = sorted(v for v in registry
-                    if v in names and v.split("(")[0] not in covered and not undrawn_reason(v))
+                    if v in names and v.split("(")[0] not in covered
+                    and v.split("(")[0] not in SCALAR and not undrawn_reason(v))
 for view in named_only:
     print(f"  KEYS UNCHECKED {view} is read inline in a store rather than through a model, so its "
           f"path is confirmed present and not one of its keys is compared against the core. "
@@ -366,4 +378,12 @@ for view in named_only:
           file=sys.stderr)
 print(f"of the {len(covered & set(registry))} views reached through a model every key is compared "
       f"against the producer; {len(named_only)} more are read inline and only their path is")
-sys.exit(1 if gone or unchecked or unmodelled or unlisted else 0)
+stale = [f"{view} is accepted as a scalar but {module} no longer serves a bare value"
+         for view, (module, _) in SCALAR.items()
+         if '"kind": "value"' not in (CORE / module).read_text()]
+for line in stale:
+    print(f"  STALE {line}", file=sys.stderr)
+for view, (module, why) in SCALAR.items():
+    print(f"accepted {view} as a scalar view: {why} ({module})")
+
+sys.exit(1 if gone or unchecked or unmodelled or unlisted or stale else 0)
