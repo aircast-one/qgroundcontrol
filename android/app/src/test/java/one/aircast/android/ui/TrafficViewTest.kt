@@ -2,10 +2,63 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TrafficViewTest {
+    private fun synthetic(alert: Boolean = false) =
+        near.replace(""""alert":false""", """"alert":$alert""").dropLast(1) +
+            ""","simulated":true}"""
+
+    @Test
+    fun `a sky with nothing but synthetic targets does not report aircraft`() {
+        assertEquals(
+            "the glanceable line is what an operator reads without opening the sheet, so counting " +
+                "a rig's synthetic targets as aircraft states something false about the sky",
+            "Traffic: 2 simulated",
+            trafficSummary(trafficReading(view(contacts = "[" + synthetic() + "," + synthetic() + "]"))!!),
+        )
+    }
+
+    @Test
+    fun `real and synthetic targets are counted apart`() {
+        assertEquals(
+            "Traffic: 1 aircraft \u00b7 2 simulated",
+            trafficSummary(trafficReading(view(contacts = "[$near," + synthetic() + "," + synthetic() + "]"))!!),
+        )
+    }
+
+    @Test
+    fun `a sky of real aircraft reads exactly as before`() {
+        assertEquals("Traffic: 1 aircraft", trafficSummary(trafficReading(view(contacts = "[$near]"))!!))
+        assertEquals(
+            "Traffic: 3 aircraft",
+            trafficSummary(trafficReading(view(contacts = "[$near,$near,$near]"))!!),
+        )
+    }
+
+    @Test
+    fun `a simulated target is not an aircraft and the row says so first`() {
+        val reading = trafficReading(view(contacts = "[${synthetic(alert = true)}]"))!!
+        val line = trafficContactText(reading.contacts[0], reading.units)
+        assertTrue(
+            "ADSB_FLAGS_SIMULATED reaches the head on every contact (adsb.rs:386) and reached no " +
+                "row, so a rig feeding synthetic traffic drew it with the same name, range, bearing " +
+                "and height as an aircraft that is actually there - and with the alerting mark too",
+            line.startsWith("simulated"),
+        )
+        assertTrue(line.contains("alerting"))
+    }
+
+    @Test
+    fun `a real contact carries no such mark`() {
+        val reading = trafficReading(view(contacts = "[$near]"))!!
+        assertFalse(trafficContactText(reading.contacts[0], reading.units).contains("simulated"))
+    }
+
+
 
     private fun view(
         enabled: Boolean = true,

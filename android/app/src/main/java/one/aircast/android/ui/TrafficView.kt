@@ -18,6 +18,7 @@ internal data class TrafficContact(
     val alert: Boolean?,
     val stale: Boolean,
     val altitudeType: String = "",
+    val simulated: Boolean = false,
 ) {
     val name: String get() = callsign.ifBlank { "%06X".format(icaoAddress) }
     val located: Boolean get() = distance != null && bearingDegrees != null
@@ -75,6 +76,7 @@ internal fun trafficReading(view: JSONObject?): TrafficReading? {
                     alert = contact.flagOrNull("alert"),
                     stale = contact.optBoolean("stale"),
                     altitudeType = contact.optText("altitudeType"),
+                    simulated = contact.optBoolean("simulated"),
                 )
             }
         },
@@ -93,9 +95,15 @@ internal fun trafficLevel(reading: TrafficReading): TrafficLevel = when {
     else -> TrafficLevel.Good
 }
 
+internal fun trafficReal(reading: TrafficReading): Int = reading.contacts.count { !it.simulated }
+
+internal fun trafficSynthetic(reading: TrafficReading): Int = reading.contacts.count { it.simulated }
+
 internal fun trafficSummary(reading: TrafficReading): String = when {
-    reading.contacts.size == 1 -> "Traffic: 1 aircraft"
-    reading.contacts.isNotEmpty() -> "Traffic: ${reading.contacts.size} aircraft"
+    trafficReal(reading) > 0 && trafficSynthetic(reading) > 0 ->
+        "Traffic: ${trafficReal(reading)} aircraft \u00b7 ${trafficSynthetic(reading)} simulated"
+    trafficReal(reading) > 0 -> "Traffic: ${trafficReal(reading)} aircraft"
+    trafficSynthetic(reading) > 0 -> "Traffic: ${trafficSynthetic(reading)} simulated"
     reading.errorToken == "connectFailed" -> "Traffic server unreachable"
     reading.errorToken == "linkLost" -> "Traffic feed dropped"
     reading.errorToken.isNotBlank() -> "Traffic feed failed"
@@ -158,5 +166,6 @@ internal fun trafficContactText(contact: TrafficContact, units: TrafficUnits): S
         if (contact.alert == true) "alerting" else "",
         if (contact.stale) "stale" else "",
     )
-    return (position + trailing).filter { it.isNotBlank() }.joinToString("  ")
+    val synthetic = if (contact.simulated) "simulated" else ""
+    return (listOf(synthetic) + position + trailing).filter { it.isNotBlank() }.joinToString("  ")
 }
