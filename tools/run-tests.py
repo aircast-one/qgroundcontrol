@@ -132,10 +132,23 @@ def missing_suites(summary):
     return [name for name in expected if name not in ran]
 
 
+SETTINGS_LEFTOVERS = pathlib.Path.home() / ".config/aircast.one"
+
+
 def sweep_old_clones():
     for stale in STAGE_ROOT.glob("qgc-testrun-*"):
         if stale != STAGE and time.time() - stale.stat().st_mtime > 3600:
             shutil.rmtree(stale, ignore_errors=True)
+    sweep_unittest_settings()
+
+
+def sweep_unittest_settings():
+    old = [f for f in SETTINGS_LEFTOVERS.glob("*_unittest_*.ini")
+           if time.time() - f.stat().st_mtime > 86400]
+    [f.unlink(missing_ok=True) for f in old]
+    if old:
+        print(f"swept {len(old)} unit-test settings file(s) older than a day from "
+              f"{SETTINGS_LEFTOVERS}", file=sys.stderr)
 
 
 def refresh_clone():
