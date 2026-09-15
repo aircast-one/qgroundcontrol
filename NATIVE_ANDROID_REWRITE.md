@@ -7988,3 +7988,45 @@ screen and was correct at the producer. That is worth recording precisely
 because the next person to see Land offered to a silent aircraft will think the
 same thing.
 
+
+### A pushed view is not the view it names, 2026-09-15
+
+Four paths in `core-rs/src/abi.rs` are pushed by an `announce_*` rather than by
+the router. Every one of them emits the *producer's snapshot*, not the view the
+router computes for the same path - so a head watching the path and a head
+reading it see two different answers, and the frequent one is the unchecked one.
+
+| path | push against the `get` |
+|---|---|
+| `view.adsbTraffic` | **diverges.** The snapshot hardcodes `Units::metric()`; the view passes `Units::read(backend)`. An operator configured in feet reads other aircraft's altitudes in metres until any `get` overwrites them. |
+| `view.transports` | **diverges.** The view adds `qtOpenCount` and appends every Qt link to `links`; the push has neither. Latent - no head reads it today. |
+| `view.detections` | payload identical. Only the side effect is missing, and the side effect is the whole feature. |
+| `view.coreGuided` | identical for an unparameterised watch; a parameterised one is the separate problem recorded above. |
+
+**Detections is the one that costs a screen, and the payload was never the
+problem.** `detections_view` is the only thing that spawns and retargets the
+feed thread. `announce_detections` never calls it, so a head that subscribes and
+never gets never starts the feed, and `changed()` has nothing to fire on.
+Measured on the emulator with the push funnel logged:
+
+```
+15s subscribed, before any get     0 pushes   (16 host, 8 view.followMe meanwhile)
+one probe.sh get view.detections   {"available":true,"stale":true,"ageMs":null,"boxes":[]}
+20s after                         99 pushes   (132 in the full capture)
+```
+
+`stale:true, ageMs:null` on that first read is the tell: no frame had ever
+arrived. Earlier readings that showed boxes moving were kept alive by the
+probe's own `get`s - **the instrument was the feature**.
+
+**Two of the four are faithful by accident, not by construction**, which is the
+argument for the fix rather than the individual corrections: an announcer must
+render the view. That alone does not rescue detections, though - the announcer
+only runs once a frame exists and no frame exists until the compute runs, so the
+*subscription* has to run the compute too. That is the watch-on-subscribe change
+that hung this app on splash; the fix is that change made off the caller's
+thread, not abandoned.
+
+**A live wrong value and a frozen right one look identical from the outside.**
+Both symptoms here were first attributed to a stale subscription, from the dep
+list alone. Neither was stale. One log line on the push funnel settled both.
