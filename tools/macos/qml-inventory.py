@@ -1,7 +1,10 @@
-import re, pathlib, collections, json
+import re, pathlib, collections, json, sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from sweepguard import anchored, refuse
 
-ROOT = pathlib.Path("src")
+ROOT = anchored("src")
 files = sorted(ROOT.rglob("*.qml"))
+refuse(qml=files)
 by_name = {}
 for f in files:
     by_name.setdefault(f.stem, []).append(f)

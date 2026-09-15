@@ -1,7 +1,10 @@
-import pathlib, re, collections
+import pathlib, re, collections, sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from sweepguard import anchored, refuse
 
-SRC = sorted(pathlib.Path('macos/Sources').glob('*.swift'))
-TST = sorted(pathlib.Path('macos/Tests').glob('*.swift'))
+SRC = sorted(anchored('macos/Sources').glob('*.swift'))
+TST = sorted(anchored('macos/Tests').glob('*.swift'))
+refuse(sources=SRC, tests=TST)
 def code_only(text):
     out, i, n = [], 0, len(text)
     while i < n:

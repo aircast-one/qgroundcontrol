@@ -1,9 +1,11 @@
 import pathlib, re, collections, sys
-sys.path.insert(0, str(pathlib.Path('tools/macos')))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from sweepguard import anchored, refuse
 from importlib.machinery import SourceFileLoader
-sweep = SourceFileLoader('sweep', 'tools/macos/orphan-sweep.py')
+sweep = SourceFileLoader('sweep', str(anchored('tools/macos/orphan-sweep.py')))
 
-SRC = sorted(pathlib.Path('macos/Sources').glob('*.swift'))
+SRC = sorted(anchored('macos/Sources').glob('*.swift'))
+refuse(sources=SRC)
 raw = {p.name: p.read_text() for p in SRC}
 
 def code_only(text):

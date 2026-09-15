@@ -175,6 +175,8 @@ import pathlib
 import re
 import subprocess
 import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from sweepguard import anchored, refuse
 
 ROOTS = [
     "view", "settings", "vehicle", "vehicles", "links", "plan", "host", "corePlugin",
@@ -245,6 +247,7 @@ def expand(line, named):
 
 def paths(roots):
     sources = sorted(p for root in roots for p in root.rglob("*") if p.suffix in SUFFIXES)
+    refuse(sources=sources)
     named, whole = constants(sources)
     rooted = {n: v for n, v in named.items() if n not in whole}
     bare = re.compile(r'\b(' + "|".join(whole) + r')\b') if whole else None
@@ -324,7 +327,7 @@ def claimed_actions():
 
 
 def main():
-    roots = [pathlib.Path(a) for a in (sys.argv[1:] or ["macos/Sources"])]
+    roots = [pathlib.Path(a) for a in sys.argv[1:]] or [anchored("macos/Sources")]
     missing = [r for r in roots if not r.is_dir()]
     if missing:
         print("not a directory: " + ", ".join(map(str, missing)), file=sys.stderr)
