@@ -67,6 +67,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         units = control.optText("units"),
         valueString = control.optText("valueString"),
         value = control.opt("value"),
+        wholeNumbersOnly = control.optBoolean("wholeNumbersOnly"),
         enumStrings = labels,
         enumIndex = labels.indexOf(control.optText("display")),
         bitmaskStrings = bitEntries.map { it.first },

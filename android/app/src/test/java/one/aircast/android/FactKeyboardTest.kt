@@ -4,8 +4,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import one.aircast.android.bridge.Fact
 import one.aircast.android.ui.factKeyboard
 import one.aircast.android.ui.factValueLines
+import one.aircast.android.ui.truncationRefusal
 import one.aircast.android.ui.typedValue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class FactKeyboardTest {
@@ -13,10 +15,12 @@ class FactKeyboardTest {
         min: String,
         isString: Boolean = false,
         isBool: Boolean = false,
+        whole: Boolean = false,
     ) = Fact(
         path = "p", name = "n", description = "", units = "", valueString = "0",
         value = 0, enumStrings = emptyList(), enumIndex = -1,
         isBool = isBool, isString = isString, readOnly = false, minString = min,
+        wholeNumbersOnly = whole,
     )
 
     @Test
@@ -69,5 +73,46 @@ class FactKeyboardTest {
             "Acro,Circle",
             typedValue("Acro,\nCircle"),
         )
+    }
+
+    @Test
+    fun `a fraction typed into a whole-number setting is refused, not silently truncated`() {
+        assertEquals(
+            "FactMetaData::convertAndValidateRaw does QVariant(3.7).toInt() for an int fact and " +
+                "reports convertOk, and setRawValue passes convertOnly so the range check never " +
+                "runs - Fact.validate accepts 3.7, the vehicle gets 3, and nothing says so",
+            "This setting takes whole numbers only.",
+            truncationRefusal(fact("0", whole = true), "3.7"),
+        )
+    }
+
+    @Test
+    fun `a whole number in a whole-number setting passes`() {
+        assertNull(truncationRefusal(fact("0", whole = true), "4"))
+        assertNull(truncationRefusal(fact("0", whole = true), " 12 "))
+        assertNull(truncationRefusal(fact("-5", whole = true), "-3"))
+    }
+
+    @Test
+    fun `a real-typed setting still takes fractions`() {
+        assertNull(
+            "decimalPlaces is a different question - a real fact declaring zero decimals is what " +
+                "you write for a percentage, and refusing fractions there would reject values the " +
+                "vehicle accepts",
+            truncationRefusal(fact("0"), "3.7"),
+        )
+    }
+
+    @Test
+    fun `text that is not a number is left to the vehicle's own validator`() {
+        assertNull(truncationRefusal(fact("0", whole = true), "not a number"))
+        assertNull(truncationRefusal(fact("0", whole = true), ""))
+    }
+
+    @Test
+    fun `a whole-number setting that cannot go negative gets a keypad with no decimal point`() {
+        assertEquals(KeyboardType.Number, factKeyboard(fact("0", whole = true)))
+        assertEquals(KeyboardType.Text, factKeyboard(fact("-5", whole = true)))
+        assertEquals(KeyboardType.Decimal, factKeyboard(fact("0")))
     }
 }

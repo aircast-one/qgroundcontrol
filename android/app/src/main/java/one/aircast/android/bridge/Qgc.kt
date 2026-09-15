@@ -27,6 +27,7 @@ data class Fact(
     val bitmaskValues: List<Long> = emptyList(),
     val isBool: Boolean,
     val isString: Boolean,
+    val wholeNumbersOnly: Boolean = false,
     val readOnly: Boolean,
     val enabled: Boolean = true,
     val disabledReason: String = "",
@@ -214,6 +215,7 @@ object Qgc {
                 (0 until bits.length()).map { bits.optLong(it) }
             } ?: emptyList(),
             isBool = json.optBoolean("typeIsBool"),
+            wholeNumbersOnly = json.optBoolean("typeIsInteger"),
             isString = json.optBoolean("typeIsString"),
             readOnly = json.optBoolean("readOnly"),
             minString = json.text("minString"),

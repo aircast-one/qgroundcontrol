@@ -528,10 +528,18 @@ private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
 
 internal fun factValueLines(fact: Fact): Int = if (fact.isString) 4 else 1
 
+internal fun truncationRefusal(fact: Fact, text: String): String? {
+    if (!fact.wholeNumbersOnly) return null
+    val typed = text.trim().toDoubleOrNull() ?: return null
+    return if (typed == floor(typed)) null else "This setting takes whole numbers only."
+}
+
 internal fun typedValue(text: String): String = text.replace("\n", "")
 
 internal fun factKeyboard(fact: Fact): KeyboardType = when {
     fact.isString || fact.isBool -> KeyboardType.Text
+    fact.wholeNumbersOnly && fact.minString.toDoubleOrNull()?.let { it >= 0.0 } == true ->
+        KeyboardType.Number
     fact.minString.toDoubleOrNull()?.let { it < 0.0 } != false -> KeyboardType.Text
     else -> KeyboardType.Decimal
 }
@@ -571,7 +579,7 @@ internal fun validationMessage(result: Any?): String? =
     (result as? String)?.takeIf { it.isNotBlank() }
 
 private suspend fun rejectionFor(fact: Fact, text: String): String? =
-    withContext(Dispatchers.Default) {
+    truncationRefusal(fact, text) ?: withContext(Dispatchers.Default) {
         validationMessage(Qgc.invokeResult("${fact.path}.validate", text, false))
     }
 
