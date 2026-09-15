@@ -6249,6 +6249,20 @@ func checkPlanViewState() {
            + "would have opened on a view that never answered")
     expect(PlanUpload("not an object") == nil, "nor is a shape the core never sends")
 
+    expect(PlanUpload(["canSend": false as NSNumber])?.warrantsWarning == true,
+           "THE ALERT IS GATED ON canSend, NOT ON THERE BEING A HEADING. The core is making its "
+           + "upload sentences null when there is nothing to say, and a gate reading \"there is a "
+           + "heading, so warn\" would stop presenting real refusals the first time a sentence went "
+           + "absent. The rule lived at a call site in Mission.swift, which swift-checks does not "
+           + "compile, so nothing would have reddened")
+    expect(PlanUpload(["canSend": true as NSNumber])?.warrantsWarning == false,
+           "and a plan that can be sent is sent rather than queried. That is why this head never "
+           + "showed the wrong title Android found: the state the core's sentence was wrong about "
+           + "is the one where this screen presents no alert at all")
+    expect(PlanUpload(["canSend": false as NSNumber])?.heading ?? "missing", "",
+           "a null or missing sentence decodes to empty rather than failing the whole shape, so the "
+           + "contract change lands on this head as no change at all")
+
     expect(PlanReadiness(["reason": "unset"])?.ready == false,
            "a readiness object that carries no answer is NOT ready. It gates Save As and Upload, "
            + "and defaulting it to ready enabled both before anything had been read")

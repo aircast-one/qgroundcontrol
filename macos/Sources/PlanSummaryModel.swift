@@ -50,6 +50,15 @@ struct PlanUpload: Equatable {
         self.pausesFirst = pausesFirst
     }
 
+    // WHICH STATE WARRANTS THE ALERT, kept here rather than at the call site in Mission.swift,
+    // which swift-checks does not compile. It is canSend and not the heading: the core's upload
+    // sentences are becoming null when there is nothing to say, and a gate reading "there is a
+    // heading, so warn" would then stop presenting real refusals the moment a sentence went absent.
+    // This head never showed the wrong title Android saw for the same reason -- the alert is not
+    // presented at all when a plan can be sent, so the state the core's sentence was wrong about
+    // was one this screen never reached.
+    var warrantsWarning: Bool { !canSend }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any] else { return nil }
         canSend = (json["canSend"] as? NSNumber)?.boolValue ?? false

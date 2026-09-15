@@ -257,7 +257,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             writeFailure = PlanUpload.uncheckable
             return
         }
-        if !check.canSend { uploadWarning = check } else { send() }
+        if check.warrantsWarning { uploadWarning = check } else { send() }
     }
 
     // Read fresh on the attempt: terrain arriving does not raise an event, so the answer
