@@ -4487,6 +4487,7 @@
         "view.instrumentGroups.groups[].facts.#",
         "view.instrumentGroups.groups[].facts[].label",
         "view.instrumentGroups.groups[].facts[].name",
+        "view.instrumentGroups.groups[].facts[].selection",
         "view.instrumentGroups.groups[].group",
         "view.instrumentGroups.groups[].title",
         "view.instrumentGroups.kind",
@@ -6634,7 +6635,8 @@
                 "facts": [
                     {
                         "label": "string",
-                        "name": "string"
+                        "name": "string",
+                        "selection": "string"
                     }
                 ],
                 "group": "string",

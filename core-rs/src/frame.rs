@@ -15,6 +15,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.fixedWing",
     "vehicle.airship",
     "vehicle.parameterManager.parametersReady",
+    "vehicle.parameterManager.getParameter(-1,FRAME_CONFIG).rawValue",
 ];
 
 const FIELDS: &str = "vehicleTypeString,motorCount,apmFirmware,armed,multiRotor,vtol,rover,sub,fixedWing,airship";
@@ -38,9 +39,9 @@ fn motors(vehicle: &Value, parameters_ready: bool) -> Option<i64> {
 }
 
 pub fn frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let ready = flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
     let vehicle = object(&backend.get_fields("vehicle", FIELDS));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
-    let ready = flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
     json!({
         "kind": "object",
         "class": "Frame",
@@ -120,5 +121,10 @@ mod tests {
         assert_eq!(view["vehicleType"], Value::Null, "Generic is a vehicle QGC could not classify, and no vehicle at all is not that");
         assert_eq!(view["motorCount"], Value::Null);
         assert_eq!(view["armed"], false);
+    }
+
+    #[test]
+    fn a_submarine_that_is_re_framed_recounts_its_motors() {
+        assert!(DEPS.contains(&"vehicle.parameterManager.getParameter(-1,FRAME_CONFIG).rawValue"), "FRAME_CONFIG is the only input to a motor count that an operator can change while connected, and parametersReady does not fire again when they do - without it a re-framed sub keeps the count it had");
     }
 }

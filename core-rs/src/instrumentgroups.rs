@@ -17,7 +17,11 @@ fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
                     let property = fact.get("property").and_then(Value::as_str)?;
                     let named = fact.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).unwrap_or(property);
                     let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
-                    Some(json!({ "name": property, "label": described.map(str::to_string).unwrap_or_else(|| humanise(named)) }))
+                    Some(json!({
+                        "name": property,
+                        "selection": format!("{group}/{property}"),
+                        "label": described.map(str::to_string).unwrap_or_else(|| humanise(named)),
+                    }))
                 })
                 .collect()
         })
@@ -89,7 +93,8 @@ mod tests {
         let groups = view["groups"].as_array().unwrap();
         let named: Vec<&str> = groups.iter().filter_map(|g| g["group"].as_str()).collect();
 
-        assert_eq!(named, ["gps", "escStatus"], "parameterManager is one of vehicle's children and carries no facts, and the group literally named 'vehicle' is the alias assemble() discards - serving either is a row nobody draws");
+        assert_eq!(named, ["gps", "escStatus"], "parameterManager is one of vehicle's children and carries no facts, and the group literally named 'vehicle' is one the macOS head already builds itself under the id \"\" - serving it too would put two Vehicle groups in that picker over the same readings, and every default it has stored is in the other id's form");
+        assert_eq!(groups[0]["facts"][0]["selection"], "gps/lock", "a head handing back a bare name gets it split against the vehicle group by default, so gps/lon spelled as lon resolves to vehicle.lon and answers noSuchFact - serving the whole selection removes the guess rather than documenting it");
 
         let esc = &groups[1]["facts"][0];
         assert_eq!(esc["name"], "rpmFirst", "the head hands this back as view.instruments(escStatus/<name>), which resolves it as a PATH, so it has to be the Q_PROPERTY and not the fact's own name");

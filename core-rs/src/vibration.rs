@@ -157,4 +157,31 @@ mod tests {
         assert_eq!(view["worst"], Value::Null);
         assert_eq!(view["axes"][0]["fraction"], Value::Null);
     }
+
+    #[test]
+    fn two_axes_of_three_are_available_false_with_no_silent_reason() {
+        struct Partial;
+        impl Backend for Partial {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    _ => json!({ "kind": "object", "facts": [
+                        { "name": "xAxis", "value": 12.0, "units": "m/s/s" },
+                        { "name": "yAxis", "value": 9.0 },
+                        { "name": "zAxis" },
+                    ] }).to_string(),
+                }
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let view = vibration_view(&Partial, &[]);
+        assert_eq!(view["available"], false, "a head drawing three bars cannot draw two, so available asks whether every axis answered");
+        assert_eq!(view["silentReason"], Value::Null, "the vehicle is not silent - it reported two axes - so there is no reason to give, and a head reading anything other than notReported as noVehicle tells an operator to connect the vehicle they are looking at");
+        assert_eq!(view["axes"][2]["value"], Value::Null);
+        assert_eq!(view["worst"], "normal", "the worst axis is the worst of the ones that answered, not of the ones that exist - a missing axis is not a quiet one");
+    }
 }
