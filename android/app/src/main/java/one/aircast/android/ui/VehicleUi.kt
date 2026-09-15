@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -775,7 +776,8 @@ private fun InstrumentSheet(
     onDismiss: () -> Unit,
 ) {
     var groups by remember { mutableStateOf(emptyList<InstrumentGroup>()) }
-    LaunchedEffect(Unit) {
+    val connected = hasVehicle()
+    LaunchedEffect(connected) {
         groups = withContext(Dispatchers.Default) {
             listOfNotNull(vehicleOwnGroup(Qgc.get(VEHICLE_FACTS))) + instrumentGroups(Qgc.get(INSTRUMENT_GROUPS))
         }
@@ -791,14 +793,21 @@ private fun InstrumentSheet(
         LazyColumn(Modifier.fillMaxWidth()) {
             groups.forEach { group ->
                 item(key = "head${group.group}") { SectionHeader(group.title) }
-                items(group.facts, key = { "${group.group}.${it.name}" }) { fact ->
+                items(group.facts, key = { it.path }) { fact ->
                     val picked = fact.path in chosen
+                    val choosable = picked || chosen.size < MOST_INSTRUMENTS
                     ListItem(
                         headlineContent = { Text(fact.label) },
                         trailingContent = {
-                            Checkbox(checked = picked, onCheckedChange = { onToggle(fact.path) })
+                            Checkbox(checked = picked, onCheckedChange = null, enabled = choosable)
                         },
-                        modifier = Modifier.clickable { onToggle(fact.path) },
+                        colors = ListItemDefaults.colors(
+                            headlineColor = when {
+                                choosable -> MaterialTheme.colorScheme.onSurface
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            },
+                        ),
+                        modifier = Modifier.clickable(enabled = choosable) { onToggle(fact.path) },
                     )
                 }
             }
