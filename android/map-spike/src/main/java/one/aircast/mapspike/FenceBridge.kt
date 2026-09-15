@@ -31,7 +31,12 @@ data class FenceCircle(
     val radiusMaximum: Double? = null,
     val radiusMetres: Double = 0.0,
 )
-data class RallyPoint(val index: Int, val latitude: Double, val longitude: Double)
+data class RallyPoint(
+    val index: Int,
+    val latitude: Double,
+    val longitude: Double,
+    val altitudeMetres: Double = 0.0,
+)
 
 internal fun coordinate(json: JSONObject?): TrackPoint? {
     val latitude = json?.optDouble("latitude", Double.NaN) ?: return null
@@ -127,9 +132,20 @@ fun rallyPoints(json: JSONObject?): List<RallyPoint> {
     return (0 until list.length()).mapNotNull { index ->
         val element = list.optJSONObject(index) ?: return@mapNotNull null
         val point = coordinate(element) ?: return@mapNotNull null
-        RallyPoint(element.optInt("index", index), point.latitude, point.longitude)
+        RallyPoint(
+            element.optInt("index", index),
+            point.latitude,
+            point.longitude,
+            element.optDouble("altitudeMetres", 0.0).takeIf { it.isFinite() } ?: 0.0,
+        )
     }
 }
+
+fun rallyMovePayload(latitude: Double, longitude: Double, altitudeMetres: Double): String =
+    settingJson(coordinateJson(latitude, longitude, altitudeMetres))
+
+fun rallyAltitudeFor(rally: List<RallyPoint>, index: Int): Double =
+    rally.firstOrNull { it.index == index }?.altitudeMetres ?: 0.0
 
 object FenceBridge {
     fun read(): JSONObject? =
@@ -147,8 +163,11 @@ object FenceBridge {
     fun addRallyPoint(latitude: Double, longitude: Double): Boolean =
         invokeOk("$RALLY_ROOT.addPoint", "[${coordinateJson(latitude, longitude)}]")
 
-    fun moveRallyPoint(index: Int, latitude: Double, longitude: Double): Boolean =
-        setOk("$RALLY_POINTS.$index.coordinate", settingJson(coordinateJson(latitude, longitude)))
+    // RallyPoint::setCoordinate writes coordinate.altitude() straight into _altitudeFact, unlike
+    // SimpleMissionItem::setCoordinate which takes lat/lon only. QGC's own drag never sends a bare
+    // coordinate: MissionItemIndicatorDrag.qml:57 copies the existing altitude on first.
+    fun moveRallyPoint(index: Int, latitude: Double, longitude: Double, altitudeMetres: Double): Boolean =
+        setOk("$RALLY_POINTS.$index.coordinate", rallyMovePayload(latitude, longitude, altitudeMetres))
 
     fun moveCircle(index: Int, latitude: Double, longitude: Double): Boolean =
         setOk("$FENCE_CIRCLES.$index.center", settingJson(coordinateJson(latitude, longitude)))

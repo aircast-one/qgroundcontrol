@@ -4,8 +4,8 @@ import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.json.JSONArray
 
-fun coordinateJson(latitude: Double, longitude: Double): String =
-    "{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}"
+fun coordinateJson(latitude: Double, longitude: Double, altitudeMetres: Double = 0.0): String =
+    "{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":$altitudeMetres}"
 
 fun coordinateJson(at: TrackPoint): String = coordinateJson(at.latitude, at.longitude)
 

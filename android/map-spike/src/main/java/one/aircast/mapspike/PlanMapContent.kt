@@ -344,7 +344,7 @@ internal fun MapSpikeScreen(
                     insertAfter(selected, allItems),
                 )
             },
-            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList) } },
+            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally) } },
             onWaypointSelected = { hit ->
                 when (hit) {
                     is MapHit.Midpoint -> onBridge("Adding a corner") {
@@ -354,7 +354,7 @@ internal fun MapSpikeScreen(
                 }
             },
             onMoved = { hit, lat, lon ->
-                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList) }
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList, rally) }
             },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onViewChanged = { visible = it },

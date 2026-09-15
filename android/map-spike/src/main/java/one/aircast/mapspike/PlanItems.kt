@@ -109,13 +109,24 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     }
 }
 
-fun writeMove(hit: MapHit, latitude: Double, longitude: Double, surveys: List<Survey>): Boolean =
+fun writeMove(
+    hit: MapHit,
+    latitude: Double,
+    longitude: Double,
+    surveys: List<Survey>,
+    rally: List<RallyPoint> = emptyList(),
+): Boolean =
     when (hit) {
         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, latitude, longitude)
         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, latitude, longitude)
         is MapHit.SurveyVertex -> surveys.firstOrNull { it.index == hit.item }
             ?.let { SurveyBridge.adjustVertex(it, hit.vertex, latitude, longitude) } == true
-        is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, latitude, longitude)
+        is MapHit.Rally -> FenceBridge.moveRallyPoint(
+            hit.index,
+            latitude,
+            longitude,
+            rallyAltitudeFor(rally, hit.index),
+        )
         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, latitude, longitude)
         is MapHit.Circle -> true
         is MapHit.Midpoint -> false
