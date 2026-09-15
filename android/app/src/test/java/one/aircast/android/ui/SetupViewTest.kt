@@ -8,6 +8,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SetupViewTest {
+    @Test
+    fun `a core that declines to judge is not judged as not ready`() {
+        assertNull(
+            "readiness() answers Option<bool> and returns None when it has no basis for a verdict - " +
+                "its own test says the false that means \"checked and not ready\" once drew an error " +
+                "heading beside an instruction to connect a vehicle. optBoolean flattens JSON null " +
+                "to false, so the head could not hold that third state at all",
+            setupReadiness(JSONObject("""{"ready":null,"headline":"No vehicle connected"}"""))?.ready,
+        )
+    }
+
+    @Test
+    fun `a verdict that was reached is still carried`() {
+        assertEquals(true, setupReadiness(JSONObject("""{"ready":true}"""))?.ready)
+        assertEquals(false, setupReadiness(JSONObject("""{"ready":false}"""))?.ready)
+    }
+
     private val corePages = JSONObject(
         """{"groups":[
             {"title":"Vehicle","pages":[{"name":"Summary","native":true}]},

@@ -33,7 +33,7 @@ internal fun setupGroups(view: JSONObject?): List<SetupGroup> {
 }
 
 internal data class SetupReadiness(
-    val ready: Boolean,
+    val ready: Boolean?,
     val headline: String,
     val detail: String,
     val connected: Boolean,
@@ -42,7 +42,7 @@ internal data class SetupReadiness(
 
 internal fun setupReadiness(view: JSONObject?): SetupReadiness? = view?.let {
     SetupReadiness(
-        ready = it.optBoolean("ready"),
+        ready = if (it.isNull("ready")) null else it.optBoolean("ready"),
         headline = it.optText("headline"),
         detail = it.optText("detail"),
         connected = it.optBoolean("connected"),

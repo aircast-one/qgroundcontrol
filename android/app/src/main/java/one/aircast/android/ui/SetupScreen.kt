@@ -225,7 +225,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         item(key = "verdict") {
             val readiness = setup
             ReadinessHeader(
-                ready = readiness?.ready ?: setupComplete,
+                ready = readiness?.ready,
                 vehicle = vehicleType.ifBlank { "Vehicle" },
                 firmware = firmware,
                 headline = readiness?.headline.orEmpty(),
@@ -308,7 +308,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ReadinessHeader(
-    ready: Boolean,
+    ready: Boolean?,
     vehicle: String,
     firmware: String,
     headline: String,
@@ -320,16 +320,18 @@ private fun ReadinessHeader(
             .padding(horizontal = 20.dp)
             .padding(top = 20.dp, bottom = 8.dp),
     ) {
-        Text(
-            text = if (ready) "Ready to fly" else "Not ready to fly",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = if (ready) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.error
-            },
-        )
+        ready?.let { verdict ->
+            Text(
+                text = if (verdict) "Ready to fly" else "Not ready to fly",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (verdict) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+            )
+        }
         Text(
             text = listOfNotNull(
                 vehicle,
@@ -338,7 +340,7 @@ private fun ReadinessHeader(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (!ready && headline.isNotBlank()) {
+        if (ready != true && headline.isNotBlank()) {
             Text(
                 text = headline,
                 style = MaterialTheme.typography.bodyMedium,
