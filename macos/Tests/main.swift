@@ -2238,7 +2238,6 @@ func checkALandingPatternDrawsOnlyWhatItWasGiven() {
         "landingAltitudeMetres": 12.0, "landingHeadingDegrees": 215.0,
         "landingDistanceMetres": 200.0,
     ])
-    expect(full.isPattern, "a landing with a coordinate is a pattern")
     expect(full.descent.count == 2, "the descent is slope start to landing, and nothing else")
     expect(full.loiterCentre == full.finalApproach,
            "the loiter circle sits on the FINAL APPROACH point, not the landing point")
@@ -2252,8 +2251,12 @@ func checkALandingPatternDrawsOnlyWhatItWasGiven() {
             + "a multirotor land is a plain return",
     ])
     expect(refusedSimple.refused, "a refusal is a refusal")
-    expect(!refusedSimple.isPattern, "and is not a pattern to draw")
-    expect(refusedSimple.descent.isEmpty, "with nothing to put on the map")
+    expect(refusedSimple.descent.isEmpty,
+           "with nothing to put on the map -- and that is the PRODUCER'S doing, not a check here. "
+           + "landing.rs returns its two refusals at :34 and :37, before it builds a single "
+           + "coordinate, so a reason and a place cannot arrive together. isPattern used to say "
+           + "!refused && landing != nil and nothing on the map asked it: MissionMap draws from "
+           + "descent and loiterCentre, which are empty for exactly the reason above")
 
     let refusedComplex = LandingPattern([
         "reason": "that item is not a landing pattern; being complex is not the same as being "
@@ -2270,7 +2273,6 @@ func checkALandingPatternDrawsOnlyWhatItWasGiven() {
         "finalApproach": ["latitude": 47.401, "longitude": 8.552],
         "loiterRadiusText": "",
     ])
-    expect(noRadius.isPattern, "a pattern with no loiter radius is still a pattern")
     expect(noRadius.loiterCentre == nil,
            "but draws no circle. The CORE already filters a radius of zero or less to null, so "
            + "the head asks whether it was given one rather than testing it against zero -- the "

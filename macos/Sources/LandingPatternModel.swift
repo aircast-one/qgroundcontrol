@@ -46,7 +46,6 @@ struct LandingPattern: Equatable {
 
     var refused: Bool { !reason.isEmpty }
 
-    var isPattern: Bool { !refused && landing != nil }
 
     var descent: [GeoPoint] {
         guard let slopeStart, let landing else { return [] }
