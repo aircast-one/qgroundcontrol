@@ -67,8 +67,6 @@ internal const val FLY_VIEW_GROUP = "flyViewSettings"
 
 internal val GROUPS_WITH_A_HEAD_EDITOR = setOf(VIDEO_GROUP, FLY_VIEW_GROUP)
 
-// What this head leaves out, and why. Every one was measured: the generic renderer would draw
-// the controls, and drawing them is worse than the absence.
 internal val PAGES_WITHOUT_A_SCREEN = mapOf(
     "Firmware Upgrade" to "flashing firmware needs a USB host and a bootloader dance this head does not do",
     "3D Viewer" to "there is no 3D view here to configure",
@@ -213,8 +211,6 @@ private fun SettingsList(
     var hits by remember { mutableStateOf(emptyList<SettingsSectionRows>()) }
     var searches by remember { mutableIntStateOf(0) }
 
-    // Read after the typing stops rather than on every keystroke: each page is its own bridge
-    // call, and the effect is cancelled and restarted while a key is still landing.
     LaunchedEffect(search, pages, searches) {
         if (search.isBlank()) {
             hits = emptyList()
