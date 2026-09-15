@@ -450,8 +450,10 @@ def report(summary, verdicts, history, stale, contention=None, missing=(), exit_
         lines.append("LOAD FLAKES (fail in the full run, pass alone):")
         for suite, verdict in sorted(flaky.items()):
             hit, seen = flake_rate(history, suite)
+            in_full = sorted({case for failed, case in summary["failures"] if failed == suite})
             lines.append(f"  {suite}: passed {verdict['alone_runs']}/{verdict['alone_runs']} "
                          f"isolated runs; flaked {hit + 1} of last {seen + 1} full runs")
+            lines.append(f"    failed in the full run: {', '.join(in_full) or 'case not captured'}")
 
     if not real and not flaky and not unstable:
         lines.append("No failures.")
