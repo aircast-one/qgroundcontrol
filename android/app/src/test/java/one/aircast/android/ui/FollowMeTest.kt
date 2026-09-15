@@ -40,11 +40,12 @@ class FollowMeTest {
     }
 
     @Test
-    fun `asking for it always still reports that it is not happening`() {
-        assertEquals(
-            "Always is the operator asking unconditionally, so silence there would hide a feature " +
-                "they turned on and are not getting",
-            "Not following you \u2014 no vehicle is in Follow Me mode",
+    fun `the core cannot report that reason under always, so the mode does not need testing`() {
+        assertNull(
+            "receives() is Mode::Always => true, so with a non-empty fleet reason() can never " +
+                "return NoVehicleInFollowMode under always - a head that also checked the mode " +
+                "would be guarding a state the core cannot produce, and macOS treats the token as " +
+                "resting whatever the mode for the same reason",
             followMeLabel(
                 followMeReading(
                     view(mode = "\"always\"", wouldSend = false, reason = "\"noVehicleInFollowMode\""),
@@ -87,7 +88,7 @@ class FollowMeTest {
         )
 
         assertEquals("Not following you — this phone's position has stopped updating", stuck("fixStale"))
-        assertEquals("Not following you — no vehicle is in Follow Me mode", stuck("noVehicleInFollowMode"))
+        assertEquals("Not following you — this phone's position is not valid", stuck("fixInvalid"))
         assertEquals("Not following you — the vehicle refused the position", stuck("allVehiclesRefused"))
     }
 
@@ -114,12 +115,12 @@ class FollowMeTest {
             mode = "\"always\"",
             enabled = false,
             wouldSend = false,
-            reason = "\"noVehicleInFollowMode\"",
+            reason = "\"fixStale\"",
             vehicles = """[{"id":1,"following":false,"refusal":"notInFollowMode"}]""",
         )
 
         assertEquals(
-            "Not following you — no vehicle is in Follow Me mode",
+            "Not following you — this phone's position has stopped updating",
             followMeLabel(followMeReading(asked)),
         )
     }

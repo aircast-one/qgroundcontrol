@@ -43,12 +43,11 @@ internal fun followMeTrouble(reason: String): String = when (reason) {
 
 internal fun followMeAsked(mode: String): Boolean = mode == "always" || mode == "followMe"
 
-internal fun followMeResting(mode: String, reason: String): Boolean =
-    mode == "followMe" && reason == "noVehicleInFollowMode"
+internal fun followMeResting(reason: String): Boolean = reason == "noVehicleInFollowMode"
 
 internal fun followMeLabel(reading: FollowMeReading?): String? {
     if (reading == null || !followMeAsked(reading.mode) || reading.vehicles == 0) return null
-    if (followMeResting(reading.mode, reading.reason)) return null
+    if (followMeResting(reading.reason)) return null
     if (reading.wouldSend) {
         return when (reading.following) {
             0, 1 -> "Following you"
