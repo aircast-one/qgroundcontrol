@@ -328,11 +328,16 @@ def flake_rate(history, suite):
     return len(flaked), len(seen)
 
 
+def stopped_early(summary, exit_code):
+    return exit_code != 0 and not summary["failures"]
+
+
 def record(summary, verdicts, incomplete=False, load=(None, None)):
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "run": RUN_ID,
+        "scope": "suite" if len(summary["suites"]) == 1 else "full",
         "tool": tool_settings(),
         "load_started": load[0],
         "load_finished": load[1],
@@ -478,7 +483,7 @@ def main():
     verdicts = ({} if args.no_retry or not summary["failures"]
                 else classify(summary["failures"], args.repeats, verbose=True))
 
-    entry = record(summary, verdicts, bool(missing), load) if not args.suite else None
+    entry = record(summary, verdicts, bool(missing) or stopped_early(summary, exit_code), load)
     print(report(summary, verdicts, history, stale, contention, missing, exit_code, load))
     if entry:
         print(f"\nrecorded to {HISTORY.relative_to(REPO)}")
