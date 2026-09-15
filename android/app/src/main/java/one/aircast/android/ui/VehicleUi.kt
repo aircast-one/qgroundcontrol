@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -32,13 +33,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ListItem
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.ui.platform.LocalContext
@@ -129,7 +128,7 @@ fun VehicleTitle() {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TelemetryRow(modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -169,12 +168,11 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
     FlowRow(
         modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = {}, onLongClick = { choosing = true })
             .padding(8.dp)
             .alpha(if (silent) 0.45f else 1f),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalArrangement = Arrangement.spacedBy(6.dp),
-        maxItemsInEachRow = rowWidth(shown.size),
+        maxItemsInEachRow = rowWidth(shown.size + 1),
     ) {
         shown.forEach { instrument ->
             Column(
@@ -192,6 +190,23 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        Column(
+            Modifier
+                .clickable { choosing = true }
+                .padding(horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Readings",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
