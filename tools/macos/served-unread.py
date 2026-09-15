@@ -103,6 +103,13 @@ ACCEPTED_BY_HEAD = {
         "showsAbout": "MEASURED. The About page carries no sections at all, so the flag is the only "
             "thing on it, and this head has no About screen to draw. settingsPages drops a page with "
             "no sections and no block this head draws, which is that page and only that page",
+        "decimalPlaces": "MEASURED, and the same split as valueMeters one field over. It is how"
+            "MANY places to print, for a head that formats the number itself; this one draws the"
+            "valueString and the bound TEXT the core already spelled to that precision. Reading it"
+            "would mean formatting a second time from a rule the core has already applied",
+        "multiRotor": "MEASURED. See apmFirmware and vtol - the same block on the same view, and"
+            "nothing here branches on airframe class. What the plan editor offers comes from"
+            "view.plan.actions, which is the core saying what this vehicle accepts",
         "valueMeters": "MEASURED. The metres behind a control's value, for a head that converts "
             "and writes metres itself. Every fact row here draws the fact's OWN valueString beside "
             "the fact's OWN units and writes the typed text back through the fact, so the "
@@ -190,28 +197,34 @@ ACCEPTED = {
 ACCEPTED = {**ACCEPTED, **ACCEPTED_BY_HEAD[HEAD]}
 
 
-# A view this head does not read AT ALL already has a reason in view-fields.py's UNDRAWN table.
-# Reporting its fields here would be the same decision written twice, and the first run did exactly
-# that: 221 hits, almost all of them fields of adsbTraffic, followMe, packetRadio and the other
-# views recorded as not built. One table stays true; two drift apart.
-UNDRAWN_PREFIXES = [
-    line.split('"')[1]
-    for line in (ROOT / "tools/macos/view-fields.py").read_text().splitlines()
-    if line.strip().startswith('("view.')
-]
+# Whether a view is drawn at all is MEASURED per head rather than read from view-fields.py's
+# UNDRAWN table, which states the macOS head's reasons and was silencing this question for both.
+# view.adsbTraffic is the case that proves it: that table calls it not built, which is true there
+# and false here - TrafficView.kt has drawn it since 2026-09-13 - so every field of it this head
+# failed to read was being excused by another head's reason. Same shape as the acceptance table
+# split earlier: one table cannot answer a question whose answer differs between the two trees.
+def views_named_here():
+    text = "\n".join(
+        path.read_text(errors="replace")
+        for root in SOURCES
+        for path in sorted(root.rglob(SUFFIX))
+    )
+    return set(re.findall(r'"(view\.[A-Za-z0-9_]+)', text))
+
+
+DRAWN_HERE = views_named_here()
 
 
 def read_here(view):
-    base = view.split(".items.")[0].split(".contacts")[0]
-    return not any(base.startswith(prefix) for prefix in UNDRAWN_PREFIXES)
+    return view.split(".")[0] + "." + view.split(".")[1] in DRAWN_HERE if view.count(".") >= 1 else False
 
 
-def observed_fields(text=None):
+def observed_fields(text=None, drawn_only=True):
     contract = json.loads(text) if text else json.loads(CONTRACT.read_text())
     seen = {}
     for path in contract.get("_observed", []):
         view, _, field = path.rpartition(".")
-        if not (view and field.isidentifier()) or not read_here(view):
+        if not (view and field.isidentifier()) or (drawn_only and not read_here(view)):
             continue
         seen.setdefault(field, set()).add(view)
     return seen
@@ -245,8 +258,12 @@ now, then = observed_fields(), observed_fields(before)
 added = sorted((field, sorted(views)) for field, views in now.items()
                if field not in then and field not in used and field not in ACCEPTED)
 
+# Against every served field, not only the ones in views this head draws: a field that moved
+# into a view this head does not draw is still served, and calling it gone would delete a
+# reason that is about to be needed again.
+served_anywhere = observed_fields(drawn_only=False)
 stale = [f"{field!r} is accepted and the core no longer serves it"
-         for field in sorted(ACCEPTED) if field not in now]
+         for field in sorted(ACCEPTED) if field not in served_anywhere]
 
 for why in stale:
     print(f"  NOT SERVED {why}", file=sys.stderr)
