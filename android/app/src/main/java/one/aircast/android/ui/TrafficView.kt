@@ -17,6 +17,7 @@ internal data class TrafficContact(
     val emergency: String,
     val alert: Boolean?,
     val stale: Boolean,
+    val altitudeType: String = "",
 ) {
     val name: String get() = callsign.ifBlank { "%06X".format(icaoAddress) }
     val located: Boolean get() = distance != null && bearingDegrees != null
@@ -73,6 +74,7 @@ internal fun trafficReading(view: JSONObject?): TrafficReading? {
                     emergency = contact.optText("emergency"),
                     alert = contact.flagOrNull("alert"),
                     stale = contact.optBoolean("stale"),
+                    altitudeType = contact.optText("altitudeType"),
                 )
             }
         },
@@ -123,8 +125,17 @@ private fun reading(value: Double?, unit: String, fine: Boolean = false): String
     return if (unit.isBlank()) printed else "$printed $unit"
 }
 
+internal fun trafficDatumText(altitudeType: String): String = when (altitudeType) {
+    "pressureQnh" -> "by pressure"
+    "geometric" -> "by GPS"
+    else -> ""
+}
+
 internal fun trafficHeightText(contact: TrafficContact, units: TrafficUnits): String {
-    val relative = contact.relativeAltitude ?: return reading(contact.altitude, units.altitude)
+    val relative = contact.relativeAltitude ?: return listOf(
+        reading(contact.altitude, units.altitude),
+        trafficDatumText(contact.altitudeType),
+    ).filter { it.isNotBlank() }.joinToString(" ")
     val printed = reading(kotlin.math.abs(relative), units.altitude)
     return when {
         kotlin.math.abs(relative) < 0.5 -> "my level"

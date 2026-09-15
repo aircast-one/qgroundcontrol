@@ -189,4 +189,44 @@ class TrafficViewTest {
         assertEquals(true, trafficContactUrgent(loud))
         assertEquals(true, trafficContactUrgent(squawking))
     }
+
+    @Test
+    fun `an absolute altitude says what it is measured from`() {
+        val units = TrafficUnits(distance = "ft", altitude = "ft", heading = "deg")
+        val contact = { type: String ->
+            TrafficContact(
+                icaoAddress = 1, callsign = "SWR000", distance = null, bearingDegrees = null,
+                altitude = 1000.0, relativeAltitude = null, emergency = "", alert = null,
+                stale = false, altitudeType = type,
+            )
+        }
+        assertEquals(
+            "with no vehicle there is nothing to be relative TO, so the bare number is the " +
+                "aircraft's own altitude - and 1000 ft reads as a separation from a reader who " +
+                "has just been shown '500 ft above' for the same slot",
+            "1000 ft by pressure",
+            trafficHeightText(contact("pressureQnh"), units),
+        )
+        assertEquals("1000 ft by GPS", trafficHeightText(contact("geometric"), units))
+        assertEquals(
+            "a datum this head does not know is left unnamed rather than guessed",
+            "1000 ft",
+            trafficHeightText(contact("somethingNew"), units),
+        )
+    }
+
+    @Test
+    fun `a height relative to the vehicle still reads as a separation`() {
+        val units = TrafficUnits(distance = "ft", altitude = "ft", heading = "deg")
+        val above = TrafficContact(
+            icaoAddress = 1, callsign = "A", distance = 100.0, bearingDegrees = 90.0,
+            altitude = 1000.0, relativeAltitude = 500.0, emergency = "", alert = null,
+            stale = false, altitudeType = "pressureQnh",
+        )
+        assertEquals(
+            "the datum belongs only on the absolute form; 500 ft above is already relative to you",
+            "500 ft above",
+            trafficHeightText(above, units),
+        )
+    }
 }
