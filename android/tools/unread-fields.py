@@ -93,6 +93,12 @@ def main():
     for entry in dead:
         print(f"  {entry}")
     print(f"{len(dead)} decoded field(s) nothing reads, {len(found) - len(dead)} accepted with a reason")
+    print("  Counted by field NAME across the whole corpus, so a field read on ANY class counts as")
+    print("  read on every class that has one of that name. VehicleLinks.primary, .contactLost and")
+    print("  .reason sat here unread and uncounted because GuidedOffer.reason and VehicleChoice")
+    print("  .contactLost are read; one of them was pinned by a test and drawn nowhere. A zero above")
+    print("  is not a clean head. Scoping to files naming the class was tried and flags 98, because")
+    print("  Kotlin infers types and a use site need not spell the class - it needs real resolution.")
     return 1 if dead else 0
 
 

@@ -68,7 +68,6 @@ class VehicleLinksTest {
         )
         val reading = vehicleLinks(unwatched)!!
 
-        assertNull(reading.contactLost)
         assertNull(reading.links[0].commLost)
         assertEquals(LinkCell("2 links", false), linkCell(reading))
     }

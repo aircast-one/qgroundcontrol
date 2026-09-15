@@ -5,13 +5,10 @@ import org.json.JSONObject
 
 internal const val VEHICLE_LINKS = "view.vehicleLinks"
 
-internal data class VehicleLink(val name: String, val primary: Boolean, val commLost: Boolean?)
+internal data class VehicleLink(val commLost: Boolean?)
 
 internal data class VehicleLinks(
     val available: Boolean,
-    val primary: String,
-    val contactLost: Boolean?,
-    val reason: String,
     val links: List<VehicleLink>,
 )
 
@@ -20,16 +17,9 @@ internal fun vehicleLinks(view: JSONObject?): VehicleLinks? {
     val listed = view.optJSONArray("links")
     return VehicleLinks(
         available = view.optBoolean("available"),
-        primary = view.optText("primary"),
-        contactLost = if (view.isNull("contactLost")) null else view.optBoolean("contactLost"),
-        reason = view.optText("reason"),
         links = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
             listed?.optJSONObject(index)?.let { link ->
-                VehicleLink(
-                    name = link.optText("name"),
-                    primary = link.optBoolean("primary"),
-                    commLost = if (link.isNull("commLost")) null else link.optBoolean("commLost"),
-                )
+                VehicleLink(commLost = if (link.isNull("commLost")) null else link.optBoolean("commLost"))
             }
         },
     )
