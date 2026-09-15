@@ -36,7 +36,8 @@ final class MotorsStore: ObservableObject, Probeable {
             reportedCount: (frame["motorCount"] as? NSNumber)?.intValue,
             letterIndices: (frame["apmFirmware"] as? NSNumber)?.boolValue ?? false,
             connected: (frame["connected"] as? NSNumber)?.boolValue ?? false,
-            armed: (frame["armed"] as? NSNumber)?.boolValue ?? false)
+            armed: (frame["armed"] as? NSNumber)?.boolValue ?? false,
+            contactLost: (frame["contactLost"] as? NSNumber)?.boolValue)
         if read != state { state = read }
         if !state.canTest(safetyOff: safetyOff), safetyOff {
             safetyOff = false

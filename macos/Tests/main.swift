@@ -5313,16 +5313,18 @@ func checkLaunchAltitudeIsNotListedTwice() {
 }
 
 func checkMotorTest() {
-    let apm = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: false)
+    let apm = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: false,
+                        contactLost: false)
     expect(apm.names.joined(separator: ","), "A,B,C,D",
            "ArduPilot names its motors by letter, which is what its own page shows")
     expect(apm.countWarning, "", "a vehicle that reported four motors needs no warning")
 
-    let px4 = MotorTest(reportedCount: 6, letterIndices: false, connected: true, armed: false)
+    let px4 = MotorTest(reportedCount: 6, letterIndices: false, connected: true, armed: false,
+                        contactLost: false)
     expect(px4.names.joined(separator: ","), "1,2,3,4,5,6", "PX4 numbers them instead")
 
     let unknown = MotorTest(reportedCount: nil, letterIndices: false,
-                            connected: true, armed: false)
+                            connected: true, armed: false, contactLost: false)
     expect(unknown.motors == MotorTest.fallbackMotors,
            "a vehicle that never said how many motors it has gets eight buttons, as QGC does")
     expect(!unknown.countWarning.isEmpty, "and is told why there are eight")
@@ -5332,7 +5334,8 @@ func checkMotorTest() {
            + "probe anyway -- an instrument reporting a sentence the window cannot show is the "
            + "reason a defect was nearly filed against it")
 
-    let submarine = MotorTest(reportedCount: 0, letterIndices: false, connected: true, armed: false)
+    let submarine = MotorTest(reportedCount: 0, letterIndices: false, connected: true, armed: false,
+                              contactLost: false)
     expect(submarine.motors == MotorTest.fallbackMotors,
            "THE SIGN TEST STAYS ALONGSIDE THE ABSENCE, AND IT IS REDUNDANT TODAY. Every return in "
            + "QGCMAVLink::motorCount is one of 1, 2, 3, 4, 5, 6, 8 and -1, read at HEAD rather "
@@ -5357,10 +5360,34 @@ func checkMotorTest() {
     expect(!MotorTest.disconnected.canTest(safetyOff: true),
            "and never with no vehicle to send it to")
 
-    let armed = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: true)
+    let armed = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: true,
+                          contactLost: false)
     expect(!armed.canTest(safetyOff: true), "nor while the vehicle is armed")
     expect(!armed.armedRefusal.isEmpty, "which the page says rather than just disabling the buttons")
     expect(apm.armedRefusal, "", "a disarmed vehicle is not scolded")
+
+    let silent = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: false,
+                           contactLost: true)
+    let unwatched = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: false,
+                              contactLost: nil)
+
+    expect(!silent.canTest(safetyOff: true),
+           "a vehicle that has stopped answering must not be asked to spin a motor: the command "
+           + "would leave and nothing would come back to say whether it ran")
+    expect(!silent.contactRefusal.isEmpty,
+           "and the page says so rather than greying the buttons and leaving the operator to guess")
+    expect(unwatched.canTest(safetyOff: true),
+           "but a NULL is nobody watching, not a dead link, and refusing on it would ground a bench "
+           + "test whenever link monitoring happens to be off. frame.rs says the same thing from "
+           + "the other end: with the watch off the raw flag stays false however long the vehicle "
+           + "has been silent, so it is served as null rather than as a reassurance")
+    expect(unwatched.contactRefusal.isEmpty,
+           "and an unwatched link is not accused of anything either")
+    expect(apm.canTest(safetyOff: true), "a link known good still tests")
+
+    expect(silent.canStop,
+           "and Stop stays live through all of it -- a vehicle that stopped answering is the "
+           + "hardest case for the propellers already turning, not a reason to remove the control")
 
     expect(armed.canStop, "a vehicle arming while the motors turn is a reason to stop, not to grey Stop out")
     expect(!MotorTest.disconnected.canStop, "only a link is required, and there is none")

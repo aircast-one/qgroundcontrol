@@ -16,9 +16,17 @@ struct MotorTest: Equatable {
     let letterIndices: Bool
     let connected: Bool
     let armed: Bool
+    // ABSENT means NOBODY IS WATCHING, and that is neither lost nor fine. frame.rs serves
+    // `connected.then(|| contact_lost(backend)).flatten()`, and its own test says why the raw flag
+    // could not be used: "with the watch off the flag stays false however long the vehicle has been
+    // silent, so serving it raw would call an unmonitored link healthy on the page that decides
+    // whether a motor may spin". So a null must not refuse -- refusing on unknown would ground a
+    // bench test whenever link monitoring happens to be off -- and it must not reassure either,
+    // which is why it is Bool? here rather than a defaulted false.
+    let contactLost: Bool?
 
     static let disconnected = MotorTest(reportedCount: nil, letterIndices: false,
-                                        connected: false, armed: false)
+                                        connected: false, armed: false, contactLost: nil)
 
     // The sign test stays alongside the absence: the core filters -1 but nothing makes a served 0
     // impossible, and a zero motor count would otherwise draw an empty grid with no warning. Both
@@ -45,7 +53,16 @@ struct MotorTest: Equatable {
         armed ? "The vehicle is armed. Disarm it before testing a motor." : ""
     }
 
-    func canTest(safetyOff: Bool) -> Bool { connected && safetyOff && !armed }
+    // KNOWN lost, not merely not-known-good. `contactLost == true` is the only refusing value.
+    var contactKnownLost: Bool { contactLost == true }
+
+    var contactRefusal: String {
+        contactKnownLost ? "The vehicle has stopped answering. Check the link before testing a motor." : ""
+    }
+
+    func canTest(safetyOff: Bool) -> Bool {
+        connected && safetyOff && !armed && !contactKnownLost
+    }
 
     // Stop is not a test and must not inherit a test's gate. stopAll() guards on connected alone --
     // correctly, since sending zero throttle needs nothing else -- while the button sat inside the

@@ -257,6 +257,13 @@ struct MotorsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, Overlay.horizontalPadding)
                 }
+                if !motors.state.contactRefusal.isEmpty {
+                    Text(motors.state.contactRefusal)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Overlay.horizontalPadding)
+                }
             }
 
             VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
