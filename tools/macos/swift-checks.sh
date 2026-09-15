@@ -49,6 +49,7 @@ fi
 
 swiftc -Onone -o "$out" \
     "$root/macos/Sources/DetectionModel.swift" \
+    "$root/macos/Sources/LabelModel.swift" \
     "$root/macos/Sources/SetupCatalogueModel.swift" \
     "$root/macos/Sources/SettingsPages.swift" \
     "$root/macos/Sources/AboutModel.swift" \

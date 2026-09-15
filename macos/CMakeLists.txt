@@ -22,6 +22,7 @@ add_library(QGCNativeUI STATIC
     Sources/AnalyzeWindow.swift
     Sources/LogDownload.swift
     Sources/LogEntryModel.swift
+    Sources/LabelModel.swift
     Sources/HostNoticeModel.swift
     Sources/MavlinkConsoleModel.swift
     Sources/ModeSlotsModel.swift

@@ -4533,6 +4533,28 @@ func checkCameraControlMatchesTheCore() {
 
 checkCameraControlMatchesTheCore()
 
+func checkALabelCachesAnAnswerAndNeverAFallback() {
+    expect(LabelAnswer.cacheable("Flight Modes") ?? "", "Flight Modes",
+           "a label the core resolved is the answer, and caching it is the whole point: the "
+           + "instrument picker asks for about a hundred at once and label.rs declares DEPS: &[] "
+           + "so the reply cannot change under a different vehicle")
+
+    expect(LabelAnswer.cacheable(nil) == nil,
+           "A READ THAT PRODUCED NOTHING IS NOT AN ANSWER. The caller falls back to the raw "
+           + "identifier, and caching that fallback makes one failed read permanent -- a picker "
+           + "opened during the Qt busy window would show px4HiddenFlightModesMultiRotor for the "
+           + "life of the process, with no later read ever attempted")
+
+    expect(LabelAnswer.cacheable("") == nil,
+           "and an empty string is the same failure wearing a type: the bridge answers with a "
+           + "key present and nothing in it, which `as? String` accepts")
+
+    expect(LabelAnswer.cacheable(0 as NSNumber) == nil,
+           "as is a value of the wrong type, rather than being spelled into one")
+}
+
+checkALabelCachesAnAnswerAndNeverAFallback()
+
 func checkRestartNoticeReachesTheRow() {
     func control(_ reboot: Bool, label: String = "Application font size") -> SettingsControl {
         SettingsControl(["path": "settings.appSettings.appFontPointSize",
