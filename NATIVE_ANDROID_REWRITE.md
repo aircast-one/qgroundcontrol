@@ -7966,3 +7966,25 @@ the selftest's hardcoded New York assertion - the test failed for every run that
 used the knob, which is a red that means nothing. A knob and its check that
 disagree by construction are worse than neither.
 
+### An aircraft in the air that stops answering, 2026-09-15
+
+`ARMED=1 SILENT_AFTER=30` composes two knobs into the state an operator most
+fears. The head handles it and three separate suspicions about it were wrong.
+
+- `view.flyState` reads `armed: true, flying: true, contactLost: true`, with
+  `stateText` "Communication lost" and a `staleNotice` the telemetry row draws:
+  *"No contact - these are the last values the vehicle sent."* The readings stay
+  on screen and are marked as last-known rather than blanked.
+- **Land, RTL, Alt and Actions stay offered, and that is faithful.**
+  `GuidedActionsController.qml:178` computes `_guidedActionsEnabled` from
+  `_activeVehicle` alone - there is no communication term anywhere in it - so
+  QGC offers them too. The link may come back, and a ground station that
+  withdrew RTL the moment a packet was missed would be worse.
+- RTL is offered with no home position, also faithful: `showRTL` has no home
+  term either.
+
+**Three checks, three verified absences.** Each looked like a defect from the
+screen and was correct at the producer. That is worth recording precisely
+because the next person to see Land offered to a silent aircraft will think the
+same thing.
+
