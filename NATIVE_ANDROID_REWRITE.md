@@ -8692,3 +8692,37 @@ repo - so 92 have accumulated since. **Refreshing the baseline would silence all
 92 in one stroke**, which is why it has not been done: they want triage, not a
 `--baseline` run. The tool's own line says why it matters - *a field the core
 adds to a shape you consume is invisible to every other check here*.
+
+### Eighteen views this head never names, 2026-09-16
+
+Counted from the contract against every `.kt` in `android/`: **65 views recorded,
+18 never mentioned anywhere in the head.** Not all are gaps, and sorting them is
+the point.
+
+**Not views to draw (8).** `geoToNed`, `geoToUtm`, `nedToGeo`, `utmToGeo` are
+coordinate conversions called on demand; `contract`, `debugApi`, `label`,
+`missionSeed` are tooling and construction helpers. Nothing to build.
+
+**Parameterised, so the name may be constructed rather than written (2).**
+`view.control` and `view.linkForm` take arguments, and the head builds some
+paths by `format`, so "never named" is weaker evidence here than elsewhere.
+
+**Core capability this head does not consume (5), and these are real:**
+
+| view | what it answers |
+|---|---|
+| `view.gimbal` | `gimbal::gimbal_view` - gimbal control, absent from the Fly view entirely |
+| `view.packetRadio` | wfb link status; the plan already records enumeration as the remaining job, which is a check on this method |
+| `view.gpsRtkBase` | RTK base station state |
+| `view.joystickMapping` | `joystick::joystick_view` |
+| `view.operatorControl` | `inControl` - whether this station holds control of the vehicle, `Option<bool>`, null when unknowable |
+
+**Three left to check** - `cameraProtocol`, `coreCalibration`, `videoSource` -
+each of which may be the raw half of something already drawn, the way
+`armingChecks` is to `armingBlocker`.
+
+**This bears directly on the parity scope being drawn up.** These are not
+redesign questions: the core already computes them and the head does not ask.
+A page mapping Qt's FlyView onto this head should know that gimbal and joystick
+have a served view waiting, and that `operatorControl` has no Qt equivalent to
+port because it is newer than the QML.
