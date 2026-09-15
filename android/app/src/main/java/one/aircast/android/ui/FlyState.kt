@@ -12,7 +12,7 @@ internal const val FLY_STATE = "view.flyState"
 internal data class FlyState(
     val connected: Boolean,
     val armed: Boolean,
-    val contactLost: Boolean,
+    val contactLost: Boolean?,
     val state: String,
     val stateText: String,
     val staleNotice: String,
@@ -27,7 +27,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
     return FlyState(
         connected = view.optBoolean("connected"),
         armed = view.optBoolean("armed"),
-        contactLost = view.optBoolean("contactLost"),
+        contactLost = if (view.isNull("contactLost")) null else view.optBoolean("contactLost"),
         state = view.optText("state"),
         stateText = view.optText("stateText"),
         staleNotice = view.optText("staleNotice"),
@@ -40,7 +40,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
 
 internal fun vehicleSubtitle(state: FlyState?): String = when {
     state == null || !state.connected -> "No vehicle"
-    state.contactLost -> state.stateText
+    state.contactLost == true -> state.stateText
     else -> listOfNotNull(state.mode.ifBlank { null }, state.stateText).joinToString(" · ")
 }
 

@@ -8,6 +8,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FlyStateTest {
+    @Test
+    fun `a link nobody is monitoring is not reported as having contact`() {
+        val unknown = flyState(
+            JSONObject("""{"kind":"object","class":"FlyState","connected":true,"contactLost":null}"""),
+        )
+        assertNull(
+            "flystate.rs serves contactLost as an Option and says so: communicationLostEnabled " +
+                "off means unknown, and unknown is not evidence of a loss. optBoolean flattens " +
+                "JSON null to false, which turns \"nobody is watching this link\" into \"contact " +
+                "is fine\" - the direction that reassures",
+            unknown?.contactLost,
+        )
+        assertEquals(false, flyState(JSONObject("""{"kind":"object","class":"FlyState","contactLost":false}"""))?.contactLost)
+        assertEquals(true, flyState(JSONObject("""{"kind":"object","class":"FlyState","contactLost":true}"""))?.contactLost)
+    }
+
     private val inContact = JSONObject(
         """{"class":"FlyState","connected":true,"armed":false,"flying":false,"landing":false,
             "contactLost":false,"state":"disarmed","stateText":"Stabilize · Disarmed",
@@ -33,7 +49,7 @@ class FlyStateTest {
     fun `a vehicle in contact carries no notice, so nothing dims`() {
         val state = flyState(inContact)!!
 
-        assertFalse(state.contactLost)
+        assertEquals(false, state.contactLost)
         assertEquals("", state.staleNotice)
     }
 
@@ -41,7 +57,7 @@ class FlyStateTest {
     fun `lost contact carries the notice and the head shows it verbatim`() {
         val state = flyState(lost)!!
 
-        assertTrue(state.contactLost)
+        assertEquals(true, state.contactLost)
         assertEquals("Communication lost", state.stateText)
         assertEquals(
             "No contact — these are the last values the vehicle sent.",
