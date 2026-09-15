@@ -45,12 +45,22 @@ decl_re = re.compile(
     r'(func|var|let|case)\s+([A-Za-z_]\w*)')
 type_re = re.compile(r'^\s*(?:public\s+|final\s+)*(struct|class|enum|extension|protocol)\s+([A-Za-z_]\w*)')
 
+# A case of an enum carrying a raw type or CaseIterable is built by the RUNTIME -- Kind(rawValue:)
+# from the core's string, or allCases -- so it is reachable without its name ever being written.
+# FlyState.Kind.disarmed sat in this list looking dead while flyStateModel.swift:54 constructs it
+# from every reply the core sends.
+built_re = re.compile(r':\s*[^{]*\b(String|Int|Double|CaseIterable|RawRepresentable)\b')
+
 decls = collections.defaultdict(list)
 for p in SRC:
-    cur = '(file)'
+    cur, built = '(file)', False
     for i, line in enumerate(src_text[p.name].splitlines(), 1):
         m = type_re.match(line)
-        if m: cur = m.group(2); continue
+        if m:
+            cur = m.group(2)
+            built = m.group(1) == 'enum' and bool(built_re.search(line))
+            continue
+        if built and re.match(r'\s*case\s', line): continue
         d = decl_re.match(line)
         if d: decls[d.group(2)].append((p.name, i, cur, d.group(1)))
 
@@ -63,6 +73,7 @@ for name, ds in decls.items():
     uses = total(name, src_code) - len(ds)      # subtract the declarations themselves
     rows.append((name, ds, uses, total(name, tst_code)))
 
+print("cases of a raw-valued or CaseIterable enum are skipped: the runtime builds them")
 print("counts are REFERENCES IN CODE, never reachability: comments and string literals are")
 print("stripped (interpolated \\(...) segments kept), but a symbol read only by another symbol")
 print("nothing calls still counts as used -- velocityText read `velocity` for months that way.")
