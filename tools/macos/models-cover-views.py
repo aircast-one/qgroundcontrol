@@ -49,6 +49,17 @@ def covered_roots():
 def main():
     sources = pathlib.Path(__file__).parent.parent.parent / "macos" / "Sources"
     read = read_roots(sources)
+    # An empty read is a broken run, not a head that stopped reading views. Without this the stale
+    # branch below fires for EVERY entry in NO_MODEL -- none of them is in an empty `read` -- and
+    # instructs whoever is looking to delete reasons that are all still correct. The summary line
+    # would say "0 uncovered" beside it, which is the reassuring half. Same shape as head-reads.py
+    # writing an empty artefact: a run that could not read its inputs has to say so rather than
+    # report what it computed from nothing.
+    if not read:
+        print(f"  REFUSING to judge: no Bridge.group(\"view.*\") call found under {sources}. That "
+              f"is this script failing to read its inputs, not the head having stopped reading "
+              f"views, and every reason in NO_MODEL would otherwise be reported as stale.")
+        return 2
     covered = covered_roots()
     missing = {root: files for root, files in read.items()
                if root not in covered and root not in NO_MODEL}
