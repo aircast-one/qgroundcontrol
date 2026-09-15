@@ -89,7 +89,7 @@ struct ParameterRow: View {
         name = parameter.name
         label = parameter.description
         value = parameter.value
-        detail = label.isEmpty ? "" : parameter.name
+        detail = parameter.rowDetail
         units = parameter.units
         options = parameter.options
         offersManualEntry = parameter.offersManualEntry

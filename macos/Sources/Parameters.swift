@@ -55,8 +55,8 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
         let names = (Bridge.invoke("vehicle.parameterManager.parameterNames",
                                    [componentId])["result"] as? [String]) ?? []
         let loaded = names.compactMap { name -> Parameter? in
-            let json = Bridge.group("vehicle.parameterManager.getParameter(\(componentId),\(name))")
-            guard json["kind"] as? String == "fact" else { return nil }
+            let json = Bridge.group("view.control(vehicle.parameterManager.getParameter(\(componentId),\(name)))")
+            guard json["kind"] as? String == "object" else { return nil }
             return Parameter(name: name, componentId: componentId, json: json)
         }
 
@@ -106,8 +106,8 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
         }
         guard write(parameter.path, Double(value) ?? value, parameter.name) else { return }
         setupCache.removeAll()
-        let json = Bridge.group(parameter.path)
-        guard json["kind"] as? String == "fact" else { return }
+        let json = Bridge.group(parameter.controlPath)
+        guard json["kind"] as? String == "object" else { return }
         let updated = Parameter(name: parameter.name, componentId: parameter.componentId, json: json)
         if let index = parameters.firstIndex(where: { $0.id == updated.id }) {
             parameters[index] = updated

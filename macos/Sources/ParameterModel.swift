@@ -6,21 +6,27 @@ struct ParameterOption: Identifiable, Equatable {
 
     var id: String { raw }
 
+    init(label: String, raw: String) {
+        self.label = label
+        self.raw = raw
+    }
+
+    // view.control serves options already paired and already filtered: control.rs drops the
+    // synthetic "Unknown: N" entry at the producer, and zips labels to raws only when the two
+    // lists are the same length. Both were rules in this file and both were defects first.
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let label = json["label"] as? String,
+              let raw = json["raw"] as? String else { return nil }
+        self.label = label
+        self.raw = raw
+    }
+
     static let manualEntryHelp = "Set a value the list does not offer. Firmware accepts values "
         + "before the metadata names them."
 }
 
 struct Parameter: Identifiable {
-    // Fact::enumIndex appends tr("Unknown: %1").arg(rawValue()) when the current value is not
-    // among the declared ones, and Fact::unknownEnumLabel now returns that SAME expression, so
-    // the two are equal by construction in every locale. Filtering on the English prefix offered
-    // the bogus entry in the picker outside English and showed "Unbekannt: 9" where English
-    // showed "9"; no head-side test could tell the synthetic entry apart, because addEnumInfo
-    // mutates the metadata permanently and it becomes structurally identical to a real last entry.
-    static func synthetic(_ label: String, unknownEnumLabel: String) -> Bool {
-        !unknownEnumLabel.isEmpty && label == unknownEnumLabel
-    }
-
     let name: String
     let componentId: Int
     let value: String
@@ -32,6 +38,8 @@ struct Parameter: Identifiable {
     // a string-valued parameter from a numeric one, which is why 37226d051 could tighten
     // SettingsControl.refusal -- it guards on kind first -- and had to leave FactRange alone.
     let isString: Bool
+    // Composed by the core as {label, raw, set}, so nothing here derives set from value & bit.
+    let bits: [ControlBit]
     // typeIsInteger was added to Fact and to kFactProperties for exactly this, and control.rs turns
     // the same answer into wholeNumbersOnly. NOT decimalPlaces: a real-typed fact declaring zero
     // decimals is what you write for a percentage, and keying on it would refuse fractions the
@@ -40,6 +48,10 @@ struct Parameter: Identifiable {
 
     var id: String { "\(componentId)/\(name)" }
     var path: String { "vehicle.parameterManager.getParameter(\(componentId),\(name))" }
+    // The nested form parses -- measured on the rig -- and the view read is FASTER than the raw
+    // fact it replaces, 3.87ms against 5.78ms, because a raw fact drags all thirty allowlisted
+    // properties including two long parallel bitmask arrays.
+    var controlPath: String { "view.control(\(path))" }
 
     var group: String {
         guard let underscore = name.firstIndex(of: "_") else { return name }
@@ -49,28 +61,19 @@ struct Parameter: Identifiable {
     init(name: String, componentId: Int, json: [String: Any]) {
         self.name = name
         self.componentId = componentId
-        isString = (json["typeIsString"] as? NSNumber)?.boolValue ?? false
-        wholeNumbersOnly = (json["typeIsInteger"] as? NSNumber)?.boolValue ?? false
+        isString = (json["control"] as? String) == "text"
+        wholeNumbersOnly = (json["wholeNumbersOnly"] as? NSNumber)?.boolValue ?? false
         units = (json["units"] as? String) ?? ""
-        description = (json["shortDescription"] as? String) ?? ""
-        range = FactRange(json, title: name)
-
-        let enumIndex = (json["enumIndex"] as? NSNumber)?.intValue ?? -1
-        let enums = (json["enumStrings"] as? [String]) ?? []
-        let raws = (json["enumValues"] as? [Any]) ?? []
-        let unknownLabel = (json["unknownEnumLabel"] as? String) ?? ""
-        options = enums.count == raws.count
-            ? zip(enums, raws)
-                .filter { !Parameter.synthetic($0.0, unknownEnumLabel: unknownLabel) }
-                .map { ParameterOption(label: $0.0, raw: Parameter.rawText($0.1)) }
-            : []
-        let plain = (json["valueString"] as? String) ?? ""
-        if enumIndex >= 0, enumIndex < enums.count,
-           !Parameter.synthetic(enums[enumIndex], unknownEnumLabel: unknownLabel) {
-            value = enums[enumIndex]
-        } else {
-            value = plain
-        }
+        // label is the fact's shortDescription where it has one and humanise(name) where it does
+        // not. humanise leaves an all-caps name alone -- capitalise only uppercases a first
+        // character that is already uppercase -- so a parameter with no metadata still reads as its
+        // own name here. Checked in label.rs rather than assumed, because a mangled name in the one
+        // screen somebody opens to look a parameter up would be worse than no migration.
+        description = (json["label"] as? String) ?? ""
+        range = FactRange(control: json, title: name)
+        options = ((json["options"] as? [Any]) ?? []).compactMap(ParameterOption.init)
+        bits = ((json["bits"] as? [Any]) ?? []).compactMap(ControlBit.init)
+        value = (json["display"] as? String) ?? ""
     }
 }
 
@@ -96,6 +99,12 @@ extension Parameter {
     // refusal above, exactly as a numeric parameter's is; the escape widens what can be asked for,
     // not what can be written unchecked. A parameter with no options already gets the field.
     var offersManualEntry: Bool { !options.isEmpty }
+
+    // The row draws description as its title and this underneath. Before the migration description
+    // was the raw shortDescription and empty when a fact had none, so the row fell back to the name
+    // and showed nothing here. The core's label never comes back empty -- it answers the name
+    // itself in that case -- so the old `description.isEmpty` test would print the name twice.
+    var rowDetail: String { description == name ? "" : name }
 
     static func rawText(_ value: Any) -> String {
         guard let number = value as? NSNumber else { return "\(value)" }

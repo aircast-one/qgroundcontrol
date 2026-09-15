@@ -304,19 +304,19 @@ expect(!VibrationReading.unavailable.available, "the unavailable reading reports
 expect(VibrationReading.Severity("molten") == nil,
        "a severity this head does not know is no severity, not the reassuring one")
 
-let outsideEnum = Parameter(name: "ACRO_RP_RATE_TC", componentId: 1, json: [
-    "enumIndex": 5, "valueString": "0.00", "units": "s",
-    "enumStrings": ["Very Soft", "Soft", "Medium", "Crisp", "Very Crisp", "Unknown: 0"],
-    "unknownEnumLabel": "Unknown: 0"])
-expect(outsideEnum.value, "0.00", "a value outside its enum shows the number")
-
+// The enum-label rules that lived here are the core's now: control.rs picks display from enumIndex,
+// drops the synthetic "Unknown: N" entry, and zips labels to raws only when the lists match. Its own
+// tests cover all three -- a_bool_fact_is_a_toggle_and_an_enum_a_choice_without_unknowns,
+// the_synthetic_entry_is_recognised_in_a_language_that_is_not_english, and
+// strings_and_enum_positions_fall_back_sensibly. Re-asserting them through a hand-made fixture here
+// would test the fixture, not the rule.
 let insideEnum = Parameter(name: "ACRO_RP_EXPO", componentId: 1, json: [
-    "enumIndex": 2, "valueString": "0.30", "enumStrings": ["Low", "Med", "High"]])
-expect(insideEnum.value, "High", "a value inside its enum shows the label")
+    "control": "choice", "display": "High", "valueString": "0.30"])
+expect(insideEnum.value, "High", "the head draws the display the core composed")
 
 let noEnum = Parameter(name: "ACRO_BAL_ROLL", componentId: 1, json: [
-    "enumIndex": -1, "valueString": "1.0"])
-expect(noEnum.value, "1.0", "a plain numeric parameter shows its value")
+    "control": "number", "display": "1.0", "valueString": "1.0"])
+expect(noEnum.value, "1.0", "and a plain numeric parameter shows its value")
 
 expect(Parameter(name: "ATC_ANG_PIT_P", componentId: 1, json: [:]).group, "ATC", "group is the prefix")
 expect(Parameter(name: "SCHED_LOOP_RATE", componentId: 1, json: [:]).group, "SCHED", "group stops at the first underscore")
@@ -1535,62 +1535,60 @@ func checkVehicleReadiness() {
 checkVehicleReadiness()
 
 func checkParameterOptions() {
+    // Fixtures are the control shape now, which is what the producer sends. The synthetic-entry
+    // filter, the enum/raw zip and the label-for-a-value choice all moved to control.rs and are
+    // covered by its own tests; what is left here is what THIS head still decides.
     let mode = Parameter(name: "FLTMODE1", componentId: 1, json: [
-        "units": "", "shortDescription": "Flight mode 1",
-        "enumIndex": 2, "enumStrings": ["Stabilize", "Acro", "AltHold"],
-        "enumValues": [0, 1, 5], "valueString": "5",
+        "control": "choice", "label": "Flight mode 1", "units": "", "display": "AltHold",
+        "valueString": "5",
+        "options": [["label": "Stabilize", "raw": "0"], ["label": "Acro", "raw": "1"],
+                    ["label": "AltHold", "raw": "5"]],
     ])
-    expect(mode.value, "AltHold", "an enum parameter shows its label")
+    expect(mode.value, "AltHold", "an enum parameter draws the display the core composed")
     expect(mode.options.count == 3, "and keeps every option it can be set to")
     expect(mode.selectedOption?.raw == "5",
            "the selected option carries the RAW value to write, which is the number the vehicle "
-           + "stores and not the position it sits at. The enum value here is 5 at index 2 ON "
-           + "PURPOSE: the old fixture had index, value and position all equal to 2, so returning "
-           + "String(enumIndex) passed as readily as reading enumValues, and ArduPilot mode "
-           + "numbers are genuinely sparse")
-
-    let unknown = Parameter(name: "FLTMODE2", componentId: 1, json: [
-        "enumIndex": 3, "enumStrings": ["Stabilize", "Acro", "AltHold", "Unknown: 9"],
-        "enumValues": [0, 1, 2, 9], "valueString": "9",
-        "unknownEnumLabel": "Unknown: 9",
-    ])
-    expect(unknown.value, "9", "a value outside the enum shows the number, not Unknown")
-    expect(unknown.options.count == 3, "the synthetic Unknown entry is not offered as a choice")
-
-    let german = Parameter(name: "FLTMODE2", componentId: 1, json: [
-        "enumIndex": 3, "enumStrings": ["Stabilize", "Acro", "AltHold", "Unbekannt: 9"],
-        "enumValues": [0, 1, 2, 9], "valueString": "9",
-        "unknownEnumLabel": "Unbekannt: 9",
-    ])
-    expect(german.options.count == 3,
-           "THE FIXTURE THAT MATTERS: the filter used to key on the English prefix \"Unknown: \", "
-           + "so outside English the synthetic entry was offered as a real choice and the value "
-           + "read \"Unbekannt: 9\" where English read \"9\". Fact::unknownEnumLabel now returns "
-           + "the same tr() expression that BUILDS the entry, so the two are equal by "
-           + "construction in every locale rather than agreeing by luck in one")
-    expect(german.value, "9", "and the value shows the number rather than the translated word")
-
-    let unlabelled = Parameter(name: "FLTMODE3", componentId: 1, json: [
-        "enumIndex": 1, "enumStrings": ["Stabilize", "Acro"],
-        "enumValues": [0, 1], "valueString": "1",
-    ])
-    expect(unlabelled.options.count == 2 && unlabelled.value == "Acro",
-           "a fact serving no unknownEnumLabel filters nothing: an empty label must not match an "
-           + "ordinary entry, or every parameter would lose whichever option happened to be blank")
+           + "stores and not the position it sits at. The raw here is 5 against a third-position "
+           + "label ON PURPOSE: with raw, index and position all equal the head could return any "
+           + "of the three and pass, and ArduPilot mode numbers are genuinely sparse")
+    expect(mode.description, "Flight mode 1",
+           "and the row's title is the fact's own shortDescription, which the core serves as label")
 
     let plain = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
-        "units": "cm/s", "valueString": "500", "enumIndex": -1,
+        "control": "number", "label": "WPNAV_SPEED", "units": "cm/s", "display": "500",
+        "valueString": "500",
     ])
     expect(plain.options.isEmpty, "a numeric parameter offers no options")
     expect(plain.value, "500", "and shows its value")
     expect(plain.group, "WPNAV", "the group is the prefix before the first underscore")
+    expect(plain.rowDetail, "",
+           "and the row does not then print it twice: description is the title, this is the line "
+           + "under it, and they must not be the same string")
+    expect(mode.rowDetail, "FLTMODE1",
+           "while a parameter that DID name itself keeps its identifier underneath, which is what "
+           + "somebody searching for FLTMODE1 in a list of 328 is looking for")
+    expect(plain.description, plain.name,
+           "A PARAMETER WITH NO shortDescription GETS ITS OWN NAME BACK, not a mangled one: "
+           + "humanise splits camelCase and an all-caps name has no boundaries to split on, so "
+           + "capitalise leaves it alone. That is the one thing this migration could have broken "
+           + "across every row in the browser")
 
-    let mismatched = Parameter(name: "X_Y", componentId: 1, json: [
-        "enumStrings": ["A", "B"], "enumValues": [0], "valueString": "0", "enumIndex": 0,
+    let masked = Parameter(name: "ARMING_CHECK", componentId: 1, json: [
+        "control": "bitmask", "label": "Arming checks", "display": "82", "valueString": "82",
+        "bits": [["label": "Barometer", "raw": "2", "set": true as NSNumber],
+                 ["label": "Compass", "raw": "4", "set": false as NSNumber],
+                 ["label": "INS", "raw": "16", "set": true as NSNumber]],
     ])
-    expect(mismatched.options.isEmpty, "labels without matching values are not offered")
+    expect(masked.bits.count == 3,
+           "a bitmask parameter carries its bits, which the raw fact could not give without this "
+           + "head deriving set from value & bit -- the core's composition put back in the head")
+    expect(masked.bits.filter(\.set).map(\.label).joined(separator: ","), "Barometer,INS",
+           "and the core says which are set: 82 is 64 + 16 + 2, and the two named here are the "
+           + "two of those three this control declares")
 
-    expect(Parameter.rawText(NSNumber(value: 2.0)), "2", "a whole enum value writes without a decimal point")
+    expect(Parameter.rawText(NSNumber(value: 2.0)), "2",
+           "a whole enum value writes without a decimal point -- still this head's rule, because "
+           + "it is what goes INTO a write rather than what came out of a read")
 }
 
 checkParameterOptions()
@@ -2001,9 +1999,8 @@ checkASettingsControlRefusesWhatItsOwnHintForbids()
 
 func checkAVehicleParameterIsMeasuredAgainstItsOwnDeclaredRange() {
     let angle = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
-        "name": "WPNAV_SPEED", "valueString": "500", "units": "cm/s",
-        "min": 20, "max": 2000, "minString": "20", "maxString": "2000",
-        "minIsDefaultForType": false, "maxIsDefaultForType": false])
+        "control": "number", "valueString": "500", "units": "cm/s",
+        "minimum": 20, "maximum": 2000, "minimumText": "20", "maximumText": "2000"])
     expect(angle.range.refusal("5000") ?? "", "WPNAV_SPEED must be within 20 and 2000.",
            "a vehicle parameter is the highest-stakes write this head makes and it was the only "
            + "one measured against nothing at all -- Parameter decoded no bounds, though its "
@@ -2011,10 +2008,9 @@ func checkAVehicleParameterIsMeasuredAgainstItsOwnDeclaredRange() {
     expect(angle.range.refusal("500") == nil, "a value inside the range is written")
 
     let open = Parameter(name: "SR0_POSITION", componentId: 1, json: [
-        "name": "SR0_POSITION", "valueString": "4",
-        "min": -1.7976931348623157e+308, "max": 1.7976931348623157e+308,
-        "minString": "-1797693134862315708.00", "maxString": "1797693134862315708.00",
-        "minIsDefaultForType": true, "maxIsDefaultForType": true])
+        "control": "number", "valueString": "4",
+        "minimum": NSNull(), "maximum": NSNull(),
+        "minimumText": NSNull(), "maximumText": NSNull()])
     expect(open.range.refusal("99999") == nil,
            "a parameter declaring neither end refuses nothing, so the uniform rule does not "
            + "invent a limit for the many parameters that genuinely have none")
@@ -6551,11 +6547,9 @@ func checkSensorsComponentIsFoundByClass() {
 
 func checkAStringParameterIsNotHeldToANumbersRules() {
     let numeric = Parameter(name: "WPNAV_SPEED", componentId: 1,
-                            json: ["value": 500.0 as NSNumber, "valueString": "500",
-                                   "min": 20.0 as NSNumber, "max": 2000.0 as NSNumber,
-                                   "minString": "20", "maxString": "2000",
-                                   "minIsDefaultForType": false as NSNumber,
-                                   "maxIsDefaultForType": false as NSNumber])
+                            json: ["control": "number", "valueString": "500",
+                                   "minimum": 20.0 as NSNumber, "maximum": 2000.0 as NSNumber,
+                                   "minimumText": "20", "maximumText": "2000"])
     expect(numeric.refusal("1,500") ?? "", Measure.commaAdvice,
            "a NUMERIC parameter gets the numeric rules, so the comma that wrote 1.5 into a "
            + "settings field cannot reach a vehicle parameter either")
@@ -6563,8 +6557,8 @@ func checkAStringParameterIsNotHeldToANumbersRules() {
     expect(numeric.refusal("500") == nil, "while a value inside the range is written")
 
     let text = Parameter(name: "SYSID_BOARD", componentId: 1,
-                         json: ["value": "pixhawk,v5", "valueString": "pixhawk,v5",
-                                "typeIsString": true as NSNumber])
+                         json: ["control": "text", "display": "pixhawk,v5",
+                                "valueString": "pixhawk,v5"])
     expect(text.refusal("pixhawk,v5") == nil,
            "A STRING PARAMETER LEGITIMATELY HOLDS A COMMA. This is why FactRange could not be "
            + "tightened directly: write(_ parameter:) passes text parameters through it and the "
@@ -8130,7 +8124,8 @@ func checkAnIntegerFactRefusesAFraction() {
     // fact and what control.rs turns into wholeNumbersOnly, and the core's own test builds
     // SR0_POSITION the same way.
     let counted = Parameter(name: "SR0_POSITION", componentId: 1, json: [
-        "typeIsInteger": true as NSNumber, "valueString": "4", "decimalPlaces": 0])
+        "control": "number", "wholeNumbersOnly": true as NSNumber, "valueString": "4",
+        "decimalPlaces": 0])
     expect(counted.refusal("3.7") ?? "", "SR0_POSITION takes a whole number.",
            "THE DEFECT dd04e0470 RECORDED AS UNFIXABLE: QGC refuses this at the type conversion, "
            + "before the range check, because it validates the TEXT. This head sent a Double, so "
@@ -8143,7 +8138,7 @@ func checkAnIntegerFactRefusesAFraction() {
            + "string carrying a decimal point, so QGC refuses it on an integer fact as well")
 
     let real = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
-        "valueString": "5.0", "decimalPlaces": 0])
+        "control": "number", "valueString": "5.0", "decimalPlaces": 0])
     expect(real.refusal("3.7") == nil,
            "A REAL-TYPED FACT DECLARING ZERO DECIMALS IS WHAT YOU WRITE FOR A PERCENTAGE, so "
            + "keying on decimalPlaces would refuse fractions the vehicle accepts. This is the "
@@ -8151,7 +8146,7 @@ func checkAnIntegerFactRefusesAFraction() {
            + "precisely so it would fail if anyone reached for it again")
 
     let text = Parameter(name: "rtspUrl", componentId: 1, json: [
-        "typeIsString": true as NSNumber, "typeIsInteger": true as NSNumber, "valueString": "rtsp://x"])
+        "control": "text", "wholeNumbersOnly": true as NSNumber, "valueString": "rtsp://x"])
     expect(text.refusal("3.7") == nil,
            "a string parameter is let through whatever else it claims, because the string guard "
            + "runs first and a URL is not a number to be whole")
@@ -8202,8 +8197,8 @@ func checkAStoppedParameterLoadStopsSayingItIsLoading() {
 
 func checkAnEnumParameterCanStillBeTypedInto() {
     let listed = Parameter(name: "SERVO1_FUNCTION", componentId: 1, json: [
-        "enumStrings": ["Disabled", "RCPassThru"], "enumValues": [0, 1],
-        "enumIndex": 1, "valueString": "1"])
+        "control": "choice", "display": "RCPassThru", "valueString": "1",
+        "options": [["label": "Disabled", "raw": "0"], ["label": "RCPassThru", "raw": "1"]]])
     expect(listed.offersManualEntry,
            "a vehicle parameter with a list still gets a field to type into. The list is what the "
            + "METADATA names and firmware ships values ahead of it, so without the field this is "
