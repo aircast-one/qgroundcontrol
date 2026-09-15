@@ -8553,9 +8553,17 @@ the null handling and exactly one test of 542 fails. The pairing is inference
 until someone sees it.
 
 **The transient window is harder to reach than it sounds - two routes tried,
-neither produced the precondition.** Tapping Disconnect in the UI did not take,
-and the poll that followed read a steady connected state rather than a
-reconnect, which looks identical to a window that is too brief. Killing the
+neither produced the precondition.** The poll that followed the Disconnect tap
+read a steady connected state rather than a reconnect, which looks identical to
+a window that is too brief.
+
+**Corrected later the same night, by a screenshot taken for another reason:**
+the Disconnect tap *did* land. It opens a confirm dialog - *"A vehicle is
+connected on this link. Disconnecting stops telemetry and you will not be able
+to command it until it reconnects."* - and nothing confirmed it, so the link
+stayed up with the dialog waiting. **A tap that opens a dialog and a tap that
+misses look identical from the next poll**, and I recorded the wrong one. The
+route is viable; it needs the dialog's own Disconnect pressed after it. Killing the
 vehicle behind the relay left `connected: true` for **54 s** and counting: QGC
 holds a vehicle well past its last heartbeat, which is the same latching that
 keeps `vehicle.latitude` alive after a link drops.
