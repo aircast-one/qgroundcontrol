@@ -8301,3 +8301,35 @@ wrong**, which is the only reason to measure something this cheap to measure:
 331 ms every 700 ms is a real reading of a real number, attached to the wrong
 regime. A cost measured during contention says nothing about the same call
 settled.
+
+### "Not calibrated" cannot tell a missing parameter from a zeroed one, 2026-09-15
+
+`APMSensorsComponent.cc:73` decides the accelerometer needs calibration by
+reading `INS_ACCOFFS_X/Y/Z` and returning true when **all three are zero**.
+`ParameterManager.cc:584` returns `&_defaultFact` for a parameter that has not
+arrived, and a default Fact reads zero.
+
+**So a vehicle whose offsets have not been received is reported exactly as one
+that has never been calibrated.** The head then draws *"Not calibrated"* with
+`SetupState.NeedsAttention` (`SensorsScreen.kt:370`), which an operator can act
+on by recalibrating a sensor that was fine.
+
+This is the sentinel-equals-the-real-value shape: **zero is both "no answer" and
+a real answer**, and nothing downstream can separate them because the
+information is already gone by the time `accelSetupNeeded()` returns a bool.
+
+**What is established and what is not.** The chain is read from source and is
+certain: missing parameter to default Fact to zero to `true`. What is *not*
+observed here is a live *"Not calibrated"* on a connected vehicle with those
+specific parameters absent - the rig drops its link whenever the probe's deep
+link restarts the activity, and `view.calibration` read `connected: false`. That
+this head does log `reportMissingParameter` against real vehicles is shown by
+the *"Missing params: 1:FRAME"* banner seen earlier tonight, so the path is
+live; whether `INS_ACCOFFS` is ever among the missing on real hardware is the
+part still unverified.
+
+**The head must not paper over it.** Re-deriving calibration state here would be
+the head deciding something about the vehicle, and a fallback is not a fix. The
+distinction can only be drawn where parameter readiness is known - the core
+already computes that for `view.setup` - so the honest answer is a third state
+from `view.calibration` rather than a bool that is confident in both directions.
