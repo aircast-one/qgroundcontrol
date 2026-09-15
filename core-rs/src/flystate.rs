@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI"];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -73,8 +73,15 @@ fn flying_to(backend: &dyn Backend) -> Option<i64> {
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
-    let links = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost"));
-    let contact_lost = connected && flag(&links, "communicationLost");
+    // _commLostCheck returns early when the watch is disabled, so communicationLost never updates
+    // and false means "nobody is looking" rather than "every link is fine". view.frame and
+    // view.vehicleLinks both gate on the enabled flag; this one did not, and served a plain bool
+    // that called an unmonitored link healthy. Unknown is not evidence of a loss, so the state and
+    // the notice stay as they are - only the field admits it does not know.
+    let links = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled"));
+    let watching = flag(&links, "communicationLostEnabled");
+    let reported = connected.then(|| watching.then(|| flag(&links, "communicationLost"))).flatten();
+    let contact_lost = reported.unwrap_or(false);
     let state = state_of(connected, contact_lost, flag(&vehicle, "armed"), flag(&vehicle, "flying"), flag(&vehicle, "landing"));
     json!({
         "kind": "object",
@@ -83,7 +90,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "armed": flag(&vehicle, "armed"),
         "flying": flag(&vehicle, "flying"),
         "landing": flag(&vehicle, "landing"),
-        "contactLost": contact_lost,
+        "contactLost": reported,
         "state": state.token(),
         "stateText": state.line(),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
@@ -116,7 +123,7 @@ mod tests {
             match path {
                 "vehicle" => self.vehicle.to_string(),
                 "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": self.flying_to }).to_string(),
-                "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost }).to_string(),
+                "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost, "communicationLostEnabled": true }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
@@ -186,7 +193,8 @@ mod tests {
     fn no_vehicle_is_not_a_lost_contact() {
         let view = read(json!({ "kind": "null" }), true);
         assert_eq!((view["state"].as_str(), view["stateText"].as_str()), (Some("notConnected"), Some("Not connected")), "never having heard a vehicle is not the same as losing one");
-        assert_eq!((view["contactLost"].as_bool(), view["armed"].as_bool(), view["flying"].as_bool()), (Some(false), Some(false), Some(false)));
+        assert_eq!(view["contactLost"], Value::Null, "with no vehicle there is no link to have lost, and false would be a claim about one");
+        assert_eq!((view["armed"].as_bool(), view["flying"].as_bool()), (Some(false), Some(false)));
         assert_eq!(view["staleNotice"], "");
         assert_eq!(view["mode"], "");
     }
@@ -196,5 +204,28 @@ mod tests {
         let bit = |mask: u8, index: u8| mask & (1 << index) != 0;
         let reachable: std::collections::BTreeSet<State> = (0u8..32).map(|mask| state_of(bit(mask, 0), bit(mask, 1), bit(mask, 2), bit(mask, 3), bit(mask, 4))).collect();
         assert_eq!(reachable, STATES.iter().copied().collect(), "every state a head switches on is one this view can answer, and there are no others");
+    }
+
+    #[test]
+    fn a_link_nobody_is_watching_is_not_reported_as_healthy() {
+        struct Unwatched;
+        impl Backend for Unwatched {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle" => json!({ "kind": "object", "armed": false, "flying": false, "landing": false, "flightMode": "Hold" }).to_string(),
+                    "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": false, "communicationLostEnabled": false }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let unwatched = fly_state_view(&Unwatched, &[]);
+        assert_eq!(unwatched["contactLost"], Value::Null, "_commLostCheck returns early when the watch is disabled, so communicationLost never updates and false means nobody is looking - this view served it raw and called an unmonitored link healthy, in five places on one head");
+        assert_eq!(unwatched["state"].as_str(), Some("disarmed"), "and unknown is not evidence of a loss, so the state it drives is the one the vehicle actually reports");
+        assert_eq!(unwatched["staleNotice"], "", "nor does an unknown link earn a stale notice");
     }
 }

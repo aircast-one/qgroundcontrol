@@ -51,6 +51,7 @@ fn motors(vehicle: &Value, parameters_ready: bool) -> Option<i64> {
 
 pub fn frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let ready = flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
+    let lost = contact_lost(backend);
     let vehicle = object(&backend.get_fields("vehicle", FIELDS));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     json!({
@@ -62,7 +63,7 @@ pub fn frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "motorCount": connected.then(|| motors(&vehicle, ready)).flatten(),
         "apmFirmware": flag(&vehicle, "apmFirmware"),
         "armed": flag(&vehicle, "armed"),
-        "contactLost": connected.then(|| contact_lost(backend)).flatten(),
+        "contactLost": connected.then_some(lost).flatten(),
     })
 }
 

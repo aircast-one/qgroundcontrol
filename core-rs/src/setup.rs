@@ -716,6 +716,8 @@ mod components {
         assert!(view["headline"].as_str().unwrap().contains("parameters"));
 
         assert_eq!(readiness(true, true, &[("Radio".into(), false)], &[]).0, Some(true), "once the parameters are in, a verdict is owed");
-        assert_eq!(readiness(true, false, &[("Radio".into(), false)], &[]).0, None);
+        let waiting = readiness(true, false, &[("Radio".into(), false)], &[]);
+        assert_eq!(waiting.0, None);
+        assert_eq!(waiting.1, "Waiting for this vehicle's parameters", "connected and parameters_ready are adjacent bools, so transposing them at the call site still compiles and still returns None - only the headline tells the two apart");
     }
 }
