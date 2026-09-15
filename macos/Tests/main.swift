@@ -2947,7 +2947,8 @@ func checkFlyState() {
     expect(disarmed.display, "Disarmed", "the core names the state and this head prints its words")
     expect(!disarmed.alarming, "a vehicle sitting disarmed is not an alarm")
 
-    let flying = read("flying", "Flying", ["armed": true as NSNumber, "connected": true as NSNumber])
+    let flying = read("flying", "Flying", ["armed": true as NSNumber, "connected": true as NSNumber,
+                                           "contactLost": false as NSNumber])
     expect(flying.display, "Flying", "and an airborne one reads as flying")
     expect(flying.armed, "the badge is drawn from the same reply as the line")
 
@@ -2983,11 +2984,22 @@ func checkFlyState() {
            "the Link chip is coloured by the link, and lost contact is the link failing")
     expect(flying.linkLevel == .good,
            "a vehicle in contact has a healthy link even when it is doing something else")
-    let noFix = read("flying", "Flying", ["connected": true as NSNumber])
+    let noFix = read("flying", "Flying", ["connected": true as NSNumber,
+                                          "contactLost": false as NSNumber])
     expect(noFix.linkLevel == .good,
            "the Link chip took its colour from gpsLevel, so a vehicle with a solid radio and no "
            + "GPS fix reported the radio as critical -- and worse, a good fix painted a failing "
            + "link green, which is the direction that hides a real problem")
+
+    let unwatched = read("flying", "Flying", ["connected": true as NSNumber])
+    expect(unwatched.linkLevel == .unknown,
+           "a reply carrying NO contactLost is the watch being off, and the chip goes secondary "
+           + "rather than green. Both fixtures above used to say \"in contact\" BY OMISSION and "
+           + "the old false default honoured them, which is the same mistake the core was making "
+           + "one layer down -- flystate.rs served the raw flag, and with the watch off it stays "
+           + "false however long the vehicle has been silent")
+    expect(unwatched.contactLost == nil,
+           "and the model holds the absence rather than flattening it to a verdict")
 }
 
 checkFlyState()

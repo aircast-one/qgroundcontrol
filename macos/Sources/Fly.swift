@@ -258,7 +258,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         ["writeFailure": writeFailure ?? "",
          "connected": state.connected, "mode": state.mode, "state": state.display,
          "stateToken": state.kind.rawValue, "alarming": state.alarming,
-         "contactLost": state.contactLost, "staleNotice": state.staleNotice,
+         "contactLost": state.contactLost as Any, "staleNotice": state.staleNotice,
          "separation": separation,
          "track": ["available": track.available, "recording": track.recording,
                    "generation": track.generation, "dropped": track.dropped,

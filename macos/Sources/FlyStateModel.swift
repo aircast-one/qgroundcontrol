@@ -18,7 +18,11 @@ struct FlyState: Equatable {
 
     let connected: Bool
     let armed: Bool
-    let contactLost: Bool
+    // NULLABLE because the core sends a verdict only while communicationLostEnabled is on.
+    // flystate.rs served it as a plain bool and `flag()` defaulted a missing one to false, so an
+    // unmonitored link arrived here as "not lost" and linkLevel drew it GREEN -- the head
+    // asserting a link is fine on the strength of a check nobody is running.
+    let contactLost: Bool?
     let rcSupported: Bool
     let rcSignalText: String
     let kind: Kind
@@ -31,7 +35,7 @@ struct FlyState: Equatable {
     private init() {
         connected = false
         armed = false
-        contactLost = false
+        contactLost = nil
         rcSupported = false
         rcSignalText = ""
         kind = .notConnected
@@ -44,7 +48,7 @@ struct FlyState: Equatable {
         func flag(_ name: String) -> Bool { (json[name] as? NSNumber)?.boolValue ?? false }
         connected = flag("connected")
         armed = flag("armed")
-        contactLost = flag("contactLost")
+        contactLost = (json["contactLost"] as? NSNumber)?.boolValue
         rcSupported = flag("rcSupported")
         rcSignalText = (json["rcSignalText"] as? String) ?? ""
         kind = Kind(rawValue: (json["state"] as? String) ?? "") ?? .unknown
@@ -60,5 +64,15 @@ struct FlyState: Equatable {
 
     var alarming: Bool { kind == .contactLost || kind == .unknown }
 
-    var linkLevel: FlyTelemetry.Level { contactLost ? .critical : .good }
+    // Three states, not two. A null is neither .good nor .critical: it is .unknown, which draws
+    // in secondary the way the Traffic row does when traffic is off -- the established treatment
+    // for a thing nobody is checking. Saying .good here would be the same defect as the served
+    // false it replaces, only written in Swift.
+    var linkLevel: FlyTelemetry.Level {
+        switch contactLost {
+        case .some(true): return .critical
+        case .some(false): return .good
+        case nil: return .unknown
+        }
+    }
 }
