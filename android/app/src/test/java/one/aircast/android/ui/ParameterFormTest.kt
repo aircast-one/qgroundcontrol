@@ -10,6 +10,44 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ParameterFormTest {
+    private fun control(extra: String = "") = JSONObject(
+        """{"kind":"control","path":"settings.appSettings.enforceChecklist","name":"enforceChecklist",""" +
+            """"label":"Enforce checklist","control":"toggle","value":true$extra}""",
+    )
+
+    @Test
+    fun `a control served without the gate is writable, because every older core omits it`() {
+        val fact = factFromControl(control())!!
+        assertTrue(
+            "enabled and disabledReason are additive; every control from a core that predates them " +
+                "arrives with neither, and a head that read a missing gate as false would grey out " +
+                "the whole of Settings",
+            fact.enabled,
+        )
+        assertTrue(fact.acceptsWrite)
+    }
+
+    @Test
+    fun `a control the core says is inert is not offered, and says why`() {
+        val fact = factFromControl(control(""","enabled":false,"disabledReason":"Turn on Use preflight checklist first""""))!!
+        assertFalse(fact.acceptsWrite)
+        assertEquals("Turn on Use preflight checklist first", inertNote(fact))
+    }
+
+    @Test
+    fun `read-only and inert are different answers and say different things`() {
+        val readOnly = factFromControl(control(""","readOnly":true"""))!!
+        assertEquals("Read-only", inertNote(readOnly))
+        val inert = factFromControl(control(""","enabled":false"""))!!
+        assertEquals(
+            "the flag decides, never the presence of the string - a reason drawn whenever it is " +
+                "non-empty can explain why a row is off while it is on",
+            "Has no effect yet",
+            inertNote(inert),
+        )
+    }
+
+
     @Test
     fun `a fact response becomes a fact addressed by its parameter path`() {
         val json = JSONObject(

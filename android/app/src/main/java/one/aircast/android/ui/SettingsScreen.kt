@@ -112,6 +112,11 @@ internal data class SettingsSectionRows(
 
 internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 
+internal fun inertNote(fact: Fact): String = when {
+    !fact.enabled -> fact.disabledReason.ifBlank { "Has no effect yet" }
+    else -> "Read-only"
+}
+
 internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
     val pages = view?.optJSONArray("pages") ?: return emptyList()
     return (0 until pages.length()).mapNotNull { index ->
@@ -394,7 +399,7 @@ internal fun FactRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                fact.readOnly -> Column(horizontalAlignment = Alignment.End) {
+                !fact.acceptsWrite -> Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = enumLabel(fact),
                         style = MaterialTheme.typography.bodyMedium,
@@ -402,7 +407,7 @@ internal fun FactRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "Read-only",
+                        text = inertNote(fact),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

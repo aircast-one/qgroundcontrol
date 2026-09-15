@@ -75,6 +75,8 @@ internal fun factFromControl(control: JSONObject): Fact? {
         isBool = control.optText("control") == "toggle",
         isString = control.optText("control") == "text",
         readOnly = control.optBoolean("readOnly"),
+        enabled = control.optBoolean("enabled", true),
+        disabledReason = control.optText("disabledReason"),
         vehicleRebootRequired = control.optBoolean("rebootRequired"),
         minString = control.optText("minimumText"),
         maxString = control.optText("maximumText"),

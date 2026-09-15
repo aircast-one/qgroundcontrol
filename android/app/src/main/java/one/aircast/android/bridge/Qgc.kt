@@ -28,6 +28,8 @@ data class Fact(
     val isBool: Boolean,
     val isString: Boolean,
     val readOnly: Boolean,
+    val enabled: Boolean = true,
+    val disabledReason: String = "",
     val minString: String = "",
     val maxString: String = "",
     val minIsDefaultForType: Boolean = true,
@@ -43,6 +45,11 @@ data class Fact(
         unknownEnumLabel.isNotBlank() && enumStrings.getOrNull(enumIndex) == unknownEnumLabel
 
     val boolValue: Boolean = value == true || valueString.equals("true", ignoreCase = true) || valueString == "1"
+
+    // readOnly means the value cannot be written; enabled false means writing it changes
+    // nothing. A control can be writable and pointless at once - enforceChecklist while
+    // useChecklist is off is exactly that - and every call site wants the same answer.
+    val acceptsWrite: Boolean = !readOnly && enabled
 }
 
 object Qgc {
