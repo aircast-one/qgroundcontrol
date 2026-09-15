@@ -7922,3 +7922,23 @@ same shape and neither head can witness it: this one polls the view every
 700 ms with no subscription at all, which is why its deps were never
 load-bearing.
 
+### Everything tonight, read back on the rig, 2026-09-15
+
+A sweep across all five tabs with two vehicles connected, after a night of
+installs in sequence.
+
+| tab | what it showed |
+|---|---|
+| Fly | telemetry row with the Readings picker, header naming Quadrotor 1, chooser reachable |
+| Plan | the same header on this tab, plan controls live |
+| Setup | *"This vehicle has not answered the request for its parameters"* above this head's own next step |
+| Analyze | its list, opening cleanly |
+| Settings | ten pages with their descriptions, search finding "Mute audio output" under GENERAL > APPLICATION, and the toggle writing `audioMuted` true and back to false |
+
+**UTMSP is off by build flag and not a porting task.** `QGC_UTM_ADAPTER:BOOL=OFF`
+in the Android cache, and `CMakeLists.txt:305` swaps the whole `utmsp.qrc` for
+`dummy/utmsp_dummy.qrc` when it is off - so there is nothing compiled in for a
+head to draw. Turning it on means building against a Blender REST service,
+which is a network-facing feature with no test endpoint here, not a screen to
+port. Recorded so the next session can decide rather than discover.
+
