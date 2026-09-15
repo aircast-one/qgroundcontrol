@@ -331,6 +331,17 @@ def flake_rate(history, suite):
     return len(flaked), len(seen)
 
 
+def where_it_stopped(summary):
+    ran = summary["suites"]
+    spent = summary["durations"]
+    if not ran:
+        return None, None
+    whole = sum(spent.get(name, 0) for name in expected_suites()) or sum(spent.values())
+    before = sum(spent.get(name, 0) for name in ran[:-1])
+    midpoint = before + spent.get(ran[-1], 0) / 2
+    return ran[-1], round(midpoint / whole, 4) if whole else None
+
+
 def stopped_early(summary, exit_code):
     return exit_code != 0 and not summary["failures"]
 
@@ -341,6 +352,8 @@ def record(summary, verdicts, incomplete=False, load=(None, None), why="full"):
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "run": RUN_ID,
         "why": why,
+        "last_suite": where_it_stopped(summary)[0],
+        "stopped_at_fraction": where_it_stopped(summary)[1],
         "tool": tool_settings(),
         "load_started": load[0],
         "load_finished": load[1],
