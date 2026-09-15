@@ -137,7 +137,9 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
     var choosing by remember { mutableStateOf(false) }
     val view by qgcPath(instrumentsPath(chosen))
     val gcsJson by qgcPath(GCS_POSITION)
-    val shown = remember(view, gcsJson) { instruments(view) + operatorDistance(gcsJson) }
+    val shown = remember(view, gcsJson, chosen) {
+        (if (showsInstruments(chosen)) instruments(view) else emptyList()) + operatorDistance(gcsJson)
+    }
     val stateJson by qgcPath(FLY_STATE)
     val stale = remember(stateJson) { flyState(stateJson)?.staleNotice.orEmpty() }
     val silent = stale.isNotBlank()

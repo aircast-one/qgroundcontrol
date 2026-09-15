@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,12 +43,15 @@ class InstrumentChoiceTest {
     }
 
     @Test
-    fun `the path names what was chosen, and the starting four when nothing was`() {
-        assertEquals(
-            "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)",
-            instrumentsPath(emptyList()),
-        )
+    fun `choosing nothing draws nothing, and the core's own fallback is never reached`() {
         assertEquals("view.instruments(lat,hdop)", instrumentsPath(listOf("lat", "hdop")))
+        assertTrue(showsInstruments(listOf("lat")))
+        assertFalse(
+            "instruments_view answers its OWN four defaults for an empty argument list, so a head " +
+                "that stopped naming readings would get four back while the sheet drew them as " +
+                "unchecked - the strip is gated here rather than by the path",
+            showsInstruments(emptyList()),
+        )
     }
 
     @Test
@@ -66,7 +70,7 @@ class InstrumentChoiceTest {
 
     @Test
     fun `the note says where the operator stands`() {
-        assertTrue(instrumentChoiceNote(emptyList()).contains("four it starts with"))
+        assertTrue(instrumentChoiceNote(emptyList()).contains("no readings"))
         assertTrue(instrumentChoiceNote(listOf("a", "b")).startsWith("2 of"))
         assertTrue(instrumentChoiceNote((1..MOST_INSTRUMENTS).map { "f$it" }).contains("Remove one"))
     }

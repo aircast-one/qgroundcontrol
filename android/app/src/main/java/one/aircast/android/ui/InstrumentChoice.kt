@@ -45,6 +45,8 @@ internal fun instrumentGroups(view: JSONObject?): List<InstrumentGroup> {
 internal fun instrumentsPath(chosen: List<String>): String =
     "view.instruments(${chosen.ifEmpty { DEFAULT_INSTRUMENTS }.joinToString(",")})"
 
+internal fun showsInstruments(chosen: List<String>): Boolean = chosen.isNotEmpty()
+
 internal fun withInstrument(chosen: List<String>, name: String): List<String> = when {
     name in chosen -> chosen - name
     chosen.size >= MOST_INSTRUMENTS -> chosen
@@ -52,7 +54,7 @@ internal fun withInstrument(chosen: List<String>, name: String): List<String> = 
 }
 
 internal fun instrumentChoiceNote(chosen: List<String>): String = when (chosen.size) {
-    0 -> "Nothing chosen, so the flight screen shows the four it starts with."
+    0 -> "Nothing chosen. The flight screen shows no readings."
     MOST_INSTRUMENTS -> "$MOST_INSTRUMENTS is as many as the row fits. Remove one to add another."
     else -> "${chosen.size} of $MOST_INSTRUMENTS chosen."
 }
