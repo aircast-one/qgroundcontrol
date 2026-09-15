@@ -761,7 +761,9 @@ private fun InstrumentSheet(
 ) {
     var groups by remember { mutableStateOf(emptyList<InstrumentGroup>()) }
     LaunchedEffect(Unit) {
-        groups = withContext(Dispatchers.Default) { instrumentGroups(Qgc.get(INSTRUMENT_GROUPS)) }
+        groups = withContext(Dispatchers.Default) {
+            listOfNotNull(vehicleOwnGroup(Qgc.get(VEHICLE_FACTS))) + instrumentGroups(Qgc.get(INSTRUMENT_GROUPS))
+        }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {

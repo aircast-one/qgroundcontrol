@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,5 +74,42 @@ class InstrumentChoiceTest {
         assertTrue(instrumentChoiceNote(emptyList()).contains("no readings"))
         assertTrue(instrumentChoiceNote(listOf("a", "b")).startsWith("2 of"))
         assertTrue(instrumentChoiceNote((1..MOST_INSTRUMENTS).map { "f$it" }).contains("Remove one"))
+    }
+
+    @Test
+    fun `the readings the screen starts with are in the catalogue and match what is chosen`() {
+        val own = vehicleOwnGroup(
+            JSONObject(
+                """{"kind":"object","facts":[
+                     {"property":"altitudeRelative","shortDescription":"Alt (Rel)"},
+                     {"property":"groundSpeed","shortDescription":"Ground Speed"},
+                     {"property":"distanceToHome","shortDescription":"Distance to Home"},
+                     {"property":"heading","shortDescription":"Heading"},
+                     {"property":"rangeFinderDist","shortDescription":""}]}""",
+            ),
+        )!!
+        assertEquals("Vehicle", own.title)
+        assertTrue(
+            "view.instrumentGroups enumerates the vehicle's CHILD groups and skips its own, so " +
+                "without this the four defaults are absent from the sheet and cannot be unchecked",
+            DEFAULT_INSTRUMENTS.all { name -> own.facts.any { it.path == name } },
+        )
+        assertEquals(
+            "a top-level fact is asked for by bare name; only a child group's fact is qualified",
+            "altitudeRelative",
+            own.facts.first().path,
+        )
+        assertEquals(
+            "five of the twenty-eight carry no description, and a blank row cannot be chosen from",
+            "rangeFinderDist",
+            own.facts.last().label,
+        )
+    }
+
+    @Test
+    fun `no vehicle contributes no group rather than an empty one`() {
+        assertNull(vehicleOwnGroup(JSONObject("""{"kind":"null"}""")))
+        assertNull(vehicleOwnGroup(JSONObject("""{"kind":"object","facts":[]}""")))
+        assertNull(vehicleOwnGroup(null))
     }
 }

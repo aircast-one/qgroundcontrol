@@ -6,6 +6,8 @@ import one.aircast.mapspike.optText
 
 internal const val INSTRUMENT_GROUPS = "view.instrumentGroups"
 
+internal const val VEHICLE_FACTS = "vehicle"
+
 internal val DEFAULT_INSTRUMENTS = listOf(
     "altitudeRelative",
     "groundSpeed",
@@ -40,6 +42,21 @@ internal fun instrumentGroups(view: JSONObject?): List<InstrumentGroup> {
             )
         }
     }.filter { it.facts.isNotEmpty() }
+}
+
+internal fun vehicleOwnGroup(view: JSONObject?): InstrumentGroup? {
+    val facts = view?.takeIf { it.optText("kind") == "object" }?.optJSONArray("facts") ?: return null
+    val listed = (0 until facts.length()).mapNotNull { index ->
+        facts.optJSONObject(index)?.let { fact ->
+            val property = fact.optText("property")
+            InstrumentFact(
+                name = property,
+                label = fact.optText("shortDescription").ifBlank { property },
+                path = property,
+            )
+        }
+    }.filter { it.name.isNotBlank() }
+    return listed.takeIf { it.isNotEmpty() }?.let { InstrumentGroup("vehicle", "Vehicle", it) }
 }
 
 internal fun instrumentsPath(chosen: List<String>): String =
