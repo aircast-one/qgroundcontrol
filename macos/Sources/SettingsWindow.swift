@@ -241,6 +241,7 @@ struct FactControl: View {
         case .toggle:
             Toggle("", isOn: Binding(get: { fact.boolValue }, set: { write($0) }))
                 .labelsHidden()
+                .disabled(fact.readOnly)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
         case .choice:
@@ -253,6 +254,7 @@ struct FactControl: View {
                 }
             }
             .labelsHidden()
+            .disabled(fact.readOnly)
 
         case .bitmask where fact.drawsBits:
             VStack(alignment: .leading, spacing: 2) {
