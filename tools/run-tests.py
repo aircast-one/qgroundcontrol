@@ -271,16 +271,23 @@ def parse(output):
     durations = {}
     suite_order = []
     current = None
+    said = {}
+    speaking = None
     for raw in output.splitlines():
         line = raw.strip()
         outcome = RESULT_RE.match(line)
         if outcome:
             status, suite, case = outcome.groups()
             results.append((status, suite, case))
+            speaking = (suite, case) if status in {"FAIL!", "QFATAL"} else None
+            if speaking:
+                said[speaking] = [line]
             current = suite
             if suite not in suite_order:
                 suite_order.append(suite)
             continue
+        if speaking and line and len(said[speaking]) < 12:
+            said[speaking].append(line)
         totals = TOTALS_RE.match(line)
         if totals and current:
             durations[current] = int(totals.group(5))
@@ -291,6 +298,7 @@ def parse(output):
         "suites": suite_order,
         "durations": durations,
         "failures": sorted(set(failures)),
+        "said": said,
         "passed": counts["PASS"],
         "failed": len(set(failures)),
         "skipped": counts["SKIP"],
@@ -454,6 +462,12 @@ def report(summary, verdicts, history, stale, contention=None, missing=(), exit_
             lines.append(f"  {suite}: passed {verdict['alone_runs']}/{verdict['alone_runs']} "
                          f"isolated runs; flaked {hit + 1} of last {seen + 1} full runs")
             lines.append(f"    failed in the full run: {', '.join(in_full) or 'case not captured'}")
+            spoke = [said for case in in_full
+                     for said in summary.get("said", {}).get((suite, case), [])[1:]]
+            lines.extend(f"      {said}" for said in spoke[:8])
+            if spoke:
+                lines.append("      (captured from the full run - the isolated re-runs passed, "
+                             "so this is the only copy)")
 
     if not real and not flaky and not unstable:
         lines.append("No failures.")
