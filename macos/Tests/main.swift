@@ -1033,6 +1033,20 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
            + "this row, and velocityText was asserted against and then never called -- so the "
            + "served-but-unread sweep counted the field as drawn while no operator ever saw it")
 
+    let alerting = placed.merging(["alert": true as NSNumber]) { _, b in b }
+    expect(traffic(["contacts": [alerting], "alerting": 1 as NSNumber]).rows().first?.value ?? "",
+           "alerting  17060 ft  31 deg  6890 ft",
+           "WHICH AIRCRAFT IS ALERTING HAS TO BE ON ITS OWN ROW. The header turns orange when "
+           + "alerting is above zero, and the operator expands the panel to find out which one "
+           + "-- where every contact read identically, because the per-contact alert flag was "
+           + "decoded, asserted about three-state, and then drawn nowhere")
+
+    expect(traffic(["contacts": [placed]]).rows().first?.value ?? "",
+           "17060 ft  31 deg  6890 ft",
+           "and an aircraft that did not report an alert stays silent on the row rather than "
+           + "carrying an \"alert unknown\" of its own: not reporting is the common case, so "
+           + "fifty rows would each repeat what the block already counts once in alertUnknown")
+
     let unplaced = placed.merging(["distance": NSNull(), "distanceMetres": NSNull(),
                                    "bearingDegrees": NSNull()]) { _, b in b }
     expect(traffic(["contacts": [unplaced]]).rows().first?.value ?? "", "bearing unknown",
