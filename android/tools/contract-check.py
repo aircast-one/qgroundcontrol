@@ -182,6 +182,32 @@ def head_keys(root):
     return found
 
 
+# Accepted for ONE view, not by name. "home" is redundant on view.plan and might be the whole
+# point on some view that serves it next; a bare name would silence both.
+ACCEPTED_ON = {
+    ("view.gcsPosition", "distanceToVehicle"): "the head reads distanceToVehicleText, the core's own formatting",
+    ("view.gcsPosition", "distanceToVehicleMeters"): "raw half of distanceToVehicleText",
+    ("view.gcsPosition", "distanceToVehicleUnits"): "unit half of distanceToVehicleText",
+    ("view.missionItems", "altitudeFrame"): "the head reads altitudeFrameText",
+    ("view.plan", "defaultValue"): "the head reads defaultText and only ever SHOWS a default, never writes one",
+    ("view.settings", "defaultValue"): "see view.plan",
+    ("view.setup", "defaultValue"): "see view.plan",
+    ("view.plan", "valueMeters"): "the geometry half of value. MEASURED: no consumer on this head feeds a "
+        "control value into geometry - settings round-trip through Qgc.set, which is cooked and correct",
+    ("view.settings", "valueMeters"): "see view.plan",
+    ("view.setup", "valueMeters"): "see view.plan",
+    ("view.settings", "showsPacketRadio"): "this head has no packet radio screen at all",
+    ("view.mavlinkConsole", "last"): "the console draws every line; last is for a head that shows one",
+    ("view.vehicleLinks", "primary"): "b0ba82f11 - link names live on view.links behind Connections",
+    ("view.vehicleLinks", "watching"): "the reason sentence the core serves alongside says the same thing",
+    ("view.vehicleLinks", "autoDisconnect"): "contact loss reaches the operator through view.flyState",
+    ("view.plan", "home"): "plan.controllerVehicle.homePosition. The head draws the planned-home item at "
+        "index 0, which is the one the mission actually flies from",
+    ("view.frame", "vehicleType"): "view.frame is read by MotorsScreen for motorCount and the safety gate; "
+        "naming the airframe belongs to a setup summary, not the motor test",
+    ("view.frame", "vehicleTypeText"): "see vehicleType",
+}
+
 ONLY_IN = {
     "enumStrings": {"Qgc.kt"},
     "enumIndex": {"Qgc.kt"},
@@ -326,8 +352,19 @@ def main():
             continue
         target = beside if root in drawn else absent
         for name in sorted(names - set(reads) - ACCEPTED.keys()):
+            if (root, name) in ACCEPTED_ON:
+                continue
             target.setdefault(name, set()).add(root)
     absent = {k: v for k, v in absent.items() if k not in beside}
+
+    # An acceptance for a field that is now read, or for a view that no longer serves it, is a
+    # sentence nobody will re-check. Say so rather than letting it sit.
+    served_on = {(root, n) for root, names in shapes for n in names}
+    for key in sorted(ACCEPTED_ON):
+        if key not in served_on:
+            print(f"  STALE ACCEPTANCE: {key[0]} no longer serves {key[1]}; delete its entry")
+        elif key[1] in reads:
+            print(f"  STALE ACCEPTANCE: {key[1]} is read now; delete the {key[0]} entry")
 
     seen = set()
     if os.path.exists(BASELINE):
