@@ -16,10 +16,9 @@ object VehicleBridge {
 
     fun askFor(id: Int): Boolean =
         runCatching {
-            lastAsked = id
             val answer = JSONObject(QGCBridge.invoke("vehicles.setActive", "[$id]"))
             lastRefusal = answer.optText("reason").takeIf { it.isNotBlank() }
-            answer.optBoolean("ok")
+            answer.optBoolean("ok").also { accepted -> if (accepted) lastAsked = id }
         }.onFailure { lastRefusal = "bridge threw: ${it.message}" }.getOrDefault(false)
 }
 
@@ -108,8 +107,11 @@ fun handoverNotice(before: VehicleChoices?, now: VehicleChoices, asked: Int?): S
     }
 }
 
-fun askSatisfied(asked: Int?, now: VehicleChoices): Boolean =
-    asked != null && now.active?.id == asked
+fun activeChanged(before: VehicleChoices?, now: VehicleChoices): Boolean {
+    val was = before?.active?.id ?: return false
+    val isNow = now.active?.id ?: return false
+    return was != isNow
+}
 
 fun rememberedChoices(previous: VehicleChoices?, now: VehicleChoices): VehicleChoices? = when {
     now.choices.isEmpty() -> null

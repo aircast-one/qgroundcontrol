@@ -187,15 +187,22 @@ class ActiveVehicleTest {
     }
 
     @Test
-    fun `a request stops counting once the vehicle it asked for is the active one`() {
-        val switched = listOfVehicles(1, 2, activeId = 2)
+    fun `a request lasts exactly one change of vehicle`() {
         assertTrue(
-            "the operator's own switch has landed, so the request has been answered and must not " +
-                "silence a later handover that promotes the same vehicle again",
-            askSatisfied(2, switched),
+            "one transition is all a request can explain; keeping it past that silences the next " +
+                "handover, and a request the core accepted but the vehicle never honoured would " +
+                "silence every handover after it",
+            activeChanged(listOfVehicles(1, 2, activeId = 1), listOfVehicles(1, 2, activeId = 2)),
         )
-        assertFalse(askSatisfied(2, listOfVehicles(1, 2, activeId = 1)))
-        assertFalse("nothing was asked for", askSatisfied(null, switched))
+        assertFalse(activeChanged(listOfVehicles(1, 2, activeId = 1), listOfVehicles(1, 2, activeId = 1)))
+        assertFalse(
+            "the gap with nothing active is not a change, or the request would be spent before it landed",
+            activeChanged(
+                listOfVehicles(1, 2, activeId = 1),
+                vehicleChoices(JSONObject("""{"vehicles":[{"id":2,"name":"Quadrotor 2","active":false}]}""")),
+            ),
+        )
+        assertFalse(activeChanged(null, listOfVehicles(1, activeId = 1)))
     }
 
     @Test

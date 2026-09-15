@@ -229,7 +229,7 @@ fun AircastShell(quickView: QtQuickView) {
     LaunchedEffect(vehiclesJson) {
         val now = one.aircast.mapspike.vehicleChoices(vehiclesJson)
         val notice = one.aircast.mapspike.handoverNotice(lastVehicles, now, one.aircast.mapspike.VehicleBridge.lastAsked)
-        if (one.aircast.mapspike.askSatisfied(one.aircast.mapspike.VehicleBridge.lastAsked, now)) {
+        if (one.aircast.mapspike.activeChanged(lastVehicles, now)) {
             one.aircast.mapspike.VehicleBridge.forget()
         }
         lastVehicles = one.aircast.mapspike.rememberedChoices(lastVehicles, now)
