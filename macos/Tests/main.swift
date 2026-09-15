@@ -4889,6 +4889,28 @@ expect(VehicleComponentInfo(["name": "Frame", "needsAttention": false as NSNumbe
        + "drew. The rule lives in the model because both call sites are in VehicleSetupWindow.swift, "
        + "which swift-checks does not compile -- two drawings of one fact is how they diverged")
 
+expect(CalibrationRoutine(["id": "compassMot", "invocation": "calibrateMotorInterference",
+                           "warning": "This spins the motors.",
+                           "spinsPropeller": true as NSNumber])!.severity
+       == FlyTelemetry.Level.warning,
+       "SIX IDENTICAL START BUTTONS AND ONE OF THEM TURNS THE PROPS. calibration.rs carries "
+       + "spinsPropeller per routine and serves it, and splits warning from description so the two "
+       + "can be drawn apart -- this head read NEITHER and CONCATENATED them, so \"This spins the "
+       + "motors.\" arrived as the tail of a six-line paragraph beside a button identical to "
+       + "\"Leave the vehicle still while the gyros settle\"")
+expect(CalibrationRoutine(["id": "gyro", "invocation": "calibrateGyro",
+                           "warning": "", "spinsPropeller": false as NSNumber])!.severity
+       == FlyTelemetry.Level.good,
+       "and a routine that turns nothing keeps the plain weight, so the distinction survives a "
+       + "seventh routine arriving")
+expect(CalibrationRoutine(["id": "future", "invocation": "x", "warning": "Mind the airspeed holes.",
+                           "spinsPropeller": false as NSNumber])!.severity
+       == FlyTelemetry.Level.good,
+       "THE SEVERITY IS KEYED ON THE FLAG, NOT ON THERE BEING A WARNING. The pressure routine "
+       + "already gains a fixed-wing note about shielding the airspeed sensor, and a warning that "
+       + "is not about propellers must not inherit the propeller weight -- presence decides whether "
+       + "to DRAW the line, the flag decides how loud it is")
+
 checkFollowMeNamesWhoseProblemItIs()
 
 func checkTheShutterSaysWhichCaptureItStarted() {

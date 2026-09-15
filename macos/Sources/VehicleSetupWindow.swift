@@ -120,17 +120,25 @@ struct SensorsView: View {
 
             GroupCard {
                 ForEach(Array(store.calibration.routines.enumerated()), id: \.element.id) { row, routine in
-                    GroupRow(title: routine.title,
-                             description: routine.warning.isEmpty
-                                 ? routine.description
-                                 : "\(routine.description) \(routine.warning)",
-                             showSeparator: row > 0,
-                             descriptionLines: routine.descriptionLines,
-                             trailing: {
-                                 Button("Start") { store.start(routine) }
-                                     .disabled(!routine.enabled)
-                             })
-                        .foregroundColor(routine.blocked ? .secondary : .primary)
+                    VStack(alignment: .leading, spacing: 0) {
+                        GroupRow(title: routine.title,
+                                 description: routine.description,
+                                 showSeparator: row > 0,
+                                 descriptionLines: routine.descriptionLines,
+                                 trailing: {
+                                     Button("Start") { store.start(routine) }
+                                         .disabled(!routine.enabled)
+                                 })
+                            .foregroundColor(routine.blocked ? .secondary : .primary)
+                        if !routine.warning.isEmpty {
+                            Label(routine.warning, systemImage: "exclamationmark.triangle.fill")
+                                .font(.callout)
+                                .foregroundColor(FlyPanel.colour(routine.severity))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, Overlay.horizontalPadding)
+                                .padding(.bottom, Overlay.unit * 0.6)
+                        }
+                    }
                 }
             }
 

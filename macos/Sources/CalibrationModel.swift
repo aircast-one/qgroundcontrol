@@ -51,8 +51,20 @@ struct CalibrationRoutine: Identifiable, Equatable {
     let enabled: Bool
     let description: String
     let warning: String
+    // calibration.rs carries this per routine and serves it as "spinsPropeller". This head read
+    // neither it nor the separate warning: the window CONCATENATED warning onto description, so
+    // "This spins the motors." arrived as the tail of a six-line paragraph, under a Start button
+    // identical to the five beside it -- one of which is "Leave the vehicle still while the gyros
+    // settle". The core split the two fields so they could be drawn apart; joining them undid that.
+    let spinsPropeller: Bool
 
     static let untruncated = 12
+
+    // ONE WEIGHT FOR ONE FACT, and here the fact is that pressing this turns the props. The
+    // warning TEXT is a display decision keyed on presence; the SEVERITY is keyed on the flag,
+    // because a routine could gain a warning that is not about propellers and must not inherit
+    // this weight.
+    var severity: FlyTelemetry.Level { spinsPropeller ? .warning : .good }
 
     var descriptionLines: Int { warning.isEmpty ? 1 : CalibrationRoutine.untruncated }
 
@@ -69,6 +81,7 @@ struct CalibrationRoutine: Identifiable, Equatable {
         enabled = (json["enabled"] as? NSNumber)?.boolValue ?? false
         description = (json["description"] as? String) ?? ""
         warning = (json["warning"] as? String) ?? ""
+        spinsPropeller = (json["spinsPropeller"] as? NSNumber)?.boolValue ?? false
     }
 }
 

@@ -369,6 +369,7 @@ sourceSize
 specifiesAltitude
 speedChangeText
 speedUnits
+spinsPropeller
 splitInvokable
 stage
 stale
