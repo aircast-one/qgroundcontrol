@@ -75,9 +75,15 @@ private fun vehicleChoiceState(entry: JSONObject): String = listOfNotNull(
     },
 ).joinToString(" · ")
 
-fun vehicleChoiceLine(choice: VehicleChoice): String = when {
-    choice.contactLost -> "No contact · ${choice.link}"
-    else -> listOfNotNull(choice.state.ifBlank { null }, choice.link.ifBlank { null }).joinToString(" · ")
+fun linkDistinguishes(choices: List<VehicleChoice>): Boolean =
+    choices.mapNotNull { it.link.ifBlank { null } }.distinct().size > 1
+
+fun vehicleChoiceLine(choice: VehicleChoice, distinguishes: Boolean = true): String {
+    val link = choice.link.takeIf { distinguishes && it.isNotBlank() }
+    return when {
+        choice.contactLost -> listOfNotNull("No contact", link).joinToString(" · ")
+        else -> listOfNotNull(choice.state.ifBlank { null }, link).joinToString(" · ")
+    }
 }
 
 fun lostVehicles(choices: VehicleChoices): List<VehicleChoice> =

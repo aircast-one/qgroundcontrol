@@ -34,6 +34,7 @@ import one.aircast.mapspike.VehicleBridge
 import one.aircast.mapspike.activeVehicleTitle
 import one.aircast.mapspike.lostVehicles
 import one.aircast.mapspike.lostVehiclesText
+import one.aircast.mapspike.linkDistinguishes
 import one.aircast.mapspike.vehicleChoiceLine
 import one.aircast.mapspike.vehicleChoices
 
@@ -82,10 +83,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
+            val distinguishes = linkDistinguishes(choices.choices)
             choices.choices.forEach { choice ->
                 ListItem(
                     headlineContent = { Text(choice.name) },
-                    supportingContent = { Text(vehicleChoiceLine(choice)) },
+                    supportingContent = { Text(vehicleChoiceLine(choice, distinguishes)) },
                     trailingContent = {
                         if (choice.active) {
                             Icon(Icons.Default.Check, contentDescription = "Flying this one")

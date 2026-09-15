@@ -51,6 +51,27 @@ class ActiveVehicleTest {
     }
 
     @Test
+    fun `one radio carrying the whole fleet prints its name under nobody`() {
+        val one = VehicleChoice(id = 1, name = "Quadrotor 1", state = "Stabilize · Disarmed", link = "SiK", active = true, contactLost = false, latitude = 0.0, longitude = 0.0)
+        val two = one.copy(id = 2, name = "Quadrotor 2", active = false)
+        assertEquals(
+            "the link is drawn to tell two vehicles apart; the same string under every name is the " +
+                "noise it was added to cut, and it pushes the state text off a narrow row",
+            false,
+            linkDistinguishes(listOf(one, two)),
+        )
+        assertEquals("Stabilize · Disarmed", vehicleChoiceLine(one, linkDistinguishes(listOf(one, two))))
+    }
+
+    @Test
+    fun `two radios keep their names, because that is the question being asked`() {
+        val a = VehicleChoice(id = 1, name = "A", state = "Disarmed", link = "TCP 5771", active = true, contactLost = false, latitude = 0.0, longitude = 0.0)
+        val b = a.copy(id = 2, name = "B", link = "TCP 5772", active = false, contactLost = true)
+        assertEquals(true, linkDistinguishes(listOf(a, b)))
+        assertEquals("No contact · TCP 5772", vehicleChoiceLine(b, true))
+    }
+
+    @Test
     fun `a vehicle in contact says what it is doing and which link carries it`() {
         val live = vehicleChoices(two).choices.single { it.id == 1 }
         assertEquals("Stabilize · Disarmed · TCP 127.0.0.1:5771", vehicleChoiceLine(live))
