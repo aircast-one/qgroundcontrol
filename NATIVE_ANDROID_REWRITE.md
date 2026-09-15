@@ -8492,3 +8492,28 @@ retargets on its own.
   Video or Survey (`video.rs:220`, `_ =>`). That is the vocabulary the six
   missing-absence cases lacked, used correctly: it names the absence instead of
   choosing a plausible mode.
+
+### The rig makes two correct readouts look broken, 2026-09-15
+
+Both are consequences of a rig where nothing is near anything else, and both
+will be re-raised by whoever uses these feeds next.
+
+**A traffic contact 17,668 km away.** `ranked()` sorts by range and does not cap
+the list or filter by distance, and neither does the head - which reads as a
+missing guard until you name the producer. `adsbServerHostAddress` defaults to
+`127.0.0.1`: a **local** SBS-1 receiver, whose range is bounded physically by
+line-of-sight, about 460 km. **The guard is the aerial, not the code.**
+`sbs1feed.py` invents coordinates with no such limit, so the absurd range is the
+rig's and adding a filter would be fixing the test.
+
+**"From you: 13,452,661 ft."** Correct: 4,100 km is the emulator's default GPS
+in Mountain View against a vehicle rig sitting in New York. `gcsposition.rs`
+already withholds properly - `separation` is an `Option`, `None` when the GCS
+position is unusable or the vehicle's coordinate is stale or (0,0).
+
+**The shared lesson is the inverse of the night's other one.** Six defects came
+from a default standing in for an answer; these two are *true answers about a
+state nobody would fly*. **An absurd number is not evidence of a defect when the
+rig is absurd** - and a rig built to make a feature testable will make other
+features look wrong. Check what the producer is before calling a missing guard a
+bug.
