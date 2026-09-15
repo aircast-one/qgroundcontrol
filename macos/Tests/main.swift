@@ -1124,6 +1124,7 @@ func checkObstacleSilenceIsNotClearAir() {
     func obstacle(_ overrides: [String: Any]) -> ObstacleDistance {
         ObstacleDistance(["kind": "object", "class": "ObstacleDistance",
                           "available": true as NSNumber, "enabled": true as NSNumber,
+                          "supported": true as NSNumber,
                           "stale": false as NSNumber, "sectors": 8 as NSNumber,
                           "nearest": ["distanceMetres": 4.2 as NSNumber,
                                       "distanceText": "13.8 ft", "bearing": 45.0 as NSNumber,
@@ -1184,6 +1185,31 @@ func checkObstacleSilenceIsNotClearAir() {
            + "and it could only ever be answered no")
     expect(obstacle(["enabled": false as NSNumber]).rows().map(\.value).last ?? "", "Off",
            "and off still says off, which is the half that already worked")
+
+    expect(obstacle(["supported": false as NSNumber, "enabled": NSNull()])
+            .rows().map(\.value).joined(separator: " | "),
+           "13.8 ft | front right | 8",
+           "AN AIRFRAME WITH NO COLLISION PREVENTION HAS NO AVOIDANCE ROW. obstacle.rs:97 answers "
+           + "supported false when CP_DIST does not exist, and this panel used to print "
+           + "\"Avoidance Off\" there -- inviting an operator to go looking for a switch that is "
+           + "not anywhere. The distances still draw: the sensor is reporting either way")
+    expect(obstacle(["supported": false as NSNumber, "enabled": NSNull(),
+                     "nearest": NSNull()]).summary, "Nothing detected",
+           "AND THE SAME CLAIM ONE LAYER UP. The summary said \"Avoidance off\" whenever enabled "
+           + "was not true, which included every unsupported airframe -- the row fix alone would "
+           + "have left the lie on the line an operator reads without expanding anything")
+
+    expect(obstacle(["supported": NSNull(), "enabled": NSNull()])
+            .rows().map(\.value).joined(separator: " | "),
+           "13.8 ft | front right | 8",
+           "and while the parameters are still loading there is NOTHING TO SAY about avoidance "
+           + "rather than a guess: supported is null until parametersReady, and a row that "
+           + "appears and then changes its mind is worse than one that waits")
+
+    expect(obstacle(["supported": NSNull(), "enabled": NSNull(), "nearest": NSNull()]).level
+            == .unknown,
+           "a live sensor finding nothing is not GOOD news while nobody knows whether anything "
+           + "would steer around it -- enabled answers that and it is unanswered here")
 
     expect(obstacle(["available": false as NSNumber]).rows().map(\.value) == ["No sensor reporting"],
            "a panel with no sensor says so in one row rather than listing four empty ones")
