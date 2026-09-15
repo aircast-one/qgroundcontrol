@@ -17,7 +17,7 @@ class MoreActionsTest {
             listOf("cancelRoi"),
             moreActions(offers("cancelRoi" to "ready")).map { it.id },
         )
-        assertNotNull(guidedCommand("cancelRoi"))
+        assertNotNull(guidedCommand("cancelRoi", resumeFrom = null))
     }
 
     @Test
@@ -92,11 +92,17 @@ class MoreActionsTest {
             offers(
                 "startMission" to "ready", "continueMission" to "ready", "landAbort" to "ready",
                 "grab" to "ready", "release" to "ready", "emergencyStop" to "ready", "pause" to "ready",
+                "cancelRoi" to "ready", "resumeMission" to "ready",
             ),
         ).map { it.id }
 
-        ids.filterNot { it == PAUSE }.forEach { assertNotNull(it, guidedCommand(it)) }
-        assertNull(guidedCommand(PAUSE))
+        assertEquals(
+            "every id in SHEET_ACTIONS, so adding one to the set without a command here is caught",
+            SHEET_ACTIONS.size,
+            ids.size,
+        )
+        ids.filterNot { it == PAUSE }.forEach { assertNotNull(it, guidedCommand(it, resumeFrom = 5)) }
+        assertNull(guidedCommand(PAUSE, resumeFrom = 5))
     }
 }
 

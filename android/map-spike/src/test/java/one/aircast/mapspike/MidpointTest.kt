@@ -73,7 +73,7 @@ class MidpointTest {
 
     @Test
     fun `a midpoint is a button, so it never writes a position`() {
-        assertFalse(writeMove(MapHit.Midpoint(ring.path, ring.splitInvokable, 2), 41.0, 44.0, emptyList()))
+        assertFalse(writeMove(MapHit.Midpoint(ring.path, ring.splitInvokable, 2), 41.0, 44.0, emptyList(), emptyList()))
     }
 
     @Test

@@ -114,7 +114,7 @@ fun writeMove(
     latitude: Double,
     longitude: Double,
     surveys: List<Survey>,
-    rally: List<RallyPoint> = emptyList(),
+    rally: List<RallyPoint>,
 ): Boolean =
     when (hit) {
         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, latitude, longitude)

@@ -99,17 +99,20 @@ internal fun trafficReal(reading: TrafficReading): Int = reading.contacts.count 
 
 internal fun trafficSynthetic(reading: TrafficReading): Int = reading.contacts.count { it.simulated }
 
-internal fun trafficSummary(reading: TrafficReading): String = when {
-    trafficReal(reading) > 0 && trafficSynthetic(reading) > 0 ->
-        "Traffic: ${trafficReal(reading)} aircraft \u00b7 ${trafficSynthetic(reading)} simulated"
-    trafficReal(reading) > 0 -> "Traffic: ${trafficReal(reading)} aircraft"
-    trafficSynthetic(reading) > 0 -> "Traffic: ${trafficSynthetic(reading)} simulated"
-    reading.errorToken == "connectFailed" -> "Traffic server unreachable"
-    reading.errorToken == "linkLost" -> "Traffic feed dropped"
-    reading.errorToken.isNotBlank() -> "Traffic feed failed"
-    !reading.available -> "No traffic receiver"
-    !reading.receiving -> "No traffic feed"
-    else -> "Traffic clear"
+internal fun trafficSummary(reading: TrafficReading): String {
+    val real = trafficReal(reading)
+    val synthetic = trafficSynthetic(reading)
+    return when {
+        real > 0 && synthetic > 0 -> "Traffic: $real aircraft \u00b7 $synthetic simulated"
+        real > 0 -> "Traffic: $real aircraft"
+        synthetic > 0 -> "Traffic: $synthetic simulated"
+        reading.errorToken == "connectFailed" -> "Traffic server unreachable"
+        reading.errorToken == "linkLost" -> "Traffic feed dropped"
+        reading.errorToken.isNotBlank() -> "Traffic feed failed"
+        !reading.available -> "No traffic receiver"
+        !reading.receiving -> "No traffic feed"
+        else -> "Traffic clear"
+    }
 }
 
 internal fun trafficContactUrgent(contact: TrafficContact): Boolean =
