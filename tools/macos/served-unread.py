@@ -152,12 +152,6 @@ ACCEPTED_BY_HEAD = {
             "type. Reading the flag as well would be this head re-deriving a sentence the core owns. "
             "The per-link answer for the CONNECTED vehicle is commLost on view.vehicleLinks, which "
             "this head decodes and names in 47b375ff9",
-        "spinsPropeller": "MEASURED and deliberately not decoded. calibration.rs began serving it with "
-            "CompassMot, the first routine that spins the propellers. The WARNING text beside it "
-            "carries the same fact in words an operator reads, and this head has no structural use "
-            "for the flag -- no confirmation step it would gate. Decoding it to store it would be the "
-            "unread-field debt removed in c485b1aac. A confirmation before starting a routine is what "
-            "would earn the decode",
         "layers": "the COUNT of a structure scan's stacked circuits, already on screen as the Layers "
             "fact in the item's own editor, and two stacked circuits are ONE SHAPE on a flat map -- "
             "drawing the ring twice puts identical points on identical points. Android reached the "
