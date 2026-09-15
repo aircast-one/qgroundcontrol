@@ -8601,3 +8601,27 @@ has already nulled it or the consumer never reads it.
 
 Worth recording so the next person does not build it on the symmetry. The two
 cases look identical from the type system and are not the same problem.
+
+### A modal nobody dismissed, 2026-09-16
+
+Several "the tap did not take" failures tonight were one cause: a confirm dialog
+left open. `ui.sh pick "text=Disconnect"` opens *"A vehicle is connected on this
+link…"* and nothing confirmed it, so the link stayed up **and every later tap was
+swallowed by the modal**.
+
+It produced three separate wrong readings before being noticed:
+
+- a disconnect that never happened, read as a tap that missed
+- three `attempt N did not connect` retries against a link that was already up
+- a file saved as `Plan_dark.png` that was the Connections screen with the
+  dialog still on it - **the capture guard checked for a vehicle, not for which
+  screen it was on**
+
+**A tap that opens a dialog and a tap that misses look identical from the next
+poll**, which is why it survived so long. Dismissing it restored navigation
+immediately.
+
+The guard that would have caught it is the one already used for the vehicle:
+**assert the screen you believe you are on before trusting anything captured
+from it.** Checking for a vehicle was not enough, because the vehicle was
+genuinely there the whole time.
