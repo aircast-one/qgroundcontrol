@@ -17,7 +17,7 @@ struct PacketRadio: Equatable {
     let unsupportedAdapters: [String]
     let startError: String
     let readings: [PacketRadioReading]
-    let haveSignal: [Bool]
+    let haveSignal: Bool?
     let linkScore: Double?
     let linkScoreMin: Double
     let linkScoreMax: Double
@@ -58,8 +58,7 @@ struct PacketRadio: Equatable {
                                snr: $0 < snr.count ? snr[$0] : nil,
                                score: $0 < score.count ? score[$0] : nil)
         }
-        haveSignal = (json["haveSignal"] as? [Any])?
-            .map { ($0 as? NSNumber)?.boolValue ?? false } ?? []
+        haveSignal = (json["haveSignal"] as? NSNumber)?.boolValue
 
         linkScore = number("linkScore")
         linkScoreMin = number("linkScoreMin") ?? 0
@@ -81,6 +80,17 @@ struct PacketRadio: Equatable {
     func snrText(_ antenna: Int) -> String { Self.show(reading(antenna)?.snr, snrUnit) }
 
     var packetLossText: String { Self.show(packetLoss, packetLossUnit) }
+
+    // A RECEIVER WITH NO STATISTICS YET IS NOT A RECEIVER WITH NO SIGNAL -- packetradio.rs:895
+    // asserts exactly that, and haveSignal is null for the first and false for the second. The
+    // head collapsed them into one sentence, so a radio that was running and hearing nothing read
+    // as one that had not reported yet: the operator waits instead of checking the antenna.
+    static let noReadings = "No signal readings yet."
+    static let hearingNothing = "The receiver is running and hearing nothing."
+
+    var emptyText: String {
+        haveSignal == false ? PacketRadio.hearingNothing : PacketRadio.noReadings
+    }
 
     func reading(_ antenna: Int) -> PacketRadioReading? {
         antenna >= 0 && antenna < readings.count ? readings[antenna] : nil

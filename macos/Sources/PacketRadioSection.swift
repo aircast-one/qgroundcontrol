@@ -108,7 +108,7 @@ struct PacketRadioSection: View {
         }
 
         if radio.readings.isEmpty {
-            Text("No signal readings yet.")
+            Text(radio.emptyText)
                 .foregroundColor(.secondary)
                 .padding(.vertical, 6)
         } else {

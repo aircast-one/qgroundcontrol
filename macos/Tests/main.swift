@@ -775,7 +775,7 @@ func checkPacketRadioReadingsNeverInventANumber() {
                      "adapters": ["ALFA AWUS036ACM [1]", "Realtek 8812au [2]"],
                      "antennaRssi": [-72.0 as NSNumber, -68.5 as NSNumber],
                      "antennaSnr": [11.0 as NSNumber, -0.04 as NSNumber],
-                     "haveSignal": [true as NSNumber, true as NSNumber],
+                     "haveSignal": true as NSNumber,
                      "linkScore": 40.0 as NSNumber,
                      "linkScoreMin": 0.0 as NSNumber, "linkScoreMax": 80.0 as NSNumber,
                      "packetLoss": 2.5 as NSNumber,
@@ -814,6 +814,25 @@ func checkPacketRadioReadingsNeverInventANumber() {
            "a status the core sent no sentence for gets none reconstructed from the token. "
            + "Several statuses interpolate an adapter name or a driver error that only QGC has, "
            + "so a head spelling its own would be wrong in exactly the cases that matter")
+
+    expect(radio([:])?.haveSignal == true,
+           "HAVESIGNAL IS A SCALAR AND THIS HEAD DECODED AN ARRAY. packetradio.rs:516 serves one "
+           + "bool for the radio -- any antenna carrying a raw level -- and the head asked for "
+           + "[Any], which can never succeed, so the field was permanently empty. Nothing read "
+           + "it, so the mismatch had no symptom; the FIXTURE carried [true, true] and agreed "
+           + "with the decoder rather than with the producer")
+
+    expect(radio(["haveSignal": false as NSNumber])?.emptyText ?? "",
+           "The receiver is running and hearing nothing.",
+           "A RECEIVER WITH NO STATISTICS YET IS NOT A RECEIVER WITH NO SIGNAL, which is the "
+           + "core's own assertion at packetradio.rs:895. Both said \"No signal readings yet.\" "
+           + "here, so a radio that was running and hearing nothing read as one that had not "
+           + "reported yet -- the operator waits instead of checking the antenna")
+    expect(radio(["haveSignal": NSNull()])?.emptyText ?? "", "No signal readings yet.",
+           "and no answer keeps the waiting sentence, because nothing has been measured yet")
+    expect(radio([:])?.emptyText ?? "", "No signal readings yet.",
+           "as does a radio that IS hearing something: this line is only drawn when there are no "
+           + "readings to list, so the hearing-nothing case is the one it exists to separate")
 
     expect(PacketRadio(["kind": "null"]) == nil,
            "and the view the core REFUSES until a host reports a radio decodes to no radio at "
