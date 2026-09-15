@@ -390,6 +390,7 @@ stream
 streaming
 summary
 supportForwarding
+supported
 surfaceDistanceText
 systemId
 target

@@ -4701,6 +4701,24 @@ func checkRestartNoticeReachesTheRow() {
            + "stays read-only whatever the gate does, so pointing the operator at a switch that "
            + "would not unlock it anyway is a wasted trip")
 
+    expect(off.subtitle(showingUnits: false),
+           "Has no effect while the preflight checklist is off.",
+           "AND THIS IS THE LINE THE SCREEN ACTUALLY DRAWS. SettingsWindow passed only the units "
+           + "as the row's description, so the refusal reached the probe and ParameterRow and "
+           + "never the Settings window -- I asserted rowDescription, which that window does not "
+           + "call, and a SCREENSHOT is what found it")
+    expect(gated(["units": "m", "enabled": false as NSNumber,
+                  "disabledReason": "Has no effect while the preflight checklist is off."])
+            .subtitle(showingUnits: true),
+           "m \u{00B7} Has no effect while the preflight checklist is off.",
+           "a unit and a refusal share the line: the unit says what the number means and the "
+           + "refusal says why the control will not take one")
+    expect(gated(["units": "m"]).subtitle(showingUnits: true), "m",
+           "an unrefused control keeps its unit alone")
+    expect(gated(["units": "m"]).subtitle(showingUnits: false), "",
+           "and a section that shows no units on a control with nothing to refuse draws no "
+           + "subtitle at all, rather than a stray separator")
+
     expect(gated(["readOnly": true as NSNumber]).acceptsWrite == false,
            "readOnly still refuses on its own: it is the FACT'S property and answers whether the "
            + "value can be written at all, where enabled answers whether writing would do "

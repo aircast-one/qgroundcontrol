@@ -138,6 +138,14 @@ struct SettingsControl: Identifiable, Equatable {
     // stronger claim -- a read-only fact stays read-only whatever the gate says.
     static let readOnlyNote = "Read-only"
 
+    // The Settings row's subtitle carried ONLY the units, so the refusal reached the probe and
+    // ParameterRow and never this screen. Both halves belong on the one line under the label:
+    // the unit says what the number means and the refusal says why the control will not take it.
+    func subtitle(showingUnits: Bool) -> String {
+        [showingUnits ? units : "", refusal].filter { !$0.isEmpty }
+            .joined(separator: " \u{00B7} ")
+    }
+
     var refusal: String {
         if readOnly { return SettingsControl.readOnlyNote }
         return enabled ? "" : disabledReason

@@ -64,7 +64,7 @@ struct SettingsView: View {
                         GroupCard {
                             ForEach(Array(section.controls.enumerated()), id: \.element.id) { index, fact in
                                 GroupRow(title: fact.label,
-                                         description: section.showsUnits ? fact.units : "",
+                                         description: fact.subtitle(showingUnits: section.showsUnits),
                                          showSeparator: index > 0,
                                          trailing: {
                                              FactControl(fact: fact,
