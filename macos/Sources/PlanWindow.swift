@@ -908,8 +908,13 @@ struct PlanInspector: View {
                 ForEach(fenceRally.shapes) { shape in
                     GroupRow(
                         title: shape.shapeText,
+                        // A polygon's detail carries its vertex count AND its area, and the core
+                        // spells that area in whatever unit Settings chose -- six of them, down to
+                        // square metres, where a 9 km2 fence is seven digits. On one line the unit
+                        // was what got cut, leaving "9020155..." with nothing saying of what.
                         description: shape.rowDetail,
                         showSeparator: shape.id != fenceRally.shapes.first?.id,
+                        descriptionLines: 2,
                         leading: {
                             Seal(label: shape.inclusion ? "IN" : "OUT",
                                  colour: Overlay.fence, rounded: true)
