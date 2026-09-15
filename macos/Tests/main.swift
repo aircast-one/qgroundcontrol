@@ -1593,6 +1593,70 @@ func checkParameterOptions() {
 
 checkParameterOptions()
 
+func checkABitmaskParameterIsSetByName() {
+    let masked = Parameter(name: "ARMING_CHECK", componentId: 1, json: [
+        "control": "bitmask", "label": "Arming checks", "display": "82", "valueString": "82",
+        "value": 82 as NSNumber,
+        "bits": [["label": "Barometer", "raw": "2", "set": true as NSNumber],
+                 ["label": "Compass", "raw": "4", "set": false as NSNumber],
+                 ["label": "INS", "raw": "16", "set": true as NSNumber]],
+    ])
+    expect(masked.drawsBits,
+           "ARMING_CHECK READ \"82\" ON BOTH SCREENS THAT SHOW VEHICLE PARAMETERS. The settings "
+           + "window has drawn named toggles since the bitmask control existed; ParameterRow had no "
+           + "branch for them and fell through to the plain value field, so the one question an "
+           + "operator opens this row to answer -- is the compass check off -- needed arithmetic")
+
+    expect(masked.toggling(masked.bits[1], on: true), "86",
+           "turning the compass check on sets bit 4 and leaves the rest of 82 alone")
+    expect(masked.toggling(masked.bits[2], on: false), "66",
+           "and turning INS off clears bit 16 only")
+    expect(masked.toggling(masked.bits[1], on: true).contains("8"),
+           "82 IS 64 + 16 + 2 AND THIS CONTROL DECLARES NO BIT 64: 86 keeps it, because toggling "
+           + "reads the stored value and changes one bit rather than rebuilding it from the bits "
+           + "the metadata happened to name. Firmware sets bits the ground station has not heard "
+           + "of, and clearing them silently is how a check nobody turned off turns off")
+
+    expect(masked.bitSummary, "Barometer, INS",
+           "A BROWSER ROW STATES THE NAMES INSTEAD OF DRAWING THEM. The first version put the "
+           + "checkbox list inline and ARMING_CHECK -- nineteen bits on a real copter -- filled the "
+           + "viewport, pushing the other 327 parameters below the fold. The names are what somebody "
+           + "scrolls here for; the numeric field beside them is still what writes")
+    expect(Parameter(name: "ARMING_CHECK", componentId: 1, json: [
+        "control": "bitmask", "display": "0", "valueString": "0", "value": 0 as NSNumber,
+        "bits": [["label": "Barometer", "raw": "2", "set": false as NSNumber]],
+    ]).bitSummary, "0",
+           "and no bit set is not NOTHING set -- it is 0, which the served display already says, so "
+           + "the slot never goes blank and reads as a row that failed to load")
+
+    let both = Parameter(name: "FS_OPTIONS", componentId: 1, json: [
+        "control": "choice", "label": "Failsafe options", "display": "Continue", "valueString": "1",
+        "value": 1 as NSNumber,
+        "options": [["label": "None", "raw": "0"], ["label": "Continue", "raw": "1"]],
+        "bits": [["label": "RC", "raw": "1", "set": true as NSNumber],
+                 ["label": "Battery", "raw": "2", "set": false as NSNumber]],
+    ])
+    expect(!both.drawsBits,
+           "A FACT WHOSE METADATA CARRIES BOTH LISTS IS AN ENUM, which is how the Qt editor "
+           + "resolves it and therefore what control.rs answers. The row takes the producer\'s word "
+           + "rather than asking which list came back empty -- keying on the bits alone would draw "
+           + "two checkboxes over a value the vehicle reads as a single choice")
+
+    expect(both.numericValue == 1,
+           "the value a bit is toggled within comes from the fact\'s own number and is never "
+           + "parsed back out of display, which is COOKED: here display is the enum label")
+
+    let plain = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
+        "control": "number", "display": "500", "valueString": "500", "value": 500 as NSNumber,
+    ])
+    expect(!plain.drawsBits, "and a parameter with no bits keeps the value field it had")
+    expect(!plain.isString, "kind still answers what isString used to store")
+    expect(Parameter(name: "rtspUrl", componentId: 1, json: ["control": "text"]).isString,
+           "including for a string parameter, whose numeric refusals stay switched off")
+}
+
+checkABitmaskParameterIsSetByName()
+
 func checkMissionItemRemoval() {
     let home = MissionItem(view: ["index": 0, "sequence": 0, "name": "Mission Start"], selected: -1)
     let waypoint = MissionItem(view: ["index": 1, "sequence": 1, "name": "Waypoint"], selected: -1)

@@ -72,6 +72,22 @@ struct ParameterEditor: View {
     }
 }
 
+struct BitmaskToggles: View {
+    let bits: [ControlBit]
+    var disabled = false
+    let toggle: (ControlBit, Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(bits) { bit in
+                Toggle(bit.label, isOn: Binding(get: { bit.set }, set: { toggle(bit, $0) }))
+                    .disabled(disabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}
+
 struct ParameterRow: View {
     let name: String
     let label: String
@@ -82,9 +98,17 @@ struct ParameterRow: View {
     let selectedRaw: String
     var offersManualEntry = false
     var showSeparator = true
+    let bits: [ControlBit]
+    var togglesDisabled = false
+    // A form row draws the bits; a list row states them and stays one row tall.
+    var expandsBits = true
+    let summary: String
+    // Which value a bit is toggled within is the model's answer, not the row's, and only the models
+    // are compiled by swift-checks.sh -- as a rule written here it would be unpinnable.
+    let toggle: (ControlBit, Bool) -> String
     let commit: (String) -> Void
 
-    init(parameter: Parameter, showSeparator: Bool = true,
+    init(parameter: Parameter, showSeparator: Bool = true, expandsBits: Bool = true,
          commit: @escaping (String) -> Void) {
         name = parameter.name
         label = parameter.description
@@ -94,6 +118,10 @@ struct ParameterRow: View {
         options = parameter.options
         offersManualEntry = parameter.offersManualEntry
         selectedRaw = parameter.selectedOption?.raw ?? ""
+        bits = parameter.drawsBits ? parameter.bits : []
+        summary = parameter.drawsBits && !expandsBits ? parameter.bitSummary : ""
+        toggle = { parameter.toggling($0, on: $1) }
+        self.expandsBits = expandsBits
         self.showSeparator = showSeparator
         self.commit = commit
     }
@@ -108,6 +136,10 @@ struct ParameterRow: View {
         options = control.parameterOptions
         offersManualEntry = control.offersManualEntry
         selectedRaw = control.valueString
+        bits = control.drawsBits ? control.bits : []
+        summary = ""
+        togglesDisabled = control.readOnly
+        toggle = { String(control.toggling($0, on: $1)) }
         self.showSeparator = showSeparator
         self.commit = commit
     }
@@ -116,11 +148,18 @@ struct ParameterRow: View {
         GroupRow(
             title: label.isEmpty ? name : label,
             description: detail,
+            value: summary,
             showSeparator: showSeparator,
             trailing: {
-                ParameterEditor(value: value, units: units, options: options,
-                                selectedRaw: selectedRaw,
-                                offersManualEntry: offersManualEntry, commit: commit)
+                if bits.isEmpty || !expandsBits {
+                    ParameterEditor(value: value, units: units, options: options,
+                                    selectedRaw: selectedRaw,
+                                    offersManualEntry: offersManualEntry, commit: commit)
+                } else {
+                    BitmaskToggles(bits: bits, disabled: togglesDisabled) {
+                        commit(toggle($0, $1))
+                    }
+                }
             })
     }
 }

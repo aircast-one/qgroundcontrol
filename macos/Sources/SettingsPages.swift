@@ -35,6 +35,22 @@ enum FactWrite {
     }
 
     static let readOnly = "That value is read-only, so it was not written."
+
+    // Both a vehicle parameter and an app setting can be a bitmask, and both must answer these the
+    // same way, so the rules live once here rather than as twins on the two models. The kind is the
+    // producer's own word: control.rs resolves a fact carrying BOTH enum labels and bitmask labels
+    // to "choice", as the Qt editor does, so a row must not decide that for itself by asking which
+    // list is empty.
+    static func drawsBits(_ kind: SettingsControl.Kind, _ bits: [ControlBit]) -> Bool {
+        kind == .bitmask && !bits.isEmpty
+    }
+
+    // Toggling one bit leaves every OTHER bit of the stored value alone, including bits the metadata
+    // never named. Firmware sets bits the ground station has not heard of, and rebuilding the value
+    // from the declared bits alone would silently clear them.
+    static func toggling(_ bit: ControlBit, on: Bool, within value: Int) -> Int {
+        on ? value | bit.value : value & ~bit.value
+    }
 }
 
 struct ControlBit: Identifiable, Equatable {
@@ -107,10 +123,10 @@ struct SettingsControl: Identifiable, Equatable {
         return parts.joined(separator: " \u{00B7} ")
     }
 
-    var drawsBits: Bool { kind == .bitmask && !bits.isEmpty }
+    var drawsBits: Bool { FactWrite.drawsBits(kind, bits) }
 
     func toggling(_ bit: ControlBit, on: Bool) -> Int {
-        on ? intValue | bit.value : intValue & ~bit.value
+        FactWrite.toggling(bit, on: on, within: intValue)
     }
 
     var parameterOptions: [ParameterOption] {

@@ -45,7 +45,8 @@ struct ParametersView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(Array(store.visible.enumerated()), id: \.element.id) { index, parameter in
-                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
+                    ParameterRow(parameter: parameter, showSeparator: index > 0,
+                                 expandsBits: false) {
                         store.write(parameter, $0)
                     }
                 }

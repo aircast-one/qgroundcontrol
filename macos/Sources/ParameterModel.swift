@@ -34,10 +34,13 @@ struct Parameter: Identifiable {
     let description: String
     let options: [ParameterOption]
     let range: FactRange
-    // Served in kFactProperties all along and read by nothing. Without it this model cannot tell
-    // a string-valued parameter from a numeric one, which is why 37226d051 could tighten
-    // SettingsControl.refusal -- it guards on kind first -- and had to leave FactRange alone.
-    let isString: Bool
+    // The producer's own word for what this row is, rather than four booleans derived from which
+    // lists came back empty. control.rs resolves a fact carrying both enum labels and bitmask labels
+    // to a choice exactly as the Qt editor does, and that judgement is not one a row should re-make.
+    let kind: SettingsControl.Kind
+    // The value a bit is toggled within. Read from the fact's own number and never parsed back out
+    // of the display string: display is cooked -- it is the enum LABEL wherever there is one.
+    let numericValue: Int
     // Composed by the core as {label, raw, set}, so nothing here derives set from value & bit.
     let bits: [ControlBit]
     // typeIsInteger was added to Fact and to kFactProperties for exactly this, and control.rs turns
@@ -61,7 +64,8 @@ struct Parameter: Identifiable {
     init(name: String, componentId: Int, json: [String: Any]) {
         self.name = name
         self.componentId = componentId
-        isString = (json["control"] as? String) == "text"
+        kind = SettingsControl.Kind(json["control"] as? String)
+        numericValue = (json["value"] as? NSNumber)?.intValue ?? 0
         wholeNumbersOnly = (json["wholeNumbersOnly"] as? NSNumber)?.boolValue ?? false
         units = (json["units"] as? String) ?? ""
         // label is the fact's shortDescription where it has one and humanise(name) where it does
@@ -99,6 +103,31 @@ extension Parameter {
     // refusal above, exactly as a numeric parameter's is; the escape widens what can be asked for,
     // not what can be written unchecked. A parameter with no options already gets the field.
     var offersManualEntry: Bool { !options.isEmpty }
+
+    var isString: Bool { kind == .text }
+
+    // ARMING_CHECK read "82" on a setup page and in the parameter list: a number an operator has to
+    // decompose in their head to find out that the compass check is off. The settings window has
+    // drawn named toggles since the bitmask control existed; the two screens that show vehicle
+    // parameters went through ParameterRow, which had no branch for them and fell through to the
+    // plain value field.
+    var drawsBits: Bool { FactWrite.drawsBits(kind, bits) }
+
+    // A 328-row browser cannot give one parameter nineteen rows of checkboxes, which is what the
+    // first version of this did: ARMING_CHECK filled the viewport and the other 327 parameters went
+    // below the fold. The names are the answer somebody scrolls here for, so the list states them
+    // and keeps the numeric field for the write. No bit set is not nothing set -- it is 0, and the
+    // served display says so rather than leaving the slot blank.
+    var bitSummary: String {
+        let on = bits.filter(\.set).map(\.label)
+        return on.isEmpty ? value : on.joined(separator: ", ")
+    }
+
+    // Returns the text the row commits, so the write goes through the one path that checks refusal
+    // and re-reads the row, rather than a second writer that would have to repeat both.
+    func toggling(_ bit: ControlBit, on: Bool) -> String {
+        String(FactWrite.toggling(bit, on: on, within: numericValue))
+    }
 
     // The row draws description as its title and this underneath. Before the migration description
     // was the raw shortDescription and empty when a fact had none, so the row fell back to the name
