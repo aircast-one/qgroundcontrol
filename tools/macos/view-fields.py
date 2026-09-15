@@ -273,6 +273,29 @@ def views_to_modules():
     return found
 
 
+# A type in MODELS with no json-reading initialiser is not a broken reader -- it is a type that
+# does not read the view at all, because the decode happens INLINE in a store. FrameSetup and
+# MotorTest hold the rules and the text for view.frame; Frame.swift and Motors.swift are what
+# actually subscript it. Reporting those three as "no initialiser keys found" was the wrong
+# diagnosis AND it hid that view.frame, read twice, had its keys compared against nothing.
+#
+# The binding is per file: a store assigns Bridge.group("view.X") to a local and subscripts that
+# local. Collecting every <local>["key"] in the same file is what makes this precise rather than
+# running LOOKUP over the whole text, which would match Bridge.group("view.frame") itself and
+# report the view name as a key. STATED LIMIT: a second variable of the same name elsewhere in
+# one file would have its lookups collected too. None exists today.
+def keys_read_inline(view):
+    base = view.split("(")[0]
+    keys, where = set(), []
+    for path in sorted(SOURCES.glob("*.swift")):
+        text = COMMENT.sub("", path.read_text())
+        for bind in re.finditer(rf'let (\w+) = Bridge\.group\("{re.escape(base)}[")(]', text):
+            local = bind.group(1)
+            keys |= set(re.findall(rf'\b{local}\[\s*"([^"]+)"\s*\]', text))
+            where.append(path.name)
+    return keys, sorted(set(where))
+
+
 def keys_a_model_reads(name):
     for path in sorted(SOURCES.glob("*.swift")):
         text = COMMENT.sub("", path.read_text())
@@ -297,7 +320,7 @@ def keys_a_model_reads(name):
 refuse_on_empty_inputs(sorted(SOURCES.glob("*.swift")), sorted(CORE.glob("*.rs")))
 
 registry = views_to_modules()
-gone, unchecked = [], []
+gone, unchecked, inline_read = [], [], []
 for model, view in sorted(MODELS.items()):
     modules = [registry.get(one) or registry.get(one.split("(")[0]) for one in views(view)]
     if any(module is None for module in modules):
@@ -309,7 +332,19 @@ for model, view in sorted(MODELS.items()):
         continue
     read = keys_a_model_reads(model)
     if not read:
-        unchecked.append(f"{model}: no initialiser keys found, which is a broken reader not a clean result")
+        served = set()
+        for source in sources:
+            stripped = strip_line_comments(source.read_text())
+            served |= set(LITERAL.findall(stripped)) | set(FIELD.findall(stripped))
+        inline, files = keys_read_inline(view if isinstance(view, str) else view[0])
+        if not inline:
+            unchecked.append(f"{model}: no initialiser keys found and nothing subscripts {view} "
+                             f"inline either, which is a broken reader not a clean result")
+        else:
+            inline_read.append((model, view, sorted(inline), files))
+            for key in sorted(inline):
+                if key not in served:
+                    gone.append((model, key, view, "/".join(modules)))
         continue
     emitted = set()
     for source in sources:
@@ -383,6 +418,9 @@ stale = [f"{view} is accepted as a scalar but {module} no longer serves a bare v
          if '"kind": "value"' not in (CORE / module).read_text()]
 for line in stale:
     print(f"  STALE {line}", file=sys.stderr)
+for model, view, keys, files in inline_read:
+    print(f"inline {view} is subscripted in {', '.join(files)} rather than decoded by {model}: "
+          f"{len(keys)} key(s) compared against the producer ({', '.join(keys)})")
 for view, (module, why) in SCALAR.items():
     print(f"accepted {view} as a scalar view: {why} ({module})")
 
