@@ -1048,6 +1048,22 @@ func checkTheTrafficPanelNeverGoesSilentlyBlank() {
            + "carrying an \"alert unknown\" of its own: not reporting is the common case, so "
            + "fifty rows would each repeat what the block already counts once in alertUnknown")
 
+    let fake = alerting.merging(["simulated": true as NSNumber]) { _, b in b }
+    expect(traffic(["contacts": [fake], "alerting": 1 as NSNumber]).rows().first?.value ?? "",
+           "simulated  alerting  17060 ft  31 deg  6890 ft",
+           "A SIMULATED TARGET IS NOT AN AIRCRAFT. ADSB_FLAGS_SIMULATED reaches the head on every "
+           + "contact and reached no row, so a rig feeding synthetic traffic drew it exactly like "
+           + "a real one -- and once set the core keeps it set (adsb.rs:229), because a contact "
+           + "that was ever synthetic never becomes real")
+
+    let quiet = placed.merging(["simulated": true as NSNumber]) { _, b in b }
+    expect(traffic(["contacts": [quiet]]).rows().first?.value ?? "",
+           "simulated  17060 ft  31 deg  6890 ft",
+           "and it does not depend on the alert: a synthetic target nobody is alerting about "
+           + "still says what it is. It LEADS the row because it qualifies everything after it, "
+           + "so an operator reading left to right learns it is not real before they read what "
+           + "it is doing")
+
     let unplaced = placed.merging(["distance": NSNull(), "distanceMetres": NSNull(),
                                    "bearingDegrees": NSNull()]) { _, b in b }
     expect(traffic(["contacts": [unplaced]]).rows().first?.value ?? "", "bearing unknown",

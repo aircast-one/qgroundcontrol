@@ -204,7 +204,8 @@ struct AdsbTraffic: Equatable {
     // column that reads as a decoding fault.
     func describe(_ contact: AdsbContact) -> String {
         guard contact.located else { return "bearing unknown" }
-        return [contact.alert == true ? "alerting" : "",
+        return [contact.simulated ? "simulated" : "",
+                contact.alert == true ? "alerting" : "",
                 distanceText(contact), bearingText(contact), altitudeText(contact),
                 velocityText(contact)]
             .filter { !$0.isEmpty }
