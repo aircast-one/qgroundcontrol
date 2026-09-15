@@ -82,9 +82,13 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
+// MissionController::_recalcFlightPathSegments walks from i = 1: item 0 is the MissionSettingsItem
+// and MissionSettingsItem::specifiesCoordinate() returns true unconditionally, so a walk that
+// starts at 0 sees a flown leg on the settings row and stops before any takeoff.
 fn starts_from_the_ground(items: &[Value]) -> bool {
     items
         .iter()
+        .skip(1)
         .find_map(|item| match (item["command"].as_i64() == Some(RETURN_TO_LAUNCH), item["kind"] == "takeoff", item["flownLeg"] == true) {
             (true, ..) => Some(false),
             (_, true, _) => Some(true),
@@ -525,7 +529,8 @@ mod tests {
     }
 
     fn settings() -> Value {
-        json!({ "kind": "object", "homePosition": true, "sequenceNumber": 0, "abbreviation": "Launch", "commandName": "Mission Settings", "isSimpleItem": false })
+        json!({ "kind": "object", "homePosition": true, "sequenceNumber": 0, "abbreviation": "Launch", "commandName": "Mission Settings",
+                "isSimpleItem": false, "specifiesCoordinate": true, "coordinate": at(47.0, 8.0) })
     }
 
     fn takeoff() -> Value {
@@ -678,7 +683,10 @@ mod tests {
         assert_eq!(placed["items"][1]["movable"], true);
 
         assert_eq!(unplaced["items"][0]["kind"], "settings");
-        assert_eq!(unplaced["items"][0]["movable"], false, "an item with no place cannot be moved to another one");
+        assert_eq!(unplaced["items"][0]["movable"], true, "MissionSettingsItem::specifiesCoordinate() is true unconditionally and the coordinate is the planned home, which QGC lets an operator drag. This assertion used to read false and passed only because the fixture withheld the coordinate that every real settings row carries");
+
+        let nowhere = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "commandName": "Set Camera Mode", "specifiesCoordinate": false })], 1), &[]);
+        assert_eq!(nowhere["items"][1]["movable"], false, "an item with no place cannot be moved to another one, and a command item is the one that actually has none");
     }
 
     #[test]

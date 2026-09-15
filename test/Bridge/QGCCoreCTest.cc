@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include "QGCApplication.h"
+#include "QGCHostNotices.h"
 #include "QGCMapUrlEngine.h"
 #include "Vehicle.h"
 #include "Fact.h"
@@ -183,6 +184,7 @@ void QGCCoreCTest::_guidedActionsFollowTheVehicle()
     QCOMPARE(none.value(QStringLiteral("class")).toString(), QStringLiteral("GuidedActions"));
     QCOMPARE(none.value(QStringLiteral("connected")).toBool(true), false);
     const QJsonArray hidden = none.value(QStringLiteral("actions")).toArray();
+
     const QJsonArray declared = take(qgc_bridge_get("view.contract")).value(QStringLiteral("enumerations")).toObject().value(QStringLiteral("view.guidedActions.actions[].id")).toArray();
     QVERIFY(!declared.isEmpty());
     QCOMPARE(hidden.count(), declared.count());
@@ -2804,6 +2806,28 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host.notices")).value(QStringLiteral("value")).toArray()), "reading the property directly lost the notice");
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host")).value(QStringLiteral("notices")).toArray()), "reading the whole object lost the notice");
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get_fields("host", "notices,count,dropped")).value(QStringLiteral("notices")).toArray()), "asking for named fields lost the notice");
+
+    const QJsonObject whole = take(qgc_bridge_get("host"));
+    QCOMPARE(whole.value(QStringLiteral("count")).toInt(-1), whole.value(QStringLiteral("notices")).toArray().count());
+    QVERIFY2(whole.value(QStringLiteral("count")).toInt(-1) == notices().count(),
+             "count means how many notices are in THIS list, not how many have ever been posted and not a figure taken before the cap trims. A head compares the two to tell a serialisation loss from an empty queue - the only way it can notice that the list came back shorter than the producer says it is - so if count ever starts counting something else that check turns into a false alarm about a producer behaving correctly");
+
+    const QJsonArray declared = take(qgc_bridge_get("view.contract"))
+                                   .value(QStringLiteral("enumerations"))
+                                   .toObject()
+                                   .value(QStringLiteral("host.notices[].kind"))
+                                   .toArray();
+    QStringList spelled;
+    for (const QGCHostNotices::Kind kind : { QGCHostNotices::Message, QGCHostNotices::VehicleError, QGCHostNotices::Navigation }) {
+        spelled.append(QGCHostNotices::token(kind));
+    }
+    QStringList contracted;
+    for (const QJsonValue &kind : declared) {
+        contracted.append(kind.toString());
+    }
+    QCOMPARE(contracted, spelled);
+    QVERIFY2(!contracted.isEmpty(),
+             "both heads read the host root directly and spell these kinds themselves, so the contract declares the domain - and nothing in Rust can see this enum, which is why the agreement is checked from here");
 
     QVERIFY2(take(qgc_bridge_get("host.notices.0")).value(QStringLiteral("found")).toBool(true) == false,
              "a list property is a leaf and cannot be walked into, and saying so is what tells a head to read the list rather than index it");

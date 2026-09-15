@@ -5935,6 +5935,11 @@
     "view.contract": {
         "class": "Contract",
         "enumerations": {
+            "host.notices[].kind": [
+                "message",
+                "vehicleError",
+                "navigation"
+            ],
             "view.altitudeModes.context": [
                 "mission",
                 "item"
@@ -6173,6 +6178,12 @@
             ]
         },
         "kind": "object",
+        "nullableUnwitnessed": [
+            "view.fences.fenceSupported",
+            "view.fences.rallySupported",
+            "view.plan.fenceSupported",
+            "view.plan.rallySupported"
+        ],
         "paths": [
             "view.messages",
             "view.plan",

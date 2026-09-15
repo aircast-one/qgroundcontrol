@@ -15,6 +15,8 @@ fn routine_ids_or_null() -> Vec<Value> {
 
 pub const ORDERS: [&str; 1] = ["oldestFirst"];
 
+pub const NOTICE_KINDS: [&str; 3] = ["message", "vehicleError", "navigation"];
+
 pub fn enumerations() -> Value {
     json!({
         "view.guidedActions.actions[].offer": ["hidden", "ready", "blocked"],
@@ -53,8 +55,16 @@ pub fn enumerations() -> Value {
         "view.guidedSpeed.command": ["guidedModeChangeGroundSpeedMetersSecond", "guidedModeChangeEquivalentAirspeedMetersSecond"],
         "view.camera.modeText": ["Photo", "Video", "Survey", "Not set"],
         "view.flyState.state": crate::flystate::STATES.iter().map(|s| s.token()).collect::<Vec<_>>(),
+        "host.notices[].kind": NOTICE_KINDS,
     })
 }
+
+pub const NULLABLE_UNWITNESSED: &[&str] = &[
+    "view.fences.fenceSupported",
+    "view.fences.rallySupported",
+    "view.plan.fenceSupported",
+    "view.plan.rallySupported",
+];
 
 pub fn contract_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
@@ -62,6 +72,7 @@ pub fn contract_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "Contract",
         "paths": VIEWS.iter().map(|v| v.path).collect::<Vec<_>>(),
         "enumerations": enumerations(),
+        "nullableUnwitnessed": NULLABLE_UNWITNESSED,
     })
 }
 
@@ -72,6 +83,34 @@ mod tests {
     use crate::missionkinds::KINDS;
 
     #[test]
+    fn a_field_the_rig_can_never_leave_unknown_is_still_declared_nullable() {
+        let shapes: Value = serde_json::from_str(include_str!("../../test/Bridge/fixtures/view-shapes.json")).unwrap();
+        NULLABLE_UNWITNESSED.iter().for_each(|path| {
+            let (view, field) = path.rsplit_once('.').unwrap();
+            let declared = shapes[view][field].as_str().unwrap_or("missing");
+            assert!(
+                declared == "bool" || declared == "bool|null",
+                "{path} is listed here as a field the recorder cannot witness as null, but the contract types it {declared} - either the rig can now reach the null and the entry should go, or the path is wrong"
+            );
+        });
+
+        assert_eq!(crate::plan::capability(&Unknowing, "geoFenceController"), None, "this is the case the recorder cannot create: capability() withholds until capabilitiesKnown, and the rig's vehicle has always answered, so the recorded type says bool and a head is told the value can never be null");
+        assert!(
+            contract_view(&Unknowing, &[])["nullableUnwitnessed"].as_array().unwrap().iter().any(|p| p == "view.plan.fenceSupported"),
+            "the list has to ride on the view a head actually reads, or it is a comment"
+        );
+    }
+
+    struct Unknowing;
+    impl Backend for Unknowing {
+        fn get(&self, _p: &str) -> String { String::new() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "capabilitiesKnown": false, "supported": true }).to_string() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
     fn the_enumerations_agree_with_the_producers() {
         let listed = enumerations();
         let ids: Vec<Value> = ACTIONS.iter().map(|a| serde_json::to_value(a).unwrap()).collect();
@@ -79,6 +118,11 @@ mod tests {
         let kinds: Vec<Value> = KINDS.iter().map(|k| json!(k.id)).collect();
         assert_eq!(listed["view.missionKinds.kinds[].id"], Value::Array(kinds));
         assert_eq!(listed["view.battery.level"].as_array().unwrap().len(), 4);
+        assert_eq!(
+            listed["host.notices[].kind"],
+            json!(NOTICE_KINDS),
+            "both heads read the host root directly and each spells these three kinds itself - Android drops navigation from its banners and routes a tab, macOS keeps it and refuses any destination but setup. Neither policy belongs here, but the DOMAIN does: a fourth kind added to QGCHostNotices::token would otherwise be silently unhandled by whichever head nobody remembered to tell. QGCCoreCTest pins this list against the C++ enum, because nothing in Rust can see it"
+        );
         assert!(VIEWS.iter().any(|v| v.path == "view.contract"));
         let pages: Vec<Value> = crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().map(|p| json!(p))).collect();
         assert_eq!(listed["view.setup.groups[].pages[].name"], Value::Array(pages), "the setup page names are the list the core ships, so a head can pin its glyph table against it");
