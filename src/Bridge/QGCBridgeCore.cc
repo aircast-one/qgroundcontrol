@@ -1,4 +1,7 @@
 #include "QGCBridgeCore.h"
+
+#include <QElapsedTimer>
+#include <QScopeGuard>
 #include "QGCCorePlugin.h"
 #include "QGCHostNotices.h"
 
@@ -49,6 +52,9 @@ namespace
 QGCBridgeCore::EventHandler g_eventHandler;
 
 constexpr int kPollIntervalMSecs = 200;
+
+static const bool kTraceReads = !qEnvironmentVariableIsEmpty("QGC_BRIDGE_TRACE");
+static int gPropertiesRead = 0;
 constexpr int kBoundPropertyRereadTicks = 5;
 constexpr QLatin1Char kSignalSeparator('@');
 constexpr int kMaxInvokeArgs = 4;
@@ -450,6 +456,7 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compac
         const bool wanted = everything || fields.contains(name);
 
         const QVariant value = property.read(object);
+        ++gPropertiesRead;
 
         QObject *const child = pointerWithoutDereference(value);
         if (Fact *const fact = factByStaticType(value, child)) {
@@ -490,6 +497,20 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compac
 QJsonObject readPath(const QString &path, const QSet<QString> &fields = {}, bool compactFacts = false,
                      QSet<QString> *seen = nullptr)
 {
+    const int propertiesBefore = gPropertiesRead;
+    QElapsedTimer spent;
+    if (kTraceReads) {
+        spent.start();
+    }
+    const auto trace = qScopeGuard([&]() {
+        if (kTraceReads) {
+            fprintf(stderr, "BRIDGE READ %s fields=%lld properties=%d us=%lld\n",
+                    qPrintable(path), static_cast<long long>(fields.size()),
+                    gPropertiesRead - propertiesBefore,
+                    static_cast<long long>(spent.nsecsElapsed() / 1000));
+        }
+    });
+
     const Resolved resolved = resolve(path);
     if (!resolved.object) {
         return QJsonObject { { QStringLiteral("kind"), QStringLiteral("null") } };
