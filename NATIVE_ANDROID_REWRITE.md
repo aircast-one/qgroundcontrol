@@ -8271,3 +8271,33 @@ tab-order bug can be avoided by habit; this one cannot be avoided at all.
 Still inferred: that `syncInProgress` is false at the force instant. The wire
 log showing no request at all is the evidence for it, since nothing that never
 started syncing can be syncing.
+
+### The Plan tab's 700 ms poll costs almost nothing, 2026-09-15
+
+`PlanMapContent.kt:321` re-reads the plan every 700 ms through
+`PlanBridge.rawItems()` - the same `view.missionItems` that cost ~331 ms during
+tab entry. That arithmetic suggests half a core, continuously, and it is wrong.
+
+Measured on the Qt thread, settled on Plan, vehicle connected, after
+`4e4d579c8`:
+
+| plan | qt CPU over 20 s | calls over 250 ms |
+|---|---|---|
+| empty (planned-home only, `count` 1) | 8 jiffies = 80 ms | 0 |
+| three real waypoints (`count` 3, `containsItems` true) | 9 jiffies = 90 ms | 0 |
+
+**0.4% of one core either way, and the item count does not move it.** The entry
+burst is genuinely one-off; the settled poll is nearly free. So removing the
+poll is not a performance fix, and the deferred task to do so is answered.
+
+**What this does not establish.** Three waypoints is a small mission and the
+trace that motivated the worry - 1344 properties for one `visualItems` read -
+came from a fixture with more items than this. **1 to 3 showing no change does
+not extrapolate to 1 to 50**, and the honest claim is that there is no large
+per-item cost at this size, not that the poll is safe at any size.
+
+**The inference that produced the worry was sound and the conclusion was
+wrong**, which is the only reason to measure something this cheap to measure:
+331 ms every 700 ms is a real reading of a real number, attached to the wrong
+regime. A cost measured during contention says nothing about the same call
+settled.
