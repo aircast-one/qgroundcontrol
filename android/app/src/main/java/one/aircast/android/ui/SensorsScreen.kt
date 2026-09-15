@@ -43,7 +43,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
 private const val CAL = "sensorsCal"
@@ -246,7 +245,8 @@ private fun RunningCalibration(
 @Composable
 fun SensorsScreen(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
-    val isPx4 by qgcBool("vehicle.px4Firmware")
+    val setupJson by qgcPath(SETUP)
+    val isPx4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val json by qgcPath(CALIBRATION)
     val healthJson by qgcPath(SENSOR_HEALTH)
     val health = remember(healthJson) { sensorHealth(healthJson) }

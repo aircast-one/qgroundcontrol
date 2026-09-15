@@ -32,7 +32,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMain
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.optText
 
@@ -78,7 +77,8 @@ internal fun shouldFollowTail(lastVisibleIndex: Int?, count: Int): Boolean =
 @Composable
 fun ConsoleScreen(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
-    val isPx4 by qgcBool("vehicle.px4Firmware")
+    val setupJson by qgcPath(SETUP)
+    val isPx4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val consoleJson by qgcPath(CONSOLE_VIEW)
     val rawLines = remember(consoleJson) { consoleLines(consoleJson) }
     val emptyReason = remember(consoleJson) { consoleJson?.optText("emptyReason").orEmpty() }
