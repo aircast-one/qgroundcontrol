@@ -109,19 +109,26 @@ import json
 import pathlib
 
 groups = sorted(pathlib.Path(f"{ROOT}/src/Settings").glob("*.json"))
-declared = set()
+# Keyed on the GROUP as well as the fact. A bare leaf name is not unique across these files --
+# the core measured `enabled` declared in both PacketRadio and Viewer3D -- so checking only that
+# the name exists somewhere passes a path pointing at the wrong group, which is the defect this
+# is for: settings.videoSettings.deviceName would resolve to nothing while `deviceName` exists
+# in PacketRadio. The group segment maps to a file by dropping the trailing "Settings" and
+# capitalising, which holds for all six paths this head spells.
+declared = {}
 unreadable = []
 for group in groups:
     try:
-        declared |= {entry.get("name") for entry in
-                     json.loads(group.read_text()).get("QGC.MetaData.Facts", [])
-                     if isinstance(entry, dict)}
+        declared[group.name.replace(".SettingsGroup.json", "")] = {
+            entry.get("name") for entry in
+            json.loads(group.read_text()).get("QGC.MetaData.Facts", [])
+            if isinstance(entry, dict)}
     except (ValueError, OSError) as why:
         unreadable.append(f"{group.name}: {why}")
 
 spelled = set()
 for source in sorted(pathlib.Path(f"{ROOT}/macos/Sources").glob("*.swift")):
-    spelled |= set(re.findall(r'"settings\.[A-Za-z0-9_]+\.([A-Za-z0-9_]+)"', source.read_text()))
+    spelled |= set(re.findall(r'"settings\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)"', source.read_text()))
 
 if unreadable or not groups:
     for why in unreadable:
@@ -130,13 +137,25 @@ if unreadable or not groups:
           f"name a fact is UNMEASURED rather than clean", file=sys.stderr)
     sys.exit(1)
 
-missing = sorted(spelled - declared)
-for name in missing:
-    print(f"the head spells a settings path ending {name!r} and no file in src/Settings declares "
-          f"a fact of that name: the read resolves to nothing and no build says so", file=sys.stderr)
+missing = []
+for group, fact in sorted(spelled):
+    stem = group[:-8] if group.endswith("Settings") else group
+    stem = stem[:1].upper() + stem[1:]
+    if stem not in declared:
+        missing.append(f"the head spells settings.{group}.{fact} and src/Settings has no "
+                       f"{stem}.SettingsGroup.json: the group segment names no file")
+    elif fact not in declared[stem]:
+        elsewhere = sorted(g for g, facts in declared.items() if fact in facts)
+        aside = f" -- {fact!r} is declared in {', '.join(elsewhere)}" if elsewhere else ""
+        missing.append(f"the head spells settings.{group}.{fact} and {stem}.SettingsGroup declares "
+                       f"no fact of that name{aside}: the read resolves to nothing and no build "
+                       f"says so")
+for why in missing:
+    print(why, file=sys.stderr)
 if missing:
     sys.exit(1)
 
 print(f"head lists pinned: SetupPage.bespoke matches {len(built)} content switch cases, "
       f"HostNotice.Kind matches {len(served)} served notice kinds, {len(spelled)} settings paths "
-      f"name a fact among the {len(declared)} that {len(groups)} group files declare")
+      f"name a fact in the group they point at, across {len(groups)} group files declaring "
+      f"{sum(len(v) for v in declared.values())} facts")
