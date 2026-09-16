@@ -163,6 +163,23 @@ def read_sticks():
 ORBIT_STATUS_ID = 360
 ORBIT_STATUS_CRC = 11
 
+CONTROL_STATUS_ID = 512
+CONTROL_STATUS_CRC = 184
+CONTROL_STATUS_SYSTEM_MANAGER = 1
+CONTROL_STATUS_TAKEOVER_ALLOWED = 2
+IN_CONTROL = (lambda held: int(held) if held else None)(os.environ.get("IN_CONTROL"))
+TAKEOVER_ALLOWED = os.environ.get("TAKEOVER_ALLOWED", "1") not in ("0", "")
+
+
+def control_status_frame(sequence, sysid, holder):
+    flags = CONTROL_STATUS_SYSTEM_MANAGER | (CONTROL_STATUS_TAKEOVER_ALLOWED if TAKEOVER_ALLOWED else 0)
+    payload = struct.pack("<BB", holder & 0xFF, flags)
+    header = struct.pack("<BBBBBB", len(payload), 0, 0, sequence & 0xFF, sysid,
+                         mavlink.MAV_COMP_ID_AUTOPILOT1)
+    body = header + struct.pack("<I", CONTROL_STATUS_ID)[:3] + payload
+    checksum = x25crc(body + bytes([CONTROL_STATUS_CRC])).crc
+    return b"\xfd" + body + struct.pack("<H", checksum)
+
 
 def orbit_status_frame(sequence, sysid, radius_m, latitude, longitude, altitude_m):
     payload = struct.pack("<Qfiifb", int(time.time() * 1e6), radius_m,
@@ -673,6 +690,9 @@ def main():
         if ORBIT_RADIUS_M:
             link.file.write(orbit_status_frame(tick, SYSID, ORBIT_RADIUS_M,
                                                CENTRE_LAT + CENTRE_SHIFT, CENTRE_LON, altitude))
+
+        if IN_CONTROL is not None and tick % 5 == 0:
+            link.file.write(control_status_frame(tick, SYSID, IN_CONTROL))
 
         if CAMERA_FEEDBACK_EVERY and tick % CAMERA_FEEDBACK_EVERY == 0:
             magcal.camera_feedback_send(

@@ -195,6 +195,16 @@ list, the selection state and the four MV guided actions need.
 `SECOND_PORT` is **not** this: it adds a second UDP port for the *same* vehicle, to show
 one aircraft arriving over two radios. It leaves the system id alone, so QGC still sees one.
 
+`IN_CONTROL` makes the fake stream `CONTROL_STATUS`, which is the only way to see anything
+on `view.operatorControl`: without it QGC never sets `firstControlStatusReceived` and the core
+answers "This vehicle has not said who is flying it." Set it to the MAVLink system id holding
+control - `IN_CONTROL=255` is this station (QGC's own `gcsMavlinkSystemID`), any other value is
+somebody else. `TAKEOVER_ALLOWED=0` clears the takeover flag, which is what turns the head's
+offer from "Acquire control" into "Ask the other station for control".
+
+    RIG_UDP_PORT=14560 IN_CONTROL=42 python3 tools/apmvehicle.py 127.0.0.1    # another station
+    RIG_UDP_PORT=14560 IN_CONTROL=255 python3 tools/apmvehicle.py 127.0.0.1   # this one
+
 `RIG_UDP_PORT` moves the whole rig off 14550, and both scripts read it, so a session that
 sets it stops contending with the three others sharing this machine:
 

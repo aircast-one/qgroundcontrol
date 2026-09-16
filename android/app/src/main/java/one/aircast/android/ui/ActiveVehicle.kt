@@ -80,6 +80,9 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val fly = remember(flyJson) { flyState(flyJson) }
     val vehiclesJson by qgcPath(VEHICLES_VIEW)
     val choices = remember(vehiclesJson) { vehicleChoices(vehiclesJson) }
+    val controlJson by qgcPath(OPERATOR_CONTROL_VIEW)
+    val station = remember(controlJson) { controlStation(controlJson) }
+    val taken = controlIsElsewhere(station)
     val lost = fly?.contactLost == true
     val subtitle = vehicleSubtitle(fly)
     var picking by remember { mutableStateOf(false) }
@@ -87,7 +90,9 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     var refusal by remember { mutableStateOf<String?>(null) }
 
     Row(
-        modifier = modifier.let { if (choices.ambiguous) it.clickable { picking = true } else it },
+        modifier = modifier.let {
+            if (choices.ambiguous || taken) it.clickable { picking = true } else it
+        },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -97,12 +102,12 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             color = if (lost) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
         )
-        if (choices.ambiguous) {
-            val silent = lostVehiclesText(lostVehicles(choices))
+        if (choices.ambiguous || taken) {
+            val alarm = lostVehiclesText(lostVehicles(choices)) ?: controlLine(station).takeIf { taken }
             Icon(
-                imageVector = if (silent == null) Icons.Default.KeyboardArrowDown else Icons.Default.Warning,
-                contentDescription = silent ?: "Choose which vehicle to fly",
-                tint = if (silent == null) {
+                imageVector = if (alarm == null) Icons.Default.KeyboardArrowDown else Icons.Default.Warning,
+                contentDescription = alarm ?: "Choose which vehicle to fly",
+                tint = if (alarm == null) {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 } else {
                     MaterialTheme.colorScheme.error
@@ -162,6 +167,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
             }
+            ControlHolderNote(station) { message -> refusal = message }
             FootNote(
                 "Tap a name to fly that aircraft. Arm, Takeoff and every action on the flight screen go to the one you pick.",
             )
@@ -248,3 +254,47 @@ internal fun fleetActionLine(action: MvAction): String =
 internal fun fleetConfirm(selectedCount: Int): String = "This commands ${fleetTargetText(selectedCount)}."
 
 internal fun fleetIsDestructive(action: MvAction): Boolean = action.id != "mvPause"
+
+@Composable
+private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> Unit) {
+    val holder = station ?: return
+    val line = controlLine(holder) ?: return
+    val scope = rememberCoroutineScope()
+    Text(
+        text = line,
+        style = MaterialTheme.typography.bodyMedium,
+        color = when {
+            controlIsElsewhere(holder) -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+    )
+    var asked by remember(holder.holderSystemId) { mutableStateOf<String?>(null) }
+    controlWaitLine(holder)?.let { waiting ->
+        Text(
+            text = waiting,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+    }
+    acquireLabel(holder)?.let { label ->
+        when (val sent = asked) {
+            null -> TextButton(
+                onClick = {
+                    scope.launch {
+                        val refused = withContext(Dispatchers.Default) { askForControl(holder) }
+                        onRefusal(refused)
+                        asked = if (refused == null) label else null
+                    }
+                },
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) { Text(label) }
+            else -> SentNotice(
+                name = sent,
+                onDismiss = { asked = null },
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
