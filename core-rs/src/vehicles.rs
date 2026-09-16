@@ -4,9 +4,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::read::{flag, integer, nested_coordinate, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicle.id"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicles.selectedVehicles.count", "vehicle.id"];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,coordinate";
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,pauseVehicleSupported,coordinate";
 const WATCHED_PER_VEHICLE: [&str; 4] = ["armed", "flying", "flightMode", "coordinate"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
@@ -25,10 +25,59 @@ fn per_vehicle_paths() -> Vec<String> {
         .collect()
 }
 
+const MV_ACTIONS: [(&str, &str, &str); 4] = [
+    ("mvArm", "Arm", "Arm selected vehicles."),
+    ("mvDisarm", "Disarm", "Disarm selected vehicles."),
+    ("mvStartMission", "Start", "Takeoff from ground and start the current mission for selected vehicles."),
+    ("mvPause", "Pause", "Pause selected vehicles at their current position."),
+];
+
+fn selected_ids(backend: &dyn Backend) -> Vec<i64> {
+    let count = integer(&object(&backend.get("vehicles.selectedVehicles.count")), "value").unwrap_or(0).max(0);
+    (0..count)
+        .filter_map(|index| integer(&object(&backend.get_fields(&format!("vehicles.selectedVehicles.{index}"), "id")), "id"))
+        .collect()
+}
+
+fn mv_refusal(id: &str, chosen: &[&Value]) -> Option<&'static str> {
+    let armed: Vec<&&Value> = chosen.iter().filter(|v| v["armed"] == json!(true)).collect();
+    match (chosen.is_empty(), id) {
+        (true, _) => Some("No vehicles are selected."),
+        (false, "mvArm") => chosen.iter().all(|v| v["armed"] == json!(true)).then_some("Every selected vehicle is already armed."),
+        (false, "mvDisarm" | "mvStartMission" | "mvPause") if armed.is_empty() => Some("No selected vehicle is armed."),
+        (false, "mvDisarm") => None,
+        (false, "mvStartMission") => armed
+            .iter()
+            .all(|v| v["flightMode"] == v["missionFlightMode"])
+            .then_some("Every armed selection is already flying its mission."),
+        (false, "mvPause") => armed.iter().all(|v| v["pauseSupported"] != json!(true)).then_some("No selected vehicle supports being paused."),
+        (false, _) => Some("The core does not know this action."),
+    }
+}
+
+fn mv_actions(listed: &[Value]) -> Value {
+    let chosen: Vec<&Value> = listed.iter().filter(|v| v["selected"] == json!(true)).collect();
+    MV_ACTIONS
+        .iter()
+        .map(|(id, title, prompt)| {
+            let refusal = mv_refusal(id, &chosen);
+            json!({
+                "id": id,
+                "title": title,
+                "prompt": prompt,
+                "offer": match refusal { Some(_) => "blocked", None => "ready" },
+                "reason": refusal.unwrap_or(""),
+            })
+        })
+        .collect::<Vec<Value>>()
+        .into()
+}
+
 pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let count = integer(&object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
     VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), Ordering::Relaxed);
     let active = integer(&object(&backend.get_fields("vehicle", "id")), "id");
+    let chosen_ids = selected_ids(backend);
     let listed: Vec<Value> = (0..count)
         .map(|index| {
             let read = object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS));
@@ -46,6 +95,9 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "armed": flag(&read, "armed"),
                 "flying": flag(&read, "flying"),
                 "flightMode": text(&read, "flightMode"),
+                "missionFlightMode": text(&read, "missionFlightMode"),
+                "pauseSupported": flag(&read, "pauseVehicleSupported"),
+                "selected": id.is_some_and(|id| chosen_ids.contains(&id)),
             })
         })
         .collect();
@@ -55,6 +107,10 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "count": listed.len(),
         "activeId": active,
         "ambiguous": listed.len() > 1,
+        "selectedCount": chosen_ids.len(),
+        "canSelectAll": chosen_ids.len() != listed.len(),
+        "canDeselectAll": !chosen_ids.is_empty(),
+        "actions": mv_actions(&listed),
         "vehicles": listed,
     })
 }
@@ -78,14 +134,27 @@ mod tests {
 
     struct Fleet(Vec<Value>, Option<i64>);
 
+    impl Fleet {
+        fn chosen(&self) -> Vec<Value> {
+            self.0.iter().filter(|v| v["chosen"] == json!(true)).cloned().collect()
+        }
+    }
+
     impl Backend for Fleet {
         fn get(&self, path: &str) -> String {
             match path {
                 "vehicles.vehicles.count" => json!({ "kind": "value", "value": self.0.len() }).to_string(),
+                "vehicles.selectedVehicles.count" => json!({ "kind": "value", "value": self.chosen().len() }).to_string(),
                 _ => String::new(),
             }
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
+            if let Some(index) = path.strip_prefix("vehicles.selectedVehicles.") {
+                return match index.parse::<usize>().ok().and_then(|index| self.chosen().get(index).cloned()) {
+                    Some(vehicle) => json!({ "kind": "object", "id": vehicle["id"] }).to_string(),
+                    None => String::new(),
+                };
+            }
             if path == "vehicle" {
                 return match self.1 {
                     Some(id) => json!({ "kind": "object", "id": id }).to_string(),
@@ -109,8 +178,74 @@ mod tests {
     }
 
     fn aircraft(id: i64, kind: &str, link: &str) -> Value {
-        json!({ "kind": "object", "id": id, "vehicleTypeString": kind, "firmwareTypeString": "ArduPilot", "armed": false, "flying": false, "flightMode": "Loiter", "link": link, "quiet": false,
+        json!({ "kind": "object", "id": id, "vehicleTypeString": kind, "firmwareTypeString": "ArduPilot", "armed": false, "flying": false, "flightMode": "Loiter", "missionFlightMode": "Auto", "pauseVehicleSupported": true, "link": link, "quiet": false,
                 "coordinate": { "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 } })
+    }
+
+    fn offer_of(view: &Value, id: &str) -> (String, String) {
+        let action = view["actions"].as_array().unwrap().iter().find(|a| a["id"] == json!(id)).unwrap();
+        (action["offer"].as_str().unwrap().to_string(), action["reason"].as_str().unwrap().to_string())
+    }
+
+    #[test]
+    fn nothing_is_offered_to_a_fleet_with_no_selection() {
+        let _guard = fleet_guard();
+        let view = vehicles_view(&Fleet(vec![aircraft(1, "Quadrotor", "Radio"), aircraft(2, "Quadrotor", "Radio")], Some(1)), &[]);
+
+        assert_eq!(view["selectedCount"], json!(0));
+        assert_eq!((view["canSelectAll"].clone(), view["canDeselectAll"].clone()), (json!(true), json!(false)));
+        assert!(view["vehicles"].as_array().unwrap().iter().all(|v| v["selected"] == json!(false)));
+        MV_ACTIONS.iter().for_each(|(id, _, _)| {
+            assert_eq!(
+                offer_of(&view, id),
+                ("blocked".to_string(), "No vehicles are selected.".to_string()),
+                "QGC has no arm-all: every multi-vehicle action reads QGroundControl.multiVehicleManager.selectedVehicles and acts on nothing when it is empty, so an empty selection has to refuse rather than reach the whole fleet"
+            );
+        });
+    }
+
+    #[test]
+    fn each_multi_vehicle_action_follows_its_own_availability_rule() {
+        let _guard = fleet_guard();
+        let chosen = |armed: bool, mode: &str, pausable: bool| {
+            let mut vehicle = aircraft(1, "Quadrotor", "Radio");
+            vehicle["chosen"] = json!(true);
+            vehicle["armed"] = json!(armed);
+            vehicle["flightMode"] = json!(mode);
+            vehicle["pauseVehicleSupported"] = json!(pausable);
+            vehicles_view(&Fleet(vec![vehicle], Some(1)), &[])
+        };
+
+        let disarmed = chosen(false, "Loiter", true);
+        assert_eq!(disarmed["selectedCount"], json!(1));
+        assert_eq!(disarmed["canSelectAll"], json!(false), "MultiVehicleList.qml enables Select All on a count mismatch, so a fully selected fleet has nothing left to select");
+        assert_eq!(offer_of(&disarmed, "mvArm").0, "ready");
+        assert_eq!(offer_of(&disarmed, "mvDisarm"), ("blocked".to_string(), "No selected vehicle is armed.".to_string()));
+        assert_eq!(offer_of(&disarmed, "mvStartMission").1, "No selected vehicle is armed.", "startAvailable requires armed === true before it looks at the flight mode, so a disarmed selection is refused for being disarmed rather than for its mode");
+        assert_eq!(offer_of(&disarmed, "mvPause").1, "No selected vehicle is armed.");
+
+        let armed = chosen(true, "Loiter", true);
+        assert_eq!(offer_of(&armed, "mvArm"), ("blocked".to_string(), "Every selected vehicle is already armed.".to_string()));
+        assert_eq!(offer_of(&armed, "mvDisarm").0, "ready");
+        assert_eq!(offer_of(&armed, "mvStartMission").0, "ready");
+        assert_eq!(offer_of(&armed, "mvPause").0, "ready");
+
+        assert_eq!(
+            offer_of(&chosen(true, "Auto", true), "mvStartMission"),
+            ("blocked".to_string(), "Every armed selection is already flying its mission.".to_string()),
+            "startAvailable compares flightMode against the vehicle's own missionFlightMode rather than a literal, because the name of the mission mode differs between firmwares"
+        );
+        assert_eq!(
+            offer_of(&chosen(true, "Loiter", false), "mvPause"),
+            ("blocked".to_string(), "No selected vehicle supports being paused.".to_string())
+        );
+        assert_eq!(offer_of(&chosen(true, "Loiter", false), "mvDisarm").0, "ready", "pauseVehicleSupported gates only Pause");
+
+        assert_eq!(
+            mv_refusal("mvLandEverything", &[&aircraft(1, "Quadrotor", "Radio")]),
+            Some("The core does not know this action."),
+            "an id that reaches no rule has to refuse: the fallthrough used to be None, so a typo in MV_ACTIONS would have offered an unrecognised fleet-wide command as ready"
+        );
     }
 
     fn grounded(id: i64) -> Value {
