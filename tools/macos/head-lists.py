@@ -128,7 +128,14 @@ for group in groups:
 
 spelled = set()
 for source in sorted(pathlib.Path(f"{ROOT}/macos/Sources").glob("*.swift")):
-    spelled |= set(re.findall(r'"settings\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)"', source.read_text()))
+    # A settings path is bounded by a quote at BOTH ends only while the head asks Qt for it
+    # directly. ccf7daa42 routed two of them through view.control(settings.…), which puts a
+    # parenthesis where the quote was -- and this pattern stopped seeing them the moment they
+    # were migrated, dropping the pinned count from 6 to 4 with nothing failing. The checker
+    # was weakened by the commit that improved the code, and the conversion that is meant to
+    # reduce the Qt surface must not also reduce what is checked about it.
+    spelled |= set(re.findall(r'["(]settings\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)[")]',
+                              source.read_text()))
 
 # Zero paths is a broken reader, not a clean head. This head demonstrably spells settings paths,
 # so an empty set means the pattern stopped matching -- and then `missing` is empty too and the
