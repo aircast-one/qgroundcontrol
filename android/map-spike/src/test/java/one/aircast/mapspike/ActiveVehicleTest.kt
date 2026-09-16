@@ -79,6 +79,22 @@ class ActiveVehicleTest {
     }
 
     @Test
+    fun `a vehicle that has not reported a mode still says whether it is armed`() {
+        val early = JSONObject(
+            """{"ambiguous":true,"vehicles":[{"id":4,"name":"Quadrotor 4","active":false,
+                 "contactLost":false,"flightMode":"","armed":true,"flying":false}]}""",
+        )
+
+        assertEquals(
+            "the mode arrives after the heartbeat does, so there is a window where the only " +
+                "thing known is that the propellers are live - losing that word to a blank " +
+                "mode would drop the half that matters",
+            "Armed",
+            vehicleChoices(early).choices.single().state,
+        )
+    }
+
+    @Test
     fun `flying outranks armed, because an armed vehicle on the ground is a different thing`() {
         val flying = vehicleChoices(two).choices.single { it.id == 2 }
         assertEquals("Guided · Flying", flying.state)
