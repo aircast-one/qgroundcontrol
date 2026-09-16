@@ -1660,6 +1660,30 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         const QString key = stable(QString::fromUtf8(path));
         recorded.insert(key, mergeShapes(offline.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
+
+    // Three states all had one disarmed grounded vehicle that nobody had selected, so sixteen of
+    // the nineteen guided offers and every multi-vehicle offer were pinned at a single value: the
+    // fixture could not have caught a regression that left any of them hidden or refusing forever.
+    // Selecting and arming moves both sets. Each step is verified to have taken before the snapshot
+    // - an unverified fourth state that silently matched the third would widen nothing while
+    // looking like coverage.
+    const int vehicleId = take(qgc_bridge_get("view.vehicles")).value(QStringLiteral("activeId")).toInt();
+    QVERIFY2(vehicleId > 0, "no active vehicle id, so selecting one below would be a no-op that still records a state");
+    (void) take(qgc_bridge_invoke("vehicles.selectVehicle", QJsonDocument(QJsonArray { vehicleId }).toJson(QJsonDocument::Compact).constData()));
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.vehicles")).value(QStringLiteral("selectedCount")).toInt() == 1, 5000);
+    (void) take(qgc_bridge_set("vehicle.armed", "{\"value\":true}"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        take(qgc_bridge_get("view.vehicles")).value(QStringLiteral("vehicles")).toArray().first().toObject().value(QStringLiteral("armed")).toBool(false), 10000);
+
+    states.append(snapshotOfEveryView(viewPaths.constData(), viewPaths.size()));
+    for (const char *path : viewPaths) {
+        const QString key = stable(QString::fromUtf8(path));
+        recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
+    }
+
+    (void) take(qgc_bridge_set("vehicle.armed", "{\"value\":false}"));
+    (void) take(qgc_bridge_invoke("vehicles.deselectVehicle", QJsonDocument(QJsonArray { vehicleId }).toJson(QJsonDocument::Compact).constData()));
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.vehicles")).value(QStringLiteral("selectedCount")).toInt() == 0, 5000);
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const QByteArray plannedVehicleClass = QJsonDocument(QJsonObject { { QStringLiteral("value"), take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")) } }).toJson(QJsonDocument::Compact);
     const auto restoreVehicleClass = qScopeGuard([plannedVehicleClass]() { (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", plannedVehicleClass.constData())); });
