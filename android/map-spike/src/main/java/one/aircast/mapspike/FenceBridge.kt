@@ -89,9 +89,6 @@ private fun JSONObject.bound(key: String): Double? =
 
 internal const val CIRCLE_STEP = 1.5
 
-internal fun shownPerMetre(circle: FenceCircle): Double =
-    if (circle.radiusMetres > 0.0) circle.radius / circle.radiusMetres else 1.0
-
 internal fun grownRadius(circle: FenceCircle): Double? {
     val wanted = circle.radius * CIRCLE_STEP
     val ceiling = circle.radiusMaximum ?: return wanted

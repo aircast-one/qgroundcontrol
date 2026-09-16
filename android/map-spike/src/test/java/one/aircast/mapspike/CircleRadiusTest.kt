@@ -104,18 +104,32 @@ class CircleRadiusTest {
     @Test
     fun `a metric rig cannot tell the difference, which is why this survived`() {
         val metric = circle(radius = 100.0, metres = 100.0, minimum = 30.0, maximum = 120.0)
+        val imperial = circle(radius = 328.084, metres = 100.0, minimum = 98.425, maximum = 393.701)
+
         assertEquals(
-            "shownPerMetre is 1.0 here, so the double conversion was invisible on a metric " +
-                "profile and only an imperial one shows it",
-            1.0,
-            shownPerMetre(metric),
-            1e-9,
+            "where the displayed radius equals the metres, converting the bounds a second time " +
+                "multiplied by 1.0 and changed nothing - so the fault only ever showed on a " +
+                "profile whose display unit is not the metre",
+            120.0,
+            grownRadius(metric)!!,
+            1e-3,
         )
-        assertEquals(120.0, grownRadius(metric)!!, 1e-3)
+        assertEquals(
+            "the same fence in feet: the ceiling is 393.7 ft, not 393.7 times 3.28",
+            393.701,
+            grownRadius(imperial)!!,
+            1e-3,
+        )
     }
 
     @Test
-    fun `a circle whose metres never resolved is measured in its own numbers`() {
-        assertEquals(1.0, shownPerMetre(circle(radius = 100.0, metres = 0.0)), 1e-9)
+    fun `a circle whose metres never resolved still bounds by its own numbers`() {
+        assertEquals(
+            "radiusMetres is only the map ring's geometry now; the bounds never consult it, so a " +
+                "circle that never resolved metres is still clamped correctly",
+            150.0,
+            grownRadius(circle(radius = 100.0, metres = 0.0, maximum = 150.0))!!,
+            1e-3,
+        )
     }
 }
