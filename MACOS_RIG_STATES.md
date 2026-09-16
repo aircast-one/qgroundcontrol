@@ -51,3 +51,19 @@ Lights/Camera case; an empty log list; a read-only settings fact; a PX4 vehicle;
 a live sensor with nothing in range; an imperial profile whose conversions do not cancel; a
 waypoint-first plan; a posted host notice; a populated plan; a backwards-clock log; a log with
 a system that never heartbeat; a successful geotag run.
+
+## Not reproduced
+
+- **The guided Takeoff confirm panel that opened with no input.** Seen once, with
+  `pending: "takeoff"` and `lastSent: ""` — a panel, never a command. The hypothesis was that a
+  redundant `native_menu_invoke("Window/Fly")` on an already-open window re-runs something that
+  touches the guided controller's pending state. **Three configurations, none reproduced it:**
+  two invokes with no vehicle (`offered` empty, so no offer could be asked); a third invoke with a
+  vehicle live and all four offers available; and a fresh app with the vehicle already connected,
+  opening the window for the first time. `pending` stayed empty through 15-18 s of polling in each,
+  and the screenshot confirms no panel on screen.
+  **So the menu-invoke hypothesis is refuted and the cause is still unknown.** What remains
+  untested: another session probing 8777 (the Rust session denies it categorically; the Android
+  session has not been asked), and a stray input event while the window had focus, which no probe
+  can distinguish from a phantom. **The panel is one slide from a takeoff, so this stays open
+  rather than being written off as a one-off.**
