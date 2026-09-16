@@ -91,7 +91,7 @@ struct TlogView: View {
             Text("The file opened and none of it decoded as MAVLink.")
                 .foregroundColor(.secondary)
         } else if summary.empty {
-            Text("The file opened and holds no frames.").foregroundColor(.secondary)
+            Text("The file is empty.").foregroundColor(.secondary)
         } else {
             GroupCard {
                 row("Size", summary.sizeText)

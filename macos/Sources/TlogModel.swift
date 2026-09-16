@@ -30,11 +30,20 @@ struct TlogSummary: Equatable {
     // A log the core could not open carries no counts at all -- it does not report zero frames,
     // it reports that it never got to look. Zero frames is a DIFFERENT answer: a file that
     // opened and holds nothing. Only the second one says anything about the flight.
-    var empty: Bool { readable && frames == 0 }
+    var empty: Bool { readable && frames == 0 && bytes == 0 }
 
     // Every frame failing to decode is not a quiet partial success: a log the parser cannot
     // read at all still reports readable:true, because the FILE opened.
-    var whollyUndecodable: Bool { readable && frames == 0 && undecodable > 0 }
+    //
+    // Gated on BYTES rather than on undecodable, because undecodable cannot answer this.
+    // tlog.rs:66 skips a byte and CONTINUES when no frame header is found there, counting
+    // nothing; only a byte where a header WAS found and the body then failed is counted
+    // (:78). Measured on three files built for this: 200 KB of random bytes gives
+    // undecodable 1597, but 175 KB of plain text and 200 KB of zeros both give 0 -- and
+    // took the "holds no frames" arm, which is what an operator should see for a real
+    // recording that captured nothing. A file that is not a recording at all was calling
+    // itself an empty flight.
+    var whollyUndecodable: Bool { readable && frames == 0 && bytes > 0 }
 
     var messageKinds: Int { byName.count }
 

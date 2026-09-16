@@ -1451,7 +1451,8 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            + "frames and no span at all -- it says the parser never got to look. Reporting it as "
            + "zero frames would tell an operator their flight recorded nothing, when what "
            + "happened is that the file could not be read")
-    expect(tlog(["frames": 0 as NSNumber, "undecodable": 0 as NSNumber])?.empty == true,
+    expect(tlog(["frames": 0 as NSNumber, "undecodable": 0 as NSNumber,
+                 "bytes": 0 as NSNumber])?.empty == true,
            "and a file that DID open and holds nothing is the empty log, which is the only one "
            + "of the two that says anything about the flight")
 
@@ -1464,6 +1465,21 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            "a file that opened and whose every frame failed to decode is a third answer again -- "
            + "readable stays true because the FILE opened, so only the frame counts separate a "
            + "corrupt log from an empty one")
+
+    // MEASURED on three files built for this and read through view.tlog: 200 KB of random bytes
+    // gives undecodable 1597, but 175 KB of plain text and 200 KB of zeros both give ZERO.
+    // tlog.rs:66 skips a byte and CONTINUES where no frame header is found, counting nothing;
+    // only a recognised header with a failing body is counted at :78. So undecodable cannot tell
+    // "not a recording" from "a recording that captured nothing", and both of those files used to
+    // take the empty arm and call themselves a flight that recorded nothing.
+    expect(tlog(["frames": 0 as NSNumber, "undecodable": 0 as NSNumber,
+                 "bytes": 200_000 as NSNumber])?.whollyUndecodable == true,
+           "two hundred kilobytes that decoded to nothing is a file that is not a recording, "
+           + "whatever undecodable says about it")
+    expect(tlog(["frames": 0 as NSNumber, "undecodable": 0 as NSNumber,
+                 "bytes": 200_000 as NSNumber])?.empty == false,
+           "and it is emphatically not an empty one -- an operator told a 200 KB file holds no "
+           + "frames reads that their flight recorded nothing, when they opened the wrong file")
 
     expect(tlog([:])?.spanText ?? "", "12m 34s",
            "seconds are seconds in every locale, so the head spells this one and the core does "
