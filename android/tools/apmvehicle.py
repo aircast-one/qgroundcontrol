@@ -25,6 +25,10 @@ CAM_TRACKING = os.environ.get("CAM_TRACKING") == "1"
 # The rectangle a tracking camera reports, normalised 0..1 as top-left/bottom-right.
 TRACK_RECT = [float(part) for part in os.environ.get("TRACK_RECT", "0.35,0.30,0.65,0.70").split(",")]
 
+# Whether the camera also reports an active track. Off gives a camera that CAN track and is
+# not tracking, which is the state a head offers to start one in.
+CAM_TRACK_STATUS = os.environ.get("CAM_TRACK_STATUS", "1") != "0"
+
 from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
 from pymavlink.generator.mavcrc import x25crc
@@ -316,7 +320,7 @@ def main():
                 cam_link.heartbeat_send(mavlink.MAV_TYPE_CAMERA,
                                         mavlink.MAV_AUTOPILOT_INVALID, 0, 0,
                                         mavlink.MAV_STATE_ACTIVE)
-        if CAM_TRACKING and tick % 5 == 0:
+        if CAM_TRACKING and CAM_TRACK_STATUS and tick % 5 == 0:
             for cam_link in links.values():
                 try:
                     cam_link.camera_tracking_image_status_send(

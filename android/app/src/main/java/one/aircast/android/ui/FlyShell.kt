@@ -77,6 +77,7 @@ internal fun FlyPortrait(
         ) {
             if (videoExpanded) {
                 map(Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().clickable { onSwap() })
             } else {
                 video(Modifier.fillMaxSize(), false)
                 Box(Modifier.fillMaxSize().clickable { onSwap() })

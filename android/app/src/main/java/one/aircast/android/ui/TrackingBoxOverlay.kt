@@ -39,17 +39,19 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
             Modifier
         } else {
             Modifier.pointerInput(picture) {
-                var pressed = androidx.compose.ui.geometry.Offset.Zero
+                var pressed = Offset.Zero
+                var latest = Offset.Zero
                 detectDragGestures(
-                    onDragStart = { at -> pressed = at },
-                    onDragEnd = { },
-                ) { change, _ ->
-                    val from = with(density) { pressed.x.toDp().value.toDouble() to pressed.y.toDp().value.toDouble() }
-                    val to = with(density) {
-                        change.position.x.toDp().value.toDouble() to change.position.y.toDp().value.toDouble()
-                    }
-                    sendTracking(trackingRequest(from.first, from.second, to.first, to.second, picture))
-                }
+                    onDragStart = { at ->
+                        pressed = at
+                        latest = at
+                    },
+                    onDragEnd = {
+                        val from = with(density) { pressed.x.toDp().value.toDouble() to pressed.y.toDp().value.toDouble() }
+                        val to = with(density) { latest.x.toDp().value.toDouble() to latest.y.toDp().value.toDouble() }
+                        sendTracking(trackingRequest(from.first, from.second, to.first, to.second, picture))
+                    },
+                ) { change, _ -> latest = change.position }
             }
         }
         Box(aim.matchParentSize())
