@@ -8764,3 +8764,52 @@ fixed a row whose test asserted a speed it never drew; here the fixtures carry a
 this head says something untrue. Recorded rather than built: the Fly screen is
 held pending the parity review, the row is already dense, and which of the four
 earn their space is a design question rather than a defect.
+
+### The toolbar, audited: 18 Qt indicators against this head, 2026-09-16
+
+The parity inventory walked `src/FlightDisplay/` and never `src/UI/toolbar/`,
+which is how `GCSControlIndicator` came to be recorded as having no Qt
+equivalent - the line at `:8736` above is wrong, and so was the scope page built
+from the same walk. **An inventory scoped to one directory declares absent what
+lives one directory over.** Qt draws 18 indicators in the toolbar; this is each
+one against this head, checked by the served field rather than the indicator's
+name, since a name-grep on this head is clean by construction.
+
+| Qt toolbar indicator | status here |
+|---|---|
+| `ArmedIndicator` | exists, placed differently - the chip's state line, "Stabilize · Disarmed" |
+| `ModeIndicator` | exists - the flight mode chip |
+| `APMFlightModeIndicator` | exists - the mode picker behind it |
+| `APMMainStatusIndicatorContentItem` | exists, placed differently - Setup's "Ready to fly" verdict and the Fly screen's arming blocker line |
+| `APMBatteryIndicator` | exists - "25% · 11.10V" |
+| `VehicleGPSIndicator` | exists - "11 sats" |
+| `RCRSSIIndicator` | exists - "31% RC", from `flyState.rcSignalText` |
+| `GCSControlIndicator` | exists - built today, `e816a293d` |
+| `MultiVehicleSelector` | exists - the picker sheet |
+| `APMSupportForwardingIndicator` | exists, placed differently - `view.links.supportForwarding` in `RemoteSupportScreen.kt` (source-checked, not device-checked) |
+| `LinkIndicator` | not applicable - `showIndicator: false` in Qt, it draws nothing |
+| `GimbalIndicator` | missing, `view.gimbal` served and unread |
+| `JoystickIndicator` | missing, `view.joystick` served and unread |
+| `RTKGPSIndicator` | missing, `view.gpsRtkBase` served and unread |
+| `GCSBatteryIndicator` | missing, core-blocked - nothing serves the ground station's own battery |
+| `RcOverrideIndicator` | missing, core-blocked - `rcChannelOverrideActive` appears nowhere in `core-rs` |
+| `TelemetryRSSIIndicator` | missing, core-blocked - `telemetryLRSSI` and its siblings appear nowhere in `core-rs` |
+| `RemoteIDIndicator` | missing, core-blocked - `remoteIDManager` appears nowhere in `core-rs` |
+
+**Ten of eighteen exist, four are core-blocked, one is dead in Qt itself, and the
+three that are buildable are not Fly-screen work.** `gimbal` is the one Fly
+question, and it is already an open decision for Pavlo - the settings walk offers
+"hide the eight, keep `joystickButtonsSpeed`, or build the UI", and building it is
+one of those three. `joystick` and `gpsRtkBase` are Setup and Settings reads, and
+Qt shows the RTK indicator **only when no vehicle is connected**.
+
+**"Exists" here means the reading, not the tap.** Every Qt indicator is also a tap
+target opening a detail popup. Two taps are confirmed on this head - the vehicle
+chip opens the picker, the mode chip opens the picker - and the rest are
+unverified. A second pass should check the popups, because a reading without its
+detail is half the indicator.
+
+**So the toolbar audit produces no immediate Fly work**, which is the useful
+answer: the strip is at parity apart from one open decision and four fields the
+core does not serve. The four core-blocked rows are the list to hand the core
+session if a toolbar parity pass is wanted.
