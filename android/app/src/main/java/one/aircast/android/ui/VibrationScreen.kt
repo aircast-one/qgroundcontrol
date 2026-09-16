@@ -84,10 +84,9 @@ internal fun silentState(view: JSONObject?): SilentState? {
     )
 }
 
-internal const val PARTIAL_TITLE = "Vibration is only partly reported"
+internal const val PARTIAL_TITLE = "Only some vibration axes are reported"
 internal const val PARTIAL_BODY =
-    "This vehicle sent a vibration message with one or more axes missing, so the " +
-        "levels below it would be misleading. Check the autopilot's IMU health."
+    "This screen draws all three axes together, and this vehicle is reporting some of them."
 
 private const val CONNECT_PROMPT = "Connect a vehicle from the Fly view to see its vibration levels."
 
@@ -235,7 +234,14 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
 }
 
 internal fun vibrationEmptyState(view: JSONObject?, reading: VibrationReading?): SilentState? =
-    silentState(view) ?: reading?.let { null } ?: SilentState(PARTIAL_TITLE, PARTIAL_BODY)
+    silentState(view) ?: reading?.let { null } ?: partlyReported(view)
+
+private fun partlyReported(view: JSONObject?): SilentState =
+    if (view?.optBoolean("connected") == true) {
+        SilentState(PARTIAL_TITLE, PARTIAL_BODY)
+    } else {
+        SilentState("No vehicle connected", CONNECT_PROMPT)
+    }
 
 @Composable
 private fun VibrationBody(reading: VibrationReading, modifier: Modifier = Modifier) {

@@ -89,6 +89,25 @@ class VibrationScreenTest {
     }
 
     @Test
+    fun `partly reported without a vehicle is a connect prompt, not a claim about one`() {
+        val latched = JSONObject(
+            """{"kind":"object","class":"Vibration","connected":false,"available":false,
+               "silentReason":null,"silentText":null,"units":"m/s^2",
+               "axes":[{"axis":"x","label":"X","value":12.0,"fraction":0.13,"severity":"normal"},
+                       {"axis":"y","label":"Y","value":null,"fraction":null,"severity":null},
+                       {"axis":"z","label":"Z","value":null,"fraction":null,"severity":null}]}""",
+        )
+
+        assertEquals(
+            "vibration facts latch after the vehicle goes, so silentReason stays null with nothing " +
+                "connected - saying what THIS VEHICLE is reporting would be a claim about one that " +
+                "is not there",
+            "No vehicle connected",
+            vibrationEmptyState(latched, vibrationReading(latched))?.title,
+        )
+    }
+
+    @Test
     fun `the scale and the caption are built from the core's own levels`() {
         assertEquals(listOf("90", "60", "30", "0"), scaleLabels(90.0, 30.0, 60.0))
         assertEquals("Under 30 healthy · 30-60 watch · over 60 unsafe", bandCaption(30.0, 60.0))
