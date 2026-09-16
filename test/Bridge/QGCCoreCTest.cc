@@ -1537,6 +1537,23 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
     }
     QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("declared on Fact and serialised nowhere, so core code reading them silently falls back and the feature looks implemented: %1. Add them to kFactProperties in QGCBridgeCore.cc, or name them above with the reason nothing asks").arg(missing.join(QStringLiteral(", ")))));
     QVERIFY2(stale.isEmpty(), qPrintable(QStringLiteral("served AND excused, so the reason carried here is no longer true: %1").arg(stale.join(QStringLiteral(", ")))));
+
+    // The loop above reaches an excuse only through a DECLARED name, so an entry naming something
+    // Fact no longer declares - or never could - is not wrongly excused, it is never examined.
+    // That is a different failure from a stale reason: a stale one is a judgement someone can
+    // review, an unexaminable one is not in the process at all, and it sits there looking like a
+    // decision while covering nothing. A findings-side check cannot see it by construction,
+    // because it produces no finding to validate.
+    QStringList unreachable;
+    for (const QString &excused : kNotServed.keys()) {
+        if (!declared.contains(excused)) {
+            unreachable.append(excused);
+        }
+    }
+    QVERIFY2(unreachable.isEmpty(),
+             qPrintable(QStringLiteral("excused here but no longer declared on Fact or SettingsFact, so the entry can never be reached and "
+                                       "excuses nothing: %1. Delete it, or correct the spelling if the property was renamed")
+                            .arg(unreachable.join(QStringLiteral(", ")))));
 }
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
