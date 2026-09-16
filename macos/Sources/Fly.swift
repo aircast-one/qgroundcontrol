@@ -69,7 +69,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func refresh() {
-        let centred = (Bridge.group("settings.flyViewSettings.keepMapCenteredOnVehicle")["value"]
+        let centred = (Bridge.group("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)")["value"]
             as? NSNumber)?.boolValue ?? false
         if centred != keepCentered { keepCentered = centred }
 

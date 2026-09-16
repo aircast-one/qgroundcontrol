@@ -93,7 +93,7 @@ final class MapClickStore: ObservableObject, Probeable {
         read.gotoLoiterRadius = (Bridge.group("view.guidedActions")["gotoLoiterRadius"]
             as? NSNumber)?.doubleValue ?? 0
         read.confirmGotoInGuided = (Bridge.group(
-            "settings.flyViewSettings.goToLocationRequiresConfirmInGuided")["value"] as? NSNumber)?
+            "view.control(settings.flyViewSettings.goToLocationRequiresConfirmInGuided)")["value"] as? NSNumber)?
             .boolValue ?? true
         read.roiActive = (guided["roiActive"] as? NSNumber)?.boolValue ?? false
 

@@ -420,6 +420,7 @@ targetMeters
 targetMetersSecond
 targetRateHz
 targetRateTitle
+telemetry
 terrainAltitude
 text
 time
