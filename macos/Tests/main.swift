@@ -5741,9 +5741,30 @@ checkSmartRTLCountsAsFlyingSomethingOfItsOwn()
 
 
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
-// what ran distinguishes it. Reported on every run so the number travels with the green line.
+// what ran distinguishes it. Reporting it was not enough -- a number a reader has to notice is
+// not a check, and this file has 196 check functions whose assertions vanish with them if one
+// stops being entered. The Rust side found the same shape as a vacuous pass: an assertion that
+// read a key no producer serves collected nothing and agreed with itself for its whole life.
+//
+// Raise the floor in the same commit that adds assertions; the line below says so when it is
+// behind, so it cannot quietly stop being able to catch anything.
+let assertionFloor = 2151
+if failures == 0 && assertions < assertionFloor {
+    FileHandle.standardError.write(
+        "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
+        .data(using: .utf8)!)
+    FileHandle.standardError.write(
+        "being entered takes its assertions with it and every one of them still passes. If the "
+        .data(using: .utf8)!)
+    FileHandle.standardError.write(
+        "drop is deliberate, lower the floor in the commit that causes it.\n".data(using: .utf8)!)
+    exit(1)
+}
 if failures == 0 {
     print("all Swift checks passed (\(assertions) assertions ran)")
+    if assertions > assertionFloor {
+        print("  raise assertionFloor to \(assertions): it is the only thing that notices a drop")
+    }
     exit(0)
 }
 FileHandle.standardError.write("\(failures) check(s) failed\n".data(using: .utf8)!)
