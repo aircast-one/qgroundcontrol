@@ -483,12 +483,20 @@ jobs:
           # Re-signed because renaming the executable and editing Info.plist invalidate the
           # signature the install step applied; ad-hoc matches what that step does when no
           # identity is configured, and macOS refuses to launch a bundle whose seal is broken.
-          codesign --force --deep -s "${SIGN_IDENTITY:--}" "$DST"
-          codesign --verify --deep "$DST"
+          if [ -n "$SIGN_IDENTITY" ]; then
+            codesign --force --timestamp --options=runtime -s "$SIGN_IDENTITY" "$DST/Contents/MacOS/AircastQGCNative"
+            codesign --force --timestamp --options=runtime -s "$SIGN_IDENTITY" "$DST"
+          else
+            codesign --force --deep -s - "$DST"
+          fi
+          codesign --verify --deep --strict "$DST"
           if [ -n "$SIGN_IDENTITY" ]; then
             ditto -c -k --keepParent "$DST" native_notarization_upload.zip
-            xcrun notarytool submit native_notarization_upload.zip \
-              --apple-id "$NOTARY_USER" --team-id "$NOTARY_TEAM" --password "$NOTARY_PASSWORD" --wait
+            SUBMIT_ID=$(xcrun notarytool submit native_notarization_upload.zip \
+              --apple-id "$NOTARY_USER" --team-id "$NOTARY_TEAM" --password "$NOTARY_PASSWORD" \
+              --wait --output-format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+            xcrun notarytool log "$SUBMIT_ID" \
+              --apple-id "$NOTARY_USER" --team-id "$NOTARY_TEAM" --password "$NOTARY_PASSWORD" || true
             xcrun stapler staple "$DST"
             xcrun stapler validate "$DST"
           fi
