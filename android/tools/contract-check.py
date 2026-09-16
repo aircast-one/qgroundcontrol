@@ -202,6 +202,9 @@ ACCEPTED_ON = {
     ("view.vehicleLinks", "primary"): "b0ba82f11 - link names live on view.links behind Connections",
     ("view.vehicleLinks", "watching"): "the reason sentence the core serves alongside says the same thing",
     ("view.vehicleLinks", "autoDisconnect"): "contact loss reaches the operator through view.flyState",
+    ("view.plan", "speedUnits"): "the unit the two speed defaults share. Each control carries its "
+        "own units and PlanDefaultsDialog renders them through FactRow, so this is the core "
+        "telling a head that wants ONE label for both - this one does not",
     ("view.plan", "home"): "plan.controllerVehicle.homePosition. The head draws the planned-home item at "
         "index 0, which is the one the mission actually flies from",
     ("view.frame", "vehicleType"): "view.frame is read by MotorsScreen for motorCount and the safety gate; "
