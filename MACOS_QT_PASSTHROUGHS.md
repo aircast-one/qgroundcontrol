@@ -4,18 +4,18 @@
 
 ```
 head: /Users/pavliha/Code/aircast/qgroundcontrol/macos/Sources
-predicate: a quoted literal whose text is one of 22 bridge roots followed by a dot; interpolation detected as \( or ${ or $name; literals in a systemName:/systemImage: argument or a symbol/glyph/icon/mark declaration are SwiftUI icons, not paths, and are excluded; a leading $NAME or a bare NAME argument is expanded when a const val NAME names a root path
+predicate: a quoted literal whose text is one of 23 bridge roots followed by a dot; interpolation detected as \( or ${ or $name; literals in a systemName:/systemImage: argument or a symbol/glyph/icon/mark declaration are SwiftUI icons, not paths, and are excluded; a leading $NAME or a bare NAME argument is expanded when a const val NAME names a root path
 
   served (view.*)        63   distinct, the migration's numerator
   claimed actions         7   distinct, of 11 the core owns -- these reach Qt through the core, so they are the destination and not the debt
     camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, plan.redo, plan.undo, vehicle.cameraManager.currentCameraInstance.zoomLevel
-  literal Qt paths       77   distinct, mechanical to move
+  literal Qt paths       78   distinct, mechanical to move
   interpolated Qt        26   distinct TEMPLATES, each expanding to an unknown number of runtime paths -- needs a parameterised view, not a substitution
-  raw Qt total          103   distinct, literal + templates
-  call sites            219   occurrences, not distinct: effort rather than surface
+  raw Qt total          104   distinct, literal + templates
+  call sites            220   occurrences, not distinct: effort rather than surface
 
   reads                  17   group/get/watch/qgc* -- a served view retires these
-  actions                53   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
+  actions                54   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
   writes                 28   set/write -- a core `owns_write` claim retires these, as of 1fa63637d; router.set consults it first, then refuses view paths, then passes to Qt. One path claimed so far, so this column is still almost entirely Qt
   unclassified           13   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
   used more than one way   5   a path both read and written is counted under EACH use above, so those four exceed the raw total
@@ -32,6 +32,7 @@ predicate: a quoted literal whose text is one of 22 bridge roots followed by a d
   missionCommandTree        2
   sensorsCal                2
   video                     2
+  planFly                   1
   vehicles                  1
 ```
 
@@ -119,6 +120,7 @@ but what each path BECAME is the deliverable.**
 | `plan.saveToKml` | action | passthrough |
 | `plan.sendToVehicle` | action | passthrough |
 | `plan.undoTracking` | write | passthrough |
+| `planFly.missionController.resumeMission` | action | passthrough |
 | `radioCal.cancelButtonClicked` | action | passthrough |
 | `radioCal.nextButtonClicked` | action | passthrough |
 | `radioCal.skipButtonClicked` | action | passthrough |

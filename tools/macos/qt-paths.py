@@ -178,12 +178,55 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from sweepguard import anchored, refuse
 
-ROOTS = [
-    "view", "settings", "vehicle", "vehicles", "links", "plan", "host", "corePlugin",
-    "logDownload", "video", "geoTag", "positionManager", "units", "missionCommandTree",
-    "mavlinkConsole", "mavlinkInspector", "sensorsCal", "radioCal", "packetRadio",
-    "joystick", "camera", "gimbal",
-]
+# DERIVED, not listed. The hand-written version of this list was the last listed set in the tool,
+# and it was already costing: it had no "planFly", so `planFly.missionController.resumeMission` --
+# which GuidedActions.swift passes to Qt -- matched nothing and was counted nowhere. "plan" did not
+# cover it either, because the character after the root has to be a dot. The Android counter lost a
+# whole module the same way (53 -> 67) through a hand-written list of wrapper names; a list of roots
+# is the same shape, and the number is about to be a progress report.
+#
+# QGCBridgeCore.cc dispatches every bridge root by name in one place, so the roots ARE enumerable
+# from the bridge itself rather than from what this head happens to call today.
+BRIDGE_ROOT = re.compile(r'name == QLatin1String\("([a-zA-Z][A-Za-z0-9_]*)"\)')
+
+# Four the bridge does not register and that still have to match. "view" is the CORE's namespace --
+# served by Rust, never dispatched by QGCBridgeCore -- and it is the migration's numerator, so a
+# derived-only set would stop counting what the head has already migrated. The other three are
+# action roots owned by core-rs/src/actions.rs (camera.setMode and its siblings), which have to
+# match for the claimed-action exclusion to see them at all.
+NOT_DISPATCHED = {"view": "the core's own namespace, served by Rust",
+                  "camera": "core action root (actions.rs)",
+                  "joystick": "core action root (actions.rs)",
+                  "gimbal": "core action root (actions.rs)"}
+
+
+def bridge_roots():
+    def stop(why):
+        print(f"  REFUSING to judge: {why}", file=sys.stderr)
+        sys.exit(2)
+
+    source = anchored("src/Bridge/QGCBridgeCore.cc")
+    if not source.exists():
+        stop(f"{source} is unreadable, so the bridge roots cannot be derived and every path under "
+             f"an unlisted root would be counted nowhere")
+    found = set(BRIDGE_ROOT.findall(source.read_text()))
+    # The controls the derivation has to pass before anything is counted with it. A dispatch table
+    # that stopped matching would otherwise produce a small root set, a small path count, and a
+    # progress report that looks like the port finishing.
+    for required in ("vehicle", "settings", "plan"):
+        if required not in found:
+            stop(f"the bridge dispatch table yielded no {required!r} root, so this pattern has "
+                 f"drifted from QGCBridgeCore.cc and every count below would be understated")
+    if "view" in found:
+        stop("the bridge dispatch table now claims 'view', which is the core's namespace -- the "
+             "served-versus-Qt split below is built on those being different things")
+    if len(found) < 15:
+        stop(f"only {len(found)} bridge roots derived, against 19 when this was written: a "
+             f"dispatch table this much smaller is a parser fault, not a migration")
+    return sorted(found | set(NOT_DISPATCHED))
+
+
+ROOTS = bridge_roots()
 
 PATH = re.compile(r'"((?:' + "|".join(ROOTS) + r')\.[^"]*)"')
 
