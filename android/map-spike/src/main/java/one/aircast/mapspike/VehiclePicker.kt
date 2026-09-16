@@ -36,17 +36,25 @@ object FleetBridge {
     fun deselectAll(): Boolean = invokeOk("$VEHICLE_MANAGER.deselectAllVehicles")
 
     fun command(action: String, confirmed: Set<Int>): Boolean {
-        val targets = selectedPaths().filter { (_, id) -> id in confirmed }.map { (path, _) -> path }
+        val targets = selectedPaths().filter { (_, id) -> id in confirmed }
         return when {
             targets.isEmpty() -> false
-            action == "mvArm" -> targets.map { setOk("$it.armed", settingJson("true")) }.all { it }
-            action == "mvDisarm" -> targets.map { setOk("$it.armed", settingJson("false")) }.all { it }
-            action == "mvPause" -> targets.map { invokeOk("$it.pauseVehicle") }.all { it }
-            action == "mvStartMission" -> targets.filter { armedAt(it) }
-                .map { invokeOk("$it.startMission") }
+            action == "mvArm" -> targets.map { still(it) { setOk("$it.armed", settingJson("true")) } }.all { it }
+            action == "mvDisarm" -> targets.map { still(it) { setOk("$it.armed", settingJson("false")) } }.all { it }
+            action == "mvPause" -> targets.map { still(it) { invokeOk("$it.pauseVehicle") } }.all { it }
+            action == "mvStartMission" -> targets.filter { (path, _) -> armedAt(path) }
+                .map { still(it) { invokeOk("$it.startMission") } }
                 .let { sent -> sent.isNotEmpty() && sent.all { it } }
             else -> false
         }
+    }
+
+    // selectedVehicles is addressed by position, and a vehicle dropping off renumbers it. The id
+    // is read again against the path about to be written, so a command cannot land on a vehicle
+    // that moved into the index between the read and the write.
+    private fun still(target: Pair<String, Int>, write: (String) -> Boolean): Boolean {
+        val (path, id) = target
+        return idAt(path) == id && write(path)
     }
 
     private fun selectedPaths(): List<Pair<String, Int>> {
