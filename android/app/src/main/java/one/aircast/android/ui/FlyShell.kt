@@ -45,6 +45,7 @@ internal fun FlyPortrait(
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
     keyRowEnd: @Composable () -> Unit,
+    videoAiming: Boolean,
     overlays: @Composable () -> Unit,
     actions: @Composable () -> Unit,
 ) {
@@ -87,7 +88,9 @@ internal fun FlyPortrait(
                 Box(Modifier.fillMaxSize().clickable { onSwap() })
             } else {
                 video(Modifier.fillMaxSize(), false)
-                Box(Modifier.fillMaxSize().clickable { onSwap() })
+                if (!videoAiming) {
+                    Box(Modifier.fillMaxSize().clickable { onSwap() })
+                }
             }
             Column(
                 Modifier

@@ -255,6 +255,10 @@ fun AircastShell(quickView: QtQuickView) {
     }
 
     val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val aimCameraJson by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.CAMERA_VIEW)
+    val videoAiming = remember(aimCameraJson) {
+        one.aircast.android.ui.trackingCanAim(one.aircast.android.ui.trackingReading(aimCameraJson))
+    }
     var lastVehicles by remember {
         mutableStateOf<one.aircast.mapspike.VehicleChoices?>(null)
     }
@@ -332,6 +336,7 @@ fun AircastShell(quickView: QtQuickView) {
                             flyObstacleArc()
                         },
                         keyRowEnd = { emergencyStop() },
+                        videoAiming = videoAiming,
                         overlays = {
                             ObstacleReadout()
                             flyOrbitReadout()
