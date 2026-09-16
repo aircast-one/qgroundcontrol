@@ -1269,6 +1269,7 @@ func checkObstacleSilenceIsNotClearAir() {
 
 checkObstacleSilenceIsNotClearAir()
 checkTheControlRowIsSilentUntilTheVehicleSpeaks()
+checkTheBreachReturnSaysWhichHalfIsMissing()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
     let described = MissionVehicle(planningFor: ["type": "Multi-Rotor", "firmware": "PX4 Pro",
@@ -6126,7 +6127,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2264
+let assertionFloor = 2268
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -9913,4 +9914,27 @@ func checkTheControlRowIsSilentUntilTheVehicleSpeaks() {
            "a root that answered null is not an OperatorControl with everything false -- the "
            + "store substitutes .none itself so the failure is one decision, not a decode that "
            + "quietly invents a disconnected vehicle")
+}
+
+
+func checkTheBreachReturnSaysWhichHalfIsMissing() {
+    expect(BreachReturn.refusal(haveMap: false),
+           "The map has not settled yet, so there is nowhere to put it.",
+           "TWO REFUSALS THAT ARE NOT INTERCHANGEABLE, decided until now in two guards where "
+           + "nothing compiled them. With no map centre there is nowhere to put the point and "
+           + "the operator is told to wait")
+    expect(BreachReturn.refusal(haveMap: true),
+           "The breach return altitude has not been read yet, so there is no height to put it at.",
+           "and with a map but no altitude the missing half is a NUMBER THE OPERATOR CAN SEE ON "
+           + "SCREEN -- telling them the map has not settled would send them to look at the wrong "
+           + "thing entirely")
+
+    expect(BreachReturn.outcome(placed: false) ?? "",
+           "The breach return point was not accepted.",
+           "THE OUTCOME IS READ BACK RATHER THAN ASSUMED: the point is written, the plan is "
+           + "re-read, and a breach return still absent afterwards is the only way this head "
+           + "learns the controller declined it")
+    expect(BreachReturn.outcome(placed: true) == nil,
+           "and a point that arrived returns no sentence at all, which is what the caller treats "
+           + "as success -- an empty string there would draw an empty error row")
 }

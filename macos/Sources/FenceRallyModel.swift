@@ -260,4 +260,25 @@ enum BreachReturn {
     static func decimals(_ control: [String: Any]) -> Int? {
         (control["decimalPlaces"] as? NSNumber)?.intValue
     }
+
+    static let noMapYet = "The map has not settled yet, so there is nowhere to put it."
+    static let noAltitudeYet = "The breach return altitude has not been read yet, so there is no "
+        + "height to put it at."
+    static let notAccepted = "The breach return point was not accepted."
+
+    // Both refusals are about THIS head not being ready, not about the vehicle refusing: the map
+    // has no centre until it has settled, and the altitude is a fact that has to arrive. They
+    // were decided where nothing compiles them, one guard apiece, so which sentence answers which
+    // missing half was unchecked -- and the two are not interchangeable, since one tells the
+    // operator to wait and the other that a number they can see was not read.
+    static func refusal(haveMap: Bool) -> String {
+        haveMap ? BreachReturn.noAltitudeYet : BreachReturn.noMapYet
+    }
+
+    // AND THE OUTCOME IS READ BACK, not assumed from the write returning. The point is written to
+    // the plan and the plan is re-read; a breach return still absent afterwards means the
+    // controller declined it, which is the only way this head learns that.
+    static func outcome(placed: Bool) -> String? {
+        placed ? nil : BreachReturn.notAccepted
+    }
 }

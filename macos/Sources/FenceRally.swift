@@ -171,19 +171,14 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     func addBreachReturn() -> String? {
         if !fence.read { reload() }
         if let refusal = fence.refusal(servedReason: unsupportedReason) { return refusal }
-        guard let centre = mapCentre else {
-            return "The map has not settled yet, so there is nowhere to put it."
-        }
-
-        guard let altitude = breachAltitudeMetres else {
-            return "The breach return altitude has not been read yet, so there is no height to "
-                + "put it at."
+        guard let centre = mapCentre, let altitude = breachAltitudeMetres else {
+            return BreachReturn.refusal(haveMap: mapCentre != nil)
         }
         write("plan.geoFenceController.breachReturnPoint",
               ["latitude": centre.latitude, "longitude": centre.longitude,
                "altitude": altitude], "the breach return point")
         reload()
-        return breachReturn == nil ? "The breach return point was not accepted." : nil
+        return BreachReturn.outcome(placed: breachReturn != nil)
     }
 
     func setBreachAltitude(_ value: Double) {
