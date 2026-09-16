@@ -230,16 +230,16 @@ QString VideoSettings::videoUrlAt(int index)
     if (index <= 0) {
         const QString source = videoSource()->rawValue().toString();
         if (source == videoSourceUDPH264 || source == videoSourceUDPH265 || source == videoSourceMPEGTS) {
-            return udpUrl()->rawValue().toString();
+            return udpUrl()->rawValue().toString().trimmed();
         }
         if (source == videoSourceRTSP) {
-            return rtspUrl()->rawValue().toString();
+            return rtspUrl()->rawValue().toString().trimmed();
         }
         if (source == videoSourceTCP) {
-            return tcpUrl()->rawValue().toString();
+            return tcpUrl()->rawValue().toString().trimmed();
         }
         if (source == videoSourceWebRTC) {
-            return whepUrl()->rawValue().toString();
+            return whepUrl()->rawValue().toString().trimmed();
         }
         return QString();
     }
@@ -247,7 +247,7 @@ QString VideoSettings::videoUrlAt(int index)
     if ((index - 1) >= extras.size()) {
         return QString();
     }
-    return extras.at(index - 1).toObject().value(QStringLiteral("url")).toString();
+    return extras.at(index - 1).toObject().value(QStringLiteral("url")).toString().trimmed();
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, forceVideoDecoder)
