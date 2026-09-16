@@ -70,6 +70,15 @@ ACCEPTED = {
         "declined, never a sentence an operator sees. A field served for an instrument is "
         "legitimate, and so is a string returned to one. MEASURED: the mission probe's error key "
         "is read by my rig and by nothing on screen",
+    ("VehicleSetupWindow.swift", "Move every stick and switch through its full travel when "
+        "asked."): "the RESTING state of the row, not a substitute for a served answer. The core "
+        "serves statusText only while a calibration has something to say; empty means nothing is "
+        "running, and QGC's own RadioComponent.qml draws statusText there with NO static help at "
+        "all -- PHOTOGRAPHED. So this is an ADDITION the head makes deliberately, and it can never "
+        "mask a served sentence because it appears only when the served one is empty. THE BLIND "
+        "SPOT, STATED: if the core ever stopped serving statusText entirely, this row would show "
+        "the instructions forever and nothing here would notice -- that is what a deliberate "
+        "fallback costs",
     ("VehicleSetupWindow.swift", ".green"): "MEASURED AND SPLIT: :167 pairs green with "
         "accentColor, which is PROGRESS rather than severity -- done/in-progress/not-yet, the same "
         "vocabulary as the current flight mode's accent. :76 keys on store.failing.isEmpty, pinned "

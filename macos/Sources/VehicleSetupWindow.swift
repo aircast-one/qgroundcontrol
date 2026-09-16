@@ -535,7 +535,7 @@ struct RadioView: View {
                     GroupCard {
                         ForEach(Array(store.state.sticks.enumerated()), id: \.element.id) { row, stick in
                             GroupRow(title: stick.title,
-                                     description: stick.reversed ? "Reversed" : "",
+                                     description: stick.reversedText,
                                      showSeparator: row > 0,
                                      trailing: {
                                          HStack(spacing: Overlay.step) {

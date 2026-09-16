@@ -33,6 +33,14 @@ struct RadioStick: Identifiable, Equatable {
 
     var id: String { key }
 
+    // The core serves the boolean and no word for it (core-rs/src/radio.rs:65 reads
+    // <key>ChannelReversed), so the head composes this one -- but in a file swift-checks compiles
+    // rather than at the row. The empty arm is the normal stick: a channel that is not reversed
+    // has nothing to say about itself, and saying "Normal" beside every other stick would be
+    // noise dressed as information.
+    static let reversedNote = "Reversed"
+    var reversedText: String { reversed ? RadioStick.reversedNote : "" }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let key = json["key"] as? String else { return nil }

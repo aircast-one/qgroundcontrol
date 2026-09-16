@@ -4025,6 +4025,13 @@ func checkRadio() {
     expect(state.sticks[3].valueText, "1000", "throttle down reads as its pulse width")
     expect(state.sticks[2].reversed, "a reversed channel is marked")
     expect(!state.sticks[0].reversed, "and an unreversed one is not")
+    expect(state.sticks[2].reversedText, "Reversed",
+           "and the WORD for it lives here rather than at the row, where swift-checks cannot "
+           + "compile it. Spelled against a literal, not against reversedNote -- comparing an "
+           + "accessor to the constant it returns pins the wiring and leaves the words free")
+    expect(state.sticks[0].reversedText.isEmpty,
+           "a stick that is not reversed says NOTHING. \"Normal\" beside every other stick would "
+           + "be noise dressed as information, and the core serves no word for either arm")
     expect(RadioStick(stick("roll", "Roll", 0, false))?.valueText ?? "", "Not mapped",
            "a stick with no channel assigned says so instead of showing a dash")
 
@@ -6060,7 +6067,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2235
+let assertionFloor = 2237
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
