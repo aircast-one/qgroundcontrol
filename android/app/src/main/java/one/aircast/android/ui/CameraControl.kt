@@ -82,6 +82,33 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
 internal const val ZOOM_LOWEST = 0.0
 internal const val ZOOM_HIGHEST = 100.0
 internal const val CAMERA_ZOOM = "vehicle.cameraManager.currentCameraInstance.zoomLevel"
+internal const val CAMERA_THERMAL_MODE = "vehicle.cameraManager.currentCameraInstance.thermalMode"
+internal const val CAMERA_THERMAL_OPACITY = "vehicle.cameraManager.currentCameraInstance.thermalOpacity"
+
+internal val THERMAL_MODES = listOf("off", "blend", "full", "picInPic")
+
+internal fun thermalModeLabel(token: String): String = when (token) {
+    "off" -> "Off"
+    "blend" -> "Blend"
+    "full" -> "Full"
+    "picInPic" -> "Picture in picture"
+    else -> token
+}
+
+internal data class ThermalReading(val mode: String, val opacity: Double?)
+
+internal fun thermalReading(view: JSONObject?): ThermalReading? {
+    if (view == null || !view.optBoolean("thermalAvailable")) {
+        return null
+    }
+    val mode = view.optText("thermalMode").ifBlank { return null }
+    val opacity = if (view.isNull("thermalOpacity")) null else view.optDouble("thermalOpacity")
+    return ThermalReading(mode, opacity?.takeIf { it.isFinite() })
+}
+
+internal fun thermalOpacityIsOffered(reading: ThermalReading?): Boolean =
+    reading != null && reading.opacity != null
+
 internal const val CAMERA_RESET = "vehicle.cameraManager.currentCameraInstance.resetSettings"
 
 internal const val RESET_TITLE = "Reset Camera to Factory Settings"

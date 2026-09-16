@@ -16,6 +16,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.material3.Slider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.LaunchedEffect
@@ -142,6 +144,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         if (details) {
             CameraDetailsSheet(
                 camera = camera,
+                thermal = remember(cameraJson) { thermalReading(cameraJson) },
                 current = current.toInt(),
                 onSelect = { index ->
                     offMainDetached { Qgc.set("$MANAGER.currentCamera", index) }
@@ -166,6 +169,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
 @Composable
 private fun CameraDetailsSheet(
     camera: CameraReading,
+    thermal: ThermalReading?,
     current: Int,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -200,6 +204,43 @@ private fun CameraDetailsSheet(
                 )
             }
         }
+        thermal?.let { thermal ->
+            Text(
+                "Thermal View Mode",
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            THERMAL_MODES.forEach { token ->
+                FilterChip(
+                    selected = token == thermal.mode,
+                    onClick = {
+                        offMainDetached { Qgc.set(CAMERA_THERMAL_MODE, THERMAL_MODES.indexOf(token)) }
+                    },
+                    label = { Text(thermalModeLabel(token)) },
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+            }
+            if (thermalOpacityIsOffered(thermal)) {
+                Text(
+                    "Blend Opacity",
+                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                var typed by remember(thermal.opacity) {
+                    mutableFloatStateOf((thermal.opacity ?: 0.0).toFloat())
+                }
+                Slider(
+                    value = typed,
+                    onValueChange = { typed = it },
+                    onValueChangeFinished = {
+                        offMainDetached { Qgc.set(CAMERA_THERMAL_OPACITY, typed.toDouble()) }
+                    },
+                    valueRange = 0f..100f,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+        }
+
         if (cameraCanReset(camera)) {
             var confirming by remember { mutableStateOf(false) }
 
