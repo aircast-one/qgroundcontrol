@@ -96,6 +96,20 @@ class NotBuiltHereTest {
     }
 
     @Test
+    fun `nothing in the list belongs to a section this head already hides`() {
+        SECTIONS_WITHOUT_A_SCREEN.keys.forEach { group ->
+            assertTrue(
+                "$group is hidden whole, so a per-control reason for anything inside it can never " +
+                    "render - flyViewActionsFile sat here until a walk of the MAVLink page showed " +
+                    "the row was never drawn",
+                NOT_BUILT_HERE.keys.none { it.startsWith(group) },
+            )
+        }
+        assertTrue("flyViewActionsFile" !in NOT_BUILT_HERE)
+        assertTrue("joystickActionsFile" !in NOT_BUILT_HERE)
+    }
+
+    @Test
     fun `every reason reads as a sentence about this head, not about the setting`() {
         NOT_BUILT_HERE.forEach { (name, reason) ->
             assertTrue("$name: reason should not end in a full stop", !reason.endsWith("."))

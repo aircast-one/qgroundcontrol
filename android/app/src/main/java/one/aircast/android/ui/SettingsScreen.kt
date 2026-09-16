@@ -132,7 +132,6 @@ internal val NOT_BUILT_HERE = mapOf(
     "mapType" to "this head draws OpenStreetMap through MapLibre",
     "maxCacheDiskSize" to "this head does not use QGC's tile cache",
     "maxCacheMemorySize" to "this head does not use QGC's tile cache",
-    "flyViewActionsFile" to "this head has no additional-actions button to load a file for",
 )
 
 internal fun notBuiltHere(fact: Fact): String? = NOT_BUILT_HERE[fact.name]
