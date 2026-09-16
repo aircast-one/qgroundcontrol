@@ -7,8 +7,10 @@
 apmvehicle.py only speaks UDP, and `adb reverse` carries TCP only, so the
 emulator cannot reach it. Rather than write a second MAVLink source, this
 relays the one that already works: datagrams out to every TCP client, and
-anything a client sends back to the vehicle's own address, so parameter and
-mission requests still get answers.
+anything a client sends back to every vehicle address it has heard from, so
+parameter and mission requests still get answers. Every address rather than the
+newest: two fakes are two addresses, and one vehicle's command must not land on
+the other.
 """
 
 import os
@@ -20,15 +22,14 @@ TCP_PORT = int(os.environ.get("RIG_TCP_PORT", "5771"))
 
 clients: set[socket.socket] = set()
 lock = threading.Lock()
-vehicle: list[tuple[str, int]] = []
+vehicles: set[tuple[str, int]] = set()
 
 
 def pump_udp(udp: socket.socket) -> None:
     while True:
         data, source = udp.recvfrom(65535)
-        if not vehicle or vehicle[0] != source:
-            vehicle[:] = [source]
         with lock:
+            vehicles.add(source)
             for client in list(clients):
                 try:
                     client.sendall(data)
@@ -46,8 +47,10 @@ def serve(client: socket.socket, udp: socket.socket) -> None:
             data = client.recv(65535)
             if not data:
                 break
-            if vehicle:
-                udp.sendto(data, vehicle[0])
+            with lock:
+                targets = list(vehicles)
+            for target in targets:
+                udp.sendto(data, target)
     except OSError:
         pass
     finally:

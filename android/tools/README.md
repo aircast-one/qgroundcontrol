@@ -194,3 +194,11 @@ list, the selection state and the four MV guided actions need.
 
 `SECOND_PORT` is **not** this: it adds a second UDP port for the *same* vehicle, to show
 one aircraft arriving over two radios. It leaves the system id alone, so QGC still sees one.
+
+Commands only reach the vehicle they name because of two fixes made together. `udptcp.py`
+now relays downlink to **every** UDP address it has heard from rather than the newest one,
+and `apmvehicle.py` ignores any message whose `target_system` is neither 0 nor its own
+sysid. Before both, a fleet-wide Arm sent two commands and one fake obeyed both: the relay
+delivered each to whichever instance had most recently spoken, and the fake acted on any
+command it received. The second vehicle stayed disarmed with nothing in either log to say
+why, which reads exactly like a head that only wrote once.

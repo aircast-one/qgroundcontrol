@@ -79,6 +79,12 @@ FIRMWARE_VERSION = (
     lambda parts: (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | 255
 )([int(part) for part in FIRMWARE.split(".")])
 SYSID = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+
+
+def addressed_here(message) -> bool:
+    target = getattr(message, "target_system", 0)
+    return target in (0, SYSID)
+
 GPS_SENSOR = 32
 LOG_SIZES = [4096, 10240]
 LOG_BASE_UTC = 1757280000
@@ -426,6 +432,8 @@ def main():
             except socket.timeout:
                 continue
             for message in parser.parse_buffer(data) or []:
+                if not addressed_here(message):
+                    continue
                 kind = message.get_type()
                 if kind == "COMMAND_LONG":
                     cmd = message.command
