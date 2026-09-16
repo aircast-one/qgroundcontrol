@@ -114,4 +114,22 @@ struct VideoStatus: Equatable {
     var activeCameraTitle: String { activeCamera?.title ?? "" }
 
     var settled: Bool { decoding }
+
+    // The Fly card's dot spelled this ladder at the call site in FlyWindow, which swift-checks
+    // does not compile: settled -> green, else connecting -> orange, else secondary. The two FLAGS
+    // were already pinned here; what floated was the ORDER -- which state wins when both are true,
+    // and which weight each carries. A hand reversing those two arms would have drawn a settled
+    // stream amber with nothing to fail.
+    //
+    // settled wins, and that is the arm worth naming: anyConnecting stays true while ANOTHER
+    // source is still dialling, so a decoding stream would otherwise be painted as still trying
+    // whenever a second camera was mid-connect. The operator is looking at a picture that works.
+    //
+    // A Level rather than a Color, because no file swift-checks compiles imports SwiftUI. The call
+    // site maps it through FlyPanel.colour, which is the same five-level ladder every other page
+    // reads -- good/green, warning/orange, unknown/secondary here.
+    var level: FlyTelemetry.Level {
+        if settled { return .good }
+        return anyConnecting ? .warning : .unknown
+    }
 }

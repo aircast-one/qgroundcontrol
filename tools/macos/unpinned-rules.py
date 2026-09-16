@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A conditional that picks a SENTENCE lives where nothing compiles it, so nothing can pin it.
+"""A conditional that picks a SENTENCE or a SEVERITY lives where nothing compiles it.
 
 swift-checks compiles 82 of this head's 127 Swift files. A rule written in one of the other
 45 -- a plural, an empty-state sentence, a severity colour, a conditional button label -- has
@@ -24,6 +24,17 @@ that weakens as what it measures improves. It floors NOTHING, in the end: both n
 it was tempting to floor -- the hit count and the uncompiled file list -- fall as the work lands,
 so a floor under either refuses on success. Both guards are controls against known samples
 instead, which is a property of the instrument and cannot decay.
+
+A SECOND predicate, added after the first went standing and I noticed what it could not see:
+a conditional picking a SEVERITY COLOUR with no string literal on the line is invisible to a
+string sweep, and that is not a small corner -- a red where an orange belongs says the wrong
+thing about a vehicle just as loudly as a wrong sentence does.
+
+It is deliberately narrow. Only .red/.orange/.green/.yellow count, because those four ARE the
+severity vocabulary here; .secondary/.primary/.accentColor are EMPHASIS, and a line mixing
+green with accentColor is a progress indicator rather than a ladder. A first attempt matched
+an Overlay-dot-anything branch too and reported `CachedTileOverlay.missed += 1` as a colour -- 33 hits, of
+which that one was visible only by reading the list rather than the count.
 
 Prints one summary line so it can stand in the gate without burying it, and FAILS only on a
 stale acceptance. The findings themselves are triage, not a gate: pass --list to read them.
@@ -59,6 +70,28 @@ ACCEPTED = {
         "declined, never a sentence an operator sees. A field served for an instrument is "
         "legitimate, and so is a string returned to one. MEASURED: the mission probe's error key "
         "is read by my rig and by nothing on screen",
+    ("VehicleSetupWindow.swift", ".green"): "MEASURED AND SPLIT: :167 pairs green with "
+        "accentColor, which is PROGRESS rather than severity -- done/in-progress/not-yet, the same "
+        "vocabulary as the current flight mode's accent. :76 and :484 key on store.failing.isEmpty "
+        "and channelCount, both pinned in compiled models, so only the palette lookup floats and "
+        "the rule underneath is asserted",
+    ("AnalyzeWindow.swift", ".red"): "the CONDITIONS are pinned: :241 on GeoTagJob.failed, :67 on "
+        "VibrationReading's band. .red is this head's ERROR palette -- the connection form and the "
+        "vibration danger band spend it -- and is a different subject from FlyPanel.colour's "
+        "VEHICLE-severity ladder, which has no red in it at all. Routing it there would be the "
+        "wrong-accessor mistake",
+    ("AnalyzeWindow.swift", ".green"): "the clip row, whose condition VibrationReading.clipHealthy "
+        "is compiled and asserted at its OWN threshold -- zero, not one, separately from the "
+        "plural beside it. Only the two-colour lookup floats",
+    ("OverlayKit.swift", ".green"): "`good` comes from VehicleComponentInfo.severity, which is "
+        "compiled and asserted; these two lines are the same weight drawn twice in one row",
+    ("PacketRadioSection.swift", ".red"): "an ERROR line, not a ladder: primary or red on "
+        "whether startError is empty, which is the .red palette again",
+    ("ParameterRow.swift", ".orange"): "a non-default DOT, drawn or not drawn -- Color.clear "
+        "is an absence rather than a second severity, so there is no ordering to get wrong",
+    ("VehicleSetupWindow.swift", ".orange"): ":245 is the motors safety toggle, whose condition "
+        "safetyOff is served; orange-or-secondary is emphasis on one served flag",
+    ("FlyWindow.swift", ".orange"): ":488 keys on check.warns, a served preflight flag",
     ("FenceRally.swift", "addInclusionCircle"): "the controller METHOD NAME being invoked. Pinning "
         "it in a compiled file would assert a Qt method spelling this head does not own",
 }
@@ -82,6 +115,14 @@ CONTROL = '    Text(value.isEmpty ? "Not reported" : value)'
 CONTROL_MISSES = '    Text(value ?? "Not reported")'
 
 TERNARY = re.compile(r'(?<![?\w.])\?(?!\?)\s*("(?:[^"\\]|\\.)*")')
+SEVERITY = re.compile(r'\.(red|orange|green|yellow)\b')
+ANY_TERNARY = re.compile(r'(?<![?\w.])\?(?!\?)')
+
+# The colour predicate needs its own controls: one line it must call a severity ladder, and the
+# line that fooled the first version, which it must not.
+COLOUR_CONTROL = '    .foregroundColor(store.failing.isEmpty ? .green : .orange)'
+COLOUR_MISSES = '        data == nil ? (CachedTileOverlay.missed += 1) : (Overlay.fromChildren += 1)'
+
 
 
 # Only what swift-checks NAMES in its swiftc invocation counts as compiled. Treating every
@@ -92,6 +133,11 @@ TERNARY = re.compile(r'(?<![?\w.])\?(?!\?)\s*("(?:[^"\\]|\\.)*")')
 # now checked rather than trusted -- see unnamed_models.
 def compiled_files(checks: str) -> set[str]:
     return set(re.findall(r'macos/Sources/([A-Za-z0-9_]+\.swift)', checks))
+
+
+def severity_line(text: str) -> bool:
+    return ('"' not in text and not text.startswith('//')
+            and bool(ANY_TERNARY.search(text)) and bool(SEVERITY.search(text)))
 
 
 def main() -> int:
@@ -128,9 +174,19 @@ def main() -> int:
         print("the pattern no longer separates a real ternary from a nil-coalesce, so a zero "
               "here would read as clean rather than as a broken regex", file=sys.stderr)
         return 2
+    if not severity_line(COLOUR_CONTROL.strip()) or severity_line(COLOUR_MISSES.strip()):
+        print("the colour pattern no longer separates a severity ladder from an arithmetic "
+              "ternary, so a zero there would read as clean rather than as a broken regex",
+              file=sys.stderr)
+        return 2
 
+    colours = [(name, number, line.strip(), SEVERITY.search(line).group(0))
+               for name in uncompiled
+               for number, line in enumerate((src / name).read_text().splitlines(), 1)
+               if severity_line(line.strip())]
     unexplained = [hit for hit in found if (hit[0], hit[3]) not in ACCEPTED]
-    matched = {(name, literal) for name, _, _, literal in found}
+    unexplained += [hit for hit in colours if (hit[0], hit[3]) not in ACCEPTED]
+    matched = {(name, literal) for name, _, _, literal in found + colours}
     stale = [key for key in sorted(ACCEPTED) if key not in matched]
 
     if '--list' in sys.argv:
@@ -139,8 +195,9 @@ def main() -> int:
     for name, literal in stale:
         print(f"ACCEPTED {name} {literal!r} matches nothing now -- an acceptance decays like an "
               "assertion; re-derive it or delete it", file=sys.stderr)
-    print(f"{len(found)} conditional string rules in {len(uncompiled)} uncompiled files: "
-          f"{len(unexplained)} unpinned, {len(found) - len(unexplained)} accepted with a reason")
+    print(f"{len(found)} conditional string and {len(colours)} severity-colour rules in "
+          f"{len(uncompiled)} uncompiled files: {len(unexplained)} unpinned, "
+          f"{len(found) + len(colours) - len(unexplained)} accepted with a reason")
     return 1 if stale else 0
 
 

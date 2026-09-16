@@ -409,8 +409,7 @@ struct FlyPanel: View {
                 GroupRow(title: video.status.summary, showSeparator: false, titleLines: 2,
                          leading: {
                              Circle()
-                                 .fill(video.status.settled ? Color.green
-                                     : (video.status.anyConnecting ? Color.orange : Color.secondary))
+                                 .fill(FlyPanel.colour(video.status.level))
                                  .frame(width: 7, height: 7)
                          },
                          trailing: { EmptyView() })

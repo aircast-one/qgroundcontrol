@@ -3561,6 +3561,23 @@ func checkTwoSilencesAreNotInterchangeable() {
 }
 checkTwoSilencesAreNotInterchangeable()
 
+func checkTheVideoDotWeighsTheRightState() {
+    let settled = VideoStatus(["kind": "object", "decoding": true as NSNumber,
+                               "anyConnecting": true as NSNumber])
+    expect(settled.level == FlyTelemetry.Level.good,
+           "a DECODING stream is good even while another source is still dialling -- "
+           + "anyConnecting stays true for the other one, and painting a working picture as "
+           + "still-trying is the arm that reversing this ladder produces. CONSTRUCTED: both "
+           + "flags true, which one camera alone cannot make")
+
+    let dialling = VideoStatus(["kind": "object", "anyConnecting": true as NSNumber])
+    expect(dialling.level == FlyTelemetry.Level.warning, "nothing decoding but something trying "
+           + "is the middle rung")
+    expect(VideoStatus(["kind": "object"]).level == FlyTelemetry.Level.unknown,
+           "and nothing at all is unknown, not good -- an absent stream is not a healthy one")
+}
+checkTheVideoDotWeighsTheRightState()
+
 func checkTheGeotagButtonOffersTheRightGo() {
     var failed = GeoTagJob()
     failed.running = true
@@ -5956,7 +5973,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2207
+let assertionFloor = 2210
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
