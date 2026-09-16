@@ -3538,6 +3538,29 @@ func checkAComponentsRowSaysTheSameThingTwice() {
 }
 checkAComponentsRowSaysTheSameThingTwice()
 
+func checkTwoSilencesAreNotInterchangeable() {
+    expect(SettingsSection.emptyText(search: ""), "This page has no editable settings.",
+           "a page with nothing to edit is a fact about the page")
+    expect(SettingsSection.emptyText(search: "baud"), "No setting matches \u{201C}baud\u{201D}.",
+           "and a filter matching nothing is a fact about what the OPERATOR typed, quoted back. "
+           + "Answering the first sentence to a search that found nothing tells them the page is "
+           + "empty when it is their own filter hiding everything")
+
+    expect(MissionCommand.emptyText(connected: true),
+           "This category has no commands this vehicle accepts.",
+           "the command picker names the CATEGORY: the list is filtered by the chosen category "
+           + "AND by what the vehicle accepts, so \"no commands\" alone would read as a vehicle "
+           + "that accepts none at all")
+    expect(MissionCommand.emptyText(connected: false),
+           VehicleSetupText.connectPrompt(for: "commands"),
+           "and with no vehicle it uses the SHARED prompt rather than a fourth spelling -- "
+           + "VehicleSetupText.absent says \"set this up\", which is wrong here because choosing "
+           + "a command is not setting anything up")
+    expect(MissionCommand.emptyText(connected: true) != MissionCommand.emptyText(connected: false),
+           "and the two never collapse")
+}
+checkTwoSilencesAreNotInterchangeable()
+
 func checkTheRecordControlSaysOneThing() {
     expect(CameraControl.recordLabel(true), "Stop",
            "while recording the button offers the way out, not the thing already happening")
@@ -5900,7 +5923,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2196
+let assertionFloor = 2201
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

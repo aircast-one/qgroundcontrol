@@ -44,9 +44,7 @@ struct SettingsView: View {
         } else if showsAbout {
             SetupPageBody(title: pageTitle) { about }
         } else if store.sections.isEmpty && !showsLinks {
-            notice(store.search.isEmpty
-                   ? "This page has no editable settings."
-                   : "No setting matches “\(store.search)”.")
+            notice(SettingsSection.emptyText(search: store.search))
         } else {
             SetupPageBody(title: pageTitle) {
                 if showsLinks {

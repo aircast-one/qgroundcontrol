@@ -311,6 +311,17 @@ struct SettingsSection: Identifiable, Equatable {
             : listed
     }
 
+    // Two silences a settings page can be in, spelled at the call site in SettingsWindow where
+    // nothing compiles them. They are NOT interchangeable: a page with nothing to edit is a fact
+    // about the page, and a filter matching nothing is a fact about what the operator typed --
+    // which is why the second one quotes it back. Answering the first sentence to a search that
+    // found nothing tells them the page is empty when it is their own filter hiding everything.
+    static func emptyText(search: String) -> String {
+        search.isEmpty
+            ? "This page has no editable settings."
+            : "No setting matches “\(search)”."
+    }
+
     static func list(_ json: Any?) -> [SettingsSection] {
         ((json as? [Any]) ?? []).compactMap(SettingsSection.init)
     }

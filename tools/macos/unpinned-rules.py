@@ -63,7 +63,15 @@ ACCEPTED = {
 }
 
 FLOOR_UNCOMPILED = 40
-FLOOR_HITS = 50
+
+# NOT a floor on the hit count. The first version of this floored it at 50 and refused at 49,
+# because the number falls as the work lands -- flooring it asserts "the corpus still has enough
+# defects in it", which is an instrument that blocks precisely when it is succeeding. What the
+# guard is actually for is "the pattern still matches", and that is a property of the regex, not
+# of the tree, so it is controlled against a sample here instead. This cannot decay: it holds
+# whether the corpus has fifty hits or none.
+CONTROL = '    Text(value.isEmpty ? "Not reported" : value)'
+CONTROL_MISSES = '    Text(value ?? "Not reported")'
 
 TERNARY = re.compile(r'(?<![?\w.])\?(?!\?)\s*("(?:[^"\\]|\\.)*")')
 
@@ -94,9 +102,9 @@ def main() -> int:
              for number, line in enumerate((src / name).read_text().splitlines(), 1)
              if not line.strip().startswith('//')
              for match in [TERNARY.search(line)] if match]
-    if len(found) < FLOOR_HITS:
-        print(f"only {len(found)} ternaries, floored at {FLOOR_HITS}: the pattern has stopped "
-              "matching and a zero here would read as clean", file=sys.stderr)
+    if not TERNARY.search(CONTROL) or TERNARY.search(CONTROL_MISSES):
+        print("the pattern no longer separates a real ternary from a nil-coalesce, so a zero "
+              "here would read as clean rather than as a broken regex", file=sys.stderr)
         return 2
 
     unexplained = [hit for hit in found if (hit[0], hit[3]) not in ACCEPTED]

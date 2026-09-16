@@ -359,9 +359,7 @@ struct PlanInspector: View {
 
             if mission.commands.isEmpty {
                 GroupCard {
-                    EmptyStateRow(text: mission.connected
-                        ? "This category has no commands this vehicle accepts."
-                        : "Connect a vehicle to see the commands it accepts.")
+                    EmptyStateRow(text: MissionCommand.emptyText(connected: mission.connected))
                 }
             } else {
                 ScrollView {
