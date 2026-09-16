@@ -53,11 +53,25 @@ void AirUnitCameraControl::handleMessage(LinkInterface *link, const mavlink_mess
     if (message.sysid != _systemId || message.compid != _componentId) {
         return;
     }
-    const int cameraId = cameraIdFromLegacyStreamInformation(message);
-    if (cameraId >= 0 && cameraId != _activeInput) {
-        _activeInput = cameraId;
-        emit activeInputChanged();
+    if (message.msgid == MAVLINK_MSG_ID_COMMAND_ACK) {
+        mavlink_command_ack_t ack;
+        mavlink_msg_command_ack_decode(&message, &ack);
+        if (ack.command == MAV_CMD_VIDEO_START_STREAMING && ack.result != MAV_RESULT_ACCEPTED && ack.result != MAV_RESULT_IN_PROGRESS) {
+            qCWarning(AirUnitCameraControlLog) << "Air unit refused input" << _activeInput << "result" << ack.result;
+            _setActiveInput(_previousInput);
+        }
+        return;
     }
+    _setActiveInput(cameraIdFromLegacyStreamInformation(message));
+}
+
+void AirUnitCameraControl::_setActiveInput(int input)
+{
+    if (input < 0 || input == _activeInput) {
+        return;
+    }
+    _activeInput = input;
+    emit activeInputChanged();
 }
 
 void AirUnitCameraControl::selectInput(int input)
@@ -66,6 +80,8 @@ void AirUnitCameraControl::selectInput(int input)
         return;
     }
     qCDebug(AirUnitCameraControlLog) << "Selecting air unit input" << input;
+    _previousInput = _activeInput;
+    _setActiveInput(input);
     _sendCommand(MAV_CMD_VIDEO_START_STREAMING, static_cast<float>(input));
     _requestStreamInformation();
 }

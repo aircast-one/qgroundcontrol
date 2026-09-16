@@ -11,4 +11,6 @@ private slots:
     void _legacyStreamInformationReportsActiveInput();
     void _selectInputSendsStartStreamingToTheCamera();
     void _switchInputCyclesThroughInputs();
+    void _switchInputAlternatesWithoutStreamInformation();
+    void _refusedSwitchRevertsTheInput();
 };

@@ -44,9 +44,11 @@ protected:
 private:
     void _sendCommand(uint16_t command, float param1);
     void _requestStreamInformation();
+    void _setActiveInput(int input);
 
     QPointer<LinkInterface> _link;
     int _systemId = 0;
     int _componentId = 0;
     int _activeInput = -1;
+    int _previousInput = -1;
 };

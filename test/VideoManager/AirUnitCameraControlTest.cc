@@ -72,6 +72,13 @@ mavlink_message_t legacyStreamInformation(uint8_t cameraId, uint8_t sysid = 42, 
     return message;
 }
 
+mavlink_message_t startStreamingAck(uint8_t result, uint8_t sysid = 42, uint8_t compid = MAV_COMP_ID_CAMERA)
+{
+    mavlink_message_t message;
+    mavlink_msg_command_ack_pack_chan(sysid, compid, 0, &message, MAV_CMD_VIDEO_START_STREAMING, result, 0, 0, 255, 190);
+    return message;
+}
+
 } // namespace
 
 void AirUnitCameraControlTest::_cameraHeartbeatMakesItAvailable()
@@ -145,4 +152,39 @@ void AirUnitCameraControlTest::_switchInputCyclesThroughInputs()
     control.commands.clear();
     control.switchInput();
     QCOMPARE(control.commands.first().param1, 0.0f);
+}
+
+void AirUnitCameraControlTest::_switchInputAlternatesWithoutStreamInformation()
+{
+    FakeLink link;
+    RecordingControl control;
+    control.handleMessage(&link, cameraHeartbeat());
+    control.commands.clear();
+
+    control.switchInput();
+    QCOMPARE(control.commands.first().param1, 1.0f);
+    QCOMPARE(control.activeInput(), 1);
+
+    control.commands.clear();
+    control.switchInput();
+    QCOMPARE(control.commands.first().param1, 0.0f);
+    QCOMPARE(control.activeInput(), 0);
+}
+
+void AirUnitCameraControlTest::_refusedSwitchRevertsTheInput()
+{
+    FakeLink link;
+    RecordingControl control;
+    control.handleMessage(&link, cameraHeartbeat());
+    control.handleMessage(&link, legacyStreamInformation(1));
+
+    control.selectInput(0);
+    QCOMPARE(control.activeInput(), 0);
+
+    control.handleMessage(&link, startStreamingAck(MAV_RESULT_FAILED));
+    QCOMPARE(control.activeInput(), 1);
+
+    control.selectInput(0);
+    control.handleMessage(&link, startStreamingAck(MAV_RESULT_ACCEPTED));
+    QCOMPARE(control.activeInput(), 0);
 }
