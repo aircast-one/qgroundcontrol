@@ -33,6 +33,11 @@ CAM_TRACK_STATUS = os.environ.get("CAM_TRACK_STATUS", "1") != "0"
 # camera reports tracking, QGC decodes it, and throws the box away.
 TRACKING_COMMANDS = (2004, 2005, 2010)
 
+# A SiK radio reports its own link with RADIO_STATUS. Every field is zero before the
+# first one arrives, which is why the core serves the whole telemetry object as null
+# until then - so without this knob there is no way to see the reading at all.
+RADIO_LINK = os.environ.get("RADIO_LINK")
+
 # A camera with a storage card, so a head can draw a Format row. Off by default: without it
 # the camera reports no storage and Format is correctly hidden, which is the only arm the
 # contract recording has ever witnessed.
@@ -712,6 +717,10 @@ def main():
         if ORBIT_RADIUS_M:
             link.file.write(orbit_status_frame(tick, SYSID, ORBIT_RADIUS_M,
                                                CENTRE_LAT + CENTRE_SHIFT, CENTRE_LON, altitude))
+
+        if RADIO_LINK is not None and tick % 5 == 0:
+            local = int(RADIO_LINK)
+            link.radio_status_send(abs(local), abs(local) - 3, 100, 40, 38, tick % 7, 0)
 
         if IN_CONTROL is not None and tick % 5 == 0:
             link.file.write(control_status_frame(tick, SYSID, IN_CONTROL))

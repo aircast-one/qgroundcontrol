@@ -94,7 +94,7 @@ class VehicleSubtitleTest {
         contactLost: Boolean = false,
         stateText: String = "Disarmed",
         mode: String = "Stabilize",
-    ) = FlyState(connected, false, contactLost, "disarmed", stateText, "", mode, false, "", null)
+    ) = FlyState(connected, false, contactLost, "disarmed", stateText, "", mode, false, "", null, null, null)
 
     @Test
     fun `the header keeps the flight mode the core reports separately`() {

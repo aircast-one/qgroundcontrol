@@ -20,7 +20,29 @@ internal data class FlyState(
     val rcSupported: Boolean,
     val rcSignalText: String,
     val rcSignal: Int?,
+    val rcOverride: Boolean?,
+    val telemetry: TelemetryLink?,
 )
+
+internal data class TelemetryLink(
+    val localRssiDbm: Int,
+    val remoteRssiDbm: Int?,
+    val localNoise: Int?,
+    val remoteNoise: Int?,
+    val receiveErrors: Int?,
+)
+
+internal fun telemetryLink(view: JSONObject?): TelemetryLink? {
+    val radio = view?.optJSONObject("telemetry") ?: return null
+    if (radio.isNull("localRssiDbm")) return null
+    return TelemetryLink(
+        localRssiDbm = radio.optInt("localRssiDbm"),
+        remoteRssiDbm = if (radio.isNull("remoteRssiDbm")) null else radio.optInt("remoteRssiDbm"),
+        localNoise = if (radio.isNull("localNoise")) null else radio.optInt("localNoise"),
+        remoteNoise = if (radio.isNull("remoteNoise")) null else radio.optInt("remoteNoise"),
+        receiveErrors = if (radio.isNull("receiveErrors")) null else radio.optInt("receiveErrors"),
+    )
+}
 
 internal fun flyState(view: JSONObject?): FlyState? {
     if (view == null || view.optText("class") != "FlyState") return null
@@ -35,6 +57,8 @@ internal fun flyState(view: JSONObject?): FlyState? {
         rcSupported = view.optBoolean("rcSupported"),
         rcSignalText = view.optText("rcSignalText"),
         rcSignal = if (view.isNull("rcSignal")) null else view.optInt("rcSignal"),
+        rcOverride = if (view.isNull("rcOverride")) null else view.optBoolean("rcOverride"),
+        telemetry = telemetryLink(view),
     )
 }
 

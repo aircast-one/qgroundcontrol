@@ -134,6 +134,8 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             }
         }
         rcCell(state)?.let { InlineCell(it.text, if (it.lost) CRITICAL else Color.Unspecified) }
+        overrideCell(state)?.let { InlineCell(it.text, CAUTION) }
+        telemetryCell(state)?.let { InlineCell(it, Color.Unspecified) { detail = StripDetail.Telemetry } }
         links?.let {
             InlineCell(it.text, if (it.degraded) CAUTION else Color.Unspecified) { detail = StripDetail.Links }
         }
@@ -143,6 +145,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         val rows = when (shown) {
             StripDetail.Battery -> batteryDetail(batteryJson)
             StripDetail.Gps -> gpsDetail(satellites, fix, hdop, vdop, course)
+            StripDetail.Telemetry -> telemetryDetail(state?.telemetry)
             StripDetail.Links -> linkDetail(
                 vehicleLinks(linksJson),
                 linkNames(linksJson),
@@ -153,12 +156,13 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     }
 }
 
-internal enum class StripDetail { Battery, Gps, Links }
+internal enum class StripDetail { Battery, Gps, Links, Telemetry }
 
 internal fun instrumentTitle(instrument: StripDetail): String = when (instrument) {
     StripDetail.Battery -> "Battery"
     StripDetail.Gps -> "GPS"
     StripDetail.Links -> "Links to this aircraft"
+    StripDetail.Telemetry -> "Telemetry radio"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -196,5 +200,24 @@ private fun InlineCell(text: String, colour: Color, onClick: (() -> Unit)? = nul
         color = if (colour == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else colour,
         maxLines = 1,
         modifier = if (onClick == null) Modifier else Modifier.clickable { onClick() },
+    )
+}
+
+internal data class OverrideCell(val text: String)
+
+internal fun overrideCell(state: FlyState?): OverrideCell? =
+    state?.takeIf { it.rcOverride == true }?.let { OverrideCell("RC override") }
+
+internal fun telemetryCell(state: FlyState?): String? =
+    state?.telemetry?.let { "${it.localRssiDbm} dBm" }
+
+internal fun telemetryDetail(link: TelemetryLink?): List<DetailRow> = when (link) {
+    null -> emptyList()
+    else -> listOfNotNull(
+        DetailRow("This station", "${link.localRssiDbm} dBm"),
+        link.remoteRssiDbm?.let { DetailRow("The vehicle's radio", "$it dBm") },
+        link.localNoise?.let { DetailRow("Noise here", "$it") },
+        link.remoteNoise?.let { DetailRow("Noise at the vehicle", "$it") },
+        link.receiveErrors?.let { DetailRow("Packets lost", "$it") },
     )
 }
