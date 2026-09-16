@@ -58,6 +58,7 @@ falsify it. The ones marked *found something* are in the commit log for
 | `NO_BATTERY=1` | drops the whole `BATT_*` set, which is the only way back to the Power page's empty state now that the rig serves them | |
 | `CAM_INTERVAL=1` | the camera reports `CAMERA_CAPTURE_STATUS` with image_status 3, an interval capture in progress. This is the only way to reach `canStopPhoto`, and QGC withdraws `canPhoto` while it runs - so before the Stop control existed the shutter simply vanished and nothing could end the capture | *found something* |
 | `ORBIT=<metres>` | the vehicle reports an active orbit of that radius, negative for anticlockwise. The message is hand-framed: `ORBIT_EXECUTION_STATUS` is id 360 and this pymavlink (2.4.49) does not carry it, so the rig packs `<Qfiifb` with crc_extra 11 from the generated header and QGC's own parser is what proves the framing | |
+| `VIBRATION_AXES=x` | the vehicle reports only the named axes and sends NaN for the rest (`""` for none). The core sets `silentReason` only when NO axis has a value and `available` only when all three do, so a partial reading falls between them - the state that crashed the Android vibration screen, and the one no rig could produce before | *found something* |
 | `ADSB_CONTACTS`, `ADSB_SQUAWK` | aircraft relayed as `ADSB_VEHICLE`. These only reach the core when the core owns the link (`coreLinks`), which is off by default, so `sbs1feed.py` is the way in until that flips | |
 
 **Terrain needs somewhere the service covers.** The default position is Tbilisi

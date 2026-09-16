@@ -40,6 +40,7 @@ ORBIT_RADIUS_M = float(os.environ.get("ORBIT", "0"))
 CAM_INTERVAL = os.environ.get("CAM_INTERVAL") == "1"
 ADSB_SQUAWK = int(os.environ.get("ADSB_SQUAWK", "1200"))
 ADSB_SIMULATED = int(os.environ.get("ADSB_SIMULATED", "0"))
+VIBRATION_AXES = os.environ.get("VIBRATION_AXES", "xyz")
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
 DEFAULT_TAKEOFF_ALTITUDE = 10.0
@@ -344,7 +345,8 @@ def main():
             now_ms, 8, *sticks,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             int(os.environ.get("RC_RSSI", "80")))
-        link.vibration_send(int(elapsed * 1e6), 15.0, 45.0, 75.0, 0, 3, 12)
+        vibe = [v if a in VIBRATION_AXES else float("nan") for a, v in zip("xyz", (15.0, 45.0, 75.0))]
+        link.vibration_send(int(elapsed * 1e6), *vibe, 0, 3, 12)
         altitude += max(-CLIMB_RATE, min(CLIMB_RATE, target_altitude - altitude))
         if landing and altitude <= GROUND_ALTITUDE:
             landing = False

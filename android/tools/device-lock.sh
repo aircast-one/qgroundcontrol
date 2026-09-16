@@ -18,6 +18,12 @@ take)
         fi
         [ "$o" != "$ME" ] && echo "stealing stale lock from $o (${a}s old)"
     fi
+    n=$(adb devices | grep -c '\sdevice$')
+    if [ -z "$ANDROID_SERIAL" ] && [ "$n" != "1" ]; then
+        echo "REFUSED: $n devices attached and ANDROID_SERIAL is unset - every adb below would" >&2
+        echo "  read nothing, and an empty read passes the wake gate and fails the portrait one" >&2
+        exit 1
+    fi
     printf '%s|%s|%s\n' "$ME" "$(date +%s)" "${2:-adb work}" > "$LOCK"
     adb shell dumpsys deviceidle disable >/dev/null 2>&1
     adb shell svc power stayon usb >/dev/null 2>&1
@@ -36,6 +42,11 @@ take)
     adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1
     adb shell settings put system user_rotation 0 >/dev/null 2>&1
     r=$(adb shell dumpsys display 2>/dev/null | grep -oE 'mCurrentOrientation=[0-9]+' | head -1)
+    if [ -z "$r" ]; then
+        rm -f "$LOCK"
+        echo "REFUSED: dumpsys display answered nothing - the orientation is unknown, not wrong" >&2
+        exit 1
+    fi
     if [ "$r" != "mCurrentOrientation=0" ]; then
         rm -f "$LOCK"
         echo "REFUSED: the handset is not portrait ($r) - every fixed coordinate would miss" >&2
