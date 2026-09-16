@@ -29,6 +29,10 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.batteryRemaining",
     "vehicle.cameraManager.currentCameraInstance.hasZoom",
     "vehicle.cameraManager.currentCameraInstance.zoomLevel",
+    "vehicle.cameraManager.currentCameraInstance.trackingEnabled",
+    "vehicle.cameraManager.currentCameraInstance.trackingImageStatus",
+    "vehicle.cameraManager.currentCameraInstance.trackingImageRect",
+    "vehicle.cameraManager.currentCameraInstance.thermalMode",
     "vehicle.cameraManager.currentCamera",
     "vehicle.cameraTriggerPoints.count",
 ];
@@ -396,6 +400,46 @@ mod tests {
         );
 
         assert_eq!(cam(json!({ "thermalStreamInstance": { "kind": "object" }, "thermalMode": 9 }))["thermalMode"], Value::Null, "an enumerator the core does not know is not silently the first one");
+    }
+
+    const CONSTANT_OR_COVERED: [&str; 16] = [
+        "trackingStatus",
+        "hasTracking",
+        "modelName",
+        "vendor",
+        "recordTimeStr",
+        "storageFreeStr",
+        "photoCaptureMode",
+        "photoLapse",
+        "thermalOpacity",
+        "thermalStreamInstance",
+        "capturesPhotos",
+        "photosInVideoMode",
+        "cameraMode",
+        "photoCaptureStatus",
+        "videoCaptureStatus",
+        "storageStatus",
+    ];
+
+    #[test]
+    fn every_camera_field_the_view_serves_is_watched_by_name() {
+        let watched: Vec<&str> = CAMERA_DEPS
+            .iter()
+            .filter_map(|dep| dep.strip_prefix("vehicle.cameraManager.currentCameraInstance."))
+            .collect();
+
+        assert!(watched.contains(&"zoomLevel"), "the filter has to find the names it is about, or the check below passes by finding nothing");
+
+        let unwatched: Vec<&str> = CAMERA_FIELDS
+            .split(',')
+            .filter(|field| !watched.contains(field))
+            .filter(|field| !CONSTANT_OR_COVERED.contains(field))
+            .collect();
+
+        assert!(
+            unwatched.is_empty(),
+            "these are read by camera_view and named in no dep, so they update today only because a dep on any path of the camera object subscribes to the whole object - the moment the bridge narrows a watch to the named property they go silent with nothing to say why. If one is CONSTANT in MavlinkCameraControl.h it cannot be a dep at all and belongs in CONSTANT_OR_COVERED with that reason, which is what trackingStatus turned out to be: {unwatched:?}"
+        );
     }
 
     #[test]

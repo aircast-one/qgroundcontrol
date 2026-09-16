@@ -162,8 +162,9 @@ bool CoreLink::_connect()
     const QJsonObject opened = takeJson(qgc_core_link_open(configJson(_config.get()).constData()));
     if (!opened.value(QStringLiteral("ok")).toBool(false)) {
         const QString reason = opened.value(QStringLiteral("reason")).toString();
+        const bool editAddress = opened.value(QStringLiteral("remedy")).toString() == QStringLiteral("editAddress");
         qCWarning(CoreLinkLog) << "core link open failed:" << reason;
-        emit communicationError(tr("Link Error"), tr("Could not open %1: %2").arg(_config->name(), reason));
+        emit communicationError(tr("Link Error"), reason, editAddress ? LinkConfiguration::RemedyEditAddress : LinkConfiguration::RemedyRetry);
         return false;
     }
     _id = static_cast<uint32_t>(opened.value(QStringLiteral("id")).toInt());

@@ -154,7 +154,9 @@ void LinkConfiguration::setLink(const SharedLinkInterfacePtr link)
     if (link.get() != this->link()) {
         _link = link;
         emit linkChanged();
-        setLastError(QString());
+        if (link) {
+            setLastError(QString());
+        }
 
         (void) connect(link.get(), &LinkInterface::disconnected, this, &LinkConfiguration::linkChanged, Qt::QueuedConnection);
         (void) connect(link.get(), &LinkInterface::decodedFirstMavlinkPacketChanged, this, &LinkConfiguration::heardVehicleChanged, Qt::QueuedConnection);

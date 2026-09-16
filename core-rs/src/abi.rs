@@ -136,10 +136,10 @@ impl WriterUser {
     }
 }
 
-fn outcome(result: Result<u32, String>) -> *mut c_char {
+fn outcome(result: Result<u32, crate::linkhost::Failure>) -> *mut c_char {
     give(match result {
         Ok(id) => serde_json::json!({ "ok": true, "id": id }).to_string(),
-        Err(reason) => serde_json::json!({ "ok": false, "reason": reason }).to_string(),
+        Err(failure) => serde_json::json!({ "ok": false, "reason": failure.reason, "remedy": failure.remedy }).to_string(),
     })
 }
 

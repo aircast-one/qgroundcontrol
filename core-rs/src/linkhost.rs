@@ -148,11 +148,41 @@ impl Transports {
     }
 }
 
-fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failure {
+    pub reason: String,
+    pub remedy: &'static str,
+}
+
+impl Failure {
+    fn retry(reason: impl Into<String>) -> Failure {
+        Failure { reason: reason.into(), remedy: "retry" }
+    }
+
+    fn edit_address(reason: impl Into<String>) -> Failure {
+        Failure { reason: reason.into(), remedy: "editAddress" }
+    }
+}
+
+fn tcp_failure(name: &str, host: &str, port: u16, error: &std::io::Error) -> Failure {
+    match (host.trim().is_empty(), error.kind()) {
+        (true, _) => Failure::edit_address(format!("{name} has no address.")),
+        (_, std::io::ErrorKind::ConnectionRefused) => Failure::edit_address(format!("Reached {host} but nothing is listening on port {port}.")),
+        _ if !resolves(host, port) => Failure::edit_address(format!("Can't find {host} on this network.")),
+        _ => Failure::retry(format!("No answer from {host}:{port} ({error}).")),
+    }
+}
+
+fn resolves(host: &str, port: u16) -> bool {
+    use std::net::ToSocketAddrs;
+    (host, port).to_socket_addrs().is_ok()
+}
+
+fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Failure> {
     match &config.kind {
         Kind::Udp { local_port, hosts } => {
             let shared = shared.clone();
-            UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes)).map(Owned::Udp).map_err(|e| e.to_string())
+            UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes)).map(Owned::Udp).map_err(|e| Failure::retry(e.to_string()))
         }
         Kind::Tcp { host, port } => {
             let shared = shared.clone();
@@ -161,7 +191,7 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Stri
                 tcplink::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
             })
             .map(Owned::Tcp)
-            .map_err(|e| e.to_string())
+            .map_err(|e| tcp_failure(&config.name, host, *port, &e))
         }
         #[cfg(not(target_os = "android"))]
         Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_name, .. } => {
@@ -174,9 +204,9 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Stri
                 },
             )
             .map(Owned::Serial)
-            .map_err(|e| e.to_string())
+            .map_err(|e| Failure::retry(e.to_string()))
         }
-        other => Err(format!("the core does not own {other:?} links on this platform")),
+        other => Err(Failure::retry(format!("the core does not own {other:?} links on this platform"))),
     }
 }
 
@@ -192,10 +222,10 @@ fn kind_name(kind: &Kind) -> &'static str {
     }
 }
 
-pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_ports: &[u16]) -> Result<LinkId, String> {
+pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_ports: &[u16]) -> Result<LinkId, Failure> {
     if let Kind::Udp { local_port, .. } = &config.kind {
         if *local_port != 0 && reserved_udp_ports.contains(local_port) {
-            return Err(format!("port {local_port} is already served by a Qt link; opening a core link there would starve it"));
+            return Err(Failure::retry(format!("port {local_port} is already served by a Qt link; opening a core link there would starve it")));
         }
     }
     reap(transports);
@@ -218,10 +248,10 @@ pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_por
     }
 }
 
-pub fn open_json(transports: &Mutex<Transports>, json: &str, reserved_udp_ports: &[u16]) -> Result<LinkId, String> {
-    let value: Value = serde_json::from_str(json).map_err(|e| format!("not JSON: {e}"))?;
+pub fn open_json(transports: &Mutex<Transports>, json: &str, reserved_udp_ports: &[u16]) -> Result<LinkId, Failure> {
+    let value: Value = serde_json::from_str(json).map_err(|e| Failure::retry(format!("not JSON: {e}")))?;
     let via_link_manager = value.get("viaLinkManager").and_then(Value::as_bool).unwrap_or(false);
-    open(transports, linkconfig::from_json(&value)?, if via_link_manager { &[] } else { reserved_udp_ports })
+    open(transports, linkconfig::from_json(&value).map_err(Failure::retry)?, if via_link_manager { &[] } else { reserved_udp_ports })
 }
 
 pub fn reap(transports: &Mutex<Transports>) {
@@ -375,6 +405,31 @@ mod tests {
     }
 
     #[test]
+    fn a_link_that_cannot_open_says_whether_retrying_could_ever_work() {
+        let transports = Mutex::new(Transports::default());
+
+        let refused = open_json(&transports, r#"{"kind":"tcp","name":"Dead","host":"127.0.0.1","port":1}"#, &[]).unwrap_err();
+        assert_eq!(
+            (refused.remedy, refused.reason.as_str()),
+            ("editAddress", "Reached 127.0.0.1 but nothing is listening on port 1."),
+            "this is the measurement that settles whether the core detects a link failure at all: it does, and it is the case TCPLink.cc:290 raises RemedyEditAddress for. Serving retry here leaves an operator tapping a button that cannot succeed until the port changes"
+        );
+
+        let nowhere = open_json(&transports, r#"{"kind":"tcp","name":"Nowhere","host":"no-such-host.invalid","port":5760}"#, &[]).unwrap_err();
+        assert_eq!(
+            (nowhere.remedy, nowhere.reason.as_str()),
+            ("editAddress", "Can't find no-such-host.invalid on this network."),
+            "TCPLink.cc:287's HostNotFoundError - .invalid is reserved by RFC 2606 precisely so it never resolves"
+        );
+
+        let unnamed = open_json(&transports, r#"{"kind":"tcp","name":"Blank","host":"","port":5760}"#, &[]).unwrap_err();
+        assert_eq!((unnamed.remedy, unnamed.reason.as_str()), ("editAddress", "Blank has no address."), "TCPLink.cc:282 names the configuration, not the empty host");
+
+        let clash = open_json(&transports, r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err();
+        assert_eq!(clash.remedy, "retry", "a port held by a Qt link is the one failure on this list that a later attempt can genuinely succeed at, so it must not tell the operator to edit an address that is correct");
+    }
+
+    #[test]
     fn a_core_udp_link_frames_what_a_peer_sends_and_answers_it() {
         let transports = Mutex::new(Transports::default());
         let seen = Arc::new(AtomicUsize::new(0));
@@ -427,7 +482,7 @@ mod tests {
         assert!(!write(&transports, id, b"x"));
         assert_eq!(written.lock().unwrap().len(), 1);
         assert!(open_json(&transports, r#"{"kind":"serial","name":"S","portName":"/dev/none"}"#, &[]).is_err());
-        assert!(open_json(&transports, r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err().contains("starve"));
+        assert!(open_json(&transports, r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err().reason.contains("starve"));
         assert!(open_json(&transports, r#"{"kind":"tcp","name":"T","host":"127.0.0.1","port":1}"#, &[]).is_err());
         assert_eq!(transports.lock().unwrap().snapshot()["links"].as_array().unwrap().len(), 1, "failed opens leave no entry");
         let managed = open_json(&transports, r#"{"kind":"udp","name":"Managed","port":0,"hosts":[],"viaLinkManager":true}"#, &[14550]).unwrap();
