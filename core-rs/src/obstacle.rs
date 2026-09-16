@@ -88,6 +88,7 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "sector": id,
             "sectorText": text,
             "close": min_distance > 0 && cm < min_distance * 2,
+            "stale": stale,
         })
     });
     json!({
@@ -132,6 +133,37 @@ mod tests {
     fn ring(distances: Vec<i64>) -> Value {
         json!({ "kind": "object", "available": true, "enabled": true, "distances": distances,
                 "increment": 45.0, "minDistance": 100, "maxDistance": 1000, "angleOffset": 0.0, "msSinceUpdate": 200 })
+    }
+
+    #[test]
+    fn a_reading_that_stopped_arriving_says_so_on_itself_and_the_arc_is_gated_on_available() {
+        let quiet = json!({ "kind": "object", "available": true, "enabled": true, "distances": [NO_READING, 320],
+                            "increment": 45.0, "minDistance": 20, "maxDistance": 4000, "angleOffset": 0.0, "msSinceUpdate": 67131 });
+        let view = obstacle_view(&Ring(quiet), &[]);
+        assert_eq!(view["stale"], true);
+        assert_eq!(
+            view["nearest"]["stale"],
+            true,
+            "nothing else moves when the sensor stops - not the ring, not sectors, not available - so the whole distinction between an obstacle 3.2 metres away and one that was there 67 seconds ago rested on a sibling flag. A head drawing from nearest alone had no way to know, and this was measured on a rig where the fake stops sending after 45 seconds"
+        );
+        assert_eq!(view["ringMetres"].as_array().unwrap()[1], json!(3.2), "the values are kept rather than blanked: QGC keeps showing the last ring, and destroying them here would make the core disagree with the Qt build about what was last seen");
+
+        let fresh = obstacle_view(&Ring(ring(vec![NO_READING, 500])), &[]);
+        assert_eq!(fresh["nearest"]["stale"], false);
+
+        let floorless = json!({ "kind": "object", "available": true, "enabled": true, "distances": [5],
+                                "increment": 45.0, "minDistance": 0, "maxDistance": 4000, "angleOffset": 0.0, "msSinceUpdate": 200 });
+        assert_eq!(
+            obstacle_view(&Ring(floorless), &[])["nearest"]["close"],
+            false,
+            "a vehicle that reports no rated floor cannot be judged too near, and the min_distance > 0 clause that says so is not load-bearing: distances arrive as uint16 cast to int, so cm is never negative and cm < 0 is false for every sample that can exist. The behaviour is pinned here rather than resting on which of two equivalent expressions is written"
+        );
+
+        assert_eq!(
+            (fresh["available"].clone(), fresh["supported"].clone()),
+            (json!(true), Value::Null),
+            "available means a sample arrived and supported means the vehicle has CP_DIST - a rangefinder reports distances on a vehicle with no collision-prevention parameter, so a head gating the ARC on supported draws nothing while obstacles are arriving. available is the gate for the picture; supported and enabled belong to the avoidance switch"
+        );
     }
 
     #[test]

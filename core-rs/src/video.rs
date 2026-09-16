@@ -6,7 +6,7 @@ use crate::router::Backend;
 pub const VIDEO_DEPS: &[&str] = &[
     "video.isStreamSource",
     "video.hasMultipleVideoSources","settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageStatus,trackingImageRect,trackingStatus";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
@@ -175,6 +175,28 @@ pub fn camera_present(camera: &Value) -> bool {
     camera.get("kind").and_then(Value::as_str) == Some("object") && !text(camera, "modelName").is_empty()
 }
 
+const THERMAL_BLEND: i64 = 1;
+const TRACKING_RECTANGLE: i64 = 4;
+const TRACKING_POINT: i64 = 8;
+
+fn thermal_token(mode: Option<i64>) -> Option<&'static str> {
+    match mode? {
+        0 => Some("off"),
+        1 => Some("blend"),
+        2 => Some("full"),
+        3 => Some("picInPic"),
+        _ => None,
+    }
+}
+
+fn tracking_shapes(status: i64) -> Vec<&'static str> {
+    [(TRACKING_RECTANGLE, "rectangle"), (TRACKING_POINT, "point")]
+        .iter()
+        .filter(|(bit, _)| status & bit != 0)
+        .map(|(_, name)| *name)
+        .collect()
+}
+
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // The only field any head took from vehicle.cameraManager: the switcher needs every camera's
     // name, and this view carried only the current one's. One field short kept a whole Qt path
@@ -188,6 +210,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let camera = object(&backend.get_fields("vehicle.cameraManager.currentCameraInstance", CAMERA_FIELDS));
     let model = text(&camera, "modelName");
     let present = camera_present(&camera);
+    let thermal_available = present && camera.get("thermalStreamInstance").is_some_and(|stream| stream.is_object());
     let shots = integer(&object(&backend.get_fields("vehicle.cameraTriggerPoints", "count")), "count").unwrap_or(0);
     let vendor = text(&camera, "vendor");
     let mode = integer(&camera, "cameraMode").unwrap_or(UNDEFINED_MODE);
@@ -243,6 +266,18 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "shotPoints": shot_points(backend),
         "batteryRemaining": battery,
         "batteryText": if battery >= 0 { format!("{battery}%") } else { String::new() },
+        "thermalAvailable": thermal_available,
+        "thermalMode": thermal_available.then(|| thermal_token(integer(&camera, "thermalMode"))).flatten(),
+        "thermalOpacity": (thermal_available && integer(&camera, "thermalMode") == Some(THERMAL_BLEND))
+            .then(|| camera.get("thermalOpacity").and_then(Value::as_f64))
+            .flatten(),
+        "tracking": present.then(|| json!({
+            "supported": flag(&camera, "hasTracking"),
+            "enabled": flag(&camera, "trackingEnabled"),
+            "active": flag(&camera, "trackingImageStatus"),
+            "shapes": tracking_shapes(integer(&camera, "trackingStatus").unwrap_or(0)),
+            "rect": flag(&camera, "trackingImageStatus").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
+        })),
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(1.0),
         // VehicleCameraControl.cc:351 and :~300 refuse on terms this gate did not carry, so it was
@@ -311,6 +346,56 @@ mod tests {
             }
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_thermal_slider_is_withheld_unless_the_camera_is_actually_blending() {
+        let cam = |extra: Value| {
+            let mut c = json!({ "kind": "object", "modelName": "ZR30" });
+            extra.as_object().unwrap().iter().for_each(|(k, v)| { c[k] = v.clone(); });
+            camera_view(&Fake::new(json!({ "kind": "object" }), c), &[])
+        };
+
+        let none = cam(json!({}));
+        assert_eq!((none["thermalAvailable"].clone(), none["thermalMode"].clone(), none["thermalOpacity"].clone()), (json!(false), Value::Null, Value::Null), "PhotoVideoControl gates the whole control on thermalStreamInstance being non-null, so a camera with no thermal stream has no mode rather than mode off");
+
+        let blending = cam(json!({ "thermalStreamInstance": { "kind": "object" }, "thermalMode": 1, "thermalOpacity": 60.0 }));
+        assert_eq!((blending["thermalMode"].clone(), blending["thermalOpacity"].clone()), (json!("blend"), json!(60.0)));
+
+        let full = cam(json!({ "thermalStreamInstance": { "kind": "object" }, "thermalMode": 2, "thermalOpacity": 60.0 }));
+        assert_eq!(full["thermalMode"], "full");
+        assert_eq!(
+            full["thermalOpacity"],
+            Value::Null,
+            "Qt shows the blend slider only when the mode IS blend, so serving the number in every mode invites a head to draw a live slider that changes nothing - the enforce-checklist shape"
+        );
+
+        assert_eq!(cam(json!({ "thermalStreamInstance": { "kind": "object" }, "thermalMode": 9 }))["thermalMode"], Value::Null, "an enumerator the core does not know is not silently the first one");
+    }
+
+    #[test]
+    fn a_tracking_rectangle_is_offered_only_while_the_camera_is_tracking() {
+        let cam = |extra: Value| {
+            let mut c = json!({ "kind": "object", "modelName": "ZR30" });
+            extra.as_object().unwrap().iter().for_each(|(k, v)| { c[k] = v.clone(); });
+            camera_view(&Fake::new(json!({ "kind": "object" }), c), &[])
+        };
+        let rect = json!({ "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 });
+
+        let idle = cam(json!({ "hasTracking": true, "trackingStatus": 5, "trackingEnabled": false, "trackingImageStatus": false, "trackingImageRect": rect }));
+        assert_eq!((idle["tracking"]["supported"].clone(), idle["tracking"]["enabled"].clone(), idle["tracking"]["active"].clone()), (json!(true), json!(false), json!(false)));
+        assert_eq!(idle["tracking"]["shapes"], json!(["rectangle"]), "TrackingStatus is a bitmask and the two shape bits say which gestures the camera accepts, so a head offering a drag on a point-only camera is offering a command it will refuse");
+        assert_eq!(
+            idle["tracking"]["rect"],
+            Value::Null,
+            "the rectangle is whatever was last tracked, and trackingImageStatus is the only thing saying it is current - drawing a stale box over live video is a claim about where the target is now"
+        );
+
+        let live = cam(json!({ "hasTracking": true, "trackingStatus": 14, "trackingEnabled": true, "trackingImageStatus": true, "trackingImageRect": rect }));
+        assert_eq!(live["tracking"]["rect"], rect, "and a QRectF only reaches a head at all because variantJson gained a case for it");
+        assert_eq!(live["tracking"]["shapes"], json!(["rectangle", "point"]));
+
+        assert_eq!(cam(json!({}))["tracking"]["supported"], false, "a camera that does not report tracking supports none of it");
     }
 
     #[test]

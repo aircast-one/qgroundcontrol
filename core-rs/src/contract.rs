@@ -68,6 +68,10 @@ pub const NULLABLE_UNWITNESSED: &[&str] = &[
     "view.plan.defaults.altitude.changedFromDefault",
     "view.settings(General).sections[0].subsections[0].controls[0].changedFromDefault",
     "view.setup(Safety).sections[0].controls[0].changedFromDefault",
+    "view.obstacle.ringMetres",
+    "view.obstacle.ringIncrement",
+    "view.obstacle.rangeMinMetres",
+    "view.obstacle.rangeMaxMetres",
 ];
 
 pub fn contract_view(_backend: &dyn Backend, _args: &[String]) -> Value {
@@ -99,15 +103,19 @@ mod tests {
                     Some(name) => node?.get(name)?.get(0),
                     None => node?.get(step),
                 })
-                .and_then(Value::as_str)
-                .unwrap_or("missing")
-                .to_string()
+                .map(|node| match node {
+                    // A list-typed field is recorded as a one-element array naming its element
+                    // type, so the walk has to step into it or every array reads as absent.
+                    Value::Array(of) => of.first().and_then(Value::as_str).unwrap_or("empty").to_string(),
+                    other => other.as_str().unwrap_or("missing").to_string(),
+                })
+                .unwrap_or_else(|| "missing".to_string())
         };
         NULLABLE_UNWITNESSED.iter().for_each(|path| {
-            assert!(
-                declared(path) == "bool" || declared(path) == "bool|null",
-                "{path} is listed here as a field the recorder cannot witness as null, but the contract types it {} - either the rig can now reach the null and the entry should go, or the path is wrong",
-                declared(path)
+            assert_ne!(
+                declared(path),
+                "missing",
+                "{path} is listed here as a field the rig cannot witness filled, and it does not resolve in the contract at all - either the path is wrong or the field is gone"
             );
         });
 

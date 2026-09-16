@@ -143,10 +143,19 @@ fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
 }
 
 pub fn support_host_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let typed = args.first().map(String::as_str).unwrap_or_default().trim();
+    // NOT trimmed. LinkManager.cc:942 hands the stored value to addHost exactly as typed, and
+    // _getIpAddress cannot resolve a name with a leading space - so trimming here judged a string
+    // QGC never uses and answered valid for an address that forwards nowhere. A normalisation on
+    // one side of a boundary and not the other is a disagreement no test inside either side finds.
+    let typed = args.first().map(String::as_str).unwrap_or_default();
     let parts: Vec<&str> = typed.split(':').collect();
-    let error = match (typed.is_empty(), parts.len()) {
+    let error = match (typed.trim().is_empty(), parts.len()) {
         (true, _) => Some("Enter the address of the support engineer's ground station."),
+        // A view's arguments are split on commas, so a typed comma arrives here as a second
+        // argument and the first half alone could answer valid. The caller cannot tell this
+        // happened; the view can, because it is the only thing that sees the extra argument.
+        _ if args.len() > 1 => Some("An address cannot contain a comma."),
+        _ if parts[0].chars().any(char::is_whitespace) => Some("An address cannot contain a space."),
         (false, 1) => None,
         (false, 2) if parts[0].is_empty() => Some("An address is needed before the colon, or the link's own port is used without one."),
         (false, 2) => match parts[1].parse::<u32>().ok().filter(|port| (1..=65535).contains(port)) {
@@ -257,6 +266,28 @@ mod tests {
             "addHost refuses anything that does not split into exactly two parts, so QGC drops an IPv6 literal with a warning and adds no host at all. A head reading only the LAST colon takes the final group as a port, calls it valid, and the operator is told forwarding is on when no client was ever appended"
         );
         assert_eq!(judged("fe80::1:14550")["valid"], false);
+
+        assert_eq!(
+            judged("two words:14550")["valid"],
+            false,
+            "_getIpAddress cannot resolve an address with a space, so addHost returns at UDPLink.cc:167 without appending a client - the page reports forwarding started and nothing is forwarded. Measured on the Android device against a fresh library, and it is the same defect as the placeholder reaching port 0, arriving through the served verdict instead of a head's own rule"
+        );
+        assert_eq!(judged("has space.org")["valid"], false, "and with no colon either, because the bare-host path resolves the same name");
+        assert_eq!(
+            judged("host:14 550")["error"],
+            "The part after the colon has to be a port number between 1 and 65535.",
+            "the whitespace rule reads only the address half, so a space in the PORT half falls through to the port parse - which refuses it. This is the seam between two rules rather than the inside of either, and it is pinned so neither can be tightened into covering the other's case or loosened into covering neither"
+        );
+        assert_eq!(
+            judged("  padded:14550")["valid"],
+            false,
+            "this asserted TRUE until the Android session probed it against a fresh library: LinkManager.cc:942 hands the stored value to addHost untrimmed, QHostInfo::fromName cannot resolve a name with a leading space, and UDPLink.cc:166 returns without appending a client. Trimming here judged a string QGC never uses - the verdict has to be about the value that will be dialled, not a cleaned copy of it"
+        );
+        assert_eq!(
+            support_host_view(&Nothing, &["a".to_string(), "b:14550".to_string()])["valid"],
+            false,
+            "a view's arguments are split on commas, so a typed comma arrives as a second argument and the first half alone would answer valid. The caller cannot see that its string was truncated; this view can, because the extra argument is the evidence"
+        );
         assert_eq!(
             judged(":14550")["valid"],
             false,
