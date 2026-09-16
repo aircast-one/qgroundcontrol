@@ -8787,7 +8787,7 @@ name, since a name-grep on this head is clean by construction.
 | `GCSControlIndicator` | exists - built today, `e816a293d` |
 | `MultiVehicleSelector` | exists - the picker sheet |
 | `APMSupportForwardingIndicator` | exists, placed differently - `view.links.supportForwarding` in `RemoteSupportScreen.kt` (source-checked, not device-checked) |
-| `LinkIndicator` | not applicable - `showIndicator: false` in Qt, it draws nothing |
+| `LinkIndicator` | exists - `StatusStrip.kt:121` draws "2 links", degrading to "1 link lost"; witnessed, see below |
 | `GimbalIndicator` | missing, `view.gimbal` served and unread |
 | `JoystickIndicator` | missing, `view.joystick` served and unread |
 | `RTKGPSIndicator` | missing, `view.gpsRtkBase` served and unread |
@@ -8808,6 +8808,39 @@ target opening a detail popup. Two taps are confirmed on this head - the vehicle
 chip opens the picker, the mode chip opens the picker - and the rest are
 unverified. A second pass should check the popups, because a reading without its
 detail is half the indicator.
+
+**Correction, same day, twice: `LinkIndicator` is neither dead in Qt nor missing
+here.** I read
+`property bool showIndicator: false` at `LinkIndicator.qml:25` and stopped there.
+`updateComboModel()` sets `showIndicator = _rgLinkNames.length > 1` at `:40`, and
+runs on completion and on every change of `linkNames` or `linkStatuses` - so it
+draws whenever one vehicle is reachable over more than one link. The default
+initialiser was the first thing a grep for `showIndicator` returned and it read
+like the answer.
+
+**And the head has had it all along.** `view.vehicleLinks` serves the vehicle's
+own links with `primary` and `commLost` per entry, and `StatusStrip.kt:121` draws
+a cell for them - `linkCell` returns nothing below two links, which is why every
+previous dump of the strip showed no such cell and why the audit's first pass
+called it absent. **A one-link rig cannot tell a missing reading from one whose
+condition has never been met.**
+
+Witnessed by giving the fake a second radio - `SECOND_PORT=14561` against a
+second `udptcp.py` on `RIG_TCP_PORT=5772`, both reversed to the emulator:
+
+| state | strip |
+|---|---|
+| one link | no cell |
+| two links, both live | `2 links` |
+| two links, one gone quiet (`SECOND_PORT_SECONDS=120`) | `1 link lost`, in caution colour |
+
+**The two ways a link fails do not look the same, and only one of them is a
+reading.** Killing the relay *closes* the TCP connection, and QGC removes that
+link from the vehicle entirely - `linkNames` drops to one entry and the cell
+disappears, so a dead radio reads exactly like a rig that only ever had one.
+`SECOND_PORT_SECONDS` is the other failure: the connection stays open and stops
+carrying MAVLink, which is what sets `commLost` and produces "1 link lost". A
+check that kills the transport tests the wrong failure.
 
 **So the toolbar audit produces no immediate Fly work**, which is the useful
 answer: the strip is at parity apart from one open decision and four fields the
