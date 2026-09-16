@@ -69,6 +69,10 @@ DEBIAN_FRONTEND=noninteractive apt-get -y --quiet install \
 DEBIAN_FRONTEND=noninteractive apt-get -y --quiet install \
     libunwind-dev
 
+DEBIAN_FRONTEND=noninteractive apt-get -y --quiet install \
+    libusb-1.0-0-dev \
+    libsodium-dev
+
 # GStreamer
 DEBIAN_FRONTEND=noninteractive apt-get -y --quiet install \
     libgstreamer1.0-dev \
