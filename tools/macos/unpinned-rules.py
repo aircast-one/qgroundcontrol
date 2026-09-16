@@ -20,9 +20,10 @@ moving, and every entry carries why. An entry that stops matching is reported: a
 decays exactly like an assertion.
 
 This does NOT floor the finding count. A floor on a number that should fall is an instrument
-that weakens as what it measures improves. It floors the SUBJECT instead -- the uncompiled
-file list and the raw hit count -- because a sweep whose subject came back empty reports zero
-findings and looks identical to a clean run.
+that weakens as what it measures improves. It floors NOTHING, in the end: both numbers
+it was tempting to floor -- the hit count and the uncompiled file list -- fall as the work lands,
+so a floor under either refuses on success. Both guards are controls against known samples
+instead, which is a property of the instrument and cannot decay.
 
 Prints one summary line so it can stand in the gate without burying it, and FAILS only on a
 stale acceptance. The findings themselves are triage, not a gate: pass --list to read them.
@@ -62,7 +63,14 @@ ACCEPTED = {
         "it in a compiled file would assert a Qt method spelling this head does not own",
 }
 
-FLOOR_UNCOMPILED = 40
+# Not a floor either, and for the same reason the hit count is not one. The uncompiled list
+# SHRINKS as this port succeeds -- every file swift-checks learns to compile leaves it -- so a
+# number under it would refuse on the migration working. The first version floored it at 40 and
+# its own refusal message said to RAISE the floor when swift-checks compiles more, which is
+# backwards: compiling more makes this smaller. What the guard is for is that the parse of
+# swift-checks' file list worked at all, and that is checked against files whose side is known.
+COMPILED_CONTROL = ("MeasureModel.swift", "SettingsPages.swift")
+UNCOMPILED_CONTROL = ("PlanWindow.swift", "FlyWindow.swift")
 
 # NOT a floor on the hit count. The first version of this floored it at 50 and refused at 49,
 # because the number falls as the work lands -- flooring it asserts "the corpus still has enough
@@ -76,9 +84,14 @@ CONTROL_MISSES = '    Text(value ?? "Not reported")'
 TERNARY = re.compile(r'(?<![?\w.])\?(?!\?)\s*("(?:[^"\\]|\\.)*")')
 
 
-def compiled_files(checks: str, every: list[str]) -> set[str]:
-    named = set(re.findall(r'macos/Sources/([A-Za-z0-9_]+\.swift)', checks))
-    return named | {name for name in every if 'Model' in name}
+# Only what swift-checks NAMES in its swiftc invocation counts as compiled. Treating every
+# *Model*.swift as compiled was the first version, and it was worse than redundant: all 73 of them
+# are named anyway, so it changed no outcome, while quietly asserting that a Model file is
+# compiled BECAUSE OF ITS NAME. A new one nobody adds to that invocation is not compiled, and the
+# glob would have classed it compiled and skipped its rules in silence. The naming convention is
+# now checked rather than trusted -- see unnamed_models.
+def compiled_files(checks: str) -> set[str]:
+    return set(re.findall(r'macos/Sources/([A-Za-z0-9_]+\.swift)', checks))
 
 
 def main() -> int:
@@ -90,12 +103,21 @@ def main() -> int:
         print(f"{src} holds no .swift file, so this has measured nothing rather than found "
               "nothing", file=sys.stderr)
         return 2
-    uncompiled = [name for name in every if name not in compiled_files(checks, every)]
-    if len(uncompiled) < FLOOR_UNCOMPILED:
-        print(f"only {len(uncompiled)} uncompiled files, floored at {FLOOR_UNCOMPILED}: either "
-              "swift-checks now compiles far more (raise the floor in that commit) or the parse "
-              "of its file list broke and this run is measuring almost nothing", file=sys.stderr)
+    compiled = compiled_files(checks)
+    unnamed_models = [name for name in every if 'Model' in name and name not in compiled]
+    if unnamed_models:
+        print("swift-checks does not compile " + ", ".join(unnamed_models)
+              + ", so a rule in one is unpinned while its NAME says otherwise. Add it to the "
+              "swiftc invocation, or take the word Model out of the file name", file=sys.stderr)
+        return 1
+    missorted = ([name for name in COMPILED_CONTROL if name not in compiled]
+                 + [name for name in UNCOMPILED_CONTROL if name in compiled])
+    if missorted:
+        print(f"the compiled/uncompiled split put {', '.join(missorted)} on the wrong side, so "
+              "the parse of swift-checks' file list is broken and every finding below is about "
+              "the wrong set of files", file=sys.stderr)
         return 2
+    uncompiled = [name for name in every if name not in compiled]
 
     found = [(name, number, line.strip(), match.group(1).strip('"'))
              for name in uncompiled
