@@ -319,6 +319,12 @@ QJsonValue variantJson(const QVariant &value)
         const QSize size = value.toSize();
         return size.isValid() ? QJsonValue(QJsonObject { { QStringLiteral("width"), size.width() }, { QStringLiteral("height"), size.height() } }) : QJsonValue();
     }
+    case QMetaType::QRectF: {
+        const QRectF rect = value.toRectF();
+        return rect.isValid()
+            ? QJsonValue(QJsonObject { { QStringLiteral("x"), rect.x() }, { QStringLiteral("y"), rect.y() }, { QStringLiteral("width"), rect.width() }, { QStringLiteral("height"), rect.height() } })
+            : QJsonValue();
+    }
     default:
         break;
     }
