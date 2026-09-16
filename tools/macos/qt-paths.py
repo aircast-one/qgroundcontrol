@@ -362,6 +362,21 @@ def main():
           f"argument is expanded when a const val NAME names a root path")
     print()
     print(f"  served (view.*)      {len(served):4}   distinct, the migration's numerator")
+    # An entry that can never match is not idle, it is a WARNING SILENTLY SWITCHED OFF -- and the
+    # number it qualifies then moves in the flattering direction, because a head migrating onto a
+    # still-gated view reads as progress. The list is checked against what the core SERVES rather
+    # than against what this head reads: an entry matching no read is armed and waiting, which is
+    # the point of it, while an entry matching no served view can never fire again. Only the
+    # second is a fault, and nothing told them apart until this ran.
+    core = subprocess.run(["git", "show", "HEAD:core-rs/src/view.rs"], capture_output=True, text=True)
+    if core.returncode != 0:
+        print("  CANNOT CHECK core-rs/src/view.rs is unreadable, so whether every HUB-GATED entry "
+              "still names a view is unmeasured rather than clean")
+    else:
+        names = {path.split(".", 1)[1] for path in re.findall(r'"(view\.[A-Za-z0-9_]+)"', core.stdout)}
+        for absent in sorted(HUB_GATED - names):
+            print(f"  UNREACHABLE GATE {absent!r} is listed as hub-gated and the core serves no view "
+                  f"of that name, so the warning it carries can never fire again")
     gated = sorted(v for v in served if v.split(".")[1] in HUB_GATED)
     if gated:
         print(f"  ...of which HUB-GATED {len(gated):4}   these answer NOTHING in a default build, because the store "
