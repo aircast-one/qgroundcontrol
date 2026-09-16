@@ -365,6 +365,7 @@ endfunction()
 find_gstreamer_component(Core gstreamer-1.0)
 find_gstreamer_component(Base gstreamer-base-1.0)
 find_gstreamer_component(Video gstreamer-video-1.0)
+find_gstreamer_component(App gstreamer-app-1.0)
 find_gstreamer_component(Gl gstreamer-gl-1.0)
 find_gstreamer_component(GlPrototypes gstreamer-gl-prototypes-1.0)
 find_gstreamer_component(Rtsp gstreamer-rtsp-1.0)
@@ -432,6 +433,7 @@ if(GStreamer_FOUND AND NOT TARGET GStreamer::GStreamer)
             GStreamer::Core
             GStreamer::Base
             GStreamer::Video
+            GStreamer::App
             GStreamer::Gl
             GStreamer::GlPrototypes
             GStreamer::Rtsp

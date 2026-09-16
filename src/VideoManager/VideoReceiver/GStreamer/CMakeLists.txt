@@ -7,7 +7,7 @@ if(QGC_ENABLE_GST_VIDEOSTREAMING)
         # So for now we hack in a simple hardwired setup which does work
         find_package(GStreamer
             REQUIRED
-            COMPONENTS Core Base Video Gl GlPrototypes Rtsp
+            COMPONENTS Core Base Video App Gl GlPrototypes Rtsp
             OPTIONAL_COMPONENTS GlEgl GlWayland GlX11)
     endif()
 
