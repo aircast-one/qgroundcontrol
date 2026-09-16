@@ -20,7 +20,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "one.aircast.android"
+        applicationId = System.getenv("AIRCAST_APPLICATION_ID") ?: "one.aircast.android"
         minSdk = 28
         targetSdk = 34
         versionCode = (System.getenv("AIRCAST_VERSION_CODE") ?: "1").toInt()
