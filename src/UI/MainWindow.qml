@@ -400,7 +400,7 @@ ApplicationWindow {
                             Layout.fillWidth:   true
                             text:               qsTr("Close %1").arg(QGroundControl.appName)
                             imageResource:      "/res/cancel.svg"
-                            visible:            mainWindow.visibility === Window.FullScreen
+                            visible:            mainWindow.visibility === Window.FullScreen || ScreenTools.isAndroid
                             onClicked: {
                                 if (mainWindow.allowViewSwitch()) {
                                     mainWindow.finishCloseProcess()

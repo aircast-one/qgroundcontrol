@@ -40,6 +40,8 @@ Item {
         if (ScreenTools.fakeMobile) {
             window.width = ScreenTools.screenWidth
             window.height = ScreenTools.screenHeight
+        } else if (ScreenTools.isAndroid) {
+            window.showMaximized();
         } else if (ScreenTools.isMobile) {
             window.showFullScreen();
         } else if (QGroundControl.corePlugin.options.enableSaveMainWindowPosition) {
