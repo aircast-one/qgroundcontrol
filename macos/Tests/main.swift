@@ -3507,6 +3507,24 @@ func checkAltitudeMode() {
 
 checkAltitudeMode()
 
+func checkTheTwoSpellingsOfNothingHere() {
+    expect(Measure.rowValue(""), Measure.unread, "an empty value is a sentence, not a blank")
+    expect(Measure.rowValue("3.2 V"), "3.2 V", "and anything reported is drawn as it came")
+    expect(Measure.rowValue(Measure.unread), Measure.unread,
+           "a served value that READS like the placeholder passes through unchanged")
+    expect(!Measure.rowReported(""), "nothing reported is the empty input")
+    expect(Measure.rowReported(Measure.unread),
+           "and a vehicle that reported the literal phrase \"Not reported\" HAS reported -- the "
+           + "core serves exactly this as camera storageText, so a row deciding its colour by "
+           + "comparing what it DREW against the placeholder would grey out a real answer. This is "
+           + "the input that separates asking the value from asking the text")
+    expect(Measure.unread != Measure.unreported,
+           "the dash and the sentence stay apart: the dash belongs in a column of numbers where a "
+           + "word breaks the alignment, the sentence in a row whose value is arbitrary text where "
+           + "a dash reads as the answer")
+}
+checkTheTwoSpellingsOfNothingHere()
+
 func checkThePluralsThatLivedAtUncompiledCallSites() {
     expect(VibrationReading.clipText(1), "1 clip", "one clip is singular")
     expect(VibrationReading.clipText(0), "0 clips", "none is plural, which is where a rule written "
@@ -5822,7 +5840,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2178
+let assertionFloor = 2184
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

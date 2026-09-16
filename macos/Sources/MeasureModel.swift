@@ -4,6 +4,22 @@ enum Measure {
     static let defaultUnits = "m"
     static let unreported = "\u{2014}"
 
+    // Two spellings of "nothing here", apart on purpose and until now held apart by nothing.
+    // unreported is a DASH and belongs where the value is a MEASUREMENT sitting in a column of
+    // numbers -- an altitude, a signal level, a duration -- where a word breaks the alignment the
+    // column exists for. unread is a SENTENCE and belongs in a label/value row whose value is
+    // arbitrary text, where a dash reads as the answer rather than as its absence. Both were
+    // spelled at call sites in files swift-checks does not compile, and the two rows using the
+    // sentence had each spelled it independently.
+    static let unread = "Not reported"
+
+    static func rowValue(_ value: String) -> String { value.isEmpty ? unread : value }
+
+    // Asks the INPUT, never the printed text. The core serves the literal phrase "Not reported"
+    // as camera storageText, so a row that decided its colour by comparing what it drew against
+    // unread would grey out a real answer the vehicle gave.
+    static func rowReported(_ value: String) -> Bool { !value.isEmpty }
+
     static func fieldText(_ value: Double?, _ decimals: Int) -> String {
         guard let value, value.isFinite else { return "" }
         return String(format: "%.\(decimals)f", value)

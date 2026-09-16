@@ -131,8 +131,8 @@ struct PacketRadioSection: View {
         HStack {
             Text(label).foregroundColor(.secondary)
             Spacer()
-            Text(value.isEmpty ? "Not reported" : value)
-                .foregroundColor(value.isEmpty ? .secondary : .primary)
+            Text(Measure.rowValue(value))
+                .foregroundColor(Measure.rowReported(value) ? .primary : .secondary)
         }
         .padding(.vertical, 4)
     }
