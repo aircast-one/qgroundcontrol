@@ -47,4 +47,40 @@ class RemoteSupportScreenTest {
         )
         assertEquals(true, german.valueIsOffTheEnumList)
     }
+
+    @Test
+    fun `a host QGC would refuse outright is not usable`() {
+        assertEquals(
+            "UDPConfiguration::addHost splits on every colon and returns without adding a " +
+                "host when the result is not exactly two parts, so an IPv6 literal forwards " +
+                "nowhere while the head reports forwarding is on",
+            false,
+            supportHostIsUsable("::1"),
+        )
+        assertEquals(false, supportHostIsUsable("fe80::1:14550"))
+    }
+
+    @Test
+    fun `a trailing colon is not a usable host`() {
+        assertEquals(
+            "\"host:\" splits into two parts whose second is empty, and toUInt() makes that " +
+                "port 0 - QGC adds a client that can never receive",
+            false,
+            supportHostIsUsable("10.0.0.4:"),
+        )
+    }
+
+    @Test
+    fun `a port with no address forwards nowhere`() {
+        assertEquals(false, supportHostIsUsable(":14550"))
+    }
+
+    @Test
+    fun `the plain and ported forms both still pass`() {
+        assertEquals(true, supportHostIsUsable("support.ardupilot.org"))
+        assertEquals(true, supportHostIsUsable("10.0.0.4:14550"))
+        assertEquals(true, supportHostIsUsable("10.0.0.4:1"))
+        assertEquals(false, supportHostIsUsable("10.0.0.4:0"))
+        assertEquals(false, supportHostIsUsable("10.0.0.4:65536"))
+    }
 }

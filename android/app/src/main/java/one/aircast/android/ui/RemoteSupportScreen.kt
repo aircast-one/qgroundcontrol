@@ -29,8 +29,14 @@ internal fun supportHostIsUsable(host: String): Boolean {
     if (host.isBlank() || host.contains(' ')) {
         return false
     }
-    val port = host.substringAfterLast(':', "")
-    return port.isEmpty() || port.toIntOrNull()?.let { it in 1..65535 } == true
+    if (!host.contains(':')) {
+        return true
+    }
+    val parts = host.split(':')
+    if (parts.size != 2) {
+        return false
+    }
+    return parts[0].isNotBlank() && parts[1].toIntOrNull()?.let { it in 1..65535 } == true
 }
 
 @Composable
