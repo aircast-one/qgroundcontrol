@@ -687,7 +687,11 @@ def main():
                     print("CMD %d %s" % (message.command, " ".join(
                         "p%d=%.2f" % (n, getattr(message, "param%d" % n, 0.0))
                         for n in range(1, 8))), flush=True)
-                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                    # The ack has to come from the component the command was addressed to.
+                    # Sent from the autopilot it is never matched, and QGC tells the operator
+                    # the vehicle did not respond while the camera is visibly tracking.
+                    links.get(message.target_component, link).command_ack_send(
+                        message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG":
                     print("CMD %d %s" % (message.command, " ".join(
                         "p%d=%.2f" % (n, getattr(message, "param%d" % n, 0.0))
