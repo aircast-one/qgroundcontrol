@@ -727,6 +727,54 @@ mod deps_cover_reads {
     }
 
     #[test]
+    fn no_view_holds_a_lock_across_a_call_into_the_backend() {
+        let held_across_a_backend_call = |body: &str| -> Vec<usize> {
+            body.match_indices("= lock();")
+                .filter_map(|(at, _)| {
+                    let line_start = body[..at].rfind('\n').map_or(0, |n| n + 1);
+                    let indent = body[line_start..at].len() - body[line_start..at].trim_start().len();
+                    let name = body[line_start..at].trim().trim_start_matches("let ").trim_start_matches("mut ").trim();
+                    let scope_start = body[at..].find('\n').map_or(body.len(), |n| at + n + 1);
+                    let scope_end = body[scope_start..]
+                        .match_indices('\n')
+                        .map(|(n, _)| scope_start + n + 1)
+                        .find(|start| {
+                            let line = &body[*start..];
+                            let content = line.trim_start();
+                            !content.is_empty() && line.len() - content.len() < indent
+                        })
+                        .unwrap_or(body.len());
+                    let scope = &body[scope_start..scope_end];
+                    let live = match scope.find(&format!("drop({name})")) {
+                        Some(cut) => &scope[..cut],
+                        None => scope,
+                    };
+                    (live.contains("backend.") || live.contains("(backend") || live.contains("(&backend")).then(|| body[..at].matches('\n').count() + 1)
+                })
+                .collect()
+        };
+
+        const CAUGHT: &str = "fn v(backend: &dyn Backend) {\n    let mut g = lock();\n    g.set(read(backend));\n}\n";
+        const RELEASED: &str = "fn v(backend: &dyn Backend) {\n    let mut g = lock();\n    g.tick();\n    drop(g);\n    read(backend);\n}\n";
+        assert_eq!(held_across_a_backend_call(CAUGHT).len(), 1, "the scanner has to catch the shape it is about, or the clean result below means nothing");
+        assert!(held_across_a_backend_call(RELEASED).is_empty(), "a guard dropped before the call is the fix, and flagging it would make the rule unfollowable");
+
+        let offenders: Vec<String> = MODULES
+            .iter()
+            .filter_map(|(name, source)| {
+                let body = source.split("#[cfg(test)]").next()?;
+                let lines = held_across_a_backend_call(body);
+                (!lines.is_empty()).then(|| format!("{name}.rs:{lines:?}"))
+            })
+            .collect();
+
+        assert!(
+            offenders.is_empty(),
+            "a guard held across a backend call is a deadlock, not a slow path: off the Qt thread every backend call blocks until Qt services it, and Qt reaches these same views through Watcher::_notified, so the two wait on each other and every bridge read, write and invoke is dead for the life of the process. gcsposition and adsb both shipped this and no unit test could see it, because the test backend answers without blocking. {offenders:?}"
+        );
+    }
+
+    #[test]
     fn a_path_a_view_builds_with_format_is_under_something_it_watches() {
         const UNVERIFIABLE: &[&str] = &["vehicle", "settings", "plan", "vehicles"];
 
@@ -744,8 +792,19 @@ mod deps_cover_reads {
 
         let under = |prefix: &str, path: &str| path == prefix || path.starts_with(&format!("{prefix}."));
 
-        let seen: usize = MODULES.iter().filter_map(|(_, source)| Some(prefixes(source.split("#[cfg(test)]").next()?).len())).sum();
-        assert!(seen > 5, "the parser found only {seen} constructed reads with a literal prefix, so a clean result would mean nothing");
+        assert_eq!(
+            prefixes(r#"backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS)"#),
+            vec!["vehicles.vehicles".to_string()],
+            "the parser has to find the shape this test is about, or a clean result below means nothing"
+        );
+        assert!(
+            prefixes(r#"backend.get(&format!("vehicles.count"))"#).is_empty(),
+            "a format! with nothing interpolated is a literal read, not a constructed one"
+        );
+        assert!(
+            prefixes(r#"backend.get(&format!("{root}.count"))"#).is_empty(),
+            "a prefix that is entirely interpolated names no object, so there is nothing to check it against"
+        );
 
         let unwatched: Vec<String> = MODULES
             .iter()

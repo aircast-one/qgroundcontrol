@@ -372,12 +372,12 @@ pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
     position.stamped_ms = stamped;
     position.last_report_ms = stamped.or(position.last_report_ms);
     let mut snapshot = position.snapshot(wall);
-    let separation = position
-        .usable(wall)
-        .then(|| (position.latitude, position.longitude))
-        .and_then(|(latitude, longitude)| latitude.zip(longitude))
-        .zip(live_vehicle(backend))
-        .map(|(gcs, vehicle)| crate::track::distance_m(gcs, vehicle));
+    // Every backend call blocks until the Qt thread services it, and the Qt thread reaches this
+    // same view through Watcher::_notified, so a guard held across one is a deadlock that wedges
+    // every bridge read for the life of the process rather than a slow path.
+    let fix = position.usable(wall).then(|| position.latitude.zip(position.longitude)).flatten();
+    drop(position);
+    let separation = fix.zip(live_vehicle(backend)).map(|(gcs, vehicle)| crate::track::distance_m(gcs, vehicle));
     let unit = crate::read::Unit::horizontal(backend);
     snapshot["distanceToVehicleMeters"] = json!(separation);
     snapshot["distanceToVehicle"] = json!(separation.map(|metres| unit.show(metres)));

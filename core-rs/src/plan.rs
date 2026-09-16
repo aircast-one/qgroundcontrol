@@ -189,16 +189,40 @@ fn status_text(name: Option<&str>, dirty: bool, offline: bool, has_items: bool) 
 #[cfg(test)]
 mod tests {
 
+    fn declared(name: &str, value: f64, shown: &str, units: &str) -> Value {
+        const APP: &str = include_str!("../../src/Settings/App.SettingsGroup.json");
+        let facts: Vec<Value> = serde_json::from_str::<Value>(APP).unwrap()["QGC.MetaData.Facts"].as_array().cloned().unwrap();
+        let fact = facts.iter().find(|f| f["name"] == json!(name)).unwrap_or_else(|| panic!("{name} is not declared in App.SettingsGroup.json"));
+        json!({
+            "kind": "fact", "name": name, "value": value, "valueString": shown, "units": units,
+            "min": fact["min"], "minIsDefaultForType": fact.get("min").is_none(),
+            "max": fact.get("max").cloned().unwrap_or(json!(f64::MAX)), "maxIsDefaultForType": fact.get("max").is_none(),
+            "decimalPlaces": fact["decimalPlaces"],
+        })
+    }
+
+    #[test]
+    fn none_of_the_three_plan_defaults_declares_a_ceiling() {
+        const APP: &str = include_str!("../../src/Settings/App.SettingsGroup.json");
+        let facts: Vec<Value> = serde_json::from_str::<Value>(APP).unwrap()["QGC.MetaData.Facts"].as_array().cloned().unwrap();
+        let named = |name: &str| facts.iter().find(|f| f["name"] == json!(name)).unwrap_or_else(|| panic!("{name} is not declared in App.SettingsGroup.json"));
+
+        ["defaultMissionItemAltitude", "offlineEditingCruiseSpeed", "offlineEditingHoverSpeed"].iter().for_each(|name| {
+            assert!(
+                named(name).get("max").is_none(),
+                "{name} now declares a max, so view.plan.defaults stops serving a null ceiling and the fake in the test below no longer matches what QGC writes - update both together"
+            );
+        });
+    }
+
     #[test]
     fn the_plan_defaults_resolve_their_unit_once_instead_of_per_reader() {
         struct Defaults(&'static str, &'static str);
         impl Backend for Defaults {
             fn get(&self, path: &str) -> String {
-                let speed = |units: &str| json!({ "kind": "fact", "name": "s", "value": 15.0, "valueString": "15.00", "units": units,
-                    "min": 1.0, "minIsDefaultForType": false, "max": 100.0, "maxIsDefaultForType": true, "decimalPlaces": 2 });
+                let speed = |units: &str| declared("offlineEditingCruiseSpeed", 15.0, "15.00", units);
                 match path {
-                    "settings.appSettings.defaultMissionItemAltitude" => json!({ "kind": "fact", "name": "a", "value": 50.0, "valueString": "50", "units": "m",
-                        "min": 0.0, "minIsDefaultForType": false, "max": 1000.0, "maxIsDefaultForType": false, "decimalPlaces": 0 }).to_string(),
+                    "settings.appSettings.defaultMissionItemAltitude" => declared("defaultMissionItemAltitude", 50.0, "50.0", "m").to_string(),
                     "settings.appSettings.offlineEditingCruiseSpeed" => speed(self.0).to_string(),
                     "settings.appSettings.offlineEditingHoverSpeed" => speed(self.1).to_string(),
                     _ => json!({ "kind": "null" }).to_string(),
@@ -215,8 +239,11 @@ mod tests {
         assert_eq!(agreed["altitude"]["units"], "m", "the altitude keeps its own unit; only the two speeds share one");
         assert_eq!(agreed["cruise"]["valueString"], "15.00");
         assert_eq!(agreed["altitude"]["minimum"], 0.0, "the bound travels decoded, so a head does not rebuild FactRange from min and minIsDefaultForType");
-        assert_eq!(agreed["altitude"]["maximum"], 1000.0);
-        assert_eq!(agreed["cruise"]["maximum"], Value::Null, "maxIsDefaultForType means the type's own limit rather than a real one, and offering it as a ceiling invents a rule the setting does not have");
+        assert_eq!(
+            (agreed["altitude"]["maximum"].clone(), agreed["cruise"]["maximum"].clone(), agreed["hover"]["maximum"].clone()),
+            (Value::Null, Value::Null, Value::Null),
+            "App.SettingsGroup.json declares a min on all three and a max on none, so maxIsDefaultForType is the type's own limit rather than a real one and offering it as a ceiling invents a rule the setting does not have. This used to assert the altitude ceiling was 1000, a number the fake invented and QGC has never declared"
+        );
 
         let disagreeing = defaults_json(&Defaults("m/s", "ft/s"));
         assert_eq!(disagreeing["speedUnits"], Value::Null, "two speeds in different units have no shared unit, and picking the first would draw one of them wrong");

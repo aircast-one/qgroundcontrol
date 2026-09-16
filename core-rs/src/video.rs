@@ -297,8 +297,8 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
             .flatten(),
         "tracking": present.then(|| json!({
             "supported": flag(&camera, "hasTracking"),
-            "enabled": flag(&camera, "trackingEnabled"),
-            "active": flag(&camera, "trackingImageStatus"),
+            "requested": flag(&camera, "trackingEnabled"),
+            "reported": flag(&camera, "trackingImageStatus"),
             "shapes": tracking_shapes(integer(&camera, "trackingStatus").unwrap_or(0)),
             "rect": flag(&camera, "trackingImageStatus").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
         })),
@@ -465,7 +465,11 @@ mod tests {
         let rect = json!({ "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 });
 
         let idle = cam(json!({ "hasTracking": true, "trackingStatus": 5, "trackingEnabled": false, "trackingImageStatus": false, "trackingImageRect": rect }));
-        assert_eq!((idle["tracking"]["supported"].clone(), idle["tracking"]["enabled"].clone(), idle["tracking"]["active"].clone()), (json!(true), json!(false), json!(false)));
+        assert_eq!(
+            (idle["tracking"]["supported"].clone(), idle["tracking"]["requested"].clone(), idle["tracking"]["reported"].clone()),
+            (json!(true), json!(false), json!(false)),
+            "requested is QGC's record that it asked for the track and reported is the camera saying it is tracking; they were enabled and active, two near-synonyms for opposite sides of one question, and a reader given only the artifact could not tell which was which"
+        );
         assert_eq!(idle["tracking"]["shapes"], json!(["rectangle"]), "TrackingStatus is a bitmask and the two shape bits say which gestures the camera accepts, so a head offering a drag on a point-only camera is offering a command it will refuse");
         assert_eq!(
             idle["tracking"]["rect"],

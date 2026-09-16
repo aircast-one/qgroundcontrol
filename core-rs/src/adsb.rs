@@ -623,8 +623,13 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let host = value_string(&backend.get(DEPS[1])).trim().to_string();
     let source = port_number(&backend.get(DEPS[2])).filter(|_| !host.is_empty()).map(|port| Source { host, port });
     let now_ms = crate::hub::now_ms();
+    // Read everything the backend owes before taking the guard. Off the Qt thread a backend call
+    // blocks until Qt services it, and Qt reaches this same view through Watcher::_notified, so a
+    // guard held across one wedges every bridge read for the life of the process.
+    let own_report = own(&backend.get(DEPS[3]));
+    let units = Units::read(backend);
     let mut traffic = lock();
-    traffic.observe(own(&backend.get(DEPS[3])));
+    traffic.observe(own_report);
     if traffic.retarget(enabled, source.clone())
         && enabled
         && let Some(source) = source
@@ -633,7 +638,6 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
         std::thread::Builder::new().name("qgc-core-adsb".to_string()).spawn(move || follow(source, generation)).expect("adsb thread");
     }
     traffic.expire(now_ms);
-    let units = Units::read(backend);
     *LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner) = Some(units.clone());
     traffic.snapshot_in(now_ms, &units)
 }

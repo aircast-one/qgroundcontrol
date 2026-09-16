@@ -1374,6 +1374,28 @@ const char *const kViewPaths[] = {
     "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
 };
 
+QList<QByteArray> viewPathsWithFixtures()
+{
+    const QDir bridgeDir = QFileInfo(QString::fromUtf8(__FILE__)).dir();
+    QList<QByteArray> paths;
+    for (const char *path : kViewPaths) {
+        paths.append(QByteArray(path));
+    }
+    struct Fixture { const char *view; const char *relative; };
+    for (const Fixture &fixture : {
+             Fixture { "view.planFile", "../MissionManager/SectionTest.plan" },
+             Fixture { "view.waypointsFile", "../MissionManager/MissionPlanner.waypoints" },
+             Fixture { "view.planFromWaypoints", "../MissionManager/MissionPlanner.waypoints" },
+             Fixture { "view.missionFile", "../MissionManager/100Waypoints.mission" },
+             Fixture { "view.kmlFile", "../MissionManager/PolygonGood.kml" },
+             Fixture { "view.shapeFile", "../Utilities/Shape/polygon.shp" },
+             Fixture { "view.cameraDefinition", "../../src/Camera/camera_definition_example.xml" },
+         }) {
+        paths.append(QStringLiteral("%1(%2)").arg(QString::fromUtf8(fixture.view), QDir::cleanPath(bridgeDir.filePath(QString::fromUtf8(fixture.relative)))).toUtf8());
+    }
+    return paths;
+}
+
 } // namespace
 
 static void _collectJsonDifferences(const QJsonValue &expected, const QJsonValue &actual, const QString &path, QStringList &found)
@@ -1465,16 +1487,9 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
     // guard was written. Each excuse below is a decision; a view that stops matching its reason
     // should be recorded rather than left here.
     static const QMap<QString, QString> kNotRecorded = {
-        { QStringLiteral("view.cameraDefinition"), QStringLiteral("takes a camera definition file path and the recorder has none to give") },
         { QStringLiteral("view.geoTag"), QStringLiteral("takes a telemetry log path plus one timestamp per image") },
-        { QStringLiteral("view.kmlFile"), QStringLiteral("takes a file path") },
-        { QStringLiteral("view.missionFile"), QStringLiteral("takes a file path") },
-        { QStringLiteral("view.planFile"), QStringLiteral("takes a file path") },
-        { QStringLiteral("view.planFromWaypoints"), QStringLiteral("takes a file path") },
-        { QStringLiteral("view.shapeFile"), QStringLiteral("takes a file path") },
         { QStringLiteral("view.terrainTile"), QStringLiteral("takes a file path plus a latitude and longitude") },
         { QStringLiteral("view.tlog"), QStringLiteral("takes a file path") },
-        { QStringLiteral("view.waypointsFile"), QStringLiteral("takes a file path") },
         { QStringLiteral("view.coreVehicle"), QStringLiteral("the core hub is fed only by links the core hosts, and coreLinks is off in the recorder") },
         { QStringLiteral("view.coreGuided"), QStringLiteral("same: no core-hosted vehicle exists to answer for") },
         { QStringLiteral("view.coreMission"), QStringLiteral("same") },
@@ -1487,7 +1502,7 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
     };
 
     QSet<QString> recorded;
-    for (const char *path : kViewPaths) {
+    for (const QByteArray &path : viewPathsWithFixtures()) {
         recorded.insert(QString::fromUtf8(path).section(QLatin1Char('('), 0, 0));
     }
 
@@ -1616,11 +1631,21 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 {
-    QJsonObject offline;
-    for (const char *path : kViewPaths) {
-        offline.insert(QString::fromUtf8(path), shapeOf(take(qgc_bridge_get(path))));
+    const QString checkoutRoot = QDir::cleanPath(QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../..")));
+    const auto stable = [&checkoutRoot](const QString &key) {
+        return QString(key).replace(checkoutRoot, QStringLiteral("<checkout>"));
+    };
+    const QList<QByteArray> owned = viewPathsWithFixtures();
+    QList<const char *> viewPaths;
+    for (const QByteArray &path : owned) {
+        viewPaths.append(path.constData());
     }
-    QList<QJsonObject> states { snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))) };
+
+    QJsonObject offline;
+    for (const char *path : viewPaths) {
+        offline.insert(stable(QString::fromUtf8(path)), shapeOf(take(qgc_bridge_get(path))));
+    }
+    QList<QJsonObject> states { snapshotOfEveryView(viewPaths.constData(), viewPaths.size()) };
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
@@ -1628,11 +1653,11 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     _mockLink->sendStatusTextMessages();
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.messages")).value(QStringLiteral("count")).toInt() >= kMockStatusTextCount, 5000);
 
-    states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
+    states.append(snapshotOfEveryView(viewPaths.constData(), viewPaths.size()));
 
     QJsonObject recorded;
-    for (const char *path : kViewPaths) {
-        const QString key = QString::fromUtf8(path);
+    for (const char *path : viewPaths) {
+        const QString key = stable(QString::fromUtf8(path));
         recorded.insert(key, mergeShapes(offline.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
@@ -1695,22 +1720,15 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     for (int attempt = 0; attempt < 40 && !terrainResolved(); ++attempt) {
         QTest::qWait(500);
     }
-    states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
-    for (const char *path : kViewPaths) {
-        const QString key = QString::fromUtf8(path);
+    states.append(snapshotOfEveryView(viewPaths.constData(), viewPaths.size()));
+    for (const char *path : viewPaths) {
+        const QString key = stable(QString::fromUtf8(path));
         recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
 
     static const QMap<QString, QString> kArgumentsNotRecorded = {
         { QStringLiteral("view.tlog"), QStringLiteral("needs a telemetry log on disk") },
-        { QStringLiteral("view.planFile"), QStringLiteral("needs a plan file on disk") },
-        { QStringLiteral("view.waypointsFile"), QStringLiteral("needs a waypoints file on disk") },
-        { QStringLiteral("view.planFromWaypoints"), QStringLiteral("needs a waypoints file on disk") },
-        { QStringLiteral("view.missionFile"), QStringLiteral("needs a mission file on disk") },
-        { QStringLiteral("view.kmlFile"), QStringLiteral("needs a KML file on disk") },
-        { QStringLiteral("view.shapeFile"), QStringLiteral("needs a shapefile on disk") },
         { QStringLiteral("view.terrainTile"), QStringLiteral("needs a terrain tile on disk") },
-        { QStringLiteral("view.cameraDefinition"), QStringLiteral("needs a camera definition file on disk") },
         { QStringLiteral("view.geoTag"), QStringLiteral("needs a telemetry log and an image directory on disk") },
         { QStringLiteral("view.coreVehicle"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
         { QStringLiteral("view.coreGuided"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
@@ -1725,7 +1743,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     for (const QJsonValue &mode : argumentModes) {
         const QString path = mode.toObject().value(QStringLiteral("path")).toString();
         bool argued = false;
-        for (const char *candidate : kViewPaths) {
+        for (const QByteArray &candidate : owned) {
             argued = argued || QString::fromUtf8(candidate).startsWith(path + QLatin1Char('('));
         }
         const bool accepted = kArgumentsNotRecorded.contains(path);
@@ -1751,7 +1769,13 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         (void) take(qgc_bridge_invoke("links.removeConfiguration", QJsonDocument(QJsonArray { QStringLiteral("@links.linkConfigurations.%1").arg(recorder) }).toJson(QJsonDocument::Compact).constData()));
     }
     recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
-    recorded.insert(QStringLiteral("_neverVaried"), QJsonArray::fromStringList(fieldsThatNeverVaried(states)));
+    {
+        QStringList paths;
+        for (const QString &path : fieldsThatNeverVaried(states)) {
+            paths.append(stable(path));
+        }
+        recorded.insert(QStringLiteral("_neverVaried"), QJsonArray::fromStringList(paths));
+    }
     // 86% of this list was one entry per array INDEX, so a run whose terrain profile resolved a
     // different number of points moved ~1400 lines while nothing about the contract had changed -
     // which is the condition under which a real change hides in a diff nobody can read. The
@@ -1762,13 +1786,19 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     QStringList observed;
     for (const QJsonObject &state : states) {
         for (auto it = state.begin(); it != state.end(); ++it) {
-            observed.append(QString(it.key()).replace(subscript, QStringLiteral("[]")));
+            observed.append(stable(QString(it.key())).replace(subscript, QStringLiteral("[]")));
         }
     }
     observed.removeDuplicates();
     observed.sort();
     recorded.insert(QStringLiteral("_observed"), QJsonArray::fromStringList(observed));
-    recorded.insert(QStringLiteral("_alwaysNull"), QJsonArray::fromStringList(fieldsAlwaysNull(states)));
+    {
+        QStringList paths;
+        for (const QString &path : fieldsAlwaysNull(states)) {
+            paths.append(stable(path));
+        }
+        recorded.insert(QStringLiteral("_alwaysNull"), QJsonArray::fromStringList(paths));
+    }
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
@@ -1828,8 +1858,8 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
              qPrintable(QStringLiteral("these read the same with no vehicle, with one connected and with a plan on it, and they did not before. "
                                        "A value that never varies is not answering the question its name asks: %1").arg(stopped.mid(0, 12).join(QStringLiteral(", ")))));
     QStringList keys;
-    for (const char *path : kViewPaths) {
-        keys.append(QString::fromUtf8(path));
+    for (const QByteArray &path : owned) {
+        keys.append(stable(QString::fromUtf8(path)));
     }
     keys.append(QStringLiteral("view.contract"));
     for (const QString &key : keys) {
