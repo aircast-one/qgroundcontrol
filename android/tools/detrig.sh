@@ -10,10 +10,6 @@ set -u
 
 case "${1:-up}" in
 up)
-    # Guard on the PORT, not the process name. Four sessions share this checkout, so a name
-    # pattern is either too broad (bare "detfeed.py" kills a peer's) or too narrow (anchoring
-    # on "$S/" misses the very same script launched by a relative path, which is how it is
-    # usually started). The contended thing is 8099, and lsof sees it however it was launched.
     if lsof -nP -iTCP:8099 -sTCP:LISTEN >/dev/null 2>&1; then
         echo "REFUSED: something already serves 8099 - this checkout is shared, so it may not be ours:"
         lsof -nP -iTCP:8099 -sTCP:LISTEN | tail -n +2 | sed 's/^/  /'

@@ -4,10 +4,6 @@ S="$(cd "$(dirname "$0")" && pwd)"
 TAG="${1:-run}"
 set -u
 
-# Four sessions share this checkout, so "$S/apmvehicle.py" is the SAME string for all of
-# them and no path anchor separates one session's fake from another's. Killing by pattern
-# here would stop a peer's vehicle mid-run, and a fake that stops sending reads as an
-# unbuilt feature rather than as interference. Refuse instead, and kill only our own PID.
 if pgrep -f "$S/apmvehicle.py" >/dev/null; then
     echo "REFUSED: an apmvehicle.py is already running and this checkout is shared - it may be"
     echo "  another session's. Stop it yourself if it is yours: pkill -f '\$S/apmvehicle.py'"

@@ -453,9 +453,6 @@ def main():
         for name in names:
             if name.endswith(".kt"):
                 bare |= set(BARE_BOOL.findall(open(os.path.join(base, name)).read()))
-    # view.contract.nullableUnwitnessed names paths whose PRODUCER returns an Option even though
-    # the recording could never make the null. _neverVaried says the rig saw one value; only this
-    # says a second one exists. A bare optBoolean on one of these flattens a real null to false.
     unwitnessed = set(witness.get("view.contract", {}).get("nullableUnwitnessed", []))
     lying = sorted(p for p in unwitnessed if p.rsplit(".", 1)[-1] in bare)
     if lying:

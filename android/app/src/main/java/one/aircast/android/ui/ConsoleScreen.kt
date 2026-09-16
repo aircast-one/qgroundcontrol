@@ -38,10 +38,6 @@ import one.aircast.mapspike.optText
 private const val CONSOLE_ROOT = "mavlinkConsole"
 private const val CONSOLE_VIEW = "view.mavlinkConsole"
 
-// The core answers "why is this empty" about the VEHICLE - connected or not - and this screen
-// knows something the core cannot: whether the operator has sent anything yet. Its own wording
-// is better once there is a vehicle, and the core's is the only correct answer when there is
-// not, which this screen never used to give.
 internal fun consoleEmptyText(sent: Boolean, connected: Boolean, servedReason: String): String = when {
     !connected && servedReason.isNotBlank() -> servedReason
     !connected -> "Connect a vehicle to open a shell on its autopilot."
