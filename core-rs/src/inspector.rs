@@ -38,6 +38,14 @@ pub fn shown_rate(rate: i64) -> i64 {
     }
 }
 
+pub fn empty_text(available: bool, any: bool) -> &'static str {
+    match (available, any) {
+        (false, _) => "Connect a vehicle to inspect its MAVLink traffic.",
+        (true, false) => "Waiting for this vehicle's first message\u{2026}",
+        (true, true) => "",
+    }
+}
+
 pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
     let system = crate::read::integer(&object(&backend.get("mavlinkInspector.activeSystem.id")), "value");
@@ -74,10 +82,12 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 .collect()
         })
         .unwrap_or_default();
+    let available = model.get("kind").and_then(Value::as_str) == Some("object");
     json!({
         "kind": "object",
         "class": "MavlinkInspector",
-        "available": model.get("kind").and_then(Value::as_str) == Some("object"),
+        "available": available,
+        "emptyText": empty_text(available, !messages.is_empty()),
         "systemId": system,
         "messages": messages,
         "rateChoices": RATE_CHOICES.iter().map(|r| json!({ "rate": r, "title": rate_title(*r) })).collect::<Vec<_>>(),
@@ -87,6 +97,35 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vehicle_that_has_not_spoken_yet_is_not_a_vehicle_that_is_not_there() {
+        assert_eq!(empty_text(false, false), "Connect a vehicle to inspect its MAVLink traffic.");
+        assert_eq!(
+            empty_text(true, false),
+            "Waiting for this vehicle's first message\u{2026}",
+            "MAVLinkInspectorController connects messageReceived in its constructor, so activeSystem is an object before any frame has been recorded - the head drew that transient as an empty card under a note promising every message the vehicle is sending. I had argued this state was unreachable because a system exists only because it heartbeat; the macOS session measured it and I was wrong"
+        );
+        assert_eq!(empty_text(true, true), "", "a table with rows needs no sentence, and one left behind would sit under a list that contradicts it");
+
+        struct Silent;
+        impl Backend for Silent {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "mavlinkInspector.activeSystem.messages" => json!({ "kind": "object", "elements": [] }).to_string(),
+                    "mavlinkInspector.activeSystem.id" => json!({ "kind": "value", "value": 1 }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let listening = inspector_view(&Silent, &[]);
+        assert_eq!((listening["available"].clone(), listening["messages"].as_array().map(Vec::len)), (json!(true), Some(0)), "the state this is about: a system is there and the table is empty");
+        assert_eq!(listening["emptyText"], "Waiting for this vehicle's first message\u{2026}");
+    }
 
     #[test]
     fn a_dropped_message_does_not_shift_the_indices_after_it() {

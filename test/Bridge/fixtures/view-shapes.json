@@ -4796,6 +4796,7 @@
         "view.guidedTakeoff.unit",
         "view.inspector.available",
         "view.inspector.class",
+        "view.inspector.emptyText",
         "view.inspector.kind",
         "view.inspector.messages.#",
         "view.inspector.messages[].compId",
@@ -7065,6 +7066,7 @@
     "view.inspector": {
         "available": "bool",
         "class": "string",
+        "emptyText": "string",
         "kind": "string",
         "messages": [
             {
