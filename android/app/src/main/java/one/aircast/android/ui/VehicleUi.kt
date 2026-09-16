@@ -419,42 +419,33 @@ fun FlightActions(modifier: Modifier = Modifier) {
             val at = speedSettled ?: return@LaunchedEffect
             probe = withContext(Dispatchers.Default) { guidedSpeed(Qgc.get(guidedSpeedPath(at))) }
         }
-        AlertDialog(
-            onDismissRequest = { speedTarget = null },
-            title = { Text(speedRange?.label ?: "Speed") },
-            text = {
-                Column {
-                    Text(probe?.sentence ?: "")
-                    Slider(
-                        value = target.toFloat(),
-                        onValueChange = { speedTarget = it.toDouble() },
-                        onValueChangeFinished = { speedSettled = speedTarget },
-                        valueRange = (speedRange?.minimum ?: 0.0).toFloat()..
-                            (speedRange?.maximum ?: 0.0).toFloat(),
-                    )
-                    rangeLabel(speedRange?.minimum, speedRange?.maximum, speedRange?.unit.orEmpty())
-                        ?.let { RangeHint(it) }
+        GuidedValuePanel(
+            title = speedRange?.label ?: "Speed",
+            sentence = probe?.sentence ?: "",
+            commitLabel = "Set",
+            commitEnabled = probe != null,
+            onCommit = {
+                speedTarget = null
+                offMainDetached {
+                    val fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target)))
+                    val method = fresh?.command
+                    if (method != null) {
+                        Qgc.invoke("vehicle.$method", fresh.targetMetersSecond)
+                    }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    enabled = probe != null,
-                    onClick = {
-                        speedTarget = null
-                        offMainDetached {
-                            val fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target)))
-                            val method = fresh?.command
-                            if (method != null) {
-                                Qgc.invoke("vehicle.$method", fresh.targetMetersSecond)
-                            }
-                        }
-                    },
-                ) { Text("Set") }
-            },
-            dismissButton = {
-                TextButton(onClick = { speedTarget = null }) { Text("Cancel") }
-            },
-        )
+            onCancel = { speedTarget = null },
+        ) {
+            Slider(
+                value = target.toFloat(),
+                onValueChange = { speedTarget = it.toDouble() },
+                onValueChangeFinished = { speedSettled = speedTarget },
+                valueRange = (speedRange?.minimum ?: 0.0).toFloat()..
+                    (speedRange?.maximum ?: 0.0).toFloat(),
+            )
+            rangeLabel(speedRange?.minimum, speedRange?.maximum, speedRange?.unit.orEmpty())
+                ?.let { RangeHint(it) }
+        }
     }
 
     takeoffTarget?.let { target ->
@@ -463,41 +454,32 @@ fun FlightActions(modifier: Modifier = Modifier) {
             val at = takeoffSettled ?: return@LaunchedEffect
             probe = withContext(Dispatchers.Default) { guidedTakeoff(Qgc.get(guidedTakeoffPath(at))) }
         }
-        AlertDialog(
-            onDismissRequest = { takeoffTarget = null },
-            title = { Text(takeoffRange?.label?.ifBlank { null } ?: "Takeoff") },
-            text = {
-                Column {
-                    Text(probe?.sentence ?: "")
-                    Slider(
-                        value = target.toFloat(),
-                        onValueChange = { takeoffTarget = it.toDouble() },
-                        onValueChangeFinished = { takeoffSettled = takeoffTarget },
-                        valueRange = (takeoffRange?.minimum ?: 0.0).toFloat()..
-                            (takeoffRange?.maximum ?: 0.0).toFloat(),
-                    )
-                    rangeLabel(takeoffRange?.minimum, takeoffRange?.maximum, takeoffRange?.unit.orEmpty())
-                        ?.let { RangeHint(it) }
+        GuidedValuePanel(
+            title = takeoffRange?.label?.ifBlank { null } ?: "Takeoff",
+            sentence = probe?.sentence ?: "",
+            commitLabel = "Take off",
+            commitEnabled = probe != null,
+            onCommit = {
+                takeoffTarget = null
+                offMainDetached {
+                    val fresh = guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))
+                    if (fresh != null) {
+                        Qgc.invoke("vehicle.guidedModeTakeoff", fresh.targetMeters)
+                    }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    enabled = probe != null,
-                    onClick = {
-                        takeoffTarget = null
-                        offMainDetached {
-                            val fresh = guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))
-                            if (fresh != null) {
-                                Qgc.invoke("vehicle.guidedModeTakeoff", fresh.targetMeters)
-                            }
-                        }
-                    },
-                ) { Text("Take off") }
-            },
-            dismissButton = {
-                TextButton(onClick = { takeoffTarget = null }) { Text("Cancel") }
-            },
-        )
+            onCancel = { takeoffTarget = null },
+        ) {
+            Slider(
+                value = target.toFloat(),
+                onValueChange = { takeoffTarget = it.toDouble() },
+                onValueChangeFinished = { takeoffSettled = takeoffTarget },
+                valueRange = (takeoffRange?.minimum ?: 0.0).toFloat()..
+                    (takeoffRange?.maximum ?: 0.0).toFloat(),
+            )
+            rangeLabel(takeoffRange?.minimum, takeoffRange?.maximum, takeoffRange?.unit.orEmpty())
+                ?.let { RangeHint(it) }
+        }
     }
 
     altitudeTarget?.let { target ->
@@ -508,42 +490,33 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 guidedAltitude(Qgc.get(guidedAltitudePath(at, altitudePauses)))
             }
         }
-        AlertDialog(
-            onDismissRequest = { altitudeTarget = null },
-            title = { Text(if (altitudePauses) "Pause" else "Change altitude") },
-            text = {
-                Column {
-                    Text(probe?.sentence ?: "")
-                    Slider(
-                        value = target.toFloat(),
-                        onValueChange = { altitudeTarget = it.toDouble() },
-                        onValueChangeFinished = { altitudeSettled = altitudeTarget },
-                        valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
-                            (altitudeRange?.maximum ?: 0.0).toFloat(),
-                    )
-                    rangeLabel(altitudeRange?.minimum, altitudeRange?.maximum, altitudeRange?.unit.orEmpty())
-                        ?.let { RangeHint(it) }
+        GuidedValuePanel(
+            title = if (altitudePauses) "Pause" else "Change altitude",
+            sentence = probe?.sentence ?: "",
+            commitLabel = if (altitudePauses) "Pause" else "Change",
+            commitEnabled = probe?.sends == true,
+            onCommit = {
+                altitudeTarget = null
+                val pauses = altitudePauses
+                offMainDetached {
+                    val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))
+                    if (fresh?.sends == true) {
+                        Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh.deltaMeters, pauses)
+                    }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    enabled = probe?.sends == true,
-                    onClick = {
-                        altitudeTarget = null
-                        val pauses = altitudePauses
-                        offMainDetached {
-                            val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))
-                            if (fresh?.sends == true) {
-                                Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh.deltaMeters, pauses)
-                            }
-                        }
-                    },
-                ) { Text(if (altitudePauses) "Pause" else "Change") }
-            },
-            dismissButton = {
-                TextButton(onClick = { altitudeTarget = null }) { Text("Cancel") }
-            },
-        )
+            onCancel = { altitudeTarget = null },
+        ) {
+            Slider(
+                value = target.toFloat(),
+                onValueChange = { altitudeTarget = it.toDouble() },
+                onValueChangeFinished = { altitudeSettled = altitudeTarget },
+                valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
+                    (altitudeRange?.maximum ?: 0.0).toFloat(),
+            )
+            rangeLabel(altitudeRange?.minimum, altitudeRange?.maximum, altitudeRange?.unit.orEmpty())
+                ?.let { RangeHint(it) }
+        }
     }
 
     if (showMore) {
