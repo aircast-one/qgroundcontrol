@@ -84,6 +84,11 @@ internal fun silentState(view: JSONObject?): SilentState? {
     )
 }
 
+internal const val PARTIAL_TITLE = "Vibration is only partly reported"
+internal const val PARTIAL_BODY =
+    "This vehicle sent a vibration message with one or more axes missing, so the " +
+        "levels below it would be misleading. Check the autopilot's IMU health."
+
 private const val CONNECT_PROMPT = "Connect a vehicle from the Fly view to see its vibration levels."
 
 internal fun vibrationReading(view: JSONObject?): VibrationReading? {
@@ -220,12 +225,20 @@ private fun EmptyState(message: String, detail: String, modifier: Modifier = Mod
 fun VibrationScreen(modifier: Modifier = Modifier) {
     val view by qgcPath(VIBRATION_VIEW)
     val reading = remember(view) { vibrationReading(view) }
+    val empty = remember(view, reading) { vibrationEmptyState(view, reading) }
 
-    silentState(view)?.let { state ->
-        EmptyState(state.title, state.body, modifier)
-        return
+    if (empty != null) {
+        EmptyState(empty.title, empty.body, modifier)
+    } else if (reading != null) {
+        VibrationBody(reading, modifier)
     }
+}
 
+internal fun vibrationEmptyState(view: JSONObject?, reading: VibrationReading?): SilentState? =
+    silentState(view) ?: reading?.let { null } ?: SilentState(PARTIAL_TITLE, PARTIAL_BODY)
+
+@Composable
+private fun VibrationBody(reading: VibrationReading, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -233,7 +246,7 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = vibrationHeading(reading!!.units),
+            text = vibrationHeading(reading.units),
             style = MaterialTheme.typography.titleSmall,
         )
 
@@ -243,7 +256,7 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
                 .weight(1f),
         ) {
             ScaleAxis(
-                scaleLabels(reading!!.scaleMaximum, reading.warningLevel, reading.dangerLevel),
+                scaleLabels(reading.scaleMaximum, reading.warningLevel, reading.dangerLevel),
                 Modifier.fillMaxHeight(),
             )
             reading.axes.forEach { axis ->

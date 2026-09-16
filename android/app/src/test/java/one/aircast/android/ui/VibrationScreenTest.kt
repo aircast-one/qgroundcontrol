@@ -61,6 +61,34 @@ class VibrationScreenTest {
     }
 
     @Test
+    fun `some axes reported and some not is neither a reading nor a silence`() {
+        val partial = JSONObject(
+            """{"kind":"object","class":"Vibration","connected":true,"available":false,
+               "silentReason":null,"silentText":null,"units":"m/s^2",
+               "axes":[{"axis":"x","label":"X","value":12.0,"fraction":0.13,"severity":"normal"},
+                       {"axis":"y","label":"Y","value":null,"fraction":null,"severity":null},
+                       {"axis":"z","label":"Z","value":null,"fraction":null,"severity":null}]}""",
+        )
+
+        assertNull(
+            "silentReason is set only when NO axis has a value, so a vehicle sending NaN in one " +
+                "axis of a VIBRATION message leaves this null",
+            silentState(partial),
+        )
+        assertNull(
+            "available is all three, so the same view produces no reading - the screen used to " +
+                "read reading!! after a silentState guard and threw on exactly this input",
+            vibrationReading(partial),
+        )
+        assertEquals(
+            "neither half covers it, so the screen has to; a guard that asks silentState alone " +
+                "sends this input to the bars it has no reading for",
+            PARTIAL_TITLE,
+            vibrationEmptyState(partial, vibrationReading(partial))?.title,
+        )
+    }
+
+    @Test
     fun `the scale and the caption are built from the core's own levels`() {
         assertEquals(listOf("90", "60", "30", "0"), scaleLabels(90.0, 30.0, 60.0))
         assertEquals("Under 30 healthy · 30-60 watch · over 60 unsafe", bandCaption(30.0, 60.0))
