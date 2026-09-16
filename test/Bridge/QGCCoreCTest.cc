@@ -8,6 +8,8 @@
 #include "QGCApplication.h"
 #include "QGCHostNotices.h"
 #include "SysStatusSensorInfo.h"
+#include "SettingsManager.h"
+#include "AppSettings.h"
 #include "SettingsFact.h"
 #include "QGCMapUrlEngine.h"
 #include "Vehicle.h"
@@ -1560,6 +1562,25 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
     }
     QVERIFY2(declared.count() > 30, "the metaobjects answered, so an empty sweep below would mean nothing");
     QVERIFY2(declared.contains(QStringLiteral("visible")), "SettingsFact's own properties have to be in the sweep, or a subclass can add one and nothing here notices");
+    // Being on the allowlist is not the same as arriving. variantJson handles the metatypes it
+    // names and falls through to QJsonValue::fromVariant for the rest, which answers null for a
+    // type it cannot convert - so a served property with a perfectly good Qt value reaches a head
+    // as "this field has no value", with nothing anywhere saying otherwise. Five fields hit that
+    // this week, the last being QRectF. The check above asks whether a property is served; this
+    // asks whether serving it produces anything.
+    Fact *const audioMuted = SettingsManager::instance()->appSettings()->audioMuted();
+    QVERIFY(audioMuted);
+    QStringList emptied;
+    for (const QString &name : declared) {
+        const QVariant live = audioMuted->property(name.toUtf8().constData());
+        if (live.isValid() && !live.isNull() && fact.value(name).isNull()) {
+            emptied.append(QStringLiteral("%1 (%2)").arg(name, QString::fromUtf8(live.typeName())));
+        }
+    }
+    QVERIFY2(emptied.isEmpty(),
+             qPrintable(QStringLiteral("these carry a value in Qt and serialise to null, so a head reads them as absent rather than as an error: %1. "
+                                       "variantJson needs a case for the metatype, next to the QSize and QRectF ones")
+                            .arg(emptied.join(QStringLiteral(", ")))));
 
     QStringList missing;
     QStringList stale;

@@ -406,7 +406,12 @@ QJsonObject factJson(Fact *fact)
         // spells "no default" and "defaults to zero" the same way - and emitted 3200 warnings in one
         // suite run doing it.
         const bool skipped = (property == QLatin1String("defaultValueString") || property == QLatin1String("defaultValue")) && !defaultAvailable;
-        json.insert(property, skipped ? QJsonValue() : QJsonValue::fromVariant(fact->property(property.toUtf8().constData())));
+        // variantJson, not QJsonValue::fromVariant: this loop had its own serialisation and so none
+        // of variantJson's metatype cases reached a Fact. A Q_ENUM property would arrive null here
+        // while arriving as its number everywhere else, and the QSize and QRectF cases applied to
+        // every object except this one. variantJson falls through to fromVariant for everything it
+        // does not name, so routing through it can only add conversions.
+        json.insert(property, skipped ? QJsonValue() : variantJson(fact->property(property.toUtf8().constData())));
     }
     return json;
 }
@@ -416,9 +421,9 @@ QJsonObject compactFactJson(Fact *fact)
     return QJsonObject {
         { QStringLiteral("kind"), QStringLiteral("fact") },
         { QStringLiteral("name"), fact->name() },
-        { QStringLiteral("value"), QJsonValue::fromVariant(fact->cookedValue()) },
+        { QStringLiteral("value"), variantJson(fact->cookedValue()) },
         { QStringLiteral("valueString"), fact->cookedValueString() },
-        { QStringLiteral("rawValue"), QJsonValue::fromVariant(fact->rawValue()) },
+        { QStringLiteral("rawValue"), variantJson(fact->rawValue()) },
         { QStringLiteral("units"), fact->cookedUnits() },
     };
 }
