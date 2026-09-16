@@ -49,6 +49,27 @@ struct CameraControl: Equatable {
 
     static let modeBusy = "The camera is capturing. It will not change mode until that finishes."
 
+    // The core's token for an interval capture, spelled ONCE. CaptureStart compares its own
+    // `started` against it too -- a different subject (what one press began, not what mode the
+    // camera is in), the same word off the same wire.
+    static let timelapse = "timelapse"
+    var timelapseMode: Bool { captureMode == CameraControl.timelapse }
+
+    // A shutter that starts an interval capture must not be labelled the same as one that takes a
+    // photo: the label is the last thing an operator reads before pressing it, and an interval
+    // keeps going after the press. Lives here rather than in FlyWindow, which swift-checks does
+    // not compile -- three arms off two of this type's own fields.
+    static let shutterBusy = "Taking\u{2026}"
+    var shutterTitle: String {
+        if isTakingPhoto { return CameraControl.shutterBusy }
+        return timelapseMode ? "Start interval" : "Take photo"
+    }
+
+    // modeBusy was already here and its partner was spelled at the call site, so half the rule sat
+    // where nothing could check it. Both arms now answer from one place.
+    static let modeHelp = "Switch between photo and video"
+    var modeHint: String { canChangeMode ? CameraControl.modeHelp : CameraControl.modeBusy }
+
     static let absent = CameraControl()
 
     private init() {
@@ -194,7 +215,7 @@ struct CaptureStart: Equatable {
         lapseUnlimited = (answer["lapseUnlimited"] as? NSNumber)?.boolValue ?? false
     }
 
-    var timelapse: Bool { started == "timelapse" }
+    var timelapse: Bool { started == CameraControl.timelapse }
 
     // A single photo says nothing: the shot counter moves and the operator watched themselves
     // press it. An interval capture has to announce itself, because it keeps going after the press

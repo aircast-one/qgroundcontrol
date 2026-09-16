@@ -4262,6 +4262,33 @@ func checkCameraControl() {
 
     expect(CameraControl([:]).present == false,
            "an empty answer is no camera rather than a present one with blank fields")
+
+    func shutter(photoMode: String, taking: Bool) -> CameraControl {
+        CameraControl(["present": true as NSNumber, "canPhoto": true as NSNumber,
+                       "photoMode": photoMode, "isTakingPhoto": taking as NSNumber])
+    }
+    expect(shutter(photoMode: "timelapse", taking: false).shutterTitle, "Start interval",
+           "a shutter that STARTS AN INTERVAL must not read like one that takes a photo -- the "
+           + "label is the last thing an operator reads before pressing it, and an interval keeps "
+           + "going after the press")
+    expect(shutter(photoMode: "single", taking: false).shutterTitle, "Take photo",
+           "and a single-shot camera says exactly that")
+    expect(shutter(photoMode: "timelapse", taking: true).shutterTitle,
+           shutter(photoMode: "single", taking: true).shutterTitle,
+           "while a capture is in flight the word is the same either way -- what is happening now "
+           + "beats what pressing again would start")
+
+    let switchable = CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
+                                    "canChangeMode": true as NSNumber])
+    let stuck = CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
+                               "canChangeMode": false as NSNumber])
+    expect(switchable.modeHint, "Switch between photo and video",
+           "the mode tooltip says what the control does when it can be used")
+    expect(stuck.modeHint != switchable.modeHint,
+           "and says why it cannot when it cannot. modeBusy was already pinned here and its "
+           + "PARTNER was spelled at the call site, so half the rule sat where nothing checked it")
+    expect(stuck.modeHint.contains("capturing"),
+           "the refusal names the reason rather than just greying out")
 }
 
     let busy = CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
@@ -6067,7 +6094,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2237
+let assertionFloor = 2243
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
