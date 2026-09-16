@@ -44,6 +44,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -202,6 +203,9 @@ fun AircastShell(quickView: QtQuickView) {
     var popEpoch by remember { mutableIntStateOf(0) }
     var videoExpanded by remember { mutableStateOf(true) }
 
+    val flightActions = remember { movableContentOf { FlightActions() } }
+    val emergencyStop = remember { movableContentOf { PinnedEmergencyStop() } }
+
     val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
@@ -311,7 +315,7 @@ fun AircastShell(quickView: QtQuickView) {
                         keyRow = {
                             VideoSourceLayer()
                             CameraControlLayer()
-                            PinnedEmergencyStop()
+                            emergencyStop()
                         },
                         overlays = {
                             ObstacleReadout()
@@ -320,7 +324,7 @@ fun AircastShell(quickView: QtQuickView) {
                             TrafficReadout()
                             RcControlsLayer()
                         },
-                        actions = { FlightActions() },
+                        actions = { flightActions() },
                     )
                 }
 
@@ -387,7 +391,7 @@ fun AircastShell(quickView: QtQuickView) {
                             .padding(top = VIDEO_INSET_HEIGHT + 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        PinnedEmergencyStop()
+                        emergencyStop()
                         ObstacleReadout()
                         OrbitReadout()
                         FollowMeReadout()
@@ -421,7 +425,7 @@ fun AircastShell(quickView: QtQuickView) {
                             Surface(
                                 Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
                                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                            ) { FlightActions() }
+                            ) { flightActions() }
                         }
                     }
                 }

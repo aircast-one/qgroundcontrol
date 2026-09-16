@@ -255,12 +255,15 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val liveVehicleId by qgcDouble("vehicle.id")
     val vehicleId = liveVehicleId.takeIf { it.isFinite() && it > 0.0 }?.toInt()
 
-    LaunchedEffect(vehicleId) {
+    val deciding = pending != null || speedTarget != null ||
+        takeoffTarget != null || altitudeTarget != null
+
+    LaunchedEffect(vehicleId, deciding) {
         val id = vehicleId ?: return@LaunchedEffect
-        if (popupShownFor == id) return@LaunchedEffect
+        if (popupShownFor == id || deciding) return@LaunchedEffect
         delay(CHECKLIST_POPUP_DELAY_MS)
         val complete = checklistIsComplete(preflight(Qgc.get(PREFLIGHT)), checklistTicked)
-        if (checklistPopupIsDue(true, useChecklist, enforceChecklist, complete)) {
+        if (checklistPopupIsDue(true, useChecklist, enforceChecklist, complete, deciding)) {
             popupShownFor = id
             showChecklist = true
         }

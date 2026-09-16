@@ -90,7 +90,8 @@ internal fun checklistPopupIsDue(
     useChecklist: Boolean,
     enforceChecklist: Boolean,
     complete: Boolean,
-): Boolean = hasVehicle && useChecklist && enforceChecklist && !complete
+    deciding: Boolean = false,
+): Boolean = hasVehicle && useChecklist && enforceChecklist && !complete && !deciding
 
 internal fun checkNeedsTicking(check: PreflightCheck): Boolean = check.verdict == "manual"
 

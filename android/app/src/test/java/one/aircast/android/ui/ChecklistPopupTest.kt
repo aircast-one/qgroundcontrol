@@ -46,6 +46,20 @@ class ChecklistPopupTest {
     }
 
     @Test
+    fun `the popup never opens over a decision in progress`() {
+        assertFalse(
+            "a slide-to-confirm or a value panel is the operator mid-decision; a checklist " +
+                "landing on top of it takes the screen at the worst moment",
+            checklistPopupIsDue(true, useChecklist = true, enforceChecklist = true, complete = false, deciding = true),
+        )
+        assertTrue(
+            "and it is owed once they are done, not cancelled - the effect re-keys on the " +
+                "flag so closing the decision brings it back",
+            checklistPopupIsDue(true, useChecklist = true, enforceChecklist = true, complete = false, deciding = false),
+        )
+    }
+
+    @Test
     fun `the popup is due only when every flag Qt reads is set`() {
         assertTrue(checklistPopupIsDue(true, useChecklist = true, enforceChecklist = true, complete = false))
         assertFalse(
