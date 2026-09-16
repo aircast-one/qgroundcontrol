@@ -7,6 +7,13 @@ says so. These are the ones where drift is silent rather than loud.
 SetupPage.bespoke names every page VehicleSetupWindow's content switch has a case for. A name
 in the switch but not the list is a page that is built and never offered; a name in the list
 but not the switch is a page that is offered and opens on nothing.
+
+HostNotice.Kind decodes the tokens contract.rs declares as the served domain. This one drifts
+SILENTLY IN ONE DIRECTION BY DESIGN: an unrecognised kind decodes to .unknown and is still
+DRAWN, because the core meant to say something and this head not knowing the word is no reason
+to lose the sentence. So a fourth kind renders unclassified and nothing anywhere says a fourth
+kind exists. The served domain is the only thing that can tell me, which is why the core added
+it rather than a view.
 """
 import re
 import sys
@@ -58,4 +65,40 @@ for name in built_but_hidden:
 
 if offered_but_blank or built_but_hidden:
     sys.exit(1)
-print(f"head lists pinned: SetupPage.bespoke matches {len(built)} content switch cases")
+
+def rust_array(path, name):
+    text = read(path)
+    start = text.index(f"{name}: [&str;")
+    return set(re.findall(r'"([^"]+)"', text[text.index("[", text.index("=", start)):
+                                             text.index("]", text.index("=", start)) + 1]))
+
+
+def swift_cases(path, anchor):
+    text = read(path)
+    start = text.index(anchor)
+    return set(re.findall(r'case "([^"]+)"', text[start:text.index("default:", start)]))
+
+
+served = rust_array("core-rs/src/contract.rs", "NOTICE_KINDS")
+decoded = swift_cases("macos/Sources/HostNoticeModel.swift", "init(_ token: String?)")
+
+if not served or not decoded:
+    print("found no tokens on one side, which is a broken reader rather than a clean result",
+          file=sys.stderr)
+    sys.exit(1)
+
+undrawn = sorted(served - decoded)
+invented = sorted(decoded - served)
+for token in undrawn:
+    print(f"the core serves notice kind {token!r} and HostNotice.Kind has no case for it: it "
+          f"decodes to .unknown and is DRAWN unclassified, which is the one drift this head "
+          f"cannot notice on its own", file=sys.stderr)
+for token in invented:
+    print(f"HostNotice.Kind decodes {token!r}, which contract.rs does not serve: a case no "
+          f"reply can select", file=sys.stderr)
+
+if undrawn or invented:
+    sys.exit(1)
+
+print(f"head lists pinned: SetupPage.bespoke matches {len(built)} content switch cases, "
+      f"HostNotice.Kind matches {len(served)} served notice kinds")
