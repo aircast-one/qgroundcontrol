@@ -78,6 +78,8 @@ private const val PLAN_POLL_MS = 700L
 private const val FAILURE_MESSAGE_MS = 2500L
 private const val CONFIRM_TIMEOUT_MS = 5000L
 private val CONTROLS_MAX_HEIGHT = 320.dp
+internal const val SUMMARY_MAX_FRACTION = 0.74f
+
 private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
 
 @Composable
@@ -399,7 +401,10 @@ internal fun MapSpikeScreen(
         )
 
         Column(
-            Modifier.align(Alignment.TopStart).padding(8.dp),
+            // The Follow chip is the TopEnd child of this same Box, so a summary wide enough to
+            // reach it covers it entirely - a long plan cost the operator the control, not just
+            // the space. Stop short of the chip instead of overlapping it.
+            Modifier.align(Alignment.TopStart).padding(8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
@@ -425,6 +430,10 @@ internal fun MapSpikeScreen(
                             )
                         },
                         style = MaterialTheme.typography.bodySmall,
+                        // Yield to the icon rather than crowding it out: without this the text
+                        // takes the whole row and the list affordance vanishes on a long plan,
+                        // leaving a card that is still tappable but no longer looks it.
+                        modifier = Modifier.weight(1f, fill = false),
                     )
                     if (worthListing(allItems)) {
                         Icon(
