@@ -381,8 +381,38 @@ def claimed_actions():
     return claimed
 
 
+def claimed_delta():
+    """The --expect claim, in either spelling, or None.
+
+    The = form was the only one parsed, so `--expect 0` left a bare `0` in argv, the roots
+    filter (which drops anything starting with --) kept it, and the run died with "not a
+    directory: 0". A refusal with the wrong reason, in the tool written to catch checks that
+    report the wrong thing -- and the mirror of the Android counter's fault, where the SPACE
+    form was the parsed one and `--expect=0` was skipped in silence. Both spellings here, and
+    an unparseable claim says so about the FLAG rather than about a directory.
+    """
+    for index, argument in enumerate(sys.argv):
+        raw = None
+        if argument.startswith("--expect="):
+            raw = argument.split("=", 1)[1]
+        elif argument == "--expect":
+            raw = sys.argv[index + 1] if index + 1 < len(sys.argv) else ""
+        if raw is None:
+            continue
+        try:
+            return int(raw)
+        except ValueError:
+            print(f"  REFUSING: --expect wants a signed count of paths, as --expect=-15 or "
+                  f"--expect -15; got {raw!r}. The claim is the delta, never the total.",
+                  file=sys.stderr)
+            sys.exit(2)
+    return None
+
+
 def main():
-    roots = [pathlib.Path(a) for a in sys.argv[1:] if not a.startswith("--")] or [anchored("macos/Sources")]
+    flagged = {index + 1 for index, a in enumerate(sys.argv) if a == "--expect"}
+    roots = [pathlib.Path(a) for index, a in enumerate(sys.argv)
+             if index and not a.startswith("--") and index not in flagged] or [anchored("macos/Sources")]
     missing = [r for r in roots if not r.is_dir()]
     if missing:
         print("not a directory: " + ", ".join(map(str, missing)), file=sys.stderr)
@@ -471,8 +501,12 @@ def main():
         detail = f"  ({templates} interpolated)" if templates else ""
         print(f"  {name:22} {len(found):4}{detail}")
     total = len(literal) + len(template)
-    expected = next((a for a in sys.argv if a.startswith("--expect=")), None)
-    if expected:
+    expected = claimed_delta()
+    # `is not None`, because a claim of ZERO is the commonest one -- it is what a run that
+    # should change nothing asserts -- and `if expected:` skipped it in silence. That was
+    # introduced by the commit fixing the space-form fault, in the tool whose whole subject is
+    # checks that pass without running.
+    if expected is not None:
         # THE STANDING CHECK, MECHANISED. Reconciling this number across two trees proved nothing
         # about the instrument -- it is one instrument run twice. What proves it is a known change
         # moving the count by exactly what changed, and that is a check I have to remember to run
@@ -485,7 +519,7 @@ def main():
                   file=sys.stderr)
             return 2
         moved = total - int(was.group(1))
-        want = int(expected.split("=", 1)[1])
+        want = expected
         if moved != want:
             print(f"  REFUSING: the count moved by {moved:+d} ({was.group(1)} -> {total}) and the "
                   f"change claimed {want:+d}. A conversion that moves the number by anything else "
