@@ -43,6 +43,11 @@ def core_owned() -> set[str]:
     return set(OWNED.findall(listed))
 
 
+def core_serves(path: str) -> bool:
+    """The router's own test, not an approximation of it (`view::owns`, view.rs:217)."""
+    return re.split(r"[.\[]", path, maxsplit=1)[0] == "view"
+
+
 def defined_constants() -> dict[str, str]:
     found: dict[str, str] = {}
     for source in SOURCES:
@@ -65,7 +70,7 @@ def asked() -> list[tuple[str, str]]:
                 if name in constants:
                     hits.append((constants[name], where))
     owned = core_owned()
-    return [(value, where) for value, where in hits if not value.startswith("view.") and value not in owned]
+    return [(value, where) for value, where in hits if not core_serves(value) and value not in owned]
 
 
 def check() -> None:
@@ -77,6 +82,8 @@ def check() -> None:
     owned = core_owned()
     assert "mission.insert" in owned, "the core-owned sweep found nothing, so every core action counts as Qt work"
     assert "vehicle.armed" not in owned, sorted(owned)
+    assert core_serves("view.flyState") and core_serves("view") and core_serves("view[0].x")
+    assert not core_serves("viewfinder.zoom") and not core_serves("vehicle.armed")
 
 
 def main() -> None:
