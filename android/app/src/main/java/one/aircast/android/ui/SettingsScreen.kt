@@ -112,8 +112,34 @@ internal data class SettingsSectionRows(
 
 internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 
+internal val NOT_BUILT_HERE = mapOf(
+    "showMissionItemStatus" to "the terrain profile it hides is always shown here",
+    "displayPresetsTabFirst" to "this head has no presets tab",
+    "enableMultiVehiclePanel" to "this head has no multi-vehicle panel",
+    "valueDisplay" to "the battery reading here is one line, with nothing to choose between",
+    "EnableOnScreenControl" to "this head draws no on-screen gimbal control",
+    "ControlType" to "this head draws no on-screen gimbal control",
+    "CameraVFov" to "only the on-screen gimbal control reads it, and this head has none",
+    "CameraHFov" to "only the on-screen gimbal control reads it, and this head has none",
+    "CameraSlideSpeed" to "only the on-screen gimbal control reads it, and this head has none",
+    "showAzimuthIndicatorOnMap" to "this head draws no gimbal azimuth indicator",
+    "toolbarIndicatorShowAzimuth" to "this head has no toolbar to indicate on",
+    "toolbarIndicatorShowAcquireReleaseControl" to "this head has no gimbal buttons panel",
+    "minZoomLevelDownload" to "this head downloads no offline map tiles",
+    "maxZoomLevelDownload" to "this head downloads no offline map tiles",
+    "maxTilesForDownload" to "this head downloads no offline map tiles",
+    "mapProvider" to "this head draws OpenStreetMap through MapLibre",
+    "mapType" to "this head draws OpenStreetMap through MapLibre",
+    "maxCacheDiskSize" to "this head does not use QGC's tile cache",
+    "maxCacheMemorySize" to "this head does not use QGC's tile cache",
+    "flyViewActionsFile" to "this head has no additional-actions button to load a file for",
+)
+
+internal fun notBuiltHere(fact: Fact): String? = NOT_BUILT_HERE[fact.name]
+
 internal fun inertNote(fact: Fact): String = when {
     !fact.enabled -> fact.disabledReason.ifBlank { "Has no effect yet" }
+    notBuiltHere(fact) != null -> "No effect here - ${notBuiltHere(fact)}"
     else -> "Read-only"
 }
 
@@ -399,7 +425,7 @@ internal fun FactRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                !fact.acceptsWrite -> Column(horizontalAlignment = Alignment.End) {
+                !fact.acceptsWrite || notBuiltHere(fact) != null -> Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = enumLabel(fact),
                         style = MaterialTheme.typography.bodyMedium,
