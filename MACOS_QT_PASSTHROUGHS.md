@@ -158,3 +158,23 @@ but what each path BECAME is the deliverable.**
 | `vehicles.activeVehicleAvailable` | read | passthrough |
 | `video.setNativeRendering` | action | passthrough |
 | `video.switchActiveVideoSource` | action | passthrough |
+
+## Decisions
+
+Measured reasons a path is still here. Preserved across regeneration by
+`tools/macos/passthrough-doc.py`; the table above is not.
+
+- **`vehicles.activeVehicleAvailable` stays — a `BridgeWatch` dependency, not a data read.**
+  It is one coarse signal meaning "the active vehicle appeared or went", and the handler answers
+  it with a full `reload()`. The served views that could replace it are wider: `view.flyState`
+  changes on armed, flying, landing, contactLost and mode, and `view.vehicles` on any field it
+  serves for any vehicle — so either would turn one signal per connection into one per telemetry
+  tick, each firing a plan reload that already costs a ~1s busy window on the Qt thread when the
+  Plan tab opens. **Not a conversion: a request for a narrow watchable signal.** Recorded rather
+  than done, because the cheaper-looking swap is a regression.
+- **`settings.mavlinkSettings.forwardMavlinkAPMSupportHostName`, `settings.packetRadioSettings.deviceName`
+  and `settings.videoSettings.extraVideoSources` stay whole.** Each is read AND written, and
+  `router.set` refuses a view path on write (`router.rs:59`), so routing the read through
+  `view.control(...)` would leave the write spelling the Qt path beside it — one setting, two
+  spellings, which is the drift this migration exists to remove. They move when the core claims
+  the write.
