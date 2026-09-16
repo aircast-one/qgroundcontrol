@@ -197,6 +197,30 @@ fn tracking_shapes(status: i64) -> Vec<&'static str> {
         .collect()
 }
 
+const DESTRUCTIVE_OFFERS: [(&str, &str, &str, bool); 2] = [
+    ("formatStorage", "Format", "Erase every file on the camera's storage. This cannot be undone.", true),
+    ("resetSettings", "Reset", "Put every camera setting back to its factory value. This cannot be undone.", false),
+];
+
+fn destructive_offers(present: bool, reports_storage: bool, recording: bool) -> Value {
+    DESTRUCTIVE_OFFERS
+        .iter()
+        .map(|(id, title, prompt, needs_storage)| {
+            let shown = present && (!needs_storage || reports_storage);
+            let busy = shown && *needs_storage && recording;
+            json!({
+                "id": id,
+                "title": title,
+                "prompt": prompt,
+                "offer": match (shown, busy) { (false, _) => "hidden", (true, true) => "blocked", (true, false) => "ready" },
+                "reason": match busy { true => "The camera is recording.", false => "" },
+                "destructive": true,
+            })
+        })
+        .collect::<Vec<Value>>()
+        .into()
+}
+
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // The only field any head took from vehicle.cameraManager: the switcher needs every camera's
     // name, and this view carried only the current one's. One field short kept a whole Qt path
@@ -279,7 +303,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "rect": flag(&camera, "trackingImageStatus").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
         })),
         "hasZoom": flag(&camera, "hasZoom"),
-        "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(1.0),
+        "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(0.0),
         // VehicleCameraControl.cc:351 and :~300 refuse on terms this gate did not carry, so it was
         // wrong in both directions: a camera that shoots stills in video mode had a working shutter
         // greyed out, and a camera mid-capture had a live button whose tap returns false in silence.
@@ -301,6 +325,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canStopPhoto": present && matches!(photo_status, PHOTO_CAPTURE_INTERVAL_IDLE | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS),
         "hasModes": has_modes,
         "canChangeMode": present && has_modes && can_change_mode(mode, photo_status, video_status),
+        "destructiveActions": destructive_offers(present, storage_status != Some(STORAGE_NOT_SUPPORTED), is_recording),
     })
 }
 
@@ -371,6 +396,63 @@ mod tests {
         );
 
         assert_eq!(cam(json!({ "thermalStreamInstance": { "kind": "object" }, "thermalMode": 9 }))["thermalMode"], Value::Null, "an enumerator the core does not know is not silently the first one");
+    }
+
+    #[test]
+    fn an_unreported_zoom_is_the_value_qgc_itself_would_hold() {
+        let cam = |extra: Value| {
+            let mut c = json!({ "kind": "object", "modelName": "ZR30" });
+            extra.as_object().unwrap().iter().for_each(|(k, v)| { c[k] = v.clone(); });
+            camera_view(&Fake::new(json!({ "kind": "object" }), c), &[])
+        };
+
+        assert_eq!(cam(json!({ "hasZoom": true, "zoomLevel": 4.5 }))["zoomLevel"], json!(4.5));
+        assert_eq!(
+            cam(json!({ "hasZoom": true }))["zoomLevel"],
+            json!(0.0),
+            "VehicleCameraControl.h:268 declares _zoomLevel = 0.0, so a camera that has never reported one reads zero in QGC; serving 1.0 invents a 1x the vehicle never claimed, and the Android head uses its own 0.0 as the zoom-out clamp floor"
+        );
+        assert_eq!(cam(json!({}))["zoomLevel"], json!(0.0), "a camera with no zoom at all is not sitting at 1x either");
+    }
+
+    #[test]
+    fn the_two_camera_actions_that_cannot_be_undone_are_offered_the_way_qgc_offers_them() {
+        let offers = |camera: Value| {
+            camera_view(&Fake::new(json!({ "kind": "object" }), camera), &[])["destructiveActions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| (a["id"].as_str().unwrap().to_string(), a["offer"].as_str().unwrap().to_string(), a["destructive"].as_bool().unwrap()))
+                .collect::<Vec<(String, String, bool)>>()
+        };
+
+        let reporting = offers(json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 2 }));
+        assert_eq!(
+            reporting,
+            vec![("formatStorage".to_string(), "ready".to_string(), true), ("resetSettings".to_string(), "ready".to_string(), true)],
+            "PhotoVideoControl.qml draws both buttons for a camera that reports storage, and both open a confirmation because both are irreversible"
+        );
+
+        let no_storage = offers(json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 3 }));
+        assert_eq!(
+            no_storage.iter().map(|o| o.1.as_str()).collect::<Vec<_>>(),
+            vec!["hidden", "ready"],
+            "PhotoVideoControl.qml:582 gates only Format on _cameraStorageSupported; Reset has no such gate, so hiding both would withhold a control QGC offers"
+        );
+
+        assert_eq!(
+            offers(json!({ "kind": "null" })).iter().map(|o| o.1.as_str()).collect::<Vec<_>>(),
+            vec!["hidden", "hidden"],
+            "there is nothing to format or reset without a camera"
+        );
+
+        let recording = camera_view(&Fake::new(json!({ "kind": "object" }), json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 2, "videoCaptureStatus": 1 })), &[])["destructiveActions"].clone();
+        assert_eq!(
+            (recording[0]["offer"].clone(), recording[0]["reason"].clone()),
+            (json!("blocked"), json!("The camera is recording.")),
+            "cameraproto.rs:713 refuses FormatStorage with Refusal::Busy while recording, so offering it as ready is a success that never happens - the view has to tell the truth about a gate the core already enforces"
+        );
+        assert_eq!(recording[1]["offer"], "ready", "ResetSettings is gated on nothing in either the QML or the protocol, so a recording camera can still be reset");
     }
 
     #[test]
