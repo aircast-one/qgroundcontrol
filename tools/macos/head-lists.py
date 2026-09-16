@@ -100,5 +100,43 @@ for token in invented:
 if undrawn or invented:
     sys.exit(1)
 
+# A settings path spelled in the head is a hand-written reference to a name a tree this head
+# does not own declares. Rename the fact upstream and the read stops resolving -- silently, the
+# way every list in this file rots: the Remote Support host field goes blank, the map-centre
+# toggle stops reflecting, the packet radio device name disappears, and no build breaks.
+# src/Settings/*.json is the producer and is shared three ways, so this READS it and never edits.
+import json
+import pathlib
+
+groups = sorted(pathlib.Path(f"{ROOT}/src/Settings").glob("*.json"))
+declared = set()
+unreadable = []
+for group in groups:
+    try:
+        declared |= {entry.get("name") for entry in
+                     json.loads(group.read_text()).get("QGC.MetaData.Facts", [])
+                     if isinstance(entry, dict)}
+    except (ValueError, OSError) as why:
+        unreadable.append(f"{group.name}: {why}")
+
+spelled = set()
+for source in sorted(pathlib.Path(f"{ROOT}/macos/Sources").glob("*.swift")):
+    spelled |= set(re.findall(r'"settings\.[A-Za-z0-9_]+\.([A-Za-z0-9_]+)"', source.read_text()))
+
+if unreadable or not groups:
+    for why in unreadable:
+        print(f"cannot read {why}", file=sys.stderr)
+    print(f"read {len(groups)} settings group files, so whether the head's settings paths still "
+          f"name a fact is UNMEASURED rather than clean", file=sys.stderr)
+    sys.exit(1)
+
+missing = sorted(spelled - declared)
+for name in missing:
+    print(f"the head spells a settings path ending {name!r} and no file in src/Settings declares "
+          f"a fact of that name: the read resolves to nothing and no build says so", file=sys.stderr)
+if missing:
+    sys.exit(1)
+
 print(f"head lists pinned: SetupPage.bespoke matches {len(built)} content switch cases, "
-      f"HostNotice.Kind matches {len(served)} served notice kinds")
+      f"HostNotice.Kind matches {len(served)} served notice kinds, {len(spelled)} settings paths "
+      f"name a fact among the {len(declared)} that {len(groups)} group files declare")
