@@ -94,4 +94,17 @@ class FleetActionsTest {
             .map { it.id }
         assertEquals(listOf("mvArm", "mvDisarm", "mvStartMission"), destructive)
     }
+
+    @Test
+    fun `the active vehicle's id comes off the view that already names it`() {
+        assertEquals(7, activeVehicleId(JSONObject("""{"kind":"object","activeId":7}""")))
+    }
+
+    @Test
+    fun `no vehicle is no id, and never zero`() {
+        assertNull(activeVehicleId(null))
+        assertNull(activeVehicleId(JSONObject("""{"kind":"object","activeId":null}""")))
+        assertNull(activeVehicleId(JSONObject("""{"kind":"object"}""")))
+        assertNull(activeVehicleId(JSONObject("""{"kind":"object","activeId":0}""")))
+    }
 }

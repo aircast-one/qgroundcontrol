@@ -298,3 +298,6 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
         }
     }
 }
+
+internal fun activeVehicleId(view: JSONObject?): Int? =
+    view?.takeIf { !it.isNull("activeId") }?.optInt("activeId", -1)?.takeIf { it > 0 }

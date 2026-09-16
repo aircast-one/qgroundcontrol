@@ -252,8 +252,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
         return
     }
 
-    val liveVehicleId by qgcDouble("vehicle.id")
-    val vehicleId = liveVehicleId.takeIf { it.isFinite() && it > 0.0 }?.toInt()
+    val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val vehicleId = remember(vehiclesJson) { activeVehicleId(vehiclesJson) }
 
     val deciding = pending != null || speedTarget != null ||
         takeoffTarget != null || altitudeTarget != null
