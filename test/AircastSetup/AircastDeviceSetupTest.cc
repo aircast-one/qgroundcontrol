@@ -166,10 +166,18 @@ void AircastDeviceSetupTest::_reapplyReplacesExistingLink()
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     QTRY_COMPARE_WITH_TIMEOUT(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/front"), 5000);
-    QTRY_COMPARE_WITH_TIMEOUT(_aircastLinkConfigs().size(), 1, 5000);
-    const UDPConfiguration *udpConfig = qobject_cast<UDPConfiguration*>(_aircastLinkConfigs().first());
-    QVERIFY(udpConfig);
-    QTRY_COMPARE_WITH_TIMEOUT(udpConfig->hostList(), QStringList{QStringLiteral("127.0.0.1:14551")}, 5000);
+    // _applyDeviceTelemetry removes the existing configuration and constructs a new one
+    // (QGCApplication.cc:923 and :930), and the count is already 1 from the first apply - so the
+    // count check passes at once against the OLD config, and capturing the pointer before polling
+    // watches an object that is about to be torn down. Its host list empties as it goes, which is
+    // the failure this test produced twice: size 0 against an expected 1, after waiting the full
+    // five seconds for a pointer that could never change. The whole read has to be inside the retry.
+    const auto reappliedHost = []() {
+        const QList<LinkConfiguration*> configs = _aircastLinkConfigs();
+        const UDPConfiguration *const udpConfig = configs.size() == 1 ? qobject_cast<UDPConfiguration*>(configs.first()) : nullptr;
+        return udpConfig ? udpConfig->hostList() : QStringList();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(reappliedHost(), QStringList{QStringLiteral("127.0.0.1:14551")}, 5000);
 
     _removeAircastLinkConfigs();
 }
