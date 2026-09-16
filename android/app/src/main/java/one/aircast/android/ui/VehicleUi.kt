@@ -236,6 +236,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var altitudePauses by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showChecklist by remember { mutableStateOf(false) }
+    val useChecklist by qgcBool("settings.appSettings.useChecklist")
+    val enforceChecklist by qgcBool("settings.appSettings.enforceChecklist")
+    var popupShownFor by remember { mutableStateOf<Int?>(null) }
     var checklistTicked by rememberSaveable { mutableStateOf(setOf<String>()) }
     val preflightJson by qgcPath(PREFLIGHT)
     val checks = remember(preflightJson) { preflight(preflightJson) }
@@ -247,6 +250,20 @@ fun FlightActions(modifier: Modifier = Modifier) {
     if (!available) {
         Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp))
         return
+    }
+
+    val liveVehicleId by qgcDouble("vehicle.id")
+    val vehicleId = liveVehicleId.takeIf { it.isFinite() && it > 0.0 }?.toInt()
+
+    LaunchedEffect(vehicleId) {
+        val id = vehicleId ?: return@LaunchedEffect
+        if (popupShownFor == id) return@LaunchedEffect
+        delay(CHECKLIST_POPUP_DELAY_MS)
+        val complete = checklistIsComplete(preflight(Qgc.get(PREFLIGHT)), checklistTicked)
+        if (checklistPopupIsDue(true, useChecklist, enforceChecklist, complete)) {
+            popupShownFor = id
+            showChecklist = true
+        }
     }
 
     val openAltitude: (Boolean) -> Unit = { pauses ->

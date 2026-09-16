@@ -5,6 +5,8 @@ import one.aircast.mapspike.optText
 
 internal const val PREFLIGHT = "view.preflight"
 
+internal const val CHECKLIST_POPUP_DELAY_MS = 1000L
+
 internal data class PreflightCheck(
     val name: String,
     val prompt: String,
@@ -75,6 +77,20 @@ internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): Strin
         else -> "All ${preflight.total} checks done."
     }
 }
+
+internal fun checklistIsComplete(preflight: Preflight?, ticked: Set<String>): Boolean {
+    if (preflight == null) return false
+    if (preflight.blocked.isNotEmpty()) return false
+    val manual = preflight.groups.flatMap { it.checks }.filter(::checkNeedsTicking).map { it.name }
+    return manual.all { it in ticked }
+}
+
+internal fun checklistPopupIsDue(
+    hasVehicle: Boolean,
+    useChecklist: Boolean,
+    enforceChecklist: Boolean,
+    complete: Boolean,
+): Boolean = hasVehicle && useChecklist && enforceChecklist && !complete
 
 internal fun checkNeedsTicking(check: PreflightCheck): Boolean = check.verdict == "manual"
 
