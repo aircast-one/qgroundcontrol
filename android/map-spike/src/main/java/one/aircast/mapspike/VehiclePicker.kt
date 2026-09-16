@@ -35,8 +35,8 @@ object FleetBridge {
 
     fun deselectAll(): Boolean = invokeOk("$VEHICLE_MANAGER.deselectAllVehicles")
 
-    fun run(action: String, selectedCount: Int): Boolean {
-        val targets = (0 until selectedCount).map { "$VEHICLE_MANAGER.selectedVehicles.$it" }
+    fun command(action: String, confirmed: Set<Int>): Boolean {
+        val targets = selectedPaths().filter { (_, id) -> id in confirmed }.map { (path, _) -> path }
         return when {
             targets.isEmpty() -> false
             action == "mvArm" -> targets.map { setOk("$it.armed", settingJson("true")) }.all { it }
@@ -48,6 +48,19 @@ object FleetBridge {
             else -> false
         }
     }
+
+    private fun selectedPaths(): List<Pair<String, Int>> {
+        val count = runCatching {
+            JSONObject(QGCBridge.get("$VEHICLE_MANAGER.selectedVehicles.count")).optInt("value", 0)
+        }.getOrDefault(0)
+        return (0 until count).mapNotNull { index ->
+            val path = "$VEHICLE_MANAGER.selectedVehicles.$index"
+            idAt(path)?.let { id -> path to id }
+        }
+    }
+
+    private fun idAt(path: String): Int? =
+        runCatching { JSONObject(QGCBridge.getFields(path, "id")).optInt("id", -1).takeIf { it >= 0 } }.getOrNull()
 
     private fun armedAt(path: String): Boolean =
         runCatching { JSONObject(QGCBridge.getFields(path, "armed")).optBoolean("armed") }.getOrDefault(false)

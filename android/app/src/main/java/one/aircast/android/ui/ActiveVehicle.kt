@@ -215,9 +215,10 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
                     confirm = fleetConfirm(choices.selectedCount),
                     destructive = fleetIsDestructive(action),
                     run = {
+                        val confirmed = choices.choices.filter { it.selected }.map { it.id }.toSet()
                         scope.launch {
                             val sent = withContext(Dispatchers.Default) {
-                                FleetBridge.run(action.id, choices.selectedCount)
+                                FleetBridge.command(action.id, confirmed)
                             }
                             onRefusal(if (sent) null else "${action.title} did not reach every selected aircraft.")
                         }
