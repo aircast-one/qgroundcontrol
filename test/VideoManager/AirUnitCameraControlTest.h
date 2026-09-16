@@ -13,4 +13,5 @@ private slots:
     void _switchInputCyclesThroughInputs();
     void _switchInputAlternatesWithoutStreamInformation();
     void _refusedSwitchRevertsTheInput();
+    void _inputsAreNamedAndRefusalIsAnnounced();
 };

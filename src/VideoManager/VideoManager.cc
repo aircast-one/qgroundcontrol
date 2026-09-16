@@ -56,6 +56,7 @@ VideoManager::VideoManager(QObject *parent)
     , _videoSettings(SettingsManager::instance()->videoSettings())
 {
     (void) connect(_airUnitCamera, &AirUnitCameraControl::availableChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::activeVideoSourceChanged);
     // qCDebug(VideoManagerLog) << this;
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
@@ -384,6 +385,20 @@ int VideoManager::activeVideoSource() const
 bool VideoManager::hasMultipleVideoSources() const
 {
     return _videoSettings->switchableIndices().size() > 1 || _airUnitCamera->available();
+}
+
+int VideoManager::videoSourceCount() const
+{
+    return _videoSettings->videoSourceCount();
+}
+
+QString VideoManager::activeSourceLabel() const
+{
+    const bool airUnitDrivesTheSwitch = _airUnitCamera->available() && _videoSettings->switchableIndices().size() <= 1;
+    if (airUnitDrivesTheSwitch && _airUnitCamera->activeInput() >= 0) {
+        return _airUnitCamera->activeInputName();
+    }
+    return cameraName(activeVideoSource());
 }
 
 void VideoManager::setActiveVideoSource(int index)

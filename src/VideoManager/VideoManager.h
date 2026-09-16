@@ -49,6 +49,8 @@ class VideoManager : public QObject
     Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(AirUnitCameraControl *airUnitCamera READ airUnitCamera                       CONSTANT)
+    Q_PROPERTY(QString  activeSourceLabel       READ activeSourceLabel                          NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(int      videoSourceCount        READ videoSourceCount                           NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     recording               READ recording                                  NOTIFY recordingChanged)
     Q_PROPERTY(bool     streaming               READ streaming                                  NOTIFY streamingChanged)
     Q_PROPERTY(double   aspectRatio             READ aspectRatio                                NOTIFY aspectRatioChanged)
@@ -107,6 +109,8 @@ public:
     int activeVideoSource() const;
     bool hasMultipleVideoSources() const;
     AirUnitCameraControl *airUnitCamera() const { return _airUnitCamera; }
+    QString activeSourceLabel() const;
+    int videoSourceCount() const;
     bool recording() const { return _recording; }
     bool streaming() const { return _streaming; }
     double aspectRatio() const;

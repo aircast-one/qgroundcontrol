@@ -9,12 +9,24 @@ QGC_LOGGING_CATEGORY(AirUnitCameraControlLog, "qgc.videomanager.airunitcameracon
 namespace {
 constexpr int kLegacyStreamInformationCameraIdOffset = 14;
 constexpr int kLegacyStreamInformationMinimumLength = 16;
+constexpr int kNoticeMilliseconds = 4000;
 }
 
 AirUnitCameraControl::AirUnitCameraControl(QObject *parent)
     : QObject(parent)
 {
     connect(MAVLinkProtocol::instance(), &MAVLinkProtocol::messageReceived, this, &AirUnitCameraControl::handleMessage);
+    _noticeTimer.setSingleShot(true);
+    connect(&_noticeTimer, &QTimer::timeout, this, [this]() { _showNotice(QString()); });
+}
+
+QString AirUnitCameraControl::inputName(int input)
+{
+    switch (input) {
+    case 0: return tr("MIPI");
+    case 1: return tr("HDMI");
+    default: return tr("Input %1").arg(input + 1);
+    }
 }
 
 bool AirUnitCameraControl::isCameraComponent(int componentId)
@@ -58,11 +70,24 @@ void AirUnitCameraControl::handleMessage(LinkInterface *link, const mavlink_mess
         mavlink_msg_command_ack_decode(&message, &ack);
         if (ack.command == MAV_CMD_VIDEO_START_STREAMING && ack.result != MAV_RESULT_ACCEPTED && ack.result != MAV_RESULT_IN_PROGRESS) {
             qCWarning(AirUnitCameraControlLog) << "Air unit refused input" << _activeInput << "result" << ack.result;
+            _showNotice(tr("Air unit refused %1").arg(inputName(_activeInput)));
             _setActiveInput(_previousInput);
         }
         return;
     }
     _setActiveInput(cameraIdFromLegacyStreamInformation(message));
+}
+
+void AirUnitCameraControl::_showNotice(const QString &text)
+{
+    if (text == _notice) {
+        return;
+    }
+    _notice = text;
+    emit noticeChanged();
+    if (!text.isEmpty()) {
+        _noticeTimer.start(kNoticeMilliseconds);
+    }
 }
 
 void AirUnitCameraControl::_setActiveInput(int input)
