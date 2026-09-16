@@ -8,6 +8,16 @@ import time
 
 NO_FENCE = os.environ.get("NO_FENCE") == "1"
 
+# Sectors the proximity ring reports, as "index:centimetres" pairs. The default is the
+# single reading this fake has always sent; a head drawing an arc needs several bearings
+# and a near/far mix to show that placement and scaling are right.
+OBSTACLE_RING = [
+    tuple(int(part) for part in pair.split(":"))
+    for pair in os.environ.get("OBSTACLE_RING", "18:320").split(",")
+    if pair
+]
+OBSTACLE_SECONDS = float(os.environ.get("OBSTACLE_SECONDS", "45"))
+
 from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
 from pymavlink.generator.mavcrc import x25crc
@@ -297,9 +307,10 @@ def main():
                 cam_link.heartbeat_send(mavlink.MAV_TYPE_CAMERA,
                                         mavlink.MAV_AUTOPILOT_INVALID, 0, 0,
                                         mavlink.MAV_STATE_ACTIVE)
-        if tick % 5 == 0 and elapsed < 45:
+        if tick % 5 == 0 and elapsed < OBSTACLE_SECONDS:
             ring = [65535] * 72
-            ring[18] = 320
+            for sector, centimetres in OBSTACLE_RING:
+                ring[sector] = centimetres
             try:
                 link.obstacle_distance_send(
                     int(elapsed * 1e6), 0, ring, 5, 20, 4000, 5.0, 0.0, 12)

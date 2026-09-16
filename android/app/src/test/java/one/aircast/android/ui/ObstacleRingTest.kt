@@ -4,6 +4,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -140,6 +141,25 @@ class ObstacleRingTest {
                 "drops any sample below zero, so a distance can never be under twice nothing",
             sampleIsClose(0.1, 0.0),
         )
+    }
+
+    @Test
+    fun `a close reading never looks like a distant one`() {
+        assertNotEquals(
+            "the arc drew both in the same colour while live, because the near branch and the " +
+                "default branch both resolved to the error colour - a distinction that was " +
+                "only ever visible when the reading was stale, which is when it matters least",
+            arcTone(near = true, stale = false),
+            arcTone(near = false, stale = false),
+        )
+    }
+
+    @Test
+    fun `a stale reading looks like neither`() {
+        assertEquals(ArcTone.Stale, arcTone(near = true, stale = true))
+        assertEquals(ArcTone.Stale, arcTone(near = false, stale = true))
+        assertNotEquals(ArcTone.Stale, arcTone(near = true, stale = false))
+        assertNotEquals(ArcTone.Stale, arcTone(near = false, stale = false))
     }
 
     @Test

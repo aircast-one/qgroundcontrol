@@ -36,6 +36,14 @@ internal fun arcRadiusFraction(metres: Double, ceiling: Double): Float = when {
 internal fun sampleIsClose(metres: Double, floorMetres: Double): Boolean =
     metres < floorMetres * 2.0
 
+internal enum class ArcTone { Alarm, Calm, Stale }
+
+internal fun arcTone(near: Boolean, stale: Boolean): ArcTone = when {
+    stale -> ArcTone.Stale
+    near -> ArcTone.Alarm
+    else -> ArcTone.Calm
+}
+
 @Composable
 fun ObstacleArc(modifier: Modifier = Modifier) {
     val view by qgcPath(OBSTACLE_PATH)
@@ -47,9 +55,9 @@ fun ObstacleArc(modifier: Modifier = Modifier) {
         return
     }
 
-    val live = MaterialTheme.colorScheme.error
-    val faded = MaterialTheme.colorScheme.onSurfaceVariant
-    val ink = if (ring.stale) faded.copy(alpha = 0.45f) else live
+    val alarm = MaterialTheme.colorScheme.error
+    val calm = MaterialTheme.colorScheme.onSurfaceVariant
+    val faded = calm.copy(alpha = 0.45f)
 
     Surface(
         modifier = modifier,
@@ -60,13 +68,17 @@ fun ObstacleArc(modifier: Modifier = Modifier) {
             Canvas(Modifier.size(ARC_SIZE)) {
                 val centre = Offset(size.width / 2f, size.height / 2f)
                 val full = size.minDimension / 2f
-                drawCircle(faded.copy(alpha = 0.25f), radius = full, center = centre, style = Stroke(width = 2f))
-                drawCircle(faded.copy(alpha = 0.6f), radius = 3f, center = centre)
+                drawCircle(calm.copy(alpha = 0.25f), radius = full, center = centre, style = Stroke(width = 2f))
+                drawCircle(calm.copy(alpha = 0.6f), radius = 3f, center = centre)
                 ring.samples.forEach { sample ->
                     val reach = full * arcRadiusFraction(sample.metres, ring.maxMetres)
                     val near = sampleIsClose(sample.metres, floorMetres)
                     drawArc(
-                        color = if (near && !ring.stale) live else ink,
+                        color = when (arcTone(near, ring.stale)) {
+                            ArcTone.Alarm -> alarm
+                            ArcTone.Calm -> calm
+                            ArcTone.Stale -> faded
+                        },
                         startAngle = (sample.bearingDegrees - 90.0).toFloat() - arcSweep(spacing) / 2f,
                         sweepAngle = arcSweep(spacing),
                         useCenter = false,
