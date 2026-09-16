@@ -4,7 +4,7 @@ struct RemoteSupport: Equatable {
     let host: String
     let forwarding: Bool
 
-    static let empty = RemoteSupport(host: "", forwarding: false)
+    static let empty = RemoteSupport(host: "", forwarding: false, valid: nil, error: "")
 
     // QGC ships the EXAMPLE as the value. Mavlink.SettingsGroup.json:54 defaults
     // forwardMavlinkAPMSupportHostName to "support.ardupilot.org:xxxx" -- the same string line 52
@@ -15,29 +15,27 @@ struct RemoteSupport: Equatable {
     // resolve host" never fires either. A UDPClient is appended for port 0 and this page reports
     // "MAVLink is being forwarded." while the engineer waiting at the other end sees nothing.
     // A DEFAULT IS NOT AN EXPRESSED INTENTION -- and this one is not even a valid value.
-    static let lowestPort = 1
-    static let highestPort = 65535
+    // The rule moved to the core (view.supportHost, links.rs:145) and it is a RULE RE-DERIVED FROM
+    // QGC's C++ rather than a fact this head consumes, which is the category that drifts. Android's
+    // read the text after the LAST colon and so called "host:" port-less and "::1" port 1 -- both
+    // accepted, both refused by addHost. Mine agreed with QGC on those two rows by arithmetic on a
+    // part count, not because I had read UDPLink.cc:160's three-or-more branch, which returns
+    // WITHOUT APPENDING ANY HOST. True and under-evidenced is still a reason to stop keeping it.
+    //
+    // Bool? rather than Bool: an unanswered check must not read as "nothing wrong". The whole
+    // defect being fixed here is a control that offered to dial a host nobody had judged, so
+    // absent falls CLOSED -- canConnect asks for a served true, never for the absence of a false.
+    let valid: Bool?
+    let error: String
 
-    // A host with no colon is legitimate: addHost falls back to the link's own local port for it,
-    // so refusing one would break a configuration QGC accepts. Only the port half is judged.
-    static func refusal(host: String) -> String? {
-        let trimmed = host.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return "Enter the host the support engineer gave you." }
-        guard trimmed.contains(":") else { return nil }
-        let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 2, !parts[0].isEmpty else {
-            return "\(trimmed) is not a host name and port."
-        }
-        guard let port = Int(parts[1]),
-              port >= RemoteSupport.lowestPort, port <= RemoteSupport.highestPort else {
-            return "\(parts[1]) is not a port number. The support engineer gives you the port."
-        }
-        return nil
+    static let unchecked = "The address has not been checked yet."
+
+    var hostRefusal: String {
+        guard let valid else { return RemoteSupport.unchecked }
+        return valid ? "" : error
     }
 
-    var hostRefusal: String { RemoteSupport.refusal(host: host) ?? "" }
-
-    var canConnect: Bool { !forwarding && hostRefusal.isEmpty }
+    var canConnect: Bool { !forwarding && valid == true }
 
     // LinkManager used to latch this on: the flag was set true in one place and never cleared,
     // so the page said forwarding could only end with the app, and the documented escape - remove

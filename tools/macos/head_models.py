@@ -32,6 +32,7 @@ MODELS = {
     "FactRange": "view.control(settings.appSettings.defaultMissionItemAltitude)",
     "InstrumentGroup": "view.instrumentGroups",
     "LinkFormCheck": "view.linkForm(udp,127.0.0.1,14550)",
+    "RemoteSupport": "view.supportHost(support.ardupilot.org:14550)",
     "MavlinkConsole": "view.mavlinkConsole",
     "Orbit": "view.orbit",
     "ObstacleDistance": "view.obstacle",

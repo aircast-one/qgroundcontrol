@@ -5871,7 +5871,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2192
+let assertionFloor = 2189
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -6100,14 +6100,17 @@ func checkMotorTest() {
 }
 
 func checkRemoteSupport() {
-    let ready = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: false)
-    expect(ready.canConnect, "a host and no forwarding yet means connect is offered")
+    let ready = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: false,
+                              valid: true, error: "")
+    expect(ready.canConnect, "a host the core judged good and no forwarding yet means connect is "
+           + "offered")
     expect(ready.status.contains("Nothing"), "and the page says nothing is being forwarded")
 
     expect(!ready.canStop, "with nothing being forwarded there is nothing to stop")
     expect(ready.actionTitle, "Connect", "so the button offers to start")
 
-    let running = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: true)
+    let running = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: true,
+                                valid: true, error: "")
     expect(!running.canConnect, "forwarding cannot be started twice")
     expect(running.canStop,
            "but it can be stopped: LinkManager latched this flag on with no way to clear it, and "
@@ -6118,32 +6121,33 @@ func checkRemoteSupport() {
            + "writing the latch down as though it were a design")
     expect(running.status, "MAVLink is being forwarded.", "it says what is happening, and stops there")
 
-    expect(!RemoteSupport(host: "", forwarding: false).canConnect,
-           "a button that would forward to nowhere is refused rather than offered")
-    expect(!RemoteSupport.empty.canConnect, "same before the setting has been read")
+    // The eleven assertions this replaces spelled the REFUSAL RULE -- port ranges, the two-part
+    // split, the bare-host exception. That rule is the core's now (view.supportHost, links.rs:145)
+    // and is asserted there against UDPLink.cc, so keeping copies here would have been two
+    // opinions on one question with mine unable to fail. What is left is the only part still this
+    // head's: whether a control is OFFERED, and what happens when nobody answered.
+    let refused = RemoteSupport(host: "support.ardupilot.org:xxxx", forwarding: false,
+                                valid: false, error: "The part after the colon has to be a port "
+                                    + "number between 1 and 65535.")
+    expect(!refused.canConnect, "a host the core refused does not get a live Connect button")
+    expect(refused.hostRefusal, "The part after the colon has to be a port number between 1 and "
+           + "65535.",
+           "and their sentence is drawn verbatim -- the page says which half is wrong rather than "
+           + "greying the button and leaving the operator to guess")
 
-    let shipped = RemoteSupport(host: "support.ardupilot.org:xxxx", forwarding: false)
-    expect(!shipped.canConnect,
-           "the string QGC SHIPS as the default is the example from its own longDesc, and every "
-           + "factory install arrived here with Connect live against it")
-    expect(shipped.hostRefusal, "xxxx is not a port number. The support engineer gives you the port.",
-           "the page says which half is wrong rather than greying the button and leaving the "
-           + "operator to guess, the same reason armedRefusal exists on the Motors page")
-
-    let bare = RemoteSupport(host: "support.ardupilot.org", forwarding: false)
-    expect(bare.canConnect,
-           "a host with no colon is not broken: UDPConfiguration::addHost falls back to the "
-           + "link's own local port for it, so refusing one would reject what QGC accepts")
-
-    expect(RemoteSupport(host: "support.ardupilot.org:0", forwarding: false).hostRefusal.isEmpty == false,
-           "port 0 is the value the bad parse PRODUCED, so it cannot be the value that passes")
-    expect(RemoteSupport(host: "support.ardupilot.org:65535", forwarding: false).canConnect,
-           "and the top of the range is a real port")
-    expect(RemoteSupport(host: "support.ardupilot.org:70000", forwarding: false).canConnect == false,
-           "past it is not, which toUInt would have wrapped rather than refused")
-    expect(RemoteSupport(host: "a:b:c", forwarding: false).hostRefusal,
-           "a:b:c is not a host name and port.",
-           "and addHost's own two-part rule is the one used here, not a second opinion")
+    let unanswered = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: false,
+                                   valid: nil, error: "")
+    expect(!unanswered.canConnect,
+           "AN UNANSWERED CHECK IS NOT A PASS. valid is Bool? and canConnect asks for a served "
+           + "true, never for the absence of a false -- the defect being fixed here is a button "
+           + "that offered to dial a host nobody had judged, and a view that failed to read would "
+           + "have restored it exactly. CONSTRUCTED: the core serves valid unconditionally, so "
+           + "only a bridge that did not answer at all reaches this")
+    expect(unanswered.hostRefusal, RemoteSupport.unchecked,
+           "and it says so rather than showing an empty sentence beside a dead button")
+    expect(RemoteSupport.empty.hostRefusal, RemoteSupport.unchecked,
+           "which is also the state before the first read lands")
+    expect(!RemoteSupport.empty.canConnect, "so nothing is offered then either")
 }
 
 func checkSetupPages() {

@@ -28,10 +28,14 @@ final class RemoteSupportStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func refresh() {
+        let host = (Bridge.group(RemoteSupportStore.hostPath)["valueString"] as? String) ?? ""
+        let judged = Bridge.group("view.supportHost(\(host))")
         let read = RemoteSupport(
-            host: (Bridge.group(RemoteSupportStore.hostPath)["valueString"] as? String) ?? "",
+            host: host,
             forwarding: (Bridge.group("view.links")["supportForwarding"] as? NSNumber)?
-                .boolValue ?? false)
+                .boolValue ?? false,
+            valid: (judged["valid"] as? NSNumber)?.boolValue,
+            error: (judged["error"] as? String) ?? "")
         if read != state { state = read }
     }
 
