@@ -417,12 +417,48 @@ jobs:
             hdiutil detach "$VOL" -force && break || sleep 3
           done || true
 
+      # The same executable, shipped a second time under a name ending "Native". AppShell reads
+      # that suffix and draws this fork's own macOS interface instead of Qt's; a Finder
+      # double-click passes no arguments, so before this the native head could not be opened at
+      # all outside a developer's terminal and had never been in a release. Built by COPYING
+      # rather than by configuring again: a second build costs the whole Qt compile to produce
+      # an identical binary, and two binaries can drift where one cannot.
+      - name: Build the native-UI bundle
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: |
+          set -euo pipefail
+          SRC=staging/AircastQGC.app
+          DST=staging-native/AircastQGCNative.app
+          rm -rf staging-native && mkdir -p staging-native
+          cp -R "$SRC" "$DST"
+          mv "$DST/Contents/MacOS/AircastQGC" "$DST/Contents/MacOS/AircastQGCNative"
+          PLIST="$DST/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable AircastQGCNative" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName AircastQGC Native" "$PLIST"
+          # A separate identifier on purpose: two apps sharing one id share one preferences
+          # domain, and the first to write settings would answer for the other.
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier org.aircast.qgc.native" "$PLIST"
+          # Re-signed because renaming the executable and editing Info.plist invalidate the
+          # signature the install step applied; ad-hoc matches what that step does when no
+          # identity is configured, and macOS refuses to launch a bundle whose seal is broken.
+          codesign --force --deep -s - "$DST"
+          codesign --verify --deep "$DST"
+          "$DST/Contents/MacOS/AircastQGCNative" --simple-boot-test
+
+      - name: Package the native-UI DMG
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: |
+          set -euo pipefail
+          create-dmg --volname "AircastQGC Native" --filesystem APFS \
+            AircastQGCNative.dmg staging-native/
+
       - name: Collect DMG
         run: |
           V="${{ needs.setup.outputs.version }}"
           SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/*.dmg "out/AircastQGC-$SHORT.dmg"
+          cp ${{ runner.temp }}/shadow_build_dir/AircastQGC.dmg "out/AircastQGC-$SHORT.dmg"
+          cp ${{ runner.temp }}/shadow_build_dir/AircastQGCNative.dmg "out/AircastQGCNative-$SHORT.dmg"
 
       - uses: actions/upload-artifact@v4
         with:

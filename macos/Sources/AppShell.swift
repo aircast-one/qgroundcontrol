@@ -5,7 +5,10 @@ import QGCEntry
 enum AppShell {
     static func run(_ argc: Int32, _ argv: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32 {
         NativeDebug.install()
-        let nativeWindows = CommandLine.arguments.contains("--native-window")
+        let nativeWindows = LaunchMode.drawsNativeWindows(
+            arguments: CommandLine.arguments,
+            executable: Bundle.main.executableURL?.deletingPathExtension().lastPathComponent
+                ?? ProcessInfo.processInfo.processName)
         qgc_set_host_provides_plan_ui(nativeWindows ? 1 : 0)
         let startCode = qgc_start(argc, argv)
         guard startCode == 0 else { return startCode }
