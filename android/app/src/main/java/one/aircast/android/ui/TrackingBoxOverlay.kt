@@ -35,7 +35,7 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
 
     BoxWithConstraints(modifier) {
         val picture = paintedRect(maxWidth.value.toDouble(), maxHeight.value.toDouble(), source)
-        val aim = if (!trackingCanStart(tracking)) {
+        val aim = if (!trackingCanAim(tracking)) {
             Modifier
         } else {
             Modifier.pointerInput(picture) {

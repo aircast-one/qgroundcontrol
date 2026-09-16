@@ -89,8 +89,8 @@ internal data class TrackingBox(val x: Double, val y: Double, val width: Double,
 
 internal data class TrackingReading(
     val supported: Boolean,
-    val enabled: Boolean,
-    val active: Boolean,
+    val requested: Boolean,
+    val reported: Boolean,
     val shapes: List<String>,
     val box: TrackingBox?,
 )
@@ -106,8 +106,8 @@ internal fun trackingReading(view: JSONObject?): TrackingReading? {
     val rect = tracking.optJSONObject("rect")
     return TrackingReading(
         supported = true,
-        enabled = tracking.optBoolean("enabled"),
-        active = tracking.optBoolean("active"),
+        requested = tracking.optBoolean("requested"),
+        reported = tracking.optBoolean("reported"),
         shapes = shapes,
         box = rect?.let {
             TrackingBox(it.optDouble("x"), it.optDouble("y"), it.optDouble("width"), it.optDouble("height"))
@@ -115,11 +115,20 @@ internal fun trackingReading(view: JSONObject?): TrackingReading? {
     )
 }
 
+internal const val CAMERA_TRACKING_ARMED =
+    "vehicle.cameraManager.currentCameraInstance.trackingEnabled"
+
+internal fun trackingToggleLabel(reading: TrackingReading): String =
+    if (reading.requested) "Stop tracking" else "Track something"
+
+internal fun trackingCanAim(reading: TrackingReading?): Boolean =
+    reading != null && reading.requested && reading.shapes.isNotEmpty()
+
 internal fun trackingCanStart(reading: TrackingReading?): Boolean =
-    reading != null && !reading.active && reading.shapes.isNotEmpty()
+    reading != null && !reading.requested && reading.shapes.isNotEmpty()
 
 internal fun trackingCanStop(reading: TrackingReading?): Boolean =
-    reading != null && reading.active
+    reading != null && reading.requested
 
 internal fun trackingRectObject(box: TrackingBox): JSONObject = JSONObject()
     .put("x", box.x).put("y", box.y).put("width", box.width).put("height", box.height)

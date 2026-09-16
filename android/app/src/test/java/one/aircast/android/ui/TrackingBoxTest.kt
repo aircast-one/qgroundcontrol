@@ -16,7 +16,7 @@ class TrackingBoxTest {
         shapes: String = """["rectangle","point"]""",
     ) = JSONObject(
         """{"kind":"object","class":"Camera","present":true,
-            "tracking":{"supported":$supported,"enabled":true,"active":$active,
+            "tracking":{"supported":$supported,"requested":$active,"reported":$active,
                         "shapes":$shapes,"rect":$rect}}""",
     )
 
@@ -82,5 +82,22 @@ class TrackingBoxTest {
         assertEquals(0.4, sent.getDouble("y"), 1e-9)
         assertEquals(0.2, sent.getDouble("width"), 1e-9)
         assertEquals(0.2, sent.getDouble("height"), 1e-9)
+    }
+
+    @Test
+    fun `a drag aims only once tracking has been armed, as the Qt view does`() {
+        assertFalse(
+            "FlyViewVideo.qml:157 creates an ROI only when trackingEnabled; a drag before that arms nothing",
+            trackingCanAim(trackingReading(camera(active = false))),
+        )
+        assertTrue(trackingCanAim(trackingReading(camera(active = true))))
+        assertFalse(trackingCanAim(trackingReading(camera(active = true, shapes = "[]"))))
+        assertFalse(trackingCanAim(null))
+    }
+
+    @Test
+    fun `the toggle says what the next tap does`() {
+        assertEquals("Track something", trackingToggleLabel(trackingReading(camera(active = false))!!))
+        assertEquals("Stop tracking", trackingToggleLabel(trackingReading(camera(active = true))!!))
     }
 }

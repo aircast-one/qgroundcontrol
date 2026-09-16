@@ -219,11 +219,21 @@ private fun CameraDetailsSheet(
                 )
             }
         }
-        tracking?.takeIf { trackingCanStop(it) }?.let {
+        tracking?.let { reading ->
             TextButton(
-                onClick = { offMainDetached { Qgc.invoke(CAMERA_STOP_TRACKING) } },
+                onClick = {
+                    offMainDetached {
+                        when {
+                            reading.requested -> {
+                                Qgc.set(CAMERA_TRACKING_ARMED, false)
+                                Qgc.invoke(CAMERA_STOP_TRACKING)
+                            }
+                            else -> Qgc.set(CAMERA_TRACKING_ARMED, true)
+                        }
+                    }
+                },
                 modifier = Modifier.padding(horizontal = 12.dp),
-            ) { Text("Stop tracking") }
+            ) { Text(trackingToggleLabel(reading)) }
         }
 
         thermal?.let { thermal ->

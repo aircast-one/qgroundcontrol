@@ -28,6 +28,10 @@ TRACK_RECT = [float(part) for part in os.environ.get("TRACK_RECT", "0.35,0.30,0.
 # Whether the camera also reports an active track. Off gives a camera that CAN track and is
 # not tracking, which is the state a head offers to start one in.
 CAM_TRACK_STATUS = os.environ.get("CAM_TRACK_STATUS", "1") != "0"
+# QGC discards the tracked rectangle unless its OWN trackingEnabled is set, and that
+# only turns on when the vehicle acknowledges the start. Without these three acks the
+# camera reports tracking, QGC decodes it, and throws the box away.
+TRACKING_COMMANDS = (2004, 2005, 2010)
 
 # A camera with a storage card, so a head can draw a Format row. Off by default: without it
 # the camera reports no storage and Format is correctly hidden, which is the only arm the
@@ -673,6 +677,11 @@ def main():
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG" and message.command == apm.MAV_CMD_DO_CANCEL_MAG_CAL:
                     magcal_started[0] = None
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif kind == "COMMAND_LONG" and message.command in TRACKING_COMMANDS:
+                    print("CMD %d %s" % (message.command, " ".join(
+                        "p%d=%.2f" % (n, getattr(message, "param%d" % n, 0.0))
+                        for n in range(1, 8))), flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG":
                     print("CMD %d %s" % (message.command, " ".join(
