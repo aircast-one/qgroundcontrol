@@ -361,10 +361,13 @@ private fun SettingsControls(
 internal fun enumLabel(fact: Fact): String =
     fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
 
-internal fun factSubtitle(fact: Fact): String = when {
-    fact.enumStrings.isNotEmpty() || fact.bitmaskStrings.isNotEmpty() || fact.isBool -> ""
-    else -> fact.units
-}
+internal fun factSubtitle(fact: Fact): String = listOfNotNull(
+    when {
+        fact.enumStrings.isNotEmpty() || fact.bitmaskStrings.isNotEmpty() || fact.isBool -> ""
+        else -> fact.units
+    }.ifBlank { null },
+    notBuiltHere(fact)?.let { "No effect here - $it" },
+).joinToString(" · ")
 
 @Composable
 internal fun FactRow(
@@ -439,11 +442,13 @@ internal fun FactRow(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text(
-                        text = inertNote(fact),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (notBuiltHere(fact) == null) {
+                        Text(
+                            text = inertNote(fact),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 fact.isBool -> Switch(
                     checked = fact.boolValue,

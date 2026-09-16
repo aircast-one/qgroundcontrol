@@ -8,7 +8,12 @@ import org.junit.Test
 
 class NotBuiltHereTest {
 
-    private fun fact(name: String, enabled: Boolean = true, readOnly: Boolean = false) = Fact(
+    private fun fact(
+        name: String,
+        enabled: Boolean = true,
+        readOnly: Boolean = false,
+        isBool: Boolean = true,
+    ) = Fact(
         path = "settings.x.$name",
         name = name,
         description = "",
@@ -17,7 +22,7 @@ class NotBuiltHereTest {
         value = null,
         enumStrings = emptyList(),
         enumIndex = -1,
-        isBool = true,
+        isBool = isBool,
         isString = false,
         enabled = enabled,
         readOnly = readOnly,
@@ -76,6 +81,18 @@ class NotBuiltHereTest {
     @Test
     fun `an unknown control kind this head DOES implement still says edit on desktop`() {
         assertTrue(editOnDesktop(fact("useChecklist").copy(controlKind = "slider")))
+    }
+
+    @Test
+    fun `the reason sits beside the label, and a live fact's subtitle is untouched`() {
+        assertEquals(
+            "it belongs with the label like the unit does - in the value column it merged with " +
+                "the value and stopped that column being scannable",
+            "MB \u00b7 No effect here - this head does not use QGC's tile cache",
+            factSubtitle(fact("maxCacheDiskSize", isBool = false).copy(units = "MB")),
+        )
+        assertEquals("MB", factSubtitle(fact("someLiveNumber", isBool = false).copy(units = "MB")))
+        assertEquals("", factSubtitle(fact("someLiveToggle")))
     }
 
     @Test
