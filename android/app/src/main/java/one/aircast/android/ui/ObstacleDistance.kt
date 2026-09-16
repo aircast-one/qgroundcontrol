@@ -8,10 +8,13 @@ internal data class ObstacleWarning(val label: String, val close: Boolean)
 internal fun sensorSaidStale(view: JSONObject): Boolean = !view.isNull("stale") && view.optBoolean("stale")
 
 internal fun obstacleWarning(view: JSONObject?): ObstacleWarning? {
-    if (view == null || !view.optBoolean("available") || sensorSaidStale(view)) {
+    if (view == null || !view.optBoolean("available")) {
         return null
     }
     val nearest = view.optJSONObject("nearest") ?: return null
+    if (sensorSaidStale(nearest)) {
+        return null
+    }
     val distance = nearest.optText("distanceText").ifBlank { return null }
     val sector = nearest.optText("sectorText")
     return ObstacleWarning(

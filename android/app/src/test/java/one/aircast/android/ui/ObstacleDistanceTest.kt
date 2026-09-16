@@ -26,16 +26,22 @@ class ObstacleDistanceTest {
     @Test
     fun `a reading the sensor called stale is withheld`() {
         val old = JSONObject(
-            """{"available":true,"stale":true,"nearest":{"distanceText":"4 m","sectorText":"ahead"}}""",
+            """{"available":true,"stale":true,
+                "nearest":{"distanceText":"4 m","sectorText":"ahead","stale":true}}""",
         )
-        assertNull(obstacleWarning(old))
+        assertNull(
+            "the core serves staleness on nearest as well as beside it, so a head drawing " +
+                "from nearest needs no sibling read to be safe - this reads the flag on the " +
+                "object whose text it is about to show",
+            obstacleWarning(old),
+        )
     }
 
 
     private fun view(
         available: Boolean = true,
         stale: Boolean = false,
-        nearest: String? = """{"distanceText":"3.2 m","sectorText":"right","close":false}""",
+        nearest: String? = """{"distanceText":"3.2 m","sectorText":"right","close":false,"stale":$stale}""",
     ) = JSONObject(
         """{"available":$available,"stale":$stale,"nearest":${nearest ?: "null"}}""",
     )
