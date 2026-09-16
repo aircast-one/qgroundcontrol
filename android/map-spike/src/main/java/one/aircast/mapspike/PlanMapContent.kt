@@ -242,8 +242,6 @@ internal fun MapSpikeScreen(
     val missionSummaryView by mapPath("view.missionSummary")
     val terrainView by mapPath(TERRAIN_VIEW)
     val profile = remember(terrainView) { terrainProfile(terrainView) }
-    val mode by mapString("vehicle.flightMode")
-    val vehicleId by mapInt("vehicle.id")
 
     fun placeAt(): TrackPoint? = when {
         isPlottable(latitude, longitude) -> TrackPoint(latitude, longitude)
