@@ -2,6 +2,13 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.github.triplet.play")
+}
+
+play {
+    serviceAccountCredentials.set(file(System.getenv("AIRCAST_PLAY_SERVICE_ACCOUNT") ?: "${System.getProperty("user.home")}/.config/aircast/play-service-account.json"))
+    track.set(System.getenv("AIRCAST_PLAY_TRACK") ?: "internal")
+    defaultToAppBundles.set(true)
 }
 
 android {
