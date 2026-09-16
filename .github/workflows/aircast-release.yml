@@ -247,9 +247,12 @@ jobs:
           AIRCAST_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && env.QT_ANDROID_KEYSTORE_PATH || '' }}
           AIRCAST_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
           AIRCAST_KEY_ALIAS: ${{ env.QT_ANDROID_KEYSTORE_ALIAS }}
-          AIRCAST_VERSION_NAME: ${{ needs.setup.outputs.version }}
           AIRCAST_VERSION_CODE: ${{ github.run_number }}
+          RELEASE_TAG: ${{ needs.setup.outputs.version }}
         run: |
+          # versionName is what Android shows in app info, so it carries the version
+          # rather than the tag: 5.4.12-dev.5, not aircast-v5.4.12-dev.5.
+          export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
           ./gradlew --no-daemon :app:testDebugUnitTest :map-spike:testDebugUnitTest
           ./gradlew --no-daemon :app:assembleRelease
 
