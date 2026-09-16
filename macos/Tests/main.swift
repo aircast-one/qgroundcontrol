@@ -4258,6 +4258,21 @@ func checkLogReplayLink() {
     expect(empty?.displaySummary ?? "", "No log chosen",
            "and the core says so rather than leaving an empty summary")
 
+    // links.rs:108 takes logFileName as the basename of filename, so "/tmp/" is a pair the core
+    // really produces: a path that is set and a basename that is empty. Constructed, because no
+    // rig here chooses a directory as a log.
+    let trailing = LinkConfig(["index": 0 as NSNumber, "type": "logReplay", "name": "Replay",
+                               "editing": "logFile", "filename": "/tmp/", "logFileName": ""])
+    expect(trailing?.logFileText ?? "", "No log chosen",
+           "a path whose basename is empty says no log was chosen, because the row must test the "
+           + "field it draws rather than the one beside it")
+    expect(!(trailing?.logFileChosen ?? true),
+           "and it is styled as unchosen for the same reason")
+    expect(LinkConfig(["index": 0 as NSNumber, "type": "logReplay", "name": "Replay",
+                       "editing": "logFile", "filename": "/Users/pilot/logs/flight.tlog",
+                       "logFileName": "flight.tlog"])?.logFileText ?? "", "flight.tlog",
+           "and a real log shows its own name")
+
     let chosen = LinkConfig(["index": 0 as NSNumber, "type": "logReplay", "name": "Replay",
                              "editing": "logFile", "filename": "/Users/pilot/logs/flight.tlog",
                              "logFileName": "flight.tlog", "displaySummary": "Log Replay"])
@@ -5993,7 +6008,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2216
+let assertionFloor = 2219
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

@@ -47,6 +47,21 @@ struct LinkConfig: Identifiable, Equatable {
 
     var baudText: String { baud.map(String.init) ?? "" }
 
+    // links.rs:108 serves logFileName as the BASENAME of filename, so the row was testing one
+    // field and drawing another: a filename ending in a separator has a non-empty path and an
+    // EMPTY basename, and the row then drew nothing in the chosen-file styling instead of saying
+    // no log was chosen. Gate on what is drawn.
+    //
+    // The core spells this same sentence at links.rs:75 for the link's summary line, and this head
+    // already decodes and asserts it as displaySummary. It cannot be reused here -- displaySummary
+    // is the LINK's sentence and says "No host set" for a tcp link -- so the two stay separate
+    // copies on purpose, which is why the literal is named rather than inline.
+    static let noLogChosen = "No log chosen"
+
+    var logFileChosen: Bool { !logFileName.isEmpty }
+
+    var logFileText: String { logFileChosen ? logFileName : LinkConfig.noLogChosen }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let index = (json["index"] as? NSNumber)?.intValue,

@@ -176,8 +176,8 @@ struct ConnectionsSection: View {
                 HStack(spacing: Overlay.step) {
                     Text("Log file")
                         .frame(width: 96, alignment: .leading)
-                    Text(link.filename.isEmpty ? "No log chosen" : link.logFileName)
-                        .foregroundColor(link.filename.isEmpty ? .secondary : Overlay.value)
+                    Text(link.logFileText)
+                        .foregroundColor(link.logFileChosen ? Overlay.value : .secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(link.filename)
