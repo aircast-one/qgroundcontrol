@@ -163,6 +163,7 @@ internal fun trackingRequest(
         kotlin.math.abs(releaseY - pressY) < TRACK_POINT_SLOP_DP
     return when {
         tapped -> TrackingRequest.Point(x0, y0, TRACK_POINT_RADIUS_DP / picture.width)
+        x1 - x0 <= 0.0 || y1 - y0 <= 0.0 -> null
         else -> TrackingRequest.Box(TrackingBox(x0, y0, x1 - x0, y1 - y0))
     }
 }

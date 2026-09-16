@@ -80,4 +80,22 @@ class TrackingDragTest {
         assertEquals(0.5, sent.getDouble("x"), 1e-9)
         assertEquals(0.25, sent.getDouble("y"), 1e-9)
     }
+
+    @Test
+    fun `a drag that never touches the picture asks for nothing`() {
+        assertNull(
+            "both corners clamp to the same edge, which is a rectangle with no area - the camera " +
+                "would be asked to track a line",
+            trackingRequest(20.0, 60.0, 80.0, 150.0, letterboxed),
+        )
+        assertNull(trackingRequest(600.0, 60.0, 900.0, 150.0, letterboxed))
+        assertNull(trackingRequest(200.0, -400.0, 300.0, -200.0, letterboxed))
+    }
+
+    @Test
+    fun `a drag from outside that ends inside still has area and is kept`() {
+        val box = (trackingRequest(20.0, 60.0, 300.0, 150.0, letterboxed) as TrackingRequest.Box).rect
+        assertEquals(0.0, box.x, 1e-9)
+        assertEquals(0.5, box.width, 1e-9)
+    }
 }
