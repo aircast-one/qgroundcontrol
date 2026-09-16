@@ -197,7 +197,7 @@ fun AircastShell(quickView: QtQuickView) {
     var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var popEpoch by remember { mutableIntStateOf(0) }
-    var videoExpanded by remember { mutableStateOf(false) }
+    var videoExpanded by remember { mutableStateOf(true) }
 
     val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }

@@ -67,11 +67,11 @@ class MoreActionsTest {
                 "takeoff" to "ready",
                 "startMission" to "ready",
                 "pause" to "blocked",
-                "emergencyStop" to "ready",
+                "landAbort" to "ready",
             ),
         )
 
-        assertEquals(listOf("startMission", "pause", "emergencyStop"), extra.map { it.id })
+        assertEquals(listOf("startMission", "pause", "landAbort"), extra.map { it.id })
     }
 
     @Test

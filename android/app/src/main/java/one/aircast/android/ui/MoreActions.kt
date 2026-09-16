@@ -8,7 +8,7 @@ internal const val PAUSE = "pause"
 internal val SHEET_ACTIONS =
     setOf(
         "startMission", "continueMission", "resumeMission", "cancelRoi", PAUSE,
-        "landAbort", "grab", "release", "emergencyStop",
+        "landAbort", "grab", "release",
     )
 
 private const val GRIPPER_RELEASE = 0
@@ -23,7 +23,6 @@ internal fun guidedCommand(id: String, resumeFrom: Int?): (() -> Unit)? = when (
     "landAbort" -> ({ offMainDetached { Qgc.invoke("vehicle.abortLanding", LAND_ABORT_CLIMB_METERS) } })
     "grab" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_GRAB) } })
     "release" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_RELEASE) } })
-    "emergencyStop" -> ({ offMainDetached { Qgc.invoke("vehicle.emergencyStop") } })
     "cancelRoi" -> ({ offMainDetached { Qgc.invoke("vehicle.stopGuidedModeROI") } })
     "resumeMission" -> resumeFrom?.let { at ->
         ({ offMainDetached { Qgc.invoke("planFly.missionController.resumeMission", at) } })

@@ -262,6 +262,11 @@ fun FlightActions(modifier: Modifier = Modifier) {
     }
 
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        EmergencyStopButton(
+            offer = emergencyStopOffer(offers),
+            onConfirm = { action -> pending = action },
+        )
+
         VehicleMessageBanner()
 
         refusal?.let { message ->
