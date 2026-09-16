@@ -32,13 +32,14 @@ final class FrameStore: ObservableObject, Probeable {
         // "Generic", because Generic is a vehicle QGC could not classify and no vehicle at all is a
         // different state -- this guard returns before either is consulted.
         let reading = FrameSetup(
-            vehicleType: (frame["vehicleTypeText"] as? String) ?? "",
+            reportedType: (frame["vehicleTypeText"] as? String) ?? "",
             motorCount: (frame["motorCount"] as? NSNumber)?.intValue)
         if reading != setup { setup = reading }
     }
 
     func probeState() -> [String: Any] {
-        ["known": setup.known, "vehicleType": setup.vehicleTypeText, "motors": setup.motorText]
+        ["known": setup.known, "vehicleTypeText": setup.vehicleTypeText,
+         "motors": setup.motorText]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {

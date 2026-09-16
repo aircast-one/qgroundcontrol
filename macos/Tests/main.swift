@@ -4203,12 +4203,12 @@ checkMavlinkMessage()
 
 func checkFrameSetup() {
     expect(!FrameSetup.unknown.known, "no vehicle reports no frame")
-    expect(FrameSetup(vehicleType: "Submarine", motorCount: nil).motorText, "—",
+    expect(FrameSetup(reportedType: "Submarine", motorCount: nil).motorText, "—",
            "a count the vehicle never reported is absent, and the summary says so rather than "
            + "printing a number off a default fact")
-    expect(!FrameSetup(vehicleType: "", motorCount: nil).known,
+    expect(!FrameSetup(reportedType: "", motorCount: nil).known,
            "and with neither a type nor a count there is nothing to summarise")
-    expect(!FrameSetup(vehicleType: "", motorCount: 0).known,
+    expect(!FrameSetup(reportedType: "", motorCount: 0).known,
            "NOR WITH A COUNT OF ZERO. QGC cannot currently produce a 0 -- its motorCount returns "
            + "1, 2, 3, 4, 5, 6, 8 or -1 -- so this fixture is defensive rather than a case seen in "
            + "the wild, and it earns its place anyway: without it `known` could ask "
@@ -4216,12 +4216,12 @@ func checkFrameSetup() {
            + "mutation was GREEN until this line existed, and it was run on the model that was not "
            + "expected to fail")
 
-    let quad = FrameSetup(vehicleType: "Quadrotor", motorCount: 4)
+    let quad = FrameSetup(reportedType: "Quadrotor", motorCount: 4)
     expect(quad.known, "a reported type and motor count is a frame")
     expect(quad.motorText, "4 motors", "motors are counted")
-    expect(FrameSetup(vehicleType: "Single", motorCount: 1).motorText, "1 motor",
+    expect(FrameSetup(reportedType: "Single", motorCount: 1).motorText, "1 motor",
            "and one of them is singular")
-    expect(FrameSetup(vehicleType: "Quadrotor", motorCount: 0).motorText, "—",
+    expect(FrameSetup(reportedType: "Quadrotor", motorCount: 0).motorText, "—",
            "a vehicle that reports no motors says nothing rather than zero")
 
     expect(FrameSetup.needsFrameClass("0"), "frame class 0 is no airframe at all")
