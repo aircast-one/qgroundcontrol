@@ -87,4 +87,17 @@ class VehicleLinksTest {
 
         assertEquals(LinkCell("2 links lost", true), linkCell(vehicleLinks(worse)))
     }
+
+    @Test
+    fun `one radio going quiet says nothing here, and the no-contact banner is why`() {
+        val alone = JSONObject(
+            """{"kind":"object","class":"VehicleLinks","available":true,
+                "links":[{"name":"Telemetry","primary":true,"commLost":true}]}""",
+        )
+        assertNull(
+            "the cell is about which of several links is carrying; with one link there is no " +
+                "which, and flyState.contactLost already puts a banner on the screen",
+            linkCell(vehicleLinks(alone)),
+        )
+    }
 }

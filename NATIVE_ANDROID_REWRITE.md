@@ -8936,3 +8936,30 @@ person reads it as handled.
 the other one: swapping panes in portrait leaves the video a band about thirty
 pixels tall. Both are Pavlo's call - the readings themselves are correct, served,
 and each has a detail sheet behind it.
+
+### The duplicate-read sweep, run across all 130, 2026-09-16
+
+Two of today's conversions were the same shape: a Qt path read in a composable
+that already watched a `view.*` carrying the same fact - `useChecklist` beside
+`view.preflight.offered`, `plan.dirty` beside `view.plan`. One choice, two
+sources, close enough to disagree on screen. So the question was asked of every
+remaining path: **does the file reading this already read a view that carries
+it?**
+
+Twenty-five files read both. Every one was checked and **the sweep is clean** -
+no third instance. The two it found were found before it existed, which is the
+honest version: this sweep confirms there are no more, it did not find the two.
+
+The near-misses are worth recording because each looked like a hit:
+
+- **`VehicleMap.kt`** reads `vehicle.heading` and `vehicle.homePosition` while
+  watching `view.vehicles`. The entries carry `coordinate` and neither of those,
+  so it is a genuine gap and already request 3 to the core.
+- **`FenceBridge.kt`** has thirteen Qt paths beside `view.fences`, which looks
+  like the worst offender until you count the call sites: **all fourteen are
+  writes**. `view.fences` already serves every reading the fence editor draws -
+  latitude, longitude, inclusion, index, path, the lot. The block needs offers
+  taking an index, not readings, which is what the request asks for.
+
+**A file reading both is not evidence of duplication, and the count of such files
+is not a finding.** Twenty-five sounded like a lot until each was opened.
