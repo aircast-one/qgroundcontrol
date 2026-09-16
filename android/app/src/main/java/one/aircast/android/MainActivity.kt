@@ -97,6 +97,9 @@ private const val QML_LIBRARY = "AircastQGC"
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
 
+internal fun reselectClearsAnalyze(current: Tab, tapped: Tab): Boolean =
+    current == tapped && tapped == Tab.Analyze
+
 enum class Tab(val label: String, val icon: ImageVector) {
     Fly("Fly", Icons.Default.Home),
     Plan("Plan", Icons.Default.Place),
@@ -270,7 +273,7 @@ fun AircastShell(quickView: QtQuickView) {
                             selected = tab == entry,
                             onClick = {
                                 if (tab == entry) {
-                                    analyzePage = null
+                                    if (reselectClearsAnalyze(tab, entry)) analyzePage = null
                                     popEpoch++
                                 } else {
                                     tab = entry
