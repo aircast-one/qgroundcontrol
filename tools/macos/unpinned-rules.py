@@ -72,9 +72,10 @@ ACCEPTED = {
         "is read by my rig and by nothing on screen",
     ("VehicleSetupWindow.swift", ".green"): "MEASURED AND SPLIT: :167 pairs green with "
         "accentColor, which is PROGRESS rather than severity -- done/in-progress/not-yet, the same "
-        "vocabulary as the current flight mode's accent. :76 and :484 key on store.failing.isEmpty "
-        "and channelCount, both pinned in compiled models, so only the palette lookup floats and "
-        "the rule underneath is asserted",
+        "vocabulary as the current flight mode's accent. :76 keys on store.failing.isEmpty, pinned "
+        "in a compiled model, so only the palette lookup floats and the rule underneath is "
+        "asserted. The :484 clause this reason used to carry described the radio antenna, which "
+        "dd3120170 moved to RadioState.level -- a reason outlives the code it cites",
     ("AnalyzeWindow.swift", ".red"): "the CONDITIONS are pinned: :241 on GeoTagJob.failed, :67 on "
         "VibrationReading's band. .red is this head's ERROR palette -- the connection form and the "
         "vibration danger band spend it -- and is a different subject from FlyPanel.colour's "
@@ -187,15 +188,30 @@ def main() -> int:
     matched = {(name, literal) for name, _, _, literal in found + colours}
     stale = [key for key in sorted(ACCEPTED) if key not in matched]
 
+    # An ACCEPTED key is (file, first literal), so ONE reason can cover SEVERAL call sites, and it
+    # has to be true of every one of them. The entry that sent me looking named a producer neither
+    # of its two callers used. The stale check above only sees an entry matching NOTHING; this one
+    # names the entries whose reason is carrying more weight than a single line.
+    covered = {}
+    for name, number, _, literal in found + colours:
+        if (name, literal) in ACCEPTED:
+            covered.setdefault((name, literal), []).append(number)
+    shared = {key: lines for key, lines in covered.items() if len(lines) > 1}
+
     if '--list' in sys.argv:
         for name, number, text, _ in unexplained:
             print(f"{name}:{number}: {text[:110]}")
+        for (name, literal), lines in sorted(shared.items()):
+            print(f"ACCEPTED {name} {literal!r} covers {len(lines)} call sites "
+                  f"({', '.join(str(n) for n in sorted(lines))}) -- its reason must fit them all")
     for name, literal in stale:
         print(f"ACCEPTED {name} {literal!r} matches nothing now -- an acceptance decays like an "
               "assertion; re-derive it or delete it", file=sys.stderr)
     print(f"{len(found)} conditional string and {len(colours)} severity-colour rules in "
           f"{len(uncompiled)} uncompiled files: {len(unexplained)} unpinned, "
-          f"{len(found) + len(colours) - len(unexplained)} accepted with a reason")
+          f"{len(found) + len(colours) - len(unexplained)} accepted with a reason "
+          f"across {len(ACCEPTED) - len(stale)} entries, {len(shared)} of them covering "
+          f"more than one call site")
     return 1 if stale else 0
 
 
