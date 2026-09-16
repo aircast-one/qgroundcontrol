@@ -33,7 +33,7 @@ final class GeoTagStore: ObservableObject, Probeable, WriteReporting {
     func chooseLogFile() {
         let panel = NSOpenPanel()
         panel.title = "Select the flight log"
-        panel.allowedContentTypes = ["ulg", "px4log", "bin"].compactMap { UTType(filenameExtension: $0) }
+        panel.allowedContentTypes = GeoTagJob.logExtensions.compactMap { UTType(filenameExtension: $0) }
         panel.allowsOtherFileTypes = true
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }

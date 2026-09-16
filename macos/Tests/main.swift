@@ -4095,6 +4095,12 @@ func checkGeoTagJob() {
     job.logFile = "/Users/pilot/logs/flight.ulg"
     expect(job.canStart, "a log and images are all it needs")
 
+    expect(!GeoTagJob.logExtensions.contains("bin"),
+           "an ArduPilot dataflash log reaches PX4LogParser, which returns true over any bytes, "
+           + "so offering it advertises a format that parses empty and then blames the images")
+    expect(GeoTagJob.logExtensions.joined(separator: ","), "ulg,px4log",
+           "the picker offers exactly the two QGC offers and nothing this tree cannot read")
+
     job.saveDirectory = "/Volumes/Card/out"
     expect(job.destination, "/Volumes/Card/out", "a chosen folder wins over the default")
 
@@ -5771,7 +5777,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2161
+let assertionFloor = 2163
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

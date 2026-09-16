@@ -8,6 +8,18 @@ struct GeoTagJob: Equatable {
 
     static let taggedFolder = "TAGGED"
 
+    // GeoTagWorker.cc:142 routes ONLY a lower-case ".ulg" to the ULog parser and sends everything
+    // else to PX4LogParser, which has no failure path: getTagsFromLog returns true whatever the
+    // bytes were (PX4LogParser.cc:106). An unparsable log therefore reports a SUCCESSFUL parse with
+    // an empty trigger list, and the operator is then told "Calibration failed: No triggers or
+    // images available" -- a sentence about their images, for a log format nothing in this tree
+    // reads. This picker used to offer "bin" as a third type. ArduPilot dataflash IS .bin and this
+    // fork flies ArduPilot, so that was the likely choice, not an edge one, and no parser reads it.
+    // The two left are exactly the two QGC offers (GeoTagPage.qml:74). Picking any other file is
+    // still allowed -- the panel sets allowsOtherFileTypes, as QGC's "All Files (*)" does -- so
+    // this narrows what is ADVERTISED as supported, not what can be chosen.
+    static let logExtensions = ["ulg", "px4log"]
+
     var canStart: Bool { !logFile.isEmpty && !imageDirectory.isEmpty }
 
     var destination: String {
