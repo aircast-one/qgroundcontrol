@@ -262,7 +262,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
         val id = vehicleId ?: return@LaunchedEffect
         if (popupShownFor == id || deciding) return@LaunchedEffect
         delay(CHECKLIST_POPUP_DELAY_MS)
-        val complete = checklistIsComplete(preflight(Qgc.get(PREFLIGHT)), checklistTicked)
+        val complete = withContext(Dispatchers.Default) {
+            checklistIsComplete(preflight(Qgc.get(PREFLIGHT)), checklistTicked)
+        }
         if (checklistPopupIsDue(true, useChecklist, enforceChecklist, complete, deciding)) {
             popupShownFor = id
             showChecklist = true
