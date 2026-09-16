@@ -453,14 +453,27 @@ def main():
         for name in names:
             if name.endswith(".kt"):
                 bare |= set(BARE_BOOL.findall(open(os.path.join(base, name)).read()))
+    # view.contract.nullableUnwitnessed names paths whose PRODUCER returns an Option even though
+    # the recording could never make the null. _neverVaried says the rig saw one value; only this
+    # says a second one exists. A bare optBoolean on one of these flattens a real null to false.
+    unwitnessed = set(witness.get("view.contract", {}).get("nullableUnwitnessed", []))
+    lying = sorted(p for p in unwitnessed if p.rsplit(".", 1)[-1] in bare)
+    if lying:
+        print(f"\n  {len(lying)} field(s) the core can serve as null, read here as a bare Boolean:")
+        for p in lying:
+            print(f"    UNWITNESSED NULL {p}")
+        print("  The contract types these bool because the rig never produced the null, so the")
+        print("  flattened-bool check above cannot see them. Read them with isNull, not optBoolean.")
+
     exposed = sorted(p for p in declared_paths if p.rsplit(".", 1)[-1] in bare and p in never)
     print(f"\n  {len(declared)} view/field pair(s) are typed bool from observation alone,")
     print(f"  {len(exposed)} of them read here with a bare optBoolean and never seen to vary.")
     print("  That is a risk population, not a defect list: the rig has one vehicle in one state,")
-    print("  so most never varied for that reason. It needs the producer's own Option-ness to")
-    print("  separate them - view.contract is to gain nullableUnwitnessed for exactly that.")
+    print("  so most never varied for that reason. view.contract.nullableUnwitnessed separates")
+    print(f"  the ones the core can actually serve as null - it names {len(unwitnessed)} path(s) today, and")
+    print("  it is hand-maintained, so a clean section above is a lower bound, not an audit.")
 
-    return 1 if unexplained or stale or fresh or flat or escaped or unknown else 0
+    return 1 if unexplained or stale or fresh or flat or escaped or unknown or lying else 0
 
 
 if __name__ == "__main__":
