@@ -63,7 +63,28 @@ a system that never heartbeat; a successful geotag run.
   opening the window for the first time. `pending` stayed empty through 15-18 s of polling in each,
   and the screenshot confirms no panel on screen.
   **So the menu-invoke hypothesis is refuted and the cause is still unknown.** What remains
-  untested: another session probing 8777 (the Rust session denies it categorically; the Android
-  session has not been asked), and a stray input event while the window had focus, which no probe
-  can distinguish from a phantom. **The panel is one slide from a takeoff, so this stays open
+  untested: a stray input event while the window had focus, which no probe can distinguish from a
+  phantom. **The panel is one slide from a takeoff, so this stays open
   rather than being written off as a one-off.**
+
+  **The three negatives, checked rather than recalled, so the next cycle inherits the field and
+  not just the conclusion.** The Rust session made no debug-API call of any kind all session — no
+  port, no probe, no curl, no app launch; its suite runs are `--unittest` clones that serve
+  nothing. The Android session probes only `127.0.0.1:8790` over `adb forward`; `grep -rn 8777
+  android/tools/` returns nothing, so no script of theirs could reach the port even by a stray
+  default, and its only outbound MAVLink is UDP 14560 to loopback, which reaches no desktop app.
+  Coordination had launched nothing until after the incident. **All three denying it does not make
+  it nobody**: the honest state is cause unknown, not ruled out.
+
+  One candidate recorded and dismissed on mechanism rather than on testimony: coordination's MCP
+  `run_app` begins with `pkill -9 -x AircastQGC`, every instance on the machine. That would have
+  CLOSED a window, not opened a panel, so it cannot be this — but a rig with an undocumented side
+  effect is the shape of the thing.
+
+## Sharing the machine
+
+`127.0.0.1:8777` is one port and every session's app wants it. Coordination now runs the Qt
+desktop app there too, and its `run_app` kills every `AircastQGC` on the machine before starting.
+**So: check `lsof -nP -iTCP:8777` before launching, and say so in the channel when I do.** A rig
+cycle that begins by killing a peer's app is the same fault as a peer killing mine, and neither
+side can tell whose app it is from the outside.
