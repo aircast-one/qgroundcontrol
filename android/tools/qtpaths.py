@@ -114,7 +114,7 @@ def asked() -> list[tuple[str, str]]:
                 if name in constants:
                     hits.append((constants[name], where))
             for template in TEMPLATE.findall(text):
-                hits.append((resolve(template, constants), where))
+                hits.append((resolve(template, constants), where + " [template]"))
     owned = core_owned()
     return [(value, where) for value, where in hits if not core_serves(value) and value not in owned]
 
@@ -152,7 +152,8 @@ def main() -> None:
     for value, _ in hits:
         roots[value.split(".")[0]] = roots.get(value.split(".")[0], 0) + 1
     unique = sorted({value for value, _ in hits})
-    print("%d Qt paths asked for directly, %d distinct" % (len(hits), len(unique)))
+    templates = len({value for value, where in hits if where.endswith(" [template]")})
+    print("%d Qt paths asked for directly, %d distinct, %d of them template shapes" % (len(hits), len(unique), templates))
     for root, count in sorted(roots.items(), key=lambda pair: -pair[1]):
         print("  %-18s %d" % (root, count))
     if "--expect" in sys.argv:
@@ -170,7 +171,8 @@ def main() -> None:
         for value in unique:
             for asked_value, where in hits:
                 if asked_value == value:
-                    print("  %-46s %s" % (value, where))
+                    shape = " [template]" if where.endswith(" [template]") else ""
+                    print("  %-46s %s%s" % (value, where.removesuffix(" [template]"), shape))
                     break
 
 
