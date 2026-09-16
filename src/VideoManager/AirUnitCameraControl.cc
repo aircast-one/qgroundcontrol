@@ -9,7 +9,8 @@ QGC_LOGGING_CATEGORY(AirUnitCameraControlLog, "qgc.videomanager.airunitcameracon
 namespace {
 constexpr int kLegacyStreamInformationCameraIdOffset = 14;
 constexpr int kLegacyStreamInformationMinimumLength = 16;
-constexpr int kNoticeMilliseconds = 4000;
+
+constexpr int kSwitchingNoticeMilliseconds = 15000;
 }
 
 AirUnitCameraControl::AirUnitCameraControl(QObject *parent)
@@ -68,7 +69,12 @@ void AirUnitCameraControl::handleMessage(LinkInterface *link, const mavlink_mess
     if (message.msgid == MAVLINK_MSG_ID_COMMAND_ACK) {
         mavlink_command_ack_t ack;
         mavlink_msg_command_ack_decode(&message, &ack);
-        if (ack.command == MAV_CMD_VIDEO_START_STREAMING && ack.result != MAV_RESULT_ACCEPTED && ack.result != MAV_RESULT_IN_PROGRESS) {
+        if (ack.command != MAV_CMD_VIDEO_START_STREAMING) {
+            return;
+        }
+        if (ack.result == MAV_RESULT_ACCEPTED || ack.result == MAV_RESULT_IN_PROGRESS) {
+            _showNotice(QString());
+        } else {
             qCWarning(AirUnitCameraControlLog) << "Air unit refused input" << _activeInput << "result" << ack.result;
             _showNotice(tr("Air unit refused %1").arg(inputName(_activeInput)));
             _setActiveInput(_previousInput);
@@ -78,7 +84,7 @@ void AirUnitCameraControl::handleMessage(LinkInterface *link, const mavlink_mess
     _setActiveInput(cameraIdFromLegacyStreamInformation(message));
 }
 
-void AirUnitCameraControl::_showNotice(const QString &text)
+void AirUnitCameraControl::_showNotice(const QString &text, int milliseconds)
 {
     if (text == _notice) {
         return;
@@ -86,7 +92,7 @@ void AirUnitCameraControl::_showNotice(const QString &text)
     _notice = text;
     emit noticeChanged();
     if (!text.isEmpty()) {
-        _noticeTimer.start(kNoticeMilliseconds);
+        _noticeTimer.start(milliseconds);
     }
 }
 
@@ -107,6 +113,7 @@ void AirUnitCameraControl::selectInput(int input)
     qCDebug(AirUnitCameraControlLog) << "Selecting air unit input" << input;
     _previousInput = _activeInput;
     _setActiveInput(input);
+    _showNotice(tr("Switching to %1…").arg(inputName(input)), kSwitchingNoticeMilliseconds);
     _sendCommand(MAV_CMD_VIDEO_START_STREAMING, static_cast<float>(input));
     _requestStreamInformation();
 }

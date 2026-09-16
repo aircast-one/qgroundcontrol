@@ -97,6 +97,7 @@ signals:
 
 public slots:
     virtual void start(uint32_t timeout) = 0;
+    void setTimeout(uint32_t timeout) { _timeout = timeout; }
     virtual void stop() = 0;
     virtual void startDecoding(void *sink) = 0;
     virtual void stopDecoding() = 0;

@@ -185,8 +185,10 @@ void AirUnitCameraControlTest::_refusedSwitchRevertsTheInput()
     QCOMPARE(control.activeInput(), 1);
 
     control.selectInput(0);
+    QCOMPARE(control.notice(), QStringLiteral("Switching to MIPI…"));
     control.handleMessage(&link, startStreamingAck(MAV_RESULT_ACCEPTED));
     QCOMPARE(control.activeInput(), 0);
+    QVERIFY(control.notice().isEmpty());
 }
 
 void AirUnitCameraControlTest::_inputsAreNamedAndRefusalIsAnnounced()
@@ -202,6 +204,7 @@ void AirUnitCameraControlTest::_inputsAreNamedAndRefusalIsAnnounced()
     QVERIFY(control.notice().isEmpty());
 
     control.selectInput(1);
+    QCOMPARE(control.notice(), QStringLiteral("Switching to HDMI…"));
     control.handleMessage(&link, startStreamingAck(MAV_RESULT_FAILED));
     QCOMPARE(control.notice(), QStringLiteral("Air unit refused HDMI"));
     QCOMPARE(control.activeInputName(), QStringLiteral("MIPI"));

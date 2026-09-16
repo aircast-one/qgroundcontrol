@@ -4,6 +4,7 @@
 #include "QGCLoggingCategory.h"
 #include "QmlObjectListModel.h"
 #include "UDPLink.h"
+#include "VideoSettings.h"
 
 #ifdef Q_OS_ANDROID
 #include <QtCore/QJniObject>
@@ -36,6 +37,11 @@ UDPConfiguration *makeAutoUdpConfig(const QString &name, quint16 localPort)
     return config;
 }
 
+bool videoNeedsSeeding(VideoSettings *video)
+{
+    return video->rtspUrl()->rawValue().toString().trimmed().isEmpty();
+}
+
 } // namespace
 
 bool SkydroidH16Links::isThisRemote()
@@ -50,9 +56,15 @@ bool SkydroidH16Links::isThisRemote()
 #endif
 }
 
-int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect)
+int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect, VideoSettings *video)
 {
     int added = 0;
+    if (videoNeedsSeeding(video)) {
+        video->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
+        video->rtspUrl()->setRawValue(kVideoUrl);
+        qCDebug(SkydroidH16LinksLog) << "Configured air unit video" << kVideoUrl;
+        added++;
+    }
     if (!hasUdpConfigOnLocalPort(linkManager, kTelemetryLocalPort)) {
         linkManager->addConfiguration(makeAutoUdpConfig(kTelemetryLinkName, kTelemetryLocalPort));
         added++;
@@ -67,7 +79,7 @@ int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *auto
         autoConnect->autoConnectUDP()->setRawValue(false);
     }
     if (added > 0) {
-        qCDebug(SkydroidH16LinksLog) << "Created" << added << "SkyDroid H16 link configurations";
+        qCDebug(SkydroidH16LinksLog) << "Configured" << added << "SkyDroid H16 settings";
         linkManager->saveLinkConfigurationList();
     }
     return added;

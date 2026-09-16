@@ -4,6 +4,7 @@
 
 class LinkManager;
 class AutoConnectSettings;
+class VideoSettings;
 
 namespace SkydroidH16Links
 {
@@ -13,7 +14,8 @@ namespace SkydroidH16Links
     inline const QString kRouterHost = QStringLiteral("127.0.0.1");
     inline const QString kTelemetryLinkName = QStringLiteral("H16 telemetry");
     inline const QString kCameraLinkName = QStringLiteral("H16 camera");
+    inline const QString kVideoUrl = QStringLiteral("rtsp://192.168.0.10:8554/H264Video");
 
     bool isThisRemote();
-    int ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect);
+    int ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect, VideoSettings *video);
 }

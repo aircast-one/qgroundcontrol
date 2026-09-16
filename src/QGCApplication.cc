@@ -427,7 +427,7 @@ void QGCApplication::_initForNormalAppBoot()
     // Load known link configurations
     LinkManager::instance()->loadLinkConfigurationList();
     if (SkydroidH16Links::isThisRemote()) {
-        SkydroidH16Links::ensure(LinkManager::instance(), SettingsManager::instance()->autoConnectSettings());
+        SkydroidH16Links::ensure(LinkManager::instance(), SettingsManager::instance()->autoConnectSettings(), SettingsManager::instance()->videoSettings());
     }
 
     // Probe for joysticks

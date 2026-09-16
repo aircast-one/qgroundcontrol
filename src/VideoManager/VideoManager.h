@@ -167,6 +167,8 @@ private:
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
     void _startReceiver(VideoReceiver *receiver);
+    uint32_t _stallTimeoutFor(const VideoReceiver *receiver) const;
+    void _holdStallRestartWhileAirUnitSwitches();
     void _stopReceiver(VideoReceiver *receiver);
     static void _cleanupOldVideos();
 

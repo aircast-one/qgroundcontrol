@@ -54,7 +54,7 @@ private:
     void _sendCommand(uint16_t command, float param1);
     void _requestStreamInformation();
     void _setActiveInput(int input);
-    void _showNotice(const QString &text);
+    void _showNotice(const QString &text, int milliseconds = 4000);
 
     QPointer<LinkInterface> _link;
     int _systemId = 0;

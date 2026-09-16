@@ -39,6 +39,10 @@
 
 QGC_LOGGING_CATEGORY(VideoManagerLog, "qgc.videomanager.videomanager")
 
+namespace {
+constexpr uint32_t kAirUnitSwitchSeconds = 20;
+}
+
 static constexpr const char *kMainReceiverName = "videoContent";
 
 static constexpr const char *kFileExtension[VideoReceiver::FILE_FORMAT_MAX + 1] = {
@@ -57,6 +61,7 @@ VideoManager::VideoManager(QObject *parent)
 {
     (void) connect(_airUnitCamera, &AirUnitCameraControl::availableChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::_holdStallRestartWhileAirUnitSwitches);
     // qCDebug(VideoManagerLog) << this;
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
@@ -987,16 +992,27 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
     }
     _setReceiverStatus(receiver, tr("Connecting…"));
 
+    receiver->start(_stallTimeoutFor(receiver));
+}
+
+uint32_t VideoManager::_stallTimeoutFor(const VideoReceiver *receiver) const
+{
     const int cameraIndex = _cameraIndexForReceiver(receiver);
     const QString source = (cameraIndex >= 0) ? _videoSettings->videoSourceNameAt(cameraIndex) : _videoSettings->currentVideoSourceName();
-    /* The gstreamer rtsp source will switch to tcp if udp is not available after 5 seconds.
-       So we should allow for some negotiation time for rtsp. WHEP needs similar headroom for
-       its HTTP signaling plus ICE/DTLS setup before the first RTP packet arrives. */
-
     const bool needsNegotiationTime = (source == VideoSettings::videoSourceRTSP) || (source == VideoSettings::videoSourceWebRTC);
-    const uint32_t timeout = (needsNegotiationTime ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3);
+    return needsNegotiationTime ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3;
+}
 
-    receiver->start(timeout);
+void VideoManager::_holdStallRestartWhileAirUnitSwitches()
+{
+    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        receiver->setTimeout(kAirUnitSwitchSeconds);
+    }
+    QTimer::singleShot(kAirUnitSwitchSeconds * 1000, this, [this]() {
+        for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+            receiver->setTimeout(_stallTimeoutFor(receiver));
+        }
+    });
 }
 
 void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window)
