@@ -8963,3 +8963,35 @@ The near-misses are worth recording because each looked like a hit:
 
 **A file reading both is not evidence of duplication, and the count of such files
 is not a finding.** Twenty-five sounded like a lot until each was opened.
+
+### "Everything disappears when I switch to plan" is the Qt app, 2026-09-16
+
+Three sessions read this report as the Compose head and it is not. Measured
+rather than argued: the shipped APK of `aircast-v5.4.12-dev.3` dumps as
+
+    package: org.mavlink.qgroundcontrol   activity: QGCActivity
+
+and its own menu reads **Aircast QGC Version aircast-v5.4.12-dev.3**. The head
+this session builds is `one.aircast.android` and **has never shipped** - the
+release workflow's Android job builds `cmake --target all`, which does not reach
+`android/`. So "qt app" meant the Qt app, and the sentence was precise.
+
+`AndroidHost.qml` being a near-empty `Item` is true and irrelevant here: it is
+what the *head's* `QtQuickView` loads (`MainActivity.kt:103`). The released app
+runs `QGCCorePlugin.cc:290` → `MainWindow.qml`, the full Qt UI.
+
+**Not reproduced on the emulator without a vehicle.** Installed that exact APK,
+tapped the menu's "Plan Flight": the Plan view opens complete - File/Takeoff/
+Waypoint/ROI/Pattern/Return palette, the Create Plan panel with Empty Plan,
+Survey, Corridor Scan and Structure Scan, the Mission/Fence/Rally tabs, and the
+Mission Start editor. Nothing disappears at 1 s, 3 s or 7 s.
+
+Two environment differences worth separating from the report: the emulator draws
+**no map tiles** in either view, so both Fly and Plan have a black map with live
+chrome over it; and `app_time_stats` sits at ~200 ms a frame during the
+transition, which is the emulator's software GL and not the app.
+
+**Still unmeasured: with a vehicle connected.** That needs a TCP link added by
+hand in the Qt app's Comm Links, which the emulator's on-screen keyboard makes
+awkward to drive. If the report is about a phone with a vehicle and parameters
+loading, that is the case to chase, and Pavlo's device is the place.
