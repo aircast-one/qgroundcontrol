@@ -24,7 +24,7 @@ struct VibrationBar: View {
             }
             .frame(width: 54)
 
-            Text(axis.value.map { String(format: "%.1f", $0) } ?? "\u{2014}")
+            Text(axis.value.map { String(format: "%.1f", $0) } ?? Measure.unreported)
                 .font(.body.monospacedDigit())
             Text(axis.label)
                 .font(.caption)
@@ -359,7 +359,7 @@ struct MavlinkInspectorView: View {
                                 ForEach(Array(store.fields.enumerated()), id: \.element.id) { row, field in
                                     GroupRow(title: field.name,
                                              description: field.type,
-                                             value: field.value.isEmpty ? "\u{2014}" : field.value,
+                                             value: Measure.measuredValue(field.value),
                                              showSeparator: row > 0)
                                 }
                             }

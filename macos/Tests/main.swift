@@ -3642,6 +3642,13 @@ checkEveryEmptySetupCardAsksTheSameWay()
 func checkTheTwoSpellingsOfNothingHere() {
     expect(Measure.rowValue(""), Measure.unread, "an empty value is a sentence, not a blank")
     expect(Measure.rowValue("3.2 V"), "3.2 V", "and anything reported is drawn as it came")
+    expect(Measure.measuredValue(""), Measure.unreported,
+           "an absent MEASUREMENT is the dash, not the sentence \u{2014} it sits in a column "
+           + "where a word breaks the alignment the column exists for, which is the rule the "
+           + "constants above already state and no call site was taking from")
+    expect(Measure.measuredValue("0.4"), "0.4", "and a reading is drawn as it came")
+    expect(Measure.measuredValue("") != Measure.rowValue(""),
+           "the two absences stay apart: same input, different surfaces, different answer")
     expect(Measure.rowValue(Measure.unread), Measure.unread,
            "a served value that READS like the placeholder passes through unchanged")
     expect(!Measure.rowReported(""), "nothing reported is the empty input")
@@ -6033,7 +6040,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2227
+let assertionFloor = 2230
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

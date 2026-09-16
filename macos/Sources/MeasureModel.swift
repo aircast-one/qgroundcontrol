@@ -15,6 +15,12 @@ enum Measure {
 
     static func rowValue(_ value: String) -> String { value.isEmpty ? unread : value }
 
+    // The dash half of the same rule, which until now reached no call site: both places that draw
+    // an absent measurement spelled the character themselves, in a file swift-checks does not
+    // compile. The rule above says which vocabulary each surface takes; this is how a surface
+    // takes it.
+    static func measuredValue(_ value: String) -> String { value.isEmpty ? unreported : value }
+
     // Asks the INPUT, never the printed text. The core serves the literal phrase "Not reported"
     // as camera storageText, so a row that decided its colour by comparing what it drew against
     // unread would grey out a real answer the vehicle gave.
