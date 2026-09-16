@@ -46,6 +46,7 @@ fi
 
 # SetupPage.bespoke has to name exactly what the content switch draws.
 "$root/tools/macos/head-lists.py" || exit 1
+"$root/tools/macos/unpinned-rules.py" || exit 1
 
 swiftc -Onone -o "$out" \
     "$root/macos/Sources/DetectionModel.swift" \
