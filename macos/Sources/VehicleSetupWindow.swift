@@ -523,8 +523,7 @@ struct RadioView: View {
                                      if store.state.cancelEnabled {
                                          Button("Cancel", action: store.cancel)
                                      }
-                                     Button(store.state.nextText.isEmpty ? "Start" : store.state.nextText,
-                                            action: store.next)
+                                     Button(store.state.actionTitle, action: store.next)
                                          .disabled(!store.state.nextEnabled)
                                  }
                              })

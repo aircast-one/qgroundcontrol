@@ -102,6 +102,17 @@ struct RadioState: Equatable {
         sticks = ((json["sticks"] as? [Any]) ?? []).compactMap(RadioStick.init)
     }
 
+    // RadioComponentController.cc:31 constructs _nextText as tr("Calibrate"), and the only two
+    // values _setNextText ever receives are tr("Next") (:820) and tr("Calibrate") (:841). An empty
+    // word therefore means NO CONTROLLER, never a nameless step -- and the head's own word for that
+    // state was "Start", which QGC does not use for this button at all. Read at 0fdd8b9ec.
+    //
+    // The fallback is English where a live controller's word would be translated, but it is only
+    // reachable with no vehicle, where there is no translated word to disagree with.
+    static let defaultNextText = "Calibrate"
+
+    var actionTitle: String { nextText.isEmpty ? RadioState.defaultNextText : nextText }
+
     // The count the summary line quotes. Still a real question -- "how many are arriving" -- and
     // the probe reports it. What it is NOT is the list to draw.
     var liveChannels: [RadioChannel] { channels.filter(\.live) }
