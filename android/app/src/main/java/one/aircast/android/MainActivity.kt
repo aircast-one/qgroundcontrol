@@ -214,6 +214,13 @@ fun AircastShell(quickView: QtQuickView) {
     val flyMap = remember {
         movableContentOf<Modifier> { mod -> FlyMap(modifier = mod, cameraBottomPx = 0) }
     }
+    val flyVideoSourceLayer = remember { movableContentOf { VideoSourceLayer() } }
+    val flyCameraControlLayer = remember { movableContentOf { CameraControlLayer() } }
+    val flyObstacleArc = remember { movableContentOf { ObstacleArc() } }
+    val flyOrbitReadout = remember { movableContentOf { OrbitReadout() } }
+    val flyFollowMeReadout = remember { movableContentOf { FollowMeReadout() } }
+    val flyTrafficReadout = remember { movableContentOf { TrafficReadout() } }
+    val flyRcControlsLayer = remember { movableContentOf { RcControlsLayer() } }
 
     val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }
@@ -316,17 +323,17 @@ fun AircastShell(quickView: QtQuickView) {
                         video = { mod, expanded -> flyVideo(mod, expanded) },
                         map = { mod -> flyMap(mod) },
                         keyRow = {
-                            VideoSourceLayer()
-                            CameraControlLayer()
-                            ObstacleArc()
+                            flyVideoSourceLayer()
+                            flyCameraControlLayer()
+                            flyObstacleArc()
                             emergencyStop()
                         },
                         overlays = {
                             ObstacleReadout()
-                            OrbitReadout()
-                            FollowMeReadout()
-                            TrafficReadout()
-                            RcControlsLayer()
+                            flyOrbitReadout()
+                            flyFollowMeReadout()
+                            flyTrafficReadout()
+                            flyRcControlsLayer()
                         },
                         actions = { flightActions() },
                     )
@@ -397,13 +404,13 @@ fun AircastShell(quickView: QtQuickView) {
                     ) {
                         emergencyStop()
                         ObstacleReadout()
-                        ObstacleArc()
-                        OrbitReadout()
-                        FollowMeReadout()
-                        TrafficReadout()
-                        VideoSourceLayer()
-                        CameraControlLayer()
-                        RcControlsLayer()
+                        flyObstacleArc()
+                        flyOrbitReadout()
+                        flyFollowMeReadout()
+                        flyTrafficReadout()
+                        flyVideoSourceLayer()
+                        flyCameraControlLayer()
+                        flyRcControlsLayer()
                     }
                 }
 
