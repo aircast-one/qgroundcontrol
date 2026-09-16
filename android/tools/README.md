@@ -181,3 +181,16 @@ which is how a served field once read as "not served" with a green check behind 
 
 After the aar: `./gradlew :app:installDebug`, then reconnect the link (autoConnect is off,
 and a reinstall drops the connection).
+
+## Two vehicles
+
+    python3 tools/apmvehicle.py 127.0.0.1        # system 1
+    python3 tools/apmvehicle.py 127.0.0.1 2      # system 2, same relay
+
+The second positional argument is the MAVLink system id, and it has always been there
+(`apmvehicle.py:81`). Two instances on the same host give QGC two vehicles —
+`view.vehicles` answers `count: 2, ambiguous: true` — which is what the multi-vehicle
+list, the selection state and the four MV guided actions need.
+
+`SECOND_PORT` is **not** this: it adds a second UDP port for the *same* vehicle, to show
+one aircraft arriving over two radios. It leaves the system id alone, so QGC still sees one.
