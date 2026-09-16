@@ -38,6 +38,11 @@ enum VehicleSetupText {
         }
     }
 
+    // Ten empty-state rows on this window ask the same question and NINE of them came here. The
+    // tenth -- the Components card -- spelled its own pair, and its disconnected half said
+    // "Connect a vehicle to see what it needs." against this one's "set this up". One of ten
+    // differing is drift, not a design: nobody chose two sentences for one state, and the one at
+    // an uncompiled call site was the one that could not fail.
     static func absent(connected: Bool, _ whatTheVehicleLacks: String) -> String {
         connected
             ? "This vehicle \(whatTheVehicleLacks)"

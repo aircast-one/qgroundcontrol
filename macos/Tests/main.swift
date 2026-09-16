@@ -3538,6 +3538,20 @@ func checkAComponentsRowSaysTheSameThingTwice() {
 }
 checkAComponentsRowSaysTheSameThingTwice()
 
+func checkEveryEmptySetupCardAsksTheSameWay() {
+    expect(VehicleSetupText.absent(connected: true, "reports no setup components."),
+           "This vehicle reports no setup components.",
+           "the Components card was the tenth of ten empty-state rows on this window and the only "
+           + "one spelling its own pair")
+    expect(VehicleSetupText.absent(connected: false, "reports no setup components."),
+           VehicleSetupText.absent(connected: false, "is not reporting a battery."),
+           "and with no vehicle every one of the ten says the SAME thing, because what the vehicle "
+           + "lacks is unknowable when there is no vehicle -- the tenth used to differ here, which "
+           + "is the drift this fold removes. CONSTRUCTED: two different lacks, which no single "
+           + "call site can produce")
+}
+checkEveryEmptySetupCardAsksTheSameWay()
+
 func checkTheTwoSpellingsOfNothingHere() {
     expect(Measure.rowValue(""), Measure.unread, "an empty value is a sentence, not a blank")
     expect(Measure.rowValue("3.2 V"), "3.2 V", "and anything reported is drawn as it came")
@@ -5871,7 +5885,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2189
+let assertionFloor = 2191
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

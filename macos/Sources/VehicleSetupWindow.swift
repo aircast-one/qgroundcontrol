@@ -760,9 +760,8 @@ struct SetupSummaryView: View {
                     SectionLabel(text: "Components")
                     GroupCard {
                         if store.components.isEmpty {
-                            EmptyStateRow(text: store.connected
-                                ? "This vehicle reports no setup components."
-                                : "Connect a vehicle to see what it needs.")
+                            EmptyStateRow(text: VehicleSetupText.absent(
+                                connected: store.connected, "reports no setup components."))
                         } else {
                             ForEach(store.components) { component in
                                 let page = VehicleComponentInfo.page(for: component,
