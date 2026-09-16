@@ -81,6 +81,12 @@ def main():
         and mentions(name, asserted) == 0
     }
 
+    # This loop is also the only thing standing between a broken DECL pattern and a green run.
+    # If the declaration regex stops matching, `declared` is empty, `unentered` is empty, and the
+    # summary reports zero findings over a subject it never collected -- except that every ALLOWED
+    # name then stops being declared and trips twelve alarms. Measured by breaking the pattern:
+    # exit 1, twelve STALE ALLOWANCE lines. Keep this even if the allowlist ever empties.
+    #
     # An allowlist entry outlives what it excuses. A name that is no longer declared
     # here is a line nobody has read since the code went, and one that has grown a
     # caller is being excused for a reason that stopped applying.

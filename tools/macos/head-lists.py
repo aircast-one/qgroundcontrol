@@ -130,6 +130,16 @@ spelled = set()
 for source in sorted(pathlib.Path(f"{ROOT}/macos/Sources").glob("*.swift")):
     spelled |= set(re.findall(r'"settings\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)"', source.read_text()))
 
+# Zero paths is a broken reader, not a clean head. This head demonstrably spells settings paths,
+# so an empty set means the pattern stopped matching -- and then `missing` is empty too and the
+# line below reports success over a subject it never collected. Measured: breaking the pattern
+# prints "0 settings paths name a fact" and exits 0.
+if groups and not spelled:
+    print("found no settings paths in macos/Sources, so whether they still name a fact is "
+          "UNMEASURED rather than clean -- this head does spell them, so zero is this reader "
+          "failing rather than an answer", file=sys.stderr)
+    sys.exit(1)
+
 if unreadable or not groups:
     for why in unreadable:
         print(f"cannot read {why}", file=sys.stderr)
