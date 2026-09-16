@@ -1,6 +1,7 @@
 package one.aircast.android.bridge
 
 import android.os.Looper
+import one.aircast.android.BuildConfig
 import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,7 +72,20 @@ object Qgc {
 
     private fun onMainThread(): Boolean = Looper.myLooper() == Looper.getMainLooper()
 
+    private fun refuseOnMainThread(what: String) {
+        if (!onMainThread()) {
+            return
+        }
+        val message = "bridge call on the main thread: $what - " +
+            "wrap it in withContext(Dispatchers.Default) or offMainDetached"
+        if (BuildConfig.DEBUG) {
+            error(message)
+        }
+        Log.w(TAG, message)
+    }
+
     private fun <T> timed(what: String, block: () -> T): T {
+        refuseOnMainThread(what)
         val started = SystemClock.uptimeMillis()
         val result = block()
         val took = SystemClock.uptimeMillis() - started
@@ -137,7 +151,7 @@ object Qgc {
         }
 
     private fun resend(): Boolean =
-        runCatching { timed("watch") { sendWatch(watched.keys.joinToString(",")) } }.isSuccess
+        runCatching { sendWatch(watched.keys.joinToString(",")) }.isSuccess
 
     fun get(path: String): JSONObject =
         timed("get $path") { runCatching { JSONObject(QGCBridge.get(path)) }.getOrDefault(JSONObject()) }
