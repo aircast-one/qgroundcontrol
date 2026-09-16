@@ -92,6 +92,27 @@ struct PacketRadio: Equatable {
         haveSignal == false ? PacketRadio.hearingNothing : PacketRadio.noReadings
     }
 
+    // readings.isEmpty was the wrong question and it made the sentence above unreachable.
+    // antennaSnr and antennaScore are plain [i32; 2] the core fills whenever a Reading exists at
+    // all (packetradio.rs:513-514 map the whole Reading), so they are never absent and the list
+    // is non-empty for a radio hearing NOTHING. Only antennaRssi carries per-antenna presence,
+    // through rssi_dbm()'s Option. CONSTRUCTED through the parameterised view --
+    // view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0) gives antennaRssi [null, null],
+    // antennaSnr [12, 6], haveSignal false -- and the panel drew two rows of bare SNR numbers
+    // instead of the sentence added for exactly that state.
+    var listsAntennas: Bool { haveSignal == true }
+
+    // An antenna the receiver is not hearing keeps its slot and says so. It used to print its SNR
+    // alone, on the stated reason that "the two readings are independently absent" -- which the
+    // producer contradicts: snr is an i32 and is never absent while rssi can be. So the row that
+    // most needs to say THIS ANTENNA IS HEARING NOTHING was the one that simply looked shorter
+    // than its neighbour, and the operator had to infer which figure had gone from its unit.
+    // CONSTRUCTED: ...(receiving,wfb0,0/26,12/6,1800/2500,0) gives antennaRssi [null, -84].
+    func antennaText(_ antenna: Int) -> String {
+        let level = rssiText(antenna)
+        return (level.isEmpty ? Measure.unreported : level) + "   " + snrText(antenna)
+    }
+
     func reading(_ antenna: Int) -> PacketRadioReading? {
         antenna >= 0 && antenna < readings.count ? readings[antenna] : nil
     }

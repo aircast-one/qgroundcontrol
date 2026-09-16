@@ -107,14 +107,14 @@ struct PacketRadioSection: View {
             row("Not supported", radio.unsupportedAdapters.joined(separator: ", "))
         }
 
-        if radio.readings.isEmpty {
+        if !radio.listsAntennas {
             Text(radio.emptyText)
                 .foregroundColor(.secondary)
                 .padding(.vertical, 6)
         } else {
             Divider()
             ForEach(radio.readings.indices, id: \.self) { antenna in
-                row("Antenna \(antenna + 1)", reading(radio, antenna))
+                row("Antenna \(antenna + 1)", radio.antennaText(antenna))
             }
             if !radio.packetLossText.isEmpty {
                 row("Packet loss", radio.packetLossText)
@@ -125,14 +125,6 @@ struct PacketRadioSection: View {
                     .padding(.top, 4)
             }
         }
-    }
-
-    // An antenna the radio has taken no reading from shows nothing rather than a dash beside a
-    // number, because the two readings are independently absent.
-    private func reading(_ radio: PacketRadio, _ antenna: Int) -> String {
-        [radio.rssiText(antenna), radio.snrText(antenna)]
-            .filter { !$0.isEmpty }
-            .joined(separator: "   ")
     }
 
     private func row(_ label: String, _ value: String) -> some View {

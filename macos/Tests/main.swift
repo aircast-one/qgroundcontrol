@@ -831,8 +831,40 @@ func checkPacketRadioReadingsNeverInventANumber() {
     expect(radio(["haveSignal": NSNull()])?.emptyText ?? "", "No signal readings yet.",
            "and no answer keeps the waiting sentence, because nothing has been measured yet")
     expect(radio([:])?.emptyText ?? "", "No signal readings yet.",
-           "as does a radio that IS hearing something: this line is only drawn when there are no "
-           + "readings to list, so the hearing-nothing case is the one it exists to separate")
+           "as does a radio that IS hearing something, which never reaches this line")
+
+    // MY OWN ASSERTION'S PROSE WAS WRONG HERE AND SAID THE OPPOSITE: it claimed this line is
+    // "only drawn when there are no readings to list", which made the hearing-nothing sentence
+    // unreachable, because readings is NEVER empty for a radio that is hearing nothing.
+    // antennaSnr is [i32; 2] and the core fills it from the whole Reading (packetradio.rs:514),
+    // so only antennaRssi carries presence. CONSTRUCTED through the parameterised view:
+    // view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0) gives antennaRssi [null, null],
+    // antennaSnr [12, 6], haveSignal false -- a full readings list and nothing heard.
+    let deaf = radio(["haveSignal": false as NSNumber,
+                      "antennaRssi": [NSNull(), NSNull()],
+                      "antennaSnr": [12.0 as NSNumber, 6.0 as NSNumber]])
+    expect(deaf?.readings.count == 2,
+           "a receiver hearing nothing still has a full readings list, because snr is served "
+           + "whenever a reading exists at all")
+    expect(deaf?.listsAntennas == false,
+           "SO THE PANEL MUST NOT LIST ANTENNAS FOR IT. Gated on the list being empty, it drew "
+           + "two rows of bare SNR numbers and the sentence written for this exact state was "
+           + "unreachable -- the operator sees figures and no hint that the receiver is deaf")
+    expect(radio([:])?.listsAntennas == true,
+           "a radio that is hearing something lists them, which is the case the rows exist for")
+    expect(radio(["haveSignal": NSNull()])?.listsAntennas == false,
+           "and one that has not reported yet lists nothing, so the waiting sentence keeps its "
+           + "place rather than being displaced by rows of numbers it has not measured")
+
+    expect(radio([:])?.antennaText(0) ?? "", "-72 dBm   11 dB",
+           "an antenna that is heard shows both figures")
+    expect(radio(["antennaRssi": [NSNull(), -68.5 as NSNumber]])?.antennaText(0) ?? "",
+           "\u{2014}   11 dB",
+           "AND ONE THAT IS NOT KEEPS ITS SLOT AND SAYS SO. It used to print the SNR alone, on "
+           + "the stated reason that the two readings are independently absent -- which the "
+           + "producer contradicts, since snr is an i32 and never absent while rssi can be. The "
+           + "row that most needed to say this antenna is hearing nothing was the one that "
+           + "simply looked shorter than its neighbour")
 
     expect(PacketRadio(["kind": "null"]) == nil,
            "and the view the core REFUSES until a host reports a radio decodes to no radio at "
