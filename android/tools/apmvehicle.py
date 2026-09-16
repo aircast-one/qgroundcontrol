@@ -70,6 +70,8 @@ VIBRATION_AXES = os.environ.get("VIBRATION_AXES", "xyz")
 GROUND_ALTITUDE = 0.5
 CLIMB_RATE = 2.0
 DEFAULT_TAKEOFF_ALTITUDE = 10.0
+FLYING_ALTITUDE = (lambda metres: float(metres) if metres else None)(os.environ.get("FLYING"))
+ALTITUDE_DRIFT_M = float(os.environ.get("ALTITUDE_DRIFT", "3.0"))
 COPTER_MODE_RTL = 6
 COPTER_MODE_LAND = 9
 DESCENDING_MODES = frozenset([COPTER_MODE_RTL, COPTER_MODE_LAND])
@@ -118,6 +120,11 @@ class Sender:
     show a vehicle carried by more than one radio. SECOND_PORT_SECONDS then goes
     quiet on that port, which is a vehicle that has lost one of its two radios
     and is still flying on the other.
+
+    QUIET_AFTER goes quiet on every port at once while the socket stays open, so
+    the link is up and carrying nothing. That is the failure worth testing: a
+    closed connection makes QGC drop the link outright, and the reading vanishes
+    instead of degrading.
     """
 
     def __init__(self, sock, target):
@@ -127,8 +134,11 @@ class Sender:
         self.primary = target
         self.second = (target[0], int(second)) if second else None
         self.quiet_after = float(os.environ.get("SECOND_PORT_SECONDS", "1e9"))
+        self.silent_after = float(os.environ.get("QUIET_AFTER", "1e9"))
 
     def targets(self):
+        if time.time() - self.started > self.silent_after:
+            return []
         if self.second is None or time.time() - self.started > self.quiet_after:
             return [self.primary]
         return [self.primary, self.second]
@@ -245,9 +255,10 @@ def main():
     mode = 0
     tick = 0
 
-    altitude = 0.0
-    target_altitude = 0.0
+    altitude = FLYING_ALTITUDE or 0.0
+    target_altitude = altitude
     landing = False
+    armed = armed or FLYING_ALTITUDE is not None
 
     params = {}
     for i in range(200):
@@ -416,6 +427,8 @@ def main():
             int(os.environ.get("RC_RSSI", "80")))
         vibe = [v if a in VIBRATION_AXES else float("nan") for a, v in zip("xyz", (15.0, 45.0, 75.0))]
         link.vibration_send(int(elapsed * 1e6), *vibe, 0, 3, 12)
+        if FLYING_ALTITUDE is not None and not landing:
+            target_altitude = FLYING_ALTITUDE + ALTITUDE_DRIFT_M * math.sin(elapsed / 12.0)
         altitude += max(-CLIMB_RATE, min(CLIMB_RATE, target_altitude - altitude))
         if landing and altitude <= GROUND_ALTITUDE:
             landing = False
