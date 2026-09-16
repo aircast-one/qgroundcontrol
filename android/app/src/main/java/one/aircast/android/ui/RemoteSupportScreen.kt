@@ -25,7 +25,13 @@ import one.aircast.android.bridge.qgcPath
 
 private const val HOST_FACT = "settings.mavlinkSettings.forwardMavlinkAPMSupportHostName"
 
-internal fun supportHostIsUsable(host: String) = host.isNotBlank() && !host.contains(' ')
+internal fun supportHostIsUsable(host: String): Boolean {
+    if (host.isBlank() || host.contains(' ')) {
+        return false
+    }
+    val port = host.substringAfterLast(':', "")
+    return port.isEmpty() || port.toIntOrNull()?.let { it in 1..65535 } == true
+}
 
 @Composable
 private fun StartForwardingDialog(host: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
