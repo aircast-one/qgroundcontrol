@@ -184,6 +184,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_kind_that_names_a_geometry_has_a_seed_that_answers_and_every_kind_without_one_refuses() {
+        struct Nothing;
+        impl Backend for Nothing {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let seeded = |id: &str| seed_view(&Nothing, &[id.to_string(), "47".to_string(), "8".to_string()]);
+
+        let shaped: Vec<&str> = KINDS.iter().filter(|k| k.geometry.is_some()).map(|k| k.id).collect();
+        assert!(shaped.len() >= 3, "only {} kinds name a geometry, so a clean sweep below would mean nothing", shaped.len());
+
+        shaped.iter().for_each(|id| {
+            let answer = seeded(id);
+            assert_ne!(
+                answer["kind"], "null",
+                "{id} names a geometry and its seed refuses. The macOS head reaches seed() only after unwrapping complexName and then drops a failure silently, so a complex kind arriving without a matching seed puts an empty shape on the map and says nothing - this assertion is what makes that impossible state fail here instead"
+            );
+            assert!(answer["points"].as_array().is_some_and(|p| p.len() >= 2), "{id} seeds a shape with fewer than two points, which is a polygon a head cannot draw");
+        });
+
+        KINDS.iter().filter(|k| k.geometry.is_none()).for_each(|k| {
+            assert_eq!(
+                seeded(k.id)["kind"], "null",
+                "{} draws no shape and its seed answers anyway. The mirror of the case above: a seed gaining points without the kind gaining a geometry makes the head's complexName guard skip an item that now has vertices to place",
+                k.id
+            );
+        });
+    }
+
+    #[test]
     fn an_argument_that_names_no_kind_says_what_it_wanted() {
         struct Nothing;
         impl Backend for Nothing {

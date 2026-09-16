@@ -159,7 +159,20 @@ pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     // one and leaves the other alone. It is never null while valid is false - a check about the
     // pair rather than either field would need its own token, because a head reading null as
     // "nothing is wrong" would gate nothing at all.
+    // An unrecognised token was never examined: the host check keys on "tcp" and the rate check on
+    // serial, so anything else fell through to None and the form called a link it cannot build
+    // fine. linkTypeIds is LinkManager::linkTypeTable(), the same list the type picker is filled
+    // from, so the form cannot accept a type the manager could not construct. An empty list
+    // refuses nothing - a bridge that cannot answer must not become a validator rejecting every
+    // type.
+    let known: Vec<String> = object(&backend.get_fields("links", "linkTypeIds"))
+        .get("linkTypeIds")
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default();
+    let unknown_type = !known.is_empty() && !known.contains(&kind);
     let error: Option<(&str, &str)> = match (ok, serial, kind.as_str(), host.trim().is_empty()) {
+        _ if unknown_type => Some(("type", "Choose one of the link types this build offers.")),
         (None, true, _, _) => Some(("port", "Choose one of the rates the radio offers.")),
         (None, false, _, _) => Some(("port", "Port must be a number between 1 and 65535.")),
         (Some(_), true, _, true) => Some(("host", "A serial link needs the device to open.")),
@@ -186,6 +199,20 @@ pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
 mod tests {
     use super::*;
 
+    struct Types(Vec<&'static str>);
+    impl Backend for Types {
+        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get_fields(&self, path: &str, _f: &str) -> String {
+            match path {
+                "links" => json!({ "kind": "object", "linkTypeIds": self.0, "serialBaudRates": ["57600"] }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
     #[test]
     fn a_refused_form_says_which_field_is_wrong_rather_than_only_that_something_is() {
         let form = |kind: &str, host: &str, port: &str| link_form_view(&Nothing, &[kind.to_string(), host.to_string(), port.to_string()]);
@@ -201,6 +228,19 @@ mod tests {
 
         let good = form("tcp", "127.0.0.1", "5760");
         assert_eq!((good["valid"].clone(), good["errorField"].clone()), (json!(true), Value::Null));
+
+        let nonsense = link_form_view(&Types(vec!["serial", "udp", "tcp"]), &["websocket".to_string(), String::new(), "5760".to_string()]);
+        assert_eq!(
+            (nonsense["valid"].clone(), nonsense["errorField"].clone()),
+            (json!(false), json!("type")),
+            "an unrecognised token was never examined - the host check keys on tcp and the rate check on serial, so anything else fell through and the form called a link it cannot build valid"
+        );
+        assert_eq!(
+            link_form_view(&Types(vec![]), &["websocket".to_string(), String::new(), "5760".to_string()])["valid"],
+            true,
+            "with no linkTypeIds to check against nothing is refused for its type: a bridge that cannot answer must not become a validator that rejects every type, which is a default answering for the unasked in the harsher direction"
+        );
+        assert_eq!(link_form_view(&Types(vec!["serial", "udp", "tcp"]), &["udp".to_string(), String::new(), "14550".to_string()])["valid"], true, "and a type the build does offer still passes");
 
         [("tcp", "", "5760"), ("tcp", "127.0.0.1", ""), ("tcp", "", ""), ("serial", "", "0"), ("udp", "", "0"), ("udp", "", "70000")]
             .iter()
