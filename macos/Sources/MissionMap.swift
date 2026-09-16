@@ -88,8 +88,10 @@ final class VertexAnnotation: NSObject, MKAnnotation {
     let midpoint: Bool
     let removable: Bool
     let hint: String
-    var title: String? { midpoint ? "Add a corner" : "Corner \(index + 1)" }
-    var subtitle: String? { midpoint || removable ? nil : hint }
+    var title: String? { PolygonEdit.vertexTitle(index: index, midpoint: midpoint) }
+    var subtitle: String? {
+        PolygonEdit.vertexSubtitle(midpoint: midpoint, removable: removable, hint: hint)
+    }
 
     init(polygon: Int, index: Int, point: GeoPoint, midpoint: Bool,
          removable: Bool = false, hint: String = "") {

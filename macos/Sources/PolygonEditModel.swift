@@ -45,4 +45,22 @@ enum PolygonEdit {
         let noun = polygon.ring ? "shape" : "line"
         return "A \(noun) needs at least \(polygon.minimumVertices) corners"
     }
+
+    static let midpointTitle = "Add a corner"
+
+    // A midpoint handle is an INVITATION and a real vertex is an IDENTITY: the first says what
+    // pressing it does, the second says which corner this is. The number is index + 1 because
+    // `index` is the position in the points array and the operator counts from one -- a handle
+    // reading "Corner 0" names nothing they can point at.
+    static func vertexTitle(index: Int, midpoint: Bool) -> String {
+        midpoint ? PolygonEdit.midpointTitle : "Corner \(index + 1)"
+    }
+
+    // The hint is the REFUSAL and nothing else. A midpoint has no corner to remove, and a vertex
+    // that CAN be removed needs no explanation -- so the sentence appears exactly when removal is
+    // refused, which is the only arm where removalHint says anything but "Remove this corner".
+    // Drawn on any other vertex it would read as a warning about a handle that works.
+    static func vertexSubtitle(midpoint: Bool, removable: Bool, hint: String) -> String? {
+        midpoint || removable ? nil : hint
+    }
 }

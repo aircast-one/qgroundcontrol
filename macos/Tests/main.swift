@@ -1270,6 +1270,7 @@ func checkObstacleSilenceIsNotClearAir() {
 checkObstacleSilenceIsNotClearAir()
 checkTheControlRowIsSilentUntilTheVehicleSpeaks()
 checkTheBreachReturnSaysWhichHalfIsMissing()
+checkAVertexHandleSaysWhichKindItIs()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
     let described = MissionVehicle(planningFor: ["type": "Multi-Rotor", "firmware": "PX4 Pro",
@@ -6127,7 +6128,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2268
+let assertionFloor = 2274
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -9937,4 +9938,31 @@ func checkTheBreachReturnSaysWhichHalfIsMissing() {
     expect(BreachReturn.outcome(placed: true) == nil,
            "and a point that arrived returns no sentence at all, which is what the caller treats "
            + "as success -- an empty string there would draw an empty error row")
+}
+
+
+func checkAVertexHandleSaysWhichKindItIs() {
+    expect(PolygonEdit.vertexTitle(index: 0, midpoint: true), "Add a corner",
+           "A MIDPOINT HANDLE IS AN INVITATION, NOT A CORNER. It says what pressing it does, and "
+           + "it carries an index only because it sits between two vertices -- naming it after "
+           + "that index would label a corner that does not exist yet")
+    expect(PolygonEdit.vertexTitle(index: 0, midpoint: false), "Corner 1",
+           "and a real vertex is an IDENTITY: the number is index + 1 because `index` is the "
+           + "position in the points array and the operator counts from one. \"Corner 0\" names "
+           + "nothing they can point at")
+    expect(PolygonEdit.vertexTitle(index: 3, midpoint: false), "Corner 4",
+           "the offset is constant, not a special case at the start of the ring")
+
+    expect(PolygonEdit.vertexSubtitle(midpoint: true, removable: false, hint: "A shape needs at least 3 corners") == nil,
+           "THE HINT IS THE REFUSAL AND NOTHING ELSE. A midpoint has no corner to remove, so a "
+           + "sentence about a minimum vertex count there explains a rule the handle is not "
+           + "subject to")
+    expect(PolygonEdit.vertexSubtitle(midpoint: false, removable: true, hint: "A shape needs at least 3 corners") == nil,
+           "and a vertex that CAN be removed needs no explanation -- drawn there the sentence "
+           + "reads as a warning about a handle that works")
+    expect(PolygonEdit.vertexSubtitle(midpoint: false, removable: false,
+                                      hint: "A shape needs at least 3 corners") ?? "",
+           "A shape needs at least 3 corners",
+           "it appears exactly on the one arm where removal is refused, and it passes the "
+           + "producer's sentence through rather than composing a second one beside it")
 }
