@@ -43,9 +43,18 @@ def core_owned() -> set[str]:
     return set(OWNED.findall(listed))
 
 
+OWNS_BODY = 'path.split([\'.\', \'[\']).next() == Some("view")'
+
+
 def core_serves(path: str) -> bool:
-    """The router's own test, not an approximation of it (`view::owns`, view.rs:217)."""
+    """The router's own test. `check()` asserts view.rs still spells it this way."""
     return re.split(r"[.\[]", path, maxsplit=1)[0] == "view"
+
+
+def router_predicate() -> str:
+    source = (ROOT / "core-rs/src/view.rs").read_text()
+    body = source.split("pub fn owns(path: &str) -> bool {", 1)[1].split("}", 1)[0]
+    return " ".join(body.split())
 
 
 def defined_constants() -> dict[str, str]:
@@ -84,6 +93,10 @@ def check() -> None:
     assert "vehicle.armed" not in owned, sorted(owned)
     assert core_serves("view.flyState") and core_serves("view") and core_serves("view[0].x")
     assert not core_serves("viewfinder.zoom") and not core_serves("vehicle.armed")
+    assert router_predicate() == OWNS_BODY, (
+        "view::owns no longer reads as this tool assumes, so what counts as core-served has moved:\n"
+        "  view.rs: %s\n  here:    %s" % (router_predicate(), OWNS_BODY)
+    )
 
 
 def main() -> None:
