@@ -4,7 +4,7 @@ import subprocess
 import time
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
-APP = "one.aircast.android"
+APP = "one.aircast.app"
 
 
 def sh(command):
@@ -53,7 +53,7 @@ def ensure_app():
     freshness()
     vehicle_present()
     if "REFUSED" in sh(f"{TOOLS}/ui.sh text 2>&1"):
-        sh(f"adb shell am start -n {APP}/.MainActivity")
+        sh(f"adb shell am start -n {APP}/one.aircast.android.MainActivity")
         time.sleep(8)
         sh(f"{TOOLS}/probe.sh on")
 

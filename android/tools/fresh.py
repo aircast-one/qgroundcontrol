@@ -8,7 +8,7 @@ CORE = os.environ.get("FRESH_CORE", "/Users/pavliha/Code/aircast/qgroundcontrol/
 BRIDGE = os.environ.get("FRESH_BRIDGE", "/Users/pavliha/Code/aircast/qgroundcontrol/src/Bridge")
 LIB = os.environ.get("FRESH_LIB", "/Users/pavliha/Code/aircast/qgroundcontrol/build-android/Release/libAircastQGC_arm64-v8a.so")
 AAR = os.environ.get("FRESH_AAR", "/Users/pavliha/Code/aircast/qgroundcontrol/build-android/android-build/build/outputs/aar/android-build-release.aar")
-APP = "one.aircast.android"
+APP = "one.aircast.app"
 
 
 def newest(directory, suffixes):

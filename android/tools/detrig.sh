@@ -25,16 +25,16 @@ up)
     python3 -c "import time; time.sleep(3)"
     adb reverse tcp:8099 tcp:8099
     adb reverse tcp:8100 tcp:8100
-    adb shell am force-stop one.aircast.android
+    adb shell am force-stop one.aircast.app
     adb push "$S/det3.ini" /data/local/tmp/det3.ini >/dev/null
-    adb shell "run-as one.aircast.android cp /data/local/tmp/det3.ini 'files/settings/Aircast/Aircast QGC Daily.ini'"
-    adb shell am start -n one.aircast.android/.MainActivity >/dev/null
+    adb shell "run-as one.aircast.app cp /data/local/tmp/det3.ini 'files/settings/Aircast/Aircast QGC Daily.ini'"
+    adb shell am start -n one.aircast.app/one.aircast.android.MainActivity >/dev/null
     echo "rig up - give the app 50 s, then screencap"
     ;;
 down)
-    adb shell am force-stop one.aircast.android
+    adb shell am force-stop one.aircast.app
     adb push "$S/base.ini" /data/local/tmp/base.ini >/dev/null
-    adb shell "run-as one.aircast.android cp /data/local/tmp/base.ini 'files/settings/Aircast/Aircast QGC Daily.ini'"
+    adb shell "run-as one.aircast.app cp /data/local/tmp/base.ini 'files/settings/Aircast/Aircast QGC Daily.ini'"
     adb shell rm -f /data/local/tmp/det3.ini /data/local/tmp/base.ini
     adb reverse --remove tcp:8099 2>/dev/null
     adb reverse --remove tcp:8100 2>/dev/null

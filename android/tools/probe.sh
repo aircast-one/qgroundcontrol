@@ -14,12 +14,13 @@
 # an empty response reads exactly like a refusal, so get/set re-enable first.
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 PORT="${QGC_DEBUG_PORT:-8790}"
-APP="one.aircast.android"
+APP="one.aircast.app"
+ACTIVITY="one.aircast.android.MainActivity"
 HEADER="X-QGC-Debug-Api: 1"
 
 case "${1:-}" in
 on)
-    adb shell am start -n "$APP/.MainActivity" -a android.intent.action.VIEW \
+    adb shell am start -n "$APP/$ACTIVITY" -a android.intent.action.VIEW \
         -d "aircast-qgc://probe?debug=$PORT" > /dev/null 2>&1
     sleep 3
     adb forward "tcp:$PORT" "tcp:$PORT" > /dev/null 2>&1

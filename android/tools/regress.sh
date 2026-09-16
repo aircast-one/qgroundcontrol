@@ -17,7 +17,7 @@ SIM=$!
 python3 -c "import time; time.sleep(5)"
 kill -0 "$SIM" 2>/dev/null || { echo "FAIL: sim did not start"; tail -3 "$S/regress_$TAG.simlog"; exit 1; }
 
-adb shell am force-stop one.aircast.android
+adb shell am force-stop one.aircast.app
 "$S/ui.sh" front || { echo "FAIL: app did not come to the front"; exit 1; }
 python3 -c "import time; time.sleep(30)"
 
@@ -51,5 +51,5 @@ grep -c "STATUSTEXT" "$S/regress_$TAG.simlog" | sed 's/^/statustext sent: /'
 grep -c "LOG_REQUEST_LIST" "$S/regress_$TAG.simlog" | sed 's/^/log list requests: /'
 grep -oE "CAMERA_INFORMATION sent for [0-9]+" "$S/regress_$TAG.simlog" | sort -u | sed 's/^/  /'
 
-adb shell am force-stop one.aircast.android
+adb shell am force-stop one.aircast.app
 kill "$SIM" 2>/dev/null

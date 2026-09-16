@@ -57,8 +57,8 @@ without going through the app's navigation, and both routes render the same comp
 whatever the harness shows is what the tab shows:
 
 ```
-adb shell am start -n one.aircast.android/.MainActivity          # boots Qt
-adb shell am start -n one.aircast.android/one.aircast.mapspike.MapSpikeActivity
+adb shell am start -n one.aircast.app/.MainActivity          # boots Qt
+adb shell am start -n one.aircast.app/one.aircast.mapspike.MapSpikeActivity
 ```
 
 `am start -S` force-stops the whole package, so using it on the spike activity kills Qt seconds

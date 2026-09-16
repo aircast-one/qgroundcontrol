@@ -24,8 +24,8 @@ if [ -z "${ANDROID_SERIAL:-}" ]; then
     [ -n "$ANDROID_SERIAL" ] && export ANDROID_SERIAL
 fi
 
-APP="${APP:-one.aircast.android}"
-ACTIVITY="${ACTIVITY:-.MainActivity}"
+APP="${APP:-one.aircast.app}"
+ACTIVITY="${ACTIVITY:-one.aircast.android.MainActivity}"
 set -u
 
 PICKER_PACKAGES="com.google.android.documentsui com.android.documentsui"

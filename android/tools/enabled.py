@@ -15,7 +15,7 @@ def attribute(node, name):
     return found.group(1) if found else ""
 
 
-APP = "one.aircast.android"
+APP = "one.aircast.app"
 
 
 # A dump taken while a file picker or another app is in front still contains
