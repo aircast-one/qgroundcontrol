@@ -774,6 +774,31 @@ QJsonObject invokePath(const QString &path, const QJsonArray &args)
                 generic[arg] = QGenericArgument(method.parameterMetaType(arg).name(), values[arg].constData());
                 continue;
             }
+            if (method.parameterMetaType(arg).id() == QMetaType::QRectF) {
+                const QJsonObject rect = args.at(arg).toObject();
+                if (!rect.contains(QStringLiteral("x")) || !rect.contains(QStringLiteral("y"))
+                    || !rect.contains(QStringLiteral("width")) || !rect.contains(QStringLiteral("height"))) {
+                    return QJsonObject { { QStringLiteral("ok"), false } };
+                }
+                values[arg] = QVariant::fromValue(QRectF(
+                    rect.value(QStringLiteral("x")).toDouble(),
+                    rect.value(QStringLiteral("y")).toDouble(),
+                    rect.value(QStringLiteral("width")).toDouble(),
+                    rect.value(QStringLiteral("height")).toDouble()));
+                generic[arg] = QGenericArgument(method.parameterMetaType(arg).name(), values[arg].constData());
+                continue;
+            }
+            if (method.parameterMetaType(arg).id() == QMetaType::QPointF) {
+                const QJsonObject point = args.at(arg).toObject();
+                if (!point.contains(QStringLiteral("x")) || !point.contains(QStringLiteral("y"))) {
+                    return QJsonObject { { QStringLiteral("ok"), false } };
+                }
+                values[arg] = QVariant::fromValue(QPointF(
+                    point.value(QStringLiteral("x")).toDouble(),
+                    point.value(QStringLiteral("y")).toDouble()));
+                generic[arg] = QGenericArgument(method.parameterMetaType(arg).name(), values[arg].constData());
+                continue;
+            }
 
             // A QVariant parameter wants the QVariant itself, not a value converted into
             // one — converting a double to the QVariant metatype fails and the call is
