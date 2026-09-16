@@ -39,7 +39,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCES = ROOT / "macos/Sources"
 
-ASSIGNED = re.compile(r"^\s*(?:if \w+ != [^{]*\{ )?(\w+) = ", re.M)
+ASSIGNED = re.compile(r"^\s*(?:if [^{\n]*\{ )?(\w+) = ", re.M)
 GUARD = re.compile(r"guard [^\n]*else \{\n(.*?)\n\s*return\n\s*\}", re.S)
 
 # A name assigned in the selected path that is deliberately not cleared, and why. A store-local
@@ -102,32 +102,40 @@ def blocks(text):
         yield name, cleared, after
 
 
-# Found the day the function-finder was fixed. The old pattern required a modifier before `func`,
-# so a plain `func foo()` was invisible and the check had been reporting 0 while seeing 366 of 736
-# functions -- half the corpus, silently. These 45 are what it could not see. They are NOT accepted:
-# each still needs its own reading of whether a field the guard DOES clear gates the ones it does
-# not, which is the only thing that makes a stale field safe. They are listed so the gate keeps
-# refusing anything NEW while this backlog is worked through, rather than being switched off.
+# The untriaged backlog, from two separate days of finding this check blind.
+#
+# First: the function-finder required a modifier before `func`, so a plain `func foo()` was
+# invisible and the check reported 0 while seeing 366 of 736 functions -- half the corpus.
+#
+# Second, found while triaging the first: ASSIGNED only recognised a reset written as the bare
+# `field = ` or `if field != other { field = `. It could not see `if !field.isEmpty { field = }`,
+# so seven fields Fly.refresh's guard DOES clear were reported as outliving it; and it could not
+# see `if flag("x") != field { field = }`, so ten fields genuinely assigned after a guard were
+# never reported at all. The check was wrong in BOTH directions at once, and the two errors very
+# nearly cancelled in the total.
+#
+# These are NOT accepted: each still needs its own reading of whether a field the guard DOES clear
+# gates the ones it does not, which is the only thing that makes a stale field safe. They are
+# listed so the gate keeps refusing anything NEW while the backlog is worked through.
 PENDING = {
-    ("Fly.swift", "refresh", "batteries"),
     ("Fly.swift", "refresh", "batteryHeadlines"),
     ("Fly.swift", "refresh", "batteryLevels"),
     ("Fly.swift", "refresh", "canSetMode"),
-    ("Fly.swift", "refresh", "gpsDetail"),
-    ("Fly.swift", "refresh", "linkDetail"),
-    ("Fly.swift", "refresh", "messages"),
-    ("Fly.swift", "refresh", "modes"),
     ("Fly.swift", "refresh", "obstacle"),
     ("Fly.swift", "refresh", "requestedMode"),
-    ("Fly.swift", "refresh", "separation"),
     ("Fly.swift", "refresh", "traffic"),
-    ("Fly.swift", "refresh", "warnings"),
-    ("LogDownload.swift", "reload", "logs"),
+    ("LogDownload.swift", "reload", "canCancel"),
+    ("LogDownload.swift", "reload", "canDownload"),
+    ("LogDownload.swift", "reload", "canErase"),
+    ("LogDownload.swift", "reload", "canRefresh"),
+    ("LogDownload.swift", "reload", "downloading"),
+    ("LogDownload.swift", "reload", "emptyText"),
+    ("LogDownload.swift", "reload", "eraseWarning"),
+    ("LogDownload.swift", "reload", "requestingList"),
     ("LogDownload.swift", "reload", "savePath"),
     ("LogDownload.swift", "reload", "savePathReason"),
     ("MapClick.swift", "refresh", "scaleBar"),
-    ("MavlinkInspector.swift", "refresh", "fields"),
-    ("MavlinkInspector.swift", "refresh", "messages"),
+    ("Mission.swift", "uploadToVehicle", "uploadWarning"),
     ("Parameters.swift", "load", "loading"),
 }
 
@@ -139,8 +147,9 @@ ACCEPTED_FUNCTIONS = {
         "altitudeRange", "canRedo", "canUndo", "commandCategories", "commandsReadFor", "connected",
         "cruiseRange", "cruiseSpeed", "defaultAltitude", "defaultAltitudeUnits", "dirty",
         "globalAltitudeMode", "hoverRange", "hoverSpeed", "launch", "missionModes", "planFile",
-        "scaleBar", "speedUnits", "summary", "syncing", "terrain", "vehicle", "vehiclePosition",
-    }), "the else arm cannot be entered in a running app, so none of these 24 can be read while "
+        "kinds", "scaleBar", "speedUnits", "summary", "syncing", "terrain", "vehicle",
+        "vehiclePosition",
+    }), "the else arm cannot be entered in a running app, so none of these 25 can be read while "
         "the subject is gone. MEASURED AT THE PRODUCER, not assumed: the guard tests "
         "plan.missionController for kind == object, QGCBridgeCore.cc:81 resolves 'plan' to a "
         "function-static PlanMasterController built on first use and never destroyed, and "
