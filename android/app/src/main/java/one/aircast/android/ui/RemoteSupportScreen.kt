@@ -38,9 +38,8 @@ internal data class SupportHostVerdict(val valid: Boolean, val error: String)
 internal fun supportHostPath(host: String): String = "view.supportHost($host)"
 
 internal fun supportHostCannotBeAsked(host: String): String? = when {
-    host.contains(',') -> "An address cannot contain a comma."
     host.isBlank() -> null
-    host.any { it.isWhitespace() } -> "An address cannot contain a space."
+    host != host.trim() -> "Remove the space before or after the address."
     else -> null
 }
 

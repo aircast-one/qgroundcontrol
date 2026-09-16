@@ -7,6 +7,7 @@ import sys
 CORE = os.environ.get("FRESH_CORE", "/Users/pavliha/Code/aircast/qgroundcontrol/core-rs/src")
 BRIDGE = os.environ.get("FRESH_BRIDGE", "/Users/pavliha/Code/aircast/qgroundcontrol/src/Bridge")
 LIB = os.environ.get("FRESH_LIB", "/Users/pavliha/Code/aircast/qgroundcontrol/build-android/Release/libAircastQGC_arm64-v8a.so")
+AAR = os.environ.get("FRESH_AAR", "/Users/pavliha/Code/aircast/qgroundcontrol/build-android/android-build/build/outputs/aar/android-build-release.aar")
 APP = "one.aircast.android"
 
 
@@ -39,6 +40,13 @@ def show(stamp):
     return datetime.datetime.fromtimestamp(stamp).strftime("%H:%M:%S")
 
 
+def gap(seconds):
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    return f"{seconds // 60} min"
+
+
 def against(path):
     if not os.path.exists(path):
         raise SystemExit(f"no such source: {path}")
@@ -63,17 +71,31 @@ def main():
     if not os.path.exists(LIB):
         raise SystemExit(f"no library at {LIB}")
     lib = os.path.getmtime(LIB)
+    aar = os.path.getmtime(AAR) if os.path.exists(AAR) else None
     device = installed_at()
 
     print(f"newest source   {show(source[0])}  {os.path.basename(source[1])}")
-    print(f"library built   {show(lib)}")
+    print(f"library built   {show(lib)}  libAircastQGC_arm64-v8a.so")
+    print(f"aar packaged    {show(aar) if aar else 'missing'}  android-build-release.aar")
     print(f"app installed   {show(device) if device else 'unknown - is the device attached?'}")
 
     behind = []
     if source[0] > lib:
         behind.append(
-            f"the library is {int((source[0] - lib) // 60)} min older than {os.path.basename(source[1])}"
-            " - rebuild the aar before believing any reading"
+            f"libAircastQGC_arm64-v8a.so is {gap(source[0] - lib)} older than"
+            f" {os.path.basename(source[1])} - cmake --build build-android"
+        )
+    if aar is None:
+        behind.append("no aar has ever been packaged - ninja -C build-android aar")
+    elif lib > aar:
+        behind.append(
+            f"android-build-release.aar is {gap(lib - aar)} older than the .so it should contain"
+            " - the Kotlin head links the aar, not the .so, so a fresh library proves nothing"
+            " - ninja -C build-android aar"
+        )
+    if device and aar and aar > device:
+        behind.append(
+            f"the app on the handset is {gap(aar - device)} older than the aar - installDebug"
         )
     if device and lib > device:
         behind.append(

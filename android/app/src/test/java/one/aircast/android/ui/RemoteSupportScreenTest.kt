@@ -52,28 +52,31 @@ class RemoteSupportScreenTest {
     }
 
     @Test
-    fun `a comma is refused here, because the path cannot carry it`() {
-        assertEquals(
-            "view arguments split on a comma, so a host containing one would arrive at the " +
-                "core truncated and could be answered valid on the half that survived",
-            "An address cannot contain a comma.",
+    fun `the core answers the comma now, so the head does not`() {
+        assertNull(
+            "view.supportHost sees a typed comma as a second argument - which cannot arise " +
+                "any other way - and refuses it. The head asked because it thought the " +
+                "truncation hid the evidence; the truncation is the evidence",
             supportHostCannotBeAsked("10.0.0.4,14550"),
         )
-        assertNull(supportHostCannotBeAsked("10.0.0.4:14550"))
+        assertNull(supportHostCannotBeAsked("two words:14550"))
     }
 
     @Test
-    fun `a spaced address is refused here, because the core still accepts it`() {
+    fun `surrounding space stays refused here, because the core trims and QGC does not`() {
         assertEquals(
-            "measured on device: view.supportHost answers valid for 'two words:14550' and " +
-                "every other whitespace form, while UDPLink.cc:166 returns without adding a " +
-                "client when the address will not resolve - so adopting the served verdict " +
-                "alone would put back the defect 691db8606 removed. Drop this when the core " +
-                "refuses whitespace",
-            "An address cannot contain a space.",
-            supportHostCannotBeAsked("two words:14550"),
+            "links.rs trims the typed value before judging it, so '  host:14550' is answered " +
+                "valid - but LinkManager passes the stored value to addHost untrimmed, and " +
+                "QHostInfo::fromName cannot resolve a name with a leading space, so addHost " +
+                "returns at UDPLink.cc:166 without adding a client. Valid, and forwards nowhere",
+            "Remove the space before or after the address.",
+            supportHostCannotBeAsked("  leading:14550"),
         )
-        assertEquals("An address cannot contain a space.", supportHostCannotBeAsked("has space.org"))
+        assertEquals(
+            "Remove the space before or after the address.",
+            supportHostCannotBeAsked("host:14550 "),
+        )
+        assertNull(supportHostCannotBeAsked("host:14550"))
         assertNull("a blank field is the empty state, not a complaint", supportHostCannotBeAsked(""))
     }
 }
