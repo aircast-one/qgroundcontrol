@@ -596,9 +596,9 @@ internal fun MapSpikeScreen(
                         },
                     ) { Text("ROI") }
 
-                    TextButton(onClick = {
+                    TextButton(enabled = support.fence, onClick = {
                         val at = placeAt()
-                        onBridge("Adding circle") {
+                        onBridge("Adding circle", done = support.reason.ifBlank { null }) {
                             at != null && FenceBridge.addInclusionCircle(
                                 TrackPoint(at.latitude + 0.002, at.longitude - 0.002),
                                 TrackPoint(at.latitude - 0.002, at.longitude + 0.002),
