@@ -118,12 +118,6 @@ def blocks(text):
 # gates the ones it does not, which is the only thing that makes a stale field safe. They are
 # listed so the gate keeps refusing anything NEW while the backlog is worked through.
 PENDING = {
-    ("Fly.swift", "refresh", "batteryHeadlines"),
-    ("Fly.swift", "refresh", "batteryLevels"),
-    ("Fly.swift", "refresh", "canSetMode"),
-    ("Fly.swift", "refresh", "obstacle"),
-    ("Fly.swift", "refresh", "requestedMode"),
-    ("Fly.swift", "refresh", "traffic"),
     ("MapClick.swift", "refresh", "scaleBar"),
     ("Mission.swift", "uploadToVehicle", "uploadWarning"),
     ("Parameters.swift", "load", "loading"),
@@ -165,10 +159,24 @@ ACCEPTED_FUNCTIONS = {
         "canDownload, canRefresh and canErase, none of which the guard clears, and the Cancel "
         "button and its spinner are drawn on downloading || requestingList, also uncleared. THE "
         "BLIND SPOT, STATED: this rests on the core's registry, not mine, and nothing re-checks it."),
+    ("Fly.swift", "refresh"): (frozenset({
+        "batteryHeadlines", "batteryLevels", "canSetMode", "requestedMode",
+    }), "UNLIKE the other two pardons this arm IS reachable -- the guard is on the active vehicle "
+        "and a vehicle genuinely goes away. These four are safe the way MavlinkInspector's "
+        "systemId is: a field the guard DOES clear gates the only reader. batteryHeadlines and "
+        "batteryLevels are read ONLY inside ForEach(fly.batteries.enumerated()) at "
+        "FlyWindow.swift:20-23, and batteries is cleared, so the loop has no iterations (the "
+        ".indices.contains check is a second, independent protection). canSetMode is read ONLY "
+        "inside modeRow at :179, called ONLY from ForEach over FlightModes.everyday(fly.modes) "
+        "and .folded(fly.modes) at :107 and :114, and modes is cleared. requestedMode is read "
+        "ONLY in the else of `if fly.modes.isEmpty` at :211, so with modes cleared the arm taken "
+        "is the one that says No vehicle. The other two fields this guard used to miss, traffic "
+        "and obstacle, were NOT safe and are now cleared in the guard itself"),
 }
 
 findings = []
 backlog = []
+seen_here = set()
 for source in sorted(SOURCES.glob("*.swift")):
     for func, cleared, after in blocks(source.read_text()):
         outliving = sorted(after - cleared)
@@ -185,6 +193,14 @@ for source in sorted(SOURCES.glob("*.swift")):
         for name in sorted(pardoned - set(outliving)):
             findings.append((source.name, func, f"{name} (pardoned but no longer outlives -- "
                                                 f"drop it from ACCEPTED_FUNCTIONS)"))
+        seen_here.update((source.name, func, name) for name in outliving)
+
+# A backlog entry that stops applying has to be as loud as a pardon that stops applying. When
+# traffic and obstacle were fixed in the guard the count fell from 9 to 7 and NOTHING said why --
+# and a count falling for a bad reason reads exactly the same as one falling for a good one.
+for entry in sorted(PENDING - seen_here):
+    findings.append((entry[0], entry[1], f"{entry[2]} (listed as awaiting triage but no longer "
+                                         f"outlives -- say why it went and drop it from PENDING)"))
 
 for where, func, name in findings:
     print(f"  OUTLIVES {where} {func}() assigns {name!r} when something is selected and never "

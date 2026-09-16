@@ -89,6 +89,7 @@ commandsGimbal
 compId
 complexName
 component
+condition
 configured
 connected
 connecting
@@ -99,6 +100,7 @@ control
 coordinate
 count
 cruise
+cruiseSpeed
 current
 currentText
 dangerLevel
@@ -159,6 +161,7 @@ foldedCommands
 following
 footprintText
 fraction
+frame
 fromHome
 generation
 geometry
@@ -185,6 +188,7 @@ home
 horizontalAccuracy
 host
 hover
+hoverSpeed
 id
 inProgress
 inclusion
@@ -280,6 +284,7 @@ packetLoss
 packetLossUnit
 packs
 page
+parameter
 parameterSections
 parametersReady
 parametersReason
@@ -291,6 +296,7 @@ percent
 percentText
 photoMode
 placementHint
+plan
 polling
 port
 portName
@@ -307,6 +313,7 @@ radiusMetres
 radiusMinimum
 radiusText
 radiusUnits
+rallyPoints
 rallySupported
 range
 rate
@@ -328,8 +335,10 @@ refused
 removeInvokable
 repeat
 report
+reported
 reportsStorage
 request
+requested
 requestingList
 required
 resumeFromSequence
@@ -400,6 +409,7 @@ supportForwarding
 supported
 surfaceDistanceText
 systemId
+takeoff
 target
 targetMeters
 targetMetersSecond
@@ -433,6 +443,7 @@ vehicleType
 vehicleTypeText
 velocity
 verdict
+version
 visible
 voltage
 voltageText

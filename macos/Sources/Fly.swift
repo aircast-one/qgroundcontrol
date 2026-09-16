@@ -109,6 +109,13 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             if !linkDetail.isEmpty { linkDetail = [] }
             if !modes.isEmpty { modes = [] }
             if !separation.isEmpty { separation = "" }
+            // Both are read behind a property of their OWN value -- FlyWindow draws the rows on
+            // traffic.available and obstacle.available -- so nothing else here reaches them and a
+            // vehicle that goes away used to leave the last contacts and the last distances on
+            // screen. Every other field in this guard is gated by one of its neighbours; these two
+            // were the whole reason the panel could describe an aircraft that is not there.
+            if traffic != .none { traffic = .none }
+            if obstacle != .none { obstacle = .none }
             return
         }
 
