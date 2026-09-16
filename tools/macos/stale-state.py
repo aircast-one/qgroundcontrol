@@ -45,6 +45,12 @@ GUARD = re.compile(r"guard [^\n]*else \{\n(.*?)\n\s*return\n\s*\}", re.S)
 # A name assigned in the selected path that is deliberately not cleared, and why. A store-local
 # variable is not state a reader sees, so it does not belong here -- only @Published fields do.
 ACCEPTED = {
+    ("MavlinkInspector.swift", "systemId"): "FIRST ONE TRIAGED OUT OF THE BACKLOG. It does "
+        "outlive: the guard clears listening, messages and fields and leaves systemId holding the "
+        "last system's number. It is safe because the one field that IS cleared gates its only "
+        "reader -- InspectorList.note names the system only when listening is true -- so the "
+        "stale number is never drawn. That is the shape that makes a stale field safe, and it has "
+        "to be checked rather than assumed for each of the remaining 44",
     ("SettingsStore.swift", "cache"): "the page cache is a private dictionary, not published "
         "state, and load() clears it on every SUCCESS. Leaving it after a failed read costs "
         "nothing: sections is emptied so the window draws nothing, and the next successful load "
@@ -71,7 +77,7 @@ def functions(text):
     findings, almost all of them another function's business. A regex cannot find the end of a
     Swift body; counting braces can.
     """
-    for opened in (m for m in re.finditer(r"\n    (?:@\w+ )?(?:private |static |func)[^\n]*func (\w+)", text)):
+    for opened in (m for m in re.finditer(r"\n    (?:@\w+ )?(?:(?:private|fileprivate|public|internal|static|final|override|mutating|nonisolated|discardableResult)\s+)*func (\w+)", text)):
         name = opened.group(1)
         start = text.index("{", opened.end() - 1)
         depth, i = 0, start
@@ -96,11 +102,68 @@ def blocks(text):
         yield name, cleared, after
 
 
+# Found the day the function-finder was fixed. The old pattern required a modifier before `func`,
+# so a plain `func foo()` was invisible and the check had been reporting 0 while seeing 366 of 736
+# functions -- half the corpus, silently. These 45 are what it could not see. They are NOT accepted:
+# each still needs its own reading of whether a field the guard DOES clear gates the ones it does
+# not, which is the only thing that makes a stale field safe. They are listed so the gate keeps
+# refusing anything NEW while this backlog is worked through, rather than being switched off.
+PENDING = {
+    ("Fly.swift", "refresh", "batteries"),
+    ("Fly.swift", "refresh", "batteryHeadlines"),
+    ("Fly.swift", "refresh", "batteryLevels"),
+    ("Fly.swift", "refresh", "canSetMode"),
+    ("Fly.swift", "refresh", "gpsDetail"),
+    ("Fly.swift", "refresh", "linkDetail"),
+    ("Fly.swift", "refresh", "messages"),
+    ("Fly.swift", "refresh", "modes"),
+    ("Fly.swift", "refresh", "obstacle"),
+    ("Fly.swift", "refresh", "requestedMode"),
+    ("Fly.swift", "refresh", "separation"),
+    ("Fly.swift", "refresh", "traffic"),
+    ("Fly.swift", "refresh", "warnings"),
+    ("LogDownload.swift", "reload", "logs"),
+    ("LogDownload.swift", "reload", "savePath"),
+    ("LogDownload.swift", "reload", "savePathReason"),
+    ("MapClick.swift", "refresh", "scaleBar"),
+    ("MavlinkInspector.swift", "refresh", "fields"),
+    ("MavlinkInspector.swift", "refresh", "messages"),
+    ("Mission.swift", "reload", "altitudeRange"),
+    ("Mission.swift", "reload", "canRedo"),
+    ("Mission.swift", "reload", "canUndo"),
+    ("Mission.swift", "reload", "commandCategories"),
+    ("Mission.swift", "reload", "commandsReadFor"),
+    ("Mission.swift", "reload", "connected"),
+    ("Mission.swift", "reload", "cruiseRange"),
+    ("Mission.swift", "reload", "cruiseSpeed"),
+    ("Mission.swift", "reload", "defaultAltitude"),
+    ("Mission.swift", "reload", "defaultAltitudeUnits"),
+    ("Mission.swift", "reload", "dirty"),
+    ("Mission.swift", "reload", "globalAltitudeMode"),
+    ("Mission.swift", "reload", "hoverRange"),
+    ("Mission.swift", "reload", "hoverSpeed"),
+    ("Mission.swift", "reload", "launch"),
+    ("Mission.swift", "reload", "missionModes"),
+    ("Mission.swift", "reload", "planFile"),
+    ("Mission.swift", "reload", "scaleBar"),
+    ("Mission.swift", "reload", "speedUnits"),
+    ("Mission.swift", "reload", "summary"),
+    ("Mission.swift", "reload", "syncing"),
+    ("Mission.swift", "reload", "terrain"),
+    ("Mission.swift", "reload", "vehicle"),
+    ("Mission.swift", "reload", "vehiclePosition"),
+    ("Parameters.swift", "load", "loading"),
+}
+
 findings = []
+backlog = []
 for source in sorted(SOURCES.glob("*.swift")):
     for func, cleared, after in blocks(source.read_text()):
         for name in sorted(after - cleared):
             if (source.name, name) in ACCEPTED:
+                continue
+            if (source.name, func, name) in PENDING:
+                backlog.append((source.name, func, name))
                 continue
             findings.append((source.name, func, name))
 
@@ -110,5 +173,6 @@ for where, func, name in findings:
           f"others, or accept it here with the reason it is safe to keep", file=sys.stderr)
 
 print(f"checked every guard-else reset in {len(list(SOURCES.glob('*.swift')))} head files: "
-      f"{len(findings)} field(s) outlive their selection, {len(ACCEPTED)} accepted with a reason")
+      f"{len(findings)} field(s) outlive their selection, {len(ACCEPTED)} accepted with a reason, "
+      f"{len(backlog)} awaiting triage from the day the finder was fixed")
 sys.exit(1 if findings else 0)
