@@ -38,7 +38,7 @@ from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
 from pymavlink.generator.mavcrc import x25crc
 
-TARGET = (sys.argv[1], 14550)
+TARGET = (sys.argv[1], int(os.environ.get("RIG_UDP_PORT", "14550")))
 
 INT_PARAMS = frozenset(
     ["ARMING_CHECK", "FS_OPTIONS", "SIMPLE", "SUPER_SIMPLE", "FS_THR_ENABLE",

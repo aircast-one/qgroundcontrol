@@ -195,6 +195,17 @@ list, the selection state and the four MV guided actions need.
 `SECOND_PORT` is **not** this: it adds a second UDP port for the *same* vehicle, to show
 one aircraft arriving over two radios. It leaves the system id alone, so QGC still sees one.
 
+`RIG_UDP_PORT` moves the whole rig off 14550, and both scripts read it, so a session that
+sets it stops contending with the three others sharing this machine:
+
+    RIG_UDP_PORT=14560 python3 tools/udptcp.py &
+    RIG_UDP_PORT=14560 python3 tools/apmvehicle.py 127.0.0.1 &
+
+`udptcp.py` binds `127.0.0.1:14550` by default, which is a *specific* bind: datagrams
+addressed to 127.0.0.1 reach it in preference to a wildcard-bound AircastQGC, so a peer's
+fake feeds this relay instead of their app. Their link tests also refuse to run while
+anything holds the port. Pick a port per session rather than taking turns.
+
 Commands only reach the vehicle they name because of two fixes made together. `udptcp.py`
 now relays downlink to **every** UDP address it has heard from rather than the newest one,
 and `apmvehicle.py` ignores any message whose `target_system` is neither 0 nor its own
