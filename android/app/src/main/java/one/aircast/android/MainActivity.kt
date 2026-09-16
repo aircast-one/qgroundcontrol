@@ -72,6 +72,7 @@ import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.CameraControlLayer
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.FollowMeReadout
+import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.OrbitReadout
 import one.aircast.android.ui.ParametersScreen
@@ -315,6 +316,7 @@ fun AircastShell(quickView: QtQuickView) {
                         keyRow = {
                             VideoSourceLayer()
                             CameraControlLayer()
+                            ObstacleArc()
                             emergencyStop()
                         },
                         overlays = {
@@ -393,6 +395,7 @@ fun AircastShell(quickView: QtQuickView) {
                     ) {
                         emergencyStop()
                         ObstacleReadout()
+                        ObstacleArc()
                         OrbitReadout()
                         FollowMeReadout()
                         TrafficReadout()

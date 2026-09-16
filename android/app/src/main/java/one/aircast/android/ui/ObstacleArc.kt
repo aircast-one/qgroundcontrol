@@ -1,0 +1,79 @@
+package one.aircast.android.ui
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.dp
+import one.aircast.android.bridge.qgcPath
+
+private const val OBSTACLE_PATH = "view.obstacle"
+private val ARC_SIZE = 48.dp
+private const val SWEEP_PADDING = 0.85f
+
+internal fun arcSweep(increment: Double): Float = (increment * SWEEP_PADDING).toFloat()
+
+internal const val NEAREST_VISIBLE_FRACTION = 0.22f
+
+internal fun arcRadiusFraction(metres: Double, ceiling: Double): Float = when {
+    ceiling <= 0.0 -> 0f
+    else -> (metres / ceiling).coerceIn(0.0, 1.0).toFloat()
+        .coerceAtLeast(NEAREST_VISIBLE_FRACTION)
+}
+
+@Composable
+fun ObstacleArc(modifier: Modifier = Modifier) {
+    val view by qgcPath(OBSTACLE_PATH)
+    val ring = remember(view) { obstacleRing(view) } ?: return
+    val spacing = remember(view) { view?.optDouble("ringIncrement", 5.0) ?: 5.0 }
+
+    val live = MaterialTheme.colorScheme.error
+    val faded = MaterialTheme.colorScheme.onSurfaceVariant
+    val ink = if (ring.stale) faded.copy(alpha = 0.45f) else live
+
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Canvas(Modifier.size(ARC_SIZE)) {
+                val centre = Offset(size.width / 2f, size.height / 2f)
+                val full = size.minDimension / 2f
+                drawCircle(faded.copy(alpha = 0.25f), radius = full, center = centre, style = Stroke(width = 2f))
+                drawCircle(faded.copy(alpha = 0.6f), radius = 3f, center = centre)
+                ring.samples.forEach { sample ->
+                    val reach = full * arcRadiusFraction(sample.metres, ring.maxMetres)
+                    drawArc(
+                        color = ink,
+                        startAngle = (sample.bearingDegrees - 90.0).toFloat() - arcSweep(spacing) / 2f,
+                        sweepAngle = arcSweep(spacing),
+                        useCenter = false,
+                        topLeft = Offset(centre.x - reach, centre.y - reach),
+                        size = Size(reach * 2f, reach * 2f),
+                        style = Stroke(width = 6f),
+                    )
+                }
+            }
+            if (ring.stale) {
+                Text(
+                    text = "Last seen",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
