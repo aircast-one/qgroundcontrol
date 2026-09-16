@@ -6028,6 +6028,16 @@ func checkTheInspectorSaysWhichSilenceItIsIn() {
            + "to the list there draws the bare empty card this gate exists to prevent")
     expect(InspectorList.emptyText(served: nil, count: 4) == nil,
            "but rows already read are drawn even when the sentence did not arrive with them")
+
+    expect(InspectorList.note(listening: true, systemId: 42).hasPrefix("Every message system 42"),
+           "the note NAMES the system once there is one to name, so an operator watching two "
+           + "vehicles can tell which stream this page is showing")
+    expect(InspectorList.note(listening: false, systemId: 42).hasPrefix("Every message the vehicle"),
+           "and with no active system it says the vehicle rather than naming a stale id \u{2014} "
+           + "systemId is not cleared when listening stops, so the arms must not both read it")
+    expect(InspectorList.note(listening: true, systemId: 42).hasSuffix("one you pick."),
+           "both arms share one tail, which is why they are one sentence with one variable part "
+           + "rather than two sentences that can drift")
 }
 checkTheInspectorSaysWhichSilenceItIsIn()
 
@@ -6040,7 +6050,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2230
+let assertionFloor = 2233
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

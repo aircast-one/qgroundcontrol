@@ -112,6 +112,17 @@ struct MavlinkField: Identifiable, Equatable {
 }
 
 enum InspectorList {
+    // The page note names the system only once there IS one. `listening` is whether
+    // mavlinkInspector.activeSystem answered as an object, and MAVLinkSystem.h:27 declares id as a
+    // CONSTANT quint8, so a listening system always has a real sysid -- the head's `?? 0` default
+    // is unreachable through the absent-field path and a drawn 0 would be a device really
+    // announcing itself as the broadcast address. Read at 672a74bdb.
+    static func note(listening: Bool, systemId: Int) -> String {
+        let subject = listening ? "system \(systemId)" : "the vehicle"
+        return "Every message \(subject) is sending, how often it arrives, and what is inside the "
+            + "one you pick."
+    }
+
     // Two different silences, and only one of them had a sentence. The core now spells both
     // (inspector.rs:41): "Connect a vehicle to inspect its MAVLink traffic." when no system is
     // there, "Waiting for this vehicle's first message..." when one is and nothing has arrived --

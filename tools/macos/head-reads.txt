@@ -251,6 +251,7 @@ missing
 missingReason
 missionActive
 missionAltitude
+missionFlightMode
 mode
 modeKnown
 modeText

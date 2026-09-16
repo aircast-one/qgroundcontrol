@@ -292,9 +292,8 @@ struct MavlinkInspectorView: View {
 
     var body: some View {
         SetupPageBody(title: "MAVLink Inspector",
-                      note: store.listening
-                          ? "Every message system \(store.systemId) is sending, how often it arrives, and what is inside the one you pick."
-                          : "Every message the vehicle sends, how often it arrives, and what is inside the one you pick.") {
+                      note: InspectorList.note(listening: store.listening,
+                                               systemId: store.systemId)) {
             if let empty = InspectorList.emptyText(served: store.emptySentence,
                                                    count: store.messages.count) {
                 GroupCard { EmptyStateRow(text: empty) }
