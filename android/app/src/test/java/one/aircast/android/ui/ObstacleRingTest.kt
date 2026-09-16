@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -111,6 +112,34 @@ class ObstacleRingTest {
         assertEquals("the ceiling is the rim", 1f, arcRadiusFraction(40.0, ceiling), 1e-6f)
         assertEquals("beyond the ceiling is still the rim", 1f, arcRadiusFraction(90.0, ceiling), 1e-6f)
         assertEquals("no ceiling, nothing to scale against", 0f, arcRadiusFraction(3.2, 0.0), 1e-6f)
+    }
+
+    @Test
+    fun `the near band does not collapse, where the difference matters most`() {
+        val ceiling = 40.0
+
+        assertTrue(
+            "a linear scale put 0.2 m and 3.2 m at 0.5 and 8 percent, and a floor then made " +
+                "them the same mark - 0.2 m is a strike and 3.2 m is a manoeuvre, so that is " +
+                "the one place the picture must not flatten",
+            arcRadiusFraction(3.2, ceiling) > arcRadiusFraction(0.2, ceiling) * 2f,
+        )
+        assertTrue(arcRadiusFraction(1.0, ceiling) > arcRadiusFraction(0.2, ceiling))
+    }
+
+    @Test
+    fun `too near is the vehicle's own judgement, not a pixel threshold`() {
+        assertTrue(
+            "inside twice the sensor's rated floor is the vehicle saying too near, and it " +
+                "survives wherever the radius has to floor out",
+            sampleIsClose(0.2, 0.2),
+        )
+        assertFalse(sampleIsClose(0.5, 0.2))
+        assertFalse(
+            "with no rated floor nothing is near, and it needs no guard of its own: the ring " +
+                "drops any sample below zero, so a distance can never be under twice nothing",
+            sampleIsClose(0.1, 0.0),
+        )
     }
 
     @Test

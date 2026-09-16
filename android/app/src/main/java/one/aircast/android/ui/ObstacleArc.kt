@@ -25,19 +25,23 @@ private const val SWEEP_PADDING = 0.85f
 
 internal fun arcSweep(increment: Double): Float = (increment * SWEEP_PADDING).toFloat()
 
-internal const val NEAREST_VISIBLE_FRACTION = 0.22f
+internal const val NEAREST_VISIBLE_FRACTION = 0.12f
 
 internal fun arcRadiusFraction(metres: Double, ceiling: Double): Float = when {
     ceiling <= 0.0 -> 0f
-    else -> (metres / ceiling).coerceIn(0.0, 1.0).toFloat()
+    else -> kotlin.math.sqrt((metres / ceiling).coerceIn(0.0, 1.0)).toFloat()
         .coerceAtLeast(NEAREST_VISIBLE_FRACTION)
 }
+
+internal fun sampleIsClose(metres: Double, floorMetres: Double): Boolean =
+    metres < floorMetres * 2.0
 
 @Composable
 fun ObstacleArc(modifier: Modifier = Modifier) {
     val view by qgcPath(OBSTACLE_PATH)
     val ring = remember(view) { obstacleRing(view) } ?: return
     val spacing = remember(view) { view?.optDouble("ringIncrement", 5.0) ?: 5.0 }
+    val floorMetres = remember(view) { view?.optDouble("rangeMinMetres", 0.0) ?: 0.0 }
 
     val live = MaterialTheme.colorScheme.error
     val faded = MaterialTheme.colorScheme.onSurfaceVariant
@@ -56,14 +60,15 @@ fun ObstacleArc(modifier: Modifier = Modifier) {
                 drawCircle(faded.copy(alpha = 0.6f), radius = 3f, center = centre)
                 ring.samples.forEach { sample ->
                     val reach = full * arcRadiusFraction(sample.metres, ring.maxMetres)
+                    val near = sampleIsClose(sample.metres, floorMetres)
                     drawArc(
-                        color = ink,
+                        color = if (near && !ring.stale) live else ink,
                         startAngle = (sample.bearingDegrees - 90.0).toFloat() - arcSweep(spacing) / 2f,
                         sweepAngle = arcSweep(spacing),
                         useCenter = false,
                         topLeft = Offset(centre.x - reach, centre.y - reach),
                         size = Size(reach * 2f, reach * 2f),
-                        style = Stroke(width = 6f),
+                        style = Stroke(width = if (near) 10f else 6f),
                     )
                 }
             }
