@@ -38,6 +38,30 @@ struct GeoTagJob: Equatable {
 
     var finished: Bool { !running && progress >= 100 }
 
+    // The button's word and the Save-to placeholder were both spelled in AnalyzeWindow, which
+    // swift-checks does not compile. RemoteSupport already names its own actionTitle for the same
+    // job -- one button whose word follows a state -- so this is the second of a pair rather than
+    // a new idea.
+    //
+    // "Try Again" is offered only after a FAILURE, never after a finished run: a completed tagging
+    // has nothing to retry, and start() only cancels the lingering worker thread when failed is
+    // true, so a button offering to retry a success would invoke startTagging on a QThread that is
+    // still running -- a no-op with a warning and no visible effect at all.
+    var actionTitle: String { failed ? "Try Again" : "Start Tagging" }
+
+    // The placeholder is the DESTINATION, not an instruction: with images chosen it is where the
+    // tagged copies will actually land, and only with nothing chosen at all is there a sentence
+    // describing what would happen. Drawing the sentence once an image folder exists would hide
+    // the one path the operator needs to check before a run that rewrites files.
+    //
+    // The call site shortens it unconditionally rather than branching, because shortPath returns a
+    // string with fewer than three "/" components unchanged -- so the sentence passes through
+    // untouched and only a real path is abbreviated. That is asserted rather than assumed: a
+    // branch whose arms agree is one a later hand deletes the wrong half of.
+    var destinationPlaceholder: String {
+        imageDirectory.isEmpty ? "A \(GeoTagJob.taggedFolder) folder beside your images" : destination
+    }
+
     static func shortPath(_ path: String, home: String) -> String {
         let abbreviated = abbreviate(path, home: home)
         let parts = abbreviated.split(separator: "/", omittingEmptySubsequences: true)

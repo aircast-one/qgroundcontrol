@@ -3561,6 +3561,32 @@ func checkTwoSilencesAreNotInterchangeable() {
 }
 checkTwoSilencesAreNotInterchangeable()
 
+func checkTheGeotagButtonOffersTheRightGo() {
+    var failed = GeoTagJob()
+    failed.running = true
+    failed.errorMessage = "Geotagging failed."
+    expect(failed.actionTitle, "Try Again", "after a failure the button offers another go")
+
+    var done = GeoTagJob()
+    done.progress = 100
+    expect(done.actionTitle, "Start Tagging",
+           "but a FINISHED run does not: there is nothing to retry, and start() only cancels the "
+           + "lingering worker thread when failed is true -- so a Try Again on a success would "
+           + "call startTagging on a QThread still running, which is a no-op with a warning and "
+           + "no visible effect. CONSTRUCTED: progress 100 with running false, which only a "
+           + "completed run reaches")
+    expect(GeoTagJob().actionTitle, "Start Tagging", "and neither does a job nobody has run")
+
+    var chosen = GeoTagJob()
+    chosen.imageDirectory = "/Users/pilot/Survey"
+    expect(chosen.destinationPlaceholder, "/Users/pilot/Survey/TAGGED",
+           "with images chosen the placeholder is WHERE THE COPIES LAND, not a sentence about it "
+           + "-- that path is the one thing to check before a run that rewrites files")
+    expect(GeoTagJob().destinationPlaceholder, "A TAGGED folder beside your images",
+           "and only with nothing chosen is it a description of what would happen")
+}
+checkTheGeotagButtonOffersTheRightGo()
+
 func checkTheRecordControlSaysOneThing() {
     expect(CameraControl.recordLabel(true), "Stop",
            "while recording the button offers the way out, not the thing already happening")
@@ -4262,6 +4288,12 @@ func checkGeoTagJob() {
            "\u{2026}/kyiv/survey", "a deep one keeps the two components that identify it")
     expect(GeoTagJob.shortPath("/Volumes/Card/dcim/100MSDCF/a.jpg", home: "/Users/pilot"),
            "\u{2026}/100MSDCF/a.jpg", "off home too")
+
+    expect(GeoTagJob.shortPath("A TAGGED folder beside your images", home: "/Users/pilot"),
+           "A TAGGED folder beside your images",
+           "a sentence is not a path: shortPath leaves anything with fewer than three \"/\" "
+           + "components alone, which is why the Save-to row shortens unconditionally instead of "
+           + "branching on whether it holds a sentence or a destination")
 
     job.progress = 100
     job.running = false
@@ -5923,7 +5955,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2201
+let assertionFloor = 2207
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

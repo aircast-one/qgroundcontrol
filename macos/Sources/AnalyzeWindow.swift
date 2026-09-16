@@ -230,9 +230,7 @@ struct GeoTagView: View {
                         placeholder: "No folder chosen", separator: true,
                         choose: store.chooseImageDirectory)
                 pathRow("Save to", value: store.job.saveDirectory,
-                        placeholder: store.job.imageDirectory.isEmpty
-                            ? "A TAGGED folder beside your images"
-                            : shorten(store.job.destination),
+                        placeholder: shorten(store.job.destinationPlaceholder),
                         separator: true,
                         choose: store.chooseSaveDirectory)
             }
@@ -253,7 +251,7 @@ struct GeoTagView: View {
                         .font(.callout.monospacedDigit())
                         .foregroundColor(.secondary)
                 } else {
-                    Button(store.job.failed ? "Try Again" : "Start Tagging", action: store.start)
+                    Button(store.job.actionTitle, action: store.start)
                         .keyboardShortcut(.defaultAction)
                         .disabled(!store.job.canStart)
                     if store.job.finished {
