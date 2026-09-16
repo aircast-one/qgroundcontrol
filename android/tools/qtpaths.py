@@ -28,7 +28,20 @@ ROOT = Path(
     .stdout.strip()
 )
 SOURCES = [ROOT / "android/app/src/main/java", ROOT / "android/map-spike/src/main/java"]
-CALLS = r"(?:qgcPath|qgcString|qgcDouble|qgcJson|setOk|invokeOk|Qgc\.get|Qgc\.set|Qgc\.invoke|Qgc\.invokeResult|QGCBridge\.get|QGCBridge\.getFields|QGCBridge\.set|QGCBridge\.invoke)"
+WRAPPERS = re.compile(r"^(?:internal )?fun (qgc[A-Za-z]+|map[A-Za-z]+)\(\s*(?:group)?[Pp]ath: String", re.M)
+DIRECT = ["setOk", "invokeOk", r"Qgc\.get", r"Qgc\.set", r"Qgc\.invoke", r"Qgc\.invokeResult",
+          r"QGCBridge\.get", r"QGCBridge\.getFields", r"QGCBridge\.set", r"QGCBridge\.invoke"]
+def call_pattern() -> str:
+    """Every bridge wrapper, read from the two files that declare them - a hand-kept
+    list here would silently stop counting a module the day it grows one."""
+    declared: set[str] = set()
+    for source in (ROOT / "android/app/src/main/java/one/aircast/android/bridge/QgcState.kt",
+                   ROOT / "android/map-spike/src/main/java/one/aircast/mapspike/MapBridge.kt"):
+        declared.update(WRAPPERS.findall(source.read_text()))
+    return "(?:%s)" % "|".join(sorted(declared) + DIRECT)
+
+
+CALLS = call_pattern()
 LITERAL = re.compile(CALLS + r'\(\s*"([^"$]+)"')
 CONSTANT = re.compile(CALLS + r"\(\s*([A-Z][A-Z0-9_]{2,})\b")
 DEFINE = re.compile(r'\b(?:const\s+val|val)\s+([A-Z][A-Z0-9_]{2,})\s*(?::\s*String\s*)?=\s*"([^"$]+)"')
@@ -86,6 +99,8 @@ def check() -> None:
     constants = defined_constants()
     assert "VEHICLE_LINKS" in constants, "the constant sweep found no VEHICLE_LINKS, so every constant path is invisible"
     assert constants["VEHICLE_LINKS"] == "view.vehicleLinks", constants["VEHICLE_LINKS"]
+    for wrapper in ("qgcPath", "qgcString", "mapPath", "mapString", "mapInt"):
+        assert wrapper in CALLS, "the wrapper sweep missed %s, so a module's reads are invisible" % wrapper
     sample = 'val x by qgcPath("vehicle.armed")\nval y by qgcPath("view.flyState")\nval z = someField("vehicle.nope")'
     assert LITERAL.findall(sample) == ["vehicle.armed", "view.flyState"], LITERAL.findall(sample)
     owned = core_owned()
