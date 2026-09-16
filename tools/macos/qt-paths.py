@@ -190,7 +190,12 @@ PATH = re.compile(r'"((?:' + "|".join(ROOTS) + r')\.[^"]*)"')
 INTERPOLATION = re.compile(r'\\\(|\$\{|\$[A-Za-z_]')
 
 DECLARATION = re.compile(r'\b(?:var|let|func|val|fun)\s+([A-Za-z_][A-Za-z0-9_]*)')
-SYMBOL_DECLARATION = re.compile(r'symbol|glyph|icon', re.IGNORECASE)
+# `mark` joined the list on 2026-09-16: 7188e0037 moved two SF Symbol names into a compiled model
+# as `idleMark` and `recordingMark`, and neither word is symbol, glyph or icon -- so "camera.fill"
+# started counting as Qt debt the moment the rule it names was pinned. The instrument was degraded
+# by the commit that improved the code, which is the fourth time a name-based exclusion here has
+# drifted behind the corpus it excludes.
+SYMBOL_DECLARATION = re.compile(r'symbol|glyph|icon|mark', re.IGNORECASE)
 SYMBOL_ARGUMENT = re.compile(r'systemName:|systemImage:')
 
 USE = [("read", re.compile(r'\b(?:group|get|getFields|watch|invokeResult|qgcBool|qgcDouble'
@@ -221,8 +226,15 @@ APP_STORAGE = re.compile(r'@AppStorage\(')
 # nothing -- presenting as "GPS stopped working" rather than as a bad migration.
 # NOT view.control: it takes a fact path and reads through the Qt backend like any other view. It sat
 # in the first draft of this set for one commit, which would have mislabelled a working view as inert.
+# NOT operatorControl either, and for exactly the reason view.control is excluded above: it sat
+# here from the day the core built it, and on 2026-09-16 -- the day this head started drawing it --
+# this line was still calling the row inert. view.rs:181 computes it with
+# operatorcontrol::operator_control_view, which reads backend.get_fields("vehicle", ...) and
+# backend.get("settings.mavlinkSettings...") -- the Qt backend, like any other view. The hub-gated
+# ones are the entries view.rs computes with a hub:: function (:184 for coreVehicle), and that is
+# the test: WHO COMPUTES IT, not whether the name looks core-ish.
 HUB_GATED = {"coreVehicle", "coreGuided", "coreParameter", "coreParameters", "coreMission",
-             "coreRemoteId", "coreCalibration", "operatorControl"}
+             "coreRemoteId", "coreCalibration"}
 
 SUFFIXES = (".swift", ".kt")
 
@@ -327,7 +339,7 @@ def claimed_actions():
 
 
 def main():
-    roots = [pathlib.Path(a) for a in sys.argv[1:]] or [anchored("macos/Sources")]
+    roots = [pathlib.Path(a) for a in sys.argv[1:] if a != "--list"] or [anchored("macos/Sources")]
     missing = [r for r in roots if not r.is_dir()]
     if missing:
         print("not a directory: " + ", ".join(map(str, missing)), file=sys.stderr)
@@ -357,7 +369,7 @@ def main():
     print("head: " + ", ".join(map(str, roots)))
     print(f"predicate: a quoted literal whose text is one of {len(ROOTS)} bridge roots "
           f"followed by a dot; interpolation detected as \\( or ${{ or $name; literals in "
-          f"a systemName:/systemImage: argument or a symbol/glyph/icon declaration are "
+          f"a systemName:/systemImage: argument or a symbol/glyph/icon/mark declaration are "
           f"SwiftUI icons, not paths, and are excluded; a leading $NAME or a bare NAME "
           f"argument is expanded when a const val NAME names a root path")
     print()
@@ -415,6 +427,12 @@ def main():
         templates = sum(1 for p in found if INTERPOLATION.search(p))
         detail = f"  ({templates} interpolated)" if templates else ""
         print(f"  {name:22} {len(found):4}{detail}")
+    if "--list" in sys.argv:
+        print()
+        print("PATHS")
+        for path in sorted(set(literal) | set(template)):
+            kind = "/".join(sorted(uses.get(path, {"unclassified"})))
+            print(f"  {path}\t{kind}")
     return 0
 
 
