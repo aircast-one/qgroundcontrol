@@ -4552,6 +4552,26 @@ func checkALogRowKeysOnTheId() {
     expect(entry("", id: "")?.noteworthyStatus == false,
            "and a log the core answered nothing for says nothing, rather than appending an empty "
            + "separator")
+
+    // logs.rs:101 serves sizeText as human_size(size) unconditionally, so it is never empty and
+    // these fixtures carry it rather than leaning on the decoder's default -- an empty size would
+    // compose a dangling separator, and pinning that would make an artefact the requirement.
+    func sized(_ status: String, id: String) -> LogEntry? {
+        LogEntry(["id": 1 as NSNumber, "sizeText": "4.0 KB", "status": status, "statusId": id,
+                  "received": false as NSNumber, "time": "2026-09-08T14:42:51.000"])
+    }
+    expect(sized("Fehler", id: "error")?.valueText ?? "", "4.0 KB \u{00B7} Fehler",
+           "the composed row value is the size and the status together when the status is worth "
+           + "reading \u{2014} the composition was decided at an uncompiled call site while the "
+           + "flag deciding it was asserted here")
+    expect(sized("Verf\u{00FC}gbar", id: "available")?.valueText ?? "", "4.0 KB",
+           "and an ordinary one is the size alone, with no separator left dangling")
+
+    expect(LogEntry.refreshHelp(connected: false), "Connect a vehicle to see its logs.",
+           "the disconnected tooltip asks the way the other six call sites ask, rather than "
+           + "inventing a seventh wording for one prerequisite")
+    expect(LogEntry.refreshHelp(connected: true), "Ask the vehicle for its logs",
+           "and the connected one names the action the button performs")
 }
 
 func checkCentringTwiceMovesTheMapTwice() {
@@ -6013,7 +6033,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2223
+let assertionFloor = 2227
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

@@ -13,6 +13,20 @@ struct LogEntry: Identifiable, Equatable {
     static let ordinaryStatus = "available"
 
     var noteworthyStatus: Bool { !statusId.isEmpty && statusId != LogEntry.ordinaryStatus }
+
+    // The composition itself was at the call site, so what the row says was decided in a file
+    // swift-checks does not compile while the flag deciding it sat here, asserted.
+    var valueText: String {
+        noteworthyStatus ? "\(sizeText) \u{00B7} \(status)" : sizeText
+    }
+
+    // The Refresh tooltip's disconnected arm was a SEVENTH way of saying "connect a vehicle",
+    // worded "list its logs" where connectPrompt says "see its". One sentence for one situation:
+    // six other call sites already ask it through connectPrompt, and a head that phrases the same
+    // prerequisite differently on each page reads as several applications.
+    static func refreshHelp(connected: Bool) -> String {
+        connected ? "Ask the vehicle for its logs" : VehicleSetupText.connectPrompt(for: "logs")
+    }
     let received: Bool
     let timeState: TimeState
     let time: String

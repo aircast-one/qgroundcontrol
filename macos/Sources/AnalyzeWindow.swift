@@ -172,9 +172,7 @@ struct LogDownloadView: View {
                     ForEach(Array(store.logs.enumerated()), id: \.element.id) { index, entry in
                         GroupRow(title: "Log \(entry.id)",
                                  description: entry.timeText,
-                                 value: entry.noteworthyStatus
-                                     ? "\(entry.sizeText) \u{00B7} \(entry.status)"
-                                     : entry.sizeText,
+                                 value: entry.valueText,
                                  showSeparator: index > 0,
                                  leading: {
                                      Tile(symbol: "doc.text.fill",
@@ -191,9 +189,7 @@ struct LogDownloadView: View {
             HStack(spacing: Overlay.step) {
                 Button("Refresh", action: store.refresh)
                     .disabled(!store.canRefresh)
-                    .help(store.connected
-                        ? "Ask the vehicle for its logs"
-                        : "Connect a vehicle to list its logs")
+                    .help(LogEntry.refreshHelp(connected: store.connected))
                 if store.downloading || store.requestingList {
                     ProgressView().controlSize(.small)
                     Button("Cancel", action: store.cancel)
