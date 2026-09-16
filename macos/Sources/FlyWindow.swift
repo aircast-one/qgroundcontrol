@@ -313,15 +313,13 @@ struct FlyPanel: View {
                          description: video.camera.stateText,
                          showSeparator: false,
                          leading: {
-                             Image(systemName: video.camera.isRecording
-                                 ? "record.circle.fill" : "camera.fill")
+                             Image(systemName: video.camera.recordingSymbol)
                                  .foregroundColor(video.camera.isRecording ? Overlay.vehicle : .secondary)
                          },
                          trailing: { EmptyView() })
                 if video.camera.offersModePicker {
                     GroupRow(title: "Mode",
-                             value: video.camera.pickerShowsCurrentMode
-                                 ? "" : video.camera.modeText,
+                             value: video.camera.modeAside,
                              trailing: {
                         Picker("", selection: Binding(
                             get: { video.camera.mode },
@@ -406,7 +404,7 @@ struct FlyPanel: View {
                          trailing: { EmptyView() })
                 ForEach(video.status.listedCameras) { camera in
                     GroupRow(title: camera.title,
-                             description: camera.recording ? "Recording" : "",
+                             description: camera.recordingNote,
                              value: camera.status)
                 }
             }

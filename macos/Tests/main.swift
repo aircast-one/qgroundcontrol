@@ -4289,6 +4289,37 @@ func checkCameraControl() {
            + "PARTNER was spelled at the call site, so half the rule sat where nothing checked it")
     expect(stuck.modeHint.contains("capturing"),
            "the refusal names the reason rather than just greying out")
+
+    func moded(_ mode: Int) -> CameraControl {
+        CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
+                       "mode": mode as NSNumber, "modeText": "Thermal"])
+    }
+    expect(moded(7).modeAside, "Thermal",
+           "a mode the two-tag picker CANNOT represent is named beside it, or the row would show "
+           + "neither tag selected and say nothing about why")
+    expect(moded(CameraControl.photoMode).modeAside.isEmpty,
+           "and when the picker can show it, repeating it beside the picker says nothing")
+
+    let rolling = CameraControl(["present": true as NSNumber, "isRecording": true as NSNumber])
+    let idle = CameraControl(["present": true as NSNumber])
+    expect(rolling.recordingSymbol, "record.circle.fill",
+           "a recording camera carries the record mark")
+    expect(idle.recordingSymbol, "camera.fill",
+           "and an idle one carries the plain camera -- two marks for two states, spelled here "
+           + "rather than at the row. The TINT stays at the call site because a Color needs "
+           + "SwiftUI and no compiled model imports it, but it reads the same isRecording")
+
+    func listed(_ recording: Bool) -> VideoCamera? {
+        VideoCamera(["slot": 0 as NSNumber, "title": "Camera 1", "status": "",
+                     "enabled": true as NSNumber, "configured": true as NSNumber,
+                     "recording": recording as NSNumber])
+    }
+    expect(listed(true)?.recordingNote ?? "", "Recording",
+           "a camera in the fleet list says it is recording")
+    expect((listed(false)?.recordingNote ?? "x").isEmpty,
+           "and an idle one says NOTHING rather than \"Idle\" -- the row carries its own status "
+           + "text beside this. Not the same word as the Recording ROW's title, which names a "
+           + "control whether or not it is running")
 }
 
     let busy = CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
@@ -6094,7 +6125,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2243
+let assertionFloor = 2249
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

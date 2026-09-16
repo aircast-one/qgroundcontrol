@@ -46,6 +46,11 @@ struct VideoCamera: Identifiable, Equatable {
 
     var id: Int { slot }
 
+    // Not the same word as the Recording ROW's title, which names a control whether or not it is
+    // running. This one is a STATE, and an idle camera says nothing rather than "Idle" -- the row
+    // already carries its own status text beside this.
+    var recordingNote: String { recording ? "Recording" : "" }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let slot = (json["slot"] as? NSNumber)?.intValue else { return nil }

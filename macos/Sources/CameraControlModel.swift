@@ -70,6 +70,18 @@ struct CameraControl: Equatable {
     static let modeHelp = "Switch between photo and video"
     var modeHint: String { canChangeMode ? CameraControl.modeHelp : CameraControl.modeBusy }
 
+    // pickerShowsCurrentMode was already pinned and the value it gates was spelled at the row, so
+    // this is the same half-a-rule shape as modeHint. The empty arm is the ordinary case: when the
+    // picker CAN show the mode, repeating it beside the picker says nothing.
+    var modeAside: String { pickerShowsCurrentMode ? "" : modeText }
+
+    // A recording camera and an idle one must not carry the same mark. The tint beside it stays at
+    // the call site on purpose -- a Color needs SwiftUI and no compiled model imports it -- but it
+    // reads the same isRecording this does, so the two cannot drift.
+    static let recordingMark = "record.circle.fill"
+    static let idleMark = "camera.fill"
+    var recordingSymbol: String { isRecording ? CameraControl.recordingMark : CameraControl.idleMark }
+
     static let absent = CameraControl()
 
     private init() {
