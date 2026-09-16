@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -78,6 +79,17 @@ private const val FAILURE_MESSAGE_MS = 2500L
 private const val CONFIRM_TIMEOUT_MS = 5000L
 private val CONTROLS_MAX_HEIGHT = 320.dp
 private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+
+@Composable
+private fun PlanUploadButton(
+    emphasised: Boolean,
+    onClick: () -> Unit,
+    contentPadding: PaddingValues,
+    content: @Composable RowScope.() -> Unit,
+) = when (emphasised) {
+    true -> Button(onClick = onClick, contentPadding = contentPadding, content = content)
+    false -> TextButton(onClick = onClick, contentPadding = contentPadding, content = content)
+}
 
 private fun sendPlan(
     scope: CoroutineScope,
@@ -465,7 +477,10 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text(if (loadArmed) "Discard & download" else "Download") }
 
-                    Button(onClick = {
+                    val uploadBlocked = syncRefusal(
+                        vehicleSyncState(planOffline, planSyncing), "upload to",
+                    ) != null
+                    PlanUploadButton(emphasised = !uploadBlocked, onClick = {
                         val refusal = syncRefusal(
                             vehicleSyncState(planOffline, planSyncing), "upload to",
                         )
