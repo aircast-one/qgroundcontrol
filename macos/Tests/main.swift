@@ -1508,6 +1508,23 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            "the busiest message is what tells an operator what the log is mostly made of")
     expect(tlog([:])?.messageKinds == 2, "and the kind count is the shape of the log")
 
+    expect(tlog([:])?.busiestRow?.label ?? "", "Busiest",
+           "a log of several kinds has one that dominates, and the row says which")
+    expect(tlog([:])?.busiestRow?.value ?? "", "ATTITUDE  30160",
+           "with its count, because the point of the row is how far ahead of the rest it is")
+    // MEASURED on the all-HEARTBEAT log in the Telemetry folder: Frames 78, Message kinds 1,
+    // and the row read "Busiest  HEARTBEAT 78". parse() increments frames and the by_name entry
+    // in the SAME visit (tlog.rs:88-89), so the per-name counts sum to frames -- with one name
+    // that count is the Frames row, always, for every such log.
+    let oneKind = tlog(["frames": 78 as NSNumber, "byName": ["HEARTBEAT": 78 as NSNumber]])
+    expect(oneKind?.busiestRow?.label ?? "", "Only kind",
+           "BUSIEST IS A SUPERLATIVE AND A LOG OF ONE KIND HELD NO CONTEST. The label claimed a "
+           + "comparison between kinds that never happened, on a card that had already said "
+           + "there was one kind")
+    expect(oneKind?.busiestRow?.value ?? "", "HEARTBEAT",
+           "and it drops the count, which is arithmetically the Frames row two lines above it -- "
+           + "the name is the only thing this row adds to a single-kind log")
+
     expect(tlog([:])?.vehiclesText ?? "", "1",
            "WHOSE FLIGHT IS THIS. A recording carries no vehicle names, only the system ids that "
            + "sent the frames, so this is the only thing in the file that answers it -- and the "

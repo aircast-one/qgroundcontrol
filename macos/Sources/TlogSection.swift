@@ -102,11 +102,12 @@ struct TlogView: View {
                 Divider()
                 row("Message kinds", String(summary.messageKinds))
                 if !summary.vehiclesText.isEmpty {
+                    Divider()
                     row("Vehicles", summary.vehiclesText)
                 }
-                if let busiest = summary.busiest {
+                if let busiest = summary.busiestRow {
                     Divider()
-                    row("Busiest", "\(busiest.name)  \(busiest.count)")
+                    row(busiest.label, busiest.value)
                 }
                 if summary.undecodable > 0 {
                     Divider()

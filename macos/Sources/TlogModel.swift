@@ -63,6 +63,19 @@ struct TlogSummary: Equatable {
         .map { (name: $0.key, count: $0.value) }
     }
 
+    // With ONE kind this count IS the Frames row two lines above it. parse() increments frames
+    // and the by_name entry in the same visit (tlog.rs:88-89), so the per-name counts sum to
+    // frames and a single name carries all of them -- that is a property of the producer, not a
+    // coincidence of one file. Measured on the all-HEARTBEAT log in the Telemetry folder:
+    // Frames 78, Message kinds 1, Busiest "HEARTBEAT 78". And a superlative over a set of one
+    // claims a comparison that never happened. The name is the only thing the row adds there,
+    // so that is all it says, under a label that is true.
+    var busiestRow: (label: String, value: String)? {
+        guard let busiest = busiest else { return nil }
+        guard messageKinds > 1 else { return (label: "Only kind", value: busiest.name) }
+        return (label: "Busiest", value: "\(busiest.name)  \(busiest.count)")
+    }
+
     // Seconds are seconds in every locale, so the head spells this one and the core does not
     // need to. Distances and altitudes are the ones that convert.
     // span is 0.0 for THREE states the core cannot tell apart (tlog.rs:104): no timestamps at
