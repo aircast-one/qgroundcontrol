@@ -3538,6 +3538,21 @@ func checkAComponentsRowSaysTheSameThingTwice() {
 }
 checkAComponentsRowSaysTheSameThingTwice()
 
+func checkTheRecordControlSaysOneThing() {
+    expect(CameraControl.recordLabel(true), "Stop",
+           "while recording the button offers the way out, not the thing already happening")
+    expect(CameraControl.recordLabel(false), "Record", "and otherwise offers to start")
+    expect(CameraControl.recordSymbol(true), "stop.circle.fill",
+           "the mark is NAMED for a named input rather than merely differing from the other one: "
+           + "an assertion that only says two symbols are unequal passes with the condition "
+           + "inverted, which is exactly how the components row's symbol slipped through")
+    expect(CameraControl.recordSymbol(false), "record.circle", "and so is the resting one")
+    expect(CameraControl.recordLabel(true) != CameraControl.recordLabel(false)
+           && CameraControl.recordSymbol(true) != CameraControl.recordSymbol(false),
+           "word and mark move together off one flag, so neither can be changed alone")
+}
+checkTheRecordControlSaysOneThing()
+
 func checkEveryEmptySetupCardAsksTheSameWay() {
     expect(VehicleSetupText.absent(connected: true, "reports no setup components."),
            "This vehicle reports no setup components.",
@@ -5885,7 +5900,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2191
+let assertionFloor = 2196
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

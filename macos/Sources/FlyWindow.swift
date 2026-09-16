@@ -367,9 +367,9 @@ struct FlyPanel: View {
                 if video.camera.offersRecord {
                     GroupRow(title: "Recording", trailing: {
                         Button(action: video.toggleRecording) {
-                            Label(video.camera.isRecording ? "Stop" : "Record",
-                                  systemImage: video.camera.isRecording
-                                      ? "stop.circle.fill" : "record.circle")
+                            Label(CameraControl.recordLabel(video.camera.isRecording),
+                                  systemImage: CameraControl
+                                      .recordSymbol(video.camera.isRecording))
                         }
                         .tint(video.camera.isRecording ? Overlay.vehicle : nil)
                     })

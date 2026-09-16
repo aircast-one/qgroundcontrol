@@ -118,6 +118,23 @@ struct CameraControl: Equatable {
     // condition cannot drift apart. Both are the core's answer, not a re-reading of the mode.
     var offersShutter: Bool { present && canPhoto }
     var offersRecord: Bool { present && canRecord }
+
+    // The record control spelled its label, its symbol and its tint at the call site in
+    // FlyWindow, which swift-checks does not compile -- three rules on one flag, and the
+    // components row has already shown what happens when a later hand moves one of a set and
+    // not the others. The two an operator READS come here and are answered by one call, so the
+    // word and the mark cannot disagree about what the camera is doing.
+    //
+    // The tint stays at the call site deliberately and is the one knowing exception: its
+    // CONDITION is isRecording, a served flag the contract already pins, and its value is a
+    // single highlight token rather than a severity ladder with arms that could be swapped. No
+    // compiled model here imports SwiftUI, and pulling it in for one .tint would be a bigger
+    // change than the rule is worth.
+    static func recordLabel(_ recording: Bool) -> String { recording ? "Stop" : "Record" }
+
+    static func recordSymbol(_ recording: Bool) -> String {
+        recording ? "stop.circle.fill" : "record.circle"
+    }
 }
 
 // The core answers every camera command now, and answering is the whole point: QGC's

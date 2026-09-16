@@ -53,6 +53,11 @@ ACCEPTED = {
         "nothing about the vehicle. Pure layout may stay",
     ("PlanWindow.swift", "true"): "the two branches are the strings \"true\" and \"false\" going "
         "INTO setFact, which is how the bridge spells a boolean. A wire value",
+    ("Mission.swift", "the plan is syncing"): "a PROBE REFUSAL, from probeInvoke's [\"ok\": false, "
+        "\"error\": ...] -- three of them, and they are my own instrument telling me why it "
+        "declined, never a sentence an operator sees. A field served for an instrument is "
+        "legitimate, and so is a string returned to one. MEASURED: the mission probe's error key "
+        "is read by my rig and by nothing on screen",
     ("FenceRally.swift", "addInclusionCircle"): "the controller METHOD NAME being invoked. Pinning "
         "it in a compiled file would assert a Qt method spelling this head does not own",
 }
