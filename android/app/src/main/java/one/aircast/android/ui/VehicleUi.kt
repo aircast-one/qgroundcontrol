@@ -220,6 +220,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val available = state?.connected == true
     val armed = state?.armed == true
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
+    var sentName by remember { mutableStateOf<String?>(null) }
+    var sentSnapshot by remember { mutableStateOf<String?>(null) }
     var refusal by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var takeoffTarget by remember { mutableStateOf<Double?>(null) }
@@ -279,6 +281,24 @@ fun FlightActions(modifier: Modifier = Modifier) {
         }
 
         FlightModePicker { refusal = it }
+
+        val liveActions = actionsJson?.toString()
+        val confirming = pending
+        val showingSent = sentIsStillShowing(sentName, sentSnapshot, liveActions)
+
+        if (confirming != null) {
+            ConfirmTrack(
+                action = confirming,
+                onSent = {
+                    sentName = confirming.name
+                    sentSnapshot = liveActions
+                    pending = null
+                },
+                onCancel = { pending = null },
+            )
+        } else if (showingSent) {
+            SentNotice(sentName.orEmpty(), onDismiss = { sentName = null })
+        }
 
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -619,26 +639,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
         )
     }
 
-    pending?.let { action ->
-        AlertDialog(
-            onDismissRequest = { pending = null },
-            title = { Text(action.name) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Text(action.confirm)
-                    SlideToConfirm(
-                        label = "Slide to ${action.name.lowercase()}",
-                        destructive = action.destructive,
-                    ) {
-                        action.run()
-                        pending = null
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
-        )
-    }
 }
 
 @Composable
