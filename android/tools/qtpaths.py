@@ -3,8 +3,13 @@
 The port is finished for this head when the count is zero: every reading comes
 from a `view.*` the core serves. Run it from anywhere:
 
-    python3 android/tools/qtpaths.py          # the count, by root
-    python3 android/tools/qtpaths.py --list   # every path and where it is read
+    python3 android/tools/qtpaths.py             # the count, by root
+    python3 android/tools/qtpaths.py --list      # every path and where it is read
+    python3 android/tools/qtpaths.py --expect -2 # assert the count fell by two, then record it
+
+Run `--expect` with every commit that converts or deletes a path. A count that
+does not move by what you changed means the tool cannot see your change, which is
+how a whole module of reads stayed invisible through two reconciliations.
 
 A path is counted when it is the first argument of a bridge call - qgcPath,
 qgcString, qgcDouble, Qgc.get/set/invoke, setOk, invokeOk - and does not start
@@ -28,6 +33,7 @@ ROOT = Path(
     .stdout.strip()
 )
 SOURCES = [ROOT / "android/app/src/main/java", ROOT / "android/map-spike/src/main/java"]
+BASELINE = ROOT / "android/tools/qtpaths.baseline"
 WRAPPERS = re.compile(r"^(?:internal )?fun (qgc[A-Za-z]+|map[A-Za-z]+)\(\s*(?:group)?[Pp]ath: String", re.M)
 DIRECT = ["setOk", "invokeOk", r"Qgc\.get", r"Qgc\.set", r"Qgc\.invoke", r"Qgc\.invokeResult",
           r"QGCBridge\.get", r"QGCBridge\.getFields", r"QGCBridge\.set", r"QGCBridge\.invoke"]
@@ -124,6 +130,16 @@ def main() -> None:
     print("%d Qt paths asked for directly, %d distinct" % (len(hits), len(unique)))
     for root, count in sorted(roots.items(), key=lambda pair: -pair[1]):
         print("  %-18s %d" % (root, count))
+    if "--expect" in sys.argv:
+        delta = int(sys.argv[sys.argv.index("--expect") + 1])
+        was = int(BASELINE.read_text().split()[0]) if BASELINE.exists() else len(unique)
+        wanted = was + delta
+        if len(unique) != wanted:
+            print("REFUSED: %d distinct, expected %d (%d %+d)." % (len(unique), wanted, was, delta))
+            print("A change the tool cannot see is a blind instrument, not a green run.")
+            raise SystemExit(1)
+        BASELINE.write_text("%d\n" % len(unique))
+        print("baseline now %d" % len(unique))
     if "--list" in sys.argv:
         print()
         for value in unique:

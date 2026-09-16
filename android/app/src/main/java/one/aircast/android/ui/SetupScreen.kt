@@ -117,7 +117,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val setup = remember(setupJson) { setupReadiness(setupJson) }
     val hasVehicle = setup?.connected == true
     val isPx4 = isPx4(setup)
-    val vehicleId by qgcDouble("vehicle.id")
     val major by qgcDouble("vehicle.firmwareMajorVersion", -1.0)
     val minor by qgcDouble("vehicle.firmwareMinorVersion", 0.0)
     val patch by qgcDouble("vehicle.firmwarePatchVersion", 0.0)
