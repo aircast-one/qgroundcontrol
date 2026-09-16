@@ -2804,14 +2804,15 @@ func checkRallyAndBreach() {
     expect(RallyPointRow.separates(contiguous[1], in: contiguous),
            "and one between it and the next")
 
-    // fences.rs enumerates the controller's points and then filter_maps away any whose coordinate
-    // does not resolve, so a dropped point 0 leaves the list starting at index 1. Nothing else in
-    // this window does that -- the polygon and circle lists only enumerate.
+    // CONSTRUCTED, NOT OBSERVED: no producer can make this list. fences.rs filter_maps a rally
+    // point whose coordinate does not resolve, but RallyPointController::load rejects the whole
+    // file if any coordinate fails and addPoint always supplies one. The case is here because it
+    // is the one that separates the two spellings, not because it happens.
     let skipped = RallyPointRow.list([["index": 1 as NSNumber], ["index": 2 as NSNumber]])
     expect(!RallyPointRow.separates(skipped[0], in: skipped),
-           "a list whose first point the core dropped still draws no rule above its first ROW. "
-           + "Asking id > 0 answers a question about the controller's numbering, which is what "
-           + "`path` needs and what a separator does not")
+           "a list not starting at index 0 still draws no rule above its first ROW. Asking "
+           + "id > 0 answers a question about the controller's slot, which is what `path` needs "
+           + "and what a separator does not")
     expect(RallyPointRow.separates(skipped[1], in: skipped),
            "and the second row is still separated, so the fix is not just suppressing the rule")
 

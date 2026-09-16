@@ -190,12 +190,16 @@ struct RallyPointRow: Identifiable, Equatable {
 
     var positionText: String { GeoPoint.text(latitude, longitude) }
 
-    // The rally list is the ONE the core filters. fences.rs enumerates the controller's points
-    // and then filter_maps away any whose coordinate does not resolve, so the survivors keep
-    // their ORIGINAL index -- the polygon and circle lists next to it only enumerate and cannot
-    // skip. `id > 0` therefore asks whether this is the controller's first point, not whether it
-    // is the first row drawn: with point 0 dropped the only row answers true and rules a
-    // separator above nothing. The fence rows in the same window already ask the right question.
+    // `index` is the controller's SLOT, not the row's position -- `path` is built from the same
+    // i and has to address it. The polygon and circle lists only look like position because
+    // nothing removes an element; rally's filter_map could, so reading index as a position is
+    // reading a coincidence in two cases out of three.
+    //
+    // It is a coincidence that holds: RallyPointController::load rejects the WHOLE file if any
+    // coordinate fails (:111, altitudeRequired), and addPoint always supplies one, so no
+    // producer can drop a rally point and filter_map has never fired. The defect is the
+    // DUPLICATION -- this rule and the fence rows three lines up spelled one idea two ways, and
+    // whichever someone edits next leaves the other behind with nothing failing.
     static func separates(_ point: RallyPointRow, in rows: [RallyPointRow]) -> Bool {
         point.id != rows.first?.id
     }
