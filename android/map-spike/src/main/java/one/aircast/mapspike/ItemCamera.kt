@@ -58,6 +58,9 @@ internal fun actionLabel(view: JSONObject?): String {
     return choices?.labels?.getOrNull(choices.chosen) ?: namedAction(measureText(view, "cameraAction"))
 }
 
+internal fun itemCameraTextBeside(view: JSONObject?, pickerLabel: String?): String? =
+    itemCameraText(view)?.takeIf { it != pickerLabel }
+
 internal fun itemCameraText(view: JSONObject?): String? {
     if (view == null || !view.optBoolean("available")) return null
     val action = actionLabel(view)

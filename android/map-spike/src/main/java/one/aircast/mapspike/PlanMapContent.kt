@@ -690,7 +690,9 @@ internal fun MapSpikeScreen(
                                     ItemCameraBridge.read(item.index)
                                 }
                             }
-                            itemCameraText(camera)?.let {
+                            val cameraPicker = cameraChoices(camera)
+                                ?.let { it.labels.getOrNull(it.chosen) }
+                            itemCameraTextBeside(camera, cameraPicker)?.let {
                                 Text(it, style = MaterialTheme.typography.labelSmall)
                             }
                             cameraChoices(camera)?.let { choices ->
