@@ -121,8 +121,45 @@ internal fun trackingCanStart(reading: TrackingReading?): Boolean =
 internal fun trackingCanStop(reading: TrackingReading?): Boolean =
     reading != null && reading.active
 
-internal fun trackingRectPayload(box: TrackingBox): String =
-    """[{"x":${box.x},"y":${box.y},"width":${box.width},"height":${box.height}}]"""
+internal fun trackingRectObject(box: TrackingBox): JSONObject = JSONObject()
+    .put("x", box.x).put("y", box.y).put("width", box.width).put("height", box.height)
+
+internal const val TRACK_POINT_SLOP_DP = 10.0
+internal const val TRACK_POINT_RADIUS_DP = 50.0
+
+internal sealed interface TrackingRequest {
+    data class Box(val rect: TrackingBox) : TrackingRequest
+    data class Point(val x: Double, val y: Double, val radius: Double) : TrackingRequest
+}
+
+internal fun trackingRequest(
+    pressX: Double,
+    pressY: Double,
+    releaseX: Double,
+    releaseY: Double,
+    picture: PaintedRect,
+): TrackingRequest? {
+    if (picture.width <= 0.0 || picture.height <= 0.0) {
+        return null
+    }
+    fun acrossX(value: Double) = ((value - picture.left) / picture.width).coerceIn(0.0, 1.0)
+    fun acrossY(value: Double) = ((value - picture.top) / picture.height).coerceIn(0.0, 1.0)
+
+    val x0 = acrossX(minOf(pressX, releaseX))
+    val x1 = acrossX(maxOf(pressX, releaseX))
+    val y0 = acrossY(minOf(pressY, releaseY))
+    val y1 = acrossY(maxOf(pressY, releaseY))
+
+    val tapped = kotlin.math.abs(releaseX - pressX) < TRACK_POINT_SLOP_DP &&
+        kotlin.math.abs(releaseY - pressY) < TRACK_POINT_SLOP_DP
+    return when {
+        tapped -> TrackingRequest.Point(x0, y0, TRACK_POINT_RADIUS_DP / picture.width)
+        else -> TrackingRequest.Box(TrackingBox(x0, y0, x1 - x0, y1 - y0))
+    }
+}
+
+internal fun trackingPointObject(point: TrackingRequest.Point): JSONObject =
+    JSONObject().put("x", point.x).put("y", point.y)
 
 internal val TRACKING_CENTRE = TrackingBox(0.4, 0.4, 0.2, 0.2)
 

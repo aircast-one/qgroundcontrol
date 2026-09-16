@@ -69,11 +69,18 @@ class TrackingBoxTest {
 
     @Test
     fun `the rectangle payload is the shape the bridge now accepts`() {
+        val sent = trackingRectObject(TRACKING_CENTRE)
+
         assertEquals(
-            "QGCBridgeCore builds a QRectF from x, y, width and height and refuses when a key " +
-                "is missing - arity then picks the rect overload over the point one",
-            """[{"x":0.4,"y":0.4,"width":0.2,"height":0.2}]""",
-            trackingRectPayload(TRACKING_CENTRE),
+            "QGCBridgeCore builds a QRectF from exactly these four keys and refuses when one " +
+                "is missing - the key set is the contract, and JSONObject does not keep the " +
+                "order they were put in, so a test on its toString pins nothing useful",
+            setOf("x", "y", "width", "height"),
+            sent.keys().asSequence().toSet(),
         )
+        assertEquals(0.4, sent.getDouble("x"), 1e-9)
+        assertEquals(0.4, sent.getDouble("y"), 1e-9)
+        assertEquals(0.2, sent.getDouble("width"), 1e-9)
+        assertEquals(0.2, sent.getDouble("height"), 1e-9)
     }
 }
