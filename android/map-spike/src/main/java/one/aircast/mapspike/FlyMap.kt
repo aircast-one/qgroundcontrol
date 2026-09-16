@@ -1,17 +1,22 @@
 package one.aircast.mapspike
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -37,6 +42,8 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
     var plan by remember { mutableStateOf(FlownPlan()) }
+    var centre by remember { mutableStateOf<TrackPoint?>(null) }
+    var zoom by remember { mutableDoubleStateOf(0.0) }
 
     DisposableEffect(Unit) {
         onDispose { MapBridge.release() }
@@ -70,6 +77,7 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
     }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
+        Box(Modifier.fillMaxSize()) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
             mapStyle = style,
@@ -84,6 +92,18 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
             surveys = plan.surveys,
             shots = plan.shots,
             editable = false,
+            onCentreChanged = { at, level ->
+                centre = at
+                zoom = level
+            },
         )
+        centre?.takeIf { zoom > 0.0 }?.let { at ->
+            ScaleBarView(
+                at.latitude,
+                zoom,
+                Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp),
+            )
+        }
+        }
     }
 }
