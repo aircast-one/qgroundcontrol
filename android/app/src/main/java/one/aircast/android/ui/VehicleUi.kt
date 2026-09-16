@@ -236,11 +236,11 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var altitudePauses by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showChecklist by remember { mutableStateOf(false) }
-    val useChecklist by qgcBool("settings.appSettings.useChecklist")
     val enforceChecklist by qgcBool("settings.appSettings.enforceChecklist")
     var popupShownFor by remember { mutableStateOf<Int?>(null) }
     var checklistTicked by rememberSaveable { mutableStateOf(setOf<String>()) }
     val preflightJson by qgcPath(PREFLIGHT)
+    val useChecklist = remember(preflightJson) { preflightOffered(preflightJson) }
     val checks = remember(preflightJson) { preflight(preflightJson) }
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
