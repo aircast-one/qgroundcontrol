@@ -68,6 +68,7 @@ carriesValue
 category
 centre
 centreText
+changedFromDefault
 channel
 channelCount
 channels
@@ -229,6 +230,7 @@ loiterClockwise
 loiterRadiusMetres
 loiterRadiusText
 loiterToAltitude
+longDescription
 longitude
 lowest
 lowestText

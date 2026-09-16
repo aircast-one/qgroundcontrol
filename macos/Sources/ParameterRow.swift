@@ -105,6 +105,10 @@ struct ParameterRow: View {
     var togglesDisabled = false
     // A form row draws the bits; a list row states them and stays one row tall.
     var expandsBits = true
+    // Only a vehicle parameter reserves the dot's slot. The settings pages share this row and have
+    // no such mark in QGC, so their layout must not gain an indent for a dot they never draw.
+    var reservesDot = false
+    var showsNonDefaultDot = false
     let summary: String
     // Which value a bit is toggled within is the model's answer, not the row's, and only the models
     // are compiled by swift-checks.sh -- as a rule written here it would be unpinnable.
@@ -124,6 +128,8 @@ struct ParameterRow: View {
         selectedRaw = parameter.selectedOption?.raw ?? ""
         bits = parameter.drawsBits ? parameter.bits : []
         summary = parameter.drawsBits && !expandsBits ? parameter.bitSummary : ""
+        reservesDot = true
+        showsNonDefaultDot = parameter.showsNonDefaultDot
         toggle = { parameter.toggling($0, on: $1) }
         self.expandsBits = expandsBits
         self.showSeparator = showSeparator
@@ -155,6 +161,7 @@ struct ParameterRow: View {
             description: detail,
             value: summary,
             showSeparator: showSeparator,
+            leading: { dot },
             trailing: {
                 if bits.isEmpty || !expandsBits {
                     ParameterEditor(value: value, units: units, options: options,
@@ -167,6 +174,17 @@ struct ParameterRow: View {
                     }
                 }
             })
+    }
+
+    // Drawn clear rather than omitted so every parameter title starts at the same x -- a dot that
+    // pushed only the changed rows across would read as an indent, which is a claim about
+    // grouping.
+    @ViewBuilder private var dot: some View {
+        if reservesDot {
+            Circle()
+                .fill(showsNonDefaultDot ? Color.orange : Color.clear)
+                .frame(width: 7, height: 7)
+        }
     }
 }
 

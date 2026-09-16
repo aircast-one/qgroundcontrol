@@ -92,10 +92,7 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
     func refilter() {
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
         visible = parameters.filter { parameter in
-            (group.isEmpty || parameter.group == group)
-                && (needle.isEmpty
-                    || parameter.name.lowercased().contains(needle)
-                    || parameter.description.lowercased().contains(needle))
+            (group.isEmpty || parameter.group == group) && parameter.matches(needle)
         }
     }
 

@@ -1733,6 +1733,52 @@ func checkVehicleReadiness() {
 }
 checkVehicleReadiness()
 
+func checkAParameterMovedOffStockIsMarkedAndNothingElseIs() {
+    func parameter(_ overrides: [String: Any]) -> Parameter {
+        Parameter(name: "RTL_ALT", componentId: 1,
+                  json: ["control": "number", "display": "1500", "label": "Return altitude",
+                         "longDescription": "How far to climb before returning"]
+                      .merging(overrides) { _, override in override })
+    }
+
+    expect(parameter(["changedFromDefault": true as NSNumber]).showsNonDefaultDot,
+           "AN OPERATOR OPENING AN UNFAMILIAR AIRFRAME COULD NOT TELL WHICH PARAMETERS HAD BEEN "
+           + "MOVED OFF STOCK. QGC marks each one with an orange dot -- ParameterEditor.qml:253, "
+           + "defaultValueAvailable && !valueEqualsDefault -- and this head drew nothing at all")
+    expect(parameter(["changedFromDefault": false as NSNumber]).showsNonDefaultDot == false,
+           "a parameter still at its stock value is not marked")
+    // control.rs:105 serves has_default.then(...), so this key is ABSENT for a fact with no stock
+    // value at all. The contract records it as a plain bool because every fact on the recording rig
+    // has a default; nullableUnwitnessed is the producer saying the type map understates it.
+    expect(parameter([:]).changedFromDefault == nil,
+           "AND A FACT WITH NO DEFAULT DECODES AS NULL, NOT FALSE. A `?? false` here would make "
+           + "\"matches stock\" and \"has no stock value\" the same answer, and the second is not "
+           + "something this row is entitled to claim")
+    expect(parameter([:]).showsNonDefaultDot == false,
+           "so it draws no dot either -- a mark there would assert a change against a value that "
+           + "does not exist")
+    expect(parameter(["changedFromDefault": false as NSNumber]).changedFromDefault == false,
+           "while a served false stays false, which is what makes the null above a third state "
+           + "rather than a decoding accident")
+
+    expect(parameter([:]).matches("climb"),
+           "A PARAMETER BROWSER IS WHERE SOMEBODY GOES TO CHECK WHETHER A SETTING EXISTS, and "
+           + "this head searched name and label only. QGC matches name, shortDescription AND "
+           + "longDescription; the words an operator actually remembers are usually in the long "
+           + "one, and a shorter list reads as \"this vehicle does not have it\"")
+    expect(parameter([:]).matches("rtl_"), "a name fragment still matches")
+    expect(parameter([:]).matches("return alt"), "and so does a phrase from the label")
+    expect(parameter([:]).matches("yaw") == false,
+           "a term in none of the three does not match, or the filter would be no filter")
+    expect(parameter([:]).matches(""),
+           "an empty needle matches everything, because the browser shows the whole list before "
+           + "anyone types")
+    expect(parameter(["longDescription": ""]).matches("climb") == false,
+           "and a fact whose long description the core served as absent matches on the two it has")
+}
+
+checkAParameterMovedOffStockIsMarkedAndNothingElseIs()
+
 func checkParameterOptions() {
     // Fixtures are the control shape now, which is what the producer sends. The synthetic-entry
     // filter, the enum/raw zip and the label-for-a-value choice all moved to control.rs and are

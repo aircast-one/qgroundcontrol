@@ -48,6 +48,17 @@ struct Parameter: Identifiable {
     // decimals is what you write for a percentage, and keying on it would refuse fractions the
     // vehicle accepts -- the head-side fix rejected in dd04e0470.
     let wholeNumbersOnly: Bool
+    // NULL IS NOT FALSE. control.rs:105 serves `has_default.then(|| !flag("valueEqualsDefault"))`,
+    // so this is absent for a fact with no stock value at all. The contract records it as a plain
+    // `bool` because every fact on the recording rig has a default; it is declared in
+    // `nullableUnwitnessed` instead, which is the producer saying the type map understates it.
+    // Decoding it as Bool would make "matches stock" and "has no stock value" the same answer, and
+    // those are the two states an operator on an unfamiliar airframe most needs kept apart.
+    let changedFromDefault: Bool?
+    // Searched, never drawn. QGC's ParameterEditorController matches a term against name,
+    // shortDescription AND longDescription; a head with two of the three silently returns a
+    // shorter list, which in a parameter browser reads as "this vehicle does not have it".
+    let longDescription: String
 
     var id: String { "\(componentId)/\(name)" }
     var path: String { "vehicle.parameterManager.getParameter(\(componentId),\(name))" }
@@ -67,6 +78,8 @@ struct Parameter: Identifiable {
         kind = SettingsControl.Kind(json["control"] as? String)
         numericValue = (json["value"] as? NSNumber)?.intValue ?? 0
         wholeNumbersOnly = (json["wholeNumbersOnly"] as? NSNumber)?.boolValue ?? false
+        changedFromDefault = (json["changedFromDefault"] as? NSNumber)?.boolValue
+        longDescription = (json["longDescription"] as? String) ?? ""
         units = (json["units"] as? String) ?? ""
         // label is the fact's shortDescription where it has one and humanise(name) where it does
         // not. humanise leaves an all-caps name alone -- capitalise only uppercases a first
@@ -105,6 +118,22 @@ extension Parameter {
     var offersManualEntry: Bool { !options.isEmpty }
 
     var isString: Bool { kind == .text }
+
+    // QGC marks a parameter an airframe has been moved off stock with an orange dot
+    // (ParameterEditor.qml:253, `defaultValueAvailable && !valueEqualsDefault`). Only `true` draws
+    // one: null means the fact has no default to differ from, and a dot there would claim a change
+    // nobody made. This is the one place the `Bool?` above earns its shape.
+    var showsNonDefaultDot: Bool { changedFromDefault == true }
+
+    // The browser searched name and label only. label is the core's, falling back to
+    // humanise(name), so for a fact with no shortDescription the two terms were the same term --
+    // and the long description, which is where the words somebody actually remembers live, was
+    // matched by neither. A predicate rather than three clauses at the call site, because the call
+    // site is Parameters.swift and swift-checks.sh does not compile it.
+    func matches(_ needle: String) -> Bool {
+        guard !needle.isEmpty else { return true }
+        return [name, description, longDescription].contains { $0.lowercased().contains(needle) }
+    }
 
     // A string parameter has no band to state and a numeric one usually does: ATC_RAT_RLL_D is
     // capped at 0.03 against a stock 0.0036, so a single slipped digit leaves the range. The
