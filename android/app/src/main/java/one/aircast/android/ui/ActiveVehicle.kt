@@ -14,6 +14,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -111,7 +112,10 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     }
 
     if (picking) {
-        ModalBottomSheet(onDismissRequest = { picking = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { picking = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
             Text(
                 text = lostVehiclesText(lostVehicles(choices)) ?: CHOOSER_TITLE,
                 style = MaterialTheme.typography.titleMedium,
@@ -158,10 +162,10 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
             }
-            FleetControls(vehiclesJson, choices) { message -> refusal = message }
             FootNote(
-                "Arm, Takeoff and every action on this screen go to the vehicle shown here.",
+                "Tap a name to fly that aircraft. Arm, Takeoff and every action on the flight screen go to the one you pick.",
             )
+            FleetControls(vehiclesJson, choices) { message -> refusal = message }
         }
     }
 }
@@ -171,6 +175,7 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
     if (!choices.ambiguous) return
     val actions = remember(view) { mvActions(view) }
     val scope = rememberCoroutineScope()
+    var confirming by remember { mutableStateOf<MvAction?>(null) }
     Text(
         text = fleetHeading(choices.selectedCount),
         style = MaterialTheme.typography.titleSmall,
@@ -189,33 +194,56 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
             onClick = { scope.launch { withContext(Dispatchers.Default) { FleetBridge.deselectAll() } } },
         ) { Text("Deselect all") }
     }
-    Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-        actions.forEach { action ->
-            TextButton(
-                enabled = action.ready,
-                onClick = {
-                    scope.launch {
-                        val sent = withContext(Dispatchers.Default) {
-                            FleetBridge.run(action.id, choices.selectedCount)
-                        }
-                        onRefusal(if (sent) null else "${action.title} did not reach every selected vehicle.")
-                    }
-                },
-            ) { Text(action.title) }
-        }
-    }
-    actions.firstNotNullOfOrNull { mvReasonFor(it) }?.let { reason ->
-        Text(
-            text = reason,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+    actions.forEach { action ->
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = action.title,
+                    color = when {
+                        action.ready -> MaterialTheme.colorScheme.onSurface
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            },
+            supportingContent = { Text(fleetActionLine(action)) },
+            modifier = Modifier.clickable(enabled = action.ready) { confirming = action },
         )
+        if (confirming?.id == action.id) {
+            ConfirmTrack(
+                action = GuidedAction(
+                    name = action.title,
+                    confirm = fleetConfirm(choices.selectedCount),
+                    destructive = fleetIsDestructive(action),
+                    run = {
+                        scope.launch {
+                            val sent = withContext(Dispatchers.Default) {
+                                FleetBridge.run(action.id, choices.selectedCount)
+                            }
+                            onRefusal(if (sent) null else "${action.title} did not reach every selected aircraft.")
+                        }
+                    },
+                ),
+                onSent = { confirming = null },
+                onCancel = { confirming = null },
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+        }
     }
 }
 
-internal fun fleetHeading(selectedCount: Int): String = when (selectedCount) {
-    0 -> "No vehicles selected"
-    1 -> "1 vehicle selected"
-    else -> "$selectedCount vehicles selected"
+internal fun fleetTargetText(selectedCount: Int): String = when (selectedCount) {
+    1 -> "1 aircraft"
+    else -> "$selectedCount aircraft"
 }
+
+internal fun fleetHeading(selectedCount: Int): String = when (selectedCount) {
+    0 -> "Select aircraft to command together"
+    else -> "Command ${fleetTargetText(selectedCount)} together"
+}
+
+internal fun fleetActionLine(action: MvAction): String =
+    mvReasonFor(action) ?: action.prompt.ifBlank { action.title }
+
+internal fun fleetConfirm(selectedCount: Int): String = "This commands ${fleetTargetText(selectedCount)}."
+
+internal fun fleetIsDestructive(action: MvAction): Boolean = action.id != "mvPause"

@@ -57,9 +57,41 @@ class FleetActionsTest {
     }
 
     @Test
-    fun `the heading counts the selection`() {
-        assertEquals("No vehicles selected", fleetHeading(0))
-        assertEquals("1 vehicle selected", fleetHeading(1))
-        assertEquals("3 vehicles selected", fleetHeading(3))
+    fun `the heading says what the block commands, not just how many are ticked`() {
+        assertEquals("Select aircraft to command together", fleetHeading(0))
+        assertEquals("Command 1 aircraft together", fleetHeading(1))
+        assertEquals("Command 3 aircraft together", fleetHeading(3))
+    }
+
+    @Test
+    fun `a ready action says what it does`() {
+        val ready = mvActions(served(action("mvArm", "ready"))).single()
+        assertEquals("do mvArm", fleetActionLine(ready))
+    }
+
+    @Test
+    fun `a blocked action shows the refusal in place of the prompt`() {
+        val blocked = mvActions(served(action("mvDisarm", "blocked", "No selected vehicle is armed."))).single()
+        assertEquals("No selected vehicle is armed.", fleetActionLine(blocked))
+    }
+
+    @Test
+    fun `an action the core sent no prompt for falls back to its title`() {
+        assertEquals("Arm", fleetActionLine(MvAction(id = "mvArm", title = "Arm", prompt = "", offer = "ready", reason = "")))
+    }
+
+    @Test
+    fun `the confirm carries the count, which is what the row does not say`() {
+        assertEquals("This commands 1 aircraft.", fleetConfirm(1))
+        assertEquals("This commands 4 aircraft.", fleetConfirm(4))
+    }
+
+    @Test
+    fun `pause is the one fleet action that is not destructive`() {
+        val destructive = listOf("mvArm", "mvDisarm", "mvStartMission", "mvPause")
+            .map { MvAction(id = it, title = it, prompt = "", offer = "ready", reason = "") }
+            .filter(::fleetIsDestructive)
+            .map { it.id }
+        assertEquals(listOf("mvArm", "mvDisarm", "mvStartMission"), destructive)
     }
 }
