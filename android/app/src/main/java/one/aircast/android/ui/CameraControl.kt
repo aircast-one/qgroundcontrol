@@ -82,6 +82,12 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
 internal const val ZOOM_LOWEST = 0.0
 internal const val ZOOM_HIGHEST = 100.0
 internal const val CAMERA_ZOOM = "vehicle.cameraManager.currentCameraInstance.zoomLevel"
+internal const val CAMERA_RESET = "vehicle.cameraManager.currentCameraInstance.resetSettings"
+
+internal const val RESET_TITLE = "Reset Camera to Factory Settings"
+internal const val RESET_PROMPT = "Confirm resetting all settings?"
+
+internal fun cameraCanReset(camera: CameraReading?): Boolean = camera != null
 
 internal fun zoomStep(camera: CameraReading, by: Double): Double? {
     if (!camera.hasZoom) return null

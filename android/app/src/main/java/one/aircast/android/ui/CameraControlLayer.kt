@@ -9,9 +9,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -198,6 +200,34 @@ private fun CameraDetailsSheet(
                 )
             }
         }
+        if (cameraCanReset(camera)) {
+            var confirming by remember { mutableStateOf(false) }
+
+            TextButton(
+                onClick = { confirming = true },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) {
+                Text("Reset Camera Defaults", color = MaterialTheme.colorScheme.error)
+            }
+
+            if (confirming) {
+                AlertDialog(
+                    onDismissRequest = { confirming = false },
+                    title = { Text(RESET_TITLE) },
+                    text = { Text(RESET_PROMPT) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            confirming = false
+                            offMainDetached { Qgc.invoke(CAMERA_RESET) }
+                        }) { Text("Reset", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirming = false }) { Text("Cancel") }
+                    },
+                )
+            }
+        }
+
         Spacer(Modifier.padding(bottom = 24.dp))
     }
 }
