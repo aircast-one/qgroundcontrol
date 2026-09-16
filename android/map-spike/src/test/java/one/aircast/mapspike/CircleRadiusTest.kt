@@ -83,12 +83,35 @@ class CircleRadiusTest {
     }
 
     @Test
-    fun `the bounds are metres and the radius is whatever the operator reads`() {
-        val feet = circle(radius = 328.084, metres = 100.0, minimum = 30.0, maximum = 120.0)
+    fun `the bounds are in the same units as the radius, not metres`() {
+        // Fact.h:45 declares `min READ cookedMin`, and FactMetaData::cookedMin runs the raw
+        // bounds through _rawTranslator - the unit conversion. So the bridge's min and max are
+        // in DISPLAY units, the same as radius. Measured on an imperial rig: a circle of
+        // radius 326.2 ft served radiusMinimum 0.328, which is 0.1 m expressed in feet. Had it
+        // been metres it would have read 0.1. Converting it again multiplied the floor by 3.28.
+        val feet = circle(radius = 328.084, metres = 100.0, minimum = 30.0, maximum = 1200.0)
 
-        assertEquals(120.0 * 3.28084, grownRadius(feet)!!, 1e-3)
-        assertEquals(328.084 / 1.5, shrunkRadius(feet)!!, 1e-3)
-        assertNull(grownRadius(circle(radius = 393.7, metres = 120.0, maximum = 120.0)))
+        assertEquals("the ceiling is 1200 ft and 328 * 1.5 fits under it", 492.126, grownRadius(feet)!!, 1e-3)
+        assertEquals("the floor is 30 ft and 328 / 1.5 clears it", 218.723, shrunkRadius(feet)!!, 1e-3)
+
+        val atCeiling = circle(radius = 1200.0, metres = 365.76, maximum = 1200.0)
+        assertNull("already at the ceiling in its own units", grownRadius(atCeiling))
+
+        val nearFloor = circle(radius = 35.0, metres = 10.67, minimum = 30.0)
+        assertEquals("clamped to the floor rather than to 3.28 times it", 30.0, shrunkRadius(nearFloor)!!, 1e-3)
+    }
+
+    @Test
+    fun `a metric rig cannot tell the difference, which is why this survived`() {
+        val metric = circle(radius = 100.0, metres = 100.0, minimum = 30.0, maximum = 120.0)
+        assertEquals(
+            "shownPerMetre is 1.0 here, so the double conversion was invisible on a metric " +
+                "profile and only an imperial one shows it",
+            1.0,
+            shownPerMetre(metric),
+            1e-9,
+        )
+        assertEquals(120.0, grownRadius(metric)!!, 1e-3)
     }
 
     @Test

@@ -92,17 +92,15 @@ internal const val CIRCLE_STEP = 1.5
 internal fun shownPerMetre(circle: FenceCircle): Double =
     if (circle.radiusMetres > 0.0) circle.radius / circle.radiusMetres else 1.0
 
-private fun shown(circle: FenceCircle, metres: Double): Double = metres * shownPerMetre(circle)
-
 internal fun grownRadius(circle: FenceCircle): Double? {
     val wanted = circle.radius * CIRCLE_STEP
-    val ceiling = circle.radiusMaximum?.let { shown(circle, it) } ?: return wanted
+    val ceiling = circle.radiusMaximum ?: return wanted
     return if (circle.radius >= ceiling) null else minOf(wanted, ceiling)
 }
 
 internal fun shrunkRadius(circle: FenceCircle): Double? {
     val wanted = circle.radius / CIRCLE_STEP
-    val floor = circle.radiusMinimum?.let { shown(circle, it) } ?: return wanted.takeIf { it > 0.0 }
+    val floor = circle.radiusMinimum ?: return wanted.takeIf { it > 0.0 }
     return if (circle.radius <= floor) null else maxOf(wanted, floor)
 }
 
