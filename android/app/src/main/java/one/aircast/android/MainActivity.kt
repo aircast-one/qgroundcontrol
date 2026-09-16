@@ -206,6 +206,14 @@ fun AircastShell(quickView: QtQuickView) {
 
     val flightActions = remember { movableContentOf { FlightActions() } }
     val emergencyStop = remember { movableContentOf { PinnedEmergencyStop() } }
+    val flyVideo = remember {
+        movableContentOf<Modifier, Boolean> { mod, expanded ->
+            VideoSurface(modifier = mod, expanded = expanded, onClick = { videoExpanded = !videoExpanded })
+        }
+    }
+    val flyMap = remember {
+        movableContentOf<Modifier> { mod -> FlyMap(modifier = mod, cameraBottomPx = 0) }
+    }
 
     val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }
@@ -305,14 +313,8 @@ fun AircastShell(quickView: QtQuickView) {
                         controlsExpanded = controlsExpanded,
                         onToggleControls = { controlsExpanded = !controlsExpanded },
                         controllable = controllable,
-                        video = { mod, expanded ->
-                            VideoSurface(
-                                modifier = mod,
-                                expanded = expanded,
-                                onClick = { videoExpanded = !videoExpanded },
-                            )
-                        },
-                        map = { mod -> FlyMap(modifier = mod, cameraBottomPx = 0) },
+                        video = { mod, expanded -> flyVideo(mod, expanded) },
+                        map = { mod -> flyMap(mod) },
                         keyRow = {
                             VideoSourceLayer()
                             CameraControlLayer()
