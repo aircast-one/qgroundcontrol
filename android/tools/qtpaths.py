@@ -8,8 +8,14 @@ from a `view.*` the core serves. Run it from anywhere:
 
 A path is counted when it is the first argument of a bridge call - qgcPath,
 qgcString, qgcDouble, Qgc.get/set/invoke, setOk, invokeOk - and does not start
-with `view.`. Field names that merely look like paths are not counted, which is
-why this reads call sites rather than grepping for quoted strings.
+with `view.` and is not an action the core already owns. Field names that merely
+look like paths are not counted, which is why this reads call sites rather than
+grepping for quoted strings.
+
+The core-owned list is read out of `core-rs/src/actions.rs` at scan time rather
+than copied here. `mission.insert` looks exactly like a Qt path and never reaches
+Qt: `router.invoke` hands it to `actions::run` before the backend sees it. Ten of
+them were being counted as work to do.
 """
 
 import re
@@ -26,6 +32,15 @@ CALLS = r"(?:qgcPath|qgcString|qgcDouble|qgcJson|setOk|invokeOk|Qgc\.get|Qgc\.se
 LITERAL = re.compile(CALLS + r'\(\s*"([^"$]+)"')
 CONSTANT = re.compile(CALLS + r"\(\s*([A-Z][A-Z0-9_]{2,})\b")
 DEFINE = re.compile(r'\b(?:const\s+val|val)\s+([A-Z][A-Z0-9_]{2,})\s*(?::\s*String\s*)?=\s*"([^"$]+)"')
+
+
+OWNED = re.compile(r'^const [A-Z_]+: &str = "([^"]+)";', re.M)
+
+
+def core_owned() -> set[str]:
+    source = (ROOT / "core-rs/src/actions.rs").read_text()
+    listed = source.split("pub const OWNED", 1)[0]
+    return set(OWNED.findall(listed))
 
 
 def defined_constants() -> dict[str, str]:
@@ -49,7 +64,8 @@ def asked() -> list[tuple[str, str]]:
             for name in CONSTANT.findall(text):
                 if name in constants:
                     hits.append((constants[name], where))
-    return [(value, where) for value, where in hits if not value.startswith("view.")]
+    owned = core_owned()
+    return [(value, where) for value, where in hits if not value.startswith("view.") and value not in owned]
 
 
 def check() -> None:
@@ -58,6 +74,9 @@ def check() -> None:
     assert constants["VEHICLE_LINKS"] == "view.vehicleLinks", constants["VEHICLE_LINKS"]
     sample = 'val x by qgcPath("vehicle.armed")\nval y by qgcPath("view.flyState")\nval z = someField("vehicle.nope")'
     assert LITERAL.findall(sample) == ["vehicle.armed", "view.flyState"], LITERAL.findall(sample)
+    owned = core_owned()
+    assert "mission.insert" in owned, "the core-owned sweep found nothing, so every core action counts as Qt work"
+    assert "vehicle.armed" not in owned, sorted(owned)
 
 
 def main() -> None:
