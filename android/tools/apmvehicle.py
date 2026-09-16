@@ -18,6 +18,10 @@ OBSTACLE_RING = [
 ]
 OBSTACLE_SECONDS = float(os.environ.get("OBSTACLE_SECONDS", "45"))
 
+# A camera that advertises tracking. Off by default so the rig keeps reporting what a
+# plain camera reports; a head drawing tracking controls needs a camera that claims them.
+CAM_TRACKING = os.environ.get("CAM_TRACKING") == "1"
+
 from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
 from pymavlink.generator.mavcrc import x25crc
@@ -187,7 +191,9 @@ def main():
             1920, 1080, 0,
             mavlink.CAMERA_CAP_FLAGS_CAPTURE_IMAGE
             | mavlink.CAMERA_CAP_FLAGS_CAPTURE_VIDEO
-            | mavlink.CAMERA_CAP_FLAGS_HAS_MODES,
+            | mavlink.CAMERA_CAP_FLAGS_HAS_MODES
+            | (mavlink.CAMERA_CAP_FLAGS_HAS_TRACKING_POINT if CAM_TRACKING else 0)
+            | (mavlink.CAMERA_CAP_FLAGS_HAS_TRACKING_RECTANGLE if CAM_TRACKING else 0),
             0, b"")
         print("CAMERA_INFORMATION sent for %d" % comp, flush=True)
 
