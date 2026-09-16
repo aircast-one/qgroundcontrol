@@ -39,9 +39,13 @@ internal fun sampleIsClose(metres: Double, floorMetres: Double): Boolean =
 @Composable
 fun ObstacleArc(modifier: Modifier = Modifier) {
     val view by qgcPath(OBSTACLE_PATH)
-    val ring = remember(view) { obstacleRing(view) } ?: return
+    val ring = remember(view) { obstacleRing(view) }
     val spacing = remember(view) { view?.optDouble("ringIncrement", 5.0) ?: 5.0 }
     val floorMetres = remember(view) { view?.optDouble("rangeMinMetres", 0.0) ?: 0.0 }
+
+    if (ring == null) {
+        return
+    }
 
     val live = MaterialTheme.colorScheme.error
     val faded = MaterialTheme.colorScheme.onSurfaceVariant
