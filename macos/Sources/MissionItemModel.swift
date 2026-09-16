@@ -145,6 +145,10 @@ struct MissionItem: Identifiable, Equatable {
     static let settingsKind = "settings"
     static let takeoffKind = "takeoff"
 
+    static func countText(_ items: [MissionItem]) -> String {
+        "\(items.count) item" + (items.count == 1 ? "" : "s")
+    }
+
     static func routeEnd(_ items: [MissionItem]) -> Int {
         items.firstIndex(where: \.endsRoute) ?? items.count
     }

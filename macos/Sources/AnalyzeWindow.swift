@@ -106,12 +106,12 @@ struct VibrationView: View {
                     GroupCard {
                         ForEach(Array(store.reading.clipCounts.enumerated()), id: \.offset) { index, count in
                             GroupRow(title: "Accelerometer \(index + 1)",
-                                     value: "\(count) \(count == 1 ? "clip" : "clips")",
+                                     value: VibrationReading.clipText(count),
                                      showSeparator: index > 0,
                                      trailing: {
-                                         Image(systemName: count == 0
-                                             ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                             .foregroundColor(count == 0 ? .green : .orange)
+                                         Image(systemName: VibrationReading.clipSymbol(count))
+                                             .foregroundColor(
+                                                 VibrationReading.clipHealthy(count) ? .green : .orange)
                                      })
                         }
                     }

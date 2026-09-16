@@ -3507,6 +3507,31 @@ func checkAltitudeMode() {
 
 checkAltitudeMode()
 
+func checkThePluralsThatLivedAtUncompiledCallSites() {
+    expect(VibrationReading.clipText(1), "1 clip", "one clip is singular")
+    expect(VibrationReading.clipText(0), "0 clips", "none is plural, which is where a rule written "
+           + "as \"more than one\" rather than \"exactly one\" goes wrong")
+    expect(VibrationReading.clipText(2), "2 clips", "and so is two")
+    expect(VibrationReading.clipHealthy(0), "a clean accelerometer is the zero case, NOT the "
+           + "singular one -- the plural switches at one and the severity at zero, and these two "
+           + "assertions are what holds those thresholds apart")
+    expect(!VibrationReading.clipHealthy(1), "a single clip is already not healthy")
+    expect(VibrationReading.clipSymbol(0), "checkmark.circle.fill", "so the tick is the zero case")
+    expect(VibrationReading.clipSymbol(1), "exclamationmark.circle.fill",
+           "and one clip already earns the warning mark")
+
+    expect(TerrainProfile.empty.unknownSentence == nil,
+           "no missing points is not a sentence with nothing in it")
+    expect(TerrainProfile(["unknownTerrain": 1 as NSNumber]).unknownSentence ?? "",
+           "1 point without terrain data", "one missing sample is singular")
+    expect(TerrainProfile(["unknownTerrain": 7 as NSNumber]).unknownSentence ?? "",
+           "7 points without terrain data", "and seven are plural, which is the arm the panel "
+           + "actually draws on a survey")
+
+    expect(MissionItem.countText([]), "0 items", "an empty plan counts in the plural")
+}
+checkThePluralsThatLivedAtUncompiledCallSites()
+
 func checkThePlanEmptySentenceIsTheCoreS() {
     expect(MissionSummary.planStatus(controller: true, reason: "This plan has no items yet."),
            "This plan has no items yet.",
@@ -5797,7 +5822,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2167
+let assertionFloor = 2178
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

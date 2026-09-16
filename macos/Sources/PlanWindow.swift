@@ -135,8 +135,8 @@ struct TerrainProfileSheet: View {
                         Text(profile.clearanceSentence)
                             .font(.caption)
                             .foregroundColor(.secondary)
-                    } else if profile.unknownTerrain > 0 {
-                        Text("\(profile.unknownTerrain) point\(profile.unknownTerrain == 1 ? "" : "s") without terrain data")
+                    } else if let unknown = profile.unknownSentence {
+                        Text(unknown)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -414,7 +414,7 @@ struct PlanInspector: View {
             HStack(spacing: Overlay.step) {
                 Text(mission.planName)
                     .foregroundColor(.primary)
-                Text("\(mission.items.count) item\(mission.items.count == 1 ? "" : "s")")
+                Text(MissionItem.countText(mission.items))
                 if !fenceRally.shapes.isEmpty {
                     dot(Overlay.fence)
                     Text("\(fenceRally.shapes.count) fence")

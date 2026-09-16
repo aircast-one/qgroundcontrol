@@ -62,6 +62,22 @@ struct VibrationReading: Equatable {
     // -- and the old rule read that as noVehicle and said "Connect a vehicle", to somebody looking
     // at a connected one. The core said what the vehicle did; what this screen cannot draw is the
     // head's own business and the head has to say it.
+    // The clip row's plural, its symbol and its colour all lived at the call site in
+    // AnalyzeWindow, which swift-checks does not compile, and they switch on DIFFERENT thresholds:
+    // the plural at one, the severity at zero. Both are right and nothing was holding them apart,
+    // so a later hand tidying them to one number would have broken exactly one of the two without
+    // a red. The core owns whether the accelerometer clipped -- clipping is served, and this head
+    // derives nothing from clipCounts -- so all this decides is how one already-served count reads.
+    static func clipText(_ count: Int) -> String {
+        "\(count) clip" + (count == 1 ? "" : "s")
+    }
+
+    static func clipHealthy(_ count: Int) -> Bool { count == 0 }
+
+    static func clipSymbol(_ count: Int) -> String {
+        clipHealthy(count) ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+    }
+
     var emptyText: String {
         switch silentReason {
         case "notReported": return "This vehicle is not reporting vibration."

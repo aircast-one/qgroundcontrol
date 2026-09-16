@@ -98,6 +98,14 @@ struct TerrainProfile: Equatable {
     static let below = "Mission is below terrain"
     static let clears = "Clears terrain"
 
+    // Drawn only when the clearance sentence is not, so this is the profile's second-choice line
+    // and the one an operator reads when the panel cannot answer the question it exists for.
+    // nil rather than an empty string: no points missing is not a sentence with nothing in it.
+    var unknownSentence: String? {
+        guard unknownTerrain > 0 else { return nil }
+        return "\(unknownTerrain) point" + (unknownTerrain == 1 ? "" : "s") + " without terrain data"
+    }
+
     var clearanceSentence: String {
         guard !clearanceText.isEmpty else { return hasCollision ? TerrainProfile.below : "" }
         return hasCollision
