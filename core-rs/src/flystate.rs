@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.telemetryLRSSI", "vehicle.telemetryRRSSI", "vehicle.telemetryLNoise", "vehicle.telemetryRNoise", "vehicle.telemetryRXErrors"];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -70,8 +70,26 @@ fn flying_to(backend: &dyn Backend) -> Option<i64> {
         .filter(|sequence| *sequence >= 0)
 }
 
+// TelemetryRSSIIndicator.qml:30 hides the whole indicator on telemetryLRSSI == 0, and every SiK
+// field is zero before the first RADIO_STATUS arrives - so zero here is "no radio has spoken",
+// not a reading of zero dBm. Serving the numbers ungated would let a head draw -0 dBm and a
+// healthy-looking link for a radio that has never reported.
+fn telemetry(vehicle: &Value) -> Value {
+    let reading = |name: &str| vehicle.get(name).and_then(Value::as_i64);
+    match reading("telemetryLRSSI").filter(|local| *local != 0) {
+        None => Value::Null,
+        Some(local) => json!({
+            "localRssiDbm": local,
+            "remoteRssiDbm": reading("telemetryRRSSI"),
+            "localNoise": reading("telemetryLNoise"),
+            "remoteNoise": reading("telemetryRNoise"),
+            "receiveErrors": reading("telemetryRXErrors"),
+        }),
+    }
+}
+
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio"));
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio,rcChannelOverrideActive,telemetryLRSSI,telemetryRRSSI,telemetryLNoise,telemetryRNoise,telemetryRXErrors"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     // _commLostCheck returns early when the watch is disabled, so communicationLost never updates
     // and false means "nobody is looking" rather than "every link is fine". view.frame and
@@ -102,6 +120,11 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             0 => "No signal".to_string(),
             percent => format!("{percent}%"),
         }),
+        // rcChannelOverrideActive is !_rcChannelOverrides.isEmpty(), so with no vehicle it is not
+        // false but unknown - the same distinction contactLost makes, and the one that decides
+        // whether a head may draw "manual control is not being overridden" or must draw nothing.
+        "rcOverride": connected.then(|| flag(&vehicle, "rcChannelOverrideActive")),
+        "telemetry": telemetry(&vehicle),
     })
 }
 
@@ -150,6 +173,46 @@ mod tests {
         assert_eq!(at(0)["rcSignal"], 0, "zero is a READING and the worst one - the transmitter is gone. QGC's own indicator hides at zero, so a total RC loss looks exactly like an aircraft with no transmitter fitted");
         assert_eq!(at(255)["rcSignal"], Value::Null, "255 is QGC's sentinel for a vehicle that has not reported a strength at all, which is the one case there is nothing to draw");
         assert_eq!(at(255)["rcSignalText"], Value::Null);
+    }
+
+    #[test]
+    fn a_radio_that_has_never_reported_is_not_a_radio_at_zero_dbm() {
+        let radio = |local: i64| {
+            let mut vehicle = aloft(true, true, false);
+            vehicle["telemetryLRSSI"] = json!(local);
+            vehicle["telemetryRRSSI"] = json!(-42);
+            vehicle["telemetryLNoise"] = json!(12);
+            vehicle["telemetryRNoise"] = json!(14);
+            vehicle["telemetryRXErrors"] = json!(3);
+            fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])["telemetry"].clone()
+        };
+
+        assert_eq!(
+            radio(0),
+            Value::Null,
+            "every SiK field is zero until the first RADIO_STATUS arrives, and TelemetryRSSIIndicator.qml:30 hides the whole indicator on that - serving the numbers anyway lets a head draw a healthy -0 dBm link for a radio that has never spoken"
+        );
+
+        let reporting = radio(-91);
+        assert_eq!(
+            (reporting["localRssiDbm"].clone(), reporting["remoteRssiDbm"].clone(), reporting["receiveErrors"].clone()),
+            (json!(-91), json!(-42), json!(3))
+        );
+        assert_eq!((reporting["localNoise"].clone(), reporting["remoteNoise"].clone()), (json!(12), json!(14)));
+    }
+
+    #[test]
+    fn an_rc_override_is_unknown_without_a_vehicle_rather_than_absent() {
+        let mut overridden = aloft(true, true, false);
+        overridden["rcChannelOverrideActive"] = json!(true);
+        assert_eq!(read(overridden, false)["rcOverride"], json!(true));
+
+        assert_eq!(read(aloft(true, true, false), false)["rcOverride"], json!(false), "a connected vehicle with an empty override list is genuinely not overridden");
+        assert_eq!(
+            read(json!({ "kind": "null" }), false)["rcOverride"],
+            Value::Null,
+            "rcChannelOverrideActive is !_rcChannelOverrides.isEmpty(), so with no vehicle there is no list to be empty - false would tell an operator manual control is definitely not being overridden, which is a safety claim nothing has made"
+        );
     }
 
     #[test]
