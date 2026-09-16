@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,6 +59,24 @@ class VibrationScreenTest {
     fun `an unavailable view is no reading at all`() {
         assertNull(vibrationReading(null))
         assertNull(vibrationReading(JSONObject("""{"available":false}""")))
+    }
+
+    @Test
+    fun `a healthy three-axis reading draws the bars rather than an empty state`() {
+        val healthy = JSONObject(
+            """{"kind":"object","class":"Vibration","connected":true,"available":true,
+               "silentReason":null,"silentText":null,"units":"m/s^2","scaleMaximum":90,
+               "warningLevel":30,"dangerLevel":60,"clipCounts":[0,0,0],
+               "axes":[{"axis":"x","label":"X","value":12.0,"fraction":0.13,"severity":"normal"},
+                       {"axis":"y","label":"Y","value":14.0,"fraction":0.15,"severity":"normal"},
+                       {"axis":"z","label":"Z","value":16.0,"fraction":0.17,"severity":"normal"}]}""",
+        )
+
+        assertNotNull(vibrationReading(healthy))
+        assertNull(
+            "an empty state here means the screen never draws its bars at all",
+            vibrationEmptyState(healthy, vibrationReading(healthy)),
+        )
     }
 
     @Test

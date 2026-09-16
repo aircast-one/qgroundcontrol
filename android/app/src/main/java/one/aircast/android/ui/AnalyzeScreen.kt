@@ -88,11 +88,11 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
     val vibrationJson by qgcPath(VIBRATION_VIEW)
     val connected = hasVehicle()
     val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
-    val vibrating = remember(vibrationJson) { vibrationCaveat(vibrationJson) }
+    val caveat = remember(vibrationJson) { vibrationCaveat(vibrationJson) }
 
     LazyColumn(modifier.fillMaxSize()) {
         items(AnalyzePage.entries, key = { it.name }) { page ->
-            val note = analyzeNote(page, connected, px4, vibrating)
+            val note = analyzeNote(page, connected, px4, caveat)
             ListItem(
                 headlineContent = { Text(page.label) },
                 supportingContent = {

@@ -241,7 +241,7 @@ internal fun vibrationCaveat(view: JSONObject?): String? = when {
 }
 
 internal fun vibrationEmptyState(view: JSONObject?, reading: VibrationReading?): SilentState? =
-    silentState(view) ?: reading?.let { null } ?: partlyReported(view)
+    silentState(view) ?: if (reading == null) partlyReported(view) else null
 
 private fun partlyReported(view: JSONObject?): SilentState =
     if (view?.optBoolean("connected") == true) {
