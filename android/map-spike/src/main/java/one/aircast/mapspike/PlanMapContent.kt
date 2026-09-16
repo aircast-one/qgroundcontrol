@@ -421,6 +421,7 @@ internal fun MapSpikeScreen(
                                 itemCount, shape, items, fences, circles, rally, surveyList,
                                 missionSummaryText(missionSummaryView), selected, planOffline,
                                 canAddByHand = kindAllows(insertable, KIND_WAYPOINT),
+                                canPlaceByButton = placeAt() != null,
                             )
                         },
                         style = MaterialTheme.typography.bodySmall,
