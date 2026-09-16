@@ -65,8 +65,17 @@ struct TlogSummary: Equatable {
 
     // Seconds are seconds in every locale, so the head spells this one and the core does not
     // need to. Distances and altitudes are the ones that convert.
+    // span is 0.0 for THREE states the core cannot tell apart (tlog.rs:104): no timestamps at
+    // all, a first and last that are equal, and a last EARLIER than the first -- a clock that
+    // stepped backwards mid-recording. Only the first has no duration; the others have one the
+    // file cannot express. frames separates that case from the rest, and the table is not drawn
+    // at all when frames is zero, so the empty string here is never on screen.
+    //
+    // It draws the panel's unreported mark rather than "0s", because 0s is a claim and two of
+    // the three states would make it false.
     var spanText: String {
-        guard readable, spanSeconds > 0 else { return "" }
+        guard readable else { return "" }
+        guard spanSeconds > 0 else { return frames > 0 ? Measure.unreported : "" }
         let whole = Int(spanSeconds.rounded())
         let minutes = whole / 60
         let seconds = whole % 60

@@ -1486,9 +1486,19 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            + "not need to -- distances and altitudes are the ones that convert")
     expect(tlog(["spanSeconds": 45.0 as NSNumber])?.spanText ?? "", "45s",
            "and a log under a minute does not claim a leading zero minutes")
-    expect(tlog(["spanSeconds": 0.0 as NSNumber])?.spanText ?? "MISSING", "",
-           "a log whose frames carry no usable timestamps has no span, which is not a span of "
-           + "zero seconds")
+    // MEASURED and CONSTRUCTED: cutting a real log to its first 30 bytes gives frames 1 and
+    // spanSeconds 0.0, and the Duration row then drew a LABELLED ROW WITH AN EMPTY VALUE. None
+    // of the 24 real logs in the Telemetry folder reaches it, so only a built file separates
+    // these two. tlog.rs:104 collapses three states into 0.0 -- no timestamps, equal first and
+    // last, and a last EARLIER than the first -- and the head can only tell the first apart.
+    expect(tlog(["spanSeconds": 0.0 as NSNumber])?.spanText ?? "MISSING", "\u{2014}",
+           "a log with frames and no span has a duration the file cannot express, not a span of "
+           + "zero seconds -- so it draws the panel's unreported mark rather than claiming 0s, "
+           + "which would be false for a clock that stepped backwards")
+    expect(tlog(["spanSeconds": 0.0 as NSNumber, "frames": 0 as NSNumber])?
+            .spanText ?? "MISSING", "",
+           "and a log with no frames has nothing to say about duration -- unobservable, because "
+           + "that log takes the empty-file arm and never draws this table")
 
     expect(tlog([:])?.sizeText ?? "", "5.0 MB", "a size is scaled to the unit that reads")
     expect(tlog(["bytes": 512 as NSNumber])?.sizeText ?? "", "512 bytes",
