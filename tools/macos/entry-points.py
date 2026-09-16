@@ -98,9 +98,13 @@ def main():
     #   mentions inflate the count and make a dead one look entered (FALSE NEGATIVE)
     # - a function entered only from C++ or QML, which is the ALLOWED case and is why
     #   a new hit is a question rather than a verdict
+    shared = sum(1 for places in declared.values() if len(places) > 1)
     print(f"checked {len(declared)} declared names across {len(files)} files in macos/Sources against every "
           f"mention in Sources and Tests: {len(unentered)} are entered by nothing this sweep can see, "
           f"{len(ALLOWED)} allowed because a framework or the C entry point enters them, {len(stale)} stale")
+    print(f"of those names {shared} are declared in more than one file, so a same-named member elsewhere "
+          f"inflates their count and a dead one among them would read as entered -- the size of this "
+          f"sweep's false negative, measured rather than assumed")
     return 1 if unentered or stale else 0
 
 
