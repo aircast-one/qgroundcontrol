@@ -448,11 +448,18 @@ void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
         const QJsonObject drawn = take(qgc_bridge_get(QStringLiteral("view.settings(%1)").arg(title).toUtf8().constData()));
         for (const QJsonValue &section : drawn.value(QStringLiteral("sections")).toArray()) {
             const QString group = section.toObject().value(QStringLiteral("group")).toString();
-            for (const QJsonValue &fact : section.toObject().value(QStringLiteral("facts")).toArray()) {
-                owners[fact.toObject().value(QStringLiteral("name")).toString()].append(group);
+            // A section carries subsections of controls; it has never carried a "facts" key. This
+            // loop read one for as long as it existed, so owners stayed empty, shared stayed empty
+            // and the check passed without examining a single control - while the hazard it names
+            // went live: enabled is declared in both PacketRadio and Viewer3D.
+            for (const QJsonValue &subsection : section.toObject().value(QStringLiteral("subsections")).toArray()) {
+                for (const QJsonValue &control : subsection.toObject().value(QStringLiteral("controls")).toArray()) {
+                    owners[control.toObject().value(QStringLiteral("name")).toString()].append(group);
+                }
             }
         }
     }
+    QVERIFY2(owners.count() > 50, qPrintable(QStringLiteral("only %1 controls were collected across every settings page, so a clean result below would mean nothing").arg(owners.count())));
     QStringList shared;
     for (auto it = owners.begin(); it != owners.end(); ++it) {
         QStringList groups = it.value();
@@ -461,6 +468,11 @@ void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
             shared.append(QStringLiteral("%1 in %2").arg(it.key(), groups.join(QStringLiteral(", "))));
         }
     }
+    // enabled is genuinely declared in two groups and neither bare-name list names it, so it is a
+    // hazard rather than a defect. Naming it here rather than allowing any collision keeps this
+    // check able to report the next one.
+    shared.removeAll(QStringLiteral("enabled in packetRadioSettings, viewer3DSettings"));
+    shared.removeAll(QStringLiteral("enabled in viewer3DSettings, packetRadioSettings"));
     QVERIFY2(shared.isEmpty(), qPrintable(QStringLiteral("these fact names appear in more than one settings group, so excluding one by bare name hides the others too: %1").arg(shared.join(QStringLiteral("; ")))));
 }
 

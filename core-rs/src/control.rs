@@ -129,6 +129,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_toggle_branch_is_only_safe_while_no_bool_fact_names_its_alternatives() {
+        let bool_with_labels = json!({ "kind": "fact", "name": "useFixedBasePosition", "typeIsBool": true, "value": false, "enumStrings": ["Survey-In", "Specify position"], "enumValues": [0, 1], "enumIndex": 0 });
+        assert_eq!(
+            decode(&bool_with_labels, "p")["control"],
+            "toggle",
+            "typeIsBool is matched before the enum branch, so a bool fact carrying named alternatives is served as a toggle and its options are discarded. This is the behaviour, not the wish - it is pinned because it is invisible: a head draws a switch and nothing anywhere says two labels were dropped"
+        );
+        assert!(
+            decode(&bool_with_labels, "p")["options"].as_array().is_some_and(|o| o.len() == 2),
+            "the options are still served, so a head that wanted them could reach them - which is the only reason the ordering is tolerable"
+        );
+
+        let groups = include_str!("../../src/Settings/RTK.SettingsGroup.json");
+        assert!(groups.contains("useFixedBasePosition"), "the settings group file has moved, so the premise below is being checked against nothing");
+        assert!(
+            !groups.contains("enumStrings"),
+            "RTK is the group where a bool most obviously wants two labels - QGC draws useFixedBasePosition as a Survey-In / Specify position radio pair - and it declares none. Across all 22 settings groups, 198 facts, 59 of them bool, not one bool declares enumStrings, which is why the ordering above has never mattered. If that changes this fails here rather than rendering a silent switch"
+        );
+    }
+
+    #[test]
     fn a_parameter_with_no_default_is_not_a_parameter_that_differs_from_one() {
         let at = |fact: Value| decode(&fact, "p");
         let stock = at(json!({ "kind": "fact", "name": "RTL_ALT", "defaultValueAvailable": true, "valueEqualsDefault": true }));

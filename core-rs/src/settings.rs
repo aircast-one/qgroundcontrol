@@ -44,6 +44,21 @@ const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.
 
 const GATED: &[(&str, &str, &str)] = &[("enforceChecklist", "useChecklist", CHECKLIST_OFF)];
 
+// QGC distinguishes the two, and which binding a page uses is what decides this. FlyViewSettings
+// binds the checklist row's `enabled`, so that control is real but inert and says why. The RTK
+// page binds `visible` on both groups, because GPSIndicatorPage.qml:113-120 is a Survey-In /
+// Specify position radio pair - the two sets are alternatives under a mode selector, not a switch
+// with dependents. Four greyed latitude boxes under a Survey-In selection would be a control
+// disabled with nothing on screen saying what it is disabled FOR.
+const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
+    ("surveyInAccuracyLimit", "useFixedBasePosition", true),
+    ("surveyInMinObservationDuration", "useFixedBasePosition", true),
+    ("fixedBasePositionLatitude", "useFixedBasePosition", false),
+    ("fixedBasePositionLongitude", "useFixedBasePosition", false),
+    ("fixedBasePositionAltitude", "useFixedBasePosition", false),
+    ("fixedBasePositionAccuracy", "useFixedBasePosition", false),
+];
+
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
     ("appSettings", &[
         ("Appearance", &["indoorPalette", "appFontPointSize", "overlayGlassFrost", "qLocaleLanguage"]),
@@ -88,6 +103,12 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
     let shown: Vec<Value> = facts
         .iter()
         .filter(|f| f.get("visible").and_then(Value::as_bool) != Some(false))
+        .filter(|f| {
+            let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
+            !HIDDEN_WHEN.iter().any(|(hidden, requires, when)| {
+                *hidden == named && facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some(requires)).and_then(|other| other.get("value")).and_then(Value::as_bool) == Some(*when)
+            })
+        })
         .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n)))
         .map(|f| decode(f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .collect();
@@ -192,6 +213,93 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn every_name_these_tables_key_on_exists_and_belongs_to_one_group() {
+        const GROUPS: &[(&str, &str)] = &[
+            ("App", include_str!("../../src/Settings/App.SettingsGroup.json")),
+            ("Video", include_str!("../../src/Settings/Video.SettingsGroup.json")),
+            ("RTK", include_str!("../../src/Settings/RTK.SettingsGroup.json")),
+            ("FlyView", include_str!("../../src/Settings/FlyView.SettingsGroup.json")),
+            ("PacketRadio", include_str!("../../src/Settings/PacketRadio.SettingsGroup.json")),
+            ("Viewer3D", include_str!("../../src/Settings/Viewer3D.SettingsGroup.json")),
+        ];
+        let declares = |name: &str| -> Vec<&str> {
+            GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
+        };
+        assert_eq!(declares("useFixedBasePosition"), vec!["RTK"], "the parser has to find a name it should, or every assertion below passes by finding nothing");
+        assert_eq!(declares("enabled").len(), 2, "enabled is declared in two groups and that is what makes uniqueness worth asserting rather than assumed");
+
+        let keyed: Vec<&str> = HIDDEN
+            .iter()
+            .copied()
+            .chain(DESKTOP_ONLY.iter().map(|(name, _)| *name))
+            .chain(GATED.iter().flat_map(|(gated, requires, _)| [*gated, *requires]))
+            .chain(HIDDEN_WHEN.iter().flat_map(|(hidden, requires, _)| [*hidden, *requires]))
+            .collect();
+
+        keyed.iter().for_each(|name| {
+            let groups = declares(name);
+            assert!(
+                !groups.is_empty(),
+                "{name} is keyed on by one of these tables and no settings group declares it. The entry stops matching silently, and every one of these fails OPEN - a stale HIDDEN or DESKTOP_ONLY makes a control reappear on a page it was deliberately kept off, a stale GATED turns the enforce-checklist switch back into a live one, and a stale HIDDEN_WHEN puts both RTK mode groups back on screen at once. The page looks fuller and nothing fails"
+            );
+            assert_eq!(
+                groups.len(),
+                1,
+                "{name} is declared in {groups:?}. These tables key on a BARE fact name and the filters run per group, so an entry naming a shared name applies to every page that declares it - one line that looks like it names one control silently reaching two"
+            );
+        });
+    }
+
+    #[test]
+    fn the_rtk_page_shows_one_mode_at_a_time_rather_than_both_sets_at_once() {
+        struct Rtk(Option<bool>);
+        impl Backend for Rtk {
+            fn get(&self, path: &str) -> String {
+                let mode = self.0.map(|on| json!({ "kind": "fact", "name": "useFixedBasePosition", "typeIsBool": true, "value": on }));
+                let facts: Vec<Value> = mode
+                    .into_iter()
+                    .chain(["surveyInAccuracyLimit", "surveyInMinObservationDuration", "fixedBasePositionLatitude", "fixedBasePositionLongitude", "fixedBasePositionAltitude", "fixedBasePositionAccuracy"].iter().map(|n| json!({ "kind": "fact", "name": n, "typeIsString": true })))
+                    .collect();
+                match path {
+                    "settings.rtkSettings" => json!({ "kind": "object", "facts": facts }),
+                    _ => json!({ "kind": "object", "facts": [] }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let shown = |fixed: Option<bool>| -> Vec<String> {
+            settings_view(&Rtk(fixed), &["RTK GPS".to_string()])["sections"][0]["subsections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|sub| sub["controls"].as_array().unwrap().clone())
+                .filter_map(|c| c["name"].as_str().map(str::to_string))
+                .collect()
+        };
+
+        let surveying = shown(Some(false));
+        assert!(surveying.contains(&"surveyInAccuracyLimit".to_string()) && surveying.contains(&"surveyInMinObservationDuration".to_string()));
+        assert!(
+            !surveying.iter().any(|n| n.starts_with("fixedBasePosition")),
+            "GPSIndicatorPage.qml binds visible on all six, and the selector above them is a Survey-In / Specify position radio pair - so a head drawing four editable base-position boxes under a Survey-In selection is offering the mode the operator did not choose. Shown: {surveying:?}"
+        );
+
+        let specified = shown(Some(true));
+        assert_eq!(specified.iter().filter(|n| n.starts_with("fixedBasePosition")).count(), 4);
+        assert!(!specified.iter().any(|n| n.starts_with("surveyIn")), "and the mirror: choosing a fixed position puts the survey-in limits away rather than leaving both sets on the page");
+
+        assert_eq!(
+            shown(None).len(),
+            6,
+            "with no useFixedBasePosition in the payload nothing is hidden. A bridge that cannot answer which mode is selected must not empty the page - the same permissive rule as the visible flag, and the direction that fails safe"
+        );
     }
 
     #[test]
