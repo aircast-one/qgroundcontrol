@@ -16,9 +16,28 @@ android {
         applicationId = "one.aircast.android"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = (System.getenv("AIRCAST_VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("AIRCAST_VERSION_NAME") ?: "0.1"
         ndk { abiFilters += "arm64-v8a" }
+    }
+
+    signingConfigs {
+        create("release") {
+            val store = System.getenv("AIRCAST_KEYSTORE")
+            if (store != null) {
+                storeFile = file(store)
+                storePassword = System.getenv("AIRCAST_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("AIRCAST_KEY_ALIAS")
+                keyPassword = System.getenv("AIRCAST_KEY_PASSWORD") ?: System.getenv("AIRCAST_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
+        }
     }
 
     buildFeatures { compose = true; buildConfig = true }
