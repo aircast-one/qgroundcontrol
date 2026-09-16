@@ -110,3 +110,24 @@ struct MavlinkField: Identifiable, Equatable {
         elements.compactMap(MavlinkField.init(json:))
     }
 }
+
+enum InspectorList {
+    // Two different silences, and only one of them had a sentence. `listening` is true the moment
+    // mavlinkInspector.activeSystem is an object, which is as soon as a vehicle exists; `messages`
+    // stays empty until the controller has received a frame. MAVLinkInspectorController.cc:66
+    // connects messageReceived in its CONSTRUCTOR, so it begins empty and fills on the next frame
+    // -- measured live, view.inspector answered messages: [] with a vehicle connected and the page
+    // open. In that window the panel drew an empty 260-point card under a note promising "Every
+    // message system 1 is sending", which is a head that looks broken rather than one that is
+    // waiting.
+    //
+    // Both sentences live here rather than at the call site, which swift-checks does not compile:
+    // the no-vehicle one was already a literal there and could have been swapped for the other
+    // with nothing failing.
+    static func emptyText(listening: Bool, count: Int) -> String? {
+        guard count == 0 else { return nil }
+        return listening
+            ? "Connected. No messages have arrived yet."
+            : "No vehicle is talking yet."
+    }
+}

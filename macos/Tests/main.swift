@@ -5740,6 +5740,29 @@ func checkSmartRTLCountsAsFlyingSomethingOfItsOwn() {
 checkSmartRTLCountsAsFlyingSomethingOfItsOwn()
 
 
+func checkTheInspectorSaysWhichSilenceItIsIn() {
+    expect(InspectorList.emptyText(listening: false, count: 0) ?? "", "No vehicle is talking yet.",
+           "with no active system the page names the missing vehicle, which is the sentence that "
+           + "was already drawn -- as a literal at a call site swift-checks does not compile, so it "
+           + "could have been swapped for the other one with nothing failing")
+    expect(InspectorList.emptyText(listening: true, count: 0) ?? "",
+           "Connected. No messages have arrived yet.",
+           "and a connected system with nothing received yet is a DIFFERENT silence. This one drew "
+           + "no sentence at all: an empty card under a note promising every message the system "
+           + "sends. MAVLinkInspectorController.cc:66 connects messageReceived in its constructor, "
+           + "so it starts empty and fills on the next frame -- measured live, view.inspector "
+           + "answered messages: [] with a vehicle connected")
+    expect(InspectorList.emptyText(listening: true, count: 1) == nil,
+           "one message is a list and the list draws itself")
+    expect(InspectorList.emptyText(listening: false, count: 1) == nil,
+           "and a list that arrived is drawn even if the system has since gone, rather than "
+           + "replaced by a sentence about a vehicle that was talking a moment ago")
+    expect(InspectorList.emptyText(listening: true, count: 0) != InspectorList.emptyText(listening: false, count: 0),
+           "the two silences never collapse to one sentence")
+}
+checkTheInspectorSaysWhichSilenceItIsIn()
+
+
 // The count is the point: a silently skipped block still prints "passed", and only a DROP in
 // what ran distinguishes it. Reporting it was not enough -- a number a reader has to notice is
 // not a check, and this file has 196 check functions whose assertions vanish with them if one
@@ -5748,7 +5771,7 @@ checkSmartRTLCountsAsFlyingSomethingOfItsOwn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2151
+let assertionFloor = 2156
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
