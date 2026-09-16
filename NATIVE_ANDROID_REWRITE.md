@@ -8908,3 +8908,31 @@ exists.
 **Still to triage: the plan and fence templates**, which are the largest block and
 the one where a head-side substitute is most tempting, since the fence editor
 walks `plan.geoFenceController.circles.*.center` and friends by index.
+
+### The status strip has outgrown its row, 2026-09-16
+
+With everything reporting, the Fly header reads:
+
+    Stabilize · Flying | 25% · 11.10V | 11 sats | 31% RC | 71 dBm | 2 links
+
+and the last cell is **cut at the screen edge**, showing "2" where it says "2
+links". On a 1080-wide phone in portrait, six cells plus the vehicle chip do not
+fit. The row is horizontally scrollable, so nothing is lost - but **nothing on
+screen says so**, and "2" reads as a number with no unit rather than as a
+truncation.
+
+Two of today's additions are what pushed it over: the telemetry RSSI cell and the
+link cell, both drawn because the core started serving them. The RC override cell
+makes seven when it fires, and that one is a caution.
+
+**A scrim on the scrollable edge was tried and is not in the tree.** It compiled
+and changed nothing visible: `canScrollForward` read during composition, on a
+surface whose colour the gradient fades to, over a strip whose overflow is the
+row's viewport rather than clipped text. Reverted rather than left in unverified -
+an affordance that might be inert is worse than a known gap, because the next
+person reads it as handled.
+
+**This is a portrait layout question, not a strip question**, and it belongs with
+the other one: swapping panes in portrait leaves the video a band about thirty
+pixels tall. Both are Pavlo's call - the readings themselves are correct, served,
+and each has a detail sheet behind it.
