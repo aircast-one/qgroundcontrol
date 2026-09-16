@@ -51,13 +51,20 @@ struct MissionSummary: Equatable {
     // rather than about the plan: there is no mission controller on the bridge at all. It wins over
     // the served reason, since a plan you cannot reach is not a plan with nothing in it.
     //
+    // It used to read "No vehicle is connected." -- a different fact, and a false instruction. The
+    // plan editor needs no vehicle; planning on the ground before an aircraft is powered is the
+    // normal way to use it, and every other sentence in this window says so. The comment above and
+    // the assertion labels had the condition right the whole time and the string said something
+    // else, which nothing could catch: both assertions compared planStatus's output to this same
+    // constant, so they pinned the wiring and left the words free.
+    //
     // Reachable without a third state: reload() reads view.missionSummary synchronously before it
     // sets this, so the reason is in hand rather than waiting on the watch.
     static func planStatus(controller: Bool, reason: String) -> String {
         controller ? reason : MissionSummary.noController
     }
 
-    static let noController = "No vehicle is connected."
+    static let noController = "The plan editor is unavailable."
 
     static let distance = "distance"
     static let time = "time"

@@ -3704,6 +3704,16 @@ func checkThePlanEmptySentenceIsTheCoreS() {
            + "separates the gate from one that just returns the reason")
     expect(MissionSummary.planStatus(controller: false, reason: ""), MissionSummary.noController,
            "and that sentence stays the head's, because it is a fact about this app")
+    expect(MissionSummary.noController.contains("plan"),
+           "the sentence names the PLAN, because that is the thing that could not be reached. Both "
+           + "assertions above compare planStatus to this same constant, so they pin the wiring "
+           + "and leave the words free -- this one and the next are the only checks on what it "
+           + "actually says")
+    expect(!MissionSummary.noController.lowercased().contains("vehicle"),
+           "and never a vehicle: it read \"No vehicle is connected.\" for as long as the comment "
+           + "above it said the condition was a missing mission controller. The plan editor needs "
+           + "no vehicle -- planning before an aircraft is powered is the normal way to use it -- "
+           + "so that sentence sent the operator to fix something that was not wrong")
 }
 checkThePlanEmptySentenceIsTheCoreS()
 
@@ -6050,7 +6060,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2233
+let assertionFloor = 2235
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

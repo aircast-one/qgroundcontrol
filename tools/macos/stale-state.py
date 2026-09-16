@@ -128,44 +128,49 @@ PENDING = {
     ("MapClick.swift", "refresh", "scaleBar"),
     ("MavlinkInspector.swift", "refresh", "fields"),
     ("MavlinkInspector.swift", "refresh", "messages"),
-    ("Mission.swift", "reload", "altitudeRange"),
-    ("Mission.swift", "reload", "canRedo"),
-    ("Mission.swift", "reload", "canUndo"),
-    ("Mission.swift", "reload", "commandCategories"),
-    ("Mission.swift", "reload", "commandsReadFor"),
-    ("Mission.swift", "reload", "connected"),
-    ("Mission.swift", "reload", "cruiseRange"),
-    ("Mission.swift", "reload", "cruiseSpeed"),
-    ("Mission.swift", "reload", "defaultAltitude"),
-    ("Mission.swift", "reload", "defaultAltitudeUnits"),
-    ("Mission.swift", "reload", "dirty"),
-    ("Mission.swift", "reload", "globalAltitudeMode"),
-    ("Mission.swift", "reload", "hoverRange"),
-    ("Mission.swift", "reload", "hoverSpeed"),
-    ("Mission.swift", "reload", "launch"),
-    ("Mission.swift", "reload", "missionModes"),
-    ("Mission.swift", "reload", "planFile"),
-    ("Mission.swift", "reload", "scaleBar"),
-    ("Mission.swift", "reload", "speedUnits"),
-    ("Mission.swift", "reload", "summary"),
-    ("Mission.swift", "reload", "syncing"),
-    ("Mission.swift", "reload", "terrain"),
-    ("Mission.swift", "reload", "vehicle"),
-    ("Mission.swift", "reload", "vehiclePosition"),
     ("Parameters.swift", "load", "loading"),
+}
+
+# One guard, one reason -- but the membership is spelled out, so a field added to the function
+# later is NOT covered and comes back as a finding. A whole-function pardon would switch the gate
+# off for that function forever, which is the one thing a backlog must never do.
+ACCEPTED_FUNCTIONS = {
+    ("Mission.swift", "reload"): (frozenset({
+        "altitudeRange", "canRedo", "canUndo", "commandCategories", "commandsReadFor", "connected",
+        "cruiseRange", "cruiseSpeed", "defaultAltitude", "defaultAltitudeUnits", "dirty",
+        "globalAltitudeMode", "hoverRange", "hoverSpeed", "launch", "missionModes", "planFile",
+        "scaleBar", "speedUnits", "summary", "syncing", "terrain", "vehicle", "vehiclePosition",
+    }), "the else arm cannot be entered in a running app, so none of these 24 can be read while "
+        "the subject is gone. MEASURED AT THE PRODUCER, not assumed: the guard tests "
+        "plan.missionController for kind == object, QGCBridgeCore.cc:81 resolves 'plan' to a "
+        "function-static PlanMasterController built on first use and never destroyed, and "
+        "PlanMasterController.h:45 declares missionController CONSTANT returning &_missionController "
+        "-- the address of a value member, never null. A path that resolves is never kind 'null' "
+        "(QGCBridgeCore.cc:535), and qgc_qt_get always strdups a real string, so Bridge.group "
+        "cannot hand back an empty dictionary either. THE BLIND SPOT, STATED: this reason is about "
+        "the CORE's file, not mine, and nothing re-checks it. If the plan root ever stops being a "
+        "never-destroyed static the arm becomes live and all 24 become real in one commit, with no "
+        "check anywhere that would say so"),
 }
 
 findings = []
 backlog = []
 for source in sorted(SOURCES.glob("*.swift")):
     for func, cleared, after in blocks(source.read_text()):
-        for name in sorted(after - cleared):
+        outliving = sorted(after - cleared)
+        pardoned, reason = ACCEPTED_FUNCTIONS.get((source.name, func), (frozenset(), ""))
+        for name in outliving:
             if (source.name, name) in ACCEPTED:
+                continue
+            if name in pardoned:
                 continue
             if (source.name, func, name) in PENDING:
                 backlog.append((source.name, func, name))
                 continue
             findings.append((source.name, func, name))
+        for name in sorted(pardoned - set(outliving)):
+            findings.append((source.name, func, f"{name} (pardoned but no longer outlives -- "
+                                                f"drop it from ACCEPTED_FUNCTIONS)"))
 
 for where, func, name in findings:
     print(f"  OUTLIVES {where} {func}() assigns {name!r} when something is selected and never "
@@ -174,5 +179,7 @@ for where, func, name in findings:
 
 print(f"checked every guard-else reset in {len(list(SOURCES.glob('*.swift')))} head files: "
       f"{len(findings)} field(s) outlive their selection, {len(ACCEPTED)} accepted with a reason, "
+      f"{sum(len(f) for f, _ in ACCEPTED_FUNCTIONS.values())} more pardoned by an unreachable "
+      f"guard across {len(ACCEPTED_FUNCTIONS)} function(s), "
       f"{len(backlog)} awaiting triage from the day the finder was fixed")
 sys.exit(1 if findings else 0)
