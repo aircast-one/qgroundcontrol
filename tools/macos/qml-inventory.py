@@ -43,6 +43,16 @@ def seeds(pats):
                 out.add(f)
     return out
 
+# A pattern matching no file seeds nothing, so its phase reaches nothing and reads as already
+# migrated. The failure is silent and it flatters: a directory renamed upstream makes this
+# inventory report progress that did not happen. Same shape as a hub-gated entry whose view is
+# gone -- the warning is not wrong, it is switched off.
+unseeded = [(label, pat) for label, pats in PHASES for pat in pats
+            if not any(pat in str(f) for f in files)]
+for label, pat in unseeded:
+    print(f"  UNSEEDED PHASE {label} lists {pat!r}, which matches no file here, so it seeds nothing "
+          f"and this phase reads as reached when it was never entered")
+
 reach = {}
 for label, pats in PHASES:
     frontier, seen = seeds(pats), set()
