@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 
+private val KEY_ROW_END_GAP = 16.dp
+
 internal const val VIDEO_BAND_RATIO = 16f / 9f
 
 @Composable
@@ -42,6 +44,7 @@ internal fun FlyPortrait(
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
+    keyRowEnd: @Composable () -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable () -> Unit,
 ) {
@@ -61,13 +64,17 @@ internal fun FlyPortrait(
 
         Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)) {
             Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-            ) { keyRow() }
+            ) {
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { keyRow() }
+                Box(Modifier.padding(start = KEY_ROW_END_GAP)) { keyRowEnd() }
+            }
         }
 
         Box(

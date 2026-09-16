@@ -37,6 +37,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,6 +94,8 @@ import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 import org.qtproject.qt.android.QtQuickView
 import org.qtproject.qt.android.QtRelaunchGuard
+
+private val KEY_ROW_STOP_GAP = 24.dp
 
 private val VIDEO_INSET_WIDTH = 200.dp
 private val VIDEO_INSET_HEIGHT = 112.dp
@@ -326,8 +330,8 @@ fun AircastShell(quickView: QtQuickView) {
                             flyVideoSourceLayer()
                             flyCameraControlLayer()
                             flyObstacleArc()
-                            emergencyStop()
                         },
+                        keyRowEnd = { emergencyStop() },
                         overlays = {
                             ObstacleReadout()
                             flyOrbitReadout()

@@ -2,7 +2,6 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +39,7 @@ internal fun EmergencyStopButton(
     if (offer == null) {
         return
     }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Button(
             onClick = { onConfirm(emergencyStopAction(offer)) },
             enabled = offer.ready,
@@ -48,7 +47,6 @@ internal fun EmergencyStopButton(
                 containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError,
             ),
-            modifier = Modifier.fillMaxWidth(),
         ) {
             Text(offer.title, fontWeight = FontWeight.Bold)
         }

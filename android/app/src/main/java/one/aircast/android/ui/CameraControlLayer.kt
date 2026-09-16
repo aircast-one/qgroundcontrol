@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
@@ -36,6 +38,8 @@ private const val REFUSAL_MS = 4000L
 private const val ZOOM_TICK = 10.0
 
 private const val MANAGER = "vehicle.cameraManager"
+
+private val SHUTTER_RING = Color(0xFFF5F5F5)
 
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
@@ -68,6 +72,26 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Button(
+                onClick = {
+                    offMainDetached { refused = Qgc.refusalOf(shutter.action) }
+                },
+                enabled = shutter.enabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (shutter.recording) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        Color.Transparent
+                    },
+                    contentColor = if (shutter.recording) {
+                        MaterialTheme.colorScheme.onError
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                ),
+                border = if (shutter.recording) null else BorderStroke(2.dp, SHUTTER_RING),
+            ) { Text(shutter.label) }
+
             FilterChip(
                 selected = false,
                 onClick = { details = true },
@@ -118,19 +142,6 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 )
             }
 
-            Button(
-                onClick = {
-                    offMainDetached { refused = Qgc.refusalOf(shutter.action) }
-                },
-                enabled = shutter.enabled,
-                colors = if (shutter.recording) {
-                    ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                    )
-                } else {
-                    ButtonDefaults.buttonColors()
-                },
-            ) { Text(shutter.label) }
 
             lapsePlan(camera)?.let { plan ->
                 Text(
