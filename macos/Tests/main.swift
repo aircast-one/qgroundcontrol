@@ -6008,7 +6008,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2219
+let assertionFloor = 2221
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -9128,6 +9128,11 @@ func checkSerialLinkInAnyLocale() {
            + "comparison against \"Serial\" was never true -- a serial link could not be "
            + "configured at all outside English")
     expect(LinkTypes.isSerial(german, at: 1) == false, "and UDP is not serial in any locale")
+    expect(LinkTypes.baud(forTyped: ""), "57600",
+           "an unfilled baud offers QGC's own default \u{2014} SerialLink.h:94 constructs a serial "
+           + "configuration at Baud57600, so the head is not choosing a rate of its own")
+    expect(LinkTypes.baud(forTyped: "115200"), "115200",
+           "and a rate the operator picked is kept")
     expect(LinkTypes.isSerial(german, at: 9) == false,
            "an index past the end is not serial, because the picker and the list are refreshed "
            + "separately and a selection can outlive the list it indexed")

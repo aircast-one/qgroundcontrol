@@ -106,6 +106,18 @@ struct LinkConfig: Identifiable, Equatable {
 enum LinkTypes {
     static let serial = "serial"
 
+    // SerialLink.h:94 constructs a SerialConfiguration with QSerialPort::Baud57600, so this is
+    // QGC's own default rather than a rate the head picked. supportedBaudRates (SerialLink.cc:110)
+    // is a static set, so 57600 is always among the options the core serves -- and the one state
+    // where it would not be is serial_baud_rates falling back to an empty list, which leaves the
+    // picker with no options at all and is not a case a different default would rescue. Read at
+    // b82364f45.
+    static let defaultBaud = "57600"
+
+    static func baud(forTyped typed: String) -> String {
+        typed.isEmpty ? defaultBaud : typed
+    }
+
     static func isSerial(_ ids: [String], at index: Int) -> Bool {
         ids.indices.contains(index) && ids[index] == serial
     }

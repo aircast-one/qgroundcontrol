@@ -50,7 +50,7 @@ struct ConnectionsSection: View {
                                selection: newHost) { newHost = $0 }
                 LabelledPicker(label: "Baud",
                                options: store.baudRates.map { (String($0), String($0)) },
-                               selection: newPort.isEmpty ? "57600" : newPort) { newPort = $0 }
+                               selection: LinkTypes.baud(forTyped: newPort)) { newPort = $0 }
             } else {
                 LabelledField(label: "Host", value: newHost) { newHost = $0 }
                 LabelledField(label: "Port", value: newPort) { newPort = $0 }
