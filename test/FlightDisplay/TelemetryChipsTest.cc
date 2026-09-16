@@ -13,6 +13,7 @@
 #include "FactValueGrid.h"
 #include "QmlObjectListModel.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtQml/QQmlContext>
 
 #include <algorithm>
@@ -260,6 +261,7 @@ void TelemetryChipsTest::_duplicateFactChipsKeepIndependentPositions()
         sizeKey = chipSizeKey(view.rootObject());
         QVERIFY(!uidA.isEmpty());
         QVERIFY(uidA != uidB);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     }
 
     const QPointF seededA(120, 300);
@@ -384,6 +386,7 @@ void TelemetryChipsTest::_deletingTheWidestChipReleasesItsColumnSpan()
     const qreal remainingWidest = widestChipWidth(view.rootObject());
     QVERIFY(remainingWidest < widest);
     QTRY_COMPARE(layer->property("_widestChip").toReal(), remainingWidest);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
 void TelemetryChipsTest::_deleteColumnRemovesTargetedChip()
@@ -417,6 +420,7 @@ void TelemetryChipsTest::_deleteColumnRemovesTargetedChip()
     }
     QCOMPARE(uidsAfter, uidsBefore.mid(1));
     QVERIFY(!chipWithUid(view.rootObject(), uidsBefore.first()));
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
 static QQuickItem *resetPillOf(QQuickItem *root)
