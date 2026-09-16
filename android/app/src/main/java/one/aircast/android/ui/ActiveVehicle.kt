@@ -8,12 +8,14 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,15 +30,47 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.qgcPath
+import org.json.JSONObject
 import one.aircast.mapspike.CHOOSER_TITLE
 import one.aircast.mapspike.VEHICLES_VIEW
+import one.aircast.mapspike.FleetBridge
 import one.aircast.mapspike.VehicleBridge
+import one.aircast.mapspike.VehicleChoices
 import one.aircast.mapspike.activeVehicleTitle
+import one.aircast.mapspike.optText
 import one.aircast.mapspike.lostVehicles
 import one.aircast.mapspike.lostVehiclesText
 import one.aircast.mapspike.linkDistinguishes
 import one.aircast.mapspike.vehicleChoiceLine
 import one.aircast.mapspike.vehicleChoices
+
+internal data class MvAction(
+    val id: String,
+    val title: String,
+    val prompt: String,
+    val offer: String,
+    val reason: String,
+) {
+    val ready: Boolean get() = offer == "ready"
+}
+
+internal fun mvActions(view: JSONObject?): List<MvAction> {
+    val listed = view?.optJSONArray("actions") ?: return emptyList()
+    return (0 until listed.length()).mapNotNull { index ->
+        listed.optJSONObject(index)?.let { entry ->
+            MvAction(
+                id = entry.optText("id").ifBlank { return@mapNotNull null },
+                title = entry.optText("title"),
+                prompt = entry.optText("prompt"),
+                offer = entry.optText("offer"),
+                reason = entry.optText("reason"),
+            )
+        }
+    }
+}
+
+internal fun mvReasonFor(action: MvAction): String? =
+    action.reason.ifBlank { null }?.takeIf { !action.ready }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +122,16 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 ListItem(
                     headlineContent = { Text(choice.name) },
                     supportingContent = { Text(vehicleChoiceLine(choice, distinguishes)) },
+                    leadingContent = {
+                        Checkbox(
+                            checked = choice.selected,
+                            onCheckedChange = { wanted ->
+                                scope.launch {
+                                    withContext(Dispatchers.Default) { FleetBridge.setSelected(choice.id, wanted) }
+                                }
+                            },
+                        )
+                    },
                     trailingContent = {
                         if (choice.active) {
                             Icon(Icons.Default.Check, contentDescription = "Flying this one")
@@ -114,9 +158,64 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
             }
+            FleetControls(vehiclesJson, choices) { message -> refusal = message }
             FootNote(
                 "Arm, Takeoff and every action on this screen go to the vehicle shown here.",
             )
         }
     }
+}
+
+@Composable
+private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal: (String?) -> Unit) {
+    if (!choices.ambiguous) return
+    val actions = remember(view) { mvActions(view) }
+    val scope = rememberCoroutineScope()
+    Text(
+        text = fleetHeading(choices.selectedCount),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+    )
+    Row(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(
+            enabled = choices.canSelectAll,
+            onClick = { scope.launch { withContext(Dispatchers.Default) { FleetBridge.selectAll(choices) } } },
+        ) { Text("Select all") }
+        TextButton(
+            enabled = choices.canDeselectAll,
+            onClick = { scope.launch { withContext(Dispatchers.Default) { FleetBridge.deselectAll() } } },
+        ) { Text("Deselect all") }
+    }
+    Row(modifier = Modifier.padding(horizontal = 16.dp)) {
+        actions.forEach { action ->
+            TextButton(
+                enabled = action.ready,
+                onClick = {
+                    scope.launch {
+                        val sent = withContext(Dispatchers.Default) {
+                            FleetBridge.run(action.id, choices.selectedCount)
+                        }
+                        onRefusal(if (sent) null else "${action.title} did not reach every selected vehicle.")
+                    }
+                },
+            ) { Text(action.title) }
+        }
+    }
+    actions.firstNotNullOfOrNull { mvReasonFor(it) }?.let { reason ->
+        Text(
+            text = reason,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+        )
+    }
+}
+
+internal fun fleetHeading(selectedCount: Int): String = when (selectedCount) {
+    0 -> "No vehicles selected"
+    1 -> "1 vehicle selected"
+    else -> "$selectedCount vehicles selected"
 }

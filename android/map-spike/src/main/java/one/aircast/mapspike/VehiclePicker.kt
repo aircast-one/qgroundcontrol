@@ -24,6 +24,35 @@ object VehicleBridge {
 
 const val VEHICLES_VIEW = "view.vehicles"
 
+const val VEHICLE_MANAGER = "vehicles"
+
+object FleetBridge {
+    fun setSelected(id: Int, selected: Boolean): Boolean =
+        invokeOk(if (selected) "$VEHICLE_MANAGER.selectVehicle" else "$VEHICLE_MANAGER.deselectVehicle", "[$id]")
+
+    fun selectAll(choices: VehicleChoices): Boolean =
+        choices.choices.filter { !it.selected }.map { setSelected(it.id, true) }.all { it }
+
+    fun deselectAll(): Boolean = invokeOk("$VEHICLE_MANAGER.deselectAllVehicles")
+
+    fun run(action: String, selectedCount: Int): Boolean {
+        val targets = (0 until selectedCount).map { "$VEHICLE_MANAGER.selectedVehicles.$it" }
+        return when {
+            targets.isEmpty() -> false
+            action == "mvArm" -> targets.map { setOk("$it.armed", settingJson("true")) }.all { it }
+            action == "mvDisarm" -> targets.map { setOk("$it.armed", settingJson("false")) }.all { it }
+            action == "mvPause" -> targets.map { invokeOk("$it.pauseVehicle") }.all { it }
+            action == "mvStartMission" -> targets.filter { armedAt(it) }
+                .map { invokeOk("$it.startMission") }
+                .let { sent -> sent.isNotEmpty() && sent.all { it } }
+            else -> false
+        }
+    }
+
+    private fun armedAt(path: String): Boolean =
+        runCatching { JSONObject(QGCBridge.getFields(path, "armed")).optBoolean("armed") }.getOrDefault(false)
+}
+
 const val CHOOSER_TITLE = "Fly which aircraft?"
 
 data class VehicleChoice(
@@ -35,18 +64,24 @@ data class VehicleChoice(
     val active: Boolean,
     val latitude: Double = Double.NaN,
     val longitude: Double = Double.NaN,
+    val selected: Boolean = false,
 )
 
 data class VehicleChoices(
     val ambiguous: Boolean,
     val choices: List<VehicleChoice>,
+    val canSelectAll: Boolean = false,
+    val canDeselectAll: Boolean = false,
 ) {
     val active: VehicleChoice? = choices.firstOrNull { it.active }
+    val selectedCount: Int = choices.count { it.selected }
 }
 
 fun vehicleChoices(view: JSONObject?): VehicleChoices {
     val listed = view?.optJSONArray("vehicles")
     return VehicleChoices(
+        canSelectAll = view?.optBoolean("canSelectAll") == true,
+        canDeselectAll = view?.optBoolean("canDeselectAll") == true,
         ambiguous = view?.optBoolean("ambiguous") == true,
         choices = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
             listed!!.optJSONObject(index)?.let { entry ->
@@ -60,6 +95,7 @@ fun vehicleChoices(view: JSONObject?): VehicleChoices {
                     active = entry.optBoolean("active"),
                     latitude = entry.optJSONObject("coordinate")?.optDouble("latitude") ?: Double.NaN,
                     longitude = entry.optJSONObject("coordinate")?.optDouble("longitude") ?: Double.NaN,
+                    selected = entry.optBoolean("selected"),
                 )
             }
         },
