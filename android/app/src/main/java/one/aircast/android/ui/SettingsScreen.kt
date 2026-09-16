@@ -426,12 +426,16 @@ internal fun FactRow(
                     )
                 }
                 !fact.acceptsWrite || notBuiltHere(fact) != null -> Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = enumLabel(fact),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (fact.isBool) {
+                        Switch(checked = fact.boolValue, onCheckedChange = null, enabled = false)
+                    } else {
+                        Text(
+                            text = enumLabel(fact),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Text(
                         text = inertNote(fact),
                         style = MaterialTheme.typography.labelSmall,
