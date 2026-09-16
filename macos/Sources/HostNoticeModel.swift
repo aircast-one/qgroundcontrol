@@ -92,8 +92,6 @@ struct HostNotices: Equatable {
 
     var shown: [HostNotice] { all.filter(\.shows) }
 
-    var newest: HostNotice? { shown.last }
-
     // The same call that posts this also posts the sentence explaining it, and that sentence is
     // already drawn, so the destination is offered as somewhere to go rather than as another
     // row saying the same thing. It is offered and not taken: raising a window over whatever

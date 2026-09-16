@@ -30,14 +30,6 @@ final class HostNoticeStore: ObservableObject, Probeable {
         refresh()
     }
 
-    // acknowledgeThrough clears everything queued at or before the newest one on screen, so a
-    // notice that arrived while the operator was reading is not cleared unseen.
-    func dismissAll() {
-        guard let newest = queue.shown.last else { return }
-        _ = Bridge.invoke("host.acknowledgeThrough", [NSNumber(value: newest.id)])
-        refresh()
-    }
-
     // Acknowledging on the press is what stops a queued request being re-offered every poll.
     func openSetup() {
         guard queue.offersSetup, let request = queue.navigation else { return }

@@ -7150,10 +7150,6 @@ func checkHostNotices() {
     expect(HostNotices([:]).all.isEmpty && HostNotices([:]).dropped == 0,
            "an empty read is an empty queue rather than a decode that invents one")
 
-    expect(read.newest?.id == 2,
-           "the newest drawn notice is the last one queued, because post appends and the head "
-           + "does not re-sort what the core has already ordered")
-
     expect(read.offersSetup,
            "the navigation notice offers Vehicle Setup rather than being discarded. QGC posts it "
            + "from AutoPilotPlugin.cc:72 when a component needs setup, alongside the sentence "
