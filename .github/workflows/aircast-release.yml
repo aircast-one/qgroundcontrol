@@ -282,6 +282,8 @@ jobs:
     # off the user's workstation (which orphaned macdeployqt and dropped network).
     runs-on: macos-14
     timeout-minutes: 45
+    env:
+      MACOS_SIGN: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -376,12 +378,31 @@ jobs:
             echo "Shared cache MISS for $OBJ - will seed it after this build"
           fi
 
+      - name: Import Developer ID certificate
+        if: env.MACOS_SIGN == 'true'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="${RUNNER_TEMP}/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$MACOS_CERT_P12_BASE64" | base64 -d > "${RUNNER_TEMP}/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "${RUNNER_TEMP}/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERT_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "${RUNNER_TEMP}/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
       - name: CMake configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_OSX_ARCHITECTURES=${{ needs.setup.outputs.is_production == 'true' && '"x86_64;arm64"' || 'arm64' }}
               -DQGC_STABLE_BUILD=ON
+              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.MACOS_SIGN == 'true' && 'ON' || 'OFF' }}
 
       - name: Build
         working-directory: ${{ runner.temp }}/shadow_build_dir
@@ -405,7 +426,20 @@ jobs:
 
       - name: Create app bundle
         working-directory: ${{ runner.temp }}/shadow_build_dir
+        env:
+          QGC_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          QGC_MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+          QGC_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
         run: cmake --install . --config Release
+
+      - name: Verify signature and notarization
+        if: env.MACOS_SIGN == 'true'
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: |
+          codesign --verify --deep --strict --verbose=2 staging/*.app
+          spctl --assess --type execute --verbose=2 staging/*.app
+          xcrun stapler validate staging/*.app
 
       - name: Sanity check DMG executable
         working-directory: ${{ runner.temp }}/shadow_build_dir
@@ -428,6 +462,11 @@ jobs:
       # an identical binary, and two binaries can drift where one cannot.
       - name: Build the native-UI bundle
         working-directory: ${{ runner.temp }}/shadow_build_dir
+        env:
+          SIGN_IDENTITY: ${{ env.MACOS_SIGN == 'true' && secrets.MACOS_SIGNING_IDENTITY || '' }}
+          NOTARY_USER: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          NOTARY_TEAM: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
         run: |
           set -euo pipefail
           SRC=staging/AircastQGC.app
@@ -444,8 +483,15 @@ jobs:
           # Re-signed because renaming the executable and editing Info.plist invalidate the
           # signature the install step applied; ad-hoc matches what that step does when no
           # identity is configured, and macOS refuses to launch a bundle whose seal is broken.
-          codesign --force --deep -s - "$DST"
+          codesign --force --deep -s "${SIGN_IDENTITY:--}" "$DST"
           codesign --verify --deep "$DST"
+          if [ -n "$SIGN_IDENTITY" ]; then
+            ditto -c -k --keepParent "$DST" native_notarization_upload.zip
+            xcrun notarytool submit native_notarization_upload.zip \
+              --apple-id "$NOTARY_USER" --team-id "$NOTARY_TEAM" --password "$NOTARY_PASSWORD" --wait
+            xcrun stapler staple "$DST"
+            xcrun stapler validate "$DST"
+          fi
           "$DST/Contents/MacOS/AircastQGCNative" --simple-boot-test
 
       - name: Package the native-UI DMG
