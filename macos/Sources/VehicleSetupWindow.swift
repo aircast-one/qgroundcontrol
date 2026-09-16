@@ -237,7 +237,7 @@ struct MotorsView: View {
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .controlSize(.small)
-                            .disabled(!motors.state.connected || motors.state.armed)
+                            .disabled(!motors.state.canChangeSafety)
                     })
                 }
                 Text(MotorTest.safetyText(motors.safetyOff))

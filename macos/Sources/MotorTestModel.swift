@@ -71,6 +71,16 @@ struct MotorTest: Equatable {
     // operator reaches for greys out. A control is enabled by what its own action requires.
     var canStop: Bool { connected }
 
+    // The safety toggle deliberately does NOT inherit canTest, and the difference is the point:
+    // it stays reachable when contact is known lost. Flipping it sends nothing -- every action it
+    // unlocks is gated by canTest, which does refuse on lost contact -- so disabling it here would
+    // stop an operator arming the switch while waiting for the link to come back, and gain no
+    // safety. It does refuse while ARMED, because that is the state the switch exists to keep you
+    // out of. This lived as .disabled(!connected || armed) in VehicleSetupWindow, which
+    // swift-checks does not compile, so the divergence from canTest was a coincidence of two
+    // expressions rather than a decision anything held to.
+    var canChangeSafety: Bool { connected && !armed }
+
     static func timeout(throttle: Double) -> Int {
         throttle <= minimumThrottle ? 0 : timeoutSeconds
     }

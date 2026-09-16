@@ -5771,7 +5771,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2156
+let assertionFloor = 2161
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -5892,6 +5892,26 @@ func checkMotorTest() {
     expect(apm.names.joined(separator: ","), "A,B,C,D",
            "ArduPilot names its motors by letter, which is what its own page shows")
     expect(apm.countWarning, "", "a vehicle that reported four motors needs no warning")
+
+    expect(apm.canChangeSafety, "a connected, disarmed vehicle lets the operator arm the switch")
+    expect(!MotorTest(reportedCount: 4, letterIndices: true, connected: false, armed: false,
+                      contactLost: false).canChangeSafety,
+           "with no vehicle there is nothing to make safe")
+    expect(!MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: true,
+                      contactLost: false).canChangeSafety,
+           "and an ARMED vehicle refuses it, because armed is the state the switch exists to keep "
+           + "the operator out of")
+    let unreachable = MotorTest(reportedCount: 4, letterIndices: true, connected: true,
+                                armed: false, contactLost: true)
+    expect(unreachable.canChangeSafety,
+           "but lost contact does NOT refuse it, and that is the whole reason this gate is not "
+           + "canTest: flipping the switch sends nothing, every action it unlocks is gated by "
+           + "canTest which does refuse on lost contact, so disabling it here would only stop an "
+           + "operator arming the switch while waiting for the link and would buy no safety")
+    expect(!unreachable.canTest(safetyOff: true),
+           "the actions behind it stay refused in that state, which is what makes the toggle safe "
+           + "to leave reachable -- the two gates differ on purpose and nothing held them to it "
+           + "while the toggle's was a ternary in VehicleSetupWindow")
 
     let px4 = MotorTest(reportedCount: 6, letterIndices: false, connected: true, armed: false,
                         contactLost: false)
