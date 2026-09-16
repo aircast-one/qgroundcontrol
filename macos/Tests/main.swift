@@ -368,6 +368,23 @@ expect(SensorHealth(["name": "GPS", "state": "molten"])?.state == SensorHealth.S
        "a state this head does not know reads as unknown, not as the reassuring one")
 expect(SensorHealth.list(nil).isEmpty, "no answer is no sensors")
 
+expect(SensorHealth.headline([]), "All enabled sensors are healthy",
+       "with nothing in the core's failing list the row says so outright rather than leaving the "
+       + "card silent, because a sensors page with no sentence reads as a page that did not load")
+expect(SensorHealth.headline(["GPS"]), "1 sensor reporting a fault",
+       "one fault is singular -- the plural rule sat in VehicleSetupWindow, which swift-checks "
+       + "does not compile, so nothing could fail on it")
+expect(SensorHealth.headline(["GPS", "Gyro"]), "2 sensors reporting a fault",
+       "and two are plural, which is the arm this rig cannot produce: the copter fake reports a "
+       + "single healthy GPS, so no screenshot here has ever shown a fault row")
+expect(SensorHealth.faultNames(["GPS", "Gyro"]), "GPS, Gyro",
+       "the description names which ones, from the core's list rather than a count re-derived here")
+expect(SensorHealth.faultNames([]), "",
+       "and says nothing when nothing failed, so the healthy row carries one line and not an "
+       + "empty second one")
+expect(SensorHealth.symbol([]) != SensorHealth.symbol(["GPS"]),
+       "the symbol separates the two states; both arms were a ternary at an uncompiled call site")
+
 let setupPage: [String: Any] = [
     "page": "Safety", "firmware": "apm", "available": true as NSNumber,
     "sections": [

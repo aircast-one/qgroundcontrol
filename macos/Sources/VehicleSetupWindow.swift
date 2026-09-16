@@ -68,16 +68,11 @@ struct SensorsView: View {
                 GroupCard { EmptyStateRow(text: store.status) }
             } else {
                 GroupCard {
-                    GroupRow(title: store.failing.isEmpty
-                                ? "All enabled sensors are healthy"
-                                : "\(store.failing.count) sensor\(store.failing.count == 1 ? "" : "s") reporting a fault",
-                             description: store.failing.isEmpty
-                                ? ""
-                                : store.failing.joined(separator: ", "),
+                    GroupRow(title: SensorHealth.headline(store.failing),
+                             description: SensorHealth.faultNames(store.failing),
                              showSeparator: false,
                              leading: {
-                                 Image(systemName: store.failing.isEmpty
-                                     ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                 Image(systemName: SensorHealth.symbol(store.failing))
                                      .foregroundColor(store.failing.isEmpty ? .green : .orange)
                              })
                 }
