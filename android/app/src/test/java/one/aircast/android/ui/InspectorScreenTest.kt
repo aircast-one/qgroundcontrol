@@ -191,4 +191,48 @@ class InspectorSystemTest {
         )
         assertNull(inspectorSystemText(null))
     }
+
+    @Test
+    fun `the empty state is the core's sentence, not the head's`() {
+        val noVehicle = JSONObject(
+            """{"kind":"object","class":"Inspector","available":false,"messages":[],
+                "emptyText":"Connect a vehicle to inspect its MAVLink traffic."}""",
+        )
+
+        assertEquals(
+            "witnessed on device with no vehicle",
+            "Connect a vehicle to inspect its MAVLink traffic.",
+            inspectorEmptyText(noVehicle),
+        )
+    }
+
+    @Test
+    fun `a vehicle with rows has nothing to say instead of them`() {
+        val flowing = JSONObject(
+            """{"kind":"object","class":"Inspector","available":true,"systemId":1,
+                "messages":[{"name":"HEARTBEAT"}],"emptyText":""}""",
+        )
+
+        assertNull(
+            "witnessed on device: twelve messages and emptyText empty - a blank sentence is " +
+                "the core saying draw the list, not saying nothing",
+            inspectorEmptyText(flowing),
+        )
+    }
+
+    @Test
+    fun `a vehicle that has sent nothing yet says so, and the head does not invent it`() {
+        val waiting = JSONObject(
+            """{"kind":"object","class":"Inspector","available":true,"systemId":1,
+                "messages":[],"emptyText":"Waiting for this vehicle's first message…"}""",
+        )
+
+        assertEquals(
+            "the window between activeSystem existing and the first frame is too short to " +
+                "sample on this rig, so the head must render whatever arrives rather than " +
+                "carry a second sentence of its own that could drift from it",
+            "Waiting for this vehicle's first message…",
+            inspectorEmptyText(waiting),
+        )
+    }
 }

@@ -45,6 +45,9 @@ internal fun inspectorSystemText(view: JSONObject?): String? {
 }
 private const val INSPECTOR_VIEW = "view.inspector"
 
+internal fun inspectorEmptyText(view: JSONObject?): String? =
+    view?.optText("emptyText")?.ifBlank { null }
+
 internal data class InspectorMessage(
     val index: Int,
     val id: Int,
@@ -190,7 +193,6 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun InspectorScreen(modifier: Modifier = Modifier) {
-    val hasVehicle = hasVehicle()
     val inspectorJson by qgcPath(INSPECTOR_VIEW)
     var openPath by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf("") }
@@ -199,8 +201,9 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
 
     BackHandler(enabled = open != null) { openPath = null }
 
-    if (!hasVehicle) {
-        InspectorNotice("Connect a vehicle to inspect its MAVLink traffic.", modifier)
+    val emptyText = inspectorEmptyText(inspectorJson)
+    if (emptyText != null) {
+        InspectorNotice(emptyText, modifier)
         return
     }
 
@@ -232,10 +235,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    if (messages.isEmpty()) {
-        InspectorNotice("No MAVLink messages seen yet.", modifier)
-        return
-    }
+
 
     val shown = messages.filter { it.name.contains(filter, ignoreCase = true) }
 
