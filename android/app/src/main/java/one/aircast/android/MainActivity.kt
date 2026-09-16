@@ -40,6 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -192,6 +193,7 @@ fun AircastShell(quickView: QtQuickView) {
     var controlsExpanded by remember { mutableStateOf(true) }
     var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
+    var popEpoch by remember { mutableIntStateOf(0) }
     var videoExpanded by remember { mutableStateOf(false) }
 
     val notices by one.aircast.android.bridge.qgcPath("host")
@@ -266,7 +268,14 @@ fun AircastShell(quickView: QtQuickView) {
                     Tab.entries.forEach { entry ->
                         NavigationBarItem(
                             selected = tab == entry,
-                            onClick = { tab = entry },
+                            onClick = {
+                                if (tab == entry) {
+                                    analyzePage = null
+                                    popEpoch++
+                                } else {
+                                    tab = entry
+                                }
+                            },
                             icon = { Icon(entry.icon, entry.label) },
                             label = { Text(entry.label) },
                         )
@@ -316,16 +325,18 @@ fun AircastShell(quickView: QtQuickView) {
                     onClick = { videoExpanded = !videoExpanded },
                 )
 
-                when (tab) {
-                    Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
-                    Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
-                    Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
-                    Tab.Analyze -> AnalyzeScreen(
-                        page = analyzePage,
-                        onSelect = { analyzePage = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    else -> Unit
+                key(popEpoch) {
+                    when (tab) {
+                        Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
+                        Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
+                        Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
+                        Tab.Analyze -> AnalyzeScreen(
+                            page = analyzePage,
+                            onSelect = { analyzePage = it },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        else -> Unit
+                    }
                 }
 
                 if (tab == Tab.Fly) {
