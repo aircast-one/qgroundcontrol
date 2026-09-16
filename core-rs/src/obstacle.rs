@@ -100,6 +100,14 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "msSinceUpdate": since,
         "nearest": reading,
         "sectors": ring.iter().filter(|cm| **cm != NO_READING).count(),
+        "ringMetres": ring.iter().map(|cm| match *cm == NO_READING || (max_distance > 0 && *cm >= max_distance) {
+            true => Value::Null,
+            false => json!(*cm as f64 / CENTIMETRES_PER_METRE),
+        }).collect::<Vec<Value>>(),
+        "ringIncrement": spacing,
+        "ringOffset": real("angleOffset").unwrap_or(0.0),
+        "rangeMinMetres": (min_distance > 0).then(|| min_distance as f64 / CENTIMETRES_PER_METRE),
+        "rangeMaxMetres": (max_distance > 0).then(|| max_distance as f64 / CENTIMETRES_PER_METRE),
     })
 }
 
@@ -124,6 +132,34 @@ mod tests {
     fn ring(distances: Vec<i64>) -> Value {
         json!({ "kind": "object", "available": true, "enabled": true, "distances": distances,
                 "increment": 45.0, "minDistance": 100, "maxDistance": 1000, "angleOffset": 0.0, "msSinceUpdate": 200 })
+    }
+
+    #[test]
+    fn an_unseen_sector_is_null_rather_than_a_number_a_head_could_draw() {
+        let view = obstacle_view(&Ring(ring(vec![NO_READING, 500, 1200, 0])), &[]);
+        let arc = view["ringMetres"].as_array().unwrap();
+        assert_eq!(arc.len(), 4, "one entry per sector, so the index still means the bearing");
+        assert_eq!(
+            arc[0],
+            Value::Null,
+            "65535 is the wire's empty marker and it is a NUMBER - a head that forgets to filter it draws an obstacle 655 metres away, and one that treats 0 as empty hides an obstacle at zero. Null can be mistaken for neither"
+        );
+        assert_eq!(arc[1], json!(5.0), "centimetres on the wire, metres on the view, because distanceMetres beside it is metres and two units in one view with the name carrying the difference is how the fence bounds went wrong");
+        assert_eq!(arc[2], Value::Null, "at or past maxDistance is dropped here exactly as nearest() drops it, so the arc and the nearest reading cannot disagree about what is in range");
+        assert_eq!(arc[3], json!(0.0), "and zero is a reading: the sensor saw something at the aircraft, which is the one sample never to hide");
+
+        assert_eq!(view["ringIncrement"], json!(45.0));
+        assert_eq!(view["ringOffset"], json!(0.0));
+        assert_eq!(view["rangeMinMetres"], json!(1.0));
+        assert_eq!(view["rangeMaxMetres"], json!(10.0));
+
+        let spacingless = obstacle_view(&Ring(json!({ "kind": "object", "available": true, "enabled": true, "distances": [500], "increment": 0.0, "minDistance": 0, "maxDistance": 0, "angleOffset": 0.0, "msSinceUpdate": 200 })), &[]);
+        assert_eq!(
+            spacingless["ringIncrement"],
+            Value::Null,
+            "a ring with no angle between samples cannot be placed, and any default would place it wrongly - the head needs to know it cannot draw rather than draw at a guess"
+        );
+        assert_eq!((spacingless["rangeMinMetres"].clone(), spacingless["rangeMaxMetres"].clone()), (Value::Null, Value::Null), "an unreported range is not a range of zero");
     }
 
     #[test]
