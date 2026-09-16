@@ -1585,11 +1585,6 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
     expect(tlog(["vehicleSystemIds": [2 as NSNumber, 1 as NSNumber]])?.vehiclesText ?? "", "1, 2",
            "a log of two aircraft names both, SORTED, because the order the core happened to see "
            + "them in is not an answer and would make the same log read differently twice")
-    expect(tlog(["systemIds": [7 as NSNumber], "vehicleSystemIds": [1 as NSNumber]])?
-            .vehiclesText ?? "", "1",
-           "and it never falls back to systemIds when the two disagree -- the raw list is the "
-           + "senders, including a gimbal or a transponder, both of which heartbeat with ids of "
-           + "their own")
 
     expect(TlogSummary(["kind": "null"]) == nil,
            "a refusal with no path at all is no summary, rather than one describing a log at "

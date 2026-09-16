@@ -7,7 +7,6 @@ struct TlogSummary: Equatable {
     let frames: Int
     let undecodable: Int
     let spanSeconds: Double
-    let systemIds: [Int]
     // Optional, not defaulted to empty: ABSENT means a producer that does not serve this yet, and
     // EMPTY is a measured answer -- the recording names no aircraft. Collapsing them would let a
     // stale core make this row assert "None" about a log full of vehicles, which is the defaulting
@@ -24,9 +23,6 @@ struct TlogSummary: Equatable {
         frames = (json["frames"] as? NSNumber)?.intValue ?? 0
         undecodable = (json["undecodable"] as? NSNumber)?.intValue ?? 0
         spanSeconds = (json["spanSeconds"] as? NSNumber)?.doubleValue ?? 0
-        systemIds = ((json["systemIds"] as? [Any]) ?? []).compactMap {
-            ($0 as? NSNumber)?.intValue
-        }
         vehicleSystemIds = (json["vehicleSystemIds"] as? [Any])?.compactMap {
             ($0 as? NSNumber)?.intValue
         }
