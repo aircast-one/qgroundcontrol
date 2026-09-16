@@ -29,6 +29,11 @@ TRACK_RECT = [float(part) for part in os.environ.get("TRACK_RECT", "0.35,0.30,0.
 # not tracking, which is the state a head offers to start one in.
 CAM_TRACK_STATUS = os.environ.get("CAM_TRACK_STATUS", "1") != "0"
 
+# A camera with a storage card, so a head can draw a Format row. Off by default: without it
+# the camera reports no storage and Format is correctly hidden, which is the only arm the
+# contract recording has ever witnessed.
+CAM_STORAGE = os.environ.get("CAM_STORAGE") == "1"
+
 from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
 from pymavlink.generator.mavcrc import x25crc
@@ -320,6 +325,11 @@ def main():
                 cam_link.heartbeat_send(mavlink.MAV_TYPE_CAMERA,
                                         mavlink.MAV_AUTOPILOT_INVALID, 0, 0,
                                         mavlink.MAV_STATE_ACTIVE)
+                if CAM_STORAGE:
+                    cam_link.storage_information_send(
+                        int((time.time() - boot) * 1000),
+                        1, 1, mavlink.STORAGE_STATUS_READY,
+                        61440.0, 20480.0, 40960.0, 90.0, 60.0)
         if CAM_TRACKING and CAM_TRACK_STATUS and tick % 5 == 0:
             for cam_link in links.values():
                 try:

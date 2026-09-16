@@ -163,6 +163,44 @@ internal fun trackingPointObject(point: TrackingRequest.Point): JSONObject =
 
 internal val TRACKING_CENTRE = TrackingBox(0.4, 0.4, 0.2, 0.2)
 
+internal const val CAMERA_FORMAT = "vehicle.cameraManager.currentCameraInstance.formatCard"
+
+internal data class DestructiveAction(
+    val id: String,
+    val title: String,
+    val prompt: String,
+    val offer: String,
+    val reason: String,
+) {
+    val ready: Boolean get() = offer == "ready"
+    val blocked: Boolean get() = offer == "blocked"
+    val shown: Boolean get() = offer != "hidden"
+}
+
+internal fun destructiveActions(view: JSONObject?): List<DestructiveAction> {
+    val listed = view?.optJSONArray("destructiveActions") ?: return emptyList()
+    return (0 until listed.length()).mapNotNull { index ->
+        listed.optJSONObject(index)?.let { entry ->
+            DestructiveAction(
+                id = entry.optText("id").ifBlank { return@mapNotNull null },
+                title = entry.optText("title"),
+                prompt = entry.optText("prompt"),
+                offer = entry.optText("offer"),
+                reason = entry.optText("reason"),
+            )
+        }
+    }.filter { it.shown }
+}
+
+internal fun destructiveReasonFor(action: DestructiveAction): String? =
+    action.reason.ifBlank { null }?.takeIf { action.blocked }
+
+internal fun destructiveInvokePath(id: String): String? = when (id) {
+    "resetSettings" -> CAMERA_RESET
+    "formatStorage" -> CAMERA_FORMAT
+    else -> null
+}
+
 internal const val CAMERA_THERMAL_MODE = "vehicle.cameraManager.currentCameraInstance.thermalMode"
 internal const val CAMERA_THERMAL_OPACITY = "vehicle.cameraManager.currentCameraInstance.thermalOpacity"
 

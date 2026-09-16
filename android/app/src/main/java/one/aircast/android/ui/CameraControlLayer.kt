@@ -146,6 +146,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 camera = camera,
                 thermal = remember(cameraJson) { thermalReading(cameraJson) },
                 tracking = remember(cameraJson) { trackingReading(cameraJson) },
+                destructive = remember(cameraJson) { destructiveActions(cameraJson) },
                 current = current.toInt(),
                 onSelect = { index ->
                     offMainDetached { Qgc.set("$MANAGER.currentCamera", index) }
@@ -172,6 +173,7 @@ private fun CameraDetailsSheet(
     camera: CameraReading,
     thermal: ThermalReading?,
     tracking: TrackingReading?,
+    destructive: List<DestructiveAction>,
     current: Int,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -250,26 +252,43 @@ private fun CameraDetailsSheet(
             }
         }
 
-        if (cameraCanReset(camera)) {
-            var confirming by remember { mutableStateOf(false) }
+        destructive.forEach { action ->
+            var confirming by remember(action.id) { mutableStateOf(false) }
 
             TextButton(
                 onClick = { confirming = true },
+                enabled = action.ready,
                 modifier = Modifier.padding(horizontal = 12.dp),
             ) {
-                Text("Reset Camera Defaults", color = MaterialTheme.colorScheme.error)
+                Text(action.title, color = MaterialTheme.colorScheme.error)
+            }
+            destructiveReasonFor(action)?.let { reason ->
+                Text(
+                    text = reason,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
             }
 
             if (confirming) {
                 AlertDialog(
                     onDismissRequest = { confirming = false },
-                    title = { Text(RESET_TITLE) },
-                    text = { Text(RESET_PROMPT) },
+                    title = { Text(action.title) },
+                    text = { Text(action.prompt) },
                     confirmButton = {
                         TextButton(onClick = {
                             confirming = false
-                            offMainDetached { Qgc.invoke(CAMERA_RESET) }
-                        }) { Text("Reset", color = MaterialTheme.colorScheme.error) }
+                            destructiveInvokePath(action.id)?.let { path ->
+                                offMainDetached {
+                                    if (action.id == "formatStorage") {
+                                        Qgc.invoke(path, 1)
+                                    } else {
+                                        Qgc.invoke(path)
+                                    }
+                                }
+                            }
+                        }) { Text("Confirm", color = MaterialTheme.colorScheme.error) }
                     },
                     dismissButton = {
                         TextButton(onClick = { confirming = false }) { Text("Cancel") }
