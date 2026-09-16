@@ -3507,6 +3507,37 @@ func checkAltitudeMode() {
 
 checkAltitudeMode()
 
+func checkAComponentsRowSaysTheSameThingTwice() {
+    let unconfigured = VehicleComponentInfo(["name": "Radio", "needsAttention": true as NSNumber])!
+    let settled = VehicleComponentInfo(["name": "Frame", "needsAttention": false as NSNumber])!
+
+    expect(settled.statusText(faulted: true), VehicleComponentInfo.reportingFault,
+           "a configured component reporting a sensor fault SAYS so -- this is the arm the shared "
+           + "severity property could not see at all, which is why the list had spelled its own")
+    expect(settled.severity(faulted: true) == FlyTelemetry.Level.warning,
+           "and weighs the same as one needing setup, so neither outranks the other in colour")
+    expect(settled.statusText(faulted: false).isEmpty,
+           "a component with nothing wrong says nothing rather than filling the column")
+    expect(settled.severity(faulted: false) == FlyTelemetry.Level.good, "and is good")
+
+    expect(unconfigured.statusText(faulted: true), VehicleComponentInfo.needsSetup,
+           "needing setup wins the sentence over a fault when BOTH are true: a component nobody "
+           + "has configured cannot be trusted to report a meaningful fault, and configuring it is "
+           + "the action that clears both. CONSTRUCTED -- the rig cannot fault a sensor")
+    expect(unconfigured.severity(faulted: false) == unconfigured.severity(faulted: true),
+           "and the weight does not move with it, so the row never changes colour on a word")
+
+    expect(VehicleComponentInfo.statusSymbol(settled.severity(faulted: true)),
+           VehicleComponentInfo.statusSymbol(unconfigured.severity(faulted: false)),
+           "one mark for one weight: fault and needs-setup draw the SAME symbol, because the "
+           + "sentence beside it is what separates them")
+    expect(VehicleComponentInfo.statusSymbol(.good), "checkmark.circle.fill",
+           "and the TICK is the good one, named rather than merely distinguished: the two "
+           + "assertions above both compare marks that swap together, so inverting the level the "
+           + "symbol keys on passed under both versions until this line existed")
+}
+checkAComponentsRowSaysTheSameThingTwice()
+
 func checkTheTwoSpellingsOfNothingHere() {
     expect(Measure.rowValue(""), Measure.unread, "an empty value is a sentence, not a blank")
     expect(Measure.rowValue("3.2 V"), "3.2 V", "and anything reported is drawn as it came")
@@ -5840,7 +5871,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2184
+let assertionFloor = 2192
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

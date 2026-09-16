@@ -770,10 +770,9 @@ struct SetupSummaryView: View {
                                 let opens = page != nil
                                 let glyph = page ?? component.name
                                 let faulted = component.isSensors && !sensors.failing.isEmpty
-                                let good = !component.needsAttention && !faulted
+                                let weight = component.severity(faulted: faulted)
                                 GroupRow(title: component.name,
-                                         value: component.needsAttention ? "Needs setup"
-                                             : faulted ? "Reporting a fault" : "",
+                                         value: component.statusText(faulted: faulted),
                                          showSeparator: component.id != store.components.first?.id,
                                          leading: {
                                              Tile(symbol: SetupPage.symbol(for: glyph),
@@ -781,9 +780,9 @@ struct SetupSummaryView: View {
                                          },
                                          trailing: {
                                              HStack(spacing: 6) {
-                                                 Image(systemName: good
-                                                     ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                                     .foregroundColor(good ? .green : .orange)
+                                                 Image(systemName: VehicleComponentInfo
+                                                     .statusSymbol(weight))
+                                                     .foregroundColor(FlyPanel.colour(weight))
                                                  if opens {
                                                      Text("\u{203A}")
                                                          .font(.title3)

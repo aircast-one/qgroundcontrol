@@ -24,7 +24,36 @@ struct VehicleComponentInfo: Identifiable, Equatable {
     // The rule lives here rather than at the two call sites in VehicleSetupWindow.swift, which
     // swift-checks does not compile, so a future third drawing of the same fact has somewhere to
     // read the answer from instead of picking a colour.
-    var severity: FlyTelemetry.Level { needsAttention ? .warning : .good }
+    // The THIRD drawing arrived and read its own answer anyway: the Components list spelled a
+    // green tick or an amber exclamation inline from a local `good`, which is this rule AND the
+    // sensor fault this property could not see. So one fact had two weights again, the second one
+    // in a file swift-checks does not compile. The fault is now an argument rather than a second
+    // expression, and the row's WORDS come from the same call, so the mark and the sentence cannot
+    // drift apart.
+    //
+    // needsAttention wins the sentence when both are true. Amber either way, so the weight does not
+    // care -- but a component nobody has configured cannot be trusted to be reporting a meaningful
+    // fault, and configuring it is the action that clears both.
+    func severity(faulted: Bool) -> FlyTelemetry.Level {
+        needsAttention || faulted ? .warning : .good
+    }
+
+    func statusText(faulted: Bool) -> String {
+        needsAttention
+            ? VehicleComponentInfo.needsSetup
+            : (faulted ? VehicleComponentInfo.reportingFault : "")
+    }
+
+    static func statusSymbol(_ weight: FlyTelemetry.Level) -> String {
+        weight == .good ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+    }
+
+    static let needsSetup = "Needs setup"
+    static let reportingFault = "Reporting a fault"
+
+    // The "Needs setup" section lists only components that need setup, so a fault can never be the
+    // reason a row is there -- false is the measured answer for that call site, not a default.
+    var severity: FlyTelemetry.Level { severity(faulted: false) }
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
