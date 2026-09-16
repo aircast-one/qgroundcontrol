@@ -7,6 +7,7 @@
 #include <QTemporaryDir>
 #include "QGCApplication.h"
 #include "QGCHostNotices.h"
+#include "SysStatusSensorInfo.h"
 #include "SettingsFact.h"
 #include "QGCMapUrlEngine.h"
 #include "Vehicle.h"
@@ -474,6 +475,28 @@ void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
     shared.removeAll(QStringLiteral("enabled in packetRadioSettings, viewer3DSettings"));
     shared.removeAll(QStringLiteral("enabled in viewer3DSettings, packetRadioSettings"));
     QVERIFY2(shared.isEmpty(), qPrintable(QStringLiteral("these fact names appear in more than one settings group, so excluding one by bare name hides the others too: %1").arg(shared.join(QStringLiteral("; ")))));
+}
+
+void QGCCoreCTest::_theFourSensorListsStayTheSameLength()
+{
+    // sensors.rs answers an empty list when sensorNames, sensorEnabled and sensorHealthy disagree
+    // in length, and a head draws that as "No vehicle is reporting sensor status" for a vehicle
+    // that is reporting it. That branch is unreachable only because all four accessors here walk
+    // one _orderedSensors() - SysStatusSensorInfo.cc:80-118 - so the guarantee lives in THIS file
+    // and nothing in core-rs protects it. Build the lists separately and the core starts refusing
+    // a healthy vehicle with nothing anywhere saying why.
+    SysStatusSensorInfo info;
+    mavlink_sys_status_t sysStatus{};
+    sysStatus.onboard_control_sensors_present = MAV_SYS_STATUS_SENSOR_3D_GYRO | MAV_SYS_STATUS_SENSOR_3D_ACCEL | MAV_SYS_STATUS_SENSOR_GPS;
+    sysStatus.onboard_control_sensors_enabled = MAV_SYS_STATUS_SENSOR_3D_GYRO | MAV_SYS_STATUS_SENSOR_GPS;
+    sysStatus.onboard_control_sensors_health = MAV_SYS_STATUS_SENSOR_3D_GYRO;
+    info.update(sysStatus);
+
+    const int named = info.sensorNames().count();
+    QVERIFY2(named > 0, "no sensor was recorded from the status word, so the comparison below would hold over four empty lists");
+    QCOMPARE(info.sensorStatus().count(), named);
+    QCOMPARE(info.sensorHealthy().count(), named);
+    QCOMPARE(info.sensorEnabled().count(), named);
 }
 
 void QGCCoreCTest::_aCameraActionIsRoutedByTheCoreAndNotThePassthrough()

@@ -35,6 +35,7 @@ private slots:
     void _inspectorListsMessages();
     void _flightModesFollowTheVehicle();
     void _anExcludedSettingNameBelongsToOneGroupOnly();
+    void _theFourSensorListsStayTheSameLength();
     void _aCameraActionIsRoutedByTheCoreAndNotThePassthrough();
     void _settingsPagesDecodeTheirControls();
     void _surveyStatsNeedAnItem();
