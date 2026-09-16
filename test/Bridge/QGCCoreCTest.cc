@@ -1310,6 +1310,15 @@ const char *const kViewPaths[] = {
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
     "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.vehicles", "view.label(altitudeRelative)", "view.instruments", "view.instrumentGroups", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.control(settings.appSettings.qLocaleLanguage)", "view.links", "view.linkForm(udp,,14550)",
+    // A parameterised view is recorded from the tuples listed here and no others, so one listed
+    // only in its happy case produces a type asserting the unhappy arm cannot occur - a standing
+    // check on the wrong side of the branch, and the only kind that reads as reassuring. These
+    // second tuples are the refused and the receiving cases: without them errorField typed null
+    // and seventeen packetRadio fields sat in _alwaysNull, so every decision a head made about
+    // their nullability was uncorroborated by a contract that read green.
+    "view.linkForm(tcp,,5760)",
+    "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0)",
+    "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
     "view.settings(General)", "view.surveyStats(4)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
