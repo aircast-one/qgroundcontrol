@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,22 +22,33 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.optText
 
 private const val HOST_FACT = "settings.mavlinkSettings.forwardMavlinkAPMSupportHostName"
 
-internal fun supportHostIsUsable(host: String): Boolean {
-    if (host.isBlank() || host.contains(' ')) {
-        return false
+internal const val SUPPORT_HOST_DEBOUNCE_MS = 250L
+
+internal data class SupportHostVerdict(val valid: Boolean, val error: String)
+
+internal fun supportHostPath(host: String): String = "view.supportHost($host)"
+
+internal fun supportHostCannotBeAsked(host: String): String? = when {
+    host.contains(',') -> "An address cannot contain a comma."
+    host.isBlank() -> null
+    host.any { it.isWhitespace() } -> "An address cannot contain a space."
+    else -> null
+}
+
+internal fun supportHostVerdict(view: JSONObject?): SupportHostVerdict? {
+    if (view == null || view.optText("class") != "SupportHost") {
+        return null
     }
-    if (!host.contains(':')) {
-        return true
-    }
-    val parts = host.split(':')
-    if (parts.size != 2) {
-        return false
-    }
-    return parts[0].isNotBlank() && parts[1].toIntOrNull()?.let { it in 1..65535 } == true
+    return SupportHostVerdict(view.optBoolean("valid"), view.optText("error"))
 }
 
 @Composable
@@ -64,6 +76,19 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
     var confirming by remember { mutableStateOf(false) }
     val json by qgcPath(HOST_FACT)
     val host: Fact? = json?.let { Qgc.factAt(HOST_FACT, it) }
+    var verdict by remember { mutableStateOf<SupportHostVerdict?>(null) }
+    val typed = host?.valueString.orEmpty()
+
+    LaunchedEffect(typed) {
+        supportHostCannotBeAsked(typed)?.let { refusal ->
+            verdict = SupportHostVerdict(false, refusal)
+            return@LaunchedEffect
+        }
+        delay(SUPPORT_HOST_DEBOUNCE_MS)
+        verdict = withContext(Dispatchers.Default) {
+            supportHostVerdict(Qgc.get(supportHostPath(typed)))
+        }
+    }
 
     if (confirming && host != null) {
         StartForwardingDialog(
@@ -109,14 +134,15 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
         } else {
             Button(
                 onClick = { confirming = true },
-                enabled = supportHostIsUsable(host.valueString),
+                enabled = verdict?.valid == true,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Start forwarding") }
         }
 
-        if (!forwarding && !supportHostIsUsable(host.valueString)) {
+        if (!forwarding && verdict?.valid != true) {
             Text(
-                text = "Enter the address your support engineer gave you first.",
+                text = verdict?.error?.ifBlank { null }
+                    ?: "Enter the address your support engineer gave you first.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

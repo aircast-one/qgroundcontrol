@@ -1,86 +1,79 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import one.aircast.android.bridge.Fact
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RemoteSupportScreenTest {
-    @Test
-    fun `a plain host or address is usable`() {
-        assertEquals(true, supportHostIsUsable("support.ardupilot.org"))
-        assertEquals(true, supportHostIsUsable("10.0.0.4:14550"))
-    }
+
+    private fun served(valid: Boolean, error: String) = JSONObject(
+        """{"kind":"object","class":"SupportHost","valid":$valid,"error":"$error"}""",
+    )
 
     @Test
-    fun `a blank or spaced host is refused`() {
-        assertEquals(false, supportHostIsUsable(""))
-        assertEquals(false, supportHostIsUsable("   "))
-        assertEquals(false, supportHostIsUsable("two hosts"))
-    }
+    fun `the head reports the core's sentence, not one of its own`() {
+        val refused = supportHostVerdict(
+            served(false, "The part after the colon has to be a port number between 1 and 65535."),
+        )!!
 
-    @Test
-    fun `a value outside the listed options is not treated as an enum`() {
-        val listed = Fact(
-            path = "p", name = "ACRO_TRAINER", description = "", units = "",
-            valueString = "2", value = 2, enumStrings = listOf("Disabled", "Leveling", "Leveling and Limited"),
-            enumIndex = 2, isBool = false, isString = false, readOnly = false,
-        )
-        val offList = listed.copy(
-            name = "ACRO_RP_RATE_TC",
-            valueString = "Unknown: 0",
-            enumStrings = listOf("Disabled", "Leveling", "Leveling and Limited", "Unknown: 0"),
-            enumIndex = 3,
-            unknownEnumLabel = "Unknown: 0",
-        )
-        assertEquals(false, listed.valueIsOffTheEnumList)
-        assertEquals(true, offList.valueIsOffTheEnumList)
-    }
-
-    @Test
-    fun `the synthetic entry is spotted in a language that is not english`() {
-        val german = Fact(
-            path = "p", name = "ACRO_RP_RATE_TC", description = "", units = "",
-            valueString = "0", value = 0,
-            enumStrings = listOf("Deaktiviert", "Nivellierung", "Unbekannt: 0"),
-            enumIndex = 2, unknownEnumLabel = "Unbekannt: 0",
-            isBool = false, isString = false, readOnly = false,
-        )
-        assertEquals(true, german.valueIsOffTheEnumList)
-    }
-
-    @Test
-    fun `a host QGC would refuse outright is not usable`() {
+        assertFalse(refused.valid)
         assertEquals(
-            "UDPConfiguration::addHost splits on every colon and returns without adding a " +
-                "host when the result is not exactly two parts, so an IPv6 literal forwards " +
-                "nowhere while the head reports forwarding is on",
-            false,
-            supportHostIsUsable("::1"),
+            "three different refusals each get their own words now; the head used to say " +
+                "'enter the address your support engineer gave you' to all of them",
+            "The part after the colon has to be a port number between 1 and 65535.",
+            refused.error,
         )
-        assertEquals(false, supportHostIsUsable("fe80::1:14550"))
     }
 
     @Test
-    fun `a trailing colon is not a usable host`() {
+    fun `an accepted host carries no complaint`() {
+        val ok = supportHostVerdict(served(true, ""))!!
+
+        assertTrue(ok.valid)
+        assertEquals("", ok.error)
+    }
+
+    @Test
+    fun `a view of another shape is not a verdict`() {
+        assertNull(supportHostVerdict(null))
+        assertNull(
+            "answering from whatever happens to be at the path would let an unrelated " +
+                "object enable a button that starts forwarding",
+            supportHostVerdict(JSONObject("""{"kind":"object","class":"Links"}""")),
+        )
+    }
+
+    @Test
+    fun `the query names the host it is asking about`() {
+        assertEquals("view.supportHost(10.0.0.4:14550)", supportHostPath("10.0.0.4:14550"))
+    }
+
+    @Test
+    fun `a comma is refused here, because the path cannot carry it`() {
         assertEquals(
-            "\"host:\" splits into two parts whose second is empty, and toUInt() makes that " +
-                "port 0 - QGC adds a client that can never receive",
-            false,
-            supportHostIsUsable("10.0.0.4:"),
+            "view arguments split on a comma, so a host containing one would arrive at the " +
+                "core truncated and could be answered valid on the half that survived",
+            "An address cannot contain a comma.",
+            supportHostCannotBeAsked("10.0.0.4,14550"),
         )
+        assertNull(supportHostCannotBeAsked("10.0.0.4:14550"))
     }
 
     @Test
-    fun `a port with no address forwards nowhere`() {
-        assertEquals(false, supportHostIsUsable(":14550"))
-    }
-
-    @Test
-    fun `the plain and ported forms both still pass`() {
-        assertEquals(true, supportHostIsUsable("support.ardupilot.org"))
-        assertEquals(true, supportHostIsUsable("10.0.0.4:14550"))
-        assertEquals(true, supportHostIsUsable("10.0.0.4:1"))
-        assertEquals(false, supportHostIsUsable("10.0.0.4:0"))
-        assertEquals(false, supportHostIsUsable("10.0.0.4:65536"))
+    fun `a spaced address is refused here, because the core still accepts it`() {
+        assertEquals(
+            "measured on device: view.supportHost answers valid for 'two words:14550' and " +
+                "every other whitespace form, while UDPLink.cc:166 returns without adding a " +
+                "client when the address will not resolve - so adopting the served verdict " +
+                "alone would put back the defect 691db8606 removed. Drop this when the core " +
+                "refuses whitespace",
+            "An address cannot contain a space.",
+            supportHostCannotBeAsked("two words:14550"),
+        )
+        assertEquals("An address cannot contain a space.", supportHostCannotBeAsked("has space.org"))
+        assertNull("a blank field is the empty state, not a complaint", supportHostCannotBeAsked(""))
     }
 }
