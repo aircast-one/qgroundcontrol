@@ -124,16 +124,6 @@ PENDING = {
     ("Fly.swift", "refresh", "obstacle"),
     ("Fly.swift", "refresh", "requestedMode"),
     ("Fly.swift", "refresh", "traffic"),
-    ("LogDownload.swift", "reload", "canCancel"),
-    ("LogDownload.swift", "reload", "canDownload"),
-    ("LogDownload.swift", "reload", "canErase"),
-    ("LogDownload.swift", "reload", "canRefresh"),
-    ("LogDownload.swift", "reload", "downloading"),
-    ("LogDownload.swift", "reload", "emptyText"),
-    ("LogDownload.swift", "reload", "eraseWarning"),
-    ("LogDownload.swift", "reload", "requestingList"),
-    ("LogDownload.swift", "reload", "savePath"),
-    ("LogDownload.swift", "reload", "savePathReason"),
     ("MapClick.swift", "refresh", "scaleBar"),
     ("Mission.swift", "uploadToVehicle", "uploadWarning"),
     ("Parameters.swift", "load", "loading"),
@@ -160,6 +150,21 @@ ACCEPTED_FUNCTIONS = {
         "the CORE's file, not mine, and nothing re-checks it. If the plan root ever stops being a "
         "never-destroyed static the arm becomes live and all 24 become real in one commit, with no "
         "check anywhere that would say so"),
+    ("LogDownload.swift", "reload"): (frozenset({
+        "canCancel", "canDownload", "canErase", "canRefresh", "downloading", "emptyText",
+        "eraseWarning", "requestingList", "savePath", "savePathReason",
+    }), "the else arm cannot be entered either, and for a structurally different reason than "
+        "Mission's: view.logs is a compile-time entry in the core's view registry "
+        "(core-rs/src/view.rs:418), so the path always resolves. MEASURED ON THE RIG: with no "
+        "vehicle view.logs still answers kind 'object' -- connected false, every capability flag "
+        "false, emptyText 'Connect a vehicle to list its logs.' -- and a view that genuinely does "
+        "not exist answers kind 'null' with a reason naming it. So the ordinary disconnect takes "
+        "the LIVE path and the core resets all ten itself. WHAT THE ARM WOULD COST IF IT EVER WENT "
+        "LIVE, because it is not obvious: the guard clears connected, and connected gates NOTHING "
+        "-- AnalyzeWindow.swift:192 spends it on a tooltip. The three buttons are disabled on "
+        "canDownload, canRefresh and canErase, none of which the guard clears, and the Cancel "
+        "button and its spinner are drawn on downloading || requestingList, also uncleared. THE "
+        "BLIND SPOT, STATED: this rests on the core's registry, not mine, and nothing re-checks it."),
 }
 
 findings = []
