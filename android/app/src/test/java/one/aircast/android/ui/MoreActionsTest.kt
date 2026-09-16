@@ -89,11 +89,7 @@ class MoreActionsTest {
     @Test
     fun `every action the sheet shows can be sent, except pause which asks for a height`() {
         val ids = moreActions(
-            offers(
-                "startMission" to "ready", "continueMission" to "ready", "landAbort" to "ready",
-                "grab" to "ready", "release" to "ready", "emergencyStop" to "ready", "pause" to "ready",
-                "cancelRoi" to "ready", "resumeMission" to "ready",
-            ),
+            offers(*(SHEET_ACTIONS + EMERGENCY_STOP).map { it to "ready" }.toTypedArray()),
         ).map { it.id }
 
         assertEquals(
