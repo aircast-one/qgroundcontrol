@@ -953,7 +953,7 @@ struct PlanInspector: View {
                     GroupRow(
                         title: "Rally \(point.id + 1)",
                         description: point.positionText,
-                        showSeparator: point.id > 0,
+                        showSeparator: RallyPointRow.separates(point, in: fenceRally.rallyPoints),
                         leading: { Seal(label: "\(point.id + 1)", colour: Overlay.rally) },
                         trailing: {
                             HStack(spacing: Overlay.step * 0.5) {

@@ -2798,6 +2798,23 @@ func checkRallyAndBreach() {
            "the core names the fact to write, so the head no longer hunts the textFieldFacts "
            + "array for one called RelativeAltitude")
 
+    let contiguous = RallyPointRow.list([["index": 0 as NSNumber], ["index": 1 as NSNumber]])
+    expect(!RallyPointRow.separates(contiguous[0], in: contiguous),
+           "no rule above the first row")
+    expect(RallyPointRow.separates(contiguous[1], in: contiguous),
+           "and one between it and the next")
+
+    // fences.rs enumerates the controller's points and then filter_maps away any whose coordinate
+    // does not resolve, so a dropped point 0 leaves the list starting at index 1. Nothing else in
+    // this window does that -- the polygon and circle lists only enumerate.
+    let skipped = RallyPointRow.list([["index": 1 as NSNumber], ["index": 2 as NSNumber]])
+    expect(!RallyPointRow.separates(skipped[0], in: skipped),
+           "a list whose first point the core dropped still draws no rule above its first ROW. "
+           + "Asking id > 0 answers a question about the controller's numbering, which is what "
+           + "`path` needs and what a separator does not")
+    expect(RallyPointRow.separates(skipped[1], in: skipped),
+           "and the second row is still separated, so the fix is not just suppressing the rule")
+
     expect(RallyPointRow(["path": "p"]) == nil, "a point with no index is dropped")
     expect(RallyPointRow.list(nil).isEmpty, "no answer is no rally points")
 

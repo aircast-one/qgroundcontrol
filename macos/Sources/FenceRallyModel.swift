@@ -189,6 +189,16 @@ struct RallyPointRow: Identifiable, Equatable {
     }
 
     var positionText: String { GeoPoint.text(latitude, longitude) }
+
+    // The rally list is the ONE the core filters. fences.rs enumerates the controller's points
+    // and then filter_maps away any whose coordinate does not resolve, so the survivors keep
+    // their ORIGINAL index -- the polygon and circle lists next to it only enumerate and cannot
+    // skip. `id > 0` therefore asks whether this is the controller's first point, not whether it
+    // is the first row drawn: with point 0 dropped the only row answers true and rules a
+    // separator above nothing. The fence rows in the same window already ask the right question.
+    static func separates(_ point: RallyPointRow, in rows: [RallyPointRow]) -> Bool {
+        point.id != rows.first?.id
+    }
 }
 
 // What an empty Fence or Rally tab tells the operator. It lived in the view as a three-way
