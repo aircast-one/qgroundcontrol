@@ -8,7 +8,9 @@
 #
 # The deep link MUST name the activity: two installed apps claim aircast-qgc://
 # (this head and the QML QGCActivity), so an untargeted intent opens a chooser
-# and the link never arrives.
+# and the link never arrives. The activity is spelled in full because the app id
+# and the Kotlin package differ - "$APP/.MainActivity" resolves the dot against
+# the app id, finds nothing, and fails without a word.
 #
 # A reinstall drops the server - it starts from a deep link, not a setting - and
 # an empty response reads exactly like a refusal, so get/set re-enable first.
@@ -17,6 +19,18 @@ PORT="${QGC_DEBUG_PORT:-8790}"
 APP="one.aircast.app"
 ACTIVITY="one.aircast.android.MainActivity"
 HEADER="X-QGC-Debug-Api: 1"
+LEGACY="one.aircast.android"
+
+# The app id changed, and Android treats the old id as a different app: it stays
+# installed, keeps its launcher icon and its own settings, and a tap on the wrong
+# icon drives a build nobody is looking at. Refuse rather than remove it - the
+# stale install may be the one a measurement is about.
+if adb shell pm list packages 2>/dev/null | grep -q "package:$LEGACY$"; then
+    echo "REFUSED: $LEGACY is still installed beside $APP." >&2
+    echo "         Two icons, two settings stores, and a tap can drive either." >&2
+    echo "         adb uninstall $LEGACY" >&2
+    exit 1
+fi
 
 case "${1:-}" in
 on)
