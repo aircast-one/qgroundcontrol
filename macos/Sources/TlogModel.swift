@@ -8,6 +8,11 @@ struct TlogSummary: Equatable {
     let undecodable: Int
     let spanSeconds: Double
     let systemIds: [Int]
+    // Optional, not defaulted to empty: ABSENT means a producer that does not serve this yet, and
+    // EMPTY is a measured answer -- the recording names no aircraft. Collapsing them would let a
+    // stale core make this row assert "None" about a log full of vehicles, which is the defaulting
+    // decoder turning absent into a verdict.
+    let vehicleSystemIds: [Int]?
     let byName: [String: Int]
 
     init?(_ json: Any?) {
@@ -20,6 +25,9 @@ struct TlogSummary: Equatable {
         undecodable = (json["undecodable"] as? NSNumber)?.intValue ?? 0
         spanSeconds = (json["spanSeconds"] as? NSNumber)?.doubleValue ?? 0
         systemIds = ((json["systemIds"] as? [Any]) ?? []).compactMap {
+            ($0 as? NSNumber)?.intValue
+        }
+        vehicleSystemIds = (json["vehicleSystemIds"] as? [Any])?.compactMap {
             ($0 as? NSNumber)?.intValue
         }
         byName = ((json["byName"] as? [String: Any]) ?? [:]).compactMapValues {
@@ -49,12 +57,29 @@ struct TlogSummary: Equatable {
 
     // A recording carries no vehicle NAMES, only the system ids that sent the frames -- so this
     // is the only thing in the file that answers "whose flight is this". The panel could say how
-    // long the log was and how many frames it held and never which aircraft flew it, which is the
-    // question an operator opening an unfamiliar recording actually has. Sorted because a set's
-    // order is not an answer, and silent when the log named nobody.
+    // long the log was and how many frames it held and never which aircraft flew it.
+    //
+    // THIS JOINED systemIds, WHICH IS NOT A LIST OF VEHICLES. gcsMavlinkSystemID defaults to 255
+    // and sendGCSHeartbeat defaults true, so QGC's own heartbeat lands in every log it records:
+    // measured, the row was wrong on 24 of 24 logs here -- "1, 255" on 17, and on 7 it named 255
+    // for a recording holding no aircraft at all, only the station heartbeating at nothing.
+    // vehicleSystemIds applies the same test hub.rs:1238 applies to a live heartbeat, so a log
+    // names the same aircraft replayed as it did in flight.
     var vehiclesText: String {
-        systemIds.sorted().map(String.init).joined(separator: ", ")
+        guard let vehicleSystemIds else { return "" }
+        return vehicleSystemIds.sorted().map(String.init).joined(separator: ", ")
     }
+
+    // The row used to be drawn only when it had ids, so the seven GCS-only logs simply lost it --
+    // on a card of six labelled rows that reads as a head that forgot, not as an answer. NONE is
+    // an answer, and it is the one an operator opening an unfamiliar recording most needs: this
+    // file is not a flight.
+    //
+    // Gated on the field being SERVED rather than on the text being non-empty, so a producer that
+    // has not got this yet keeps the row hidden instead of asserting None about every log.
+    var namesVehicles: Bool { vehicleSystemIds != nil }
+
+    static let noVehicles = "None"
 
     var busiest: (name: String, count: Int)? {
         byName.max { left, right in

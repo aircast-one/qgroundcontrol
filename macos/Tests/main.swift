@@ -1557,17 +1557,39 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            "and it drops the count, which is arithmetically the Frames row two lines above it -- "
            + "the name is the only thing this row adds to a single-kind log")
 
-    expect(tlog([:])?.vehiclesText ?? "", "1",
+    // MEASURED ACROSS ALL 24 REAL LOGS, WITH THE CENSUS THE CORE ADDED FOR IT: not one system
+    // carries frames without a HEARTBEAT entry, so the inclusion rule is measured rather than the
+    // less-bad default both heads had been reasoning about. vehicleSystemIds is [1] on 17 logs
+    // and [] on the 7 that hold only the station's own heartbeat.
+    expect(tlog(["systemIds": [255 as NSNumber, 1 as NSNumber],
+                 "vehicleSystemIds": [1 as NSNumber]])?.vehiclesText ?? "", "1",
+           "THE ROW JOINED systemIds, WHICH IS NOT A LIST OF VEHICLES. gcsMavlinkSystemID defaults "
+           + "to 255 and sendGCSHeartbeat defaults true, so QGC's own heartbeat lands in every log "
+           + "it records -- the row read \"1, 255\" and named the ground station as an aircraft")
+    expect(tlog(["systemIds": [255 as NSNumber],
+                 "vehicleSystemIds": []])?.namesVehicles == true,
+           "AND A RECORDING THAT NAMES NO AIRCRAFT STILL DRAWS THE ROW. Drawn only when it had "
+           + "ids, the seven ground-station-only logs lost it, and a missing row on a card of six "
+           + "labelled ones reads as a head that forgot rather than as an answer")
+    expect(tlog(["systemIds": [255 as NSNumber], "vehicleSystemIds": []])?.vehiclesText ?? "MISSING",
+           "", "with nothing to join, so the view draws None rather than a list of nobody")
+    expect(tlog([:])?.namesVehicles == false,
+           "but a producer that does not serve the field keeps the row HIDDEN rather than "
+           + "asserting None about a log full of vehicles -- absent and empty are different "
+           + "answers and a defaulting decoder would turn the first into the second")
+    expect(tlog([:])?.vehiclesText ?? "MISSING", "",
            "WHOSE FLIGHT IS THIS. A recording carries no vehicle names, only the system ids that "
            + "sent the frames, so this is the only thing in the file that answers it -- and the "
            + "panel could say how long the log ran and how many frames it held while never "
            + "naming the aircraft that flew it")
-    expect(tlog(["systemIds": [2 as NSNumber, 1 as NSNumber]])?.vehiclesText ?? "", "1, 2",
+    expect(tlog(["vehicleSystemIds": [2 as NSNumber, 1 as NSNumber]])?.vehiclesText ?? "", "1, 2",
            "a log of two aircraft names both, SORTED, because the order the core happened to see "
            + "them in is not an answer and would make the same log read differently twice")
-    expect(tlog(["systemIds": []])?.vehiclesText ?? "", "",
-           "and a log that named nobody says nothing rather than an empty label: the row is drawn "
-           + "on presence, so a recording with no identifiable sender simply has no line")
+    expect(tlog(["systemIds": [7 as NSNumber], "vehicleSystemIds": [1 as NSNumber]])?
+            .vehiclesText ?? "", "1",
+           "and it never falls back to systemIds when the two disagree -- the raw list is the "
+           + "senders, including a gimbal or a transponder, both of which heartbeat with ids of "
+           + "their own")
 
     expect(TlogSummary(["kind": "null"]) == nil,
            "a refusal with no path at all is no summary, rather than one describing a log at "
