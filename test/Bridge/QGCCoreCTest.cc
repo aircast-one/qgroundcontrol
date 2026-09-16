@@ -1355,6 +1355,8 @@ const char *const kViewPaths[] = {
     "view.linkForm(tcp,,5760)",
     "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0)",
     "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0)",
+    "view.supportHost(support.ardupilot.org:14550)",
+    "view.supportHost(support.ardupilot.org:xxxx)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
     "view.settings(General)", "view.surveyStats(4)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",

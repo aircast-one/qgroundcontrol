@@ -4119,6 +4119,14 @@
         "view.setup.groups.2.title",
         "view.setup.kind",
         "view.setup.parametersText",
+        "view.supportHost(support.ardupilot.org:14550).class",
+        "view.supportHost(support.ardupilot.org:14550).error",
+        "view.supportHost(support.ardupilot.org:14550).kind",
+        "view.supportHost(support.ardupilot.org:14550).valid",
+        "view.supportHost(support.ardupilot.org:xxxx).class",
+        "view.supportHost(support.ardupilot.org:xxxx).error",
+        "view.supportHost(support.ardupilot.org:xxxx).kind",
+        "view.supportHost(support.ardupilot.org:xxxx).valid",
         "view.surveyStats(4).class",
         "view.surveyStats(4).footprintUnits",
         "view.surveyStats(4).index",
@@ -5782,6 +5790,14 @@
         "view.setup.parametersReason",
         "view.setup.parametersText",
         "view.setup.ready",
+        "view.supportHost(support.ardupilot.org:14550).class",
+        "view.supportHost(support.ardupilot.org:14550).error",
+        "view.supportHost(support.ardupilot.org:14550).kind",
+        "view.supportHost(support.ardupilot.org:14550).valid",
+        "view.supportHost(support.ardupilot.org:xxxx).class",
+        "view.supportHost(support.ardupilot.org:xxxx).error",
+        "view.supportHost(support.ardupilot.org:xxxx).kind",
+        "view.supportHost(support.ardupilot.org:xxxx).valid",
         "view.surveyStats(4).areaSquareMetres",
         "view.surveyStats(4).areaText",
         "view.surveyStats(4).available",
@@ -6513,6 +6529,7 @@
             "view.control",
             "view.links",
             "view.linkForm",
+            "view.supportHost",
             "view.mapScale",
             "view.terrainProfile",
             "view.vehicles",
@@ -8364,6 +8381,18 @@
                 "title": "string"
             }
         ]
+    },
+    "view.supportHost(support.ardupilot.org:14550)": {
+        "class": "string",
+        "error": "string",
+        "kind": "string",
+        "valid": "bool"
+    },
+    "view.supportHost(support.ardupilot.org:xxxx)": {
+        "class": "string",
+        "error": "string",
+        "kind": "string",
+        "valid": "bool"
     },
     "view.surveyStats(4)": {
         "areaSquareMetres": "number",

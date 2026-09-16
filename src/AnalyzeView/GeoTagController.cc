@@ -32,6 +32,7 @@ GeoTagController::GeoTagController(QObject *parent)
     (void) connect(_workerThread, &QThread::started, _worker, &GeoTagWorker::process);
     (void) connect(_workerThread, &QThread::started, this, &GeoTagController::inProgressChanged);
     (void) connect(_workerThread, &QThread::finished, this, &GeoTagController::inProgressChanged);
+    (void) connect(_worker, &GeoTagWorker::taggingComplete, _workerThread, &QThread::quit);
 }
 
 GeoTagController::~GeoTagController()

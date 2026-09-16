@@ -142,6 +142,22 @@ fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
     object(&backend.get_fields("links", "serialBaudRates")).get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).collect()).unwrap_or_default()
 }
 
+pub fn support_host_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let typed = args.first().map(String::as_str).unwrap_or_default().trim();
+    let parts: Vec<&str> = typed.split(':').collect();
+    let error = match (typed.is_empty(), parts.len()) {
+        (true, _) => Some("Enter the address of the support engineer's ground station."),
+        (false, 1) => None,
+        (false, 2) if parts[0].is_empty() => Some("An address is needed before the colon, or the link's own port is used without one."),
+        (false, 2) => match parts[1].parse::<u32>().ok().filter(|port| (1..=65535).contains(port)) {
+            Some(_) => None,
+            None => Some("The part after the colon has to be a port number between 1 and 65535."),
+        },
+        _ => Some("An address with more than one colon is refused, so an IPv6 literal has to be given without a port."),
+    };
+    json!({ "kind": "object", "class": "SupportHost", "valid": error.is_none(), "error": error.unwrap_or("") })
+}
+
 pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
     let (kind, host, port) = (arg(0).to_lowercase(), arg(1), arg(2));
@@ -211,6 +227,41 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_support_host_shipped_as_a_placeholder_is_refused_rather_than_dialled() {
+        let judged = |typed: &str| support_host_view(&Nothing, &[typed.to_string()]);
+
+        let shipped = judged("support.ardupilot.org:xxxx");
+        assert_eq!(
+            (shipped["valid"].clone(), shipped["error"].as_str().is_some_and(|e| !e.is_empty())),
+            (json!(false), true),
+            "Mavlink.SettingsGroup.json ships this string as the VALUE of the setting, and UDPConfiguration::addHost splits it into two parts so the format check passes, then QString::toUInt returns 0 for xxxx with no ok pointer, then the name resolves so the DNS check passes. Three error paths each decline to fire and the page reports MAVLink is being forwarded to port 0"
+        );
+
+        assert_eq!(judged("support.ardupilot.org:14550")["valid"], true);
+        assert_eq!(
+            judged("support.ardupilot.org")["valid"],
+            true,
+            "UDPLink.cc:157 falls back to the link's own local port when there is no colon, so refusing a bare host would refuse a configuration QGC accepts"
+        );
+        assert_eq!(judged("support.ardupilot.org:")["valid"], false, "a trailing colon still splits into two parts, and the empty half is toUInt 0 - the same silent port 0 as the placeholder");
+        assert_eq!(judged("support.ardupilot.org:0")["valid"], false, "port 0 typed outright is the destination the placeholder reaches by accident");
+        assert_eq!(judged("support.ardupilot.org:70000")["valid"], false);
+        assert_eq!(judged("")["valid"], false, "an empty field is not a bare host with a fallback port, it is nothing to dial");
+
+        assert_eq!(
+            judged("::1")["valid"],
+            false,
+            "addHost refuses anything that does not split into exactly two parts, so QGC drops an IPv6 literal with a warning and adds no host at all. A head reading only the LAST colon takes the final group as a port, calls it valid, and the operator is told forwarding is on when no client was ever appended"
+        );
+        assert_eq!(judged("fe80::1:14550")["valid"], false);
+        assert_eq!(
+            judged(":14550")["valid"],
+            false,
+            "two parts and a port in range, so the split checks pass - but _getIpAddress on an empty string resolves to nothing and addHost returns at UDPLink.cc:167 without appending a client. QGC refuses it one step later than it refuses a bad port, and the question here is whether forwarding will work rather than whether addHost returns"
+        );
     }
 
     #[test]
