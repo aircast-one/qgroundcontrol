@@ -83,6 +83,9 @@ import one.aircast.android.ui.VehicleTitle
 import one.aircast.mapspike.FlyMap
 import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
+import one.aircast.android.ui.FlyPortrait
+import one.aircast.android.ui.PinnedEmergencyStop
+import one.aircast.android.ui.flyIsPortrait
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 import org.qtproject.qt.android.QtQuickView
@@ -289,7 +292,39 @@ fun AircastShell(quickView: QtQuickView) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 AndroidView(factory = { quickView }, modifier = Modifier.fillMaxSize())
 
-                if (tab == Tab.Fly) {
+                if (tab == Tab.Fly && flyIsPortrait()) {
+                    val controllable = hasVehicle()
+                    FlyPortrait(
+                        videoExpanded = videoExpanded,
+                        onSwap = { videoExpanded = !videoExpanded },
+                        controlsExpanded = controlsExpanded,
+                        onToggleControls = { controlsExpanded = !controlsExpanded },
+                        controllable = controllable,
+                        video = { mod, expanded ->
+                            VideoSurface(
+                                modifier = mod,
+                                expanded = expanded,
+                                onClick = { videoExpanded = !videoExpanded },
+                            )
+                        },
+                        map = { mod -> FlyMap(modifier = mod, cameraBottomPx = 0) },
+                        keyRow = {
+                            VideoSourceLayer()
+                            CameraControlLayer()
+                            PinnedEmergencyStop()
+                        },
+                        overlays = {
+                            ObstacleReadout()
+                            OrbitReadout()
+                            FollowMeReadout()
+                            TrafficReadout()
+                            RcControlsLayer()
+                        },
+                        actions = { FlightActions() },
+                    )
+                }
+
+                if (tab == Tab.Fly && !flyIsPortrait()) {
                     Box(
                         if (videoExpanded) {
                             Modifier
@@ -315,18 +350,20 @@ fun AircastShell(quickView: QtQuickView) {
                     }
                 }
 
-                VideoSurface(
-                    modifier = if (videoExpanded) {
-                        Modifier.fillMaxSize()
-                    } else {
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(12.dp)
-                            .size(width = VIDEO_INSET_WIDTH, height = VIDEO_INSET_HEIGHT)
-                    },
-                    expanded = videoExpanded,
-                    onClick = { videoExpanded = !videoExpanded },
-                )
+                if (!flyIsPortrait()) {
+                    VideoSurface(
+                        modifier = if (videoExpanded) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp)
+                                .size(width = VIDEO_INSET_WIDTH, height = VIDEO_INSET_HEIGHT)
+                        },
+                        expanded = videoExpanded,
+                        onClick = { videoExpanded = !videoExpanded },
+                    )
+                }
 
                 key(popEpoch) {
                     when (tab) {
@@ -342,7 +379,7 @@ fun AircastShell(quickView: QtQuickView) {
                     }
                 }
 
-                if (tab == Tab.Fly) {
+                if (tab == Tab.Fly && !flyIsPortrait()) {
                     Column(
                         Modifier
                             .align(Alignment.TopStart)
@@ -350,6 +387,7 @@ fun AircastShell(quickView: QtQuickView) {
                             .padding(top = VIDEO_INSET_HEIGHT + 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        PinnedEmergencyStop()
                         ObstacleReadout()
                         OrbitReadout()
                         FollowMeReadout()
@@ -360,7 +398,7 @@ fun AircastShell(quickView: QtQuickView) {
                     }
                 }
 
-                if (tab == Tab.Fly) {
+                if (tab == Tab.Fly && !flyIsPortrait()) {
                     val controllable = hasVehicle()
                     Column(Modifier.align(Alignment.BottomCenter)) {
                         if (controllable) Surface(
