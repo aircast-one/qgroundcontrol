@@ -163,3 +163,21 @@ load-add-upload sequence ran against `documentsui` instead — every step
 Check `dumpsys activity activities | grep topResumedActivity` before a
 sequence that mixes `ui.sh` with raw input, and dismiss a picker deliberately
 rather than assuming one BACK did it.
+
+## Rebuilding the library the head actually links
+
+    ninja -C build-android aar        # and nothing else
+
+`AircastQGC_make_aar` depends on `Release/libAircastQGC_arm64-v8a.so`, so this one command
+builds the Rust core, links the library and packages the aar. Running `cmake --build
+build-android` first is **redundant**: it rebuilds the same `.so` and then an APK, and the
+aar step relinks anyway, so the link runs twice and the apk is built for nobody — the
+Kotlin head links the aar.
+
+That distinction is the whole reason `fresh.py` lists the `.so` and the aar as separate
+lines with separate rebuild commands. `cmake --build` alone leaves a **fresh `.so` beside a
+stale aar**, and a freshness check that only compared the `.so` would call that current —
+which is how a served field once read as "not served" with a green check behind it.
+
+After the aar: `./gradlew :app:installDebug`, then reconnect the link (autoConnect is off,
+and a reinstall drops the connection).

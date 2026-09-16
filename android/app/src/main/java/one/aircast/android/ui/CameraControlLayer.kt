@@ -145,6 +145,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             CameraDetailsSheet(
                 camera = camera,
                 thermal = remember(cameraJson) { thermalReading(cameraJson) },
+                tracking = remember(cameraJson) { trackingReading(cameraJson) },
                 current = current.toInt(),
                 onSelect = { index ->
                     offMainDetached { Qgc.set("$MANAGER.currentCamera", index) }
@@ -170,6 +171,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
 private fun CameraDetailsSheet(
     camera: CameraReading,
     thermal: ThermalReading?,
+    tracking: TrackingReading?,
     current: Int,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -204,6 +206,13 @@ private fun CameraDetailsSheet(
                 )
             }
         }
+        tracking?.takeIf { trackingCanStop(it) }?.let {
+            TextButton(
+                onClick = { offMainDetached { Qgc.invoke(CAMERA_STOP_TRACKING) } },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) { Text("Stop tracking") }
+        }
+
         thermal?.let { thermal ->
             Text(
                 "Thermal View Mode",

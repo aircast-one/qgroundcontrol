@@ -22,6 +22,9 @@ OBSTACLE_SECONDS = float(os.environ.get("OBSTACLE_SECONDS", "45"))
 # plain camera reports; a head drawing tracking controls needs a camera that claims them.
 CAM_TRACKING = os.environ.get("CAM_TRACKING") == "1"
 
+# The rectangle a tracking camera reports, normalised 0..1 as top-left/bottom-right.
+TRACK_RECT = [float(part) for part in os.environ.get("TRACK_RECT", "0.35,0.30,0.65,0.70").split(",")]
+
 from pymavlink.dialects.v20 import ardupilotmega as apm
 from pymavlink.dialects.v20 import common as mavlink
 from pymavlink.generator.mavcrc import x25crc
@@ -313,6 +316,18 @@ def main():
                 cam_link.heartbeat_send(mavlink.MAV_TYPE_CAMERA,
                                         mavlink.MAV_AUTOPILOT_INVALID, 0, 0,
                                         mavlink.MAV_STATE_ACTIVE)
+        if CAM_TRACKING and tick % 5 == 0:
+            for cam_link in links.values():
+                try:
+                    cam_link.camera_tracking_image_status_send(
+                        mavlink.CAMERA_TRACKING_STATUS_FLAGS_ACTIVE,
+                        mavlink.CAMERA_TRACKING_MODE_RECTANGLE,
+                        mavlink.CAMERA_TRACKING_TARGET_DATA_IN_STATUS,
+                        float('nan'), float('nan'), float('nan'),
+                        TRACK_RECT[0], TRACK_RECT[1], TRACK_RECT[2], TRACK_RECT[3])
+                except Exception as exc:
+                    print('TRACKING FAILED %r' % (exc,), flush=True)
+
         if tick % 5 == 0 and elapsed < OBSTACLE_SECONDS:
             ring = [65535] * 72
             for sector, centimetres in OBSTACLE_RING:

@@ -59,6 +59,7 @@ fun VideoSurface(
 
         if (video?.decoding == true) {
             DetectionOverlay(Modifier.fillMaxSize())
+            TrackingBoxOverlay(Modifier.fillMaxSize())
         }
 
         if (video?.decoding != true) {

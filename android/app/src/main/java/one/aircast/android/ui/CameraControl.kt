@@ -82,6 +82,50 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
 internal const val ZOOM_LOWEST = 0.0
 internal const val ZOOM_HIGHEST = 100.0
 internal const val CAMERA_ZOOM = "vehicle.cameraManager.currentCameraInstance.zoomLevel"
+internal const val CAMERA_START_TRACKING = "vehicle.cameraManager.currentCameraInstance.startTracking"
+internal const val CAMERA_STOP_TRACKING = "vehicle.cameraManager.currentCameraInstance.stopTracking"
+
+internal data class TrackingBox(val x: Double, val y: Double, val width: Double, val height: Double)
+
+internal data class TrackingReading(
+    val supported: Boolean,
+    val enabled: Boolean,
+    val active: Boolean,
+    val shapes: List<String>,
+    val box: TrackingBox?,
+)
+
+internal fun trackingReading(view: JSONObject?): TrackingReading? {
+    val tracking = view?.optJSONObject("tracking") ?: return null
+    if (!tracking.optBoolean("supported")) {
+        return null
+    }
+    val shapes = tracking.optJSONArray("shapes").let { listed ->
+        (0 until (listed?.length() ?: 0)).mapNotNull { listed?.optString(it)?.ifBlank { null } }
+    }
+    val rect = tracking.optJSONObject("rect")
+    return TrackingReading(
+        supported = true,
+        enabled = tracking.optBoolean("enabled"),
+        active = tracking.optBoolean("active"),
+        shapes = shapes,
+        box = rect?.let {
+            TrackingBox(it.optDouble("x"), it.optDouble("y"), it.optDouble("width"), it.optDouble("height"))
+        }?.takeIf { it.width > 0.0 && it.height > 0.0 },
+    )
+}
+
+internal fun trackingCanStart(reading: TrackingReading?): Boolean =
+    reading != null && !reading.active && reading.shapes.isNotEmpty()
+
+internal fun trackingCanStop(reading: TrackingReading?): Boolean =
+    reading != null && reading.active
+
+internal fun trackingRectPayload(box: TrackingBox): String =
+    """[{"x":${box.x},"y":${box.y},"width":${box.width},"height":${box.height}}]"""
+
+internal val TRACKING_CENTRE = TrackingBox(0.4, 0.4, 0.2, 0.2)
+
 internal const val CAMERA_THERMAL_MODE = "vehicle.cameraManager.currentCameraInstance.thermalMode"
 internal const val CAMERA_THERMAL_OPACITY = "vehicle.cameraManager.currentCameraInstance.thermalOpacity"
 
