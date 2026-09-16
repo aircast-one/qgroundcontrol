@@ -25,6 +25,8 @@ internal data class ObstacleSample(val bearingDegrees: Double, val metres: Doubl
 internal data class ObstacleRing(
     val samples: List<ObstacleSample>,
     val maxMetres: Double,
+    val incrementDegrees: Double,
+    val floorMetres: Double,
     val stale: Boolean,
 )
 
@@ -47,5 +49,10 @@ internal fun obstacleRing(view: JSONObject?): ObstacleRing? {
                 ?.let { ObstacleSample(offset + index * increment, it) }
         }
     }
-    return if (samples.isEmpty()) null else ObstacleRing(samples, ceiling, sensorSaidStale(view))
+    val floor = view.optDouble("rangeMinMetres", Double.NaN).takeIf { it.isFinite() && it > 0.0 } ?: 0.0
+    return if (samples.isEmpty()) {
+        null
+    } else {
+        ObstacleRing(samples, ceiling, increment, floor, sensorSaidStale(view))
+    }
 }

@@ -48,8 +48,6 @@ internal fun arcTone(near: Boolean, stale: Boolean): ArcTone = when {
 fun ObstacleArc(modifier: Modifier = Modifier) {
     val view by qgcPath(OBSTACLE_PATH)
     val ring = remember(view) { obstacleRing(view) }
-    val spacing = remember(view) { view?.optDouble("ringIncrement", 5.0) ?: 5.0 }
-    val floorMetres = remember(view) { view?.optDouble("rangeMinMetres", 0.0) ?: 0.0 }
 
     if (ring == null) {
         return
@@ -72,15 +70,15 @@ fun ObstacleArc(modifier: Modifier = Modifier) {
                 drawCircle(calm.copy(alpha = 0.6f), radius = 3f, center = centre)
                 ring.samples.forEach { sample ->
                     val reach = full * arcRadiusFraction(sample.metres, ring.maxMetres)
-                    val near = sampleIsClose(sample.metres, floorMetres)
+                    val near = sampleIsClose(sample.metres, ring.floorMetres)
                     drawArc(
                         color = when (arcTone(near, ring.stale)) {
                             ArcTone.Alarm -> alarm
                             ArcTone.Calm -> calm
                             ArcTone.Stale -> faded
                         },
-                        startAngle = (sample.bearingDegrees - 90.0).toFloat() - arcSweep(spacing) / 2f,
-                        sweepAngle = arcSweep(spacing),
+                        startAngle = (sample.bearingDegrees - 90.0).toFloat() - arcSweep(ring.incrementDegrees) / 2f,
+                        sweepAngle = arcSweep(ring.incrementDegrees),
                         useCenter = false,
                         topLeft = Offset(centre.x - reach, centre.y - reach),
                         size = Size(reach * 2f, reach * 2f),

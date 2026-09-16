@@ -144,6 +144,37 @@ class ObstacleRingTest {
     }
 
     @Test
+    fun `the ring carries the spacing and floor it was measured with`() {
+        val read = obstacleRing(served())!!
+
+        assertEquals(
+            "the arc used to re-read these from the view with defaults of 5 degrees and zero " +
+                "metres, which invent a spacing the vehicle never reported and a floor that " +
+                "makes nothing ever close",
+            5.0,
+            read.incrementDegrees,
+            1e-9,
+        )
+        assertEquals(0.2, read.floorMetres, 1e-9)
+    }
+
+    @Test
+    fun `a vehicle reporting no floor has nothing judged close`() {
+        val noFloor = JSONObject(
+            """{"kind":"object","class":"ObstacleDistance","available":true,"stale":false,
+                "ringMetres":[${ring(mapOf(18 to 3.2))}],"ringIncrement":5.0,"ringOffset":0.0,
+                "rangeMinMetres":null,"rangeMaxMetres":40.0}""",
+        )
+        val read = obstacleRing(noFloor)!!
+
+        assertEquals(0.0, read.floorMetres, 1e-9)
+        assertFalse(
+            "no rated floor means the vehicle has not said what too near is, so nothing is",
+            sampleIsClose(read.samples.single().metres, read.floorMetres),
+        )
+    }
+
+    @Test
     fun `a close reading never looks like a distant one`() {
         assertNotEquals(
             "the arc drew both in the same colour while live, because the near branch and the " +
