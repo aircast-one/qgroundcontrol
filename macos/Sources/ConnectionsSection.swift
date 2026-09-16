@@ -147,7 +147,8 @@ struct ConnectionsSection: View {
             LabelledField(label: "Port", value: link.portText) { typed in
                 let check = store.checkForm(link.typeLabel, link.host, typed)
                 store.formError = check.error
-                guard let entry = check.accepted(typed), let port = Int(entry) else { return }
+                guard let entry = check.accepted(typed, editing: .port),
+                      let port = Int(entry) else { return }
                 store.setPort(link, port)
             }
             if !store.formError.isEmpty {
@@ -165,7 +166,7 @@ struct ConnectionsSection: View {
                 LabelledField(label: "Host", value: link.host) { typed in
                     let check = store.checkForm(link.typeLabel, typed, link.portText)
                     store.formError = check.error
-                    guard let host = check.accepted(typed) else { return }
+                    guard let host = check.accepted(typed, editing: .host) else { return }
                     store.setHost(link, host)
                 }
                 portField(link)

@@ -5468,14 +5468,45 @@ func checkTheLinkEditorStopsDroppingWhatItRejects() {
     // that sentence. The PORT field guarded on it. The HOST field drew the sentence in red and
     // called setHost with the empty string in the next line, so the refusal was displayed and
     // disobeyed in the same breath -- the half of this fix that never landed.
-    expect(missingHost?.accepted("") == nil,
+    // MEASURED LIVE AFTER a1c17e083: view.linkForm(tcp,,5760) answers errorField "host",
+    // (udp,127.0.0.1,abc) answers "port", and both valid forms answer null.
+    let hostRefused = LinkFormCheck(["class": "LinkForm", "valid": false as NSNumber,
+                                     "error": "A TCP link needs the address of the device to call.",
+                                     "errorField": "host", "name": "TCP 5760"])
+    let portRefused = LinkFormCheck(["class": "LinkForm", "valid": false as NSNumber,
+                                     "error": "Port must be a number between 1 and 65535.",
+                                     "errorField": "port", "name": "UDP 127.0.0.1:abc"])
+
+    expect(hostRefused?.accepted("", editing: .host) == nil,
            "A CHECK IS ONLY WORTH ASKING IF ITS ANSWER IS OBEYED. A refused entry yields nothing "
            + "to write, so the caller cannot show the refusal and commit the value anyway")
     expect(LinkFormCheck(["class": "LinkForm", "valid": true as NSNumber,
                           "error": "", "name": "TCP 127.0.0.1:5760"])?
-            .accepted("127.0.0.1") ?? "", "127.0.0.1",
+            .accepted("127.0.0.1", editing: .host) ?? "", "127.0.0.1",
            "and an accepted entry comes back to be written, so the gate costs a valid address "
            + "nothing")
+
+    // GATING ON `valid` ALONE FIXED ONE DIRECTION AND OPENED THE OTHER. The check is form-level
+    // and each field passes the other's stored value, so these two are the whole reason
+    // errorField exists.
+    expect(portRefused?.accepted("127.0.0.1", editing: .host) ?? "", "127.0.0.1",
+           "A LINK WHOSE PORT READS AS ABSENT MUST STILL BE REPAIRABLE. LinkConfig.portText is "
+           + "`port.map(String.init) ?? \"\"`, so such a link presents an empty port, the form "
+           + "refuses about the PORT, and gating the host on that flag locked the operator out of "
+           + "the one field that could fix it -- an obstruction in the other direction, a dead "
+           + "end in this one")
+    expect(hostRefused?.accepted("5760", editing: .port) ?? "", "5760",
+           "and the mirror: an empty host on a TCP link refused every port entry while the "
+           + "sentence talked about the host")
+    expect(portRefused?.accepted("abc", editing: .port) == nil,
+           "but the field the refusal NAMES is still refused, or the gate would be no gate")
+
+    expect(LinkFormCheck(["class": "LinkForm", "valid": false as NSNumber,
+                          "error": "something", "name": ""])?
+            .accepted("x", editing: .host) == nil,
+           "AND INVALID WITH NO NAMED FIELD REFUSES RATHER THAN GUESSING. links.rs pins "
+           + "errorField non-null whenever refused -- their own loop over six forms -- so this "
+           + "cannot occur; it fails closed for the same reason .unchecked does")
 
     expect(LinkFormCheck.encodable("tcp", "127.0.0.1", "5760"),
            "an ordinary address goes through the view's argument list unharmed")

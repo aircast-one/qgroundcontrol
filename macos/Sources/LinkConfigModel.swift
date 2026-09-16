@@ -132,9 +132,18 @@ extension LinkConfig {
 // a TCP link was accepted outright, which is the exact state that later produces the editAddress
 // remedy, so the editor was creating the failure the row exists to explain.
 struct LinkFormCheck: Equatable {
+    enum Field: String {
+        case host
+        case port
+    }
+
     let valid: Bool
     let error: String
     let name: String
+    // Which field the refusal is about. links.rs:181 serves it, and null ONLY when valid -- their
+    // own loop over six refused forms pins that, because a head reading null as nothing-is-wrong
+    // would gate nothing at all.
+    let errorField: Field?
 
     // A READ THAT DID NOT ANSWER IS NOT A CHECK THAT PASSED. The fallback used to be
     // valid:true with no sentence, so an address nobody could check was accepted exactly like one
@@ -153,10 +162,11 @@ struct LinkFormCheck: Equatable {
         error: "An address containing a comma or a bracket cannot be checked yet.",
         name: "")
 
-    init(valid: Bool, error: String, name: String) {
+    init(valid: Bool, error: String, name: String, errorField: Field? = nil) {
         self.valid = valid
         self.error = error
         self.name = name
+        self.errorField = errorField
     }
 
     init?(_ json: [String: Any]) {
@@ -164,6 +174,7 @@ struct LinkFormCheck: Equatable {
         valid = (json["valid"] as? NSNumber)?.boolValue ?? false
         error = (json["error"] as? String) ?? ""
         name = (json["name"] as? String) ?? ""
+        errorField = Field(rawValue: (json["errorField"] as? String) ?? "")
     }
 
     // view.linkForm takes its three arguments inside the view name, and view::split cuts on commas
@@ -175,9 +186,25 @@ struct LinkFormCheck: Equatable {
     // For a TCP link with the host cleared that is exactly the state the header above says this
     // type exists to prevent: measured, view.linkForm(tcp,,5760) answers valid false, "A TCP link
     // needs the address of the device to call.", and the editor showed that sentence while
-    // committing the empty host. The gate lives here because both call sites are in
-    // ConnectionsSection, which swift-checks.sh does not compile.
-    func accepted(_ typed: String) -> String? { valid ? typed : nil }
+    // committing the empty host.
+    //
+    // GATING ON `valid` ALONE FIXED THAT DIRECTION AND OPENED THE OTHER. The check is form-level:
+    // each field passes the OTHER field's stored value, so an empty host refused every port entry,
+    // and an absent port made the host uneditable -- `LinkConfig.portText` is
+    // `port.map(String.init) ?? ""`, so such a link presents an empty port and is then blocked
+    // from the one field that could repair it. The two are not symmetric: the first is an
+    // obstruction, the second a dead end. errorField names the field, so a refusal about the
+    // OTHER one leaves this entry alone.
+    //
+    // Invalid with no named field cannot occur -- links.rs pins errorField non-null whenever
+    // refused -- and it refuses here rather than guessing, matching `.unchecked`.
+    //
+    // The gate lives here because both call sites are in ConnectionsSection, which
+    // swift-checks.sh does not compile.
+    func accepted(_ typed: String, editing field: Field) -> String? {
+        guard !valid else { return typed }
+        return errorField == field || errorField == nil ? nil : typed
+    }
 
     static func encodable(_ parts: String...) -> Bool {
         parts.allSatisfy { !$0.contains(",") && !$0.contains("(") && !$0.contains(")") }
