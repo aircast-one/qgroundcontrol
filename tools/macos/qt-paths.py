@@ -382,7 +382,7 @@ def claimed_actions():
 
 
 def main():
-    roots = [pathlib.Path(a) for a in sys.argv[1:] if a != "--list"] or [anchored("macos/Sources")]
+    roots = [pathlib.Path(a) for a in sys.argv[1:] if not a.startswith("--")] or [anchored("macos/Sources")]
     missing = [r for r in roots if not r.is_dir()]
     if missing:
         print("not a directory: " + ", ".join(map(str, missing)), file=sys.stderr)
@@ -470,6 +470,30 @@ def main():
         templates = sum(1 for p in found if INTERPOLATION.search(p))
         detail = f"  ({templates} interpolated)" if templates else ""
         print(f"  {name:22} {len(found):4}{detail}")
+    total = len(literal) + len(template)
+    expected = next((a for a in sys.argv if a.startswith("--expect=")), None)
+    if expected:
+        # THE STANDING CHECK, MECHANISED. Reconciling this number across two trees proved nothing
+        # about the instrument -- it is one instrument run twice. What proves it is a known change
+        # moving the count by exactly what changed, and that is a check I have to remember to run
+        # unless something refuses for me. The baseline is the generated file's own headline, so a
+        # conversion that forgets to regenerate it cannot quietly pass either.
+        recorded = anchored("MACOS_QT_PASSTHROUGHS.md")
+        was = re.search(r"raw Qt total\s+(\d+)", recorded.read_text()) if recorded.exists() else None
+        if not was:
+            print("  CANNOT CHECK MACOS_QT_PASSTHROUGHS.md has no recorded total to move from",
+                  file=sys.stderr)
+            return 2
+        moved = total - int(was.group(1))
+        want = int(expected.split("=", 1)[1])
+        if moved != want:
+            print(f"  REFUSING: the count moved by {moved:+d} ({was.group(1)} -> {total}) and the "
+                  f"change claimed {want:+d}. A conversion that moves the number by anything else "
+                  f"changed something it did not mean to, or the instrument stopped seeing a path "
+                  f"that is still there -- and those two look identical from the total alone.",
+                  file=sys.stderr)
+            return 1
+        print(f"  count moved {moved:+d} as claimed ({was.group(1)} -> {total})")
     if "--list" in sys.argv:
         print()
         print("PATHS")
