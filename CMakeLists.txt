@@ -118,7 +118,13 @@ if(QGC_USE_CACHE)
             set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_CMD}")
             set(CMAKE_CXX_LINKER_LAUNCHER "${CCACHE_CMD}")
             if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-                add_compile_options(-Xclang -fno-pch-timestamp)
+                # C AND CXX ONLY. add_compile_options applies to every language in scope, and
+                # since the macOS app became a Swift shell around QGC-as-a-library this reached
+                # swiftc, which has -Xcc but no -Xclang: "error: unknown argument: '-Xclang'",
+                # failing the whole macOS release build at the Swift static library. It went
+                # unseen locally because a build tree configured before ccache was on the path
+                # has no compiler launcher and never takes this branch at all.
+                add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-Xclang;-fno-pch-timestamp>")
             endif()
         endif()
     elseif(CMAKE_HOST_WIN32)
