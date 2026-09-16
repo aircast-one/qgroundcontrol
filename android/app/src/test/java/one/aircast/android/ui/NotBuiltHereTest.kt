@@ -63,6 +63,22 @@ class NotBuiltHereTest {
     }
 
     @Test
+    fun `a control this head ignores is never told to edit it on the desktop`() {
+        val odd = fact("displayPresetsTabFirst").copy(controlKind = "slider")
+        assertTrue(
+            "an unknown control kind normally says Edit on desktop, which is false for a control " +
+                "no head here reads - editing it there would change nothing on this screen",
+            !editOnDesktop(odd),
+        )
+        assertEquals("No effect here - this head has no presets tab", inertNote(odd))
+    }
+
+    @Test
+    fun `an unknown control kind this head DOES implement still says edit on desktop`() {
+        assertTrue(editOnDesktop(fact("useChecklist").copy(controlKind = "slider")))
+    }
+
+    @Test
     fun `every reason reads as a sentence about this head, not about the setting`() {
         NOT_BUILT_HERE.forEach { (name, reason) ->
             assertTrue("$name: reason should not end in a full stop", !reason.endsWith("."))

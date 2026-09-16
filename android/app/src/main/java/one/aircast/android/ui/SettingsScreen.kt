@@ -137,6 +137,9 @@ internal val NOT_BUILT_HERE = mapOf(
 
 internal fun notBuiltHere(fact: Fact): String? = NOT_BUILT_HERE[fact.name]
 
+internal fun editOnDesktop(fact: Fact): Boolean =
+    !controlIsUnderstood(fact.controlKind) && notBuiltHere(fact) == null
+
 internal fun inertNote(fact: Fact): String = when {
     !fact.enabled -> fact.disabledReason.ifBlank { "Has no effect yet" }
     notBuiltHere(fact) != null -> "No effect here - ${notBuiltHere(fact)}"
@@ -410,7 +413,7 @@ internal fun FactRow(
 
         Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
             when {
-                !controlIsUnderstood(fact.controlKind) -> Column(
+                editOnDesktop(fact) -> Column(
                     horizontalAlignment = Alignment.End,
                 ) {
                     Text(
