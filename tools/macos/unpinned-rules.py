@@ -83,8 +83,6 @@ ACCEPTED = {
     ("AnalyzeWindow.swift", ".green"): "the clip row, whose condition VibrationReading.clipHealthy "
         "is compiled and asserted at its OWN threshold -- zero, not one, separately from the "
         "plural beside it. Only the two-colour lookup floats",
-    ("OverlayKit.swift", ".green"): "`good` comes from VehicleComponentInfo.severity, which is "
-        "compiled and asserted; these two lines are the same weight drawn twice in one row",
     ("PacketRadioSection.swift", ".red"): "an ERROR line, not a ladder: primary or red on "
         "whether startError is empty, which is the .red palette again",
     ("ParameterRow.swift", ".orange"): "a non-default DOT, drawn or not drawn -- Color.clear "

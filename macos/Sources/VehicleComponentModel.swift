@@ -48,6 +48,13 @@ struct VehicleComponentInfo: Identifiable, Equatable {
         weight == .good ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
     }
 
+    // StatusPill spelled this ladder a second time and disagreed on the not-good mark -- an
+    // exclamationmark.TRIANGLE where this one uses a CIRCLE -- so the setup window drew two
+    // different symbols for one meaning, a component row beside a verdict pill. Nothing recorded
+    // the triangle as deliberate, and this is the spelling with assertions behind it, so the pill
+    // takes a level from here rather than keeping its own vocabulary.
+    static func level(good: Bool) -> FlyTelemetry.Level { good ? .good : .warning }
+
     static let needsSetup = "Needs setup"
     static let reportingFault = "Reporting a fault"
 

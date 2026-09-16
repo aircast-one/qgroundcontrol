@@ -3535,6 +3535,11 @@ func checkAComponentsRowSaysTheSameThingTwice() {
            "and the TICK is the good one, named rather than merely distinguished: the two "
            + "assertions above both compare marks that swap together, so inverting the level the "
            + "symbol keys on passed under both versions until this line existed")
+
+    expect(VehicleComponentInfo.level(good: false) == .warning,
+           "a pill that is not good is a warning, so it takes the orange and the circle from the "
+           + "same ladder the component rows use rather than keeping a triangle of its own")
+    expect(VehicleComponentInfo.level(good: true) == .good, "and a good one is good")
 }
 checkAComponentsRowSaysTheSameThingTwice()
 
@@ -6008,7 +6013,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2221
+let assertionFloor = 2223
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

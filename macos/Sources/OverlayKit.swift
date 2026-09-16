@@ -202,16 +202,18 @@ struct StatusPill: View {
     let text: String
     let good: Bool
 
+    private var mark: FlyTelemetry.Level { VehicleComponentInfo.level(good: good) }
+
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: good ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+            Image(systemName: VehicleComponentInfo.statusSymbol(mark))
             Text(text)
         }
         .font(.callout.weight(.medium))
-        .foregroundColor(good ? .green : .orange)
+        .foregroundColor(FlyPanel.colour(mark))
         .padding(.horizontal, Overlay.step)
         .padding(.vertical, 4)
-        .background((good ? Color.green : Color.orange).opacity(0.15))
+        .background(FlyPanel.colour(mark).opacity(0.15))
         .clipShape(Capsule())
     }
 }
