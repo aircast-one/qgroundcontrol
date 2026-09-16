@@ -503,7 +503,7 @@ struct PlanInspector: View {
     private var missionItems: some View {
         GroupCard {
             if mission.items.isEmpty {
-                EmptyStateRow(text: mission.status.isEmpty ? "This plan has no items." : mission.status)
+                EmptyStateRow(text: mission.status)
             } else {
                 ForEach(mission.items) { item in
                     GroupRow(

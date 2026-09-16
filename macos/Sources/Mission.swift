@@ -168,7 +168,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     func reload() {
         let controller = Bridge.group("plan.missionController")
         guard controller["kind"] as? String == "object" else {
-            status = "No vehicle is connected."
+            status = MissionSummary.planStatus(controller: false, reason: "")
             items = []
             patterns = []
             return
@@ -234,7 +234,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         commandsReadFor = identity
         loadCommands()
         loadSelectedFacts()
-        status = items.isEmpty ? "This plan has no items." : ""
+        status = MissionSummary.planStatus(controller: true, reason: summary.reason)
 
         let coordinate = vehicle["coordinate"] as? [String: Any]
         let heading = ((vehicle["facts"] as? [[String: Any]]) ?? [])

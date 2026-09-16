@@ -3507,6 +3507,24 @@ func checkAltitudeMode() {
 
 checkAltitudeMode()
 
+func checkThePlanEmptySentenceIsTheCoreS() {
+    expect(MissionSummary.planStatus(controller: true, reason: "This plan has no items yet."),
+           "This plan has no items yet.",
+           "the sentence is the core's, drawn verbatim -- the head used to spell its own one word "
+           + "apart, in two uncompiled files, off its OWN item list rather than containsItems")
+    expect(MissionSummary.planStatus(controller: true, reason: "").isEmpty,
+           "and once they report items their empty string is the answer, not a cue to spell one")
+    expect(MissionSummary.planStatus(controller: false, reason: "This plan has no items yet."),
+           MissionSummary.noController,
+           "no mission controller on the bridge beats any sentence about the plan: a plan you "
+           + "cannot reach is not a plan with nothing in it. CONSTRUCTED -- the core cannot serve "
+           + "a reason when this head has no controller to read, and it is the only input that "
+           + "separates the gate from one that just returns the reason")
+    expect(MissionSummary.planStatus(controller: false, reason: ""), MissionSummary.noController,
+           "and that sentence stays the head's, because it is a fact about this app")
+}
+checkThePlanEmptySentenceIsTheCoreS()
+
 func checkPlanSummary() {
     let read = MissionSummary(["available": true as NSNumber, "reason": "",
                                "altitudeRange": ["text": "120 m to 340 m"],
@@ -5779,7 +5797,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2163
+let assertionFloor = 2167
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

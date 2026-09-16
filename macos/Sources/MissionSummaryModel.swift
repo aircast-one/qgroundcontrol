@@ -41,6 +41,24 @@ struct MissionSummary: Equatable {
         altitudeRange = ((json["altitudeRange"] as? [String: Any])?["text"] as? String) ?? ""
     }
 
+    // The plan's "nothing here" sentence is the CORE's: missionsummary.rs:268 serves "" once the
+    // controller reports items and "This plan has no items yet." when it does not. The head used to
+    // spell its own "This plan has no items." -- one word apart, in two uncompiled files, derived
+    // from the head's OWN decoded item list rather than from the controller's containsItems. Two
+    // sources for one question agree until they disagree, and then the screen picks the wrong one.
+    //
+    // noController is the one sentence that stays the head's, because it is a fact about this app
+    // rather than about the plan: there is no mission controller on the bridge at all. It wins over
+    // the served reason, since a plan you cannot reach is not a plan with nothing in it.
+    //
+    // Reachable without a third state: reload() reads view.missionSummary synchronously before it
+    // sets this, so the reason is in hand rather than waiting on the watch.
+    static func planStatus(controller: Bool, reason: String) -> String {
+        controller ? reason : MissionSummary.noController
+    }
+
+    static let noController = "No vehicle is connected."
+
     static let distance = "distance"
     static let time = "time"
     static let furthest = "furthest"
