@@ -59,6 +59,7 @@
 #include "JoystickManager.h"
 #include "JsonHelper.h"
 #include "LinkManager.h"
+#include "SkydroidH16Links.h"
 #include "LogDownloadController.h"
 #include "MAVLinkChartController.h"
 #include "MAVLinkConsoleController.h"
@@ -438,6 +439,9 @@ void QGCApplication::_initForNormalAppBoot()
 
     // Load known link configurations
     LinkManager::instance()->loadLinkConfigurationList();
+    if (SkydroidH16Links::isThisRemote()) {
+        SkydroidH16Links::ensure(LinkManager::instance(), SettingsManager::instance()->autoConnectSettings(), SettingsManager::instance()->videoSettings());
+    }
 
     // Probe for joysticks
     JoystickManager::instance()->init();

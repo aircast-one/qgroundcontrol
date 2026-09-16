@@ -6,9 +6,11 @@ name: Aircast Release
 #
 # Tags are created with `make release.<patch|minor|major|dev|staging>`.
 #
-# Optional secrets: ANDROID_KEYSTORE_PASSWORD (APK signing),
-#                   MACOS_CERT_P12_BASE64 / MACOS_CERT_P12_PASSWORD /
-#                   MACOS_SIGNING_IDENTITY / MACOS_NOTARIZATION_* (macOS signing).
+# Optional secrets: ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_STORE_PASSWORD (APK signing),
+#                   MACOS_CERT_P12_BASE64 / MACOS_CERT_P12_PASSWORD / MACOS_SIGNING_IDENTITY /
+#                   MACOS_NOTARIZATION_USERNAME / MACOS_NOTARIZATION_TEAM_ID /
+#                   MACOS_NOTARIZATION_PASSWORD (Developer ID signing + notarization;
+#                   the build is ad-hoc signed when the P12 secret is absent).
 # (Uses the built-in GITHUB_TOKEN for the GitHub release — no PAT needed.)
 
 permissions:
@@ -67,6 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      QT_VERSION: 6.6.3
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
       QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
@@ -100,7 +103,7 @@ jobs:
         uses: ./.github/actions/qt-android
         with:
           host: linux
-          arch: linux_gcc_64
+          arch: gcc_64
           version: ${{ env.QT_VERSION }}
           abis: ${{ env.QT_ANDROID_ABIS }}
           cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
@@ -189,13 +192,13 @@ jobs:
 
       - name: Configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
+        run: ${{ runner.temp }}/Qt/${{ env.QT_VERSION }}/android_arm64_v8a/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_WARN_DEPRECATED=FALSE
               -DCPM_gstreamer_SOURCE="${{ env.GST_ANDROID_SOURCE }}"
               -DQT_ANDROID_ABIS="${{ env.QT_ANDROID_ABIS }}"
               -DQT_ANDROID_BUILD_ALL_ABIS=OFF
-              -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../gcc_64"
+              -DQT_HOST_PATH="${{ runner.temp }}/Qt/${{ env.QT_VERSION }}/gcc_64"
               -DQT_ANDROID_SIGN_APK=${{ env.QT_ANDROID_KEYSTORE_STORE_PASS != '' && 'ON' || 'OFF' }}
               -DQGC_STABLE_BUILD=ON
 
@@ -707,7 +710,7 @@ jobs:
   # x64 release must not depend on it.
   build-windows-arm64:
     needs: setup
-    runs-on: windows-11-arm
+    runs-on: windows-2022
     timeout-minutes: 60
     continue-on-error: true
     env:
@@ -732,7 +735,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\gstreamer
-          key: gstreamer-1.28.6-windows-arm64
+          key: gstreamer-1.28.6-windows-arm64-on-x64
 
       - name: Download GStreamer
         if: steps.gst-cache.outputs.cache-hit != 'true'
@@ -774,8 +777,8 @@ jobs:
           echo "GSTREAMER_1_0_ROOT_MSVC_ARM64=C:\gstreamer" >> $env:GITHUB_ENV
           echo "C:\gstreamer\bin" >> $env:GITHUB_PATH
 
-      - name: Install NSIS
-        run: choco install nsis -y
+      - name: Install NSIS and an x64 pkg-config
+        run: choco install nsis pkgconfiglite -y
         shell: pwsh
 
       - name: Setup Caching
@@ -786,13 +789,24 @@ jobs:
           build-type: Release
           cpm-modules: ${{ runner.temp }}\shadow_build_dir\cpm_modules
 
-      - name: Install Qt for Windows (ARM64)
+      - name: Install Qt host tools
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          host: windows_arm64
+          host: windows
           target: desktop
-          arch: win64_msvc2022_arm64
+          arch: win64_msvc2022_64
+          dir: ${{ runner.temp }}
+          modules: qtshadertools qtquick3d
+          cache: true
+
+      - name: Install Qt for Windows (ARM64 cross)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_arm64_cross_compiled
           dir: ${{ runner.temp }}
           modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
           cache: true
@@ -800,13 +814,15 @@ jobs:
       - name: Set up Visual Studio shell
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: arm64
+          arch: amd64_arm64
 
       - name: Configure
         working-directory: ${{ runner.temp }}\shadow_build_dir
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DQGC_STABLE_BUILD=ON
+              -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../msvc2022_64"
+              -DPKG_CONFIG_EXECUTABLE=C:/ProgramData/chocolatey/bin/pkg-config.exe
 
       - name: Build
         working-directory: ${{ runner.temp }}\shadow_build_dir

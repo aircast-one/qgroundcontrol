@@ -24,6 +24,7 @@ Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
 
 class QQuickWindow;
 class QQuickItem;
+class AirUnitCameraControl;
 class FinishVideoInitialization;
 class SubtitleWriter;
 class Vehicle;
@@ -51,6 +52,9 @@ class VideoManager : public QObject
     Q_PROPERTY(bool     isUvc                   READ isUvc                                      NOTIFY isUvcChanged)
     Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(AirUnitCameraControl *airUnitCamera READ airUnitCamera                       CONSTANT)
+    Q_PROPERTY(QString  activeSourceLabel       READ activeSourceLabel                          NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(int      videoSourceCount        READ videoSourceCount                           NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     recording               READ recording                                  NOTIFY recordingChanged)
     Q_PROPERTY(bool     streaming               READ streaming                                  NOTIFY streamingChanged)
     Q_PROPERTY(double   aspectRatio             READ aspectRatio                                NOTIFY aspectRatioChanged)
@@ -117,6 +121,9 @@ public:
     bool isUvc() const;
     int activeVideoSource() const;
     bool hasMultipleVideoSources() const;
+    AirUnitCameraControl *airUnitCamera() const { return _airUnitCamera; }
+    QString activeSourceLabel() const;
+    int videoSourceCount() const;
     bool recording() const { return _recording; }
     bool streaming() const { return _streaming; }
     double aspectRatio() const;
@@ -178,6 +185,8 @@ private:
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
     void _startReceiver(VideoReceiver *receiver);
+    uint32_t _stallTimeoutFor(const VideoReceiver *receiver) const;
+    void _holdStallRestartWhileAirUnitSwitches();
     void _stopReceiver(VideoReceiver *receiver);
     static void _cleanupOldVideos();
 
@@ -198,6 +207,7 @@ private:
     QHash<QString, ReceiverState> _receiverState;
 
     SubtitleWriter *_subtitleWriter = nullptr;
+    AirUnitCameraControl *_airUnitCamera = nullptr;
     VideoSettings *_videoSettings = nullptr;
 
     bool _initialized = false;

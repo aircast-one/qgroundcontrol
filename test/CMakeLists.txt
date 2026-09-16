@@ -138,6 +138,8 @@ add_qgc_test(QGeoMapReplyQGCTest)
 add_subdirectory(UI)
 
 add_subdirectory(VideoManager)
+add_qgc_test(AirUnitCameraControlTest)
+add_qgc_test(SkydroidH16LinksTest)
 add_qgc_test(VideoManagerTest)
 
 add_subdirectory(Utilities)

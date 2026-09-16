@@ -5,6 +5,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         LinkInterface.cc
         LinkInterface.h
         LinkManager.cc
+        SkydroidH16Links.cc
+        SkydroidH16Links.h
         LinkManager.h
         LogReplayLink.cc
         LogReplayLink.h

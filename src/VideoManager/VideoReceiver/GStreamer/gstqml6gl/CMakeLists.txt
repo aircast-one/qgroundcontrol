@@ -140,13 +140,14 @@ if(EXISTS "${QGC_GST_QT6_PLUGIN_PATH}/resources.qrc")
             REQUIRED
         )
 
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
         set(RGBA_BASE_QSB "${CMAKE_CURRENT_BINARY_DIR}/.qsb/RGBA.frag.qsb")
         set(RGBA_GLES_SRC "${QGC_GST_QT6_PLUGIN_PATH}/RGBA_gles.frag")
         set(RGBA_EXTERNAL "${CMAKE_CURRENT_BINARY_DIR}/.qsb/RGBA.frag.qsb.external")
 
         add_custom_command(
             OUTPUT ${RGBA_EXTERNAL}
-            COMMAND ${QSB_WRAPPER}
+            COMMAND ${Python3_EXECUTABLE} ${QSB_WRAPPER}
                 ${QSB_PROGRAM}
                 ${RGBA_EXTERNAL}
                 ${RGBA_GLES_SRC}
@@ -158,7 +159,8 @@ if(EXISTS "${QGC_GST_QT6_PLUGIN_PATH}/resources.qrc")
             VERBATIM
         )
 
-        set_source_files_properties(${RGBA_EXTERNAL} PROPERTIES QT_RESOURCE_ALIAS org/freedesktop/gstreamer/qml6/RGBA.frag.qsb.external)
+        target_sources(gstqml6gl PRIVATE ${RGBA_EXTERNAL})
+        set_source_files_properties(${RGBA_EXTERNAL} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES GENERATED TRUE QT_RESOURCE_ALIAS org/freedesktop/gstreamer/qml6/RGBA.frag.qsb.external)
         set(QGC_GSTREAMER_SHADER_RESOURCES "${RGBA_EXTERNAL}" CACHE INTERNAL "")
         # qt_add_resources(gstqml6gl "gstqml6gl_shaders1"
         #     PREFIX "/org/freedesktop/gstreamer/qml6"

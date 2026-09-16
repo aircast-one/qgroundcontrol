@@ -234,7 +234,12 @@ public class QGCUsbSerialManager {
      * @return True if valid, false otherwise.
      */
     public static boolean isDeviceNameValid(final String name) {
-        return drivers.stream().anyMatch(driver -> driver.getDevice().getDeviceName().equals(name));
+        for (UsbSerialDriver driver : drivers) {
+            if (driver.getDevice().getDeviceName().equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -300,8 +305,7 @@ public class QGCUsbSerialManager {
     private static void removeStaleDrivers(final List<UsbSerialDriver> currentDrivers) {
         for (int i = drivers.size() - 1; i >= 0; i--) {
             UsbSerialDriver existingDriver = drivers.get(i);
-            boolean found = currentDrivers.stream()
-                    .anyMatch(currentDriver -> currentDriver.getDevice().getDeviceId() == existingDriver.getDevice().getDeviceId());
+            boolean found = containsDeviceId(currentDrivers, existingDriver.getDevice().getDeviceId());
 
             if (!found) {
                 int deviceId = existingDriver.getDevice().getDeviceId();
@@ -317,10 +321,18 @@ public class QGCUsbSerialManager {
      *
      * @param currentDrivers The list of currently connected drivers.
      */
+    private static boolean containsDeviceId(final List<UsbSerialDriver> list, final int deviceId) {
+        for (UsbSerialDriver driver : list) {
+            if (driver.getDevice().getDeviceId() == deviceId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void addNewDrivers(final List<UsbSerialDriver> currentDrivers) {
         for (UsbSerialDriver newDriver : currentDrivers) {
-            boolean found = drivers.stream()
-                    .anyMatch(existingDriver -> existingDriver.getDevice().getDeviceId() == newDriver.getDevice().getDeviceId());
+            boolean found = containsDeviceId(drivers, newDriver.getDevice().getDeviceId());
 
             if (!found) {
                 addDriver(newDriver);
@@ -1013,7 +1025,11 @@ public class QGCUsbSerialManager {
             return new int[]{};
         }
 
-        int[] lines = currentControlLines.stream().mapToInt(UsbSerialPort.ControlLine::ordinal).toArray();
+        int[] lines = new int[currentControlLines.size()];
+        int i = 0;
+        for (UsbSerialPort.ControlLine line : currentControlLines) {
+            lines[i++] = line.ordinal();
+        }
         return lines;
     }
 

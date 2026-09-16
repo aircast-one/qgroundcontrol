@@ -9,6 +9,7 @@
 
 #include "VideoManager.h"
 #include "AppSettings.h"
+#include "AirUnitCameraControl.h"
 #include "MultiVehicleManager.h"
 #include "QGCApplication.h"
 #include "QGCCameraManager.h"
@@ -38,6 +39,10 @@
 
 QGC_LOGGING_CATEGORY(VideoManagerLog, "qgc.videomanager.videomanager")
 
+namespace {
+constexpr uint32_t kAirUnitSwitchSeconds = 20;
+}
+
 static constexpr const char *kMainReceiverName = "videoContent";
 
 static constexpr const char *kFileExtension[VideoReceiver::FILE_FORMAT_MAX + 1] = {
@@ -51,8 +56,12 @@ Q_APPLICATION_STATIC(VideoManager, _videoManagerInstance);
 VideoManager::VideoManager(QObject *parent)
     : QObject(parent)
     , _subtitleWriter(new SubtitleWriter(this))
+    , _airUnitCamera(new AirUnitCameraControl(this))
     , _videoSettings(SettingsManager::instance()->videoSettings())
 {
+    (void) connect(_airUnitCamera, &AirUnitCameraControl::availableChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::_holdStallRestartWhileAirUnitSwitches);
     // qCDebug(VideoManagerLog) << this;
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
@@ -390,7 +399,21 @@ int VideoManager::activeVideoSource() const
 
 bool VideoManager::hasMultipleVideoSources() const
 {
-    return _videoSettings->switchableIndices().size() > 1;
+    return _videoSettings->switchableIndices().size() > 1 || _airUnitCamera->available();
+}
+
+int VideoManager::videoSourceCount() const
+{
+    return _videoSettings->videoSourceCount();
+}
+
+QString VideoManager::activeSourceLabel() const
+{
+    const bool airUnitDrivesTheSwitch = _airUnitCamera->available() && _videoSettings->switchableIndices().size() <= 1;
+    if (airUnitDrivesTheSwitch && _airUnitCamera->activeInput() >= 0) {
+        return _airUnitCamera->activeInputName();
+    }
+    return cameraName(activeVideoSource());
 }
 
 void VideoManager::setActiveVideoSource(int index)
@@ -407,6 +430,7 @@ void VideoManager::switchActiveVideoSource()
 {
     const QList<int> indices = _videoSettings->switchableIndices();
     if (indices.size() <= 1) {
+        _airUnitCamera->switchInput();
         return;
     }
     const int pos = indices.indexOf(activeVideoSource());
@@ -1052,16 +1076,27 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
     }
     _setReceiverStatus(receiver, tr("Connecting…"), true);
 
+    receiver->start(_stallTimeoutFor(receiver));
+}
+
+uint32_t VideoManager::_stallTimeoutFor(const VideoReceiver *receiver) const
+{
     const int cameraIndex = _cameraIndexForReceiver(receiver);
     const QString source = (cameraIndex >= 0) ? _videoSettings->videoSourceNameAt(cameraIndex) : _videoSettings->currentVideoSourceName();
-    /* The gstreamer rtsp source will switch to tcp if udp is not available after 5 seconds.
-       So we should allow for some negotiation time for rtsp. WHEP needs similar headroom for
-       its HTTP signaling plus ICE/DTLS setup before the first RTP packet arrives. */
-
     const bool needsNegotiationTime = (source == VideoSettings::videoSourceRTSP) || (source == VideoSettings::videoSourceWebRTC);
-    const uint32_t timeout = (needsNegotiationTime ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3);
+    return needsNegotiationTime ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3;
+}
 
-    receiver->start(timeout);
+void VideoManager::_holdStallRestartWhileAirUnitSwitches()
+{
+    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        receiver->setTimeout(kAirUnitSwitchSeconds);
+    }
+    QTimer::singleShot(kAirUnitSwitchSeconds * 1000, this, [this]() {
+        for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+            receiver->setTimeout(_stallTimeoutFor(receiver));
+        }
+    });
 }
 
 void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window)

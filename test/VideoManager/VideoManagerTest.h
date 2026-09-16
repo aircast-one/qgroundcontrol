@@ -11,4 +11,5 @@ private slots:
     void _multiViewOffGatesInactiveCameras();
     void _widgetRoles();
     void _tileCameraNumbers();
+    void _urlWhitespaceIsTrimmed();
 };

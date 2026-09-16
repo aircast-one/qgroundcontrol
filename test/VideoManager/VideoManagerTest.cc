@@ -158,3 +158,23 @@ void VideoManagerTest::_tileCameraNumbers()
     fixture.settings()->multiViewEnabled()->setRawValue(false);
     QCOMPARE(vm->tileCameraNumber(0), 0);
 }
+
+void VideoManagerTest::_urlWhitespaceIsTrimmed()
+{
+    ThreeCameraFixture fixture;
+    VideoSettings *settings = fixture.settings();
+    const QVariant savedSource = settings->videoSource()->rawValue();
+    const QVariant savedRtsp = settings->rtspUrl()->rawValue();
+
+    settings->videoSource()->setRawValue(VideoSettings::videoSourceRTSP);
+    settings->rtspUrl()->setRawValue(QStringLiteral(" rtsp://192.168.0.10:8554/H264Video "));
+    QJsonArray extras;
+    extras.append(QJsonObject{{"name", "hdmi"}, {"source", VideoSettings::videoSourceRTSP}, {"url", " rtsp://192.168.0.10:8554/H264Video1"}});
+    settings->extraVideoSources()->setRawValue(QString::fromUtf8(QJsonDocument(extras).toJson(QJsonDocument::Compact)));
+
+    QCOMPARE(settings->videoUrlAt(0), QStringLiteral("rtsp://192.168.0.10:8554/H264Video"));
+    QCOMPARE(settings->videoUrlAt(1), QStringLiteral("rtsp://192.168.0.10:8554/H264Video1"));
+
+    settings->videoSource()->setRawValue(savedSource);
+    settings->rtspUrl()->setRawValue(savedRtsp);
+}

@@ -198,6 +198,7 @@ else()
             ValueSlider.qml
             VehicleRotationCal.qml
             VehicleSummaryRow.qml
+            VideoSourceMenu.qml
 
     # Due to the fact t hatset_source_files_properties with QT_RESOURCE_ALIAS doesn't work in cmombination with qt_qdd_add_qml_module on Windows.
     # We had to move various qml files to this directory to get things to work. We will revisit this in the 5.1 release.

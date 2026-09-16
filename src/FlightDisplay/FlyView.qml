@@ -31,6 +31,18 @@ import Viewer3D
 
 Item {
     id: _root
+
+    function switchVideoSource(anchorItem, x, y) {
+        var localChoices = QGroundControl.videoManager.videoSourceCount > 1
+        var airUnitChoices = QGroundControl.videoManager.airUnitCamera.available
+        if (localChoices && airUnitChoices) {
+            videoSourceMenu.parent = anchorItem
+            videoSourceMenu.open(x, y)
+        } else {
+            QGroundControl.videoManager.switchActiveVideoSource()
+        }
+    }
+
     property var planController:    _planController
     property var guidedController:  _guidedController
     property var overlayRig:        _overlayRig
@@ -255,8 +267,8 @@ Item {
             z:                      QGroundControl.zOrderWidgets
             showActionButton:       QGroundControl.videoManager.hasMultipleVideoSources &&
                                         videoControl.pipState.state === videoControl.pipState.pipState
-            actionButtonText:       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
-            onActionButtonClicked:  QGroundControl.videoManager.switchActiveVideoSource()
+            actionButtonText:       QGroundControl.videoManager.activeSourceLabel
+            onActionButtonClicked:  _root.switchVideoSource(videoControl, videoControl.width - videoSourceMenu.width, videoControl.height)
 
             widthOverride:          videoTilesLayer.pipWidthOverride
 
@@ -325,8 +337,24 @@ Item {
             opacity:                    0.75
             visible:                    QGroundControl.videoManager.hasMultipleVideoSources &&
                                         videoControl.pipState.state === videoControl.pipState.fullState
-            text:                       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
-            onClicked:                  QGroundControl.videoManager.switchActiveVideoSource()
+            text:                       QGroundControl.videoManager.activeSourceLabel
+            onClicked:                  _root.switchVideoSource(fullVideoCameraSwitchButton, 0, fullVideoCameraSwitchButton.height)
+        }
+
+        QGCLabel {
+            id:                         airUnitNotice
+            z:                          _fullItemZorder + 3
+            anchors.top:                fullVideoCameraSwitchButton.bottom
+            anchors.horizontalCenter:   parent.horizontalCenter
+            anchors.topMargin:          ScreenTools.defaultFontPixelHeight / 3
+            color:                      "white"
+            font.pointSize:             ScreenTools.smallFontPointSize
+            text:                       QGroundControl.videoManager.airUnitCamera.notice
+            visible:                    text !== ""
+        }
+
+        VideoSourceMenu {
+            id: videoSourceMenu
         }
         FlyViewInsetViewer {
             id:                     widgetLayerInsetViewer
