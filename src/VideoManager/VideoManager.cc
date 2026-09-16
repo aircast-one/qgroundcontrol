@@ -9,6 +9,7 @@
 
 #include "VideoManager.h"
 #include "AppSettings.h"
+#include "AirUnitCameraControl.h"
 #include "MultiVehicleManager.h"
 #include "QGCApplication.h"
 #include "QGCCameraManager.h"
@@ -51,8 +52,10 @@ Q_APPLICATION_STATIC(VideoManager, _videoManagerInstance);
 VideoManager::VideoManager(QObject *parent)
     : QObject(parent)
     , _subtitleWriter(new SubtitleWriter(this))
+    , _airUnitCamera(new AirUnitCameraControl(this))
     , _videoSettings(SettingsManager::instance()->videoSettings())
 {
+    (void) connect(_airUnitCamera, &AirUnitCameraControl::availableChanged, this, &VideoManager::activeVideoSourceChanged);
     // qCDebug(VideoManagerLog) << this;
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
@@ -380,7 +383,7 @@ int VideoManager::activeVideoSource() const
 
 bool VideoManager::hasMultipleVideoSources() const
 {
-    return _videoSettings->switchableIndices().size() > 1;
+    return _videoSettings->switchableIndices().size() > 1 || _airUnitCamera->available();
 }
 
 void VideoManager::setActiveVideoSource(int index)
@@ -397,6 +400,7 @@ void VideoManager::switchActiveVideoSource()
 {
     const QList<int> indices = _videoSettings->switchableIndices();
     if (indices.size() <= 1) {
+        _airUnitCamera->switchInput();
         return;
     }
     const int pos = indices.indexOf(activeVideoSource());

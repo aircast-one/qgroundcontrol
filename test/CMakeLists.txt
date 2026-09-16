@@ -123,6 +123,7 @@ add_qgc_test(TerrainTileTest)
 add_subdirectory(UI)
 
 add_subdirectory(VideoManager)
+add_qgc_test(AirUnitCameraControlTest)
 add_qgc_test(VideoManagerTest)
 
 add_subdirectory(Utilities)
