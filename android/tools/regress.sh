@@ -4,13 +4,22 @@ S="$(cd "$(dirname "$0")" && pwd)"
 TAG="${1:-run}"
 set -u
 
-pkill -f apmvehicle.py 2>/dev/null
+# Four sessions share this checkout, so "$S/apmvehicle.py" is the SAME string for all of
+# them and no path anchor separates one session's fake from another's. Killing by pattern
+# here would stop a peer's vehicle mid-run, and a fake that stops sending reads as an
+# unbuilt feature rather than as interference. Refuse instead, and kill only our own PID.
+if pgrep -f "$S/apmvehicle.py" >/dev/null; then
+    echo "REFUSED: an apmvehicle.py is already running and this checkout is shared - it may be"
+    echo "  another session's. Stop it yourself if it is yours: pkill -f '\$S/apmvehicle.py'"
+    exit 1
+fi
 HANDSET="$("$S/handset-ip.sh")"
 [ -n "$HANDSET" ] || { echo "FAIL: no handset address - is it attached and on Wi-Fi?"; exit 1; }
 echo "handset at $HANDSET"
 RC_RSSI=203 BATT_PCT=70 BATT_STATE=0 nohup python3 "$S/apmvehicle.py" "$HANDSET" > "$S/regress_$TAG.simlog" 2>&1 &
+SIM=$!
 python3 -c "import time; time.sleep(5)"
-pgrep -f apmvehicle.py >/dev/null || { echo "FAIL: sim did not start"; tail -3 "$S/regress_$TAG.simlog"; exit 1; }
+kill -0 "$SIM" 2>/dev/null || { echo "FAIL: sim did not start"; tail -3 "$S/regress_$TAG.simlog"; exit 1; }
 
 adb shell am force-stop one.aircast.android
 "$S/ui.sh" front || { echo "FAIL: app did not come to the front"; exit 1; }
@@ -47,4 +56,4 @@ grep -c "LOG_REQUEST_LIST" "$S/regress_$TAG.simlog" | sed 's/^/log list requests
 grep -oE "CAMERA_INFORMATION sent for [0-9]+" "$S/regress_$TAG.simlog" | sort -u | sed 's/^/  /'
 
 adb shell am force-stop one.aircast.android
-pkill -f apmvehicle.py 2>/dev/null
+kill "$SIM" 2>/dev/null
