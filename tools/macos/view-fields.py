@@ -293,6 +293,15 @@ def keys_read_inline(view):
             local = bind.group(1)
             keys |= set(re.findall(rf'\b{local}\[\s*"([^"]+)"\s*\]', text))
             where.append(path.name)
+        # A read does not have to be bound to be a read. RemoteSupport.swift subscripts the call
+        # itself -- Bridge.group("view.links")["supportForwarding"] -- and requiring a `let` made
+        # that key invisible here, which is why nothing on this side compared it against the
+        # producer: no model decodes it and no assertion names it. Measured when this was added:
+        # 13 such keys across 11 views, against 36 bound reads.
+        direct = re.findall(rf'Bridge\.group\("{re.escape(base)}[^"]*"\)\s*\[\s*"([^"]+)"\s*\]', text)
+        if direct:
+            keys |= set(direct)
+            where.append(path.name)
     return keys, sorted(set(where))
 
 
@@ -320,7 +329,7 @@ def keys_a_model_reads(name):
 refuse_on_empty_inputs(sorted(SOURCES.glob("*.swift")), sorted(CORE.glob("*.rs")))
 
 registry = views_to_modules()
-gone, unchecked, inline_read = [], [], []
+gone, unchecked, inline_read, beside = [], [], [], []
 for model, view in sorted(MODELS.items()):
     modules = [registry.get(one) or registry.get(one.split("(")[0]) for one in views(view)]
     if any(module is None for module in modules):
@@ -331,26 +340,26 @@ for model, view in sorted(MODELS.items()):
         unchecked.append(f"{model}: {view} is built by {modules}, and one of those .rs files does not exist")
         continue
     read = keys_a_model_reads(model)
-    if not read:
-        served = set()
-        for source in sources:
-            stripped = strip_line_comments(source.read_text())
-            served |= set(LITERAL.findall(stripped)) | set(FIELD.findall(stripped))
-        inline, files = keys_read_inline(view if isinstance(view, str) else view[0])
-        if not inline:
-            unchecked.append(f"{model}: no initialiser keys found and nothing subscripts {view} "
-                             f"inline either, which is a broken reader not a clean result")
-        else:
-            inline_read.append((model, view, sorted(inline), files))
-            for key in sorted(inline):
-                if key not in served:
-                    gone.append((model, key, view, "/".join(modules)))
+    inline, files = keys_read_inline(view if isinstance(view, str) else view[0])
+    # UNION, not either-or. This used to consult the inline reader only when a model decoded
+    # NOTHING, so a view with a model had its extra inline keys compared against nothing at all:
+    # view.links is decoded by Links.swift, and RemoteSupport.swift separately subscripts
+    # supportForwarding off it -- a key no model decodes and no assertion names, so a rename in
+    # the core would have gone silently to `?? false` and told the operator forwarding was off.
+    checked = read | inline
+    if not checked:
+        unchecked.append(f"{model}: no initialiser keys found and nothing subscripts {view} "
+                         f"inline either, which is a broken reader not a clean result")
         continue
+    if not read:
+        inline_read.append((model, view, sorted(inline), files))
+    elif inline - read:
+        beside.append((model, view, sorted(inline - read), files))
     emitted = set()
     for source in sources:
         stripped = strip_line_comments(source.read_text())
         emitted |= set(LITERAL.findall(stripped)) | set(FIELD.findall(stripped))
-    for key in sorted(read - emitted):
+    for key in sorted(checked - emitted):
         gone.append((model, key, view, "/".join(modules)))
 
 for line in unchecked:
@@ -418,6 +427,9 @@ stale = [f"{view} is accepted as a scalar but {module} no longer serves a bare v
          if '"kind": "value"' not in (CORE / module).read_text()]
 for line in stale:
     print(f"  STALE {line}", file=sys.stderr)
+for model, view, keys, files in beside:
+    print(f"beside {view} is decoded by {model} AND subscripted in {', '.join(files)} for "
+          f"{len(keys)} key(s) no model reads, now compared against the producer: {', '.join(keys)}")
 for model, view, keys, files in inline_read:
     print(f"inline {view} is subscripted in {', '.join(files)} rather than decoded by {model}: "
           f"{len(keys)} key(s) compared against the producer ({', '.join(keys)})")
