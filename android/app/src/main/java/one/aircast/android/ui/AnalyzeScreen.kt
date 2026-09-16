@@ -57,11 +57,11 @@ internal fun analyzeNote(
     page: AnalyzePage,
     connected: Boolean,
     px4: Boolean,
-    vibrationAvailable: Boolean,
+    vibration: String?,
 ): String? = when {
     !connected -> null
     page == AnalyzePage.Console && !px4 -> "The shell answers on PX4; this vehicle reports another autopilot"
-    page == AnalyzePage.Vibration && !vibrationAvailable -> "This vehicle is not reporting vibration"
+    page == AnalyzePage.Vibration -> vibration
     else -> null
 }
 
@@ -88,7 +88,7 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
     val vibrationJson by qgcPath(VIBRATION_VIEW)
     val connected = hasVehicle()
     val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
-    val vibrating = remember(vibrationJson) { vibrationJson?.optBoolean("available") == true }
+    val vibrating = remember(vibrationJson) { vibrationCaveat(vibrationJson) }
 
     LazyColumn(modifier.fillMaxSize()) {
         items(AnalyzePage.entries, key = { it.name }) { page ->

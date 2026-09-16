@@ -50,6 +50,12 @@ def count(xml, selectors):
 def main():
     selectors = [tuple(arg.split("=", 1)) for arg in sys.argv[1:] if "=" in arg]
     index = next((int(a) for a in sys.argv[1:] if a.lstrip("-").isdigit()), 0)
+    if not selectors:
+        named = " ".join(a for a in sys.argv[1:] if not a.lstrip("-").isdigit())
+        print(f"no selector in {named!r} - a selector is key=value (text=Settings, id=..., "
+              f"class=...). Without one every node matches and this returns the first, which is "
+              f"a tap on whatever happens to be at the top of the tree.", file=sys.stderr)
+        sys.exit(2)
     xml = sys.stdin.read()
     spot = find(xml, selectors, index)
     if spot is None:

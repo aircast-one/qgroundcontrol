@@ -233,6 +233,13 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
     }
 }
 
+internal fun vibrationCaveat(view: JSONObject?): String? = when {
+    view == null || view.optBoolean("available") -> null
+    view.optText("silentReason") == "notReported" -> "This vehicle is not reporting vibration"
+    view.optText("silentReason").isBlank() -> "This vehicle is reporting only some vibration axes"
+    else -> null
+}
+
 internal fun vibrationEmptyState(view: JSONObject?, reading: VibrationReading?): SilentState? =
     silentState(view) ?: reading?.let { null } ?: partlyReported(view)
 
