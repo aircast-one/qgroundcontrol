@@ -8846,3 +8846,50 @@ check that kills the transport tests the wrong failure.
 answer: the strip is at parity apart from one open decision and four fields the
 core does not serve. The four core-blocked rows are the list to hand the core
 session if a toolbar parity pass is wanted.
+
+### The running list: 133 Qt paths, and what each one becomes, 2026-09-16
+
+`android/tools/qtpaths.py` counts what ends this port: **paths this head asks Qt
+for directly**. Zero is done. The number took three corrections before it could
+be trusted - it called ten core actions Qt work, missed every `map*` wrapper, and
+could not see a path built by interpolation - so the count below is from the tool
+as it stands, and `--expect <delta>` now refuses a commit whose change the tool
+cannot see.
+
+**133 distinct at the baseline, 66 of them template shapes.** A template is not a
+smaller conversion: it becomes a parameterised view or an offer taking an
+argument, which is a different request to the core than a field on a view.
+
+| status | count | what it means |
+|---|---|---|
+| deleted | 3 | nothing read it - the cheapest answer, and it was the first question asked of all 133 |
+| converted | 2 | the core already served it; the head was asking twice |
+| requested | 28 | one-line requests sent to the core session, batched by subject |
+| guided family | 13 | waiting on execute-by-offer-id; converts in one pass |
+| not yet triaged | 87 | mostly plan, fence and settings templates |
+
+**Deleted (3).** `vehicle.flightMode` and `vehicle.id` in `PlanMapContent`, both
+declared and referenced nowhere; `vehicle.id` again in `SetupScreen`. Each held a
+bridge watch for as long as its tab was open. A sweep for the same shape across
+all 133 found no more, and the sweep was checked by inserting one and watching it
+be named.
+
+**Converted (2).** The checklist popup's `vehicle.id` became
+`view.vehicles.activeId`; its `settings.appSettings.useChecklist` became
+`view.preflight.offered`. The second was reading the same operator setting that
+the Checklist button forty lines below already read from the view - one choice,
+two sources, close enough to disagree on screen.
+
+**The rule that made both cheap:** a bridge watch on any path of an object
+subscribes to the whole object, so `vehicle.id` was a subscription to every
+property of the vehicle. The conversions cost nothing and removed two of those.
+
+**Requested (28), by subject:** firmware version text (6 paths), a vehicle GPS
+view (5), heading and home on `view.vehicles` (4), parameter readiness (2),
+camera tracking and thermal (5), the RC override write side (3), and
+`clearMessages` / `motorTest` / `rebootVehicle`. Plus `requestOperatorControl`,
+which wants the same re-run-the-gate execute treatment as the guided thirteen.
+
+**Still to triage: the plan and fence templates**, which are the largest block and
+the one where a head-side substitute is most tempting, since the fence editor
+walks `plan.geoFenceController.circles.*.center` and friends by index.
