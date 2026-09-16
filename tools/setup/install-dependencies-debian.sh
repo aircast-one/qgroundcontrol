@@ -71,7 +71,8 @@ DEBIAN_FRONTEND=noninteractive apt-get -y --quiet install \
 
 DEBIAN_FRONTEND=noninteractive apt-get -y --quiet install \
     libusb-1.0-0-dev \
-    libsodium-dev
+    libsodium-dev \
+    libpcap-dev
 
 # GStreamer
 DEBIAN_FRONTEND=noninteractive apt-get -y --quiet install \
