@@ -227,6 +227,46 @@ jobs:
           mkdir -p out
           cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk "out/AircastQGC-$SHORT.apk"
 
+      # The native head is a separate Gradle project that links the AAR this build
+      # produces. It is built here rather than in its own job because the AAR costs
+      # the whole Qt Android build to make, and that is twenty minutes.
+      - name: Build the AAR the native head links
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: cmake --build . --target aar --config Release
+
+      - name: Set up JDK 17 for the native head
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build the native head
+        working-directory: ${{ github.workspace }}/android
+        env:
+          AIRCAST_QGC_AAR: ${{ runner.temp }}/shadow_build_dir/android-build/AircastQGC.aar
+          AIRCAST_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && env.QT_ANDROID_KEYSTORE_PATH || '' }}
+          AIRCAST_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+          AIRCAST_KEY_ALIAS: ${{ env.QT_ANDROID_KEYSTORE_ALIAS }}
+          AIRCAST_VERSION_NAME: ${{ needs.setup.outputs.version }}
+          AIRCAST_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          ./gradlew --no-daemon :app:testDebugUnitTest :map-spike:testDebugUnitTest
+          ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Collect the native head APK
+        run: |
+          V="${{ needs.setup.outputs.version }}"
+          SHORT="${V#aircast-}"
+          # Signed builds land as app-release.apk, unsigned as app-release-unsigned.apk,
+          # and the name says which so an unsigned artifact cannot be mistaken for a
+          # shippable one on the release page.
+          for f in android/app/build/outputs/apk/release/app-release*.apk; do
+            case "$f" in
+              *unsigned*) cp "$f" "out/AircastAndroid-$SHORT-unsigned.apk" ;;
+              *)          cp "$f" "out/AircastAndroid-$SHORT.apk" ;;
+            esac
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: qgc-android
