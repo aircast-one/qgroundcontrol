@@ -232,6 +232,19 @@ bool MockLink::_allocateMavlinkChannel()
 
 void MockLink::_freeMavlinkChannel()
 {
+    // The worker runs run10HzTasks on its own thread and checks _connected there, but the channel
+    // is freed from whichever thread called disconnect - so the worker passes the guard and is
+    // still inside mavlink_msg_..._pack_chan when the channel goes. mavlink_get_channel_status
+    // then answers null and mavlink_finalize_message_buffer dereferences it: SIGSEGV at 0x10,
+    // preceded in the log by "Invalid Channel Number: 255". Four of six crashes in one night's
+    // runs, in a different suite each time, because the window belongs to teardown rather than to
+    // any test. Every path that frees the channel arrives here, so this is where the worker has to
+    // be stopped - disconnect() alone cannot close it, and the destructor is not the only caller.
+    if (_workerThread && _workerThread->isRunning()) {
+        _workerThread->quit();
+        (void) _workerThread->wait();
+    }
+
     qCDebug(MockLinkLog) << "_freeMavlinkChannel" << _mavlinkAuxChannel;
     if (!_mavlinkAuxChannelIsSet()) {
         Q_ASSERT(!mavlinkChannelIsSet());
