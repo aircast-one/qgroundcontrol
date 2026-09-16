@@ -152,11 +152,18 @@ pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
         true => number.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))),
         false => number.filter(|p| (1..=65535).contains(p)),
     };
-    let error = match (ok, serial, kind.as_str(), host.trim().is_empty()) {
-        (None, true, _, _) => Some("Choose one of the rates the radio offers."),
-        (None, false, _, _) => Some("Port must be a number between 1 and 65535."),
-        (Some(_), true, _, true) => Some("A serial link needs the device to open."),
-        (Some(_), _, "tcp", true) => Some("A TCP link needs the address of the device to call."),
+    // One flag for two fields left a head no way to tell which one it was about, so a field gated
+    // on valid refuses whichever field the operator happens to be editing: an empty TCP host made
+    // every port entry fail with a sentence about the host, and an absent port made the host
+    // unrepairable with a sentence about the port. errorField names the field so a head gates that
+    // one and leaves the other alone. It is never null while valid is false - a check about the
+    // pair rather than either field would need its own token, because a head reading null as
+    // "nothing is wrong" would gate nothing at all.
+    let error: Option<(&str, &str)> = match (ok, serial, kind.as_str(), host.trim().is_empty()) {
+        (None, true, _, _) => Some(("port", "Choose one of the rates the radio offers.")),
+        (None, false, _, _) => Some(("port", "Port must be a number between 1 and 65535.")),
+        (Some(_), true, _, true) => Some(("host", "A serial link needs the device to open.")),
+        (Some(_), _, "tcp", true) => Some(("host", "A TCP link needs the address of the device to call.")),
         _ => None,
     };
     let name = match (serial, host.trim().is_empty()) {
@@ -164,12 +171,48 @@ pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
         (false, true) => format!("{} {port}", kind.to_uppercase()),
         (false, false) => format!("{} {}:{port}", kind.to_uppercase(), host.trim()),
     };
-    json!({ "kind": "object", "class": "LinkForm", "type": kind, "name": name, "valid": error.is_none(), "error": error.unwrap_or("") })
+    json!({
+        "kind": "object",
+        "class": "LinkForm",
+        "type": kind,
+        "name": name,
+        "valid": error.is_none(),
+        "error": error.map(|(_, text)| text).unwrap_or(""),
+        "errorField": error.map(|(field, _)| field),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_form_says_which_field_is_wrong_rather_than_only_that_something_is() {
+        let form = |kind: &str, host: &str, port: &str| link_form_view(&Nothing, &[kind.to_string(), host.to_string(), port.to_string()]);
+
+        let no_host = form("tcp", "", "5760");
+        assert_eq!((no_host["valid"].clone(), no_host["errorField"].clone()), (json!(false), json!("host")), "a head gating its PORT field on the form-level flag refuses every port entry while the sentence talks about the host, which is how an operator ends up unable to fix the field the message names");
+
+        let no_port = form("tcp", "127.0.0.1", "");
+        assert_eq!((no_port["valid"].clone(), no_port["errorField"].clone()), (json!(false), json!("port")), "and the mirror: a link whose port reads as absent left the HOST uneditable, blocked by a complaint about a field the operator is not touching");
+
+        assert_eq!(form("serial", "", "57600")["errorField"], "host", "a serial link keeps its device path in host, so the field to blame is host even though the sentence says device");
+        assert_eq!(form("serial", "/dev/tty.usb", "0")["errorField"], "port", "a rate of zero is the port field's problem - with no radio attached there is no rate list to check against, so this is the only bad rate a fake can present");
+
+        let good = form("tcp", "127.0.0.1", "5760");
+        assert_eq!((good["valid"].clone(), good["errorField"].clone()), (json!(true), Value::Null));
+
+        [("tcp", "", "5760"), ("tcp", "127.0.0.1", ""), ("tcp", "", ""), ("serial", "", "0"), ("udp", "", "0"), ("udp", "", "70000")]
+            .iter()
+            .for_each(|(kind, host, port)| {
+                let refused = form(kind, host, port);
+                assert_ne!(
+                    refused["errorField"],
+                    Value::Null,
+                    "errorField is null only when there is no error. A check about the pair rather than either field would need its own token: a head reading null as nothing-is-wrong would gate nothing at all, which is the failure this field exists to prevent. Refused form: {kind} {host} {port}"
+                );
+            });
+    }
 
     #[test]
     fn a_configuration_is_classified_by_its_settings_page() {
@@ -276,6 +319,7 @@ mod tests {
             fn watch(&self, _p: &[String]) {}
         }
         let bad_port = link_form_view(&Nothing, &["udp".into(), "".into(), "70000".into()]);
+        assert_eq!(bad_port["errorField"], "port");
         assert_eq!(bad_port["valid"], false);
         let no_host = link_form_view(&Nothing, &["tcp".into(), "".into(), "5760".into()]);
         assert!(no_host["error"].as_str().unwrap().contains("TCP"));

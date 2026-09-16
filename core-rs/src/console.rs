@@ -29,7 +29,7 @@ pub fn console_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "last": lines.last(),
         "emptyReason": match (lines.is_empty(), connected) {
             (false, _) => Value::Null,
-            (true, false) => json!("Connect to a vehicle to open a shell on it."),
+            (true, false) => json!("Connect a vehicle to open a shell on it."),
             (true, true) => json!("The vehicle has printed nothing."),
         },
     })
