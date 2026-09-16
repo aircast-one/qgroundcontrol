@@ -388,6 +388,7 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("readOnly"),
         QStringLiteral("valueEqualsDefault"),
         QStringLiteral("longDescription"),
+        QStringLiteral("visible"),
     };
 
     QJsonObject json;

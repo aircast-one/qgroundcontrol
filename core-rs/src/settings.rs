@@ -87,6 +87,7 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
     let facts: Vec<Value> = object(&backend.get(&path)).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
     let shown: Vec<Value> = facts
         .iter()
+        .filter(|f| f.get("visible").and_then(Value::as_bool) != Some(false))
         .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n)))
         .map(|f| decode(f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .collect();
@@ -191,6 +192,52 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_setting_qgc_hides_on_this_platform_is_not_offered_as_an_editable_row() {
+        struct Group(Vec<Value>);
+        impl Backend for Group {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "settings.appSettings" => json!({ "kind": "object", "facts": self.0 }),
+                    _ => json!({ "kind": "object", "facts": [] }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let names = |facts: Vec<Value>| -> Vec<String> {
+            settings_view(&Group(facts), &["General".to_string()])["sections"][0]["subsections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|sub| sub["controls"].as_array().unwrap().clone())
+                .filter_map(|c| c["name"].as_str().map(str::to_string))
+                .collect()
+        };
+        let fact = |name: &str, visible: Option<bool>| {
+            let mut f = json!({ "kind": "fact", "name": name, "typeIsString": true });
+            visible.into_iter().for_each(|v| { f["visible"] = json!(v); });
+            f
+        };
+
+        assert_eq!(
+            names(vec![fact("savePath", Some(false)), fact("audioMuted", Some(true))]),
+            vec!["audioMuted"],
+            "AppSettings.cc:134 calls setVisible(false) on savePath under Q_OS_ANDROID, and :102 then hardcodes userHasModifiedSavePath = false so the runtime path overwrites whatever was stored. Serving the row let an operator set a save directory, watch the fact read it back, and find it silently reverted on the next launch - the write succeeded and was undone with nothing said"
+        );
+
+        assert_eq!(
+            names(vec![fact("audioMuted", None)]),
+            vec!["audioMuted"],
+            "absent must mean visible. Every fact served by a bridge without this property in its allowlist arrives with no visible key, and a filter reading absence as hidden empties every settings page at once - which is how this whole class of field goes wrong in the safe-looking direction"
+        );
+
+        assert_eq!(names(vec![fact("savePath", Some(true))]), vec!["savePath"], "and a fact QGC does show is shown");
     }
 
     #[test]

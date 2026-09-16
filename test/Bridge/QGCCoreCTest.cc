@@ -7,6 +7,7 @@
 #include <QTemporaryDir>
 #include "QGCApplication.h"
 #include "QGCHostNotices.h"
+#include "SettingsFact.h"
 #include "QGCMapUrlEngine.h"
 #include "Vehicle.h"
 #include "Fact.h"
@@ -1508,13 +1509,24 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
     const QJsonObject fact = take(qgc_bridge_get("settings.appSettings.audioMuted"));
     QCOMPARE(fact.value(QStringLiteral("kind")).toString(), QStringLiteral("fact"));
 
-    const QMetaObject &meta = Fact::staticMetaObject;
-    QVERIFY2(meta.propertyCount() > 30, "the metaobject answered, so an empty sweep below would mean nothing");
+    // Fact::staticMetaObject alone walked the BASE class, so every property a subclass adds sat
+    // outside this check and it stayed green about them. SettingsFact::visible was unserved that
+    // whole time - QGC hides Application save directory on Android with it, and because the flag
+    // never reached a head the row was drawn, accepted a write, and had it silently overwritten by
+    // the runtime path on the next launch. A guard that enumerates a base class is the same
+    // mistake as a grep window that excludes the line: the sweep ran and the subject was outside it.
+    QStringList declared;
+    for (const QMetaObject *meta : { &Fact::staticMetaObject, &SettingsFact::staticMetaObject }) {
+        for (int property = meta->propertyOffset(); property < meta->propertyCount(); ++property) {
+            declared.append(QString::fromUtf8(meta->property(property).name()));
+        }
+    }
+    QVERIFY2(declared.count() > 30, "the metaobjects answered, so an empty sweep below would mean nothing");
+    QVERIFY2(declared.contains(QStringLiteral("visible")), "SettingsFact's own properties have to be in the sweep, or a subclass can add one and nothing here notices");
 
     QStringList missing;
     QStringList stale;
-    for (int property = meta.propertyOffset(); property < meta.propertyCount(); ++property) {
-        const QString name = QString::fromUtf8(meta.property(property).name());
+    for (const QString &name : declared) {
         const bool served = fact.contains(name);
         if (!served && !kNotServed.contains(name)) {
             missing.append(name);
