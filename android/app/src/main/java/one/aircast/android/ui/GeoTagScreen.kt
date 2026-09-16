@@ -29,6 +29,13 @@ private fun telemetryLogs(savePath: String): List<TelemetryLog> =
         .sortedByDescending { it.lastModified() }
         .map { TelemetryLog(path = it.absolutePath, name = it.name, bytes = it.length()) }
 
+internal const val TELEMETRY_LOG_SETTING = "Save telemetry Log after each flight"
+internal const val TELEMETRY_LOG_PAGE = "MAVLink"
+
+internal fun noTelemetryLogsText(): String =
+    "No telemetry logs on this device yet. Turn on \"$TELEMETRY_LOG_SETTING\" under " +
+        "Settings, $TELEMETRY_LOG_PAGE, then fly."
+
 @Composable
 fun GeoTagScreen(modifier: Modifier = Modifier) {
     val savePath by qgcString("settings.appSettings.savePath")
@@ -50,8 +57,7 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
 
     if (savePath.isNotBlank() && logs.isEmpty()) {
         Text(
-            text = "No telemetry logs on this device yet. Turn on \"Save telemetry Log after " +
-                "each flight\" under MAVLink and telemetry logs, then fly.",
+            text = noTelemetryLogsText(),
             style = MaterialTheme.typography.bodyLarge,
             modifier = modifier.fillMaxWidth().padding(20.dp),
         )
