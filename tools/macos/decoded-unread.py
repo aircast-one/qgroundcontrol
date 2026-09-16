@@ -1,4 +1,5 @@
 import pathlib, re, collections, sys
+import functools
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from sweepguard import anchored, refuse
 from importlib.machinery import SourceFileLoader
@@ -130,3 +131,55 @@ print(f"\n{len(dead)} of {len(rows)} decoded fields are read by NOTHING and unac
 print("anywhere, and own=2 is the declaration plus the init line that assigns it. own>2 means a")
 print("sibling in the same file reads it unqualified -- FleetVehicle.active sits at own=3 because")
 print("listTitle reads it, which is the fix that put it there.")
+
+# A probeState body is an INSTRUMENT, not a surface, so a field whose only reader is one is
+# drawn nowhere -- and this sweep counts it as read, which means every field exported to a probe
+# goes quietly invisible here. That is an instrument that weakens as the head gains probes: doing
+# more of the thing being measured makes the measurement worse. Reported rather than folded in.
+#
+# Only names declared in ONE file can be answered at all. A shared name has its read count
+# inflated by the other types carrying it -- VibrationReading.units reads as used because
+# SettingsControl, ItemSpeed and Parameter all have a `units`, and none of those thirteen dotted
+# mentions is this one. That is the same collision the header warns about, counted here instead
+# of described.
+def _probe_bodies(text):
+    found = []
+    for opener in re.finditer(r'func probeState\(\)[^{]*\{', text):
+        start, depth = opener.end() - 1, 0
+        for at in range(start, len(text)):
+            if text[at] == '{':
+                depth += 1
+            elif text[at] == '}':
+                depth -= 1
+                if depth == 0:
+                    found.append(text[start:at + 1])
+                    break
+    return found
+
+
+_members = collections.defaultdict(set)
+for _file, _text in raw.items():
+    for _hit in re.finditer(r'\b(?:let|var)\s+([a-zA-Z_]\w*)\s*[:=]', _text):
+        _members[_hit.group(1)].add(_file)
+_probes = "\n".join(body for _text in raw.values() for body in _probe_bodies(_text))
+_elsewhere = "\n".join(
+    functools.reduce(lambda kept, body: kept.replace(body, ""), _probe_bodies(_text), _text)
+    for _text in raw.values())
+
+
+def _qualified(name, text):
+    return len(re.findall(r'\.' + re.escape(name) + r'(?![A-Za-z0-9_])', text))
+
+
+_names = {name for _, _, _, _, name, _ in rows}
+_answerable = {name for name in _names if len(_members.get(name, ())) <= 1}
+_probe_only = sorted(name for name in _answerable
+                     if _qualified(name, _probes) > 0 and _qualified(name, _elsewhere) == 0)
+print(f"\n{len(_probe_only)} of the {len(_answerable)} decoded fields whose name is declared in one "
+      f"file are read ONLY by a probeState body, so they are accounted for by an instrument rather "
+      f"than by a surface:")
+for _name in _probe_only:
+    print(f"  PROBE ONLY {_name}")
+print(f"the other {len(_names) - len(_answerable)} share a name with a member of another type, and "
+      f"this question cannot be asked of them by matching a name at all -- not a clean result, an "
+      f"unasked one")
