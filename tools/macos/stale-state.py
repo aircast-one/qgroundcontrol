@@ -63,6 +63,21 @@ ACCEPTED = {
         "an empty name sets addError and stops -- not a there-is-no-selection reset. newName is "
         "cleared on SUCCESS, which is a form emptying itself after it was used, the opposite of "
         "a value outliving its subject",
+    ("MapClick.swift", "scaleBar"): "not the vehicle's fact at all, so there is no subject for it "
+        "to outlive. It comes from MissionMap.lastScale[\"fly\"] -- the map viewport's own scale, "
+        "written by the map view -- and FlyWindow.swift:948 draws it as MapScaleView(bar:). A map "
+        "has a scale with no vehicle connected, the same way SettingsStore.selected is the "
+        "operator's choice rather than the tree's state",
+    ("Mission.swift", "uploadWarning"): "a VALIDATION early-return, not a there-is-no-selection "
+        "reset: uploadToVehicle's guard is `guard let check = preCheck()` and its else says so on "
+        "writeFailure. uploadWarning is set on the path where the check SUCCEEDED and warrants a "
+        "warning. Same shape as PlanWindow.replacing and ConnectionsSection.newName",
+    ("Parameters.swift", "loading"): "cannot be stale-true on the path the guard takes. load() "
+        "opens with `guard !loading else { return }` -- one line, which GUARD does not match, so "
+        "the guard actually analysed is the parametersReady one further down. Everything reaching "
+        "that second guard passed the first, so loading is false there, and `loading = true` is "
+        "set AFTER it (Parameters.swift:52, cleared at :64). The value it outlives with is the "
+        "only value it can hold",
     ("PlanWindow.swift", "replacing"): "the same validation shape: startPlan() returns early when "
         "the plan already has items, and otherwise opens a confirmation by naming what would be "
         "replaced. A guard that refuses is not a guard that clears",
@@ -93,13 +108,15 @@ def functions(text):
 
 
 def blocks(text):
+    # EVERY guard-else in the function, not just the first. GUARD.search() took one, and three of
+    # the twenty-three matched functions have two -- including MavlinkInspector.refresh, whose
+    # SECOND guard is `guard let current = listed.first(where: \.selected)`, exactly the
+    # no-selection reset this check exists to find, never once looked at.
     for name, body in functions(text):
-        guard = GUARD.search(body)
-        if not guard:
-            continue
-        cleared = set(ASSIGNED.findall(guard.group(1)))
-        after = set(ASSIGNED.findall(body[guard.end():]))
-        yield name, cleared, after
+        for guard in GUARD.finditer(body):
+            cleared = set(ASSIGNED.findall(guard.group(1)))
+            after = set(ASSIGNED.findall(body[guard.end():]))
+            yield name, cleared, after
 
 
 # The untriaged backlog, from two separate days of finding this check blind.
