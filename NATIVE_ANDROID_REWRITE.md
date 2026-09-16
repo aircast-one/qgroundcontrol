@@ -8890,6 +8890,21 @@ camera tracking and thermal (5), the RC override write side (3), and
 `clearMessages` / `motorTest` / `rebootVehicle`. Plus `requestOperatorControl`,
 which wants the same re-run-the-gate execute treatment as the guided thirteen.
 
+**The first question for every path, before any conversion: has any rig state ever
+made this field non-null?** Four served fields looked absent this afternoon because
+no rig had met their condition - the flying half of `flyState`, the camera's
+tracking block, the second link, and the whole telemetry object. The knobs that
+answer it now exist: `FLYING`, `CAM_TRACKING`, `SECOND_PORT`, `RADIO_LINK`. It is
+cheaper than reading either side's source and it is the step I keep skipping.
+
+**And the count went up once, which is worth recording as a debt rather than
+hiding.** Arming camera tracking needs `trackingEnabled` written on the camera -
+a ground-station flag with no served equivalent, without which QGC discards the
+tracked rectangle. So `8da21c66e` added a Qt path while the job is removing them:
+132, not 131. It is on the request list now. The tool would have caught it at the
+time; I did not run it on that commit, which is the whole reason `--expect`
+exists.
+
 **Still to triage: the plan and fence templates**, which are the largest block and
 the one where a head-side substitute is most tempting, since the fence editor
 walks `plan.geoFenceController.circles.*.center` and friends by index.
