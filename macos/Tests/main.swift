@@ -3570,11 +3570,12 @@ func checkTheGeotagButtonOffersTheRightGo() {
     var done = GeoTagJob()
     done.progress = 100
     expect(done.actionTitle, "Start Tagging",
-           "but a FINISHED run does not: there is nothing to retry, and start() only cancels the "
-           + "lingering worker thread when failed is true -- so a Try Again on a success would "
-           + "call startTagging on a QThread still running, which is a no-op with a warning and "
-           + "no visible effect. CONSTRUCTED: progress 100 with running false, which only a "
-           + "completed run reaches")
+           "but a FINISHED run does not, because there is NOTHING TO RETRY. Since 30b647386 "
+           + "connected taggingComplete to QThread::quit a successful run ends its thread, so a "
+           + "Try Again there would start a SECOND RUN over images already tagged rather than "
+           + "doing nothing -- which is the opposite of the reason this assertion first carried, "
+           + "and worse. CONSTRUCTED: progress 100 with running false, which only a completed "
+           + "run reaches")
     expect(GeoTagJob().actionTitle, "Start Tagging", "and neither does a job nobody has run")
 
     var chosen = GeoTagJob()

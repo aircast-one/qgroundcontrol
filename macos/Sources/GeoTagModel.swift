@@ -44,9 +44,11 @@ struct GeoTagJob: Equatable {
     // a new idea.
     //
     // "Try Again" is offered only after a FAILURE, never after a finished run: a completed tagging
-    // has nothing to retry, and start() only cancels the lingering worker thread when failed is
-    // true, so a button offering to retry a success would invoke startTagging on a QThread that is
-    // still running -- a no-op with a warning and no visible effect at all.
+    // has NOTHING TO RETRY. The reason first written here was that such a press would be inert --
+    // startTagging on a QThread still running, a warning and no visible effect -- and that was
+    // true for exactly one commit. 30b647386 connected taggingComplete to QThread::quit, so a
+    // successful run now ends its thread and a Try Again there would start a SECOND RUN over
+    // images already tagged. The word was right and its reason described a version.
     var actionTitle: String { failed ? "Try Again" : "Start Tagging" }
 
     // The placeholder is the DESTINATION, not an instruction: with images chosen it is where the
