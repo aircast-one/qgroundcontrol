@@ -178,3 +178,12 @@ Measured reasons a path is still here. Preserved across regeneration by
   `view.control(...)` would leave the write spelling the Qt path beside it — one setting, two
   spellings, which is the drift this migration exists to remove. They move when the core claims
   the write.
+
+- **The two converted settings reads are OBSERVED, not just compiled.** On the rig at 16:2x both
+  paths answered live through the core: `view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)`
+  returned `kind: object, name: keepMapCenteredOnVehicle, value: false, label: "Keep map centered on
+  vehicle"`, and the `goToLocationRequiresConfirmInGuided` one returned `value: true` with its own
+  label. A path the core could not serve answers `kind: null`, so an answering read is the thing that
+  separates a working conversion from a silent fall back to the head's default — which matters here
+  because both served values happen to equal the head's fallbacks, and the values alone distinguish
+  nothing.
