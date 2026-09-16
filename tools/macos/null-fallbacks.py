@@ -43,6 +43,17 @@ PORT = 8777
 # and a gate that moves has to move this line with it. Without this table the steady
 # state is four hits nobody reads, which is how an instrument stops being believed.
 ACCEPTED = {
+    ("LinkFormCheck", "errorField"): "MEASURED LIVE over 13 tuples, and the `?? \"\"` is a "
+        "syntactic bridge rather than a substituted value: Field(rawValue: \"\") is nil, because "
+        "the enum spells only host and port, so the null arrives as nil and not as a field name. "
+        "links.rs:180 serves errorField as error.map(...), so it is null EXACTLY when valid is "
+        "true -- measured across both error classes and udp/tcp/serial, every valid:false tuple "
+        "named a field and every valid:true one sent null. accepted(_:editing:) never reaches the "
+        "nil arm on a refused form, and on an accepted one it returns early. The arm is kept "
+        "because it fails CLOSED: the core's own test at links.rs:205-215 pins errorField "
+        "non-null for every refusal and says a pair-level check would need its own token, so a "
+        "head reading nil as nothing-is-wrong would write into a form the core refused -- which "
+        "is 2a958acd6 exactly.",
     ("PlanReadiness", "reason"): "MEASURED at HEAD. plan.rs:145 serves the reason a plan is not "
         "ready and null when it IS -- readiness_json's `reason` is None for state 0 -- so null "
         "means there is nothing to explain, and the empty string is the same statement. The "
