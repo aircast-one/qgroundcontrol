@@ -48,4 +48,15 @@ class CameraTextTest {
         assertNull(cameraText(null))
         assertNull(cameraText(stats("""{"available":false}""")))
     }
+
+    @Test
+    fun `an unavailable survey has no stats to show`() {
+        assertNull(surveyStats(null))
+        assertNull(
+            "available false means the core could not compute them; a stats block built anyway " +
+                "would show blanks as though they were measurements",
+            surveyStats(JSONObject("""{"available":false,"areaText":"12 ha"}""")),
+        )
+    }
+
 }

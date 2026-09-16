@@ -508,4 +508,14 @@ class SurveyStatsRowTest {
     fun `an item with no survey stats is unchanged`() {
         assertEquals("0.0 m to 40.0 m · 171 photos", itemDetail(survey, null))
     }
+
+    @Test
+    fun `nothing to say is null rather than a line saying nothing`() {
+        assertNull("a waypoint taking no photographs must not draw a photo line", photosText(0))
+        assertNull(photosText(-1))
+        assertNull("an item that does not hold must not draw a hold line", holdText(0.0))
+        assertNull(holdText(Double.NaN))
+        assertNull(holdText(-3.0))
+    }
+
 }

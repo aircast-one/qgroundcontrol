@@ -4,6 +4,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class LandingCutTest {
@@ -67,4 +68,14 @@ class LandingCutTest {
             planShape(plan(settings, rtl, placed(44.2))),
         )
     }
+
+    @Test
+    fun `an item with no usable coordinate is not plotted`() {
+        assertNull("Mission Start carries no coordinate at all", placed(JSONObject("""{"kind":"x"}"""), "coordinate"))
+        assertNull(
+            "a coordinate the core could not resolve arrives as nulls, and NaN is not plottable",
+            placed(JSONObject("""{"coordinate":{"latitude":null,"longitude":null}}"""), "coordinate"),
+        )
+    }
+
 }

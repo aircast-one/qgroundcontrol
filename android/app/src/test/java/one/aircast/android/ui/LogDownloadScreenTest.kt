@@ -154,4 +154,11 @@ class LogSavePathTest {
     fun `an empty path with no reason stays silent rather than printing Saved to nowhere`() {
         assertNull(savedToText(logs(true, "\"\"", "null")))
     }
+
+    @Test
+    fun `a timestamp that parses as neither shape is null rather than a wrong date`() {
+        assertNull(logLocalTime(""))
+        assertNull("a made-up date must not be shown beside a real log", logLocalTime("not a date"))
+    }
+
 }
