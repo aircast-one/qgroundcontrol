@@ -136,6 +136,18 @@ struct LinkFormCheck: Equatable {
     let error: String
     let name: String
 
+    // A READ THAT DID NOT ANSWER IS NOT A CHECK THAT PASSED. The fallback used to be
+    // valid:true with no sentence, so an address nobody could check was accepted exactly like one
+    // that had passed -- the defect the header above says this type exists to prevent, committed
+    // by its own fallback. Unreachable through the core, which always answers with a LinkForm:
+    // measured, every malformed argument list -- view.linkForm(), (udp), (,,) -- still returns
+    // class LinkForm and an error string. It is reachable through the bridge read itself failing,
+    // which is what a renamed view looks like from here.
+    static let unchecked = LinkFormCheck(
+        valid: false,
+        error: "This address has not been checked.",
+        name: "")
+
     static let unencodable = LinkFormCheck(
         valid: false,
         error: "An address containing a comma or a bracket cannot be checked yet.",
@@ -158,6 +170,15 @@ struct LinkFormCheck: Equatable {
     // at paren depth zero. A host is free text, so unlike the tlog path this is something an
     // operator can type by accident -- and an address arriving truncated at a comma would be
     // validated as a different address and answered confidently about the wrong one.
+    // A CHECK IS ONLY WORTH ASKING IF ITS ANSWER IS OBEYED. The port field guarded on `valid` and
+    // the host field did not -- it drew the core's refusal in red and wrote the address anyway.
+    // For a TCP link with the host cleared that is exactly the state the header above says this
+    // type exists to prevent: measured, view.linkForm(tcp,,5760) answers valid false, "A TCP link
+    // needs the address of the device to call.", and the editor showed that sentence while
+    // committing the empty host. The gate lives here because both call sites are in
+    // ConnectionsSection, which swift-checks.sh does not compile.
+    func accepted(_ typed: String) -> String? { valid ? typed : nil }
+
     static func encodable(_ parts: String...) -> Bool {
         parts.allSatisfy { !$0.contains(",") && !$0.contains("(") && !$0.contains(")") }
     }

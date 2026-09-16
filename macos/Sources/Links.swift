@@ -106,7 +106,7 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
     func checkForm(_ type: String, _ host: String, _ port: String) -> LinkFormCheck {
         guard LinkFormCheck.encodable(type, host, port) else { return .unencodable }
         return LinkFormCheck(Bridge.group("view.linkForm(\(type),\(host),\(port))"))
-            ?? LinkFormCheck(valid: true, error: "", name: "")
+            ?? .unchecked
     }
 
     func setHost(_ link: LinkConfig, _ host: String) {

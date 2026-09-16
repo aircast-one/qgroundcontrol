@@ -147,7 +147,7 @@ struct ConnectionsSection: View {
             LabelledField(label: "Port", value: link.portText) { typed in
                 let check = store.checkForm(link.typeLabel, link.host, typed)
                 store.formError = check.error
-                guard check.valid, let port = Int(typed) else { return }
+                guard let entry = check.accepted(typed), let port = Int(entry) else { return }
                 store.setPort(link, port)
             }
             if !store.formError.isEmpty {
@@ -165,7 +165,8 @@ struct ConnectionsSection: View {
                 LabelledField(label: "Host", value: link.host) { typed in
                     let check = store.checkForm(link.typeLabel, typed, link.portText)
                     store.formError = check.error
-                    store.setHost(link, typed)
+                    guard let host = check.accepted(typed) else { return }
+                    store.setHost(link, host)
                 }
                 portField(link)
             case .portOnly:

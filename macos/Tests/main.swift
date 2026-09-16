@@ -5442,6 +5442,18 @@ func checkTheLinkEditorStopsDroppingWhatItRejects() {
            "and an empty host on a TCP link was accepted outright, which is the exact state that "
            + "later raises the editAddress remedy -- the editor was creating the failure the row "
            + "exists to explain")
+    // MEASURED through the parameterised view: view.linkForm(tcp,,5760) answers valid false with
+    // that sentence. The PORT field guarded on it. The HOST field drew the sentence in red and
+    // called setHost with the empty string in the next line, so the refusal was displayed and
+    // disobeyed in the same breath -- the half of this fix that never landed.
+    expect(missingHost?.accepted("") == nil,
+           "A CHECK IS ONLY WORTH ASKING IF ITS ANSWER IS OBEYED. A refused entry yields nothing "
+           + "to write, so the caller cannot show the refusal and commit the value anyway")
+    expect(LinkFormCheck(["class": "LinkForm", "valid": true as NSNumber,
+                          "error": "", "name": "TCP 127.0.0.1:5760"])?
+            .accepted("127.0.0.1") ?? "", "127.0.0.1",
+           "and an accepted entry comes back to be written, so the gate costs a valid address "
+           + "nothing")
 
     expect(LinkFormCheck.encodable("tcp", "127.0.0.1", "5760"),
            "an ordinary address goes through the view's argument list unharmed")
@@ -5453,9 +5465,19 @@ func checkTheLinkEditorStopsDroppingWhatItRejects() {
            "so it refuses rather than guessing, and says why")
 
     expect(LinkFormCheck(["class": "Something else"]) == nil,
-           "an answer that is not a LinkForm is not one, and the caller treats that as no opinion "
-           + "rather than as a rejection -- a validator that fails closed on its own absence would "
-           + "make every field unusable the moment the view went missing")
+           "an answer that is not a LinkForm is not one")
+    // THE REASON I WROTE HERE FOR FAILING OPEN WAS A COST I INVENTED FOR A CASE THE PRODUCER
+    // CANNOT MAKE. It said a validator failing closed "would make every field unusable the moment
+    // the view went missing" -- but the core never makes it go missing: measured, view.linkForm(),
+    // (udp), (udp,127.0.0.1) and (,,) all still answer class LinkForm with an error string. What
+    // IS reachable is the bridge read failing, and there the old fallback reported valid with no
+    // sentence, which is an unchecked address accepted exactly like a passed one.
+    expect(LinkFormCheck.unchecked.valid == false,
+           "SO A READ THAT DID NOT ANSWER IS NOT A CHECK THAT PASSED, and the caller refuses "
+           + "rather than writing an address nothing has looked at")
+    expect(!LinkFormCheck.unchecked.error.isEmpty,
+           "and it says so, because a silent refusal is the no-write-no-sentence failure this "
+           + "whole type was built to end")
 }
 checkTheLinkEditorStopsDroppingWhatItRejects()
 
