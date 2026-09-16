@@ -8,6 +8,7 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
     @Published private(set) var fields: [MavlinkField] = []
     @Published private(set) var systemId = 0
     @Published private(set) var listening = false
+    @Published private(set) var emptySentence: String?
 
     private var poll: Timer?
 
@@ -28,6 +29,8 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
 
     func refresh() {
         let view = Bridge.group("view.inspector")
+        let sentence = view["emptyText"] as? String
+        if sentence != emptySentence { emptySentence = sentence }
         let rates = MessageRateChoice.list(view["rateChoices"])
         if !rates.isEmpty, rates != rateChoices { rateChoices = rates }
 
@@ -62,6 +65,7 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["systemId": systemId, "listening": listening, "count": messages.count,
+         "emptyText": emptySentence ?? "\u{2014}",
          "selected": selected?.title ?? "",
          "rateChoices": rateChoices.map(\.title),
          "messages": messages.prefix(6).map {

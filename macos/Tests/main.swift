@@ -5747,24 +5747,26 @@ checkSmartRTLCountsAsFlyingSomethingOfItsOwn()
 
 
 func checkTheInspectorSaysWhichSilenceItIsIn() {
-    expect(InspectorList.emptyText(listening: false, count: 0) ?? "", "No vehicle is talking yet.",
-           "with no active system the page names the missing vehicle, which is the sentence that "
-           + "was already drawn -- as a literal at a call site swift-checks does not compile, so it "
-           + "could have been swapped for the other one with nothing failing")
-    expect(InspectorList.emptyText(listening: true, count: 0) ?? "",
-           "Connected. No messages have arrived yet.",
-           "and a connected system with nothing received yet is a DIFFERENT silence. This one drew "
-           + "no sentence at all: an empty card under a note promising every message the system "
-           + "sends. MAVLinkInspectorController.cc:66 connects messageReceived in its constructor, "
-           + "so it starts empty and fills on the next frame -- measured live, view.inspector "
-           + "answered messages: [] with a vehicle connected")
-    expect(InspectorList.emptyText(listening: true, count: 1) == nil,
-           "one message is a list and the list draws itself")
-    expect(InspectorList.emptyText(listening: false, count: 1) == nil,
-           "and a list that arrived is drawn even if the system has since gone, rather than "
-           + "replaced by a sentence about a vehicle that was talking a moment ago")
-    expect(InspectorList.emptyText(listening: true, count: 0) != InspectorList.emptyText(listening: false, count: 0),
-           "the two silences never collapse to one sentence")
+    expect(InspectorList.emptyText(served: "Waiting for this vehicle's first message\u{2026}",
+                                   count: 0) ?? "",
+           "Waiting for this vehicle's first message\u{2026}",
+           "the sentence is the core's, drawn verbatim -- this head no longer spells either "
+           + "silence, it only decides that one is drawn")
+    expect(InspectorList.emptyText(served: "", count: 0) == nil,
+           "the empty string is their answer for rows present, and it means draw the list -- NOT "
+           + "an empty sentence in a card")
+    expect(InspectorList.emptyText(served: "Waiting\u{2026}", count: 9) ?? "", "Waiting\u{2026}",
+           "a served sentence wins over a row count that contradicts it, so no second gate can "
+           + "creep back in. CONSTRUCTED: the core cannot make this pair -- it serves \"\" once "
+           + "there are rows -- and it is the only input that separates gating on their text from "
+           + "gating on count as well, which is why it is asserted rather than the agreeing pair "
+           + "I first wrote, which passed under both versions")
+    expect(InspectorList.emptyText(served: nil, count: 0) ?? "",
+           VehicleSetupText.connectPrompt(for: "MAVLink traffic"),
+           "a producer that served no sentence is a THIRD state, not rows-present: falling through "
+           + "to the list there draws the bare empty card this gate exists to prevent")
+    expect(InspectorList.emptyText(served: nil, count: 4) == nil,
+           "but rows already read are drawn even when the sentence did not arrive with them")
 }
 checkTheInspectorSaysWhichSilenceItIsIn()
 

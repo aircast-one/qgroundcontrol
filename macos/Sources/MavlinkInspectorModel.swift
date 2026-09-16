@@ -112,22 +112,26 @@ struct MavlinkField: Identifiable, Equatable {
 }
 
 enum InspectorList {
-    // Two different silences, and only one of them had a sentence. `listening` is true the moment
-    // mavlinkInspector.activeSystem is an object, which is as soon as a vehicle exists; `messages`
-    // stays empty until the controller has received a frame. MAVLinkInspectorController.cc:66
-    // connects messageReceived in its CONSTRUCTOR, so it begins empty and fills on the next frame
-    // -- measured live, view.inspector answered messages: [] with a vehicle connected and the page
-    // open. In that window the panel drew an empty 260-point card under a note promising "Every
-    // message system 1 is sending", which is a head that looks broken rather than one that is
-    // waiting.
+    // Two different silences, and only one of them had a sentence. The core now spells both
+    // (inspector.rs:41): "Connect a vehicle to inspect its MAVLink traffic." when no system is
+    // there, "Waiting for this vehicle's first message..." when one is and nothing has arrived --
+    // MAVLinkInspectorController.cc:66 connects messageReceived in its CONSTRUCTOR, so the list
+    // begins empty and fills on the next frame. Which silence the vehicle is in is a vehicle fact
+    // and theirs; WHEN a sentence is drawn at all is display policy and stays here.
     //
-    // Both sentences live here rather than at the call site, which swift-checks does not compile:
-    // the no-vehicle one was already a literal there and could have been swapped for the other
-    // with nothing failing.
-    static func emptyText(listening: Bool, count: Int) -> String? {
-        guard count == 0 else { return nil }
-        return listening
-            ? "Connected. No messages have arrived yet."
-            : "No vehicle is talking yet."
+    // Gated on their text and not on the row count, so there is one source of truth: they serve ""
+    // -- not null -- once there are rows, and that empty string IS "draw the list". A second gate
+    // on count would be a branch whose arms agree until they disagree, and then the head would be
+    // picking which of the two to believe.
+    //
+    // nil is the third state and is NOT "there are rows": it means the producer served no sentence,
+    // which at HEAD happens only when the view itself failed to read. Falling through to the list
+    // there would draw the bare empty card this whole enum exists to prevent, so it falls back to
+    // the prompt the vibration and console panels already use for their unreadable states.
+    static func emptyText(served: String?, count: Int) -> String? {
+        guard let served else {
+            return count == 0 ? VehicleSetupText.connectPrompt(for: "MAVLink traffic") : nil
+        }
+        return served.isEmpty ? nil : served
     }
 }
