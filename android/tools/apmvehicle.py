@@ -435,7 +435,7 @@ def main():
                                     0.0, 0.0, 0.0, [1.0, 0.0, 0.0, 0.0], 0.0, 0.0, 0.0,
                                     now_ms * 1000)
         link.gps_raw_int_send(now_ms * 1000, 0 if nofix else 3, int(lat * 1e7), int(lon * 1e7),
-                              120000, 120, 120, 350, 0, 11)
+                              120000, 120, 120, 350, int(heading * 100) % 36000, 11)
         link.vfr_hud_send(AIRSPEED, GROUND_SPEED, int(heading), 55, altitude, 1.2)
         link.attitude_send(now_ms, 0.02, -0.01, math.radians(heading), 0.0, 0.0, 0.0)
 

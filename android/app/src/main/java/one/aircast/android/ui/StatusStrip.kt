@@ -1,6 +1,13 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.MaterialTheme
@@ -108,26 +115,86 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val lock by qgcDouble("$GPS.lock")
     val fix = fixLevel(lock)
 
+    val hdop by qgcString("$GPS.hdop")
+    val vdop by qgcString("$GPS.vdop")
+    val course by qgcString("$GPS.courseOverGround")
+    var detail by remember { mutableStateOf<StripDetail?>(null) }
+
     Row(
         modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) }
+        battery?.let {
+            InlineCell(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery }
+        }
         fix?.let { level ->
-            satsText(level, satellites).ifBlank { null }?.let { InlineCell(it, gpsColour(level)) }
+            satsText(level, satellites).ifBlank { null }?.let {
+                InlineCell(it, gpsColour(level)) { detail = StripDetail.Gps }
+            }
         }
         rcCell(state)?.let { InlineCell(it.text, if (it.lost) CRITICAL else Color.Unspecified) }
-        links?.let { InlineCell(it.text, if (it.degraded) CAUTION else Color.Unspecified) }
+        links?.let {
+            InlineCell(it.text, if (it.degraded) CAUTION else Color.Unspecified) { detail = StripDetail.Links }
+        }
+    }
+
+    detail?.let { shown ->
+        val rows = when (shown) {
+            StripDetail.Battery -> batteryDetail(batteryJson)
+            StripDetail.Gps -> gpsDetail(satellites, fix, hdop, vdop, course)
+            StripDetail.Links -> linkDetail(
+                vehicleLinks(linksJson),
+                linkNames(linksJson),
+                linksJson?.optText("primary"),
+            )
+        }
+        InstrumentSheet(instrumentTitle(shown), rows) { detail = null }
+    }
+}
+
+internal enum class StripDetail { Battery, Gps, Links }
+
+internal fun instrumentTitle(instrument: StripDetail): String = when (instrument) {
+    StripDetail.Battery -> "Battery"
+    StripDetail.Gps -> "GPS"
+    StripDetail.Links -> "Links to this aircraft"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InstrumentSheet(title: String, rows: List<DetailRow>, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+        when {
+            rows.isEmpty() -> Text(
+                text = "The vehicle has not reported anything else about this yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+            else -> rows.forEach { row ->
+                ListItem(
+                    headlineContent = { Text(row.label) },
+                    trailingContent = { Text(row.value) },
+                )
+            }
+        }
+        FootNote("Readings come from the aircraft and stop updating when it stops answering.")
     }
 }
 
 @Composable
-private fun InlineCell(text: String, colour: Color) {
+private fun InlineCell(text: String, colour: Color, onClick: (() -> Unit)? = null) {
     Text(
         text,
         style = MaterialTheme.typography.labelMedium,
         color = if (colour == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else colour,
         maxLines = 1,
+        modifier = if (onClick == null) Modifier else Modifier.clickable { onClick() },
     )
 }

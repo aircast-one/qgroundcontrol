@@ -37,3 +37,8 @@ internal fun linkCell(links: VehicleLinks?): LinkCell? {
         else -> LinkCell("${silent.size} links lost", true)
     }
 }
+
+internal fun linkNames(view: JSONObject?): List<String> {
+    val listed = view?.optJSONArray("links") ?: return emptyList()
+    return (0 until listed.length()).mapNotNull { index -> listed.optJSONObject(index)?.optText("name") }
+}
