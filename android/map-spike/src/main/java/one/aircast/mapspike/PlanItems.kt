@@ -29,6 +29,12 @@ internal fun altitudeFieldLabel(item: MissionItem): String {
     return if (frame.isBlank()) "Alt $unit" else "Alt $unit $frame"
 }
 
+internal fun rallyAltitudeLabel(point: RallyPoint): String =
+    "Alt ${point.altitudeUnits.ifBlank { "m" }}"
+
+internal fun rallyAltitudeIsEditable(point: RallyPoint): Boolean =
+    !point.altitude.isNaN() && point.altitudePath.isNotBlank()
+
 internal fun sequenceLabel(item: MissionItem): String = when {
     item.foldedCommands > 0 -> "${item.sequence}\u2013${item.sequence + item.foldedCommands}"
     else -> item.sequence.toString()

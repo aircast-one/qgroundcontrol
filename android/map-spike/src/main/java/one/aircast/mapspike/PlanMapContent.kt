@@ -926,6 +926,38 @@ internal fun MapSpikeScreen(
                         }
 
                         rallyHit?.let { hit ->
+                            rally.firstOrNull { it.index == hit.index }
+                                ?.takeIf { rallyAltitudeIsEditable(it) }
+                                ?.let { point ->
+                                    var typed by remember(point.index, point.altitude) {
+                                        mutableStateOf(altitudeFieldText(point.altitude))
+                                    }
+                                    OutlinedTextField(
+                                        value = typed,
+                                        onValueChange = { typed = it },
+                                        label = { Text(rallyAltitudeLabel(point)) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Number,
+                                            imeAction = ImeAction.Done,
+                                        ),
+                                        keyboardActions = KeyboardActions(
+                                            onDone = {
+                                                val shown = parsedAltitude(typed)
+                                                if (shown == null) {
+                                                    say("Not an altitude")
+                                                } else {
+                                                    onBridge("Setting altitude") {
+                                                        FenceBridge.setRallyAltitude(point.altitudePath, shown)
+                                                    }
+                                                }
+                                            },
+                                        ),
+                                        modifier = Modifier.width(120.dp),
+                                        textStyle = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+
                             TextButton(onClick = {
                                 onBridge { FenceBridge.removeRallyPoint(hit.index) }
                                 selected = null

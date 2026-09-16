@@ -36,6 +36,9 @@ data class RallyPoint(
     val latitude: Double,
     val longitude: Double,
     val altitudeMetres: Double = 0.0,
+    val altitude: Double = Double.NaN,
+    val altitudeUnits: String = "",
+    val altitudePath: String = "",
 )
 
 internal fun coordinate(json: JSONObject?): TrackPoint? {
@@ -132,6 +135,9 @@ fun rallyPoints(json: JSONObject?): List<RallyPoint> {
             point.latitude,
             point.longitude,
             element.optDouble("altitudeMetres", 0.0).takeIf { it.isFinite() } ?: 0.0,
+            element.optDouble("altitude", Double.NaN),
+            element.optText("altitudeUnits"),
+            element.optText("altitudePath"),
         )
     }
 }
@@ -173,6 +179,9 @@ object FenceBridge {
     fun deletePolygon(index: Int): Boolean = invokeOk("$FENCE_ROOT.deletePolygon", "[$index]")
 
     fun deleteCircle(index: Int): Boolean = invokeOk("$FENCE_ROOT.deleteCircle", "[$index]")
+
+    fun setRallyAltitude(path: String, shown: Double): Boolean =
+        setOk(path, settingJson("$shown"))
 
     fun removeRallyPoint(index: Int): Boolean =
         invokeOk("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
