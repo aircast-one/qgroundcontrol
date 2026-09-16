@@ -20,6 +20,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var linkDetail: [DetailRow] = []
     @Published private(set) var traffic = AdsbTraffic.none
     @Published private(set) var obstacle = ObstacleDistance.none
+    @Published private(set) var control = OperatorControl.none
     @Published private(set) var followMe = FollowMe.absent
     @Published private(set) var separation = ""
     @Published private(set) var fleet = Fleet.none
@@ -116,6 +117,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             // were the whole reason the panel could describe an aircraft that is not there.
             if traffic != .none { traffic = .none }
             if obstacle != .none { obstacle = .none }
+            if control != .none { control = .none }
             return
         }
 
@@ -157,6 +159,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
         let readObstacle = ObstacleDistance(Bridge.group("view.obstacle")) ?? .none
         if readObstacle != obstacle { obstacle = readObstacle }
+
+        let readControl = OperatorControl(Bridge.group("view.operatorControl")) ?? .none
+        if readControl != control { control = readControl }
 
         let batteryPacks = packs
         let first = batteryPacks.first
@@ -286,6 +291,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
                       "sectors": obstacle.sectors, "rows": obstacle.rows().count],
          "traffic": ["enabled": traffic.enabled, "summary": traffic.summary,
                      "contacts": traffic.contacts.count],
+         "control": ["available": control.available, "known": control.known,
+                     "worthShowing": control.worthShowing, "holder": control.holderText,
+                     "takeover": control.takeoverText, "requestAllowed": control.requestAllowed],
          "terrain": ["loaded": terrain.loaded, "pending": terrain.pending,
                      "text": terrain.text, "percent": terrain.percentText,
                      "showing": terrainShowing],

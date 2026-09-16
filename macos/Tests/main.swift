@@ -1268,6 +1268,7 @@ func checkObstacleSilenceIsNotClearAir() {
 }
 
 checkObstacleSilenceIsNotClearAir()
+checkTheControlRowIsSilentUntilTheVehicleSpeaks()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
     let described = MissionVehicle(planningFor: ["type": "Multi-Rotor", "firmware": "PX4 Pro",
@@ -6125,7 +6126,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2249
+let assertionFloor = 2264
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -9847,4 +9848,69 @@ func checkSettingsChoiceIndex() {
     expect(empty?.choiceIndex == SettingsControl.noChoice,
            "a control offering no options at all selects nothing rather than crashing on a first "
            + "element that is not there")
+}
+
+
+func checkTheControlRowIsSilentUntilTheVehicleSpeaks() {
+    func control(_ overrides: [String: Any]) -> OperatorControl {
+        OperatorControl(["kind": "object", "class": "OperatorControl",
+                         "available": true as NSNumber, "known": true as NSNumber,
+                         "inControl": false as NSNumber, "holderSystemId": 42 as NSNumber,
+                         "takeoverAllowed": true as NSNumber,
+                         "systemManager": true as NSNumber,
+                         "requestAllowed": true as NSNumber]
+            .merging(overrides) { _, override in override }) ?? .none
+    }
+
+    expect(control(["known": false as NSNumber, "inControl": NSNull(),
+                    "holderSystemId": NSNull(), "takeoverAllowed": NSNull()]).worthShowing == false,
+           "A VEHICLE THAT HAS NOT SAID WHO IS FLYING IT DRAWS NOTHING. Before any CONTROL_STATUS "
+           + "arrives sysidInControl is 0 with both flags false, which is byte-identical to "
+           + "another station holding it with takeover denied -- QGC hides the whole indicator on "
+           + "firstControlStatusReceived for exactly that reason. The core serves a reason for "
+           + "this arm and drawing it would park a sentence about a question nobody asked in "
+           + "front of every single-station operator forever")
+    expect(control([:]).worthShowing,
+           "and once it has spoken the row appears")
+    expect(control(["available": false as NSNumber]).worthShowing == false,
+           "no vehicle at all is silent too, on the same row rather than a second empty one")
+    expect(OperatorControl.none.worthShowing == false,
+           "and the cleared value a vehicle leaves behind draws nothing either")
+
+    expect(control([:]).holderText, "GCS 42",
+           "another station is named by the system id, which is the number its operator reads off "
+           + "their own title bar when this one goes to ask for control")
+    expect(control(["inControl": true as NSNumber, "holderSystemId": 250 as NSNumber]).holderText,
+           "This GCS (250)",
+           "and this station says so IN WORDS as well as by colour -- the id is kept in both arms "
+           + "because a bare \"This GCS\" cannot be checked against the other station's screen")
+    expect(control(["holderSystemId": NSNull()]).holderText, "Not reported",
+           "a vehicle that has spoken but named no holder says so rather than drawing a blank "
+           + "column, which reads as a decoding fault")
+
+    expect(control([:]).takeoverText, "Allowed",
+           "takeover is the operator's next question after who is flying")
+    expect(control(["takeoverAllowed": false as NSNumber]).takeoverText, "Not allowed",
+           "and being refused it is the more important half: it says the request button would "
+           + "not get you the aircraft")
+    expect(control(["takeoverAllowed": NSNull()]).takeoverText.isEmpty,
+           "with no answer the row draws empty rather than guessing a permission")
+
+    expect(control(["inControl": true as NSNumber]).level == .good,
+           "flying it yourself is the good case")
+    expect(control([:]).level == .caution,
+           "somebody else flying it is not an error and not good news either")
+    expect(control(["inControl": NSNull()]).level == .unknown,
+           "THE ARM THE CORE COLLAPSES: inControl is null with known true when this station's own "
+           + "MAVLink system id cannot be read, because the answer is a comparison against it. "
+           + "operatorcontrol.rs matches (true, None) into \"Another ground station is flying "
+           + "this vehicle.\" -- a verdict from a comparison it could not make. The head draws "
+           + "the holder and takes no colour from it")
+    expect(control(["known": false as NSNumber]).level == .unknown,
+           "and a silent vehicle colours nothing")
+
+    expect(OperatorControl(["kind": "null"]) == nil,
+           "a root that answered null is not an OperatorControl with everything false -- the "
+           + "store substitutes .none itself so the failure is one decision, not a decode that "
+           + "quietly invents a disconnected vehicle")
 }

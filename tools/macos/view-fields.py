@@ -124,129 +124,35 @@ SCALAR = {
 }
 
 UNDRAWN = [
-    ("view.core", "A PREFIX, NOT A PATH -- it silences SEVEN registered views at once: "
-                  "view.coreVehicle, coreGuided, coreParameter, coreParameters, coreMission, "
-                  "coreRemoteId and coreCalibration. All sit behind QGC_CORE_LINKS, which this "
-                  "head must not enable, so the suppression is right; the entry read as one view "
-                  "and silenced seven, which is a partial enumeration wearing a singular noun"),
-    ("view.control", "the SAME Control shape arrives NESTED inside the settings and parameter "
-                     "page views, which this head does read and decode with SettingsControl. The "
-                     "standalone path is for a head that renders one control at a time. Measured: "
-                     "a control inside view.settings(General) carries every key view.control "
-                     "serves, restartNotices included. The reason here used to read 'manual "
-                     "control, which needs a joystick this machine does not have', which was "
-                     "simply wrong -- it is a FACT control, and that false reason excused the "
-                     "view from scrutiny for as long as it stood"),
-    ("view.contract", "introspection, not a screen"),
-    ("view.dependencies", "introspection, not a screen"),
-    ("view.geoTo", "a coordinate conversion called as a function, not a view to draw"),
-    ("view.nedTo", "a coordinate conversion called as a function, not a view to draw"),
-    ("view.utmTo", "a coordinate conversion called as a function, not a view to draw"),
-    ("view.kmlFile", "a file parser the plan store reaches through its own action"),
-    ("view.shapeFile", "a file parser the plan store reaches through its own action"),
-    ("view.missionFile", "a file parser the plan store reaches through its own action"),
-    ("view.planFile", "a file parser the plan store reaches through its own action"),
-    ("view.waypointsFile", "a file parser the plan store reaches through its own action"),
-    ("view.planFromWaypoints", "a file parser the plan store reaches through its own action"),
-    ("view.tlog", "a file parser the analyze window reaches through its own action"),
-    ("view.terrainTile", "a tile fetch, not a screen"),
-    ("view.linkForm", "link creation, which is a transient-handle API and QML-only"),
-    ("view.transports", "NOT link creation -- that reason belonged to view.linkForm above and was "
-                        "copied here. transports_view returns a live INVENTORY: openCount, "
-                        "qtOpenCount and a links array, measured at 141 entries with 1 open. It is "
-                        "the core's own transport registry joined with the Qt links, and it sits "
-                        "behind QGC_CORE_LINKS for the core half. This head draws its link list "
-                        "from view.links (Links.swift), which is the view that answers the "
-                        "question an operator asks"),
-    ("view.vehicles", "built and unverifiable: no second vehicle has ever connected here"),
-    ("view.cameraProtocol", "MEASURED: a PROTOCOL VOCABULARY, not live state -- action names, "
-                            "capabilities, retry attempts and delays, level types, refusal and "
-                            "result strings, storage and video status enumerations, staleMs. It "
-                            "describes what a camera command IS and what can come back, for a "
-                            "head that dispatches them. This head draws live camera state from "
-                            "view.camera, which it reads, and has no surface built on the "
-                            "vocabulary. Every action it names -- takePhoto, startRecording, "
-                            "setMode, zoom, formatStorage -- is one this session must not send, "
-                            "so even the gating could not be exercised"),
-    ("view.cameraDefinition", "a file parser: it refuses with 'this needs the path of a camera "
-                              "definition file, and optionally a locale'. Same class as "
-                              "view.kmlFile and view.shapeFile, which a store reaches through "
-                              "its own action rather than drawing"),
-    ("view.joystickMapping", "MEASURED: an axis and button MAPPING SCHEMA -- four required "
-                             "functions, six additional axes with their extension bits and RC "
-                             "channels, four transmitter modes, the RC-override channel layout, "
-                             "and nineteen setting definitions with types and ranges. It is "
-                             "reference data for a head that CONFIGURES a joystick. This head "
-                             "has no joystick surface at all: zero files in macos/Sources "
-                             "mention one. PARITY GAP against QGC's joystick setup page, "
-                             "recorded not built"),
-    ("view.gimbal", "MEASURED with no vehicle: available false, count 0, gimbals empty, "
-                    "discovery idle, ready false. A gimbal is discovered from a connected "
-                    "vehicle that has one, and this SITL is a bare quadrotor -- so every field "
-                    "worth drawing is absent and a head built against this payload would be "
-                    "built against nothing. There is also no gimbal surface in this head to "
-                    "put it on. PARITY GAP against QGC's own gimbal controls, recorded not "
-                    "built"),
-    ("view.followMe", "MEASURED: reason 'noVehicles', enabled false, fixValid null. Follow-me "
-                      "makes the AIRCRAFT FOLLOW THE GROUND STATION, so exercising it needs a "
-                      "vehicle and then commands it to move -- which this session must not do. "
-                      "The view is readable but every state that distinguishes it from silence "
-                      "requires the one action that is forbidden. PARITY GAP, recorded not "
-                      "built"),
-    ("view.debugApi", "INTROSPECTION, and pointed the other way: it answers count 10 and a "
-                      "hostRoutes list naming /native/windows, /native/menu, /native/probe and the "
-                      "rest -- routes THIS HEAD ITSELF SERVES, each with the reason it exists. The "
-                      "core is modelling the test surface the head provides, so drawing it would "
-                      "be the app showing an operator its own debugging plumbing. Same class as "
-                      "view.contract and view.dependencies above"),
-    ("view.packetRadio", "MEASURED as a REFUSAL, which is the answer: it wants a status token "
-                         "(disabled, noAdapter, adapterUnavailable, invalidKey, listening, "
-                         "receiving), then the adapter name, per-antenna raw rssi, snr and link "
-                         "score written a/b, packets lost in the last second, the video packet "
-                         "count and the host's start error. A FORMATTER for a wfb-ng link, same "
-                         "class as the file parsers -- it spells figures a caller already holds "
-                         "rather than answering live state. Nothing in this head holds them: there "
-                         "is no packet-radio surface and no adapter on this machine"),
-    ("view.geoTag", "MEASURED as a REFUSAL, which is the answer: it asks for the path of a "
-                    "telemetry log, a tolerance and one epoch timestamp per image. It is the "
-                    "tagging COMPUTATION, not the controller state the Analyze page draws -- "
-                    "logFile, imageDirectory, saveDirectory, progress, inProgress. raw-reads.py "
-                    "flags GeoTag.swift for reading 'geoTag' straight from Qt while a view names "
-                    "the same subject, and its own question -- ask what that view refuses -- has "
-                    "the answer here: it refuses everything except the tagging run. Same class as "
-                    "the file parsers above, and the head reaches it through its own action"),
-    ("view.videoSource", "MEASURED as a REFUSAL: it asks for a source token, optionally a url and "
-                         "an rtsp timeout. A PARSER, same class as the file parsers. The head's "
-                         "VideoSource model is a settings-slot list -- slot, name, url, enabled, "
-                         "configured -- and shares only the NAME, which is why this checker's "
-                         "filename heuristic paired VideoSourceModel.swift with it under UNLISTED. "
-                         "A shared word is not a shared subject"),
-    ("view.gpsRtkBase", "MEASURED with no vehicle and it answers REAL STATE: driver ublox, mode "
-                        "surveyIn, accuracy 2.0 m, minimum duration 180 s, fixedBase null. An RTK "
-                        "base is ground equipment, so unlike the vehicle-gated entries this one "
-                        "could be built and seen to work here. PARITY GAP, recorded not built -- "
-                        "the core began serving it tonight"),
-    ("view.operatorControl", "MEASURED now the binary carries it, replacing the placeholder that "
-                             "said NOT YET MEASURABLE: available false, known false, inControl, "
-                             "holderSystemId, takeoverAllowed and systemManager all null, reason "
-                             "\"No vehicle is connected.\" It answers which ground station is "
-                             "flying the vehicle and whether it will hand over. THE PREMISE THAT "
-                             "PARKED THIS IS NOW FALSE: it said the rig had neither a vehicle nor "
-                             "a second ground station so every field would stay null however long "
-                             "it ran, and b3992b7ff\'s sibling e816a293d added IN_CONTROL and "
-                             "TAKEOVER_ALLOWED to apmvehicle.py, which hand-packs CONTROL_STATUS "
-                             "because the pinned pymavlink dialects have no message 512. The "
-                             "state is makeable and witnessable NOW. A peer read this root before "
-                             "I did, on the served-but-undrawn sweep I had queued and not run. "
-                             "QML DOES have an "
-                             "original, src/UI/toolbar/GCSControlIndicator.qml, so this is a "
-                             "PARITY GAP rather than a core-only capability. Half of it is a "
-                             "reading and drawable; the other half sends requestOperatorControl "
-                             "to acquire control or allow takeover, which is a vehicle command "
-                             "forbidden here -- so those buttons could be built and never once "
-                             "pressed to see them work. Recorded not built"),
-    ("view.obstacle", "a proximity ring: available is false with no vehicle, so there is nothing "
-                      "to draw and nothing to check. PARITY GAP, recorded not built"),
+    ('view.core', 'A PREFIX, NOT A PATH -- it silences SEVEN registered views at once: view.coreVehicle, coreGuided, coreParameter, coreParameters, coreMission, coreRemoteId and coreCalibration. All sit behind QGC_CORE_LINKS, which this head must not enable, so the suppression is right; the entry read as one view and silenced seven, which is a partial enumeration wearing a singular noun'),
+    ('view.control', "the SAME Control shape arrives NESTED inside the settings and parameter page views, which this head does read and decode with SettingsControl. The standalone path is for a head that renders one control at a time. Measured: a control inside view.settings(General) carries every key view.control serves, restartNotices included. The reason here used to read 'manual control, which needs a joystick this machine does not have', which was simply wrong -- it is a FACT control, and that false reason excused the view from scrutiny for as long as it stood"),
+    ('view.contract', 'introspection, not a screen'),
+    ('view.dependencies', 'introspection, not a screen'),
+    ('view.geoTo', 'a coordinate conversion called as a function, not a view to draw'),
+    ('view.nedTo', 'a coordinate conversion called as a function, not a view to draw'),
+    ('view.utmTo', 'a coordinate conversion called as a function, not a view to draw'),
+    ('view.kmlFile', 'a file parser the plan store reaches through its own action'),
+    ('view.shapeFile', 'a file parser the plan store reaches through its own action'),
+    ('view.missionFile', 'a file parser the plan store reaches through its own action'),
+    ('view.planFile', 'a file parser the plan store reaches through its own action'),
+    ('view.waypointsFile', 'a file parser the plan store reaches through its own action'),
+    ('view.planFromWaypoints', 'a file parser the plan store reaches through its own action'),
+    ('view.tlog', 'a file parser the analyze window reaches through its own action'),
+    ('view.terrainTile', 'a tile fetch, not a screen'),
+    ('view.linkForm', 'link creation, which is a transient-handle API and QML-only'),
+    ('view.transports', "NOT link creation -- that reason belonged to view.linkForm above and was copied here. transports_view returns a live INVENTORY: openCount, qtOpenCount and a links array, measured at 141 entries with 1 open. It is the core's own transport registry joined with the Qt links, and it sits behind QGC_CORE_LINKS for the core half. This head draws its link list from view.links (Links.swift), which is the view that answers the question an operator asks"),
+    ('view.vehicles', 'built and unverifiable: no second vehicle has ever connected here'),
+    ('view.cameraProtocol', 'MEASURED: a PROTOCOL VOCABULARY, not live state -- action names, capabilities, retry attempts and delays, level types, refusal and result strings, storage and video status enumerations, staleMs. It describes what a camera command IS and what can come back, for a head that dispatches them. This head draws live camera state from view.camera, which it reads, and has no surface built on the vocabulary. Every action it names -- takePhoto, startRecording, setMode, zoom, formatStorage -- is one this session must not send, so even the gating could not be exercised'),
+    ('view.cameraDefinition', "a file parser: it refuses with 'this needs the path of a camera definition file, and optionally a locale'. Same class as view.kmlFile and view.shapeFile, which a store reaches through its own action rather than drawing"),
+    ('view.joystickMapping', "MEASURED: an axis and button MAPPING SCHEMA -- four required functions, six additional axes with their extension bits and RC channels, four transmitter modes, the RC-override channel layout, and nineteen setting definitions with types and ranges. It is reference data for a head that CONFIGURES a joystick. This head has no joystick surface at all: zero files in macos/Sources mention one. PARITY GAP against QGC's joystick setup page, recorded not built"),
+    ('view.gimbal', "MEASURED with no vehicle: available false, count 0, gimbals empty, discovery idle, ready false. A gimbal is discovered from a connected vehicle that has one, and this SITL is a bare quadrotor -- so every field worth drawing is absent and a head built against this payload would be built against nothing. There is also no gimbal surface in this head to put it on. PARITY GAP against QGC's own gimbal controls, recorded not built"),
+    ('view.followMe', "MEASURED: reason 'noVehicles', enabled false, fixValid null. Follow-me makes the AIRCRAFT FOLLOW THE GROUND STATION, so exercising it needs a vehicle and then commands it to move -- which this session must not do. The view is readable but every state that distinguishes it from silence requires the one action that is forbidden. PARITY GAP, recorded not built"),
+    ('view.debugApi', 'INTROSPECTION, and pointed the other way: it answers count 10 and a hostRoutes list naming /native/windows, /native/menu, /native/probe and the rest -- routes THIS HEAD ITSELF SERVES, each with the reason it exists. The core is modelling the test surface the head provides, so drawing it would be the app showing an operator its own debugging plumbing. Same class as view.contract and view.dependencies above'),
+    ('view.packetRadio', "MEASURED as a REFUSAL, which is the answer: it wants a status token (disabled, noAdapter, adapterUnavailable, invalidKey, listening, receiving), then the adapter name, per-antenna raw rssi, snr and link score written a/b, packets lost in the last second, the video packet count and the host's start error. A FORMATTER for a wfb-ng link, same class as the file parsers -- it spells figures a caller already holds rather than answering live state. Nothing in this head holds them: there is no packet-radio surface and no adapter on this machine"),
+    ('view.geoTag', "MEASURED as a REFUSAL, which is the answer: it asks for the path of a telemetry log, a tolerance and one epoch timestamp per image. It is the tagging COMPUTATION, not the controller state the Analyze page draws -- logFile, imageDirectory, saveDirectory, progress, inProgress. raw-reads.py flags GeoTag.swift for reading 'geoTag' straight from Qt while a view names the same subject, and its own question -- ask what that view refuses -- has the answer here: it refuses everything except the tagging run. Same class as the file parsers above, and the head reaches it through its own action"),
+    ('view.videoSource', "MEASURED as a REFUSAL: it asks for a source token, optionally a url and an rtsp timeout. A PARSER, same class as the file parsers. The head's VideoSource model is a settings-slot list -- slot, name, url, enabled, configured -- and shares only the NAME, which is why this checker's filename heuristic paired VideoSourceModel.swift with it under UNLISTED. A shared word is not a shared subject"),
+    ('view.gpsRtkBase', 'MEASURED with no vehicle and it answers REAL STATE: driver ublox, mode surveyIn, accuracy 2.0 m, minimum duration 180 s, fixedBase null. An RTK base is ground equipment, so unlike the vehicle-gated entries this one could be built and seen to work here. PARITY GAP, recorded not built -- the core began serving it tonight'),
+    ('view.obstacle', 'a proximity ring: available is false with no vehicle, so there is nothing to draw and nothing to check. PARITY GAP, recorded not built'),
 ]
 
 

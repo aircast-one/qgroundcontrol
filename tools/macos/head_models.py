@@ -36,6 +36,7 @@ MODELS = {
     "MavlinkConsole": "view.mavlinkConsole",
     "Orbit": "view.orbit",
     "ObstacleDistance": "view.obstacle",
+    "OperatorControl": "view.operatorControl",
     "TlogSummary": "view.tlog(/tmp/none.tlog)",
     "JoystickMapping": "view.joystickMapping",
     "PacketRadio": "view.packetRadio",

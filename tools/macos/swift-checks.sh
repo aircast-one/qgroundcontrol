@@ -92,6 +92,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/FlyOverlayModel.swift" \
     "$root/macos/Sources/JoystickModel.swift" \
     "$root/macos/Sources/ObstacleModel.swift" \
+    "$root/macos/Sources/OperatorControlModel.swift" \
     "$root/macos/Sources/TlogModel.swift" \
     "$root/macos/Sources/PacketRadioModel.swift" \
     "$root/macos/Sources/MapFollowModel.swift" \

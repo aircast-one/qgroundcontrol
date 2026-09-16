@@ -86,6 +86,7 @@ add_library(QGCNativeUI STATIC
     Sources/FlyOverlayModel.swift
     Sources/JoystickModel.swift
     Sources/ObstacleModel.swift
+    Sources/OperatorControlModel.swift
     Sources/TlogModel.swift
     Sources/PacketRadioModel.swift
     Sources/MapFollowModel.swift

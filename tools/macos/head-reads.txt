@@ -184,12 +184,14 @@ help
 helpText
 highest
 highestText
+holderSystemId
 home
 horizontalAccuracy
 host
 hover
 hoverSpeed
 id
+inControl
 inProgress
 inclusion
 incomplete
@@ -338,6 +340,7 @@ report
 reported
 reportsStorage
 request
+requestAllowed
 requested
 requestingList
 required
@@ -409,7 +412,9 @@ supportForwarding
 supported
 surfaceDistanceText
 systemId
+systemManager
 takeoff
+takeoverAllowed
 target
 targetMeters
 targetMetersSecond
