@@ -1487,9 +1487,7 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
         { QStringLiteral("group"), QStringLiteral("the path already says which group a fact came from") },
         { QStringLiteral("hasControl"), QStringLiteral("nothing asks yet; view.control decides its own control kind from the type and the enum") },
         { QStringLiteral("increment"), QStringLiteral("nothing asks yet - a stepper would want it") },
-        { QStringLiteral("longDescription"), QStringLiteral("nothing asks yet; shortDescription is what every label uses") },
         { QStringLiteral("selectedBitmaskStrings"), QStringLiteral("view.control computes the set bits from bitmaskValues and the value") },
-        { QStringLiteral("valueEqualsDefault"), QStringLiteral("derivable from defaultValue, which is now served") },
         { QStringLiteral("volatileValue"), QStringLiteral("nothing asks yet") },
         { QStringLiteral("writeOnly"), QStringLiteral("readOnly is served and no head offers a write-only field") },
     };

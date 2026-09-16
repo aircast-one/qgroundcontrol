@@ -102,6 +102,8 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         "maximum": bound("max", "maxIsDefaultForType"),
         "minimumText": bound_text("minString", "minIsDefaultForType"),
         "maximumText": bound_text("maxString", "maxIsDefaultForType"),
+        "changedFromDefault": has_default.then(|| !flag("valueEqualsDefault")),
+        "longDescription": Some(text("longDescription")).filter(|long| !long.is_empty()),
         "defaultText": has_default.then(|| text("defaultValueString")).filter(|shown| !shown.is_empty()),
         "defaultValue": has_default.then(|| fact.get("defaultValue").cloned()).flatten().unwrap_or(Value::Null),
         "rebootRequired": flag("vehicleRebootRequired") || flag("qgcRebootRequired"),
@@ -125,6 +127,26 @@ pub fn restart_notices(vehicle: bool, application: bool) -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parameter_with_no_default_is_not_a_parameter_that_differs_from_one() {
+        let at = |fact: Value| decode(&fact, "p");
+        let stock = at(json!({ "kind": "fact", "name": "RTL_ALT", "defaultValueAvailable": true, "valueEqualsDefault": true }));
+        assert_eq!(stock["changedFromDefault"], false);
+
+        let changed = at(json!({ "kind": "fact", "name": "RTL_ALT", "defaultValueAvailable": true, "valueEqualsDefault": false }));
+        assert_eq!(changed["changedFromDefault"], true, "ParameterEditor.qml:253 draws an orange dot on defaultValueAvailable && !valueEqualsDefault, and neither native head drew anything - an operator could not tell which parameters an unfamiliar airframe had been changed from stock");
+
+        let stockless = at(json!({ "kind": "fact", "name": "RTL_ALT", "defaultValueAvailable": false, "valueEqualsDefault": false }));
+        assert_eq!(
+            stockless["changedFromDefault"],
+            Value::Null,
+            "Fact::valueEqualsDefault returns FALSE when there is no default at all, so the raw flag means both differs-from-stock and has-no-stock. Serving it unguarded marks every parameter without a default as modified; QGC only escapes that because the QML happens to write defaultValueAvailable && on the same line"
+        );
+
+        assert_eq!(at(json!({ "kind": "fact", "name": "x", "longDescription": "How far to climb before returning" }))["longDescription"], "How far to climb before returning", "ParameterEditorController matches a search term against name, shortDescription AND longDescription; a head with only the first two silently returns a shorter list");
+        assert_eq!(at(json!({ "kind": "fact", "name": "x" }))["longDescription"], Value::Null, "absent rather than empty, so a fact with no long description says so instead of carrying a blank that reads like one someone deleted");
+    }
 
     #[test]
     fn a_restart_says_which_thing_has_to_restart() {

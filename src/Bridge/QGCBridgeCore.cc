@@ -386,6 +386,8 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("qgcRebootRequired"),
         QStringLiteral("decimalPlaces"),
         QStringLiteral("readOnly"),
+        QStringLiteral("valueEqualsDefault"),
+        QStringLiteral("longDescription"),
     };
 
     QJsonObject json;

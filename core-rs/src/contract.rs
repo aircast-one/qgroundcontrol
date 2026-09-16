@@ -64,6 +64,10 @@ pub const NULLABLE_UNWITNESSED: &[&str] = &[
     "view.fences.rallySupported",
     "view.plan.fenceSupported",
     "view.plan.rallySupported",
+    "view.control(settings.appSettings.audioMuted).changedFromDefault",
+    "view.plan.defaults.altitude.changedFromDefault",
+    "view.settings(General).sections[0].subsections[0].controls[0].changedFromDefault",
+    "view.setup(Safety).sections[0].controls[0].changedFromDefault",
 ];
 
 pub fn contract_view(_backend: &dyn Backend, _args: &[String]) -> Value {
@@ -85,12 +89,25 @@ mod tests {
     #[test]
     fn a_field_the_rig_can_never_leave_unknown_is_still_declared_nullable() {
         let shapes: Value = serde_json::from_str(include_str!("../../test/Bridge/fixtures/view-shapes.json")).unwrap();
+        let declared = |path: &str| -> String {
+            let top = shapes.as_object().into_iter().flatten().map(|(key, _)| key.as_str()).filter(|key| path == *key || path.starts_with(&format!("{key}."))).max_by_key(|key| key.len());
+            let Some(view) = top else { return format!("no view shape for {path}") };
+            path[view.len()..]
+                .trim_start_matches('.')
+                .split('.')
+                .fold(Some(&shapes[view]), |node, step| match step.strip_suffix("[0]") {
+                    Some(name) => node?.get(name)?.get(0),
+                    None => node?.get(step),
+                })
+                .and_then(Value::as_str)
+                .unwrap_or("missing")
+                .to_string()
+        };
         NULLABLE_UNWITNESSED.iter().for_each(|path| {
-            let (view, field) = path.rsplit_once('.').unwrap();
-            let declared = shapes[view][field].as_str().unwrap_or("missing");
             assert!(
-                declared == "bool" || declared == "bool|null",
-                "{path} is listed here as a field the recorder cannot witness as null, but the contract types it {declared} - either the rig can now reach the null and the entry should go, or the path is wrong"
+                declared(path) == "bool" || declared(path) == "bool|null",
+                "{path} is listed here as a field the recorder cannot witness as null, but the contract types it {} - either the rig can now reach the null and the entry should go, or the path is wrong",
+                declared(path)
             );
         });
 
