@@ -46,10 +46,10 @@ fun PlanTab(modifier: Modifier = Modifier) {
     var pending by remember { mutableStateOf<PlanConfirm?>(null) }
     val files = rememberPlanFileActions { notice = it }
 
-    val dirty by qgcBool("plan.dirty")
-    val syncing by qgcBool("plan.syncInProgress")
     val containsItems by qgcBool("plan.containsItems")
     val planStatus by qgcPath("view.plan")
+    val dirty = remember(planStatus) { planIsDirty(planStatus) }
+    val syncing = remember(planStatus) { planIsSyncing(planStatus) }
     var showDefaults by remember { mutableStateOf(false) }
     val can = planActions(planStatus)
     val history = planHistory(planStatus)

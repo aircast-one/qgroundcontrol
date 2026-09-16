@@ -45,6 +45,11 @@ internal fun planHistory(view: org.json.JSONObject?): PlanHistory = PlanHistory(
     canRedo = view?.optBoolean("canRedo") == true,
 )
 
+internal fun planIsDirty(view: JSONObject?): Boolean = view?.optBoolean("dirty") == true
+
+internal fun planIsSyncing(view: JSONObject?): Boolean =
+    view?.optJSONObject("sync")?.optText("state") == "syncing"
+
 internal fun discardNeedsConfirming(dirty: Boolean, containsItems: Boolean): Boolean =
     dirty && containsItems
 

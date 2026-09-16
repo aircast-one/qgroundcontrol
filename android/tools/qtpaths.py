@@ -127,6 +127,14 @@ def check() -> None:
         "a constant built from another constant did not resolve, so every path under it counts as unknown: %r"
         % constants.get("FENCE_ROOT")
     )
+    kept = sys.argv[1:]
+    sys.argv[1:] = ["--expect=3"]
+    assert expectation() == 3, "--expect=N is read as no expectation at all, so the check passes by not running"
+    sys.argv[1:] = ["--expect", "-2"]
+    assert expectation() == -2
+    sys.argv[1:] = ["--list"]
+    assert expectation() is None
+    sys.argv[1:] = kept
     assert resolve("$GPS.count", {"GPS": "vehicle.gps"}) == "vehicle.gps.count"
     assert resolve("$A.$index.center", {"A": "plan.fence"}) == "plan.fence.*.center"
     assert resolve("view.$X", {"X": "flyState"}) == "view.flyState"
@@ -145,6 +153,17 @@ def check() -> None:
     )
 
 
+def expectation() -> int | None:
+    """Accepts --expect N and --expect=N. A flag spelled one way and read the other
+    is a check that passes by not running, which is the failure it exists to catch."""
+    for index, argument in enumerate(sys.argv):
+        if argument == "--expect":
+            return int(sys.argv[index + 1])
+        if argument.startswith("--expect="):
+            return int(argument.split("=", 1)[1])
+    return None
+
+
 def main() -> None:
     check()
     hits = asked()
@@ -156,8 +175,9 @@ def main() -> None:
     print("%d Qt paths asked for directly, %d distinct, %d of them template shapes" % (len(hits), len(unique), templates))
     for root, count in sorted(roots.items(), key=lambda pair: -pair[1]):
         print("  %-18s %d" % (root, count))
-    if "--expect" in sys.argv:
-        delta = int(sys.argv[sys.argv.index("--expect") + 1])
+    expected = expectation()
+    if expected is not None:
+        delta = expected
         was = int(BASELINE.read_text().split()[0]) if BASELINE.exists() else len(unique)
         wanted = was + delta
         if len(unique) != wanted:
@@ -165,7 +185,7 @@ def main() -> None:
             print("A change the tool cannot see is a blind instrument, not a green run.")
             raise SystemExit(1)
         BASELINE.write_text("%d\n" % len(unique))
-        print("baseline now %d" % len(unique))
+        print("count moved %+d as claimed (%d -> %d)." % (delta, was, len(unique)))
     if "--list" in sys.argv:
         print()
         for value in unique:

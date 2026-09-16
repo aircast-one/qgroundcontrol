@@ -230,11 +230,13 @@ internal fun MapSpikeScreen(
 
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
-    val planDirty by mapBool("plan.dirty")
     val planHasItems by mapBool("plan.containsItems")
     val planOffline by mapBool("plan.offline")
-    val planSyncing by mapBool("plan.syncInProgress")
     val planStatus by mapPath("view.plan")
+    val planDirty = remember(planStatus) { planStatus?.optBoolean("dirty") == true }
+    val planSyncing = remember(planStatus) {
+        planStatus?.optJSONObject("sync")?.optText("state") == "syncing"
+    }
     val support = planSupport(planStatus)
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     val vehiclesJson by mapPath(VEHICLES_VIEW)

@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.json.JSONObject
 import org.junit.Test
 
 class DiscardConfirmTest {
@@ -39,5 +40,22 @@ class DiscardConfirmTest {
                 "every connected empty plan, and it is only removable once dirty means one thing",
             discardNeedsConfirming(dirty = true, containsItems = false),
         )
+    }
+
+    @Test
+    fun `dirty and syncing come off the plan view the tab already reads`() {
+        val idle = JSONObject("""{"kind":"object","class":"PlanStatus","dirty":false,"sync":{"state":"ready"}}""")
+        val busy = JSONObject("""{"kind":"object","class":"PlanStatus","dirty":true,"sync":{"state":"syncing"}}""")
+        assertFalse(planIsDirty(idle))
+        assertTrue(planIsDirty(busy))
+        assertFalse(planIsSyncing(idle))
+        assertTrue(planIsSyncing(busy))
+    }
+
+    @Test
+    fun `no plan view is not a clean plan and not a finished sync`() {
+        assertFalse(planIsDirty(null))
+        assertFalse(planIsSyncing(null))
+        assertFalse(planIsSyncing(JSONObject("""{"kind":"object","class":"PlanStatus"}""")))
     }
 }
