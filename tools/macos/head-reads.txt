@@ -321,6 +321,7 @@ ready
 reason
 receiving
 recording
+rect
 refusal
 refused
 removeInvokable
@@ -411,6 +412,7 @@ token
 tooFast
 total
 track
+tracking
 transmitterMode
 type
 typeLabel

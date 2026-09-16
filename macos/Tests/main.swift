@@ -4024,6 +4024,19 @@ func checkRadio() {
     expect(RadioState(["transmitterMode": 1 as NSNumber]).transmitterMode == 1,
            "and a mode the core does report is taken as given")
 
+    let reporting = { (live: Bool) in
+        RadioState(["connected": true as NSNumber, "channelCount": 8 as NSNumber,
+                    "channels": [["index": 0 as NSNumber, "live": live as NSNumber]]])
+    }
+    expect(reporting(false).level == .warning,
+           "a receiver reporting channels with nothing carrying a signal is a transmitter that is "
+           + "off or out of range, and the page that exists to show that must not paint it healthy")
+    expect(reporting(true).level == .good, "and one actually carrying a signal is healthy")
+    expect(reporting(false).symbol.hasSuffix(".slash"),
+           "the antenna agrees with the dot rather than being spelled from its own condition")
+    expect(RadioState([:]).level == .unknown,
+           "and with no vehicle the row reports nothing rather than a verdict")
+
     expect(RadioState([:]).actionTitle, "Calibrate",
            "a radio page with no controller offers QGC's own word for that button, not \"Start\" "
            + "\u{2014} RadioComponentController constructs its nextText as Calibrate and never "
@@ -5980,7 +5993,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2212
+let assertionFloor = 2216
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

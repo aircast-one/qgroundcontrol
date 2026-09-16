@@ -479,9 +479,8 @@ struct RadioView: View {
             GroupCard {
                 GroupRow(title: store.state.summary, showSeparator: false,
                          leading: {
-                             Image(systemName: store.state.channelCount > 0
-                                 ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
-                                 .foregroundColor(store.state.channelCount > 0 ? .green : .secondary)
+                             Image(systemName: store.state.symbol)
+                                 .foregroundColor(FlyPanel.colour(store.state.level))
                          })
             }
 

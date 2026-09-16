@@ -113,6 +113,23 @@ struct RadioState: Equatable {
 
     var actionTitle: String { nextText.isEmpty ? RadioState.defaultNextText : nextText }
 
+    // The dot and the antenna sit beside the CORE'S summary sentence, so they have to agree with
+    // it. The call site asked only "channelCount > 0", which collapses the two negative sentences
+    // together harmlessly -- but paints GREEN over the third one whatever it says. The core formats
+    // "{n} channels reported, {live} carrying a signal", and live can be 0: a receiver reporting
+    // channels with every PWM at zero is a transmitter switched off or out of range. That is the
+    // one state this page exists to show, and the head was drawing a healthy antenna over it.
+    var level: FlyTelemetry.Level {
+        guard connected, channelCount > 0 else { return .unknown }
+        return liveChannels.isEmpty ? .warning : .good
+    }
+
+    var symbol: String {
+        level == .good
+            ? "antenna.radiowaves.left.and.right"
+            : "antenna.radiowaves.left.and.right.slash"
+    }
+
     // The count the summary line quotes. Still a real question -- "how many are arriving" -- and
     // the probe reports it. What it is NOT is the list to draw.
     var liveChannels: [RadioChannel] { channels.filter(\.live) }
