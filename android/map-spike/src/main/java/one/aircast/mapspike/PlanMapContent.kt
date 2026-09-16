@@ -613,6 +613,7 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text("Rally") }
                     TextButton(
+                        enabled = kindAllows(insertable, KIND_TAKEOFF),
                         onClick = {
                             val at = placeAt()
                             addMissionItem(
