@@ -53,6 +53,36 @@ class GuidedAltitudeTest {
     fun `a pause asks the core for the pause intent`() {
         assertEquals("view.guidedAltitude(25.00,pause)", guidedAltitudePath(25.0, pause = true))
     }
+
+    @Test
+    fun `the command carries the change, never the height the operator typed`() {
+        val reading = guidedAltitude(
+            JSONObject(
+                """{"kind":"object","class":"GuidedAltitude","available":true,"label":"Altitude","unit":"m",
+                    "current":25.0,"minimum":0.0,"maximum":120.0,"target":68.5,
+                    "targetMeters":68.5,"delta":43.5,"deltaMeters":43.5,"sends":true,
+                    "pause":false,"sentence":"The aircraft will climb 43.5 m to 68.5 m."}""",
+            ),
+        )!!
+        assertEquals(
+            "guidedModeChangeAltitude takes a delta; sending 68.5 here flies it to 93.5 m",
+            listOf(43.5, false),
+            altitudeCommandArgs(reading, pauses = false),
+        )
+    }
+
+    @Test
+    fun `a change too small to matter sends nothing at all`() {
+        val standing = guidedAltitude(
+            JSONObject(
+                """{"kind":"object","class":"GuidedAltitude","available":true,"label":"Altitude","unit":"m",
+                    "current":25.0,"minimum":0.0,"maximum":120.0,"target":25.0,
+                    "targetMeters":25.0,"delta":0.0,"deltaMeters":0.0,"sends":false,
+                    "pause":false,"sentence":"The aircraft is already at 25 m and will not move."}""",
+            ),
+        )!!
+        assertNull(altitudeCommandArgs(standing, pauses = false))
+    }
 }
 
 class RangeLabelTest {

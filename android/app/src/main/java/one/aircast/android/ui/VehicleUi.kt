@@ -522,8 +522,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 val pauses = altitudePauses
                 offMainDetached {
                     val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))
-                    if (fresh?.sends == true) {
-                        Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh.deltaMeters, pauses)
+                    fresh?.let { altitudeCommandArgs(it, pauses) }?.let { args ->
+                        Qgc.invoke("vehicle.guidedModeChangeAltitude", *args.toTypedArray())
                     }
                 }
             },
