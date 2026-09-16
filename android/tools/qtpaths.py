@@ -38,19 +38,21 @@ WRAPPERS = re.compile(r"^(?:internal )?fun (qgc[A-Za-z]+|map[A-Za-z]+)\(\s*(?:gr
 DIRECT = ["setOk", "invokeOk", r"Qgc\.get", r"Qgc\.set", r"Qgc\.invoke", r"Qgc\.invokeResult",
           r"QGCBridge\.get", r"QGCBridge\.getFields", r"QGCBridge\.set", r"QGCBridge\.invoke"]
 def call_pattern() -> str:
-    """Every bridge wrapper, read from the two files that declare them - a hand-kept
-    list here would silently stop counting a module the day it grows one."""
+    """Every bridge wrapper, found wherever it is declared. Naming the two files that
+    declare them today would stop counting the day a third module grows one."""
     declared: set[str] = set()
-    for source in (ROOT / "android/app/src/main/java/one/aircast/android/bridge/QgcState.kt",
-                   ROOT / "android/map-spike/src/main/java/one/aircast/mapspike/MapBridge.kt"):
-        declared.update(WRAPPERS.findall(source.read_text()))
+    for source in SOURCES:
+        for path in source.rglob("*.kt"):
+            declared.update(WRAPPERS.findall(path.read_text()))
     return "(?:%s)" % "|".join(sorted(declared) + DIRECT)
 
 
 CALLS = call_pattern()
 LITERAL = re.compile(CALLS + r'\(\s*"([^"$]+)"')
+TEMPLATE = re.compile(CALLS + r'\(\s*"([^"]*\$[^"]*)"')
 CONSTANT = re.compile(CALLS + r"\(\s*([A-Z][A-Z0-9_]{2,})\b")
-DEFINE = re.compile(r'\b(?:const\s+val|val)\s+([A-Z][A-Z0-9_]{2,})\s*(?::\s*String\s*)?=\s*"([^"$]+)"')
+PIECE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+DEFINE = re.compile(r'\b(?:const\s+val|val)\s+([A-Z][A-Z0-9_]{2,})\s*(?::\s*String\s*)?=\s*"([^"]+)"')
 
 
 OWNED = re.compile(r'^const [A-Z_]+: &str = "([^"]+)";', re.M)
@@ -65,6 +67,13 @@ def core_owned() -> set[str]:
 OWNS_BODY = 'path.split([\'.\', \'[\']).next() == Some("view")'
 
 
+def resolve(template: str, constants: dict[str, str]) -> str:
+    """A path built by interpolation is still a path. Known constants are substituted;
+    anything else - an index, a camera number - becomes * because the core has to cover
+    the shape, not the instance."""
+    return PIECE.sub(lambda hit: constants.get(hit.group(1), "*"), template)
+
+
 def core_serves(path: str) -> bool:
     """The router's own test. `check()` asserts view.rs still spells it this way."""
     return re.split(r"[.\[]", path, maxsplit=1)[0] == "view"
@@ -77,12 +86,19 @@ def router_predicate() -> str:
 
 
 def defined_constants() -> dict[str, str]:
+    """A constant may be built from another - FENCE_ROOT is "$PLAN_ROOT.geoFenceController" -
+    so the table is resolved to a fixpoint before anything is looked up in it."""
     found: dict[str, str] = {}
     for source in SOURCES:
         for path in source.rglob("*.kt"):
             for name, value in DEFINE.findall(path.read_text()):
                 found.setdefault(name, value)
-    return found
+    for _ in range(8):
+        grown = {name: PIECE.sub(lambda hit: found.get(hit.group(1), hit.group(0)), value) for name, value in found.items()}
+        if grown == found:
+            break
+        found = grown
+    return {name: value for name, value in found.items() if "$" not in value}
 
 
 def asked() -> list[tuple[str, str]]:
@@ -97,6 +113,8 @@ def asked() -> list[tuple[str, str]]:
             for name in CONSTANT.findall(text):
                 if name in constants:
                     hits.append((constants[name], where))
+            for template in TEMPLATE.findall(text):
+                hits.append((resolve(template, constants), where))
     owned = core_owned()
     return [(value, where) for value, where in hits if not core_serves(value) and value not in owned]
 
@@ -105,6 +123,13 @@ def check() -> None:
     constants = defined_constants()
     assert "VEHICLE_LINKS" in constants, "the constant sweep found no VEHICLE_LINKS, so every constant path is invisible"
     assert constants["VEHICLE_LINKS"] == "view.vehicleLinks", constants["VEHICLE_LINKS"]
+    assert constants.get("FENCE_ROOT", "").startswith("plan."), (
+        "a constant built from another constant did not resolve, so every path under it counts as unknown: %r"
+        % constants.get("FENCE_ROOT")
+    )
+    assert resolve("$GPS.count", {"GPS": "vehicle.gps"}) == "vehicle.gps.count"
+    assert resolve("$A.$index.center", {"A": "plan.fence"}) == "plan.fence.*.center"
+    assert resolve("view.$X", {"X": "flyState"}) == "view.flyState"
     for wrapper in ("qgcPath", "qgcString", "mapPath", "mapString", "mapInt"):
         assert wrapper in CALLS, "the wrapper sweep missed %s, so a module's reads are invisible" % wrapper
     sample = 'val x by qgcPath("vehicle.armed")\nval y by qgcPath("view.flyState")\nval z = someField("vehicle.nope")'
