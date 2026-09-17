@@ -165,18 +165,23 @@ void SkydroidH16CameraWatcher::start()
 
 void SkydroidH16CameraWatcher::refreshOnce()
 {
-    // The path the user is watching must NOT be probed: this air unit's embedded
-    // RTSP server is single-session per path, so a DESCRIBE on the live path evicts
-    // the running stream and the picture freezes. Assume the active path is live and
-    // probe only the others, so discovery never disturbs what is on screen.
-    const QString activeUrl = _video->videoUrlAt(_video->currentIndex()).trimmed();
+    // This air unit has one video encoder and binds it to the lowest-numbered RTSP
+    // path that has any session. A DESCRIBE on a path BELOW the one being played steals
+    // the encoder and freezes the live picture; a probe of a HIGHER path is harmless.
+    // So probe only paths above the active source's index, and never at or below it.
+    // Camera 1 (index 0, /H264Video) is always assumed present, so it never needs probing.
+    const int activeIndex = qMax(0, _video->currentIndex());
     QPointer<SkydroidH16CameraWatcher> self(this);
-    QThread *worker = QThread::create([self, activeUrl]() {
+    QThread *worker = QThread::create([self, activeIndex]() {
+        // Paths at or below the active index are assumed live (Camera 1, and whatever is
+        // on screen); only higher paths are actually probed.
         QStringList live;
-        for (const QString &path : SkydroidH16Links::kCameraPaths) {
-            const bool isActive = (SkydroidH16Links::cameraUrl(path) == activeUrl);
-            if (isActive || rtspPathIsLive(path)) {
+        for (int i = 0; i < SkydroidH16Links::kCameraPaths.size(); ++i) {
+            const QString &path = SkydroidH16Links::kCameraPaths.at(i);
+            if (i <= activeIndex || rtspPathIsLive(path)) {
                 live.append(path);
+            } else {
+                break; // paths are contiguous: the first absent camera ends the list
             }
         }
         if (!self) {
