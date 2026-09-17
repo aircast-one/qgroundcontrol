@@ -218,7 +218,11 @@ find_package(Qt6
         Xml
     OPTIONAL_COMPONENTS
         Bluetooth
+        CorePrivate
+        GuiPrivate
+        LocationPrivate
         MultimediaQuickPrivate
+        PositioningPrivate
         Quick3D
         SerialPort
 )
@@ -474,7 +478,13 @@ elseif(ANDROID)
         if(NOT ${CMAKE_ANDROID_NDK_VERSION} VERSION_EQUAL 26.1)
             message(FATAL_ERROR "Invalid NDK Version: ${CMAKE_ANDROID_NDK_VERSION}, Use Version 26B instead.")
         endif()
+    elseif(${Qt6_VERSION} VERSION_EQUAL 6.10.3)
+        if(NOT ${CMAKE_ANDROID_NDK_VERSION} VERSION_EQUAL 27.2)
+            message(FATAL_ERROR "Invalid NDK Version: ${CMAKE_ANDROID_NDK_VERSION}, Use Version 27C instead.")
+        endif()
     endif()
+
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -Wl,-z,max-page-size=16384)
 
     # Generation of android version numbers must be consistent release to release such that they are always increasing
     if(${CMAKE_PROJECT_VERSION_MAJOR} GREATER 9)

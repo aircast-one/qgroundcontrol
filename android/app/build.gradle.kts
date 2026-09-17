@@ -17,12 +17,12 @@ android {
     }
 
     namespace = "one.aircast.android"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "one.aircast.app"
         minSdk = 28
-        targetSdk = 34
+        targetSdk = 36
         versionCode = (System.getenv("AIRCAST_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("AIRCAST_VERSION_NAME") ?: "0.1"
         ndk { abiFilters += "arm64-v8a" }

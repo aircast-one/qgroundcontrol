@@ -36,7 +36,7 @@ void ADSBVehicle::update(const ADSB::VehicleInfo_t &vehicleInfo)
         return;
     }
 
-    qCDebug(ADSBVehicleLog) << "Updating" << QStringLiteral("%1 Flags: %2").arg(vehicleInfo.icaoAddress, 0, 16).arg(vehicleInfo.availableFlags, 0, 2);
+    qCDebug(ADSBVehicleLog) << "Updating" << QStringLiteral("%1 Flags: %2").arg(vehicleInfo.icaoAddress, 0, 16).arg(vehicleInfo.availableFlags.toInt(), 0, 2);
 
     const QGeoCoordinate previous = coordinate();
     if (vehicleInfo.availableFlags & ADSB::LocationAvailable) {

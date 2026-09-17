@@ -22,6 +22,7 @@
 #include <QtCore/QMutex>
 #include <QtCore/QQueue>
 #include <QtCore/QString>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QThread>
 #include <QtCore/QWaitCondition>
 
