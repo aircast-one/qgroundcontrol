@@ -153,7 +153,7 @@ SkydroidH16CameraWatcher::SkydroidH16CameraWatcher(VideoSettings *video, QObject
     , _video(video)
     , _timer(new QTimer(this))
 {
-    _timer->setInterval(15000);
+    _timer->setInterval(30000);
     connect(_timer, &QTimer::timeout, this, &SkydroidH16CameraWatcher::refreshOnce);
 }
 
@@ -165,11 +165,17 @@ void SkydroidH16CameraWatcher::start()
 
 void SkydroidH16CameraWatcher::refreshOnce()
 {
+    // The path the user is watching must NOT be probed: this air unit's embedded
+    // RTSP server is single-session per path, so a DESCRIBE on the live path evicts
+    // the running stream and the picture freezes. Assume the active path is live and
+    // probe only the others, so discovery never disturbs what is on screen.
+    const QString activeUrl = _video->videoUrlAt(_video->currentIndex()).trimmed();
     QPointer<SkydroidH16CameraWatcher> self(this);
-    QThread *worker = QThread::create([self]() {
+    QThread *worker = QThread::create([self, activeUrl]() {
         QStringList live;
         for (const QString &path : SkydroidH16Links::kCameraPaths) {
-            if (rtspPathIsLive(path)) {
+            const bool isActive = (SkydroidH16Links::cameraUrl(path) == activeUrl);
+            if (isActive || rtspPathIsLive(path)) {
                 live.append(path);
             }
         }
