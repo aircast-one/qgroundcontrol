@@ -34,12 +34,14 @@
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
+#include <QtCore/QPointer>
 #include <QtCore/QTimer>
 
 QGC_LOGGING_CATEGORY(VideoManagerLog, "qgc.videomanager.videomanager")
 
 namespace {
 constexpr uint32_t kSwitchStallHoldSeconds = 20;
+constexpr int kEncoderHandoffMs = 500;
 }
 
 static constexpr const char *kMainReceiverName = "videoContent";
@@ -661,10 +663,36 @@ void VideoManager::_videoSourceChanged()
 
     if (!changedReceivers.isEmpty()) {
         if (hasVideo()) {
-            // Only touch the receivers whose settings actually changed; the others keep
-            // streaming uninterrupted.
+            // A camera switch stops one receiver and starts another. Some air units serve a
+            // single video encoder shared across their streams and will not feed a new stream
+            // until the previous one is fully torn down. If we start the incoming receiver
+            // while the outgoing one is still tearing down, the encoder stays bound to the old
+            // stream and the new camera never delivers frames. So stop first, then release the
+            // incoming starts a short beat later. Receivers that only need a stop, or a start
+            // with nothing else stopping, are handled at once as before.
+            QList<VideoReceiver*> toStart;
+            bool stoppedAny = false;
             for (VideoReceiver *receiver : std::as_const(changedReceivers)) {
-                _restartVideo(receiver);
+                if (receiver->uri().isEmpty()) {
+                    _restartVideo(receiver);
+                    stoppedAny = true;
+                } else if (receiver->started()) {
+                    _restartVideo(receiver);
+                } else {
+                    toStart.append(receiver);
+                }
+            }
+            for (VideoReceiver *receiver : std::as_const(toStart)) {
+                if (stoppedAny) {
+                    QPointer<VideoReceiver> guard(receiver);
+                    QTimer::singleShot(kEncoderHandoffMs, this, [this, guard]() {
+                        if (guard) {
+                            _restartVideo(guard);
+                        }
+                    });
+                } else {
+                    _restartVideo(receiver);
+                }
             }
         } else {
             stopVideo();
