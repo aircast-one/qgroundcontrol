@@ -35,7 +35,9 @@ Item {
 
     // These should only be used by MainRootWindow
     function switchVideoSource(anchorItem, x, y) {
-        if (QGroundControl.videoManager.videoSourceCount > 1) {
+        // Two cameras: one tap cycles between them. Three or more: open the menu so the
+        // target is one tap away rather than several cycles.
+        if (QGroundControl.videoManager.videoSourceCount > 2) {
             videoSourceMenu.parent = anchorItem
             videoSourceMenu.open(x, y)
         } else {
