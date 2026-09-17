@@ -9,7 +9,6 @@
 
 #include "VideoManager.h"
 #include "AppSettings.h"
-#include "AirUnitCameraControl.h"
 #include "MultiVehicleManager.h"
 #include "QGCApplication.h"
 #include "QGCCameraManager.h"
@@ -40,7 +39,7 @@
 QGC_LOGGING_CATEGORY(VideoManagerLog, "qgc.videomanager.videomanager")
 
 namespace {
-constexpr uint32_t kAirUnitSwitchSeconds = 20;
+constexpr uint32_t kSwitchStallHoldSeconds = 20;
 }
 
 static constexpr const char *kMainReceiverName = "videoContent";
@@ -56,12 +55,8 @@ Q_APPLICATION_STATIC(VideoManager, _videoManagerInstance);
 VideoManager::VideoManager(QObject *parent)
     : QObject(parent)
     , _subtitleWriter(new SubtitleWriter(this))
-    , _airUnitCamera(new AirUnitCameraControl(this))
     , _videoSettings(SettingsManager::instance()->videoSettings())
 {
-    (void) connect(_airUnitCamera, &AirUnitCameraControl::availableChanged, this, &VideoManager::activeVideoSourceChanged);
-    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::activeVideoSourceChanged);
-    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::_holdStallRestartWhileAirUnitSwitches);
     // qCDebug(VideoManagerLog) << this;
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
@@ -113,6 +108,7 @@ void VideoManager::init(QQuickWindow *window)
     (void) connect(_videoSettings->extraVideoSources(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_holdStallRestartWhileSwitching);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     // A rename reuses activeVideoSourceChanged so the switch button / status rows re-read cameraName().
@@ -389,7 +385,7 @@ int VideoManager::activeVideoSource() const
 
 bool VideoManager::hasMultipleVideoSources() const
 {
-    return _videoSettings->switchableIndices().size() > 1 || _airUnitCamera->available();
+    return _videoSettings->switchableIndices().size() > 1;
 }
 
 int VideoManager::videoSourceCount() const
@@ -399,10 +395,6 @@ int VideoManager::videoSourceCount() const
 
 QString VideoManager::activeSourceLabel() const
 {
-    const bool airUnitDrivesTheSwitch = _airUnitCamera->available() && _videoSettings->switchableIndices().size() <= 1;
-    if (airUnitDrivesTheSwitch && _airUnitCamera->activeInput() >= 0) {
-        return _airUnitCamera->activeInputName();
-    }
     return cameraName(activeVideoSource());
 }
 
@@ -420,7 +412,6 @@ void VideoManager::switchActiveVideoSource()
 {
     const QList<int> indices = _videoSettings->switchableIndices();
     if (indices.size() <= 1) {
-        _airUnitCamera->switchInput();
         return;
     }
     const int pos = indices.indexOf(activeVideoSource());
@@ -1003,12 +994,12 @@ uint32_t VideoManager::_stallTimeoutFor(const VideoReceiver *receiver) const
     return needsNegotiationTime ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3;
 }
 
-void VideoManager::_holdStallRestartWhileAirUnitSwitches()
+void VideoManager::_holdStallRestartWhileSwitching()
 {
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-        receiver->setTimeout(kAirUnitSwitchSeconds);
+        receiver->setTimeout(kSwitchStallHoldSeconds);
     }
-    QTimer::singleShot(kAirUnitSwitchSeconds * 1000, this, [this]() {
+    QTimer::singleShot(kSwitchStallHoldSeconds * 1000, this, [this]() {
         for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
             receiver->setTimeout(_stallTimeoutFor(receiver));
         }

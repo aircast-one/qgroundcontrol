@@ -35,9 +35,7 @@ Item {
 
     // These should only be used by MainRootWindow
     function switchVideoSource(anchorItem, x, y) {
-        var localChoices = QGroundControl.videoManager.videoSourceCount > 1
-        var airUnitChoices = QGroundControl.videoManager.airUnitCamera.available
-        if (localChoices && airUnitChoices) {
+        if (QGroundControl.videoManager.videoSourceCount > 1) {
             videoSourceMenu.parent = anchorItem
             videoSourceMenu.open(x, y)
         } else {
@@ -176,18 +174,6 @@ Item {
                                         videoControl.pipState.state === videoControl.pipState.fullState
             text:                       QGroundControl.videoManager.activeSourceLabel
             onClicked:                  _root.switchVideoSource(fullVideoCameraSwitchButton, 0, fullVideoCameraSwitchButton.height)
-        }
-
-        QGCLabel {
-            id:                         airUnitNotice
-            z:                          _fullItemZorder + 3
-            anchors.top:                fullVideoCameraSwitchButton.bottom
-            anchors.horizontalCenter:   parent.horizontalCenter
-            anchors.topMargin:          ScreenTools.defaultFontPixelHeight / 3
-            color:                      "white"
-            font.pointSize:             ScreenTools.smallFontPointSize
-            text:                       QGroundControl.videoManager.airUnitCamera.notice
-            visible:                    text !== ""
         }
 
         VideoSourceMenu {

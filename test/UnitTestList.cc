@@ -91,7 +91,6 @@
 #include "VideoTileTest.h"
 
 // VideoManager
-#include "AirUnitCameraControlTest.h"
 #include "SkydroidH16LinksTest.h"
 #include "VideoManagerTest.h"
 
@@ -211,7 +210,6 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(VideoTileTest)
 
     // VideoManager
-    UT_REGISTER_TEST(AirUnitCameraControlTest)
     UT_REGISTER_TEST(SkydroidH16LinksTest)
     UT_REGISTER_TEST(VideoManagerTest)
 
