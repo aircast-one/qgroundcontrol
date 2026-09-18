@@ -76,6 +76,7 @@
 #include "QGCFileDownload.h"
 #include "QGCImageProvider.h"
 #include "QGCLoggingCategory.h"
+#include "QGCSettingsRecovery.h"
 #include "QGroundControlQmlGlobal.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
@@ -181,8 +182,10 @@ QGCApplication::QGCApplication(int &argc, char *argv[], bool unitTesting, bool s
     QSettings settings;
     qCDebug(QGCApplicationLog) << "Settings location" << settings.fileName() << "Is writable?:" << settings.isWritable();
 
-    if (!settings.isWritable()) {
-        qCWarning(QGCApplicationLog) << "Setings location is not writable";
+    if (QGCSettingsRecovery::moveAsideIfUnwritable(settings)) {
+        qCDebug(QGCApplicationLog) << "Settings location recovered, Is writable?:" << settings.isWritable();
+    } else if (!settings.isWritable()) {
+        qCWarning(QGCApplicationLog) << "Settings location is not writable";
     }
 
     // The setting will delete all settings on this boot

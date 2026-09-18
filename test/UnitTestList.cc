@@ -119,7 +119,6 @@
 #include "VideoTileTest.h"
 
 // VideoManager
-#include "AirUnitCameraControlTest.h"
 #include "SkydroidH16LinksTest.h"
 #include "VideoManagerTest.h"
 
@@ -140,6 +139,7 @@
 #include "DecompressionTest.h"
 // FileSystem
 #include "QGCFileDownloadTest.h"
+#include "QGCSettingsRecoveryTest.h"
 // Geo
 #include "GeoTest.h"
 // Shape
@@ -276,7 +276,6 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(VideoTileTest)
 
     // VideoManager
-    UT_REGISTER_TEST(AirUnitCameraControlTest)
     UT_REGISTER_TEST(SkydroidH16LinksTest)
     UT_REGISTER_TEST(VideoManagerTest)
 
@@ -297,6 +296,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(DecompressionTest)
     // FileSystem
     UT_REGISTER_TEST(QGCFileDownloadTest)
+    UT_REGISTER_TEST(QGCSettingsRecoveryTest)
     // Geo
     UT_REGISTER_TEST(GeoTest)
     // Shape

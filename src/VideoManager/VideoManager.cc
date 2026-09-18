@@ -9,7 +9,6 @@
 
 #include "VideoManager.h"
 #include "AppSettings.h"
-#include "AirUnitCameraControl.h"
 #include "MultiVehicleManager.h"
 #include "QGCApplication.h"
 #include "QGCCameraManager.h"
@@ -35,12 +34,14 @@
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
+#include <QtCore/QPointer>
 #include <QtCore/QTimer>
 
 QGC_LOGGING_CATEGORY(VideoManagerLog, "qgc.videomanager.videomanager")
 
 namespace {
-constexpr uint32_t kAirUnitSwitchSeconds = 20;
+constexpr uint32_t kSwitchStallHoldSeconds = 20;
+constexpr int kEncoderHandoffMs = 500;
 }
 
 static constexpr const char *kMainReceiverName = "videoContent";
@@ -56,12 +57,8 @@ Q_APPLICATION_STATIC(VideoManager, _videoManagerInstance);
 VideoManager::VideoManager(QObject *parent)
     : QObject(parent)
     , _subtitleWriter(new SubtitleWriter(this))
-    , _airUnitCamera(new AirUnitCameraControl(this))
     , _videoSettings(SettingsManager::instance()->videoSettings())
 {
-    (void) connect(_airUnitCamera, &AirUnitCameraControl::availableChanged, this, &VideoManager::activeVideoSourceChanged);
-    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::activeVideoSourceChanged);
-    (void) connect(_airUnitCamera, &AirUnitCameraControl::activeInputChanged, this, &VideoManager::_holdStallRestartWhileAirUnitSwitches);
     // qCDebug(VideoManagerLog) << this;
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
@@ -117,6 +114,7 @@ void VideoManager::init(QQuickWindow *window)
     (void) connect(_videoSettings->extraVideoSources(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_holdStallRestartWhileSwitching);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     // A rename reuses activeVideoSourceChanged so the switch button / status rows re-read cameraName().
@@ -399,7 +397,7 @@ int VideoManager::activeVideoSource() const
 
 bool VideoManager::hasMultipleVideoSources() const
 {
-    return _videoSettings->switchableIndices().size() > 1 || _airUnitCamera->available();
+    return _videoSettings->switchableIndices().size() > 1;
 }
 
 int VideoManager::videoSourceCount() const
@@ -409,10 +407,6 @@ int VideoManager::videoSourceCount() const
 
 QString VideoManager::activeSourceLabel() const
 {
-    const bool airUnitDrivesTheSwitch = _airUnitCamera->available() && _videoSettings->switchableIndices().size() <= 1;
-    if (airUnitDrivesTheSwitch && _airUnitCamera->activeInput() >= 0) {
-        return _airUnitCamera->activeInputName();
-    }
     return cameraName(activeVideoSource());
 }
 
@@ -430,7 +424,6 @@ void VideoManager::switchActiveVideoSource()
 {
     const QList<int> indices = _videoSettings->switchableIndices();
     if (indices.size() <= 1) {
-        _airUnitCamera->switchInput();
         return;
     }
     const int pos = indices.indexOf(activeVideoSource());
@@ -754,10 +747,36 @@ void VideoManager::_videoSourceChanged()
 
     if (!changedReceivers.isEmpty()) {
         if (hasVideo()) {
-            // Only touch the receivers whose settings actually changed; the others keep
-            // streaming uninterrupted.
+            // A camera switch stops one receiver and starts another. Some air units serve a
+            // single video encoder shared across their streams and will not feed a new stream
+            // until the previous one is fully torn down. If we start the incoming receiver
+            // while the outgoing one is still tearing down, the encoder stays bound to the old
+            // stream and the new camera never delivers frames. So stop first, then release the
+            // incoming starts a short beat later. Receivers that only need a stop, or a start
+            // with nothing else stopping, are handled at once as before.
+            QList<VideoReceiver*> toStart;
+            bool stoppedAny = false;
             for (VideoReceiver *receiver : std::as_const(changedReceivers)) {
-                _restartVideo(receiver);
+                if (receiver->uri().isEmpty()) {
+                    _restartVideo(receiver);
+                    stoppedAny = true;
+                } else if (receiver->started()) {
+                    _restartVideo(receiver);
+                } else {
+                    toStart.append(receiver);
+                }
+            }
+            for (VideoReceiver *receiver : std::as_const(toStart)) {
+                if (stoppedAny) {
+                    QPointer<VideoReceiver> guard(receiver);
+                    QTimer::singleShot(kEncoderHandoffMs, this, [this, guard]() {
+                        if (guard) {
+                            _restartVideo(guard);
+                        }
+                    });
+                } else {
+                    _restartVideo(receiver);
+                }
             }
         } else {
             stopVideo();
@@ -1087,12 +1106,12 @@ uint32_t VideoManager::_stallTimeoutFor(const VideoReceiver *receiver) const
     return needsNegotiationTime ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3;
 }
 
-void VideoManager::_holdStallRestartWhileAirUnitSwitches()
+void VideoManager::_holdStallRestartWhileSwitching()
 {
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-        receiver->setTimeout(kAirUnitSwitchSeconds);
+        receiver->setTimeout(kSwitchStallHoldSeconds);
     }
-    QTimer::singleShot(kAirUnitSwitchSeconds * 1000, this, [this]() {
+    QTimer::singleShot(kSwitchStallHoldSeconds * 1000, this, [this]() {
         for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
             receiver->setTimeout(_stallTimeoutFor(receiver));
         }

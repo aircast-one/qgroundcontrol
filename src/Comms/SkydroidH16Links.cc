@@ -6,6 +6,10 @@
 #include "UDPLink.h"
 #include "VideoSettings.h"
 
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+
 #ifdef Q_OS_ANDROID
 #include <QtCore/QJniObject>
 #endif
@@ -37,12 +41,44 @@ UDPConfiguration *makeAutoUdpConfig(const QString &name, quint16 localPort)
     return config;
 }
 
-bool videoNeedsSeeding(VideoSettings *video)
+bool isH16Managed(VideoSettings *video)
 {
-    return video->rtspUrl()->rawValue().toString().trimmed().isEmpty();
+    const QString url = video->rtspUrl()->rawValue().toString().trimmed();
+    if (url.isEmpty()) {
+        return true;
+    }
+    for (const QString &path : SkydroidH16Links::kCameraPaths) {
+        if (url == SkydroidH16Links::cameraUrl(path)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace
+
+QString SkydroidH16Links::cameraUrl(const QString &path)
+{
+    return QStringLiteral("rtsp://%1:%2/%3").arg(kAirUnitHost).arg(kRtspPort).arg(path);
+}
+
+QString SkydroidH16Links::cameraName(int index)
+{
+    return QObject::tr("Camera %1").arg(index + 1);
+}
+
+QString SkydroidH16Links::extraCamerasJson()
+{
+    QJsonArray extras;
+    for (int i = 1; i < kCameraPaths.size(); ++i) {
+        QJsonObject camera;
+        camera.insert(QStringLiteral("name"), cameraName(i));
+        camera.insert(QStringLiteral("source"), QString::fromUtf8(VideoSettings::videoSourceRTSP));
+        camera.insert(QStringLiteral("url"), cameraUrl(kCameraPaths.at(i)));
+        extras.append(camera);
+    }
+    return QString::fromUtf8(QJsonDocument(extras).toJson(QJsonDocument::Compact));
+}
 
 bool SkydroidH16Links::isThisRemote()
 {
@@ -59,11 +95,18 @@ bool SkydroidH16Links::isThisRemote()
 int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect, VideoSettings *video)
 {
     int added = 0;
-    if (videoNeedsSeeding(video)) {
-        video->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
-        video->rtspUrl()->setRawValue(kVideoUrl);
-        qCDebug(SkydroidH16LinksLog) << "Configured air unit video" << kVideoUrl;
-        added++;
+    if (isH16Managed(video)) {
+        if (video->rtspUrl()->rawValue().toString().trimmed().isEmpty()) {
+            video->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
+            video->rtspUrl()->setRawValue(cameraUrl(kCameraPaths.first()));
+            video->primaryCameraName()->setRawValue(cameraName(0));
+            added++;
+        }
+        if (video->extraVideoSources()->rawValue().toString() != extraCamerasJson()) {
+            video->extraVideoSources()->setRawValue(extraCamerasJson());
+            video->multiViewEnabled()->setRawValue(true);
+            added++;
+        }
     }
     if (!hasUdpConfigOnLocalPort(linkManager, kTelemetryLocalPort)) {
         linkManager->addConfiguration(makeAutoUdpConfig(kTelemetryLinkName, kTelemetryLocalPort));
