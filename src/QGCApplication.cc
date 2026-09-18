@@ -73,6 +73,7 @@
 #include "QGCFileDownload.h"
 #include "QGCImageProvider.h"
 #include "QGCLoggingCategory.h"
+#include "QGCSettingsRecovery.h"
 #include "QGroundControlQmlGlobal.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
