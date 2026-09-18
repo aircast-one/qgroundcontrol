@@ -174,8 +174,10 @@ QGCApplication::QGCApplication(int &argc, char *argv[], bool unitTesting, bool s
     QSettings settings;
     qCDebug(QGCApplicationLog) << "Settings location" << settings.fileName() << "Is writable?:" << settings.isWritable();
 
-    if (!settings.isWritable()) {
-        qCWarning(QGCApplicationLog) << "Setings location is not writable";
+    if (QGCSettingsRecovery::moveAsideIfUnwritable(settings)) {
+        qCDebug(QGCApplicationLog) << "Settings location recovered, Is writable?:" << settings.isWritable();
+    } else if (!settings.isWritable()) {
+        qCWarning(QGCApplicationLog) << "Settings location is not writable";
     }
 
     // The setting will delete all settings on this boot
@@ -428,9 +430,7 @@ void QGCApplication::_initForNormalAppBoot()
     // Load known link configurations
     LinkManager::instance()->loadLinkConfigurationList();
     if (SkydroidH16Links::isThisRemote()) {
-        VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
-        SkydroidH16Links::ensure(LinkManager::instance(), SettingsManager::instance()->autoConnectSettings(), videoSettings);
-        (new SkydroidH16CameraWatcher(videoSettings, this))->start();
+        SkydroidH16Links::ensure(LinkManager::instance(), SettingsManager::instance()->autoConnectSettings(), SettingsManager::instance()->videoSettings());
     }
 
     // Probe for joysticks
