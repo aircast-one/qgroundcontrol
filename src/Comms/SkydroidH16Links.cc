@@ -104,6 +104,7 @@ int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *auto
         }
         if (video->extraVideoSources()->rawValue().toString() != extraCamerasJson()) {
             video->extraVideoSources()->setRawValue(extraCamerasJson());
+            video->multiViewEnabled()->setRawValue(true);
             added++;
         }
     }

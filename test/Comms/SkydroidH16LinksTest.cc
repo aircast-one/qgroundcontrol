@@ -38,6 +38,8 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     const QVariant savedRtspUrl = video->rtspUrl()->rawValue();
     const QVariant savedExtras = video->extraVideoSources()->rawValue();
     const QVariant savedPrimaryName = video->primaryCameraName()->rawValue();
+    const QVariant savedMultiView = video->multiViewEnabled()->rawValue();
+    video->multiViewEnabled()->setRawValue(false);
     autoConnect->autoConnectUDP()->setRawValue(true);
     video->rtspUrl()->setRawValue(QString());
     video->extraVideoSources()->setRawValue(QStringLiteral("[]"));
@@ -52,6 +54,7 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     QCOMPARE(video->videoSourceCount(), 2);
     QCOMPARE(video->cameraName(1), QStringLiteral("Camera 2"));
     QCOMPARE(video->videoUrlAt(1), SkydroidH16Links::cameraUrl(SkydroidH16Links::kCameraPaths.at(1)));
+    QVERIFY(video->multiViewEnabled()->rawValue().toBool());
 
     const UDPConfiguration *telemetry = udpConfigOnPort(SkydroidH16Links::kTelemetryLocalPort);
     QVERIFY(telemetry);
@@ -63,8 +66,10 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     QVERIFY(camera->isAutoConnect());
     QCOMPARE(camera->hostList(), QStringList{QStringLiteral("127.0.0.1:15552")});
 
+    video->multiViewEnabled()->setRawValue(false);
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 0);
     QCOMPARE(LinkManager::instance()->linkConfigurations()->count(), before + 2);
+    QVERIFY(!video->multiViewEnabled()->rawValue().toBool());
 
     video->extraVideoSources()->setRawValue(QStringLiteral("[]"));
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 1);
@@ -83,4 +88,5 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     video->rtspUrl()->setRawValue(savedRtspUrl);
     video->extraVideoSources()->setRawValue(savedExtras);
     video->primaryCameraName()->setRawValue(savedPrimaryName);
+    video->multiViewEnabled()->setRawValue(savedMultiView);
 }
