@@ -1,17 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "ArduSubFirmwarePlugin.h"
 #include "QGCLoggingCategory.h"
 #include "Vehicle.h"
 
-QGC_LOGGING_CATEGORY(APMSubmarineFactGroupLog, "qgc.firmwareplugin.apm.ardusubfirmwareplugin")
+QGC_LOGGING_CATEGORY(APMSubmarineFactGroupLog, "FirmwarePlugin.ArduSubFirmwarePlugin")
 
 APMSubmarineFactGroup::APMSubmarineFactGroup(QObject *parent)
     : FactGroup(300, QStringLiteral(":/json/Vehicle/SubmarineFact.json"), parent)
@@ -128,80 +119,72 @@ ArduSubFirmwarePlugin::ArduSubFirmwarePlugin(QObject *parent)
         { _circleFlightMode         , APMSubMode::CIRCLE            , true , true },
         { _surfaceFlightMode        , APMSubMode::SURFACE           , true , true },
         { _posHoldFlightMode        , APMSubMode::POSHOLD           , true , true },
-        { _motorDetectionFlightMode , APMSubMode::MOTORDETECTION    , true , true },
+        { _motorDetectionFlightMode , APMSubMode::MOTORDETECTION    , false, true },
         { _surftrakFlightMode       , APMSubMode::SURFTRAK          , true , true },
     };
     updateAvailableFlightModes(availableFlightModes);
 
     if (!_remapParamNameIntialized) {
-        FirmwarePlugin::remapParamNameMap_t &remapV3_5 = _remapParamName[3][5];
+        // ArduPilot 4.7: parameter renames and SI unit conversion
+        FirmwarePlugin::remapParamNameMap_t &remapV4_7 = _remapParamName[4][7];
 
-        remapV3_5["SERVO5_FUNCTION"] = QStringLiteral("RC5_FUNCTION");
-        remapV3_5["SERVO6_FUNCTION"] = QStringLiteral("RC6_FUNCTION");
-        remapV3_5["SERVO7_FUNCTION"] = QStringLiteral("RC7_FUNCTION");
-        remapV3_5["SERVO8_FUNCTION"] = QStringLiteral("RC8_FUNCTION");
-        remapV3_5["SERVO9_FUNCTION"] = QStringLiteral("RC9_FUNCTION");
-        remapV3_5["SERVO10_FUNCTION"] = QStringLiteral("RC10_FUNCTION");
-        remapV3_5["SERVO11_FUNCTION"] = QStringLiteral("RC11_FUNCTION");
-        remapV3_5["SERVO12_FUNCTION"] = QStringLiteral("RC12_FUNCTION");
-        remapV3_5["SERVO13_FUNCTION"] = QStringLiteral("RC13_FUNCTION");
-        remapV3_5["SERVO14_FUNCTION"] = QStringLiteral("RC14_FUNCTION");
+        // Position controller: PSC_VELXY_* -> PSC_NE_VEL_*
+        remapV4_7["PSC_NE_VEL_P"]    = QStringLiteral("PSC_VELXY_P");
+        remapV4_7["PSC_NE_VEL_I"]    = QStringLiteral("PSC_VELXY_I");
+        remapV4_7["PSC_NE_VEL_D"]    = QStringLiteral("PSC_VELXY_D");
+        remapV4_7["PSC_NE_VEL_IMAX"] = QStringLiteral("PSC_VELXY_IMAX");
+        remapV4_7["PSC_NE_VEL_FLTE"] = QStringLiteral("PSC_VELXY_FLTE");
+        remapV4_7["PSC_NE_VEL_FLTD"] = QStringLiteral("PSC_VELXY_FLTD");
+        remapV4_7["PSC_NE_VEL_FF"]   = QStringLiteral("PSC_VELXY_FF");
 
-        remapV3_5["SERVO5_MIN"] = QStringLiteral("RC5_MIN");
-        remapV3_5["SERVO6_MIN"] = QStringLiteral("RC6_MIN");
-        remapV3_5["SERVO7_MIN"] = QStringLiteral("RC7_MIN");
-        remapV3_5["SERVO8_MIN"] = QStringLiteral("RC8_MIN");
-        remapV3_5["SERVO9_MIN"] = QStringLiteral("RC9_MIN");
-        remapV3_5["SERVO10_MIN"] = QStringLiteral("RC10_MIN");
-        remapV3_5["SERVO11_MIN"] = QStringLiteral("RC11_MIN");
-        remapV3_5["SERVO12_MIN"] = QStringLiteral("RC12_MIN");
-        remapV3_5["SERVO13_MIN"] = QStringLiteral("RC13_MIN");
-        remapV3_5["SERVO14_MIN"] = QStringLiteral("RC14_MIN");
+        // Position controller: PSC_VELZ_* -> PSC_D_VEL_*
+        remapV4_7["PSC_D_VEL_P"]     = QStringLiteral("PSC_VELZ_P");
+        remapV4_7["PSC_D_VEL_I"]     = QStringLiteral("PSC_VELZ_I");
+        remapV4_7["PSC_D_VEL_D"]     = QStringLiteral("PSC_VELZ_D");
+        remapV4_7["PSC_D_VEL_IMAX"]  = QStringLiteral("PSC_VELZ_IMAX");
+        remapV4_7["PSC_D_VEL_FLTE"]  = QStringLiteral("PSC_VELZ_FLTE");
+        remapV4_7["PSC_D_VEL_FF"]    = QStringLiteral("PSC_VELZ_FF");
 
-        remapV3_5["SERVO5_MAX"] = QStringLiteral("RC5_MAX");
-        remapV3_5["SERVO6_MAX"] = QStringLiteral("RC6_MAX");
-        remapV3_5["SERVO7_MAX"] = QStringLiteral("RC7_MAX");
-        remapV3_5["SERVO8_MAX"] = QStringLiteral("RC8_MAX");
-        remapV3_5["SERVO9_MAX"] = QStringLiteral("RC9_MAX");
-        remapV3_5["SERVO10_MAX"] = QStringLiteral("RC10_MAX");
-        remapV3_5["SERVO11_MAX"] = QStringLiteral("RC11_MAX");
-        remapV3_5["SERVO12_MAX"] = QStringLiteral("RC12_MAX");
-        remapV3_5["SERVO13_MAX"] = QStringLiteral("RC13_MAX");
-        remapV3_5["SERVO14_MAX"] = QStringLiteral("RC14_MAX");
+        // Position controller: PSC_ACCZ_* -> PSC_D_ACC_*
+        remapV4_7["PSC_D_ACC_P"]     = QStringLiteral("PSC_ACCZ_P");
+        remapV4_7["PSC_D_ACC_I"]     = QStringLiteral("PSC_ACCZ_I");
+        remapV4_7["PSC_D_ACC_D"]     = QStringLiteral("PSC_ACCZ_D");
+        remapV4_7["PSC_D_ACC_IMAX"]  = QStringLiteral("PSC_ACCZ_IMAX");
+        remapV4_7["PSC_D_ACC_FLTD"]  = QStringLiteral("PSC_ACCZ_FLTD");
+        remapV4_7["PSC_D_ACC_FLTE"]  = QStringLiteral("PSC_ACCZ_FLTE");
+        remapV4_7["PSC_D_ACC_FLTT"]  = QStringLiteral("PSC_ACCZ_FLTT");
+        remapV4_7["PSC_D_ACC_FF"]    = QStringLiteral("PSC_ACCZ_FF");
+        remapV4_7["PSC_D_ACC_SMAX"]  = QStringLiteral("PSC_ACCZ_SMAX");
 
-        remapV3_5["SERVO5_REVERSED"] = QStringLiteral("RC5_REVERSED");
-        remapV3_5["SERVO6_REVERSED"] = QStringLiteral("RC6_REVERSED");
-        remapV3_5["SERVO7_REVERSED"] = QStringLiteral("RC7_REVERSED");
-        remapV3_5["SERVO8_REVERSED"] = QStringLiteral("RC8_REVERSED");
-        remapV3_5["SERVO9_REVERSED"] = QStringLiteral("RC9_REVERSED");
-        remapV3_5["SERVO10_REVERSED"] = QStringLiteral("RC10_REVERSED");
-        remapV3_5["SERVO11_REVERSED"] = QStringLiteral("RC11_REVERSED");
-        remapV3_5["SERVO12_REVERSED"] = QStringLiteral("RC12_REVERSED");
-        remapV3_5["SERVO13_REVERSED"] = QStringLiteral("RC13_REVERSED");
-        remapV3_5["SERVO14_REVERSED"] = QStringLiteral("RC14_REVERSED");
+        // Position controller: PSC_POSXY_P -> PSC_NE_POS_P
+        remapV4_7["PSC_NE_POS_P"]    = QStringLiteral("PSC_POSXY_P");
 
-        remapV3_5["FENCE_ALT_MIN"] = QStringLiteral("FENCE_DEPTH_MAX");
+        // Position controller: PSC_POSZ_P -> PSC_D_POS_P
+        remapV4_7["PSC_D_POS_P"]     = QStringLiteral("PSC_POSZ_P");
 
-        FirmwarePlugin::remapParamNameMap_t &remapV3_6 = _remapParamName[3][6];
+        // Waypoint navigation: WPNAV_* -> WP_*
+        remapV4_7["WP_ACC"]          = QStringLiteral("WPNAV_ACCEL");
+        remapV4_7["WP_ACC_CNR"]      = QStringLiteral("WPNAV_ACCEL_C");
+        remapV4_7["WP_ACC_Z"]        = QStringLiteral("WPNAV_ACCEL_Z");
+        remapV4_7["WP_RADIUS_M"]     = QStringLiteral("WPNAV_RADIUS");
+        remapV4_7["WP_SPD"]          = QStringLiteral("WPNAV_SPEED");
+        remapV4_7["WP_SPD_DN"]       = QStringLiteral("WPNAV_SPEED_DN");
+        remapV4_7["WP_SPD_UP"]       = QStringLiteral("WPNAV_SPEED_UP");
 
-        remapV3_6["BATT_ARM_VOLT"] = QStringLiteral("ARMING_MIN_VOLT");
-        remapV3_6["BATT2_ARM_VOLT"] = QStringLiteral("ARMING_MIN_VOLT2");
-        remapV3_6["BATT_AMP_PERVLT"] =  QStringLiteral("BATT_AMP_PERVOLT");
-        remapV3_6["BATT2_AMP_PERVLT"] = QStringLiteral("BATT2_AMP_PERVOL");
-        remapV3_6["BATT_LOW_MAH"] = QStringLiteral("FS_BATT_MAH");
-        remapV3_6["BATT_LOW_VOLT"] = QStringLiteral("FS_BATT_VOLTAGE");
-        remapV3_6["BATT_FS_LOW_ACT"] = QStringLiteral("FS_BATT_ENABLE");
-        remapV3_6["PSC_POSXY_P"] = QStringLiteral("POS_XY_P");
-        remapV3_6["PSC_POSZ_P"] = QStringLiteral("POS_Z_P");
-        remapV3_6["PSC_VELXY_P"] = QStringLiteral("VEL_XY_P");
-        remapV3_6["PSC_VELXY_I"] = QStringLiteral("VEL_XY_I");
-        remapV3_6["PSC_VELXY_IMAX"] = QStringLiteral("VEL_XY_IMAX");
-        remapV3_6["PSC_VELZ_P"] = QStringLiteral("VEL_Z_P");
-        remapV3_6["PSC_ACCZ_I"] = QStringLiteral("ACCEL_Z_I");
-        remapV3_6["PSC_ACCZ_D"] = QStringLiteral("ACCEL_Z_D");
-        remapV3_6["PSC_ACCZ_P"] = QStringLiteral("ACCEL_Z_P");
-        remapV3_6["PSC_ACCZ_IMAX"] = QStringLiteral("ACCEL_Z_IMAX");
-        remapV3_6["PSC_ACCZ_FILT"] = QStringLiteral("ACCEL_Z_FILT");
+        // Attitude controller
+        remapV4_7["ATC_ACC_R_MAX"]   = QStringLiteral("ATC_ACCEL_R_MAX");
+        remapV4_7["ATC_ACC_P_MAX"]   = QStringLiteral("ATC_ACCEL_P_MAX");
+        remapV4_7["ATC_ACC_Y_MAX"]   = QStringLiteral("ATC_ACCEL_Y_MAX");
+        remapV4_7["ATC_RATE_WPY_MAX"]= QStringLiteral("ATC_SLEW_YAW");
+
+        // Circle
+        remapV4_7["CIRCLE_RADIUS_M"] = QStringLiteral("CIRCLE_RADIUS");
+
+        // EKF
+        remapV4_7["EK3_FLOW_MAX"]    = QStringLiteral("EK3_MAX_FLOW");
+
+        // Common
+        remapV4_7["ARMING_SKIPCHK"]  = QStringLiteral("ARMING_CHECK");
 
         _remapParamNameIntialized = true;
     }
@@ -222,8 +205,7 @@ ArduSubFirmwarePlugin::~ArduSubFirmwarePlugin()
 
 int ArduSubFirmwarePlugin::remapParamNameHigestMinorVersionNumber(int majorVersionNumber) const
 {
-    // Remapping supports up to 3.6
-    return ((majorVersionNumber == 3) ? 6 : Vehicle::versionNotSetValue);
+    return ((majorVersionNumber == 4) ? 7 : Vehicle::versionNotSetValue);
 }
 
 void ArduSubFirmwarePlugin::initializeStreamRates(Vehicle *vehicle)
@@ -242,33 +224,6 @@ bool ArduSubFirmwarePlugin::isCapable(const Vehicle *vehicle, FirmwareCapabiliti
     Q_UNUSED(vehicle);
     constexpr uint32_t available = SetFlightModeCapability | PauseVehicleCapability | GuidedModeCapability;
     return ((capabilities & available) == capabilities);
-}
-
-const QVariantList &ArduSubFirmwarePlugin::toolIndicators(const Vehicle *vehicle)
-{
-    Q_UNUSED(vehicle);
-    //-- Sub specific list of indicators (Enter your modified list here)
-    if (_toolIndicators.isEmpty()) {
-        _toolIndicators = QVariantList({
-            QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Controls/BatteryIndicator.qml")),
-            QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/JoystickIndicator.qml")),
-        });
-    }
-    return _toolIndicators;
-}
-
-const QVariantList& ArduSubFirmwarePlugin::modeIndicators(const Vehicle *vehicle)
-{
-    Q_UNUSED(vehicle);
-    //-- Sub specific list of indicators (Enter your modified list here)
-    if (_modeIndicators.isEmpty()) {
-        _modeIndicators = QVariantList({
-            QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/ModeIndicator.qml")),
-            QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/ArmedIndicator.qml")),
-            QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/MultiVehicleSelector.qml")),
-        });
-    }
-    return _modeIndicators;
 }
 
 void ArduSubFirmwarePlugin::_handleNamedValueFloat(mavlink_message_t *message)

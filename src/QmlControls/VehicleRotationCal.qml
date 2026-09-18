@@ -1,25 +1,22 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 import QtQuick
 import QtQuick.Controls
 
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
+import QGroundControl
+import QGroundControl.Controls
 
 Rectangle {
-    // Indicates whether calibration is valid for this control
-    property bool calValid: false
+    id: root
 
-    // Indicates whether the control is currently being calibrated
-    property bool calInProgress: false
+    // Calibration state of the orientation shown by this control.
+    // Values must stay in sync with SensorsComponentController::SideCalState.
+    enum CalState {
+        Idle,       ///< No calibration data to show (neutral preview)
+        Incomplete, ///< Calibration running, this orientation not yet calibrated
+        InProgress, ///< This orientation actively being calibrated
+        Completed   ///< This orientation calibration complete
+    }
+
+    property int calState: VehicleRotationCal.CalState.Idle
 
     // Text to show while calibration is in progress
     property string calInProgressText: qsTr("Hold Still")
@@ -27,9 +24,44 @@ Rectangle {
     // Image source
     property var imageSource: ""
 
-    property var __qgcPal: QGCPalette { colorGroupEnabled: enabled }
+    color: qgcPal.text
 
-    color:  calInProgress ? "yellow" : (calValid ? "green" : "red")
+    states: [
+        State {
+            name: "idle"
+            when: root.calState === VehicleRotationCal.CalState.Idle
+            PropertyChanges {
+                root.color: qgcPal.text
+                statusLabel.text: ""
+            }
+        },
+        State {
+            name: "incomplete"
+            when: root.calState === VehicleRotationCal.CalState.Incomplete
+            PropertyChanges {
+                root.color: "red"
+                statusLabel.text: qsTr("Incomplete")
+            }
+        },
+        State {
+            name: "inProgress"
+            when: root.calState === VehicleRotationCal.CalState.InProgress
+            PropertyChanges {
+                root.color: "yellow"
+                statusLabel.text: root.calInProgressText
+            }
+        },
+        State {
+            name: "completed"
+            when: root.calState === VehicleRotationCal.CalState.Completed
+            PropertyChanges {
+                root.color: "green"
+                statusLabel.text: qsTr("Completed")
+            }
+        }
+    ]
+
+    QGCPalette { id: qgcPal; colorGroupEnabled: root.enabled }
 
     Rectangle {
         readonly property int inset: 5
@@ -43,18 +75,18 @@ Rectangle {
         Image {
             width:      parent.width
             height:     parent.height
-            source:     imageSource
+            source:     root.imageSource
             fillMode:   Image.PreserveAspectFit
             smooth: true
         }
 
         QGCLabel {
+            id:                     statusLabel
             width:                  parent.width
             height:                 parent.height
             horizontalAlignment:    Text.AlignHCenter
             verticalAlignment:      Text.AlignBottom
             font.pointSize:         ScreenTools.mediumFontPointSize
-            text:                   calInProgress ? calInProgressText : (calValid ? qsTr("Completed") : qsTr("Incomplete"))
         }
     }
 }

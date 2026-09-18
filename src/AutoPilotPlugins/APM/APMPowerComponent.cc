@@ -1,16 +1,19 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "APMPowerComponent.h"
+#include "Vehicle.h"
 
 APMPowerComponent::APMPowerComponent(Vehicle *vehicle, AutoPilotPlugin *autopilot, QObject *parent)
     : VehicleComponent(vehicle, autopilot, AutoPilotPlugin::KnownPowerVehicleComponent, parent)
 {
 
+}
+
+QString APMPowerComponent::vehicleConfigJson() const
+{
+    return QStringLiteral(":/qml/QGroundControl/AutoPilotPlugins/APM/VehicleConfig/APMPower.VehicleConfig.json");
+}
+
+QUrl APMPowerComponent::setupSource() const
+{
+    // Generated from APMPower.VehicleConfig.json
+    return QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AutoPilotPlugins/APM/APMPowerComponent.qml"));
 }

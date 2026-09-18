@@ -1,0 +1,61 @@
+name: Check Links
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '**.md'
+      - '.lychee.toml'
+      - '!docs/ko/**'
+      - '!docs/tr/**'
+      - '!docs/zh/**'
+  pull_request:
+    paths:
+      - '**.md'
+      - '.lychee.toml'
+      - '!docs/ko/**'
+      - '!docs/tr/**'
+      - '!docs/zh/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-links:
+    name: Check Links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: '--config .lychee.toml --cache --max-cache-age 3d --no-progress **/*.md docs/en/**'
+          lycheeVersion: v0.22.0
+          failIfEmpty: false
+          fail: ${{ github.event_name == 'pull_request' }}
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: link-check-report
+          path: ./lychee/out.md
+          if-no-files-found: ignore
+          retention-days: 7

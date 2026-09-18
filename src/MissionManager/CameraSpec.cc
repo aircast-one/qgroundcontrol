@@ -1,14 +1,5 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "CameraSpec.h"
-#include "JsonHelper.h"
+#include "JsonParsing.h"
 
 #include <QtQml/QQmlEngine>
 
@@ -64,7 +55,7 @@ void CameraSpec::save(QJsonObject& json) const
 
 bool CameraSpec::load(const QJsonObject& json, QString& errorString)
 {
-    QList<JsonHelper::KeyValidateInfo> keyInfoList = {
+    QList<JsonParsing::KeyValidateInfo> keyInfoList = {
         { _sensorWidthName,         QJsonValue::Double, true },
         { _sensorHeightName,        QJsonValue::Double, true },
         { _imageWidthName,          QJsonValue::Double, true },
@@ -74,7 +65,7 @@ bool CameraSpec::load(const QJsonObject& json, QString& errorString)
         { _fixedOrientationName,    QJsonValue::Bool,   true },
         { _minTriggerIntervalName,  QJsonValue::Double, true },
     };
-    if (!JsonHelper::validateKeys(json, keyInfoList, errorString)) {
+    if (!JsonParsing::validateKeys(json, keyInfoList, errorString)) {
         return false;
     }
 

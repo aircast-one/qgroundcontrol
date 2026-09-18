@@ -1,33 +1,69 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTest.h"
 
 class PlanMasterController;
 
-class PlanMasterControllerTest : public UnitTest
+class PlanMasterControllerTest : public VehicleTest
 {
     Q_OBJECT
 
-public:
-    PlanMasterControllerTest(void);
-
 private slots:
-    void init(void) final;
-    void cleanup(void) final;
+    void init() final;
+    void cleanup() final;
 
-    void _testMissionFileLoad(void);
-    void _testMissionPlannerFileLoad(void);
-    void _testActiveVehicleChanged(void);
+    void _testMissionPlannerFileLoad();
+    void _testTakeoffTextFileLoad();
+    void _testActiveVehicleChanged();
+    void _testDirtyFlagsMatrix_data();
+    void _testDirtyFlagsMatrix();
+
+    // File name property tests
+    void _testFileAssociationSetOnLoad();
+    void _testFileAssociationClearedOnRemoveAll();
+    void _testFileAssociationClearedOnRemoveAllFromVehicle();
+    void _testSaveUpdatesFileName();
+    void _testFailedLoadClearsFileAssociation();
+    void _testDownloadClearsFileAssociation();
+    void _testBackgroundSyncPreservesFileAssociation();
+    void _testUnrequestedSendCompletePreservesDirtyForUpload();
+    void _testStaleInitialPlanLoadRallyCompletePreservesPlan();
+    void _testShowPlanFromVehicleClearsFileAssociation();
+
+    // showCreateFromTemplate tests — template selection mode
+    void _testTemplateModeHidesTemplatesOnPlanCreatorSelection();
+    void _testTemplateModeHidesTemplatesOnFileLoad();
+    void _testTemplateModeRestoredOnRemoveAll();
+    void _testTemplateModeRestoredOnIndividualItemRemoval();
+
+    // showCreateFromTemplate tests — manual creation mode
+    void _testManualCreationHidesTemplates();
+    void _testManualCreationRestoredOnRemoveAll();
+    void _testManualCreationRestoredOnIndividualItemRemoval();
+
+    void _testPlanCreatorsFiltered();
 
 private:
-    PlanMasterController*   _masterController;
+    enum DirtyScenario {
+        UploadPreservesSaveDirtyTrue,
+        UploadPreservesSaveDirtyFalse,
+        UploadFalseOnPlanClear,
+        UploadTrueWhenSaveTrue,
+        UploadTrueOnNewPlanLoad,
+        SaveToFilePreservesUploadDirtyTrue,
+        SaveToFilePreservesUploadDirtyFalse,
+        SaveFalseOnSuccessfulLoad,
+        ClearSaveDirtyPreservesUploadTrue,
+        ClearSaveDirtyPreservesUploadFalse,
+        DownloadWithItemsNotDirtyForSave,
+        DownloadEmptyNotDirtyForSave,
+    };
+
+    enum DirtyState {
+        DirtyStateFalse,
+        DirtyStateTrue,
+        DirtyStateUnchanged
+    };
+
+    PlanMasterController* _masterController = nullptr;
 };

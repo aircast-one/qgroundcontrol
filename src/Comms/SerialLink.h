@@ -1,30 +1,19 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
-#include <QtCore/QString>
+#include "LinkConfiguration.h"
+#include "LinkInterface.h"
 
+#include <QtCore/QString>
 #ifdef Q_OS_ANDROID
 #include "qserialport.h"
 #else
 #include <QtSerialPort/QSerialPort>
 #endif
 
-#include "LinkConfiguration.h"
-#include "LinkInterface.h"
+#include <atomic>
 
 class QThread;
 class QTimer;
-
-Q_DECLARE_LOGGING_CATEGORY(SerialLinkLog)
 
 /*===========================================================================*/
 
@@ -39,6 +28,7 @@ class SerialConfiguration : public LinkConfiguration
     Q_PROPERTY(QString                  portName        READ portName        WRITE setPortName    NOTIFY portNameChanged)
     Q_PROPERTY(QString                  portDisplayName READ portDisplayName                      NOTIFY portDisplayNameChanged)
     Q_PROPERTY(bool                     usbDirect       READ usbDirect       WRITE setUsbDirect   NOTIFY usbDirectChanged)
+    Q_PROPERTY(bool                     dtrForceLow     READ dtrForceLow     WRITE setdtrForceLow NOTIFY dtrForceLowChanged)
 
 public:
     explicit SerialConfiguration(const QString &name, QObject *parent = nullptr);
@@ -76,6 +66,9 @@ public:
     bool usbDirect() const { return _usbDirect; }
     void setUsbDirect(bool usbDirect) { if (usbDirect != _usbDirect) { _usbDirect = usbDirect; emit usbDirectChanged(); } }
 
+    bool dtrForceLow() const { return _dtrForceLow; }
+    void setdtrForceLow(bool dtrForceLow) { if (dtrForceLow != _dtrForceLow) { _dtrForceLow = dtrForceLow; emit dtrForceLowChanged(); } }
+
     static QStringList supportedBaudRates();
     static QString cleanPortDisplayName(const QString &name);
 
@@ -88,6 +81,7 @@ signals:
     void portNameChanged();
     void portDisplayNameChanged();
     void usbDirectChanged();
+    void dtrForceLowChanged();
 
 private:
     qint32 _baud = QSerialPort::Baud57600;
@@ -98,6 +92,7 @@ private:
     QString _portName;
     QString _portDisplayName;
     bool _usbDirect = false;
+    bool _dtrForceLow = false;
 };
 
 /*===========================================================================*/
@@ -173,4 +168,5 @@ private:
     const SerialConfiguration *_serialConfig = nullptr;
     SerialWorker *_worker = nullptr;
     QThread *_workerThread = nullptr;
+    std::atomic<bool> _disconnectedEmitted{false};
 };

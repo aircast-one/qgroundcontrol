@@ -1,23 +1,12 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QElapsedTimer>
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QTimer>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 #include "LinkInterface.h"
-#include "MAVLinkLib.h"
-
-Q_DECLARE_LOGGING_CATEGORY(VehicleLinkManagerLog)
+#include "MAVLinkMessageType.h"
 
 class Vehicle;
 class VehicleLinkManagerTest;
@@ -25,6 +14,8 @@ class VehicleLinkManagerTest;
 class VehicleLinkManager : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
     Q_MOC_INCLUDE("Vehicle.h")
     Q_PROPERTY(QString      primaryLinkName             READ primaryLinkName            WRITE setPrimaryLinkByName          NOTIFY primaryLinkChanged)
     Q_PROPERTY(QStringList  linkNames                   READ linkNames                                                      NOTIFY linkNamesChanged)
@@ -34,7 +25,9 @@ class VehicleLinkManager : public QObject
     Q_PROPERTY(bool         autoDisconnect              MEMBER _autoDisconnect                                              NOTIFY autoDisconnectChanged)
 
     friend class Vehicle;
+#ifdef QGC_UNITTEST_BUILD
     friend class VehicleLinkManagerTest;
+#endif
 
 public:
     VehicleLinkManager(Vehicle *vehicle);
@@ -90,4 +83,15 @@ private:
 
     static constexpr int _commLostCheckTimeoutMSecs = 1000; ///< Check for comm lost once a second
     static constexpr int _heartbeatMaxElpasedMSecs = 3500;  ///< No heartbeat for longer than this indicates comm loss
+
+public:
+    /// Heartbeat timeout used in unit tests (shorter for faster tests). Margin kept wide so an
+    /// ASan-stalled event loop can't be mistaken for a missed heartbeat (false comm-loss).
+    static constexpr int kTestHeartbeatTimeoutMs = 1500;
+
+    static constexpr int kTestCommLostCheckTimeoutMs = 250;
+
+    /// Full comm loss detection timeout for tests: accounts for timer interval + heartbeat timeout + margin.
+    /// Use this in tests waiting for communicationLostChanged or linkStatusesChanged signals.
+    static constexpr int kTestCommLostDetectionTimeoutMs = kTestCommLostCheckTimeoutMs + kTestHeartbeatTimeoutMs + 300;
 };

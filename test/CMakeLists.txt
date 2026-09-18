@@ -1,156 +1,137 @@
+# ============================================================================
+# QGroundControl Unit Tests
+# ============================================================================
+
 if(NOT QGC_BUILD_TESTING)
     return()
 endif()
 
-# if(ANDROID)
-    # include(AndroidTestUtilities)
-# endif()
-
-# set(UNIT_TESTING_RESOURCES)
-# qt_add_resources(UNIT_TESTING_RESOURCES UnitTest.qrc)
-
+# ----------------------------------------------------------------------------
+# Test Framework Sources
+# ----------------------------------------------------------------------------
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         UnitTestList.cc
         UnitTestList.h
 )
 
+# ----------------------------------------------------------------------------
+# Test Dependencies
+# ----------------------------------------------------------------------------
 find_package(Qt6 REQUIRED COMPONENTS Test)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Test)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_UNITTEST_BUILD)
+# QGC_UNITTEST_BUILD is defined directory-wide from the root CMakeLists.txt when
+# QGC_BUILD_TESTING is enabled, covering this target and all src/ targets.
 
-include(CTest)
-add_custom_target(check
-    COMMAND ctest --output-on-failure .
-    USES_TERMINAL
+target_precompile_headers(${CMAKE_PROJECT_NAME} PRIVATE
+    <QtTest/QTest>
+    <UnitTest.h>
+    <MultiSignalSpy.h>
 )
 
-function(add_qgc_test test_name)
-    add_test(
-        NAME ${test_name}
-        COMMAND $<TARGET_FILE:${PROJECT_NAME}> --unittest:${test_name}
-    )
-    add_dependencies(check ${PROJECT_NAME})
-endfunction()
+# ----------------------------------------------------------------------------
+# CTest Integration (CTest included in root CMakeLists.txt)
+# ----------------------------------------------------------------------------
+include(QGCTest)
+include(Coverage)
+include(Sanitizers)
 
+# ----------------------------------------------------------------------------
+# Optional separate test binary (QGC_BUILD_TEST_BINARY, default OFF)
+# ----------------------------------------------------------------------------
+# When ON, test object code is built into a standalone `qgc_tests` executable so
+# editing a single test relinks only test objects instead of the entire app.
+# add_qgc_test() already dispatches through $<TARGET_FILE:qgc_tests> whenever the
+# target exists (see cmake/QGCTest.cmake).
+#
+# FULL WIRING IS NOT YET COMPLETE — this is intentional scaffolding. The default
+# OFF path is unaffected: tests stay compiled into ${CMAKE_PROJECT_NAME} via the
+# target_sources() calls below and in each test subdirectory.
+#
+# Remaining wiring required to make ON functional (all CMake-only EXCEPT item 3):
+#   1. Collect every test subdirectory's sources into an OBJECT library (e.g.
+#      qgc_test_objects) instead of target_sources(${CMAKE_PROJECT_NAME} ...).
+#      Each test/**/CMakeLists.txt would target a shared variable/target rather
+#      than the app target.
+#   2. add_executable(qgc_tests) linking qgc_test_objects + the app's core
+#      libraries (the same libs QGroundControl links) + Qt6::Test.
+#   3. C++ ENTRY POINT (not owned here): qgc_tests needs a main() that parses
+#      `--unittest:<name>` and runs the UnitTestList dispatch, mirroring the app's
+#      existing --unittest handling. Without this the binary cannot run tests.
+#   4. Mirror include dirs and PCH onto qgc_tests (QGC_UNITTEST_BUILD is already
+#      inherited from the root directory-scope definition).
+# Until items 1-4 land, configuring with -DQGC_BUILD_TEST_BINARY=ON builds no
+# qgc_tests target, so add_qgc_test() falls back to the app binary (no breakage).
+if(QGC_BUILD_TEST_BINARY)
+    message(WARNING
+        "QGC_BUILD_TEST_BINARY=ON: qgc_tests target wiring is not yet implemented; "
+        "tests will continue to run from the main app binary. See test/CMakeLists.txt.")
+endif()
+
+# Sanitizers add significant runtime overhead; expand CTest per-test limits to
+# avoid false timeout failures in CI sanitizer jobs.
+if(QGC_ENABLE_ASAN OR QGC_ENABLE_UBSAN OR QGC_ENABLE_TSAN OR QGC_ENABLE_MSAN)
+    set(QGC_TEST_TIMEOUT_UNIT 180 CACHE STRING "Timeout for unit tests (seconds)" FORCE)
+    set(QGC_TEST_TIMEOUT_INTEGRATION 360 CACHE STRING "Timeout for integration tests (seconds)" FORCE)
+    set(QGC_TEST_TIMEOUT_SLOW 540 CACHE STRING "Timeout for slow tests (seconds)" FORCE)
+    set(QGC_TEST_TIMEOUT_DEFAULT 270 CACHE STRING "Default test timeout (seconds)" FORCE)
+    set(QGC_TEST_TIMEOUT_EXTENDED 360)
+else()
+    set(QGC_TEST_TIMEOUT_EXTENDED 180)
+endif()
+
+# ============================================================================
+# Test Subdirectories
+# ============================================================================
+
+add_subdirectory(UnitTestFramework)
 add_subdirectory(ADSB)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_subdirectory(PacketRadio)
+    add_qgc_test(PacketRadioTest LABELS Unit)
 endif()
-add_qgc_test(ADSBTest)
-
-add_subdirectory(AnalyzeView)
-add_qgc_test(ExifParserTest)
-# add_qgc_test(GeoTagControllerTest)
-add_qgc_test(LogDownloadTest)
-# add_qgc_test(MavlinkLogTest)
-add_qgc_test(PX4LogParserTest)
-# add_qgc_test(ULogParserTest)
-
-# add_subdirectory(AutoPilotPlugins)
-# add_qgc_test(RadioConfigTest)
-
 add_subdirectory(AircastSetup)
-add_qgc_test(AircastDeviceSetupTest)
-
-add_subdirectory(Camera)
-add_qgc_test(QGCCameraManagerTest)
-
-add_subdirectory(Comms)
-add_qgc_test(QGCSerialPortInfoTest)
-
+add_qgc_test(AircastDeviceSetupTest LABELS Unit)
 add_subdirectory(DebugApi)
-add_qgc_test(DebugApiServerTest)
-
-add_subdirectory(FactSystem)
-add_qgc_test(FactSystemTestGeneric)
-add_qgc_test(FactSystemTestPX4)
-add_qgc_test(ParameterManagerTest)
-
-add_subdirectory(FollowMe)
-add_qgc_test(FollowMeTest)
-
-add_subdirectory(GPS)
-add_qgc_test(GpsTest)
-
-add_subdirectory(MAVLink)
-add_qgc_test(StatusTextHandlerTest)
-add_qgc_test(SigningTest)
-
-add_subdirectory(MissionManager)
-add_qgc_test(CameraCalcTest)
-add_qgc_test(CameraSectionTest)
-add_qgc_test(CorridorScanComplexItemTest)
-# add_qgc_test(FWLandingPatternTest)
-# add_qgc_test(LandingComplexItemTest)
-# add_qgc_test(MissionCommandTreeEditorTest)
-add_qgc_test(MissionCommandTreeTest)
-add_qgc_test(MissionControllerManagerTest)
-add_qgc_test(MissionControllerTest)
-add_qgc_test(MissionItemTest)
-add_qgc_test(MissionManagerTest)
-add_qgc_test(MissionSettingsTest)
-add_qgc_test(PlanMasterControllerTest)
-add_qgc_test(QGCMapPolygonTest)
-add_qgc_test(QGCMapPolylineTest)
-# add_qgc_test(SectionTest)
-add_qgc_test(SimpleMissionItemTest)
-add_qgc_test(SpeedSectionTest)
-add_qgc_test(StructureScanComplexItemTest)
-add_qgc_test(SurveyComplexItemTest)
-add_qgc_test(TransectStyleComplexItemTest)
-# add_qgc_test(VisualMissionItemTest)
-
-add_subdirectory(qgcunittest)
-# add_qgc_test(FileDialogTest)
-# add_qgc_test(MainWindowTest)
-# add_qgc_test(MessageBoxTest)
-
+add_qgc_test(DebugApiServerTest LABELS Unit)
 add_subdirectory(FlightDisplay)
-add_qgc_test(VideoTileTest)
-
-add_subdirectory(QmlControls)
-add_qgc_test(DragToPositionTest)
-add_qgc_test(PipViewTest)
-
-add_subdirectory(Terrain)
-add_qgc_test(TerrainQueryTest)
-add_qgc_test(TerrainTileTest)
-
-add_subdirectory(UI)
-
+add_qgc_test(VideoTileTest LABELS Unit)
+add_subdirectory(AnalyzeView)
+add_subdirectory(AutoPilotPlugins)
+add_subdirectory(Camera)
 add_subdirectory(VideoManager)
-add_qgc_test(SkydroidH16LinksTest)
-add_qgc_test(VideoManagerTest)
-
+add_subdirectory(Comms)
+add_qgc_test(SkydroidH16LinksTest LABELS Unit Comms)
+add_subdirectory(FactSystem)
+add_subdirectory(FlyView)
+add_subdirectory(FollowMe)
+add_subdirectory(GPS)
+add_subdirectory(Joystick)
+add_subdirectory(MAVLink)
+add_subdirectory(MissionManager)
+add_subdirectory(PositionManager)
+add_subdirectory(QtLocationPlugin)
+add_subdirectory(QmlControls)
+add_subdirectory(Settings)
+add_subdirectory(Terrain)
 add_subdirectory(Utilities)
-# Audio
-add_qgc_test(AudioOutputTest)
-# Compression
-add_qgc_test(DecompressionTest)
-# FileSystem
-add_qgc_test(QGCFileDownloadTest)
-# Geo
-add_qgc_test(GeoTest)
-# Shape
-add_qgc_test(ShapeTest)
-
+add_subdirectory(Viewer3D)
 add_subdirectory(Vehicle)
-# Components
-add_qgc_test(ComponentInformationCacheTest)
-add_qgc_test(ComponentInformationTranslationTest)
-add_qgc_test(FTPManagerTest)
-# add_qgc_test(InitialConnectTest)
-add_qgc_test(MAVLinkLogManagerTest)
-# add_qgc_test(RequestMessageTest)
-# add_qgc_test(SendMavCommandWithHandlerTest)
-# add_qgc_test(SendMavCommandWithSignalingTest)
-add_qgc_test(VehicleLinkManagerTest)
+add_subdirectory(QmlUITests)
 
-# add_qgc_test(FlightGearUnitTest)
-# add_qgc_test(LinkManagerTest)
-# add_qgc_test(SendMavCommandTest)
-# add_qgc_test(TCPLinkTest)
+set(_qgc_test_qml
+    FlightDisplay/VideoTileTest.qml
+    QmlControls/DragToPositionTest.qml
+    QmlControls/PipViewTest.qml
+)
+foreach(_qml IN LISTS _qgc_test_qml)
+    cmake_path(GET _qml FILENAME _alias)
+    set_source_files_properties(${_qml} PROPERTIES QT_RESOURCE_ALIAS ${_alias})
+endforeach()
+qt_add_resources(${CMAKE_PROJECT_NAME} "UnitTestQml_res"
+    PREFIX "/unittest"
+    FILES ${_qgc_test_qml}
+)

@@ -1,17 +1,19 @@
 name: Aircast Release
 
-# Builds the Aircast QGroundControl fork (Android APK + macOS DMG) on a version
-# tag and publishes a GitHub release — the repo is public, so GitHub Releases
-# are the distribution channel (no S3 mirror).
+# Builds the Aircast QGroundControl fork on a version tag and publishes a GitHub
+# release (public repo, so GitHub Releases are the distribution channel).
 #
 # Tags are created with `make release.<patch|minor|major|dev|staging>`.
+# Toolchain versions (Qt, NDK, GStreamer, SDK levels) come from
+# .github/build-config.json through the upstream composite actions.
 #
-# Optional secrets: ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_STORE_PASSWORD (APK signing),
+# Optional secrets: ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_STORE_PASSWORD (APK signing,
+#                   PKCS12: the store password is also the key password; a throwaway
+#                   debug keystore is used when absent),
 #                   MACOS_CERT_P12_BASE64 / MACOS_CERT_P12_PASSWORD / MACOS_SIGNING_IDENTITY /
 #                   MACOS_NOTARIZATION_USERNAME / MACOS_NOTARIZATION_TEAM_ID /
 #                   MACOS_NOTARIZATION_PASSWORD (Developer ID signing + notarization;
 #                   the build is ad-hoc signed when the P12 secret is absent).
-# (Uses the built-in GITHUB_TOKEN for the GitHub release — no PAT needed.)
 
 permissions:
   contents: write
@@ -31,24 +33,30 @@ on:
         type: string
 
 env:
-  QT_VERSION: 6.8.3
+  AQT_SOURCE: 'git+https://github.com/miurahr/aqtinstall.git@8d961e61720b3c06583517fbc68d57ec0a4e9f95'
 
 jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.config.outputs.version }}
+      short_version: ${{ steps.config.outputs.short_version }}
       environment: ${{ steps.config.outputs.environment }}
       is_production: ${{ steps.config.outputs.is_production }}
     steps:
       - id: config
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" == "push" ]; then
-            VERSION="${{ github.ref_name }}"
+          if [ "$EVENT_NAME" == "push" ]; then
+            VERSION="$REF_NAME"
           else
-            VERSION="${{ inputs.version }}"
+            VERSION="$INPUT_VERSION"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "short_version=${VERSION#aircast-}" >> "$GITHUB_OUTPUT"
 
           if [[ "$VERSION" =~ ^aircast-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
@@ -64,785 +72,407 @@ jobs:
 
   build-android:
     needs: setup
-    # GitHub-hosted: free with unlimited minutes on public repos, 4 cores, and
-    # fully parallel with the other platforms. The S3 cache keeps it warm.
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
     env:
-      QT_VERSION: 6.6.3
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
       QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
-      # PKCS12 keystores have no distinct key password - the store password unlocks the key
       QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
       # Fleet tablets are arm64; build the legacy 32-bit ABI only for production
-      QT_ANDROID_ABIS: ${{ needs.setup.outputs.is_production == 'true' && 'armeabi-v7a;arm64-v8a' || 'arm64-v8a' }}
+      QT_ANDROID_ABIS: ${{ needs.setup.outputs.is_production == 'true' && 'arm64-v8a;armeabi-v7a' || 'arm64-v8a' }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.setup.outputs.version }}
-          submodules: recursive
-          fetch-depth: 1
-          fetch-tags: false
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get all tags for correct version determination
-        run: git fetch --all --tags -f --depth 1
+      - name: Set Android SDK location
+        run: |
+          echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "$GITHUB_ENV"
 
-      - name: Initial Setup
-        uses: ./.github/actions/common
-
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@main
+      - name: Build Setup (Android)
+        id: setup
+        uses: ./.github/actions/build-setup
         with:
-          tool-cache: false
-          android: false
-          large-packages: false
-
-      - name: Install Qt for Android
-        uses: ./.github/actions/qt-android
-        with:
-          host: linux
-          arch: gcc_64
-          version: ${{ env.QT_VERSION }}
+          mode: android
+          qt-host: linux
+          qt-arch: linux_gcc_64
           abis: ${{ env.QT_ANDROID_ABIS }}
-          cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
+          build-type: Release
+          cpm-modules: ${{ runner.temp }}/build/cpm_modules
+
+      - name: Install host build dependencies
+        uses: ./.github/actions/install-dependencies
 
       - name: Install release signing keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$QT_ANDROID_KEYSTORE_STORE_PASS" ]; then
             # The checked-in keystore is upstream's; the aircast signing keystore is
             # injected from a secret so it never lives in this public repo.
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$QT_ANDROID_KEYSTORE_PATH"
             echo "Installed aircast release keystore"
           else
-            echo "No keystore secret - APK will be unsigned"
+            echo "::warning::No keystore secret - signing the APK with a throwaway debug key"
+            keytool -genkey -v \
+              -keystore "${RUNNER_TEMP}/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            {
+              echo "QT_ANDROID_KEYSTORE_PATH=${RUNNER_TEMP}/debug.keystore"
+              echo "QT_ANDROID_KEYSTORE_ALIAS=androiddebugkey"
+              echo "QT_ANDROID_KEYSTORE_STORE_PASS=android"
+              echo "QT_ANDROID_KEYSTORE_KEY_PASS=android"
+            } >> "$GITHUB_ENV"
           fi
-
-      - name: Restore shared build cache from S3
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-        run: |
-          echo "CCACHE_DIR=${RUNNER_TEMP}/qgc-ccache" >> "$GITHUB_ENV"
-          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
-          # hash compiler content, not mtime/path - cache entries stay valid across
-          # ephemeral runners where compiler install paths and timestamps differ
-          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
-          mkdir -p "${RUNNER_TEMP}/qgc-ccache"
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then
-            echo "No AWS credentials/cli - building without the shared cache"
-            exit 0
-          fi
-          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst"
-          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cache.tar.zst" --no-progress 2>/dev/null; then
-            tar -I zstd -xf "${RUNNER_TEMP}/qgc-cache.tar.zst" -C "${RUNNER_TEMP}"
-            rm -f "${RUNNER_TEMP}/qgc-cache.tar.zst"
-            echo "Shared cache restored from $OBJ"
-          else
-            echo "Shared cache MISS for $OBJ - will seed it after this build"
-          fi
-
-      # CPMAddPackage downloads this during configure with no retry, so one dropped
-      # connection on the freedesktop CDN fails the build. Take it from the cache
-      # warmed on main, and hand CPM the extracted tree via CPM_gstreamer_SOURCE.
-      - name: Cache GStreamer tarball
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/gst-android
-          key: gstreamer-android-1.22.12
-
-      - name: Prefetch GStreamer for Android
-        uses: nick-fields/retry@v4
-        with:
-          timeout_minutes: 30
-          max_attempts: 10
-          retry_wait_seconds: 60
-          shell: bash
-          command: |
-            set -euo pipefail
-            GST_VERSION=1.22.12
-            DIR="${RUNNER_TEMP}/gst-android"
-            mkdir -p "$DIR"
-            cd "$DIR"
-            TARBALL="gstreamer-1.0-android-universal-${GST_VERSION}.tar.xz"
-            URL="https://gstreamer.freedesktop.org/data/pkg/android/${GST_VERSION}/${TARBALL}"
-            if [ ! -f "$TARBALL" ]; then
-              expected=$(curl -fsSLI --max-time 60 "$URL" | tr -d '\r' \
-                         | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
-              curl -fsSL -C - --max-time 900 -o "$TARBALL" "$URL" || true
-              [ "$(stat -c%s "$TARBALL")" -eq "$expected" ]
-            fi
-
-      - name: Extract GStreamer for Android
-        working-directory: ${{ runner.temp }}
-        run: |
-          set -euo pipefail
-          mkdir -p gstreamer-android
-          tar -xf gst-android/gstreamer-1.0-android-universal-1.22.12.tar.xz -C gstreamer-android
-          # FindGStreamer.cmake expects the per-ABI dirs directly under the source dir,
-          # so normalise whether or not the archive has a top-level wrapper directory.
-          arch_dir=$(find gstreamer-android -maxdepth 2 -type d -name arm64 | head -1)
-          [ -n "$arch_dir" ] || { echo "::error::unexpected archive layout"; exit 1; }
-          echo "GST_ANDROID_SOURCE=$(cd "$(dirname "$arch_dir")" && pwd)" >> "$GITHUB_ENV"
 
       - name: Configure
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: ${{ runner.temp }}/Qt/${{ env.QT_VERSION }}/android_arm64_v8a/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
-              -DCMAKE_BUILD_TYPE=Release
-              -DCMAKE_WARN_DEPRECATED=FALSE
-              -DCPM_gstreamer_SOURCE="${{ env.GST_ANDROID_SOURCE }}"
-              -DQT_ANDROID_ABIS="${{ env.QT_ANDROID_ABIS }}"
-              -DQT_ANDROID_BUILD_ALL_ABIS=OFF
-              -DQT_HOST_PATH="${{ runner.temp }}/Qt/${{ env.QT_VERSION }}/gcc_64"
-              -DQT_ANDROID_SIGN_APK=${{ env.QT_ANDROID_KEYSTORE_STORE_PASS != '' && 'ON' || 'OFF' }}
-              -DQGC_STABLE_BUILD=ON
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
+          stable: 'true'
+          use-qt-cmake: 'false'
+          extra-args: >-
+            -DCMAKE_WARN_DEPRECATED=FALSE
+            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup.outputs.target_qt_root_dir }}/lib/cmake/Qt6/qt.toolchain.cmake
+            -DCMAKE_PREFIX_PATH=${{ steps.setup.outputs.target_qt_root_dir }}
+            -DQT_ANDROID_ABIS=${{ env.QT_ANDROID_ABIS }}
+            -DQT_HOST_PATH=${{ steps.setup.outputs.host_qt_root_dir }}
+            -DQT_ANDROID_SIGN_APK=ON
 
       - name: Build
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: cmake --build . --target all --config Release
-
-      - name: Save shared build cache to S3
-        continue-on-error: true
+        timeout-minutes: 75
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then exit 0; fi
-          cd "${RUNNER_TEMP}"
-          ccache -s 2>/dev/null || true
-          EXTRA=""
-          [ -d shadow_build_dir/cpm_modules ] && EXTRA="shadow_build_dir/cpm_modules"
-          tar -I 'zstd -T0 -3' -cf qgc-cache.tar.zst qgc-ccache $EXTRA
-          aws s3 cp qgc-cache.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst" --no-progress
-          rm -f qgc-cache.tar.zst
-          echo "Shared cache uploaded - any runner picks it up on the next build"
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
 
       - name: Collect APK
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
-          V="${{ needs.setup.outputs.version }}"
-          SHORT="${V#aircast-}"
+          APK_DIR="${RUNNER_TEMP}/build/android-build"
+          ls "${APK_DIR}"/*.apk
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk "out/AircastQGC-$SHORT.apk"
+          cp "${APK_DIR}"/*.apk "out/AircastQGC-${SHORT}.apk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qgc-android
           path: out/*.apk
+          if-no-files-found: error
 
   build-macos:
     needs: setup
-    # GitHub-hosted macos-14: free on public repos, Xcode 16 / macOS 15 SDK
-    # (still ships AGL.framework, so no SDK workaround needed), and keeps builds
-    # off the user's workstation (which orphaned macdeployqt and dropped network).
-    runs-on: macos-14
-    timeout-minutes: 45
+    # GitHub-hosted, matching upstream's macos.yml; keeps builds off the user's workstation.
+    runs-on: macos-15
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
     env:
       MACOS_SIGN: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.setup.outputs.version }}
-          submodules: recursive
-          fetch-depth: 1
-          fetch-tags: false
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get all tags for correct version determination
-        run: git fetch --all --tags -f --depth 1
-
-      - name: Initial Setup
-        uses: ./.github/actions/common
-
-      - name: Install build tools
-        # The GitHub macOS image has cmake/ninja/ccache/git; create-dmg packages
-        # the DMG, libusb/libsodium are the packet radio receiver's native deps
-        # (copied into the bundle by cmake/BundleWfbDylibs.cmake).
-        run: brew install --quiet create-dmg ccache libusb libsodium
-
-      - name: Cache GStreamer installers
-        id: gst-pkgs
-        uses: actions/cache@v4
+      - name: Build Setup
+        uses: ./.github/actions/build-setup
         with:
-          path: ${{ runner.temp }}/gst-pkgs
-          key: gstreamer-macos-pkgs-1.24.13
+          qt-host: mac
+          qt-arch: clang_64
+          build-type: Release
 
-      - name: Install GStreamer
-        # Explicit absolute paths instead of tools/setup/install-dependencies-osx.sh,
-        # whose `pushd $TMPDIR` + relative installer path leaves the .pkg unfound.
-        # The freedesktop CDN drops connections mid-transfer, so retry the whole
-        # step and resume with -C - rather than failing a 40 minute build.
-        uses: nick-fields/retry@v4
-        with:
-          timeout_minutes: 30
-          max_attempts: 10
-          retry_wait_seconds: 60
-          shell: bash
-          command: |
-            set -euo pipefail
-            # Must match GST_MACOS_PLUGINS_VERSION default in gstqml6gl/CMakeLists.txt.
-            GST_VERSION=1.24.13
-            GST_URL="https://gstreamer.freedesktop.org/data/pkg/osx/${GST_VERSION}"
-            PKG_DIR="${RUNNER_TEMP}/gst-pkgs"
-            mkdir -p "$PKG_DIR"
-            for pkg in "gstreamer-1.0-${GST_VERSION}-universal.pkg" "gstreamer-1.0-devel-${GST_VERSION}-universal.pkg"; do
-              if [ ! -f "$PKG_DIR/$pkg" ]; then
-                expected=$(curl -fsSLI --max-time 60 "$GST_URL/$pkg" | tr -d '\r' \
-                           | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
-                curl -fsSL -C - --max-time 900 -o "$PKG_DIR/$pkg" "$GST_URL/$pkg" || true
-                [ "$(stat -f%z "$PKG_DIR/$pkg")" -eq "$expected" ]
-              fi
-              sudo installer -pkg "$PKG_DIR/$pkg" -target /
-            done
-            test -d /Library/Frameworks/GStreamer.framework
-            echo "GStreamer.framework installed"
+      - name: Install Dependencies
+        uses: ./.github/actions/install-dependencies
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: mac
-          target: desktop
-          arch: clang_64
-          dir: ${{ runner.temp }}
-          modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
-          cache: true
+      - name: Install packet radio native deps
+        # libusb/libsodium are the wfb-ng receiver's native deps, copied into the
+        # bundle by cmake/BundleWfbDylibs.cmake.
+        run: brew install --quiet libusb libsodium
 
-      - name: Restore shared build cache from S3
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-        run: |
-          echo "CCACHE_DIR=${RUNNER_TEMP}/qgc-ccache" >> "$GITHUB_ENV"
-          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
-          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
-          mkdir -p "${RUNNER_TEMP}/qgc-ccache"
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then
-            echo "No AWS credentials/cli - building without the shared cache"
-            exit 0
-          fi
-          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst"
-          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cache.tar.zst" --no-progress 2>/dev/null; then
-            # pipe form: macOS bsdtar doesn't support GNU tar's -I option
-            zstd -d -c "${RUNNER_TEMP}/qgc-cache.tar.zst" | tar -xf - -C "${RUNNER_TEMP}"
-            rm -f "${RUNNER_TEMP}/qgc-cache.tar.zst"
-            echo "Shared cache restored from $OBJ"
-          else
-            echo "Shared cache MISS for $OBJ - will seed it after this build"
-          fi
-
-      - name: Import Developer ID certificate
+      - name: Import Code Signing Certificate
         if: env.MACOS_SIGN == 'true'
-        env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
-        run: |
-          KEYCHAIN="${RUNNER_TEMP}/signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
-          echo "$MACOS_CERT_P12_BASE64" | base64 -d > "${RUNNER_TEMP}/cert.p12"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "${RUNNER_TEMP}/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERT_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
-          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
-          rm -f "${RUNNER_TEMP}/cert.p12"
-          security find-identity -v -p codesigning "$KEYCHAIN"
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
 
       - name: CMake configure
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
-              -DCMAKE_BUILD_TYPE=Release
-              -DCMAKE_OSX_ARCHITECTURES=${{ needs.setup.outputs.is_production == 'true' && '"x86_64;arm64"' || 'arm64' }}
-              -DQGC_STABLE_BUILD=ON
-              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.MACOS_SIGN == 'true' && 'ON' || 'OFF' }}
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
+          stable: 'true'
+          extra-args: -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.MACOS_SIGN == 'true' && 'ON' || 'OFF' }}
 
       - name: Build
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: cmake --build . --target all --config Release
-
-      - name: Save shared build cache to S3
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then exit 0; fi
-          cd "${RUNNER_TEMP}"
-          ccache -s 2>/dev/null || true
-          EXTRA=""
-          [ -d shadow_build_dir/cpm_modules ] && EXTRA="shadow_build_dir/cpm_modules"
-          tar -cf - qgc-ccache $EXTRA | zstd -T0 -3 > qgc-cache.tar.zst
-          aws s3 cp qgc-cache.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst" --no-progress
-          rm -f qgc-cache.tar.zst
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
 
       - name: Create app bundle
-        working-directory: ${{ runner.temp }}/shadow_build_dir
+        uses: ./.github/actions/cmake-install
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
         env:
           QGC_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
           QGC_MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
-          QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
           QGC_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
-        run: cmake --install . --config Release
+          QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
 
-      - name: Verify signature and notarization
-        if: env.MACOS_SIGN == 'true'
-        working-directory: ${{ runner.temp }}/shadow_build_dir
+      - name: Verify DMG
+        working-directory: ${{ runner.temp }}/build
+        env:
+          SIGNED: ${{ env.MACOS_SIGN }}
         run: |
-          codesign --verify --deep --strict --verbose=2 staging/*.app
-          spctl --assess --type execute --verbose=2 staging/*.app
-          xcrun stapler validate staging/*.app
-
-      - name: Sanity check DMG executable
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: |
-          DMG=$(ls *.dmg | head -1)
-          VOL=$(hdiutil attach "$DMG" | grep -o '/Volumes/.*' | tail -1)
-          APP=$(ls -d "$VOL"/*.app | head -1)
-          "$APP/Contents/MacOS/$(basename "$APP" .app)" --simple-boot-test
-          # detach is cleanup, not a check: the boot-test process can briefly hold
-          # the volume ("Resource busy"), so retry and never fail the build on it.
-          for i in 1 2 3 4 5; do
-            hdiutil detach "$VOL" -force && break || sleep 3
+          hdiutil attach AircastQGC.dmg
+          APP=/Volumes/AircastQGC/AircastQGC.app
+          test -x "$APP/Contents/MacOS/AircastQGC"
+          if [ "$SIGNED" == "true" ]; then
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            spctl --assess --type execute --verbose=2 "$APP"
+            xcrun stapler validate "$APP"
+          fi
+          for _ in 1 2 3 4 5; do
+            hdiutil detach /Volumes/AircastQGC -force && break || sleep 3
           done || true
 
       - name: Collect DMG
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
-          V="${{ needs.setup.outputs.version }}"
-          SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/*.dmg "out/AircastQGC-$SHORT.dmg"
+          cp "${RUNNER_TEMP}/build/AircastQGC.dmg" "out/AircastQGC-${SHORT}.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qgc-macos
           path: out/*.dmg
+          if-no-files-found: error
 
   build-windows:
     needs: setup
-    runs-on: windows-latest
-    timeout-minutes: 50
+    runs-on: windows-2022
+    timeout-minutes: 120
     defaults:
       run:
         shell: cmd
-    env:
-      GST_VERSION: 1.22.12
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.setup.outputs.version }}
-          submodules: recursive
-          fetch-depth: 1
-          fetch-tags: false
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get all tags for correct version determination
-        run: git fetch --all --tags -f --depth 1
-
-      - name: Initial Setup
-        uses: ./.github/actions/common
-
-      - name: Cache Vulkan SDK
-        id: vulkan-cache
-        uses: actions/cache@v4
+      - name: Build Setup
+        id: build-setup
+        uses: ./.github/actions/build-setup
         with:
-          path: C:\VulkanSDK\latest
-          key: vulkan-sdk-windows-v1
-
-      - name: Install Vulkan
-        if: steps.vulkan-cache.outputs.cache-hit != 'true'
-        working-directory: ${{ runner.temp }}
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile vulkan-sdk.exe
-          .\vulkan-sdk.exe --root C:\VulkanSDK\latest --accept-licenses --default-answer --confirm-command install com.lunarg.vulkan.glm com.lunarg.vulkan.volk com.lunarg.vulkan.vma com.lunarg.vulkan.debug
-
-      - name: Set Vulkan environment
-        shell: pwsh
-        run: echo "VULKAN_SDK=C:\VulkanSDK\latest" >> $env:GITHUB_ENV
-
-      - name: Cache GStreamer
-        id: gst-cache
-        uses: actions/cache@v4
-        with:
-          path: C:\gstreamer
-          key: gstreamer-${{ env.GST_VERSION }}-windows-msvc
-
-      # setup-gstreamer@v1 downloads in one shot, so a single dropped connection on the
-      # freedesktop CDN fails the build. Resume until the MSIs are complete instead.
-      - name: Download GStreamer
-        if: steps.gst-cache.outputs.cache-hit != 'true'
-        uses: nick-fields/retry@v4
-        with:
-          timeout_minutes: 30
-          max_attempts: 10
-          retry_wait_seconds: 60
-          shell: bash
-          command: |
-            set -euo pipefail
-            cd "$RUNNER_TEMP"
-            GST_URL="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
-            for msi in "gstreamer-1.0-msvc-x86_64-${GST_VERSION}.msi" "gstreamer-1.0-devel-msvc-x86_64-${GST_VERSION}.msi"; do
-              [ -f "$msi" ] && continue
-              expected=$(curl -fsSLI --max-time 60 "$GST_URL/$msi" | tr -d '\r' \
-                         | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
-              # -C - resumes, so each retry continues the dropped transfer.
-              curl -fsSL -C - --max-time 900 -o "$msi" "$GST_URL/$msi" || true
-              [ "$(stat -c%s "$msi")" -eq "$expected" ]
-            done
-
-      # msiexec verifies the embedded cabinet checksums, so a corrupt download fails here
-      # rather than producing a half-installed SDK the build trips over later.
-      - name: Install GStreamer MSIs
-        if: steps.gst-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        working-directory: ${{ runner.temp }}
-        run: |
-          foreach ($msi in @("gstreamer-1.0-msvc-x86_64-$env:GST_VERSION.msi",
-                             "gstreamer-1.0-devel-msvc-x86_64-$env:GST_VERSION.msi")) {
-            # ADDLOCAL=ALL is required: without it the MSI installs only its default
-            # feature set and leaves C:\gstreamer\1.0\msvc_x86_64 empty while still
-            # exiting 0. INSTALLDIR pins the location the cache and build expect.
-            $p = Start-Process msiexec -ArgumentList "/passive","INSTALLDIR=C:\gstreamer","ADDLOCAL=ALL","/i","$(Resolve-Path $msi)" -Wait -PassThru -NoNewWindow
-            if ($p.ExitCode -ne 0) { throw "msiexec failed for $msi with exit code $($p.ExitCode)" }
-          }
-          if (-not (Test-Path "C:\gstreamer\1.0\msvc_x86_64")) { throw "GStreamer not installed" }
-
-      - name: Set GStreamer environment
-        if: steps.gst-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=C:\gstreamer\1.0\msvc_x86_64" >> $env:GITHUB_ENV
-          echo "C:\gstreamer\1.0\msvc_x86_64\bin" >> $env:GITHUB_PATH
-
-      - name: Set GStreamer environment (cache hit)
-        if: steps.gst-cache.outputs.cache-hit == 'true'
-        shell: pwsh
-        run: |
-          # FindGStreamer.cmake reads this env (and falls back to C:\gstreamer)
-          echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=C:\gstreamer\1.0\msvc_x86_64" >> $env:GITHUB_ENV
-          echo "C:\gstreamer\1.0\msvc_x86_64\bin" >> $env:GITHUB_PATH
-
-      - name: Install NSIS
-        shell: powershell
-        run: choco install nsis -y
-
-      - name: Setup Caching
-        uses: ./.github/actions/cache
-        with:
-          host: windows
-          target: win64_msvc2022_64
+          qt-host: windows
+          qt-arch: win64_msvc2022_64
+          aqt-source: ${{ env.AQT_SOURCE }}
           build-type: Release
-          cpm-modules: ${{ runner.temp }}\shadow_build_dir\cpm_modules
-
-      - name: Install Qt for Windows
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_64
-          dir: ${{ runner.temp }}
-          modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
-          cache: true
-
-      - name: Set up Visual Studio shell
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
 
       - name: Configure
-        working-directory: ${{ runner.temp }}\shadow_build_dir
-        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
-              -DCMAKE_BUILD_TYPE=Release
-              -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../msvc2022_64"
-              -DQGC_STABLE_BUILD=ON
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
+          stable: 'true'
+
+      - name: Resolve GStreamer root
+        id: gst-root
+        shell: bash
+        run: |
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/cmake_helper.py" cache-var \
+            --build-dir "${RUNNER_TEMP}/build" \
+            --name GStreamer_ROOT_DIR \
+            --required \
+            --output-key gst_root
+
+      - name: Add GStreamer to PATH
+        shell: bash
+        env:
+          GST_ROOT: ${{ steps.gst-root.outputs.gst_root }}
+        run: echo "${GST_ROOT}/bin" >> "$GITHUB_PATH"
 
       - name: Build
-        working-directory: ${{ runner.temp }}\shadow_build_dir
-        run: cmake --build . --target all --config Release
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
 
       - name: Sanity check release executable
-        working-directory: ${{ runner.temp }}\shadow_build_dir\Release
+        working-directory: ${{ runner.temp }}\build\Release
         run: AircastQGC.exe --simple-boot-test
 
       - name: Create installer
-        working-directory: ${{ runner.temp }}\shadow_build_dir
-        run: cmake --install . --config Release
+        uses: ./.github/actions/cmake-install
+        with:
+          build-dir: ${{ runner.temp }}\build
+          build-type: Release
 
       - name: Collect installer
         shell: pwsh
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
-          $V = "${{ needs.setup.outputs.version }}"
-          $SHORT = $V -replace '^aircast-',''
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          Copy-Item "${{ runner.temp }}\shadow_build_dir\AircastQGC-installer.exe" "out\AircastQGC-$SHORT-installer.exe"
+          Copy-Item "${{ runner.temp }}\build\AircastQGC-installer-AMD64.exe" "out\AircastQGC-$env:SHORT-installer.exe"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qgc-windows
           path: out/*.exe
+          if-no-files-found: error
 
-  # Windows on ARM. GStreamer only ships arm64 packages from 1.28, which also
-  # replaced the MSI pair with a single Inno Setup exe that installs flat rather
-  # than under 1.0/msvc_<arch>, so this cannot share the x64 job's install path.
-  # Non-blocking and outside `publish` until the platform has proven itself; the
-  # x64 release must not depend on it.
+  # Windows on ARM, built natively on the GitHub-hosted windows-11-arm runner the
+  # way upstream's windows.yml arm64 leg does (the arm64-cross leg upstream keeps
+  # has GStreamer off, which is no use for a ground station). Non-blocking and
+  # outside `publish` until the platform has proven itself.
   build-windows-arm64:
     needs: setup
-    runs-on: windows-2022
-    timeout-minutes: 60
+    runs-on: windows-11-arm
+    timeout-minutes: 120
     continue-on-error: true
-    env:
-      GST_VERSION: 1.28.6
+    defaults:
+      run:
+        shell: cmd
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.setup.outputs.version }}
-          submodules: recursive
-          fetch-depth: 1
-          fetch-tags: false
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get all tags for correct version determination
-        run: git fetch --all --tags -f --depth 1
-
-      - name: Initial Setup
-        uses: ./.github/actions/common
-
-      - name: Cache GStreamer
-        id: gst-cache
-        uses: actions/cache@v4
+      - name: Build Setup
+        id: build-setup
+        uses: ./.github/actions/build-setup
         with:
-          path: C:\gstreamer
-          key: gstreamer-1.28.6-windows-arm64-on-x64
-
-      - name: Download GStreamer
-        if: steps.gst-cache.outputs.cache-hit != 'true'
-        uses: nick-fields/retry@v4
-        with:
-          timeout_minutes: 30
-          max_attempts: 10
-          retry_wait_seconds: 60
-          shell: bash
-          command: |
-            set -euo pipefail
-            cd "$RUNNER_TEMP"
-            base="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
-            installer="gstreamer-1.0-msvc-arm64-${GST_VERSION}.exe"
-            if [ ! -f "$installer" ]; then
-              curl -fsSL -C - --max-time 900 -o "$installer" "$base/$installer"
-            fi
-            # 1.28 publishes checksums, so verify rather than trusting the transfer.
-            curl -fsSL --max-time 60 -o "$installer.sha256sum" "$base/$installer.sha256sum"
-            expected=$(awk '{print $1}' "$installer.sha256sum")
-            actual=$(sha256sum "$installer" | awk '{print $1}')
-            [ "$expected" = "$actual" ] || { echo "::error::checksum mismatch for $installer"; exit 1; }
-
-      - name: Install GStreamer
-        if: steps.gst-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        working-directory: ${{ runner.temp }}
-        run: |
-          $installer = "gstreamer-1.0-msvc-arm64-$env:GST_VERSION.exe"
-          $p = Start-Process -FilePath "$(Resolve-Path $installer)" `
-               -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=C:\gstreamer" `
-               -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "GStreamer installer failed with exit code $($p.ExitCode)" }
-          if (-not (Test-Path "C:\gstreamer\include")) { throw "GStreamer headers missing after install" }
-
-      - name: Set GStreamer environment
-        shell: pwsh
-        run: |
-          echo "GSTREAMER_1_0_ROOT_MSVC_ARM64=C:\gstreamer" >> $env:GITHUB_ENV
-          echo "C:\gstreamer\bin" >> $env:GITHUB_PATH
-
-      - name: Install NSIS and an x64 pkg-config
-        run: choco install nsis pkgconfiglite -y
-        shell: pwsh
-
-      - name: Setup Caching
-        uses: ./.github/actions/cache
-        with:
-          host: windows
-          target: win64_msvc2022_arm64
+          qt-host: windows_arm64
+          qt-arch: win64_msvc2022_arm64
+          aqt-source: ${{ env.AQT_SOURCE }}
           build-type: Release
-          cpm-modules: ${{ runner.temp }}\shadow_build_dir\cpm_modules
-
-      - name: Install Qt host tools
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_64
-          dir: ${{ runner.temp }}
-          modules: qtshadertools qtquick3d
-          cache: true
-
-      - name: Install Qt for Windows (ARM64 cross)
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_arm64_cross_compiled
-          dir: ${{ runner.temp }}
-          modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
-          cache: true
-
-      - name: Set up Visual Studio shell
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64_arm64
 
       - name: Configure
-        working-directory: ${{ runner.temp }}\shadow_build_dir
-        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
-              -DCMAKE_BUILD_TYPE=Release
-              -DQGC_STABLE_BUILD=ON
-              -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../msvc2022_64"
-              -DPKG_CONFIG_EXECUTABLE=C:/ProgramData/chocolatey/bin/pkg-config.exe
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
+          stable: 'true'
+
+      - name: Resolve GStreamer root
+        id: gst-root
+        shell: bash
+        run: |
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/cmake_helper.py" cache-var \
+            --build-dir "${RUNNER_TEMP}/build" \
+            --name GStreamer_ROOT_DIR \
+            --required \
+            --output-key gst_root
+
+      - name: Add GStreamer to PATH
+        shell: bash
+        env:
+          GST_ROOT: ${{ steps.gst-root.outputs.gst_root }}
+        run: echo "${GST_ROOT}/bin" >> "$GITHUB_PATH"
 
       - name: Build
-        working-directory: ${{ runner.temp }}\shadow_build_dir
-        run: cmake --build . --target all --config Release
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
 
       - name: Create installer
-        working-directory: ${{ runner.temp }}\shadow_build_dir
-        run: cmake --install . --config Release
+        uses: ./.github/actions/cmake-install
+        with:
+          build-dir: ${{ runner.temp }}\build
+          build-type: Release
 
       - name: Collect installer
         shell: pwsh
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
-          $V = "${{ needs.setup.outputs.version }}"
-          $SHORT = $V -replace '^aircast-',''
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          Copy-Item "${{ runner.temp }}\shadow_build_dir\AircastQGC-installer.exe" "out\AircastQGC-$SHORT-installer-arm64.exe"
+          Copy-Item "${{ runner.temp }}\build\AircastQGC-installer-ARM64.exe" "out\AircastQGC-$env:SHORT-installer-arm64.exe"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qgc-windows-arm64
           path: out/*.exe
+          if-no-files-found: error
 
   build-linux:
     needs: setup
-    # GitHub-hosted: free on public repos and parallel with everything else.
-    # NEVER move this to self-hosted infra: infra.aircast.one is a k8s node
-    # and a QGC build there starved it and OOM-killed argocd-repo-server.
-    runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    # GitHub-hosted, parallel with everything else. NEVER move this to self-hosted
+    # infra: infra.aircast.one is a k8s node and a QGC build there starved it and
+    # OOM-killed argocd-repo-server.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.setup.outputs.version }}
-          submodules: recursive
-          fetch-depth: 1
-          fetch-tags: false
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get all tags for correct version determination
-        run: git fetch --all --tags -f --depth 1
-
-      - name: Initial Setup
-        uses: ./.github/actions/common
+      - name: Build Setup
+        uses: ./.github/actions/build-setup
+        with:
+          qt-host: linux
+          qt-arch: linux_gcc_64
+          build-type: Release
 
       - name: Install Dependencies
-        run: |
-          chmod a+x ./tools/setup/install-dependencies-debian.sh
-          sudo ./tools/setup/install-dependencies-debian.sh
-
-      - name: Install Vulkan
-        # Distro packages instead of the LunarG vulkan-sdk meta-package, which has
-        # unresolvable dependencies outside Ubuntu jammy (e.g. libyaml-cpp0.7 on noble).
-        run: sudo apt-get install -y --no-install-recommends libvulkan-dev vulkan-tools glslang-tools spirv-tools
-
-      - name: Setup Caching
-        uses: ./.github/actions/cache
-        with:
-          host: linux
-          target: linux_gcc_64
-          build-type: Release
-          cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
-
-      - name: Install Qt for Linux (x64)
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: linux
-          target: desktop
-          arch: linux_gcc_64
-          dir: ${{ runner.temp }}
-          modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
-          cache: true
-
-      - name: Restore shared build cache from S3
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-        run: |
-          echo "CCACHE_DIR=${RUNNER_TEMP}/qgc-ccache" >> "$GITHUB_ENV"
-          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
-          # hash compiler content, not mtime/path - cache entries stay valid across
-          # ephemeral runners where compiler install paths and timestamps differ
-          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
-          mkdir -p "${RUNNER_TEMP}/qgc-ccache"
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then
-            echo "No AWS credentials/cli - building without the shared cache"
-            exit 0
-          fi
-          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst"
-          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cache.tar.zst" --no-progress 2>/dev/null; then
-            tar -I zstd -xf "${RUNNER_TEMP}/qgc-cache.tar.zst" -C "${RUNNER_TEMP}"
-            rm -f "${RUNNER_TEMP}/qgc-cache.tar.zst"
-            echo "Shared cache restored from $OBJ"
-          else
-            echo "Shared cache MISS for $OBJ - will seed it after this build"
-          fi
+        uses: ./.github/actions/install-dependencies
 
       - name: Configure
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
-              -DCMAKE_BUILD_TYPE=Release
-              -DQGC_STABLE_BUILD=ON
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
+          stable: 'true'
 
       - name: Build
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: cmake --build . --target all --config Release
-
-      - name: Save shared build cache to S3
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then exit 0; fi
-          cd "${RUNNER_TEMP}"
-          ccache -s 2>/dev/null || true
-          EXTRA=""
-          [ -d shadow_build_dir/cpm_modules ] && EXTRA="shadow_build_dir/cpm_modules"
-          tar -I 'zstd -T0 -3' -cf qgc-cache.tar.zst qgc-ccache $EXTRA
-          aws s3 cp qgc-cache.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst" --no-progress
-          rm -f qgc-cache.tar.zst
-          echo "Shared cache uploaded - any runner picks it up on the next build"
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
 
       - name: Create AppImage
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: cmake --install . --config Release
+        uses: ./.github/actions/cmake-install
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
 
       - name: Sanity check release executable
-        working-directory: ${{ runner.temp }}/shadow_build_dir
+        working-directory: ${{ runner.temp }}/build
         run: |
           if command -v xvfb-run >/dev/null; then
             xvfb-run -a ./AircastQGC-x86_64.AppImage --simple-boot-test
@@ -851,22 +481,23 @@ jobs:
           fi
 
       - name: Collect AppImage
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
-          V="${{ needs.setup.outputs.version }}"
-          SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/AircastQGC-x86_64.AppImage "out/AircastQGC-$SHORT-x86_64.AppImage"
+          cp "${RUNNER_TEMP}/build/AircastQGC-x86_64.AppImage" "out/AircastQGC-${SHORT}-x86_64.AppImage"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qgc-linux
           path: out/*.AppImage
+          if-no-files-found: error
 
   publish:
     needs: [setup, build-android, build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
           path: assets
@@ -882,17 +513,20 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          V: ${{ needs.setup.outputs.version }}
+          SHORT: ${{ needs.setup.outputs.short_version }}
+          IS_PRODUCTION: ${{ needs.setup.outputs.is_production }}
         run: |
-          V="${{ needs.setup.outputs.version }}"
           PRE=""
-          if [ "${{ needs.setup.outputs.is_production }}" != "true" ]; then
+          if [ "$IS_PRODUCTION" != "true" ]; then
             PRE="--prerelease"
           fi
-          if gh release view "$V" -R "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$V" -R "${{ github.repository }}" --clobber assets/*
+          if gh release view "$V" -R "$REPO" >/dev/null 2>&1; then
+            gh release upload "$V" -R "$REPO" --clobber assets/*
           else
-            gh release create "$V" -R "${{ github.repository }}" \
-              --title "Aircast QGC ${V#aircast-}" \
+            gh release create "$V" -R "$REPO" \
+              --title "Aircast QGC $SHORT" \
               --generate-notes \
               $PRE assets/*
           fi
@@ -905,12 +539,14 @@ jobs:
       - name: Cleanup old releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ENV: ${{ needs.setup.outputs.environment }}
+          IS_PRODUCTION: ${{ needs.setup.outputs.is_production }}
         run: |
-          ENV="${{ needs.setup.outputs.environment }}"
           KEEP_COUNT=5
 
           # Match only this channel's tags (double-escaped for jq's regex).
-          if [ "${{ needs.setup.outputs.is_production }}" == "true" ]; then
+          if [ "$IS_PRODUCTION" == "true" ]; then
             TAG_PATTERN='^aircast-v[0-9]+\\.[0-9]+\\.[0-9]+$'
           elif [ "$ENV" == "staging" ]; then
             TAG_PATTERN='^aircast-v.*-staging\\..*$'
@@ -918,7 +554,7 @@ jobs:
             TAG_PATTERN='^aircast-v.*-dev\\..*$'
           fi
 
-          RELEASES=$(gh api repos/${{ github.repository }}/releases \
+          RELEASES=$(gh api "repos/$REPO/releases" \
             --paginate \
             --jq "[.[] | select(.tag_name | test(\"$TAG_PATTERN\")) | {id: .id, tag_name: .tag_name, created_at: .created_at}] | sort_by(.created_at) | reverse")
 
@@ -934,8 +570,8 @@ jobs:
               RELEASE_ID=$(echo "$release" | jq -r '.id')
               TAG_NAME=$(echo "$release" | jq -r '.tag_name')
               echo "Processing: $TAG_NAME"
-              gh api -X DELETE repos/${{ github.repository }}/releases/$RELEASE_ID || true
-              gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/$TAG_NAME || true
+              gh api -X DELETE "repos/$REPO/releases/$RELEASE_ID" || true
+              gh api -X DELETE "repos/$REPO/git/refs/tags/$TAG_NAME" || true
             done
             echo "Kept latest $KEEP_COUNT releases"
           else
@@ -943,17 +579,27 @@ jobs:
           fi
 
   notify:
-    needs: [setup, build-android, build-macos, build-windows, build-linux, publish, cleanup-old-releases]
+    needs: [setup, build-android, build-macos, build-windows, build-windows-arm64, build-linux, publish, cleanup-old-releases]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: |
+      - env:
+          VERSION: ${{ needs.setup.outputs.version }}
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+          ANDROID: ${{ needs.build-android.result }}
+          MACOS: ${{ needs.build-macos.result }}
+          WINDOWS: ${{ needs.build-windows.result }}
+          WINDOWS_ARM64: ${{ needs.build-windows-arm64.result }}
+          LINUX: ${{ needs.build-linux.result }}
+          REPO: ${{ github.repository }}
+        run: |
           {
             echo "## Aircast QGC Release"
-            echo "- **Version:** ${{ needs.setup.outputs.version }} (${{ needs.setup.outputs.environment }})"
-            echo "- **Android:** ${{ needs.build-android.result }}"
-            echo "- **macOS:** ${{ needs.build-macos.result }}"
-            echo "- **Windows:** ${{ needs.build-windows.result }}"
-            echo "- **Linux:** ${{ needs.build-linux.result }}"
-            echo "- **Release:** https://github.com/${{ github.repository }}/releases/tag/${{ needs.setup.outputs.version }}"
+            echo "- **Version:** $VERSION ($ENVIRONMENT)"
+            echo "- **Android:** $ANDROID"
+            echo "- **macOS:** $MACOS"
+            echo "- **Windows:** $WINDOWS"
+            echo "- **Windows ARM64:** $WINDOWS_ARM64 (non-blocking)"
+            echo "- **Linux:** $LINUX"
+            echo "- **Release:** https://github.com/$REPO/releases/tag/$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"

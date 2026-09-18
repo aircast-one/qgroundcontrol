@@ -1,18 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2022 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Layouts
 
+import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
-import QGroundControl.FactSystem
 import QGroundControl.FactControls
 
 RowLayout {
@@ -27,16 +17,16 @@ RowLayout {
     signal activated(int index)
 
     QGCLabel {
-        id:                 label  
+        id:                 label
         Layout.fillWidth:   true
+        Layout.minimumWidth: implicitWidth
     }
 
     FactComboBox {
         id:                     _comboBox
         Layout.preferredWidth:  comboBoxPreferredWidth
         sizeToContents:         true
-        
+
         onActivated: (index) => { parent.activated(index) }
     }
 }
-

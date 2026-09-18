@@ -1,18 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
-import QGroundControl.FlightDisplay
+import QGroundControl.FlyView
 import QGroundControl.FlightMap
 
 Item {
@@ -43,7 +33,9 @@ Item {
 
     IntegratedAttitudeIndicator {
         x:                      -_totalAttitudeSize
-        attitudeAngleDegrees:   vehicle ? vehicle.pitch.rawValue : 0
+        // Negated: rotating the indicator 90° clockwise moves its zero tick to the right of the
+        // compass but leaves the sweep direction clockwise, which would draw nose up as downward.
+        attitudeAngleDegrees:   vehicle ? -vehicle.pitch.rawValue : 0
         compassRadius:          control.compassRadius
         attitudeSize:           control.attitudeSize
         attitudeSpacing:        control.attitudeSpacing

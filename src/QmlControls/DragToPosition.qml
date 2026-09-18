@@ -10,7 +10,7 @@
 import QtQuick
 
 import QGroundControl
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 // Persists a user-dragged position for `target`. Install a drag (MouseArea drag.target or
 // DragHandler) on the target and call commit() when the drag ends. Until the user drags,

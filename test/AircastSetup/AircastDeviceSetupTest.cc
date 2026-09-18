@@ -20,6 +20,7 @@
 #include <QtCore/QJsonObject>
 #include <QtNetwork/QTcpServer>
 #include <QtNetwork/QTcpSocket>
+#include <QtCore/QRegularExpression>
 #include <QtTest/QTest>
 
 namespace {
@@ -154,6 +155,7 @@ void AircastDeviceSetupTest::_clientOnlyTelemetryEndpointCreatesNoLink()
     FakeAircastd device;
     device.setDevice({QStringLiteral("cam1")}, {QStringLiteral("udpc:10.0.0.5:14550")});
 
+    expectLogMessage("API.QGCApplication", QtWarningMsg, QRegularExpression(QStringLiteral("no udps/tcps telemetry endpoint")));
     _applySetupDeepLink(device);
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
@@ -162,5 +164,8 @@ void AircastDeviceSetupTest::_clientOnlyTelemetryEndpointCreatesNoLink()
     // The camera and telemetry replies land independently; give the telemetry
     // handler a bounded window to (wrongly) create a link before asserting.
     QTest::qWait(200);
+    verifyExpectedLogMessage();
     QCOMPARE(_aircastLinkConfigs().size(), 0);
 }
+
+UT_REGISTER_TEST(AircastDeviceSetupTest, TestLabel::Unit)

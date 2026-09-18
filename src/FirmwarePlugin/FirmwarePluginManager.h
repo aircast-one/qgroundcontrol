@@ -1,15 +1,5 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 
 #include "QGCMAVLink.h"
@@ -17,9 +7,8 @@
 class FirmwarePlugin;
 class FirmwarePluginFactory;
 
-Q_DECLARE_LOGGING_CATEGORY(FirmwarePluginManagerLog)
-
-/// FirmwarePluginManager is a singleton which is used to return the correct FirmwarePlugin for a MAV_AUTOPILOT type.
+/// \brief FirmwarePluginManager is a singleton which is used to return the correct FirmwarePlugin for a MAV_AUTOPILOT type.
+///
 class FirmwarePluginManager : public QObject
 {
     Q_OBJECT
@@ -38,6 +27,15 @@ public:
 
     /// Returns list of firmwares which are supported by the system
     QList<QGCMAVLink::FirmwareClass_t> supportedFirmwareClasses();
+
+    /// Returns true if the specified firmware class is supported by the system
+    bool firmwareClassSupported(QGCMAVLink::FirmwareClass_t firmwareClass);
+
+    /// Returns true if the system supports only a single firmware class
+    bool singleFirmwareSupport();
+
+    /// Returns true if the system supports only a single firmware class with a single vehicle type
+    bool singleVehicleSupport();
 
     /// Returns the list of supported vehicle types for the specified firmware
     QList<QGCMAVLink::VehicleClass_t> supportedVehicleClasses(QGCMAVLink::FirmwareClass_t firmwareClass);

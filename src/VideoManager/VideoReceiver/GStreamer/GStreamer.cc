@@ -1,541 +1,543 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "GStreamer.h"
-#include "AppSettings.h"
-#include "GstVideoReceiver.h"
-#include "QGCLoggingCategory.h"
-#include "SettingsManager.h"
-#include "VideoSettings.h"
 
 #include <QtCore/QCoreApplication>
-#include <QtCore/QSettings>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QList>
+#include <QtCore/QMutex>
+#include <QtCore/QPointer>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QStringList>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QScreen>
+#include <QtGui/QWindow>
+#include <QtMultimedia/QVideoSink>
+#include <QtMultimediaQuick/private/qquickvideooutput_p.h>
 #include <QtQuick/QQuickItem>
+#include <QtQuick/QQuickWindow>
+#include <QtQuick/QSGRendererInterface>
+#ifdef Q_OS_ANDROID
+#include <QtCore/QJniEnvironment>
+#include <QtCore/QJniObject>
+#endif
+#include <array>
+#include <memory>
+#include <mutex>
+#include <utility>
+
+#include "Fact.h"
+#include "GStreamerEnvironment.h"
+#include "GStreamerHelpers.h"
+#include "GStreamerLogging.h"
+#include "GstScoped.h"
+#include "GstVideoReceiver.h"
+#include "HwBuffers/common/HwBuffers.h"
+#if defined(QGC_HAS_ANY_GPU_PATH)
+#include <rhi/qrhi.h>
+
+#include "HwBuffers/common/QGCRhiCapture.h"
+#endif
+#include "QGCLoggingCategory.h"
+#include "QGCQVideoSinkController.h"
+#include "gstqgc/gstqgcqvideosink.h"
+#include "gstqgc/gstqgcvideosinkbin.h"
+
+#ifdef Q_OS_LINUX
+#include <dlfcn.h>
+#endif
+
+#ifdef Q_OS_ANDROID
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
+#endif
 
 #include <gst/gst.h>
 
-#ifdef Q_OS_ANDROID
-#include <jni.h>
-#include <QtCore/QJniEnvironment>
-// Provided by GStreamer's androidmedia plugin (libgstandroidmedia). When GStreamer is statically
-// linked into the app, the plugin's own JNI_OnLoad never runs, so gst-amc has no JavaVM and the
-// MediaCodec (hardware) decoders fail to register. We hand it Qt's JavaVM explicitly.
-extern "C" gboolean gst_amc_jni_set_java_vm(JavaVM *java_vm);
-#endif
+QGC_LOGGING_CATEGORY(GStreamerLog, "Video.GStreamer.GStreamer")
 
-QGC_LOGGING_CATEGORY(GStreamerLog, "qgc.videomanager.videoreceiver.gstreamer")
-QGC_LOGGING_CATEGORY(GStreamerAPILog, "qgc.videomanager.videoreceiver.gstreamer.api")
-
-// TODO: Clean These up with Macros or CMake
 G_BEGIN_DECLS
-GST_PLUGIN_STATIC_DECLARE(androidmedia);
-GST_PLUGIN_STATIC_DECLARE(applemedia);
-GST_PLUGIN_STATIC_DECLARE(coreelements);
-GST_PLUGIN_STATIC_DECLARE(d3d);
-GST_PLUGIN_STATIC_DECLARE(d3d11);
-GST_PLUGIN_STATIC_DECLARE(d3d12);
-GST_PLUGIN_STATIC_DECLARE(dav1d);
-GST_PLUGIN_STATIC_DECLARE(dtls);
-GST_PLUGIN_STATIC_DECLARE(dxva);
-GST_PLUGIN_STATIC_DECLARE(isomp4);
-GST_PLUGIN_STATIC_DECLARE(libav);
-GST_PLUGIN_STATIC_DECLARE(matroska);
-GST_PLUGIN_STATIC_DECLARE(mpegtsdemux);
-GST_PLUGIN_STATIC_DECLARE(msdk);
-GST_PLUGIN_STATIC_DECLARE(nice);
-GST_PLUGIN_STATIC_DECLARE(nvcodec);
-GST_PLUGIN_STATIC_DECLARE(opengl);
-GST_PLUGIN_STATIC_DECLARE(openh264);
-GST_PLUGIN_STATIC_DECLARE(playback);
-GST_PLUGIN_STATIC_DECLARE(qml6);
-GST_PLUGIN_STATIC_DECLARE(qsv);
-GST_PLUGIN_STATIC_DECLARE(rtp);
-GST_PLUGIN_STATIC_DECLARE(rtpmanager);
-GST_PLUGIN_STATIC_DECLARE(rtsp);
-GST_PLUGIN_STATIC_DECLARE(sctp);
-GST_PLUGIN_STATIC_DECLARE(sdpelem);
-GST_PLUGIN_STATIC_DECLARE(srtp);
-GST_PLUGIN_STATIC_DECLARE(tcp);
-GST_PLUGIN_STATIC_DECLARE(typefindfunctions);
-GST_PLUGIN_STATIC_DECLARE(udp);
-GST_PLUGIN_STATIC_DECLARE(va);
-GST_PLUGIN_STATIC_DECLARE(videoparsersbad);
-GST_PLUGIN_STATIC_DECLARE(vpx);
-GST_PLUGIN_STATIC_DECLARE(vulkan);
-GST_PLUGIN_STATIC_DECLARE(webrtc);
-GST_PLUGIN_STATIC_DECLARE(webrtchttp);
+#ifdef QGC_GST_STATIC_BUILD
+// Generated from gst_static_plugins.c.in (Android/IOS.cmake on mobile, desktop static cmake):
+// registers every configured plugin, and on mobile loads gioopenssl + the bundled CA bundle.
+extern void gst_init_static_plugins(void);
+#endif
 
 GST_PLUGIN_STATIC_DECLARE(qgc);
 G_END_DECLS
 
-namespace
-{
+namespace GStreamer {
 
-// QGC's decoder rank ladder. Platform-default boosts must beat the software decoders they
-// compete with; an explicit user "force" must in turn beat both the boosts and any decoder
-// that registers natively above PRIMARY (e.g. vtdec_hw at PRIMARY+1).
-constexpr uint16_t DefaultBoostRank = GST_RANK_PRIMARY + 1;
-constexpr uint16_t ForcedRank = DefaultBoostRank + 1;
-
-void _initAndroidMediaCodec()
-{
-#if defined(Q_OS_ANDROID) && defined(GST_PLUGIN_androidmedia_FOUND)
-    // Must run before the androidmedia plugin registers (in _registerPlugins) so gst-amc can
-    // enumerate the device's MediaCodec hardware decoders instead of falling back to software.
-    JavaVM *vm = QJniEnvironment::javaVM();
-    if (!vm) {
-        qCWarning(GStreamerLog) << "Android: no JavaVM available, hardware video decode will be unavailable";
-        return;
-    }
-    if (gst_amc_jni_set_java_vm(vm)) {
-        qCDebug(GStreamerLog) << "Android: provided JavaVM to gst-amc for hardware MediaCodec decoding";
-    } else {
-        qCWarning(GStreamerLog) << "Android: gst_amc_jni_set_java_vm() failed";
-    }
-#endif
-}
-
-void _boostAndroidHardwareDecoders()
-{
-#if defined(Q_OS_ANDROID) && defined(GST_PLUGIN_androidmedia_FOUND)
-    // The hardware MediaCodec (amc) decoders and the software avdec decoders both register at
-    // GST_RANK_PRIMARY, and decodebin breaks the tie towards software. Bump the amc video
-    // decoders one rank above so the hardware decoder is selected by default.
-    GstRegistry *registry = gst_registry_get();
-    if (!registry) {
-        return;
-    }
-    GList *decoders = gst_element_factory_list_get_elements(
-        static_cast<GstElementFactoryListType>(GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO),
-        GST_RANK_NONE);
-    int boosted = 0;
-    for (GList *l = decoders; l != nullptr; l = l->next) {
-        GstPluginFeature *feature = GST_PLUGIN_FEATURE(l->data);
-        const gchar *name = gst_plugin_feature_get_name(feature);
-        if (name && g_str_has_prefix(name, "amcviddec")) {
-            gst_plugin_feature_set_rank(feature, DefaultBoostRank);
-            (void) gst_registry_add_feature(registry, feature);
-            boosted++;
-        }
-    }
-    gst_plugin_feature_list_free(decoders);
-    qCDebug(GStreamerLog) << "Android: prioritized" << boosted << "hardware video decoders over software";
-#endif
-}
+namespace {
 
 void _registerPlugins()
 {
+    // GST_PLUGIN_STATIC_REGISTER / gst_init_static_plugins() are not idempotent: a second pass
+    // re-registers GTypes ("cannot register existing type 'GstBaseQTMux'") and aborts, so run once.
+    static std::once_flag s_pluginsRegistered;
+    std::call_once(s_pluginsRegistered, [] {
 #ifdef QGC_GST_STATIC_BUILD
-    #ifdef GST_PLUGIN_androidmedia_FOUND
-        GST_PLUGIN_STATIC_REGISTER(androidmedia);
-    #endif
-    #ifdef GST_PLUGIN_applemedia_FOUND
-        GST_PLUGIN_STATIC_REGISTER(applemedia);
-    #endif
-        GST_PLUGIN_STATIC_REGISTER(coreelements);
-    #ifdef GST_PLUGIN_d3d_FOUND
-        GST_PLUGIN_STATIC_REGISTER(d3d);
-    #endif
-    #ifdef GST_PLUGIN_d3d11_FOUND
-        GST_PLUGIN_STATIC_REGISTER(d3d11);
-    #endif
-    #ifdef GST_PLUGIN_d3d12_FOUND
-        GST_PLUGIN_STATIC_REGISTER(d3d12);
-    #endif
-    #ifdef GST_PLUGIN_dav1d_FOUND
-        GST_PLUGIN_STATIC_REGISTER(dav1d);
-    #endif
-    #ifdef GST_PLUGIN_dtls_FOUND
-        GST_PLUGIN_STATIC_REGISTER(dtls);
-    #endif
-    #ifdef GST_PLUGIN_dxva_FOUND
-        GST_PLUGIN_STATIC_REGISTER(dxva);
-    #endif
-        GST_PLUGIN_STATIC_REGISTER(isomp4);
-        GST_PLUGIN_STATIC_REGISTER(libav);
-        GST_PLUGIN_STATIC_REGISTER(matroska);
-        GST_PLUGIN_STATIC_REGISTER(mpegtsdemux);
-    #ifdef GST_PLUGIN_msdk_FOUND
-        GST_PLUGIN_STATIC_REGISTER(msdk);
-    #endif
-    #ifdef GST_PLUGIN_nice_FOUND
-        GST_PLUGIN_STATIC_REGISTER(nice);
-    #endif
-    #ifdef GST_PLUGIN_nvcodec_FOUND
-        GST_PLUGIN_STATIC_REGISTER(nvcodec);
-    #endif
-        GST_PLUGIN_STATIC_REGISTER(opengl);
-        GST_PLUGIN_STATIC_REGISTER(openh264);
-        GST_PLUGIN_STATIC_REGISTER(playback);
-    #ifdef GST_PLUGIN_qsv_FOUND
-        GST_PLUGIN_STATIC_REGISTER(qsv);
-    #endif
-        GST_PLUGIN_STATIC_REGISTER(rtp);
-        GST_PLUGIN_STATIC_REGISTER(rtpmanager);
-        GST_PLUGIN_STATIC_REGISTER(rtsp);
-    #ifdef GST_PLUGIN_sctp_FOUND
-        GST_PLUGIN_STATIC_REGISTER(sctp);
-    #endif
-        GST_PLUGIN_STATIC_REGISTER(sdpelem);
-    #ifdef GST_PLUGIN_srtp_FOUND
-        GST_PLUGIN_STATIC_REGISTER(srtp);
-    #endif
-        GST_PLUGIN_STATIC_REGISTER(tcp);
-        GST_PLUGIN_STATIC_REGISTER(typefindfunctions);
-        GST_PLUGIN_STATIC_REGISTER(udp);
-    #ifdef GST_PLUGIN_va_FOUND
-        GST_PLUGIN_STATIC_REGISTER(va);
-    #endif
-        GST_PLUGIN_STATIC_REGISTER(videoparsersbad);
-        GST_PLUGIN_STATIC_REGISTER(vpx);
-    #ifdef GST_PLUGIN_vulkan_FOUND
-        GST_PLUGIN_STATIC_REGISTER(vulkan);
-    #endif
-    #ifdef GST_PLUGIN_webrtc_FOUND
-        GST_PLUGIN_STATIC_REGISTER(webrtc);
-    #endif
-    #ifdef GST_PLUGIN_webrtchttp_FOUND
-        GST_PLUGIN_STATIC_REGISTER(webrtchttp);
-    #endif
+        // Per-plugin registers in the generated shim are registry-guarded, so plugins the Android SDK
+        // gst_init() already pre-registered aren't re-added here.
+        gst_init_static_plugins();
 #endif
-
-// #if !defined(GST_PLUGIN_qml6_FOUND) && defined(QGC_GST_STATIC_BUILD)
-    GST_PLUGIN_STATIC_REGISTER(qml6);
-// #endif
-
-    GST_PLUGIN_STATIC_REGISTER(qgc);
+        GST_PLUGIN_STATIC_REGISTER(qgc);
+    });
 }
 
-void _qtGstLog(GstDebugCategory *category,
-               GstDebugLevel level,
-               const gchar *file,
-               const gchar *function,
-               gint line,
-               GObject *object,
-               GstDebugMessage *message,
-               gpointer data)
+// plugin_init can fail silently; confirm the element factory is exposed so failures surface here
+// rather than as a misleading "create returned nullptr" later. Common cause: iOS LTO / Android R8
+// stripping the GST_ELEMENT_REGISTER side effect.
+bool requireFactory(const char* name, const char* hint)
 {
-    Q_UNUSED(data);
-
-    if (level > gst_debug_category_get_threshold(category)) {
-        return;
+    const GstFactoryPtr factory = adoptFactory(gst_element_factory_find(name));
+    if (!factory) {
+        qCCritical(GStreamerLog) << name << "factory not found —" << hint;
+        return false;
     }
-
-    QMessageLogger log(file, line, function);
-
-    char *object_info = gst_info_strdup_printf("%" GST_PTR_FORMAT, static_cast<void*>(object));
-
-    switch (level) {
-    case GST_LEVEL_ERROR:
-        log.critical(GStreamerAPILog, "%s %s", object_info, gst_debug_message_get(message));
-        break;
-    case GST_LEVEL_WARNING:
-        log.warning(GStreamerAPILog, "%s %s", object_info, gst_debug_message_get(message));
-        break;
-    case GST_LEVEL_FIXME:
-    case GST_LEVEL_INFO:
-        log.info(GStreamerAPILog, "%s %s", object_info, gst_debug_message_get(message));
-        break;
-    case GST_LEVEL_DEBUG:
-#ifdef QT_DEBUG
-    case GST_LEVEL_LOG:
-    case GST_LEVEL_TRACE:
-    case GST_LEVEL_MEMDUMP:
-#endif
-        log.debug(GStreamerAPILog, "%s %s", object_info, gst_debug_message_get(message));
-        break;
-    default:
-        break;
-    }
-
-    g_clear_pointer(&object_info, g_free);
-}
-
-void _setGstEnvVars()
-{
-    const QString appDir = QCoreApplication::applicationDirPath();
-    qCDebug(GStreamerLog) << "App Directory:" << appDir;
-
-#if defined(Q_OS_MACOS) && defined(QGC_GST_MACOS_FRAMEWORK)
-    const QString frameworkDir = QDir(appDir).filePath("../Frameworks/GStreamer.framework");
-    const QString rootDir = QDir(frameworkDir).filePath("Versions/1.0");
-    const QString libDir = QDir(rootDir).filePath("../lib");
-    const QString pluginDir = QDir(libDir).filePath("gstreamer-1.0");
-    const QString gioMod = QDir(libDir).filePath("gio/modules");
-    const QString libexecDir = QDir(appDir).filePath("../libexec");
-    const QString scanner = QDir(libexecDir).filePath("gstreamer-1.0/gst-plugin-scanner");
-    const QString ptp = QDir(libexecDir).filePath("gstreamer-1.0/gst-ptp-helper");
-
-    if (QFileInfo::exists(frameworkDir)) {
-        qputenv("GST_REGISTRY_REUSE_PLUGIN_SCANNER", "no");
-        qputenv("GIO_EXTRA_MODULES", gioMod.toUtf8().constData());
-        qputenv("GST_PTP_HELPER_1_0", ptp.toUtf8().constData());
-        qputenv("GST_PTP_HELPER", ptp.toUtf8().constData());
-        qputenv("GST_PLUGIN_SCANNER_1_0", scanner.toUtf8().constData());
-        qputenv("GST_PLUGIN_SCANNER", scanner.toUtf8().constData());
-        qputenv("GST_PLUGIN_SYSTEM_PATH_1_0", pluginDir.toUtf8().constData());
-        qputenv("GST_PLUGIN_SYSTEM_PATH", pluginDir.toUtf8().constData());
-        qputenv("GST_PLUGIN_PATH_1_0", pluginDir.toUtf8().constData());
-        qputenv("GST_PLUGIN_PATH", pluginDir.toUtf8().constData());
-        qputenv("GTK_PATH", rootDir.toUtf8().constData());
-    }
-#elif defined(Q_OS_WIN)
-    const QString binDir = appDir;
-    const QString libDir = QDir(binDir).filePath("../lib");
-    const QString pluginDir = QDir(libDir).filePath("gstreamer-1.0");
-    const QString gioMod = QDir(libDir).filePath("gio/modules");
-    const QString libexecDir = QDir(binDir).filePath("../libexec");
-    const QString scanner = QDir(libexecDir).filePath("gstreamer-1.0/gst-plugin-scanner");
-    const QString ptp = QDir(libexecDir).filePath("gstreamer-1.0/gst-ptp-helper");
-
-    if (QFileInfo::exists(pluginDir)) {
-        qputenv("GST_REGISTRY_REUSE_PLUGIN_SCANNER", "no");
-        qputenv("GIO_EXTRA_MODULES", gioMod.toUtf8().constData());
-        qputenv("GST_PTP_HELPER_1_0", ptp.toUtf8().constData());
-        qputenv("GST_PTP_HELPER", ptp.toUtf8().constData());
-        qputenv("GST_PLUGIN_SCANNER_1_0", scanner.toUtf8().constData());
-        qputenv("GST_PLUGIN_SCANNER", scanner.toUtf8().constData());
-        qputenv("GST_PLUGIN_SYSTEM_PATH_1_0", pluginDir.toUtf8().constData());
-        qputenv("GST_PLUGIN_SYSTEM_PATH", pluginDir.toUtf8().constData());
-        qputenv("GST_PLUGIN_PATH_1_0", pluginDir.toUtf8().constData());
-        qputenv("GST_PLUGIN_PATH", pluginDir.toUtf8().constData());
-    }
-#endif
-}
-
-void _checkPlugin(gpointer data, gpointer user_data)
-{
-    GstPlugin *plugin = static_cast<GstPlugin*>(data);
-    if (!plugin) {
-        return;
-    }
-
-    const gchar *name = gst_plugin_get_name(plugin);
-    const gchar *version = gst_plugin_get_version(plugin);
-    qCDebug(GStreamerLog) << QString("Plugin %1: (Version %2)").arg(name, version);
+    qCDebug(GStreamerLog) << name << "factory available";
+    return true;
 }
 
 bool _verifyPlugins()
 {
+    GstRegistry* registry = gst_registry_get();
+    if (!registry) {
+        qCCritical(GStreamerLog) << "Failed to get GStreamer registry";
+        return false;
+    }
+
+    qCDebug(GStreamerLog) << "Installed GStreamer plugins:";
+    GStreamer::forEachPlugin(registry, [](GstPlugin* plugin) {
+        qCDebug(GStreamerLog) << "  " << gst_plugin_get_name(plugin) << gst_plugin_get_version(plugin);
+    });
+
     bool result = true;
-
-    GstRegistry *registry = gst_registry_get();
-
-    GList *plugins = gst_registry_get_plugin_list(registry);
-    g_list_foreach(plugins, _checkPlugin, NULL);
-    g_list_free(plugins);
-
-    static constexpr const char *pluginNames[2] = {"qml6", "qgc"};
-    for (const char *name : pluginNames) {
-        GstPlugin *plugin = gst_registry_find_plugin(registry, name);
-        if (!plugin) {
-            qCCritical(GStreamerLog) << name << "plugin NOT found.";
+    const auto hasPlugin = [registry](const char* name) {
+        const GstObjectPtr plugin(GST_OBJECT(gst_registry_find_plugin(registry, name)));
+        return plugin != nullptr;
+    };
+    // Mirrors GSTREAMER_RUNTIME_REQUIRED_PLUGINS (PluginPolicy.cmake) plus qgc,
+    // so a stripped registry fails loudly instead of at first stream attempt.
+    static constexpr std::array<const char*, 13> kRequiredPlugins = {
+        "qgc", "coreelements", "isomp4", "matroska", "multifile", "opengl",          "playback",
+        "rtp", "rtpmanager",   "rtsp",   "tcp",      "udp",       "videoparsersbad",
+    };
+    for (const char* name : kRequiredPlugins) {
+        if (!hasPlugin(name)) {
+            qCCritical(GStreamerLog) << "Required GStreamer plugin not found:" << name;
             result = false;
-            continue;
         }
-        gst_clear_object(&plugin);
+    }
+    // GStreamer 1.22+ fuses videoconvert+videoscale into videoconvertscale; accept either.
+    if (!hasPlugin("videoconvertscale") && !(hasPlugin("videoconvert") && hasPlugin("videoscale"))) {
+        qCCritical(GStreamerLog) << "Required GStreamer plugin not found: videoconvertscale (or videoconvert+videoscale)";
+        result = false;
     }
 
     if (!result) {
-        QString pluginPath;
-        if (qEnvironmentVariableIsSet("GST_PLUGIN_PATH_1_0")) {
-            pluginPath = qgetenv("GST_PLUGIN_PATH_1_0");
-        } else if (qEnvironmentVariableIsSet("GST_PLUGIN_PATH")) {
-            pluginPath = qgetenv("GST_PLUGIN_PATH");
-        }
+        // Surface blacklisted plugins so a failure from a corrupt/incompatible plugin file
+        // shows up here instead of looking like a missing-plugin problem.
+        GStreamer::forEachPlugin(registry, [](GstPlugin* p) {
+            const gchar* desc = gst_plugin_get_description(p);
+            if (!desc || !g_str_has_prefix(desc, "BLACKLIST"))
+                return;
+            const gchar* filename = gst_plugin_get_filename(p);
+            qCWarning(GStreamerLog) << "Blacklisted plugin:" << gst_plugin_get_name(p)
+                                    << "file:" << (filename ? filename : "(null)");
+        });
 
-#ifdef QGC_GST_STATIC_BUILD
-        qCCritical(GStreamerLog) << "Please update the list of static plugins in GStreamer.cc";
-#else
-        if (!pluginPath.isEmpty()) {
-            qCCritical(GStreamerLog) << "Please check in GST_PLUGIN_PATH=" << pluginPath;
-        } else {
-            qCCritical(GStreamerLog) << "Please set GST_PLUGIN_PATH to the path of your plugin";
-        }
-#endif
+        // Path / scanner env vars belong to the environment layer that set them.
+        Environment::logDiagnostics();
     }
 
     return result;
 }
 
-void _setCodecPriorities(GStreamer::VideoDecoderOptions option)
+}  // anonymous namespace
+
+Environment::ValidationResult prepareEnvironment()
 {
-    GstRegistry *registry = gst_registry_get();
-
-    if (!registry) {
-        qCCritical(GStreamerLog) << "Failed to get gstreamer registry.";
-        return;
-    }
-
-    const auto changeRank = [registry](const char *featureName, uint16_t rank) {
-        GstPluginFeature *feature = gst_registry_lookup_feature(registry, featureName);
-        if (!feature) {
-            qCDebug(GStreamerLog) << "Failed to change ranking of feature. Feature does not exist:" << featureName;
-            return;
-        }
-
-        qCDebug(GStreamerLog) << "Changing feature (" << featureName << ") to use rank:" << rank;
-        gst_plugin_feature_set_rank(feature, rank);
-        (void) gst_registry_add_feature(registry, feature);
-        gst_clear_object(&feature);
-    };
-
-    // TODO: ForceVideoDecoderCustom in VideoSettings with textbox in QML
-
-    static constexpr uint16_t PrioritizedRank = ForcedRank;
-
-    switch (option) {
-    case GStreamer::ForceVideoDecoderDefault:
-        // On Android, prefer hardware MediaCodec decoders over the equally-ranked software ones.
-        _boostAndroidHardwareDecoders();
-        break;
-    case GStreamer::ForceVideoDecoderSoftware:
-        for (const char *name : {"avdec_h264", "avdec_h265", "avdec_mjpeg", "avdec_mpeg2video", "avdec_mpeg4", "avdec_vp8", "avdec_vp9",
-                                 "dav1ddec", "vp8dec", "vp9dec"}) {
-            changeRank(name, PrioritizedRank);
-        }
-        break;
-    case GStreamer::ForceVideoDecoderVAAPI:
-        for (const char *name : {"vaav1dec", "vah264dec", "vah265dec", "vajpegdec", "vampeg2dec", "vavp8dec", "vavp9dec"}) {
-            changeRank(name, PrioritizedRank);
-        }
-        break;
-    case GStreamer::ForceVideoDecoderNVIDIA:
-        for (const char *name : {"nvav1dec", "nvh264dec", "nvh265dec", "nvjpegdec", "nvmpeg2videodec", "nvmpeg4videodec", "nvmpegvideodec", "nvvp8dec", "nvvp9dec"}) {
-            changeRank(name, PrioritizedRank);
-        }
-        break;
-    case GStreamer::ForceVideoDecoderDirectX3D:
-        for (const char *name : {"d3d11av1dec", "d3d11h264dec", "d3d11h265dec", "d3d11mpeg2dec", "d3d11vp8dec", "d3d11vp9dec",
-                                 "d3d12av1dec", "d3d12h264dec", "d3d12h265dec", "d3d12mpeg2dec", "d3d12vp8dec", "d3d12vp9dec",
-                                 "dxvaav1decoder", "dxvah264decoder", "dxvah265decoder", "dxvampeg2decoder", "dxvavp8decoder", "dxvavp9decoder" }) {
-            changeRank(name, PrioritizedRank);
-        }
-        break;
-    case GStreamer::ForceVideoDecoderVideoToolbox:
-        for (const char *name : {"vtdec_hw", "vtdec"}) {
-            changeRank(name, PrioritizedRank);
-        }
-        break;
-    case GStreamer::ForceVideoDecoderIntel:
-        for (const char *name : {"qsvh264dec", "qsvh265dec", "qsvjpegdec", "qsvvp9dec", "msdkav1dec", "msdkh264dec", "msdkh265dec", "msdkmjpegdec", "msdkmpeg2dec", "msdkvc1dec", "msdkvp8dec", "msdkvp9dec"}) {
-            changeRank(name, PrioritizedRank);
-        }
-        break;
-    case GStreamer::ForceVideoDecoderVulkan:
-        for (const char *name : {"vulkanh264dec", "vulkanh265dec"}) {
-            changeRank(name, PrioritizedRank);
-        }
-        break;
-    default:
-        qCWarning(GStreamerLog) << "Can't handle decode option:" << option;
-        break;
-    }
+    return Environment::prepareEnvironment();
 }
 
-} // namespace
+namespace {
 
-namespace GStreamer
+bool _initGstRuntime(const QStringList& args, const Environment::ValidationResult& env)
 {
-
-bool initialize()
-{
-    _setGstEnvVars();
-
-    if (qEnvironmentVariableIsEmpty("GST_DEBUG")) {
-        int gstDebugLevel = 0;
-        QSettings settings;
-        if (settings.contains(AppSettings::gstDebugLevelName)) {
-            gstDebugLevel = settings.value(AppSettings::gstDebugLevelName).toInt();
-        }
-        gst_debug_set_default_threshold(static_cast<GstDebugLevel>(gstDebugLevel));
-        gst_debug_remove_log_function(gst_debug_log_default);
-        gst_debug_add_log_function(_qtGstLog, nullptr, nullptr);
+    if (!env.ok) {
+        qCCritical(GStreamerLog) << "Invalid GStreamer environment configuration:" << env.error;
+        return false;
     }
 
-    const QStringList args = QCoreApplication::arguments();
-    int gstArgc = args.size();
-
-    QByteArrayList argData;
-    argData.reserve(gstArgc);
-
-    QVarLengthArray<char*, 16> rawArgv;
-    rawArgv.reserve(gstArgc);
-
-    for (const QString &arg : args) {
-        argData.append(arg.toUtf8());
-        rawArgv.append(argData.last().data());
+    // args is snapshotted on the GUI thread: QCoreApplication::arguments() is not thread-safe
+    // and initialize() runs on a QtConcurrent pool thread.
+    QByteArrayList argStorage;
+    argStorage.reserve(args.size());
+    for (const QString& arg : args) {
+        argStorage.append(arg.toUtf8());
     }
 
-    char **argvPtr = rawArgv.data();
-    GError *error = nullptr;
-    const gboolean ok = gst_init_check(&gstArgc, &argvPtr, &error);
-    if (!ok) {
-        qCritical(GStreamerLog) << "Failed to initialize GStreamer:" << error->message;
+    QVarLengthArray<char*, 16> argv;
+    for (QByteArray& arg : argStorage) {
+        argv.append(arg.data());
+    }
+
+    int argc = argv.size();
+    char** argvPtr = argv.data();
+    GError* error = nullptr;
+
+    if (!gst_init_check(&argc, &argvPtr, &error)) {
+        qCCritical(GStreamerLog) << "Failed to initialize GStreamer:" << (error ? error->message : "unknown error");
         g_clear_error(&error);
         return false;
     }
 
-    const gchar *version = gst_version_string();
-    qCDebug(GStreamerLog) << QString("GStreamer Initialized (Version: %1)").arg(version);
-
-    _initAndroidMediaCodec();
-
-    _registerPlugins();
-
-    if (!_verifyPlugins()) {
-        qCCritical(GStreamerLog) << "Failed to verify plugins - Check your GStreamer setup";
-        return false;
-    }
-
-    _setCodecPriorities(static_cast<GStreamer::VideoDecoderOptions>(SettingsManager::instance()->videoSettings()->forceVideoDecoder()->rawValue().toInt()));
-
-    GstElement *sink = gst_element_factory_make("qml6glsink", nullptr);
-    if (!sink) {
-        qCCritical(GStreamerLog) << "failed to init qml6glsink";
-        return false;
-    }
-
-    gst_clear_object(&sink);
     return true;
 }
 
-void *createVideoSink(QQuickItem *widget, QObject *parent)
+}  // anonymous namespace
+
+bool completeInit()
 {
-    GstElement *videoSinkBin = gst_element_factory_make("qgcvideosinkbin", NULL);
-    if (videoSinkBin) {
-        if (widget) {
-            g_object_set(videoSinkBin, "widget", widget, NULL);
-        }
-    } else {
-        qCCritical(GStreamerLog) << "gst_element_factory_make('qgcvideosinkbin') failed";
+    if (!gst_is_initialized()) {
+        qCCritical(GStreamerLog) << "completeInit called but gst_init() has not been called";
+        return false;
     }
 
+    GStreamer::configureDebugLogging();
+
+    guint major, minor, micro, nano;
+    gst_version(&major, &minor, &micro, &nano);
+    qCDebug(GStreamerLog) << "GStreamer initialized:" << major << "." << minor << "." << micro;
+
+#ifdef QGC_GST_BUILD_VERSION_MAJOR
+    if (major != QGC_GST_BUILD_VERSION_MAJOR || minor != QGC_GST_BUILD_VERSION_MINOR) {
+        qCWarning(GStreamerLog) << "GStreamer version mismatch: built against" << QGC_GST_BUILD_VERSION_MAJOR << "."
+                                << QGC_GST_BUILD_VERSION_MINOR << "but runtime is" << major << "." << minor << "."
+                                << micro;
+    }
+#endif
+
+    _registerPlugins();
+
+#ifdef Q_OS_ANDROID
+    // The hardware MediaCodec (amc) decoders and the software avdec decoders both register at
+    // GST_RANK_PRIMARY, and decodebin breaks the tie towards software. Bump the amc video
+    // decoders one rank above so the hardware decoder is selected by default.
+    if (GstRegistry* reg = gst_registry_get()) {
+        GList* decoders = gst_element_factory_list_get_elements(
+            static_cast<GstElementFactoryListType>(GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO),
+            GST_RANK_NONE);
+        for (GList* l = decoders; l != nullptr; l = l->next) {
+            const gchar* name = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(l->data));
+            if (name && g_str_has_prefix(name, "amcviddec")) {
+                GStreamer::changeFeatureRank(reg, name, GST_RANK_PRIMARY + 1);
+            }
+        }
+        gst_plugin_feature_list_free(decoders);
+    }
+#endif
+
+#ifdef Q_OS_IOS
+    // Prefer applemedia-backed sources on iOS. Must run after _registerPlugins() (registry empty before).
+    if (GstRegistry* reg = gst_registry_get()) {
+        GStreamer::changeFeatureRank(reg, "filesrc", GST_RANK_SECONDARY);
+        GStreamer::changeFeatureRank(reg, "giosrc", GST_RANK_SECONDARY - 1);
+    }
+#endif
+
+    if (!_verifyPlugins()) {
+        qCCritical(GStreamerLog) << "Plugin verification failed";
+        return false;
+    }
+
+    GStreamer::logDecoderRanks();
+
+    if (!requireFactory("qgcqvideosink", "sink bin will fail to construct")) {
+        return false;
+    }
+    if (!requireFactory("qgcvideosinkbin",
+                        "qgc plugin registered but element exposure failed. Likely link-time symbol "
+                        "stripping (iOS LTO / Android R8) removed the GST_ELEMENT_REGISTER side effect; "
+                        "add gstqgcelements.cc to a -force_load / keep rule.")) {
+        return false;
+    }
+
+    if (GStreamer::didExternalPluginLoaderFail()) {
+        qCCritical(GStreamerLog)
+            << "GStreamer external plugin loader failed. Check GST_PLUGIN_SCANNER and bundled runtime paths.";
+        return false;
+    }
+
+    return true;
+}
+
+bool initialize(const QStringList& arguments, const Environment::ValidationResult& envResult)
+{
+    GStreamer::resetExternalPluginLoaderFailure();
+    GStreamer::redirectGLibLogging();
+
+    // Suppress GStreamer's default stderr handler before gst_init_check() — raw ANSI codes
+    // corrupt the terminal on macOS.
+    gst_debug_remove_log_function(gst_debug_log_default);
+
+    if (!_initGstRuntime(arguments, envResult)) {
+        return false;
+    }
+
+    return completeInit();
+}
+
+// Video sink refcount protocol: createVideoSink returns floating(1); ref on add to the pipeline,
+// unref on removal; releaseVideoSink drops the last ref. Keep the ref/unref sites balanced.
+void* createVideoSink(const VideoSinkConfig& config)
+{
+    // All bin tunables are construct-only — properties drive behavior, no env-var indirection.
+    const gboolean disablePar = config.disablePixelAspectRatio ? TRUE : FALSE;
+    const char* const conversion = config.conversionElement.isEmpty() ? nullptr : config.conversionElement.constData();
+
+    const GstFactoryPtr factory = adoptFactory(gst_element_factory_find("qgcvideosinkbin"));
+    if (!factory) {
+        // completeInit verified this factory at startup; absence here means the registry changed underfoot.
+        qCCritical(GStreamerLog) << "qgcvideosinkbin factory not found";
+        return nullptr;
+    }
+
+#if defined(QGC_HAS_ANY_GPU_PATH)
+    // gpu-zerocopy is construct-only on the bin; adapter reads it back from the bin so the two halves can't desync.
+    GstElement* videoSinkBin =
+        gst_element_factory_create_full(factory.get(), "gpu-zerocopy", config.gpuZeroCopy ? TRUE : FALSE,
+                                        "conversion-element", conversion, "disable-par", disablePar, NULL);
+#else
+    GstElement* videoSinkBin = gst_element_factory_create_full(factory.get(), "conversion-element", conversion,
+                                                               "disable-par", disablePar, NULL);
+#endif
+    if (!videoSinkBin) {
+        qCCritical(GStreamerLog) << "qgcvideosinkbin element creation failed";
+    }
     return videoSinkBin;
 }
 
-void setVideoSinkWidget(void *sink, QQuickItem *widget)
+void releaseVideoSink(void* sink)
 {
-    if (sink) {
-        g_object_set(GST_ELEMENT(sink), "widget", widget, NULL);
-    }
-}
-
-void releaseVideoSink(void *sink)
-{
-    GstElement *videoSink = GST_ELEMENT(sink);
+    if (!sink)
+        return;
+    GstElement* videoSink = GST_ELEMENT(sink);
     gst_clear_object(&videoSink);
 }
 
-VideoReceiver *createVideoReceiver(QObject *parent)
+VideoReceiver* createVideoReceiver(QObject* parent)
 {
     return new GstVideoReceiver(parent);
 }
 
-} // namespace GStreamer
+bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* controllerParent)
+{
+    if (!sinkBin || !videoSink || !controllerParent) {
+        // controllerParent owns the controller's QObject lifetime — else it leaks (caller has no handle).
+        qCWarning(GStreamerLog) << "setupQVideoSinkElement: null sinkBin, videoSink, or controllerParent";
+        return false;
+    }
+
+    // Idempotent re-setup: tear down prior controllers so repeated startDecoding cycles
+    // don't accumulate dangling ones.
+    for (auto* c : QGCQVideoSinkController::controllersOf(controllerParent)) {
+        c->setActive(false);
+        // Stop the poll timer synchronously: deleteLater is deferred and the timer would otherwise
+        // keep binding the same element while the new controller is being installed.
+        c->prepareForRelease();
+        c->deleteLater();
+    }
+
+    // Clear the GL bridge's exhausted-retry latch so a restart after Qt's globalShareContext
+    // appears can prime on the next NEED_CONTEXT. No-op when already primed.
+    HwBuffers::onPipelineRestart();
+
+    // Accessor returns a transfer-full ref; the guard releases it once the controller has taken
+    // its own ref for deferred QObject teardown.
+    const GstObjectPtr element(GST_OBJECT(gst_qgc_video_sink_bin_get_qvideosink(GST_QGC_VIDEO_SINK_BIN(sinkBin))));
+    if (!element) {
+        qCCritical(GStreamerLog) << "setupQVideoSinkElement: bin has no qgcqvideosink child";
+        return false;
+    }
+    GstElement* const elementRaw = GST_ELEMENT(element.get());
+
+#if defined(QGC_HAS_ANY_GPU_PATH)
+    // Resolve the GPU context on the GUI thread and push it in, else gpu-zerocopy=TRUE negotiates
+    // GPU caps but show_frame still memcpys. gpu-zerocopy is the bin's property, not the inner sink's.
+    const gboolean gpuZeroCopy = gst_qgc_video_sink_bin_get_gpu_zerocopy(GST_ELEMENT(sinkBin));
+    if (gpuZeroCopy) {
+        gst_qgc_q_video_sink_set_hw_context(GST_QGC_Q_VIDEO_SINK(elementRaw), HwBuffers::makeAdapterContext(true));
+    }
+#endif
+
+    auto* controller = new QGCQVideoSinkController(elementRaw, controllerParent);
+
+    // Route the initial install through the controller so its destroyed-sink QPointer guard
+    // covers setup, not just later swaps.
+    controller->setVideoSink(QPointer<QVideoSink>(videoSink));
+    controller->setActive(true);
+
+    return true;
+}
+
+void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget)
+{
+    if (!sink || !widget || !receiver) {
+        return;
+    }
+
+    auto* videoOutput = qobject_cast<QQuickVideoOutput*>(widget);
+    if (!videoOutput) {
+        qCWarning(GStreamerLog) << "Widget is not a VideoOutput, cannot connect qgcqvideosink";
+        return;
+    }
+
+    QVideoSink* videoSink = videoOutput->videoSink();
+    if (!setupQVideoSinkElement(sink, videoSink, receiver)) {
+        qCWarning(GStreamerLog) << "setupQVideoSinkElement failed";
+    }
+
+    QGCQVideoSinkController::syncActiveToWindowVisibility(receiver, videoOutput);
+}
+
+void bindDebugLevelFact(Fact* fact, QObject* context)
+{
+    if (!fact || !context)
+        return;
+    QObject::connect(fact, &Fact::rawValueChanged, context,
+                     [](const QVariant& value) { setDebugLevel(value.toInt()); });
+}
+
+static const char* graphicsApiName(QSGRendererInterface::GraphicsApi api)
+{
+    switch (api) {
+        case QSGRendererInterface::Software:
+            return "Software";
+        case QSGRendererInterface::OpenGL:
+            return "OpenGL";
+        case QSGRendererInterface::Direct3D11:
+            return "Direct3D11";
+        case QSGRendererInterface::Direct3D12:
+            return "Direct3D12";
+        case QSGRendererInterface::Vulkan:
+            return "Vulkan";
+        case QSGRendererInterface::Metal:
+            return "Metal";
+        default:
+            return "Unknown";
+    }
+}
+
+// Zero-copy buffer family the resolved RHI backend enables, or "CPU" when no import path is compiled for it.
+static const char* zeroCopyFamilyForApi(QSGRendererInterface::GraphicsApi api)
+{
+    switch (api) {
+        case QSGRendererInterface::OpenGL:
+#if defined(QGC_HAS_GST_GLMEMORY_GPU_PATH) || defined(QGC_HAS_GST_DMABUF_GPU_PATH)
+            return "GLMemory/DMABuf";
+#else
+            return "CPU";
+#endif
+        case QSGRendererInterface::Direct3D11:
+#if defined(QGC_HAS_GST_D3D11_GPU_PATH)
+            return "D3D11";
+#else
+            return "CPU";
+#endif
+        case QSGRendererInterface::Direct3D12:
+            // GStreamer 1.28 can match adapter LUID but cannot wrap Qt's ID3D12Device; D3D12 zero-copy disabled until
+            // same-device import is possible.
+            return "CPU (D3D12 import disabled)";
+        case QSGRendererInterface::Metal:
+#if defined(QGC_HAS_GST_IOSURFACE_GPU_PATH)
+            return "IOSurface/VideoToolbox";
+#else
+            return "CPU";
+#endif
+        case QSGRendererInterface::Vulkan:
+            // Vulkan import is dormant (foreign-VkDevice guard → CPU copy), so it never delivers zero-copy today.
+            return "CPU (Vulkan import dormant)";
+        default:
+            return "CPU";
+    }
+}
+
+void onMainWindowReady(QQuickWindow* window)
+{
+    HwBuffers::connectMainWindow(window);
+    // Prefer the resolved backend (cachedRhi) over the configured API once the scene graph is up; QGCRhiCapture exists
+    // only when a GPU path is compiled, hence the guard.
+    QSGRendererInterface::GraphicsApi api = QQuickWindow::graphicsApi();
+#if defined(QGC_HAS_ANY_GPU_PATH)
+    if (QRhi* rhi = QGCRhiCapture::cachedRhi()) {
+        switch (rhi->backend()) {
+            case QRhi::OpenGLES2: api = QSGRendererInterface::OpenGL; break;
+            case QRhi::D3D11:     api = QSGRendererInterface::Direct3D11; break;
+            case QRhi::D3D12:     api = QSGRendererInterface::Direct3D12; break;
+            case QRhi::Metal:     api = QSGRendererInterface::Metal; break;
+            case QRhi::Vulkan:    api = QSGRendererInterface::Vulkan; break;
+            default: break;
+        }
+    }
+#endif
+    qCInfo(GStreamerLog) << "Resolved RHI backend:" << graphicsApiName(api) << "→ zero-copy path:"
+                         << zeroCopyFamilyForApi(api);
+}
+
+QList<VideoDecoderOptions> availableDecoderFamilies()
+{
+    // One walk of the decoder factory list (mirrors prioritizeByHardwareClass) classifies each
+    // factory by name prefix into a VideoDecoderOptions family.
+    static constexpr std::array<std::pair<VideoDecoderOptions, const char*>, 5> kFamilyPrefixes = {{
+        {ForceVideoDecoderNVIDIA, "nv"},
+        {ForceVideoDecoderVAAPI, "va"},
+        {ForceVideoDecoderIntel, "qsv"},
+        {ForceVideoDecoderVideoToolbox, "vtdec"},
+        {ForceVideoDecoderVulkan, "vulkan"},
+    }};
+
+    QList<VideoDecoderOptions> families;
+    const auto note = [&families](VideoDecoderOptions f) {
+        if (!families.contains(f))
+            families.append(f);
+    };
+
+    GList* decoderFactories = gst_element_factory_list_get_elements(
+        static_cast<GstElementFactoryListType>(GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO),
+        GST_RANK_NONE);
+    for (GList* node = decoderFactories; node != nullptr; node = node->next) {
+        GstElementFactory* factory = GST_ELEMENT_FACTORY(node->data);
+        if (!factory)
+            continue;
+        const gchar* name = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory));
+        if (!name)
+            continue;
+
+        if (g_str_has_prefix(name, "msdk")) {
+            note(ForceVideoDecoderIntel);
+            continue;
+        }
+        if (g_str_has_prefix(name, "d3d11") || g_str_has_prefix(name, "d3d12") || g_str_has_prefix(name, "dxva")) {
+            note(ForceVideoDecoderDirectX3D);
+            continue;
+        }
+        // Legacy gstreamer-vaapi (vaapi*) also matches "va" but is demoted to RANK_NONE and never bumped by
+        // ForceVideoDecoderVAAPI (modern va* only); skip it so an unusable VAAPI option isn't kept.
+        if (g_str_has_prefix(name, "vaapi")) {
+            continue;
+        }
+        for (const auto& [family, prefix] : kFamilyPrefixes) {
+            if (g_str_has_prefix(name, prefix)) {
+                note(family);
+                break;
+            }
+        }
+    }
+    gst_plugin_feature_list_free(decoderFactories);
+
+    return families;
+}
+
+}  // namespace GStreamer

@@ -1,3 +1,8 @@
+# ============================================================================
+# Settings Module
+# Application, vehicle, and user preference settings management
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         ADSBVehicleManagerSettings.cc
@@ -10,8 +15,6 @@ target_sources(${CMAKE_PROJECT_NAME}
         AutoConnectSettings.h
         BatteryIndicatorSettings.cc
         BatteryIndicatorSettings.h
-        BrandImageSettings.cc
-        BrandImageSettings.h
         MavlinkActionsSettings.cc
         MavlinkActionsSettings.h
         FirmwareUpgradeSettings.cc
@@ -24,6 +27,14 @@ target_sources(${CMAKE_PROJECT_NAME}
         FlyViewSettings.h
         GimbalControllerSettings.cc
         GimbalControllerSettings.h
+        JoystickManagerSettings.cc
+        JoystickManagerSettings.h
+        JoystickSettings.cc
+        JoystickSettings.h
+        LogManagerSettings.cc
+        LogManagerSettings.h
+        LogViewerSettings.cc
+        LogViewerSettings.h
         MavlinkSettings.cc
         MavlinkSettings.h
         OfflineMapsSettings.cc
@@ -34,6 +45,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         RemoteIDSettings.h
         RTKSettings.cc
         RTKSettings.h
+        NTRIPSettings.cc
+        NTRIPSettings.h
         SettingsGroup.cc
         SettingsGroup.h
         SettingsManager.cc
@@ -48,12 +61,18 @@ target_sources(${CMAKE_PROJECT_NAME}
         Viewer3DSettings.h
 )
 
-if(NOT QGC_DISABLE_APM_MAVLINK)
-    target_sources(${CMAKE_PROJECT_NAME}
-        PRIVATE
-            APMMavlinkStreamRateSettings.cc
-            APMMavlinkStreamRateSettings.h
-    )
-endif()
+# ----------------------------------------------------------------------------
+# APM-Specific Settings
+# ----------------------------------------------------------------------------
+target_sources(${CMAKE_PROJECT_NAME}
+    PRIVATE
+        APMMavlinkStreamRateSettings.cc
+        APMMavlinkStreamRateSettings.h
+)
+
+# ----------------------------------------------------------------------------
+# Settings Definition Resources
+# ----------------------------------------------------------------------------
+qgc_add_json_resources(json_app_settings)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

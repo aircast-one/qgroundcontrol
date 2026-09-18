@@ -1,3 +1,8 @@
+# ============================================================================
+# Video Manager Module
+# Handles video streaming and subtitle generation
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         SubtitleWriter.cc

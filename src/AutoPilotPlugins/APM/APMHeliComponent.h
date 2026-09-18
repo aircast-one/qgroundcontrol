@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "VehicleComponent.h"
@@ -21,7 +12,7 @@ public:
     QStringList setupCompleteChangedTriggerList() const final { return QStringList(); }
 
     QString name() const final { return _name; }
-    QString description() const final { return tr("Heli Setup is used to setup parameters which are specific to a helicopter."); }
+    QString description() const final { return tr("Configure swashplate, governor, and rotor parameters."); }
     QString iconResource() const final { return QStringLiteral("/res/helicoptericon.svg"); }
     bool requiresSetup() const final { return false; }
     bool setupComplete() const final { return true; }

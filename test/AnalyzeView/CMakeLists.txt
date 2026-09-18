@@ -1,25 +1,44 @@
+# ============================================================================
+# Analyze View Unit Tests
+# Tests for log analysis and telemetry visualization
+# ============================================================================
+
+add_subdirectory(GeoTag)
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
-        ExifParserTest.cc
-        ExifParserTest.h
-        # GeoTagControllerTest.cc
-        # GeoTagControllerTest.h
-        LogDownloadTest.cc
-        LogDownloadTest.h
+        MAVLinkChartControllerTest.cc
+        MAVLinkChartControllerTest.h
+        MAVLinkConsoleControllerTest.cc
+        MAVLinkConsoleControllerTest.h
+        MAVLinkInspectorControllerTest.cc
+        MAVLinkInspectorControllerTest.h
+        OnboardLogDownloadTest.cc
+        OnboardLogDownloadTest.h
+        MAVLinkMessageFieldTest.cc
+        MAVLinkMessageFieldTest.h
+        MAVLinkMessageTest.cc
+        MAVLinkMessageTest.h
+        MAVLinkSystemTest.cc
+        MAVLinkSystemTest.h
         MavlinkLogTest.cc
         MavlinkLogTest.h
-        PX4LogParserTest.cc
-        PX4LogParserTest.h
-        # ULogParserTest.cc
-        # ULogParserTest.h
+        APMDataFlashLogParserTest.cc
+        APMDataFlashLogParserTest.h
+        LogFileParserTest.cc
+        LogFileParserTest.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# https://github.com/ianare/exif-samples
-# qt_add_resources(${CMAKE_PROJECT_NAME} "AnalyzeViewTest_res"
-#     PREFIX "/"
-#     FILES
-#         DSCN0010.jpg
-#         # SampleULog.ulg
-# )
+add_qgc_test(MAVLinkChartControllerTest LABELS Unit AnalyzeView)
+add_qgc_test(MAVLinkConsoleControllerTest LABELS Unit AnalyzeView)
+add_qgc_test(MAVLinkInspectorControllerTest LABELS Unit AnalyzeView)
+add_qgc_test(OnboardLogDownloadTest LABELS Integration AnalyzeView Vehicle)
+add_qgc_test(OnboardLogFtpDownloadTest LABELS Integration AnalyzeView Vehicle)
+add_qgc_test(MAVLinkMessageFieldTest LABELS Unit AnalyzeView)
+add_qgc_test(MAVLinkMessageTest LABELS Unit AnalyzeView)
+add_qgc_test(MAVLinkSystemTest LABELS Unit AnalyzeView)
+add_qgc_test(MavlinkLogTest LABELS Integration AnalyzeView Vehicle)
+add_qgc_test(APMDataFlashLogParserTest LABELS Unit AnalyzeView)
+add_qgc_test(LogFileParserTest LABELS Unit AnalyzeView)

@@ -1,8 +1,12 @@
 #include "VideoTileTest.h"
 #include "QuickInteractionTestHelpers.h"
 
+#include <QtCore/QRegularExpression>
+
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlPropertyMap>
+
+#include <memory>
 
 // Loads the real FlyViewVideo (tiles included) with a stubbed `globals` context so the
 // per-tile collapse state can be exercised end to end against the real persistence path.
@@ -35,14 +39,20 @@ static QQuickItem* findTile(QQuickView& view, int cameraNumber)
     return findTileIn(view.rootObject(), QStringLiteral("VideoTileCamera%1Expanded").arg(cameraNumber));
 }
 
+void VideoTileTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("qt.qpa.fonts", QtWarningMsg, QRegularExpression(QStringLiteral("Populating font family aliases")));
+}
+
 void VideoTileTest::_collapsePersistsAcrossReload()
 {
     clearQmlGlobalSettings({"VideoTileCamera0Expanded"});
 
     {
-        QQmlPropertyMap globals;
+        const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
         QQuickView view;
-        QVERIFY(loadVideoView(view, globals));
+        QVERIFY(loadVideoView(view, *globals));
 
         QQuickItem* tile = findTile(view, 0);
         QVERIFY(tile);
@@ -54,9 +64,9 @@ void VideoTileTest::_collapsePersistsAcrossReload()
 
     // The collapsed state must survive a reload.
     {
-        QQmlPropertyMap globals2;
+        const std::unique_ptr<QQmlPropertyMap> globals2(QQmlPropertyMap::create());
         QQuickView view2;
-        QVERIFY(loadVideoView(view2, globals2));
+        QVERIFY(loadVideoView(view2, *globals2));
 
         QQuickItem* tile2 = findTile(view2, 0);
         QVERIFY(tile2);
@@ -67,11 +77,13 @@ void VideoTileTest::_collapsePersistsAcrossReload()
     }
 
     // And so must re-expanding.
-    QQmlPropertyMap globals3;
+    const std::unique_ptr<QQmlPropertyMap> globals3(QQmlPropertyMap::create());
     QQuickView view3;
-    QVERIFY(loadVideoView(view3, globals3));
+    QVERIFY(loadVideoView(view3, *globals3));
 
     QQuickItem* tile3 = findTile(view3, 0);
     QVERIFY(tile3);
     QVERIFY(tile3->property("tileExpanded").toBool());
 }
+
+UT_REGISTER_TEST(VideoTileTest, TestLabel::Unit)

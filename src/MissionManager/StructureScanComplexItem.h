@@ -1,13 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #pragma once
 
 #include "ComplexMissionItem.h"
@@ -15,10 +5,6 @@
 #include "SettingsFact.h"
 #include "QGCMapPolygon.h"
 #include "CameraCalc.h"
-
-#include <QtCore/QLoggingCategory>
-
-Q_DECLARE_LOGGING_CATEGORY(StructureScanComplexItemLog)
 
 class PlanMasterController;
 
@@ -63,7 +49,7 @@ public:
     Q_INVOKABLE void rotateEntryPoint(void);
 
     // Overrides from ComplexMissionItem
-    QString patternName         (void) const final { return name; }
+    QString patternName         (void) const final { return tr(canonicalName); }
     double  complexDistance     (void) const final { return _scanDistance; }
     int     lastSequenceNumber  (void) const final;
     bool    load                (const QJsonObject& complexObject, int sequenceNumber, QString& errorString) final;
@@ -80,27 +66,29 @@ public:
     QString             commandName                 (void) const final { return tr("Structure Scan"); }
     QString             abbreviation                (void) const final { return "S"; }
     QGeoCoordinate      coordinate                  (void) const final;
+    QGeoCoordinate      entryCoordinate             (void) const final { return coordinate(); }
     QGeoCoordinate      exitCoordinate              (void) const final { return coordinate(); }
     int                 sequenceNumber              (void) const final { return _sequenceNumber; }
     double              specifiedFlightSpeed        (void) final { return std::numeric_limits<double>::quiet_NaN(); }
     double              specifiedGimbalYaw          (void) final { return std::numeric_limits<double>::quiet_NaN(); }
     double              specifiedGimbalPitch        (void) final { return std::numeric_limits<double>::quiet_NaN(); }
     void                appendMissionItems          (QList<MissionItem*>& items, QObject* missionItemParent) final;
-    void                setMissionFlightStatus      (MissionController::MissionFlightStatus_t& missionFlightStatus) final;
+    void                setMissionFlightStatus      (MissionFlightStatus_t& missionFlightStatus) final;
     void                applyNewAltitude            (double newAltitude) final;
     double              additionalTimeDelay         (void) const final { return 0; }
     ReadyForSaveState   readyForSaveState           (void) const final;
     bool                exitCoordinateSameAsEntry   (void) const final { return true; }
     void                setDirty                    (bool dirty) final;
-    void                setCoordinate               (const QGeoCoordinate& coordinate) final { Q_UNUSED(coordinate); }
+    void                setCoordinate               (const QGeoCoordinate& coordinate) final;
     void                setSequenceNumber           (int sequenceNumber) final;
     void                save                        (QJsonArray&  missionItems) final;
+    double              editableAlt                 (void) const final;
     double              amslEntryAlt                (void) const final;
     double              amslExitAlt                 (void) const final { return amslEntryAlt(); };
     double              minAMSLAltitude             (void) const final;
     double              maxAMSLAltitude             (void) const final;
 
-    static const QString name;
+    static constexpr const char* canonicalName = QT_TR_NOOP("Structure Scan");
 
     static constexpr const char* settingsGroup =               "StructureScan";
     static constexpr const char* scanBottomAltName =           "ScanBottomAlt";
@@ -152,7 +140,6 @@ private:
     double          _vehicleSpeed;
     CameraCalc      _cameraCalc;
 
-
     SettingsFact    _scanBottomAltFact;
     SettingsFact    _structureHeightFact;
     SettingsFact    _layersFact;
@@ -162,7 +149,9 @@ private:
 
     static constexpr const char* _jsonCameraCalcKey =          "CameraCalc";
 
-    static constexpr const char* _entranceAltName = "EntranceAltitude"; // This value cannot be overriden
+    static constexpr const char* _entranceAltName = "EntranceAltitude"; // This value cannot be overridden
 
+#ifdef QGC_UNITTEST_BUILD
     friend class StructureScanComplexItemTest;
+#endif
 };

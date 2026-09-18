@@ -1,28 +1,20 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QAbstractListModel>
 #include <QtCore/QByteArray>
 #include <QtCore/QHash>
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 class Fact;
 
-Q_DECLARE_LOGGING_CATEGORY(FactValueSliderListModelLog)
-
-/// Provides a list model of values for incrementing/decrementing the value of a Fact
+/// \brief Provides a list model of values for incrementing/decrementing the value of a Fact
+///
 class FactValueSliderListModel : public QAbstractListModel
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
     /// The initial value of the Fact at the meta data specified decimal place precision
     Q_PROPERTY(double initialValueAtPrecision READ initialValueAtPrecision NOTIFY initialValueAtPrecisionChanged)
 

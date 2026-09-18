@@ -1,22 +1,9 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #pragma once
 
 #include <QtCore/QFile>
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtNetwork/QHttpPart>
 #include <QtQmlIntegration/QtQmlIntegration>
-
-Q_DECLARE_LOGGING_CATEGORY(MAVLinkLogManagerLog)
 
 class QmlObjectListModel;
 class QNetworkAccessManager;
@@ -108,12 +95,11 @@ private:
 
 /*===========================================================================*/
 
-
 class MAVLinkLogManager : public QObject
 {
     Q_OBJECT
-    // QML_ELEMENT
-    // QML_UNCREATABLE("")
+    QML_ELEMENT
+    QML_UNCREATABLE("")
     Q_MOC_INCLUDE("QmlObjectListModel.h")
     Q_PROPERTY(QString              emailAddress        READ emailAddress       WRITE setEmailAddress       NOTIFY emailAddressChanged)
     Q_PROPERTY(QString              description         READ description        WRITE setDescription        NOTIFY descriptionChanged)

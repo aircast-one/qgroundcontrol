@@ -1,37 +1,28 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
+#include "QmlObjectListModel.h"
 #include "FactValueGrid.h"
 #include "InstrumentValueData.h"
-#include "QGCApplication.h"
+#include "AppMessages.h"
 #include "QGCCorePlugin.h"
 #include "MultiVehicleManager.h"
 #include "Vehicle.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QSettings>
 #include <QtCore/QDir>
 
 QStringList FactValueGrid::_iconNames;
 
-// Important: The indices of these strings must match the FactValueGrid::FontSize enum
-const QStringList FactValueGrid::_fontSizeNames = {
-    QT_TRANSLATE_NOOP("FactValueGrid", "Default"),
-    QT_TRANSLATE_NOOP("FactValueGrid", "Small"),
-    QT_TRANSLATE_NOOP("FactValueGrid", "Medium"),
-    QT_TRANSLATE_NOOP("FactValueGrid", "Large"),
-};
-
 QList<FactValueGrid*> FactValueGrid::_vehicleCardInstanceList;
 
 FactValueGrid::FactValueGrid(QQuickItem* parent)
     : QQuickItem(parent)
-    , _columns  (new QmlObjectListModel(this))
+    , _columns      (new QmlObjectListModel(this))
+    , _fontSizeNames({
+        QCoreApplication::translate("FactValueGrid", "Default"),
+        QCoreApplication::translate("FactValueGrid", "Small"),
+        QCoreApplication::translate("FactValueGrid", "Medium"),
+        QCoreApplication::translate("FactValueGrid", "Large"),
+    })
 {
     if (_iconNames.isEmpty()) {
         QDir iconDir(":/InstrumentValueIcons/");
@@ -94,12 +85,12 @@ void FactValueGrid::_activeVehicleChanged(Vehicle* activeVehicle)
     _initForNewVehicle(activeVehicle);
 }
 
-FactValueGrid::~FactValueGrid() 
+FactValueGrid::~FactValueGrid()
 {
     _vehicleCardInstanceList.removeAll(this);
 }
 
-QGCMAVLink::VehicleClass_t FactValueGrid::vehicleClass(void) const 
+QGCMAVLinkTypes::VehicleClass_t FactValueGrid::vehicleClass(void) const
 {
     return QGCMAVLink::vehicleClass(currentVehicle()->vehicleType());
 }
@@ -285,9 +276,9 @@ void FactValueGrid::_saveSettings(void)
         settings.setArrayIndex(colIndex);
         settings.beginWriteArray(_rowsKey);
 
-        for (int colIndex=0; colIndex<columns->count(); colIndex++) {
-            InstrumentValueData* value = columns->value<InstrumentValueData*>(colIndex);
-            settings.setArrayIndex(colIndex);
+        for (int rowIndex=0; rowIndex<columns->count(); rowIndex++) {
+            InstrumentValueData* value = columns->value<InstrumentValueData*>(rowIndex);
+            settings.setArrayIndex(rowIndex);
             _saveValueData(settings, value);
         }
 
@@ -329,12 +320,12 @@ void FactValueGrid::_resetFromSettings(void)
 
         int version = settings.value(_versionKey, 0).toInt();
         if (version != 1) {
-            qgcApp()->showAppMessage(tr("Settings version %1 for %2 is not supported. Setup will be reset to defaults.").arg(version).arg(_settingsGroup), tr("Load Settings"));
+            QGC::showAppMessage(tr("Settings version %1 for %2 is not supported. Setup will be reset to defaults.").arg(version).arg(_settingsGroup), tr("Load Settings"));
             settings.remove("");
             QGCCorePlugin::instance()->factValueGridCreateDefaultSettings(this);
         }
         _fontSize = settings.value(_fontSizeKey, DefaultFontSize).value<FontSize>();
-    
+
         // Initial setup of empty items
         int cRows       = settings.value(_rowCountKey).toInt();
         int cModelLists = settings.beginReadArray(_columnsKey);
@@ -347,7 +338,7 @@ void FactValueGrid::_resetFromSettings(void)
                 appendColumn();
             }
         }
-    
+
         // Fill in the items from settings
         for (int colIndex=0; colIndex<cModelLists; colIndex++) {
             settings.setArrayIndex(colIndex);

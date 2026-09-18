@@ -1,6 +1,6 @@
 # İndirme ve Kurulum
 
-The sections below can be used to download the [current stable release](../releases/release_notes.md) of _QGroundControl_ for each platform.
+The sections below can be used to download the [current stable release](https://github.com/mavlink/qgroundcontrol/releases) of _QGroundControl_ for each platform.
 
 :::tip
 See [Troubleshooting QGC Setup](../troubleshooting/qgc_setup.md) if _QGroundControl_ doesn't start and run properly after installation!
@@ -16,9 +16,11 @@ En iyi deneyim ve uyumluluk için size işletim sisteminizin en yeni sürümün�
 
 ## Windows {#windows}
 
-_QGroundControl_ can be installed on 64 bit versions of Windows 10 (1809 or later) or Windows 11:
+Supported versions: Windows 10 (1809 or later), Windows 11:
 
-1. Download [QGroundControl-installer.exe](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-installer.exe).
+1. Download the installer:
+   - [x86_64](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-installer-AMD64.exe)
+   - [Arm64](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-installer-ARM64.exe)
 2. exe'ye çift tıklayın.
 
 :::info
@@ -27,9 +29,9 @@ Eğer başlatma veya video işleme sorunları yaşamıyorsanız ilk kısayolu ku
 For more information see [Troubleshooting QGC Setup > Windows: UI Rendering/Video Driver Issues](../troubleshooting/qgc_setup.md#opengl_troubleshooting).
 :::
 
-## Mac OS X {#macOS}
+## Mac OS {#macOS}
 
-_QGroundControl_ can be installed on macOS 12 (Monterey) or later:
+Supported versions: macOS 13 (Ventura) or later:
 
 <!-- match version using https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/getting_started/#native-builds -->
 
@@ -38,50 +40,80 @@ _QGroundControl_ can be installed on macOS 12 (Monterey) or later:
 1. Download [QGroundControl.dmg](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.dmg).
 2. .dmg dosyasına çift tıklayın, ardından çıkan ekranda _QGroundControl_'ü _Application_ dosyasına sürükleyin.
 
-::: info
-QGroundControl continues to not be signed. You will not to allow permission for it to install based on you macOS version.
-::
+:::info
+QGroundControl continues to not be signed. You will not to allow permission for it to install based on your macOS version.
+:::
 
 ## Ubuntu Linux {#ubuntu}
 
-_QGroundControl_ can be installed/run on Ubuntu LTS 22.04 (and later):
+Supported versions: Ubuntu 24.04 LTS, 26.04 LTS:
+
+:::info
+The AppImage downloads below run on Ubuntu 24.04 LTS and 26.04 LTS. If you need a version of _QGroundControl_ that runs on Ubuntu 22.04, it is possible, but you have to [build it yourself](../../qgc-dev-guide/getting_started/index.md).
+:::
 
 Ubuntu, bir seri bağlantı noktasının (veya USB serisinin) robotikle ilgili kullanımına müdahale eden bir seri modem yöneticisi ile birlikte gelir.
 _ QGroundControl _ 'ü kurmadan önce modem yöneticisini kaldırmalı ve seri bağlantı noktasına erişim için kendinize izin vermelisiniz.
-Ayrıca video akışını desteklemek için _ GStreamer _ 'ı da yüklemeniz gerekmektedir.
 
-QGroundControl \* 'ı ilk kez kurmadan önce:
+**Before installing _QGroundControl_ for the first time:**
 
-1. On the command prompt enter:
-   ```sh
-   sudo usermod -a -G dialout $USER
-   sudo apt-get remove modemmanager -y
-   sudo apt install gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl -y
-   sudo apt install libfuse2 -y
-   sudo apt install libxcb-xinerama0 libxkbcommon-x11-0 libxcb-cursor-dev -y
-   ```
-   <!-- Note, remove install of libqt5gui5 https://github.com/mavlink/qgroundcontrol/issues/10176 fixed -->
-2. Logout and login again to enable the change to user permissions.
+1. Enable serial-port access
+   Add your user to the dialout group so you can talk to USB devices without root:
 
-&nbsp; _ QGroundControl _ yüklemek için:
+```
+sudo usermod -aG dialout "$(id -un)"
+```
 
-1. Download [QGroundControl-x86_64.AppImage](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-x86_64.AppImage).
-2. Install (and run) using the terminal commands:
-   ```sh
-   chmod +x ./QGroundControl-x86_64.AppImage
-   ./QGroundControl-x86_64.AppImage  (or double click)
-   ```
+:::info
+At login, your shell takes a snapshot of your user and group memberships. Because you just changed groups, you need a fresh login shell to pick up “dialout” access. Logging out and back in reloads that snapshot, so you get the new permissions.
+:::
+
+1. (Optional) Disable ModemManager
+   On some Ubuntu-based systems, ModemManager can claim serial ports that QGC needs. If you don't use it elsewhere, mask or remove it.
+
+```
+# preferred: stop and mask the service
+sudo systemctl mask --now ModemManager.service
+
+# or, if you’d rather remove the package
+sudo apt remove --purge modemmanager
+```
+
+1. On the command prompt, enter:
+
+```sh
+sudo apt install -y libfuse2 libxcb-xinerama0 libxkbcommon-x11-0 libxcb-cursor0
+```
+
+**To install _QGroundControl_:**
+
+1. Download the AppImage for your architecture:
+   - [Linux x86_64](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-x86_64.AppImage)
+   - [Linux aarch64](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-aarch64.AppImage)
+
+2. Make the AppImage executable
+
+```
+chmod +x QGroundControl-<arch>.AppImage
+```
+
+1. Run QGroundControl
+   Either double-click the AppImage in your file manager or launch it from a terminal:
+
+```
+./QGroundControl-<arch>.AppImage
+```
 
 ## Android {#android}
 
-_QGroundControl_ can be installed/run on Android 9 or later:
+Supported versions: Android 9 (API 28) or later (arm 32/64):
 
-- [Android 32/64 bit APK](https://qgroundcontrol.s3-us-west-2.amazonaws.com/latest/QGroundControl.apk)
+- [Android APK](https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.apk)
+
+:::important
+The version of Qt used by QGroundControl requires Android 9 (API 28) as the minimum supported version. It is not possible to support older Android releases. This means that some integrated controllers running older versions of Android are no longer compatible with current builds of QGroundControl. QGroundControl 5.0 stable is the last release that supports these older devices. Note that 5.0 may not fully support firmware versions released after it, so users on older controllers may experience limited compatibility with newer autopilot firmware.
+:::
 
 ## Old Stable Releases
 
-Old stable releases can be found on <a href="https://github.com/mavlink/qgroundcontrol/releases/" target="_blank">GitHub</a>.
-
-## Daily Builds
-
-Daily builds can be [downloaded from here](../releases/daily_builds.md).
+Old stable releases can be found on <a href="https://github.com/mavlink/qgroundcontrol/releases/" target="_blank">GitHub</a>.

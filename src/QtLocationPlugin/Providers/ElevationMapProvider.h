@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "MapProvider.h"
@@ -15,7 +6,7 @@ class ElevationProvider : public MapProvider
 {
 protected:
     ElevationProvider(const QString &mapName, const QString &referrer, const QString &imageFormat, quint32 averageSize,
-                      QGeoMapType::MapStyle mapType)
+                      MapProvider::MapStyle mapType)
         : MapProvider(
             mapName,
             referrer,
@@ -28,7 +19,8 @@ public:
     virtual QByteArray serialize(const QByteArray &image) const = 0;
 };
 
-/// https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model
+/// \brief https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model
+///
 class CopernicusElevationProvider : public ElevationProvider
 {
 public:
@@ -38,7 +30,7 @@ public:
             kProviderURL,
             QStringLiteral("bin"),
             kAvgElevSize,
-            QGeoMapType::TerrainMap) {}
+            MapProvider::TerrainMap) {}
 
     int long2tileX(double lon, int z) const final;
     int lat2tileY(double lat, int z) const final;

@@ -10,6 +10,8 @@
 #include "DragToPositionTest.h"
 #include "QuickInteractionTestHelpers.h"
 
+#include <QtCore/QRegularExpression>
+
 static const qreal kMargin = 8;
 
 static void clearPanelSettings()
@@ -27,6 +29,12 @@ static bool loadView(QQuickView& view)
 static void dragPanel(QQuickView& view, const QPoint& from, const QPoint& to)
 {
     dragMouse(view, from, to, false);
+}
+
+void DragToPositionTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("qt.qpa.fonts", QtWarningMsg, QRegularExpression(QStringLiteral("Populating font family aliases")));
 }
 
 void DragToPositionTest::_dragRepositionsAndPersists()
@@ -68,6 +76,7 @@ void DragToPositionTest::_dragRepositionsAndPersists()
 
 void DragToPositionTest::_dragOffscreenClampsCommittedPosition()
 {
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("occurs outside target window")));
     clearPanelSettings();
 
     {
@@ -222,3 +231,5 @@ void DragToPositionTest::_resizeHandleGrowsUpAndPinsBottom()
     QTRY_VERIFY(qAbs(panel->width() - (initialWidth + 20)) < 2);
     QVERIFY(qAbs(panel->y() + panel->height() - initialBottom) < 1);
 }
+
+UT_REGISTER_TEST(DragToPositionTest, TestLabel::Unit)

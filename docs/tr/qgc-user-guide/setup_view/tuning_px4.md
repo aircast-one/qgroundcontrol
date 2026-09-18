@@ -5,10 +5,8 @@ Tuning only needs to be done once, and is recommended unless you're using vehicl
 [Auto-tuning](#autotune) should generally be used for frame types and controllers that support it (multicopter, fixed wing, and hybrid VTOL fixed wing vehicles).
 The tuning UI also supports manual tuning of all controllers.
 
-![Tuning Setup > Autotune](../../../assets/setup/tuning/px4_autotune_hero.png)
-
 :::info
-During [Airframe Setup](../config/airframe.md) you should have selected the frame that most closely matches your vehicle.
+During [Airframe Setup](airframe.md) you should have selected the frame that most closely matches your vehicle.
 This will usually be tuned well enough to fly, and it _may_ also be sufficiently well tuned to run autotuning.
 :::
 
@@ -18,7 +16,7 @@ Auto-tuning automates the process of tuning the PX4 rate and attitude controller
 
 :::info
 This guide shows the default usage of this feature.
-Additional information and configuration can be found in the [PX4 Autotuning Guide](http://docs.px4.io/master/en/config/autotune.html) (PX4 User Guide).
+Additional information and configuration can be found in the [PX4 Autotuning Guide](http://docs.px4.io/main/en/config/autotune.html) (PX4 User Guide).
 :::
 
 ### Pre-Autotuning Test
@@ -42,7 +40,7 @@ To make sure the vehicle is stable enough for auto-tuning:
 
 If the drone can stabilize itself within 2 oscillations it is ready for the auto-tuning procedure.
 
-If not, see the [PX4 User Guide > Autotuning > Troubleshooting](http://docs.px4.io/master/en/config/autotune.html#troubleshooting).
+If not, see the [PX4 User Guide > Autotuning > Troubleshooting](http://docs.px4.io/main/en/config/autotune.html#troubleshooting).
 
 ### Auto-tuning procedure
 
@@ -56,17 +54,15 @@ Be ready to abort the autotuning process by moving the RC controller sticks.
 
 The test steps are:
 
-1. Perform the [pre-tuning test](#pre-tuning-test) above.
+1. Perform the [pre-autotuning test](#pre-autotuning-test) above.
 
 2. Takeoff using RC control and prepare for test:
    - **Multicopters:** Takeoff using the remote controller in **Altitude mode**.
-      Hover the vehicle at a safe distance and at a few meters above ground (between 4 and 20m).
+     Hover the vehicle at a safe distance and at a few meters above ground (between 4 and 20m).
    - **VTOL in Fixed-wing mode:** Once flying at cruise speed, activate **Hold Mode**.
-      This will guide the plane to fly in circle at constant altitude and speed.
+     This will guide the plane to fly in circle at constant altitude and speed.
 
 3. In QGroundControl, open the menu: **Vehicle setup > PID Tuning**
-
-   ![Tuning Setup > Autotune Enabled](../../../assets/setup/tuning/px4_autotune.png)
 
 4. Select either the _Rate Controller_ or _Attitude Controller_ tabs.
    Ensure that the **Autotune enabled** button is enabled (this will display the **Autotune** button and remove the manual tuning selectors).
@@ -79,11 +75,11 @@ The test steps are:
 
 7. Apply the tuning:
    - **Fixed Wing:** The tuning will be immediately/automatically be applied and tested in flight (by default).
-      PX4 will then run a 4 second test and revert the new tuning if a problem is detected.
+     PX4 will then run a 4 second test and revert the new tuning if a problem is detected.
    - **Multicopters:** Manually land and disarm to apply the new tuning parameters.
-      Takeoff carefully and manually test that the vehicle is stable.
+     Takeoff carefully and manually test that the vehicle is stable.
 
-8. If any strong oscillations occur, land immediately and follow the instructions in [PX4 User Guide > Autotuning > Troubleshooting](http://docs.px4.io/master/en/config/autotune.html#troubleshooting).
+8. If any strong oscillations occur, land immediately and follow the instructions in [PX4 User Guide > Autotuning > Troubleshooting](http://docs.px4.io/main/en/config/autotune.html#troubleshooting).
 
 <br/>
 
@@ -101,22 +97,20 @@ A video of the process is shown below:
 Manual tuning is done in-flight, so your vehicle must already be tuned well enough to fly with (this is normally the case if you have selected an appropriate default airframe).
 
 The instructions below explain how you can use the manual tuning UI.
-It is designed to be read/used in conjustion with the [PX4 Manual PID Tuning Guides](http://docs.px4.io/master/en/config/autotune.html#see-also), which provide more detailed hints on the kinds of step sizes to use when changing PID values.
+It is designed to be read/used in conjustion with the [PX4 Manual PID Tuning Guides](http://docs.px4.io/main/en/config/autotune.html#see-also), which provide more detailed hints on the kinds of step sizes to use when changing PID values.
 
 In overview:
 
 1. Takeoff using RC control and prepare for test:
    - **Multicopters:** Takeoff using the remote controller in **Altitude mode**.
-      Hover the vehicle at a safe distance and at a few meters above ground (between 4 and 20m).
+     Hover the vehicle at a safe distance and at a few meters above ground (between 4 and 20m).
    - **Fixed-wing:** Once flying at cruise speed, activate **Hold Mode**.
-      This will guide the plane to fly in circle at constant altitude and speed.
+     This will guide the plane to fly in circle at constant altitude and speed.
 
 2. In QGroundControl, open the menu: **Vehicle setup > PID Tuning**
 
 3. Select the _Rate Controller_ tab.
    Ensure that the **Autotune enabled** button is is turned off.
-
-   ![PX4 Tuning - Manual - Rate controller](../../../assets/setup/tuning/px4_copter_manual_rate.png)
 
 4. Select the _Tuning axis_ to tune: **Roll**, **Pitch** or **Yaw** (each axis is tuned separately).
 
@@ -130,4 +124,3 @@ In overview:
 7. Switch to the other controllers and repeat the process.
    Screenshots of the tuning pages are shown below.
 
-   ![PX4 Tuning - Manual - Attitude controller](../../../assets/setup/tuning/px4_copter_manual_attitude.png) ![PX4 Tuning - Manual - Velocity controller](../../../assets/setup/tuning/px4_copter_manual_velocity.png) ![PX4 Tuning - Manual - Position controller](../../../assets/setup/tuning/px4_copter_manual_velocity.png)

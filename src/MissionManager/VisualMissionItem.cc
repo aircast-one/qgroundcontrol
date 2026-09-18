@@ -1,17 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "VisualMissionItem.h"
 #include "TerrainQuery.h"
 #include "PlanMasterController.h"
 #include "Vehicle.h"
-#include "QGC.h"
+#include "QGCMath.h"
 
 // All VisualMissionItem derived classes are parented to masterController in order to tie their lifecycles together.
 
@@ -69,7 +60,7 @@ const VisualMissionItem& VisualMissionItem::operator=(const VisualMissionItem& o
 }
 
 VisualMissionItem::~VisualMissionItem()
-{    
+{
 }
 
 void VisualMissionItem::setIsCurrentItem(bool isCurrentItem)
@@ -144,7 +135,7 @@ void VisualMissionItem::setAzimuth(double azimuth)
     }
 }
 
-void VisualMissionItem::setMissionFlightStatus(MissionController::MissionFlightStatus_t& missionFlightStatus)
+void VisualMissionItem::setMissionFlightStatus(MissionFlightStatus_t& missionFlightStatus)
 {
     if (!QGC::fuzzyCompare(missionFlightStatus.gimbalYaw, _missionGimbalYaw)) {
         _missionGimbalYaw = missionFlightStatus.gimbalYaw;
@@ -173,6 +164,11 @@ void VisualMissionItem::_updateTerrainAltitude(void)
 
     _terrainAltitude = qQNaN();
     emit terrainAltitudeChanged(qQNaN());
+
+    if (_terrainQueryFailed) {
+        _terrainQueryFailed = false;
+        emit terrainQueryFailedChanged(_terrainQueryFailed);
+    }
 
     if (!_flyView && specifiesCoordinate() && coordinate().isValid()) {
         // We use a timer so that any additional requests before the timer fires result in only a single request
@@ -203,6 +199,11 @@ void VisualMissionItem::_terrainDataReceived(bool success, QList<double> heights
     _terrainAltitude = success ? heights[0] : qQNaN();
     emit terrainAltitudeChanged(_terrainAltitude);
     _currentTerrainAtCoordinateQuery = nullptr;
+
+    if (_terrainQueryFailed != !success) {
+        _terrainQueryFailed = !success;
+        emit terrainQueryFailedChanged(_terrainQueryFailed);
+    }
 }
 
 void VisualMissionItem::_setBoundingCube(QGCGeoBoundingCube bc)

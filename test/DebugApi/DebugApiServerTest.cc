@@ -130,3 +130,5 @@ void DebugApiServerTest::_motorTestRefusedWithoutActuatorGate()
     QVERIFY(body.value(QStringLiteral("error")).toString().contains(QStringLiteral("disabled")));
     reply->deleteLater();
 }
+
+UT_REGISTER_TEST(DebugApiServerTest, TestLabel::Unit)

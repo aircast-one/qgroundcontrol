@@ -1,14 +1,5 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "FixedWingLandingComplexItem.h"
-#include "JsonHelper.h"
+#include "JsonParsing.h"
 #include "MissionController.h"
 #include "MissionItem.h"
 #include "PlanMasterController.h"
@@ -17,9 +8,7 @@
 
 #include <QtCore/QJsonArray>
 
-QGC_LOGGING_CATEGORY(FixedWingLandingComplexItemLog, "FixedWingLandingComplexItemLog")
-
-const QString FixedWingLandingComplexItem::name(FixedWingLandingComplexItem::tr("Fixed Wing Landing"));
+QGC_LOGGING_CATEGORY(FixedWingLandingComplexItemLog, "Plan.FixedWingLandingComplexItem")
 
 FixedWingLandingComplexItem::FixedWingLandingComplexItem(PlanMasterController* masterController, bool flyView)
     : LandingComplexItem        (masterController, flyView)
@@ -38,7 +27,7 @@ FixedWingLandingComplexItem::FixedWingLandingComplexItem(PlanMasterController* m
     , _stopTakingVideoFact      (settingsGroup, _metaDataMap[stopTakingVideoName])
     , _valueSetIsDistanceFact   (settingsGroup, _metaDataMap[valueSetIsDistanceName])
 {
-    _editorQml      = "qrc:/qml/QGroundControl/Controls/FWLandingPatternEditor.qml";
+    _editorQml      = "qrc:/qml/QGroundControl/PlanView/FWLandingPatternEditor.qml";
     _isIncomplete   = false;
 
     _init();
@@ -56,9 +45,9 @@ FixedWingLandingComplexItem::FixedWingLandingComplexItem(PlanMasterController* m
 
 QString FixedWingLandingComplexItem::patternName() const {
     if (_masterController->missionController()->isFirstLandingComplexItem(this)) {
-        return name;
+        return tr(canonicalName);
     } else {
-        return "Alternate Landing";
+        return tr("Alternate Landing");
     }
 }
 
@@ -66,7 +55,7 @@ void FixedWingLandingComplexItem::save(QJsonArray&  missionItems)
 {
     QJsonObject saveObject = _save();
 
-    saveObject[JsonHelper::jsonVersionKey]                  = 2;
+    saveObject[JsonParsing::jsonVersionKey]                  = 2;
     saveObject[VisualMissionItem::jsonTypeKey]              = VisualMissionItem::jsonTypeComplexItemValue;
     saveObject[ComplexMissionItem::jsonComplexItemTypeKey]  = jsonComplexItemTypeValue;
     saveObject[_jsonValueSetIsDistanceKey]                  = _valueSetIsDistanceFact.rawValue().toBool();
@@ -76,21 +65,21 @@ void FixedWingLandingComplexItem::save(QJsonArray&  missionItems)
 
 bool FixedWingLandingComplexItem::load(const QJsonObject& complexObject, int sequenceNumber, QString& errorString)
 {
-    QList<JsonHelper::KeyValidateInfo> keyInfoList = {
-        { JsonHelper::jsonVersionKey, QJsonValue::Double, true },
+    QList<JsonParsing::KeyValidateInfo> keyInfoList = {
+        { JsonParsing::jsonVersionKey, QJsonValue::Double, true },
     };
-    if (!JsonHelper::validateKeys(complexObject, keyInfoList, errorString)) {
+    if (!JsonParsing::validateKeys(complexObject, keyInfoList, errorString)) {
         return false;
     }
 
-    int version = complexObject[JsonHelper::jsonVersionKey].toInt();
+    int version = complexObject[JsonParsing::jsonVersionKey].toInt();
     if (version == 1) {
         _valueSetIsDistanceFact.setRawValue(true);
     } else if (version == 2) {
-        QList<JsonHelper::KeyValidateInfo> v2KeyInfoList = {
+        QList<JsonParsing::KeyValidateInfo> v2KeyInfoList = {
             { _jsonValueSetIsDistanceKey,   QJsonValue::Bool,  true },
         };
-        if (!JsonHelper::validateKeys(complexObject, v2KeyInfoList, errorString)) {
+        if (!JsonParsing::validateKeys(complexObject, v2KeyInfoList, errorString)) {
             _ignoreRecalcSignals = false;
             return false;
         }
@@ -133,16 +122,6 @@ void FixedWingLandingComplexItem::_calcGlideSlope(void)
     double landingDistance = _landingDistanceFact.rawValue().toDouble();
 
     _glideSlopeFact.setRawValue(qRadiansToDegrees(qAtan(landingAltDifference / landingDistance)));
-}
-
-void FixedWingLandingComplexItem::moveLandingPosition(const QGeoCoordinate& coordinate)
-{
-    double savedHeading = landingHeading()->rawValue().toDouble();
-    double savedDistance = landingDistance()->rawValue().toDouble();
-
-    setLandingCoordinate(coordinate);
-    landingHeading()->setRawValue(savedHeading);
-    landingDistance()->setRawValue(savedDistance);
 }
 
 bool FixedWingLandingComplexItem::_isValidLandItem(const MissionItem& missionItem)

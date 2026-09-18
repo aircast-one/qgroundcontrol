@@ -1,7 +1,16 @@
+# ============================================================================
+# VideoManager Tests
+# ============================================================================
+
+add_subdirectory(GStreamer)
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
-        VideoManagerTest.cc
-        VideoManagerTest.h
+        VideoManagerInitTest.cc
+        VideoManagerInitTest.h
+        VideoCameraSwitchTest.cc
+        VideoCameraSwitchTest.h
 )
 
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_qgc_test(VideoManagerInitTest LABELS Unit)
+add_qgc_test(VideoCameraSwitchTest LABELS Unit)

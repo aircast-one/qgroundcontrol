@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "APMTuningComponent.h"
 #include "Vehicle.h"
 
@@ -14,6 +5,11 @@ APMTuningComponent::APMTuningComponent(Vehicle *vehicle, AutoPilotPlugin *autopi
     : VehicleComponent(vehicle, autopilot, AutoPilotPlugin::UnknownVehicleComponent, parent)
 {
 
+}
+
+QString APMTuningComponent::vehicleConfigJson() const
+{
+    return QStringLiteral(":/qml/QGroundControl/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json");
 }
 
 QUrl APMTuningComponent::setupSource() const
@@ -25,9 +21,8 @@ QUrl APMTuningComponent::setupSource() const
     case MAV_TYPE_HEXAROTOR:
     case MAV_TYPE_OCTOROTOR:
     case MAV_TYPE_TRICOPTER:
-        return QUrl::fromUserInput("qrc:/qml/QGroundControl/AutoPilotPlugins/APM/APMTuningComponentCopter.qml");
-    case MAV_TYPE_SUBMARINE:
-        return QUrl::fromUserInput("qrc:/qml/QGroundControl/AutoPilotPlugins/APM/APMTuningComponentSub.qml");
+        // Generated from APMTuningCopter.VehicleConfig.json
+        return QUrl::fromUserInput("qrc:/qml/QGroundControl/AutoPilotPlugins/APM/APMTuningCopterComponent.qml");
     default:
         return QUrl::fromUserInput(QString());
     }

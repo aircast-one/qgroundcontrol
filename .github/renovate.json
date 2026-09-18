@@ -1,0 +1,54 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitTypeAll(deps)"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "ignorePaths": [
+    ".github/workflows/**"
+  ],
+  "description": "Active manager for npm, python (pep621/uv), and pre-commit. GitHub Actions are handled by Dependabot (see dependabot.yml); excluded here via ignorePaths.",
+  "enabledManagers": [
+    "npm",
+    "pep621",
+    "pre-commit"
+  ],
+  "packageRules": [
+    {
+      "description": "Auto-merge patch updates after CI passes",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    },
+    {
+      "description": "Combine npm, python, and pre-commit updates into a single PR",
+      "groupName": "all dependencies",
+      "matchManagers": [
+        "npm",
+        "pep621",
+        "pre-commit"
+      ],
+      "schedule": [
+        "before 6am on monday"
+      ]
+    }
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "timezone": "UTC",
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security",
+      "priority"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  }
+}

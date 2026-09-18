@@ -1,16 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QElapsedTimer>
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QtNumeric>
 #include <QtCore/QObject>
 #include <QtPositioning/QGeoCoordinate>
@@ -18,12 +8,12 @@
 
 #include "ADSB.h"
 
-Q_DECLARE_LOGGING_CATEGORY(ADSBVehicleLog)
-
 class ADSBVehicle : public QObject
 {
     Q_OBJECT
     // QML_ELEMENT
+
+    friend class ADSBTest;
 
     Q_PROPERTY(uint             icaoAddress READ    icaoAddress CONSTANT)
     Q_PROPERTY(QString          callsign    READ    callsign    NOTIFY callsignChanged)
@@ -48,7 +38,7 @@ public:
     double verticalVel() const { return _info.verticalVel; }
     uint16_t squawk() const { return _info.squawk; }
     bool alert() const { return _info.alert; }
-    bool expired() const { return _lastUpdateTimer.hasExpired(_expirationTimeoutMs); }
+    bool expired() const { return !_lastUpdateTimer.isValid() || _lastUpdateTimer.hasExpired(_expirationTimeoutMs); }
     void update(const ADSB::VehicleInfo_t &vehicleInfo);
 
 signals:
@@ -64,6 +54,8 @@ signals:
 private:
     ADSB::VehicleInfo_t _info{};
     QElapsedTimer _lastUpdateTimer;
+    QElapsedTimer _lastPropertyUpdateTimer;
 
     static constexpr qint64 _expirationTimeoutMs = 120000; ///< timeout with no update in ms after which the vehicle is removed.
+    static constexpr qint64 _propertyUpdateMinIntervalMs = 1000; ///< min interval in ms between property updates
 };

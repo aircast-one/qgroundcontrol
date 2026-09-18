@@ -1,20 +1,12 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTest.h"
 
-class QGCCameraManagerTest : public UnitTest
+class QGCCameraManagerTest : public VehicleTest
 {
     Q_OBJECT
 
 private slots:
     void _testCameraList();
+    void _testLostCameraCleanupWithPendingRequest();
 };

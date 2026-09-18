@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "ActuatorOutputs.h"
@@ -45,9 +36,9 @@ public:
     Q_INVOKABLE void selectActuatorOutput(int index);
 
     /**
-     * load JSON metadata file
+     * Load already-parsed JSON metadata (json_file is used for error reporting only)
      */
-    void load(const QString& json_file);
+    void load(const QString& json_file, const QJsonDocument& metadata);
 
     /**
      * Initialize the loaded metadata. Call this after all vehicle parameters are loaded.
@@ -68,6 +59,8 @@ public:
     bool hasUnsetRequiredFunctions() const { return _hasUnsetRequiredFunctions; }
 
     bool showUi() const;
+    bool isInitialized() const { return _init; }
+    const QString& initializationError() const { return _initError; }
 
     QmlObjectListModel* actuatorActions() { return _actuatorActions; }
 
@@ -111,6 +104,7 @@ private:
     QSet<Fact*> _subscribedFacts{};
     QJsonDocument _jsonMetadata;
     bool _init{false};
+    QString _initError;
     Condition _showUi;
     QmlObjectListModel* _actuatorOutputs = new QmlObjectListModel(this); ///< list of ActuatorOutputs::ActuatorOutput*
     QmlObjectListModel* _actuatorActions = new QmlObjectListModel(this); ///< list of ActuatorActionGroup*
@@ -124,4 +118,3 @@ private:
     Vehicle* _vehicle{nullptr};
     QMap<int, QString> _usedMixerLabels;
 };
-

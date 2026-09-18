@@ -1,23 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "Fact.h"
 
 #include <QtCore/QString>
 #include <QtCore/QJsonValue>
-#include <QtCore/QLoggingCategory>
 #include <QtGui/QVector3D>
-
-
-Q_DECLARE_LOGGING_CATEGORY(ActuatorsConfigLog)
 
 class ParameterManager;
 
@@ -102,8 +89,10 @@ public:
      * Constructor
      * @param condition generic form: true|false|<param_name><operation><signed integer>
      *                  where: <operation>: [>,>=,==,!=,<,<=]
+     * @param parameterManager parameter manager to resolve parameter names
+     * @param label optional label for debug logging (e.g., "show-ui-if")
      */
-    Condition(const QString& condition, ParameterManager* parameterManager);
+    Condition(const QString& condition, ParameterManager* parameterManager, const QString& label = QString());
 
     bool evaluate() const;
 
@@ -113,6 +102,8 @@ public:
 
 private:
     QString _parameter{};
+    QString _label{};
+    QString _alwaysTrueReason{QStringLiteral("empty/default")};
     Operation _operation{Operation::AlwaysTrue};
     int32_t _value{0};
     Fact* _fact{nullptr};
@@ -154,4 +145,3 @@ struct ActuatorGeometry
 
     RenderOptions renderOptions{};
 };
-

@@ -1,0 +1,492 @@
+#include "FactMetaDataTest.h"
+
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonObject>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QScopeGuard>
+#include <QtCore/QtNumeric>
+
+#include <cmath>
+#include <limits>
+
+#include "FactMetaData.h"
+#include "SettingsManager.h"
+#include "UnitsSettings.h"
+
+void FactMetaDataTest::_stringToTypeRoundTrip_test()
+{
+    const QList<QPair<QString, FactMetaData::ValueType_t>> knownTypes = {
+        {"Uint8",          FactMetaData::valueTypeUint8},
+        {"Int8",           FactMetaData::valueTypeInt8},
+        {"Uint16",         FactMetaData::valueTypeUint16},
+        {"Int16",          FactMetaData::valueTypeInt16},
+        {"Uint32",         FactMetaData::valueTypeUint32},
+        {"Int32",          FactMetaData::valueTypeInt32},
+        {"Uint64",         FactMetaData::valueTypeUint64},
+        {"Int64",          FactMetaData::valueTypeInt64},
+        {"Float",          FactMetaData::valueTypeFloat},
+        {"Double",         FactMetaData::valueTypeDouble},
+        {"String",         FactMetaData::valueTypeString},
+        {"Bool",           FactMetaData::valueTypeBool},
+        {"ElapsedSeconds", FactMetaData::valueTypeElapsedTimeInSeconds},
+        {"Custom",         FactMetaData::valueTypeCustom},
+    };
+
+    for (const auto &[typeStr, expectedType] : knownTypes) {
+        bool unknownType = false;
+        const auto parsedType = FactMetaData::stringToType(typeStr, unknownType);
+        QVERIFY2(!unknownType, qPrintable(QStringLiteral("Unknown type for: ") + typeStr));
+        QCOMPARE(parsedType, expectedType);
+
+        const QString roundTrip = FactMetaData::typeToString(parsedType);
+        QCOMPARE(roundTrip, typeStr);
+    }
+}
+
+void FactMetaDataTest::_stringToTypeUnknown_test()
+{
+    bool unknownType = false;
+    const auto type = FactMetaData::stringToType("Nonsense", unknownType);
+    QVERIFY(unknownType);
+    QCOMPARE(type, FactMetaData::valueTypeDouble);
+}
+
+void FactMetaDataTest::_typeToSize_test()
+{
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeUint8), 1u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeInt8), 1u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeUint16), 2u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeInt16), 2u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeUint32), 4u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeInt32), 4u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeFloat), 4u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeUint64), 8u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeInt64), 8u);
+    QCOMPARE(FactMetaData::typeToSize(FactMetaData::valueTypeDouble), 8u);
+}
+
+void FactMetaDataTest::_minForType_test()
+{
+    QCOMPARE(FactMetaData::minForType(FactMetaData::valueTypeUint8).toUInt(), 0u);
+    QCOMPARE(FactMetaData::minForType(FactMetaData::valueTypeInt8).toInt(), static_cast<int>(std::numeric_limits<signed char>::min()));
+    QCOMPARE(FactMetaData::minForType(FactMetaData::valueTypeUint16).toUInt(), 0u);
+    QCOMPARE(FactMetaData::minForType(FactMetaData::valueTypeUint32).toUInt(), 0u);
+    QCOMPARE(FactMetaData::minForType(FactMetaData::valueTypeBool).toInt(), 0);
+    QCOMPARE(FactMetaData::minForType(FactMetaData::valueTypeElapsedTimeInSeconds).toDouble(), 0.0);
+    QVERIFY(!FactMetaData::minForType(FactMetaData::valueTypeString).isValid());
+}
+
+void FactMetaDataTest::_maxForType_test()
+{
+    QCOMPARE(FactMetaData::maxForType(FactMetaData::valueTypeUint8).toUInt(),
+             static_cast<uint>(std::numeric_limits<unsigned char>::max()));
+    QCOMPARE(FactMetaData::maxForType(FactMetaData::valueTypeInt8).toInt(),
+             static_cast<int>(std::numeric_limits<signed char>::max()));
+    QCOMPARE(FactMetaData::maxForType(FactMetaData::valueTypeBool).toInt(), 1);
+    QVERIFY(!FactMetaData::maxForType(FactMetaData::valueTypeString).isValid());
+    QCOMPARE(FactMetaData::maxForType(FactMetaData::valueTypeFloat).toFloat(),
+             std::numeric_limits<float>::max());
+    QCOMPARE(FactMetaData::maxForType(FactMetaData::valueTypeDouble).toDouble(),
+             std::numeric_limits<double>::max());
+}
+
+void FactMetaDataTest::_convertAndValidateRawInt_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+    meta.setRawMin(QVariant(-100));
+    meta.setRawMax(QVariant(100));
+
+    QVariant typedValue;
+    QString errorString;
+
+    QVERIFY(meta.convertAndValidateRaw(QVariant(50), false, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+    QCOMPARE(typedValue.toInt(), 50);
+
+    QVERIFY(!meta.convertAndValidateRaw(QVariant(200), false, typedValue, errorString));
+    QVERIFY(!errorString.isEmpty());
+}
+
+void FactMetaDataTest::_convertAndValidateRawOutOfRange_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeUint8);
+
+    QVariant typedValue;
+    QString errorString;
+
+    QVERIFY(meta.convertAndValidateRaw(QVariant(100), false, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+
+    // Uint8 range is 0-255, but value is passed as uint32 in validation
+    QVERIFY(meta.convertAndValidateRaw(QVariant(0), false, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+}
+
+void FactMetaDataTest::_convertAndValidateRawConvertOnly_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+    meta.setRawMin(QVariant(0));
+    meta.setRawMax(QVariant(10));
+
+    QVariant typedValue;
+    QString errorString;
+
+    // Out of range but convertOnly=true should succeed
+    QVERIFY(meta.convertAndValidateRaw(QVariant(999), true, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+    QCOMPARE(typedValue.toInt(), 999);
+}
+
+void FactMetaDataTest::_convertAndValidateRawString_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeString);
+
+    QVariant typedValue;
+    QString errorString;
+
+    QVERIFY(meta.convertAndValidateRaw(QVariant("hello"), false, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+    QCOMPARE(typedValue.toString(), QStringLiteral("hello"));
+}
+
+void FactMetaDataTest::_convertAndValidateRawBool_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeBool);
+
+    QVariant typedValue;
+    QString errorString;
+
+    QVERIFY(meta.convertAndValidateRaw(QVariant(true), false, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+    QCOMPARE(typedValue.toBool(), true);
+
+    QVERIFY(meta.convertAndValidateRaw(QVariant(false), false, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+    QCOMPARE(typedValue.toBool(), false);
+}
+
+void FactMetaDataTest::_convertAndValidateCookedInt_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+    meta.setRawMin(QVariant(-50));
+    meta.setRawMax(QVariant(50));
+
+    QVariant typedValue;
+    QString errorString;
+
+    QVERIFY(meta.convertAndValidateCooked(QVariant(25), false, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+    QCOMPARE(typedValue.toInt(), 25);
+
+    QVERIFY(!meta.convertAndValidateCooked(QVariant(100), false, typedValue, errorString));
+    QVERIFY(!errorString.isEmpty());
+}
+
+void FactMetaDataTest::_clampValueInt_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+    meta.setRawMin(QVariant(0));
+    meta.setRawMax(QVariant(100));
+
+    QVariant typedValue;
+
+    QVERIFY(meta.clampValue(QVariant(50), typedValue));
+    QCOMPARE(typedValue.toInt(), 50);
+
+    QVERIFY(meta.clampValue(QVariant(200), typedValue));
+    QCOMPARE(typedValue.toInt(), 100);
+
+    QVERIFY(meta.clampValue(QVariant(-10), typedValue));
+    QCOMPARE(typedValue.toInt(), 0);
+}
+
+void FactMetaDataTest::_clampValueDouble_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeDouble);
+    meta.setRawMin(QVariant(-1.0));
+    meta.setRawMax(QVariant(1.0));
+
+    QVariant typedValue;
+
+    QVERIFY(meta.clampValue(QVariant(0.5), typedValue));
+    QCOMPARE(typedValue.toDouble(), 0.5);
+
+    QVERIFY(meta.clampValue(QVariant(5.0), typedValue));
+    QCOMPARE(typedValue.toDouble(), 1.0);
+
+    QVERIFY(meta.clampValue(QVariant(-5.0), typedValue));
+    QCOMPARE(typedValue.toDouble(), -1.0);
+}
+
+void FactMetaDataTest::_enumOperations_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+
+    meta.addEnumInfo("Option A", QVariant(0));
+    meta.addEnumInfo("Option B", QVariant(1));
+    meta.addEnumInfo("Option C", QVariant(2));
+
+    QCOMPARE(meta.enumStrings().count(), 3);
+    QCOMPARE(meta.enumValues().count(), 3);
+    QCOMPARE(meta.enumStrings()[0], QStringLiteral("Option A"));
+    QCOMPARE(meta.enumValues()[1].toInt(), 1);
+
+    meta.removeEnumInfo(QVariant(1));
+    QCOMPARE(meta.enumStrings().count(), 2);
+    QCOMPARE(meta.enumValues().count(), 2);
+    QCOMPARE(meta.enumStrings()[1], QStringLiteral("Option C"));
+}
+
+void FactMetaDataTest::_bitmaskOperations_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeUint32);
+
+    meta.addBitmaskInfo("Bit 0", QVariant(1));
+    meta.addBitmaskInfo("Bit 1", QVariant(2));
+    meta.addBitmaskInfo("Bit 2", QVariant(4));
+
+    QCOMPARE(meta.bitmaskStrings().count(), 3);
+    QCOMPARE(meta.bitmaskValues().count(), 3);
+    QCOMPARE(meta.bitmaskStrings()[0], QStringLiteral("Bit 0"));
+    QCOMPARE(meta.bitmaskValues()[2].toInt(), 4);
+}
+
+void FactMetaDataTest::_bitmaskIndexOutOfRangeRejected_test()
+{
+    // Real-world parameter metadata (e.g. PX4 Vertiq params) can carry a bitmask
+    // index of -1. Shifting by a negative (or too large) index is undefined
+    // behavior, so out-of-range entries must be skipped instead of feeding the shift.
+    const QJsonArray bitmaskArray = {
+        QJsonObject{ { "description", "Invalid negative" }, { "index", -1 } },
+        QJsonObject{ { "description", "Bit 0" },            { "index", 0 } },
+        QJsonObject{ { "description", "Bit 3" },            { "index", 3 } },
+        QJsonObject{ { "description", "Invalid too large" }, { "index", 32 } },
+    };
+
+    QJsonObject json;
+    json.insert("name", "testBitmask");
+    json.insert("type", "Uint32");
+    json.insert("bitmask", bitmaskArray);
+
+    FactMetaData *const parsedMeta = FactMetaData::createFromJsonObject(json, {}, nullptr);
+
+    QCOMPARE(parsedMeta->bitmaskStrings().count(), 2);
+    QCOMPARE(parsedMeta->bitmaskStrings()[0], QStringLiteral("Bit 0"));
+    QCOMPARE(parsedMeta->bitmaskValues()[0].toUInt(), 1u);
+    QCOMPARE(parsedMeta->bitmaskStrings()[1], QStringLiteral("Bit 3"));
+    QCOMPARE(parsedMeta->bitmaskValues()[1].toUInt(), 8u);
+    delete parsedMeta;
+}
+
+void FactMetaDataTest::_defaultValue_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+
+    QVERIFY(!meta.defaultValueAvailable());
+
+    meta.setRawDefaultValue(QVariant(42));
+    QVERIFY(meta.defaultValueAvailable());
+    QCOMPARE(meta.rawDefaultValue().toInt(), 42);
+    QCOMPARE(meta.cookedDefaultValue().toInt(), 42);
+}
+
+void FactMetaDataTest::_defaultValueOutOfRange_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+    meta.setRawMin(QVariant(0));
+    meta.setRawMax(QVariant(100));
+
+    // Attempting to set default outside range should not set it
+    expectLogMessage("FactSystem.FactMetaData", QtWarningMsg, QRegularExpression("Attempt to set default value which is outside min/max range"));
+    meta.setRawDefaultValue(QVariant(200));
+    verifyExpectedLogMessage();
+    QVERIFY(!meta.defaultValueAvailable());
+}
+
+void FactMetaDataTest::_builtInTranslatorRadians_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeDouble);
+    meta.setRawUnits("radians");
+
+    QCOMPARE(meta.cookedUnits(), QStringLiteral("deg"));
+
+    const QVariant cooked = meta.rawTranslator()(QVariant(M_PI));
+    QCOMPARE_FUZZY(cooked.toDouble(), 180.0, 1e-5);
+
+    const QVariant raw = meta.cookedTranslator()(QVariant(180.0));
+    QCOMPARE_FUZZY(raw.toDouble(), M_PI, 1e-5);
+}
+
+void FactMetaDataTest::_builtInTranslatorCentiDegrees_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeDouble);
+    meta.setRawUnits("centi-degrees");
+
+    QCOMPARE(meta.cookedUnits(), QStringLiteral("deg"));
+
+    const QVariant cooked = meta.rawTranslator()(QVariant(18000.0));
+    QCOMPARE_FUZZY(cooked.toDouble(), 180.0, 1e-5);
+}
+
+void FactMetaDataTest::_builtInTranslatorNorm_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeFloat);
+    meta.setRawUnits("norm");
+
+    QCOMPARE(meta.cookedUnits(), QStringLiteral("%"));
+
+    const QVariant cooked = meta.rawTranslator()(QVariant(0.5));
+    QCOMPARE_FUZZY(cooked.toDouble(), 50.0, 1e-5);
+}
+
+void FactMetaDataTest::_verticalMetersUnitsIntType_test()
+{
+    // "vertical m" is an artificial lookup unit. Int types don't get app settings
+    // translators, but the artificial unit string must never be shown to the user.
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+    meta.setRawUnits("vertical m");
+
+    QCOMPARE(meta.cookedUnits(), QStringLiteral("m"));
+}
+
+void FactMetaDataTest::_verticalMetersUnitsFeetTranslation_test()
+{
+    // With vertical distance units set to feet, a double fact must translate to "ft"
+    // and the artificial-unit fallback must not clobber the translated units
+    Fact *const vertUnitsFact = SettingsManager::instance()->unitsSettings()->verticalDistanceUnits();
+    const QVariant savedUnits = vertUnitsFact->rawValue();
+    const auto restoreUnits = qScopeGuard([vertUnitsFact, savedUnits] {
+        vertUnitsFact->setRawValue(savedUnits);
+    });
+    // Changing units is a qgcRebootRequired setting, so the restart-app message
+    // fires — but only when the locale-dependent default isn't already feet, so
+    // it cannot be asserted deterministically with expectAppMessage()
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
+                     QRegularExpression(QStringLiteral("Restart application for changes to take effect")));
+    vertUnitsFact->setRawValue(UnitsSettings::VerticalDistanceUnitsFeet);
+
+    FactMetaData meta(FactMetaData::valueTypeDouble);
+    meta.setRawUnits("vertical m");
+
+    QCOMPARE(meta.cookedUnits(), QStringLiteral("ft"));
+    QCOMPARE_FUZZY(meta.rawTranslator()(QVariant(1.0)).toDouble(), 3.28084, 1e-4);
+    QCOMPARE_FUZZY(meta.cookedTranslator()(QVariant(3.28084)).toDouble(), 1.0, 1e-4);
+}
+
+void FactMetaDataTest::_setMinMax_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeInt32);
+
+    meta.setRawMin(QVariant(-10));
+    meta.setRawMax(QVariant(10));
+
+    QCOMPARE(meta.rawMin().toInt(), -10);
+    QCOMPARE(meta.rawMax().toInt(), 10);
+    QVERIFY(!meta.minIsDefaultForType());
+    QVERIFY(!meta.maxIsDefaultForType());
+}
+
+void FactMetaDataTest::_maxStringLength_test()
+{
+    // Default: no limit
+    FactMetaData meta(FactMetaData::valueTypeString);
+    QCOMPARE(meta.maxStringLength(), 0);
+
+    // Parsed from JSON
+    QJsonObject json;
+    json.insert("name", "testString");
+    json.insert("type", "string");
+    json.insert("maxStringLength", 20);
+
+    FactMetaData* parsedMeta = FactMetaData::createFromJsonObject(json, {}, nullptr);
+    QCOMPARE(parsedMeta->maxStringLength(), 20);
+    delete parsedMeta;
+
+    // Copies must preserve the limit
+    meta.setMaxStringLength(16);
+    FactMetaData copy(meta);
+    QCOMPARE(copy.maxStringLength(), 16);
+}
+
+void FactMetaDataTest::_maxStringLengthNegativeRejected_test()
+{
+    // A negative maxStringLength can only be an authoring mistake; it must warn (which the
+    // resource audit turns into a CI failure) and fall back to 0 (no limit) instead of
+    // silently disabling length validation
+    QJsonObject json;
+    json.insert("name", "testString");
+    json.insert("type", "string");
+    json.insert("maxStringLength", -5);
+
+    expectLogMessage("FactSystem.FactMetaData", QtWarningMsg, QRegularExpression("Invalid maxStringLength"));
+    FactMetaData* parsedMeta = FactMetaData::createFromJsonObject(json, {}, nullptr);
+    verifyExpectedLogMessage();
+
+    QCOMPARE(parsedMeta->maxStringLength(), 0);
+    delete parsedMeta;
+
+    // The guard lives in the setter, so direct C++ callers are covered too
+    FactMetaData meta(FactMetaData::valueTypeString);
+    meta.setMaxStringLength(10);
+    expectLogMessage("FactSystem.FactMetaData", QtWarningMsg, QRegularExpression("Invalid maxStringLength"));
+    meta.setMaxStringLength(-1);
+    verifyExpectedLogMessage();
+    QCOMPARE(meta.maxStringLength(), 0);
+}
+
+void FactMetaDataTest::_maxStringLengthValidation_test()
+{
+    FactMetaData meta(FactMetaData::valueTypeString);
+    meta.setMaxStringLength(5);
+
+    QVariant typedValue;
+    QString errorString;
+
+    // Within the limit
+    QVERIFY(meta.convertAndValidateCooked(QStringLiteral("12345"), false /* convertOnly */, typedValue, errorString));
+    QVERIFY(errorString.isEmpty());
+
+    // Over the limit: rejected with an error
+    QVERIFY(!meta.convertAndValidateCooked(QStringLiteral("123456"), false /* convertOnly */, typedValue, errorString));
+    QVERIFY(!errorString.isEmpty());
+
+    // convertOnly skips validation
+    QVERIFY(meta.convertAndValidateCooked(QStringLiteral("123456"), true /* convertOnly */, typedValue, errorString));
+
+    // No limit set: any length accepted
+    FactMetaData unlimitedMeta(FactMetaData::valueTypeString);
+    QVERIFY(unlimitedMeta.convertAndValidateCooked(QString(100, u'x'), false /* convertOnly */, typedValue, errorString));
+}
+
+void FactMetaDataTest::_commentKeyAccepted_test()
+{
+    // "comment" is a documentation-only key: it must parse cleanly and have no effect
+    QJsonObject json;
+    json.insert("name", "testFact");
+    json.insert("type", "uint8");
+    json.insert("comment", "Values must stay in sync with some MAVLink enum");
+
+    FactMetaData* parsedMeta = FactMetaData::createFromJsonObject(json, {}, nullptr);
+    QCOMPARE(parsedMeta->name(), QStringLiteral("testFact"));
+    QCOMPARE(parsedMeta->type(), FactMetaData::valueTypeUint8);
+    delete parsedMeta;
+}
+
+void FactMetaDataTest::_unknownKeyRejected_test()
+{
+    // Unknown keys (e.g. typos like "enumStings") must be rejected loudly and fall back
+    // to default uint32 metadata
+    QJsonObject json;
+    json.insert("name", "testFact");
+    json.insert("type", "string");
+    json.insert("bogusKey", "anything");
+
+    expectLogMessage("FactSystem.FactMetaData", QtWarningMsg, QRegularExpression("Unknown key: bogusKey"));
+    FactMetaData* parsedMeta = FactMetaData::createFromJsonObject(json, {}, nullptr);
+    verifyExpectedLogMessage();
+
+    QCOMPARE(parsedMeta->type(), FactMetaData::valueTypeUint32);
+    delete parsedMeta;
+}
+
+UT_REGISTER_TEST(FactMetaDataTest, TestLabel::Unit)

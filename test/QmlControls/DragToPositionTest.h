@@ -15,6 +15,9 @@ class DragToPositionTest : public UnitTest
 {
     Q_OBJECT
 
+protected:
+    void init() override;
+
 private slots:
     void _dragRepositionsAndPersists();
     void _dragOffscreenClampsCommittedPosition();

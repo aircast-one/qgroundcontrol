@@ -1,25 +1,14 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 
 #include "ADSB.h"
-#include "MAVLinkLib.h"
-
-Q_DECLARE_LOGGING_CATEGORY(ADSBVehicleManagerLog)
+#include "MAVLinkMessageType.h"
 
 class ADSBTCPLink;
 class ADSBVehicle;
 class QmlObjectListModel;
+class QThread;
 class QTimer;
 class ADSBVehicleManagerSettings;
 
@@ -58,6 +47,8 @@ private:
 
     QMap<uint32_t, ADSBVehicle*> _adsbICAOMap;
     ADSBTCPLink *_adsbTcpLink = nullptr;
+    QThread *_adsbTcpLinkThread = nullptr;
 
     static constexpr uint8_t kMaxTimeSinceLastSeen = 15;
+    static constexpr unsigned long kThreadStopTimeoutMs = 5000; ///< max time in ms to wait for the tcp link thread to stop
 };

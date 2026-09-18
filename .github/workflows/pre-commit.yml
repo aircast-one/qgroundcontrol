@@ -1,11 +1,109 @@
 name: pre-commit
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+      - 'Stable*'
+    paths-ignore:
+      - 'docs/**'
+      - 'translations/**'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'translations/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
 
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      - uses: pre-commit/action@v3.0.1
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Get build config
+        id: config
+        uses: ./.github/actions/build-config
+
+      - name: Setup Python
+        uses: ./.github/actions/setup-python
+        with:
+          groups: precommit
+          python-version: '3.12'
+
+      - name: Install Qt (for qmllint)
+        uses: ./.github/actions/qt-install
+        with:
+          version: ${{ steps.config.outputs.qt_version }}
+          host: linux
+          arch: linux_gcc_64
+          modules: ''
+          archives: qtbase qtdeclarative icu
+
+      - name: Run pre-commit
+        id: pre-commit
+        continue-on-error: true
+        env:
+          PRE_COMMIT_OUTPUT: pre-commit-output.txt
+        run: python3 ./tools/pre_commit.py --ci
+
+      - name: Prepare pre-commit results artifact
+        if: github.event_name == 'pull_request' && always()
+        env:
+          EXIT_CODE: ${{ steps.pre-commit.outputs.exit_code }}
+          PASSED: ${{ steps.pre-commit.outputs.passed }}
+          FAILED: ${{ steps.pre-commit.outputs.failed }}
+          SKIPPED: ${{ steps.pre-commit.outputs.skipped }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/precommit_results.py" \
+            --output-dir pre-commit-results \
+            --exit-code "${EXIT_CODE:-1}" \
+            --passed "${PASSED:-0}" \
+            --failed "${FAILED:-0}" \
+            --skipped "${SKIPPED:-0}" \
+            --run-url "${RUN_URL}" \
+            --output-file pre-commit-output.txt
+
+      - name: Upload pre-commit results artifact
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pre-commit-results
+          path: pre-commit-results
+          retention-days: 7
+
+      # Hook failures are surfaced via the PR comment; the job itself fails only when the runner
+      # never produced hook verdicts. That is three shapes: the script died before writing results
+      # (no exit_code output), pre-commit aborted before running hooks (exit codes other than
+      # 0/1, e.g. a hook environment that fails to install), or pre-commit exited 1 with zero
+      # verdicts recorded — counts of 0 or missing count outputs (e.g. a fatal config error).
+      # Treating any of those as a passing check leaves every hook silently skipped.
+      - name: Fail job when pre-commit produced no hook verdicts
+        if: >-
+          always() && steps.pre-commit.outcome == 'failure' &&
+          (steps.pre-commit.outputs.exit_code != '1' ||
+           ((steps.pre-commit.outputs.passed == '0' || steps.pre-commit.outputs.passed == '') &&
+            (steps.pre-commit.outputs.failed == '0' || steps.pre-commit.outputs.failed == '')))
+        env:
+          EXIT_CODE: ${{ steps.pre-commit.outputs.exit_code }}
+          PASSED: ${{ steps.pre-commit.outputs.passed }}
+          FAILED: ${{ steps.pre-commit.outputs.failed }}
+        run: |
+          echo "::error::pre-commit produced no hook verdicts (exit_code='${EXIT_CODE}' passed='${PASSED}' failed='${FAILED}')"
+          exit 1

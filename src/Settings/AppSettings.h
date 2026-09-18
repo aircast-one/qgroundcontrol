@@ -1,29 +1,23 @@
-/***************_qgcTranslatorSourceCode***********************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-/// @file
-/// @brief Application Settings
-
 #pragma once
+
+#include <QtQmlIntegration/QtQmlIntegration>
 
 #include "SettingsGroup.h"
 
-/// Application Settings
+/// \brief Application Settings
+///
 class AppSettings : public SettingsGroup
 {
     Q_OBJECT
-
+    QML_ELEMENT
+    QML_UNCREATABLE("")
 public:
     AppSettings(QObject* parent = nullptr);
 
     DEFINE_SETTING_NAME_GROUP()
 
+    DEFINE_SETTINGFACT(preferredFirmwareClass)
+    DEFINE_SETTINGFACT(preferredVehicleClass)
     DEFINE_SETTINGFACT(offlineEditingFirmwareClass)
     DEFINE_SETTINGFACT(offlineEditingVehicleClass)
     DEFINE_SETTINGFACT(offlineEditingCruiseSpeed)
@@ -33,29 +27,38 @@ public:
     DEFINE_SETTINGFACT(batteryPercentRemainingAnnounce) // Important: This is only used to calculate battery swaps
     DEFINE_SETTINGFACT(defaultMissionItemAltitude)
     DEFINE_SETTINGFACT(audioMuted)
+    DEFINE_SETTINGFACT(audioVolume)
     DEFINE_SETTINGFACT(virtualJoystick)
     DEFINE_SETTINGFACT(virtualJoystickAutoCenterThrottle)
     DEFINE_SETTINGFACT(virtualJoystickLeftHandedMode)
-    DEFINE_SETTINGFACT(appFontPointSize)
+    DEFINE_SETTINGFACT(uiScalePercent)
     DEFINE_SETTINGFACT(indoorPalette)
     DEFINE_SETTINGFACT(savePath)
-    DEFINE_SETTINGFACT(androidSaveToSDCard)
+    DEFINE_SETTINGFACT(androidDontSaveToSDCard)
+    DEFINE_SETTINGFACT(androidUsePosixSerial)
     DEFINE_SETTINGFACT(useChecklist)
     DEFINE_SETTINGFACT(enforceChecklist)
     DEFINE_SETTINGFACT(enableMultiVehiclePanel)
+    DEFINE_SETTINGFACT(tiandituToken)
     DEFINE_SETTINGFACT(mapboxToken)
     DEFINE_SETTINGFACT(mapboxAccount)
     DEFINE_SETTINGFACT(mapboxStyle)
     DEFINE_SETTINGFACT(esriToken)
     DEFINE_SETTINGFACT(customURL)
     DEFINE_SETTINGFACT(vworldToken)
+    DEFINE_SETTINGFACT(openaipToken)
     DEFINE_SETTINGFACT(gstDebugLevel)
     DEFINE_SETTINGFACT(followTarget)
     DEFINE_SETTINGFACT(qLocaleLanguage)
+    DEFINE_SETTINGFACT(clearSettingsNextBoot)
     DEFINE_SETTINGFACT(disableAllPersistence)
     DEFINE_SETTINGFACT(firstRunPromptIdsShown)
-    DEFINE_SETTINGFACT(loginAirLink)
-    DEFINE_SETTINGFACT(passAirLink)
+    DEFINE_SETTINGFACT(favoriteParameters)
+    DEFINE_SETTINGFACT(showAppLogTimestampAsElapsedTime)
+
+    // QSettings key for clearSettingsNextBoot. Accessed directly by QGCApplication
+    // at startup before SettingsManager is initialized.
+    static constexpr const char *clearSettingsNextBootKey = "clearSettingsNextBoot";
 
     Q_PROPERTY(QString missionSavePath          READ missionSavePath            NOTIFY savePathsChanged)
     Q_PROPERTY(QString parameterSavePath        READ parameterSavePath          NOTIFY savePathsChanged)
@@ -64,10 +67,10 @@ public:
     Q_PROPERTY(QString videoSavePath            READ videoSavePath              NOTIFY savePathsChanged)
     Q_PROPERTY(QString photoSavePath            READ photoSavePath              NOTIFY savePathsChanged)
     Q_PROPERTY(QString crashSavePath            READ crashSavePath              NOTIFY savePathsChanged)
-    Q_PROPERTY(QString mavlinkActionsSavePath    READ mavlinkActionsSavePath      NOTIFY savePathsChanged)
+    Q_PROPERTY(QString mavlinkActionsSavePath   READ mavlinkActionsSavePath     NOTIFY savePathsChanged)
+    Q_PROPERTY(QString settingsSavePath         READ settingsSavePath           NOTIFY savePathsChanged)
 
     Q_PROPERTY(QString planFileExtension        MEMBER planFileExtension        CONSTANT)
-    Q_PROPERTY(QString missionFileExtension     MEMBER missionFileExtension     CONSTANT)
     Q_PROPERTY(QString waypointsFileExtension   MEMBER waypointsFileExtension   CONSTANT)
     Q_PROPERTY(QString parameterFileExtension   MEMBER parameterFileExtension   CONSTANT)
     Q_PROPERTY(QString telemetryFileExtension   MEMBER telemetryFileExtension   CONSTANT)
@@ -75,6 +78,8 @@ public:
     Q_PROPERTY(QString shpFileExtension         MEMBER shpFileExtension         CONSTANT)
     Q_PROPERTY(QString logFileExtension         MEMBER logFileExtension         CONSTANT)
     Q_PROPERTY(QString tilesetFileExtension     MEMBER tilesetFileExtension     CONSTANT)
+    Q_PROPERTY(QString settingsFileExtension    MEMBER settingsFileExtension    CONSTANT)
+
 
     QString missionSavePath       ();
     QString parameterSavePath     ();
@@ -83,7 +88,8 @@ public:
     QString videoSavePath         ();
     QString photoSavePath         ();
     QString crashSavePath         ();
-    QString mavlinkActionsSavePath ();
+    QString mavlinkActionsSavePath();
+    QString settingsSavePath      ();
 
     // Helper methods for working with firstRunPromptIds QVariant settings string list
     static QList<int> firstRunPromptsIdsVariantToList   (const QVariant& firstRunPromptIds);
@@ -93,15 +99,13 @@ public:
     // Application wide file extensions
     static constexpr const char* parameterFileExtension =   "params";
     static constexpr const char* planFileExtension =        "plan";
-    static constexpr const char* missionFileExtension =     "mission";
     static constexpr const char* waypointsFileExtension =   "waypoints";
-    static constexpr const char* fenceFileExtension =       "fence";
-    static constexpr const char* rallyPointFileExtension =  "rally";
     static constexpr const char* telemetryFileExtension =   "tlog";
     static constexpr const char* kmlFileExtension =         "kml";
     static constexpr const char* shpFileExtension =         "shp";
     static constexpr const char* logFileExtension =         "ulg";
     static constexpr const char* tilesetFileExtension =     "qgctiledb";
+    static constexpr const char* settingsFileExtension =    "settings";
 
     // Child directories of savePath for specific file types
     static constexpr const char* parameterDirectory =       QT_TRANSLATE_NOOP("AppSettings", "Parameters");
@@ -112,6 +116,7 @@ public:
     static constexpr const char* photoDirectory =           QT_TRANSLATE_NOOP("AppSettings", "Photo");
     static constexpr const char* crashDirectory =           QT_TRANSLATE_NOOP("AppSettings", "CrashLogs");
     static constexpr const char* mavlinkActionsDirectory =  QT_TRANSLATE_NOOP("AppSettings", "MavlinkActions");
+    static constexpr const char* settingsDirectory =        QT_TRANSLATE_NOOP("AppSettings", "Settings");
 
 signals:
     void savePathsChanged();
@@ -127,11 +132,13 @@ private:
     static QList<QLocale::Language> _rgReleaseLanguages;
     static QList<QLocale::Language> _rgPartialLanguages;
 
+    QString _childSavePath(const char* directory);
+
     typedef struct {
         QLocale::Language   languageId;
         const char*         languageName;
     } LanguageInfo_t;
     static LanguageInfo_t _rgLanguageInfo[];
-    
+
     friend class QGCApplication;
 };

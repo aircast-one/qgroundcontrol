@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "MapProvider.h"
@@ -17,7 +8,7 @@ static constexpr const quint32 AVERAGE_MAPBOX_STREET_MAP  = 5648;
 class MapboxMapProvider : public MapProvider
 {
 protected:
-    MapboxMapProvider(const QString &mapName, const QString &mapTypeId, quint32 averageSize, QGeoMapType::MapStyle mapType)
+    MapboxMapProvider(const QString &mapName, const QString &mapTypeId, quint32 averageSize, MapProvider::MapStyle mapType)
         : MapProvider(
             mapName,
             QStringLiteral("https://www.mapbox.com/"),
@@ -40,7 +31,7 @@ public:
             QStringLiteral("Mapbox Streets"),
             QStringLiteral("streets-v10"),
             AVERAGE_MAPBOX_STREET_MAP,
-            QGeoMapType::StreetMap) {}
+            MapProvider::StreetMap) {}
 };
 
 class MapboxLightMapProvider : public MapboxMapProvider
@@ -50,8 +41,8 @@ public:
         : MapboxMapProvider(
             QStringLiteral("Mapbox Light"),
             QStringLiteral("light-v9"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::CustomMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::CustomMap) {}
 };
 
 class MapboxDarkMapProvider : public MapboxMapProvider
@@ -61,8 +52,8 @@ public:
         : MapboxMapProvider(
             QStringLiteral("Mapbox Dark"),
             QStringLiteral("dark-v9"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::CustomMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::CustomMap) {}
 };
 
 class MapboxSatelliteMapProvider : public MapboxMapProvider
@@ -73,7 +64,7 @@ public:
             QStringLiteral("Mapbox Satellite"),
             QStringLiteral("satellite-v9"),
             AVERAGE_MAPBOX_SAT_MAP,
-            QGeoMapType::SatelliteMapDay) {}
+            MapProvider::SatelliteMapDay) {}
 };
 
 class MapboxHybridMapProvider : public MapboxMapProvider
@@ -84,7 +75,7 @@ public:
             QStringLiteral("Mapbox Hybrid"),
             QStringLiteral("satellite-streets-v10"),
             AVERAGE_MAPBOX_SAT_MAP,
-            QGeoMapType::HybridMap) {}
+            MapProvider::HybridMap) {}
 };
 
 class MapboxBrightMapProvider : public MapboxMapProvider
@@ -94,8 +85,8 @@ public:
         : MapboxMapProvider(
             QStringLiteral("Mapbox Bright"),
             QStringLiteral("bright-v9"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::CustomMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::CustomMap) {}
 };
 
 class MapboxStreetsBasicMapProvider : public MapboxMapProvider
@@ -105,8 +96,8 @@ public:
         : MapboxMapProvider(
             QStringLiteral("Mapbox StreetsBasic"),
             QStringLiteral("basic-v9"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::StreetMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::StreetMap) {}
 };
 
 class MapboxOutdoorsMapProvider : public MapboxMapProvider
@@ -116,8 +107,8 @@ public:
         : MapboxMapProvider(
             QStringLiteral("Mapbox Outdoors"),
             QStringLiteral("outdoors-v10"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::CustomMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::CustomMap) {}
 };
 
 class MapboxCustomMapProvider : public MapboxMapProvider
@@ -127,6 +118,6 @@ public:
         : MapboxMapProvider(
             QStringLiteral("Mapbox Custom"),
             QStringLiteral("mapbox.custom"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::CustomMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::CustomMap) {}
 };

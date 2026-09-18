@@ -1,24 +1,9 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.FactSystem
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
-import QGroundControl.MultiVehicleManager
-import QGroundControl.Palette
-import QGroundControl.AutoPilotPlugins.PX4
-import QGroundControl.AutoPilotPlugins.APM
 
 Rectangle {
     id:             _summaryRoot
@@ -28,26 +13,8 @@ Rectangle {
     color:          qgcPal.window
 
     property real _minSummaryW:     ScreenTools.isTinyScreen ? ScreenTools.defaultFontPixelWidth * 28 : ScreenTools.defaultFontPixelWidth * 36
-    property real _summaryBoxWidth: _minSummaryW
     property real _summaryBoxSpace: ScreenTools.defaultFontPixelWidth * 2
-
-    function computeSummaryBoxSize() {
-        var sw  = 0
-        var rw  = 0
-        var idx = Math.floor(_summaryRoot.width / (_minSummaryW + ScreenTools.defaultFontPixelWidth))
-        if(idx < 1) {
-            _summaryBoxWidth = _summaryRoot.width
-            _summaryBoxSpace = 0
-        } else {
-            _summaryBoxSpace = 0
-            if(idx > 1) {
-                _summaryBoxSpace = ScreenTools.defaultFontPixelWidth * 2
-                sw = _summaryBoxSpace * (idx - 1)
-            }
-            rw = _summaryRoot.width - sw
-            _summaryBoxWidth = rw / idx
-        }
-    }
+    property real _margins:        ScreenTools.defaultFontPixelHeight / 2
 
     function capitalizeWords(sentence) {
         return sentence.replace(/(?:^|\s)\S/g, function(a) { return a.toUpperCase(); });
@@ -56,14 +23,6 @@ Rectangle {
     QGCPalette {
         id:                 qgcPal
         colorGroupEnabled:  enabled
-    }
-
-    Component.onCompleted: {
-        computeSummaryBoxSize()
-    }
-
-    onWidthChanged: {
-        computeSummaryBoxSize()
     }
 
     QGCFlickable {
@@ -85,68 +44,78 @@ Rectangle {
                 font.bold:      true
                 horizontalAlignment: Text.AlignHCenter
                 text:           setupComplete ?
-                    qsTr("Below you will find a summary of the settings for your vehicle. To the left are the setup menus for each component.") :
-                    qsTr("WARNING: Your vehicle requires setup prior to flight. Please resolve the items marked in red using the menu on the left.")
+                    qsTr("Your vehicle configuration summary appears below. Select components on the left to review or fine-tune settings.") :
+                    qsTr("WARNING: Configuration tasks remain before this vehicle is ready to fly. Open the red-marked components on the left to finish setup.")
 
                 property bool setupComplete: QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin.setupComplete : false
             }
 
-            Flow {
-                id:         _flowCtl
-                width:      _summaryRoot.width
-                spacing:    _summaryBoxSpace
+            GridLayout {
+                id:             _gridCtl
+                width:          _summaryRoot.width
+                columns:        Math.max(1, Math.floor((_summaryRoot.width + _summaryBoxSpace) / (_minSummaryW + _summaryBoxSpace)))
+                columnSpacing:  _summaryBoxSpace
+                rowSpacing:     ScreenTools.defaultFontPixelHeight
 
                 Repeater {
                     model: QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin.vehicleComponents : undefined
 
                     // Outer summary item rectangle
                     Rectangle {
-                        width:      _summaryBoxWidth
-                        height:     ScreenTools.defaultFontPixelHeight * 13
-                        color:      qgcPal.windowShade
-                        visible:    modelData.summaryQmlSource.toString() !== ""
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        implicitWidth: _minSummaryW
+                        implicitHeight: mainLayout.implicitHeight + (_margins * 2)
+                        radius: ScreenTools.defaultFontPixelHeight / 4
+                        color: qgcPal.windowShade
+                        visible: modelData.summaryQmlSource.toString() !== ""
                         border.width: 1
-                        border.color: qgcPal.text
-                        Component.onCompleted: {
-                            border.color = Qt.rgba(border.color.r, border.color.g, border.color.b, 0.1)
-                        }
+                        border.color: Qt.rgba(qgcPal.text.r, qgcPal.text.g, qgcPal.text.b, 0.1)
 
                         readonly property real titleHeight: ScreenTools.defaultFontPixelHeight * 2
 
-                        // Title bar
-                        QGCButton {
-                            id:     titleBar
-                            width:  parent.width
-                            height: titleHeight
-                            text:   capitalizeWords(modelData.name)
+                        ColumnLayout {
+                            id: mainLayout
+                            anchors.margins: _margins
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            spacing: ScreenTools.defaultFontPixelHeight / 2
 
-                            // Setup indicator
-                            Rectangle {
-                                anchors.rightMargin:    ScreenTools.defaultFontPixelWidth
-                                anchors.right:          parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                width:                  ScreenTools.defaultFontPixelWidth * 1.75
-                                height:                 width
-                                radius:                 width / 2
-                                color:                  modelData.setupComplete ? "#00d932" : "red"
-                                visible:                modelData.requiresSetup && modelData.setupSource !== ""
-                            }
+                            // Title bar
+                            QGCButton {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: titleHeight
+                                text: capitalizeWords(modelData.name)
+                                rightPadding: setupIndicator.visible ? setupIndicator.width + ScreenTools.defaultFontPixelWidth * 2 : leftPadding
 
-                            onClicked : {
-                                //console.log(modelData.setupSource)
-                                if (modelData.setupSource !== "") {
-                                    setupView.showVehicleComponentPanel(modelData)
+                                // Setup indicator
+                                Rectangle {
+                                    id:                     setupIndicator
+                                    anchors.rightMargin:    ScreenTools.defaultFontPixelWidth
+                                    anchors.right:          parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width:                  ScreenTools.defaultFontPixelWidth * 1.5
+                                    height:                 width
+                                    radius:                 width / 2
+                                    color:                  modelData.setupComplete ? qgcPal.colorGreen : qgcPal.colorRed
+                                    visible:                modelData.requiresSetup && modelData.setupSource !== ""
+                                }
+
+                                onClicked : {
+                                    if (modelData.setupSource !== "") {
+                                        setupView.showVehicleComponentPanel(modelData)
+                                    }
                                 }
                             }
-                        }
-                        // Summary Qml
-                        Rectangle {
-                            anchors.top:    titleBar.bottom
-                            width:          parent.width
+
+                            // Summary Qml
                             Loader {
-                                anchors.fill:       parent
-                                anchors.margins:    ScreenTools.defaultFontPixelWidth
-                                source:             modelData.summaryQmlSource
+                                id: summaryLoader
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: item ? item.implicitWidth : 0
+                                Layout.preferredHeight: item ? item.implicitHeight : 0
+                                source: modelData.summaryQmlSource
 
                                 property var vehicleComponent: modelData
                             }

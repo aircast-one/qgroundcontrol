@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "VehicleComponent.h"
@@ -24,7 +15,7 @@ public:
     QStringList setupCompleteChangedTriggerList() const final;
 
     QString name() const final { return _name; }
-    QString description() const final { return tr("Sensors Setup is used to calibrate the sensors within your vehicle."); }
+    QString description() const final { return tr("Configure and calibrate compass, accelerometer, and other onboard sensors."); }
     QString iconResource() const final { return QStringLiteral("/qmlimages/SensorsComponentIcon.png"); }
     bool requiresSetup() const final { return true; }
     bool setupComplete() const final { return (!compassSetupNeeded() && !accelSetupNeeded()); }

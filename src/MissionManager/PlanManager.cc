@@ -1,21 +1,13 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "PlanManager.h"
 #include "Vehicle.h"
+#include "VehicleLinkManager.h"
 #include "FirmwarePlugin.h"
 #include "MAVLinkProtocol.h"
-#include "QGCApplication.h"
 #include "MissionCommandTree.h"
+#include "AppMessages.h"
 #include "QGCLoggingCategory.h"
 
-QGC_LOGGING_CATEGORY(PlanManagerLog, "PlanManagerLog")
+QGC_LOGGING_CATEGORY(PlanManagerLog, "PlanManager.PlanManager")
 
 PlanManager::PlanManager(Vehicle* vehicle, MAV_MISSION_TYPE planType)
     : QObject                   (vehicle)
@@ -249,10 +241,14 @@ void PlanManager::_ackTimeout(void)
 
 void PlanManager::_startAckTimeout(AckType_t ack)
 {
+    // Use much shorter timeouts in unit tests since MockLink responds instantly
+    const int retryTimeout = QGC::runningUnitTests() ? 10 : _retryTimeoutMilliseconds;
+    const int ackTimeout = QGC::runningUnitTests() ? kTestAckTimeoutMs : _ackTimeoutMilliseconds;
+
     switch (ack) {
     case AckMissionItem:
         // We are actively trying to get the mission item, so we don't want to wait as long.
-        _ackTimeoutTimer->setInterval(_retryTimeoutMilliseconds);
+        _ackTimeoutTimer->setInterval(retryTimeout);
         break;
     case AckNone:
         // FALLTHROUGH
@@ -263,7 +259,7 @@ void PlanManager::_startAckTimeout(AckType_t ack)
     case AckMissionClearAll:
         // FALLTHROUGH
     case AckGuidedItem:
-        _ackTimeoutTimer->setInterval(_ackTimeoutMilliseconds);
+        _ackTimeoutTimer->setInterval(ackTimeout);
         break;
     }
 
@@ -688,7 +684,7 @@ QString PlanManager::_ackTypeToString(AckType_t ackType)
     case AckGuidedItem:
         return QString("Guided Mode Item");
     default:
-        qWarning(PlanManagerLog) << QStringLiteral("Fell off end of switch statement %1").arg(_planTypeString());
+        qCWarning(PlanManagerLog) << QStringLiteral("Fell off end of switch statement %1").arg(_planTypeString());
         return QString("QGC Internal Error");
     }
 }
@@ -793,7 +789,7 @@ QString PlanManager::_missionResultToString(MAV_MISSION_RESULT result)
         error = tr("Not accepting any mission commands.");
         break;
     default:
-        qWarning(PlanManagerLog) << QStringLiteral("Fell off end of switch statement %1 %2").arg(_planTypeString()).arg(result);
+        qCWarning(PlanManagerLog) << QStringLiteral("Fell off end of switch statement %1 %2").arg(_planTypeString()).arg(result);
         error = tr("Unknown error: %1.").arg(result);
         break;
     }

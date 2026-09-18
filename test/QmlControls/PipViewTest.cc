@@ -10,6 +10,8 @@
 #include "PipViewTest.h"
 #include "QuickInteractionTestHelpers.h"
 
+#include <QtCore/QRegularExpression>
+
 static const qreal kMargin = 8;
 
 static void clearPipSettings()
@@ -20,6 +22,12 @@ static void clearPipSettings()
 static bool loadView(QQuickView& view)
 {
     return loadTestView(view, QStringLiteral("qrc:/unittest/PipViewTest.qml"));
+}
+
+void PipViewTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("qt.qpa.fonts", QtWarningMsg, QRegularExpression(QStringLiteral("Populating font family aliases")));
 }
 
 void PipViewTest::_dragRepositionsAndPersists()
@@ -67,6 +75,7 @@ void PipViewTest::_dragRepositionsAndPersists()
 
 void PipViewTest::_dragOffscreenClampsCommittedPosition()
 {
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("occurs outside target window")));
     clearPipSettings();
 
     QQuickView view;
@@ -180,3 +189,5 @@ void PipViewTest::_resizeFromCornerPersists()
     QVERIFY(pip2);
     QCOMPARE(pip2->width(), resizedWidth);
 }
+
+UT_REGISTER_TEST(PipViewTest, TestLabel::Unit)

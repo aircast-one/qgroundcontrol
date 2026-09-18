@@ -1,14 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "LogReplayLink.h"
 #include "LinkManager.h"
+#include "MAVLinkLib.h"
 #include "MAVLinkProtocol.h"
 #include "MultiVehicleManager.h"
 #include "QGCLoggingCategory.h"
@@ -18,35 +10,33 @@
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
 
-QGC_LOGGING_CATEGORY(LogReplayLinkLog, "qgc.comms.logreplaylink")
+QGC_LOGGING_CATEGORY(LogReplayLinkLog, "Comms.LogReplayLink")
 
 /*===========================================================================*/
 
 LogReplayConfiguration::LogReplayConfiguration(const QString &name, QObject *parent)
     : LinkConfiguration(name, parent)
 {
-    // qCDebug(LogReplayLinkLog) << Q_FUNC_INFO << this;
+    qCDebug(LogReplayLinkLog) << this;
 }
 
 LogReplayConfiguration::LogReplayConfiguration(const LogReplayConfiguration *copy, QObject *parent)
     : LinkConfiguration(copy, parent)
     , _logFilename(copy->logFilename())
 {
-    // qCDebug(LogReplayLinkLog) << Q_FUNC_INFO << this;
+    qCDebug(LogReplayLinkLog) << this;
 }
 
 LogReplayConfiguration::~LogReplayConfiguration()
 {
-    // qCDebug(LogReplayLinkLog) << Q_FUNC_INFO << this;
+    qCDebug(LogReplayLinkLog) << this;
 }
 
 void LogReplayConfiguration::copyFrom(const LinkConfiguration *source)
 {
-    Q_ASSERT(source);
     LinkConfiguration::copyFrom(source);
 
-    const LogReplayConfiguration *const logReplaySource = qobject_cast<const LogReplayConfiguration*>(source);
-    Q_ASSERT(logReplaySource);
+    const LogReplayConfiguration *logReplaySource = qobject_cast<const LogReplayConfiguration*>(source);
 
     setLogFilename(logReplaySource->logFilename());
 }
@@ -88,20 +78,21 @@ LogReplayWorker::LogReplayWorker(const LogReplayConfiguration *config, QObject *
     : QObject(parent)
     , _logReplayConfig(config)
 {
-    // qCDebug(LogReplayLinkLog) << Q_FUNC_INFO << this;
+    qCDebug(LogReplayLinkLog) << this;
 }
 
 LogReplayWorker::~LogReplayWorker()
 {
     disconnectFromLog();
 
-    // qCDebug(LogReplayLinkLog) << Q_FUNC_INFO << this;
+    qCDebug(LogReplayLinkLog) << this;
 }
 
 void LogReplayWorker::setup()
 {
-    Q_ASSERT(!_readTickTimer);
-    _readTickTimer = new QTimer(this);
+    if (!_readTickTimer) {
+        _readTickTimer = new QTimer(this);
+    }
 
     (void) connect(_readTickTimer, &QTimer::timeout, this, &LogReplayWorker::_readNextLogEntry);
 }
@@ -136,10 +127,18 @@ void LogReplayWorker::disconnectFromLog()
         return;
     }
 
+    qCDebug(LogReplayLinkLog) << "Disconnecting from log";
+
+    if (_readTickTimer) {
+        _readTickTimer->stop();
+    }
+
+    if (_logFile.isOpen()) {
+        _logFile.close();
+    }
+
     _isConnected = false;
     emit disconnected();
-
-    _readTickTimer->stop();
 }
 
 bool LogReplayWorker::isPlaying() const
@@ -309,8 +308,15 @@ bool LogReplayWorker::_loadLogFile()
 
 quint64 LogReplayWorker::_parseTimestamp(const QByteArray &bytes)
 {
+    // Truncated log files can produce a short read; never read past the buffer.
+    if (bytes.size() < static_cast<qsizetype>(sizeof(quint64))) {
+        return 0;
+    }
+
     const quint64 currentTimestamp = static_cast<quint64>(QDateTime::currentMSecsSinceEpoch()) * 1000;
-    quint64 timestamp = qFromBigEndian(*reinterpret_cast<const quint64*>(bytes.constData()));
+    // qFromBigEndian(const void *src) handles unaligned reads; dereferencing a
+    // cast pointer here would be a misaligned load (UB).
+    quint64 timestamp = qFromBigEndian<quint64>(bytes.constData());
     if (timestamp > currentTimestamp) {
         timestamp = qbswap(timestamp);
     }
@@ -380,8 +386,8 @@ quint64 LogReplayWorker::_findLastTimestamp()
 
     quint64 lastTimestamp = 0;
 
-    while (_logFile.bytesAvailable() > kTimestamp) {
-        lastTimestamp = _parseTimestamp(_logFile.read(kTimestamp));
+    while (_logFile.bytesAvailable() >= static_cast<qint64>(kTimestamp)) {
+        const quint64 candidateTimestamp = _parseTimestamp(_logFile.read(kTimestamp));
 
         bool endOfMessage = false;
         char nextByte;
@@ -390,6 +396,21 @@ quint64 LogReplayWorker::_findLastTimestamp()
             mavlink_status_t status{};
             endOfMessage = mavlink_parse_char(_mavlinkChannel, nextByte, &msg, &status);
         }
+
+        if (!endOfMessage) {
+            if (lastTimestamp != 0) {
+                // Trailing bytes which don't form a complete MAVLink message (e.g. the log was not
+                // closed cleanly due to a crash or power loss). Ignore them and keep the timestamp
+                // of the last complete message.
+                qCWarning(LogReplayLinkLog)
+                    << "Ignoring trailing bytes at end of log file which do not form a complete MAVLink message";
+            } else {
+                qCWarning(LogReplayLinkLog) << "No complete MAVLink message found in log file";
+            }
+            break;
+        }
+
+        lastTimestamp = candidateTimestamp;
     }
 
     return lastTimestamp;
@@ -403,7 +424,7 @@ LogReplayLink::LogReplayLink(SharedLinkConfigurationPtr &config, QObject *parent
     , _worker(new LogReplayWorker(_logReplayConfig))
     , _workerThread(new QThread(this))
 {
-    // qCDebug(LogReplayLinkLog) << Q_FUNC_INFO << this;
+    qCDebug(LogReplayLinkLog) << this;
 
     _workerThread->setObjectName(QStringLiteral("LogReplay_%1").arg(_logReplayConfig->name()));
 
@@ -429,14 +450,22 @@ LogReplayLink::LogReplayLink(SharedLinkConfigurationPtr &config, QObject *parent
 
 LogReplayLink::~LogReplayLink()
 {
-    LogReplayLink::disconnect();
-
-    _workerThread->quit();
-    if (!_workerThread->wait()) {
-        qCWarning(LogReplayLinkLog) << "Failed to wait for LogReplay Thread to close";
+    if (isConnected()) {
+        // Queued, not blocking: keeps a wedged worker from hanging the destructor before
+        // _shutdownWorkerThread can bound the wait. If quit() beats the queued call,
+        // ~LogReplayWorker still disconnects on thread finish.
+        (void) QMetaObject::invokeMethod(_worker, "disconnectFromLog", Qt::QueuedConnection);
+        _onDisconnected();
     }
 
-    // qCDebug(LogReplayLinkLog) << Q_FUNC_INFO << this;
+    _shutdownWorkerThread(_workerThread, LogReplayLinkLog());
+
+    qCDebug(LogReplayLinkLog) << this;
+}
+
+bool LogReplayLink::isConnected() const
+{
+    return _worker && _worker->isConnected();
 }
 
 bool LogReplayLink::_connect()
@@ -446,7 +475,22 @@ bool LogReplayLink::_connect()
 
 void LogReplayLink::disconnect()
 {
-    (void) QMetaObject::invokeMethod(_worker, "disconnectFromLog", Qt::QueuedConnection);
+    if (isConnected()) {
+        (void) QMetaObject::invokeMethod(_worker, "disconnectFromLog", Qt::QueuedConnection);
+    }
+}
+
+void LogReplayLink::_onConnected()
+{
+    _disconnectedEmitted = false;
+    emit connected();
+}
+
+void LogReplayLink::_onDisconnected()
+{
+    if (!_disconnectedEmitted.exchange(true)) {
+        emit disconnected();
+    }
 }
 
 void LogReplayLink::_onErrorOccurred(const QString &errorString)
@@ -458,6 +502,11 @@ void LogReplayLink::_onErrorOccurred(const QString &errorString)
 void LogReplayLink::_onDataReceived(const QByteArray &data)
 {
     emit bytesReceived(this, data);
+}
+
+bool LogReplayLink::isPlaying() const
+{
+    return _worker && _worker->isPlaying();
 }
 
 void LogReplayLink::play()

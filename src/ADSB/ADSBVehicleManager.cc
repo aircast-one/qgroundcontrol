@@ -1,14 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "ADSBVehicleManager.h"
-#include "QGCApplication.h"
+#include "MAVLinkLib.h"
+#include "AppMessages.h"
 #include "SettingsManager.h"
 #include "ADSBVehicleManagerSettings.h"
 #include "ADSBTCPLink.h"
@@ -16,11 +8,11 @@
 #include "QmlObjectListModel.h"
 #include "QGCLoggingCategory.h"
 
-#include <QtCore/qapplicationstatic.h>
+#include <QtCore/QApplicationStatic>
+#include <QtCore/QThread>
 #include <QtCore/QTimer>
-#include <qassert.h>
 
-QGC_LOGGING_CATEGORY(ADSBVehicleManagerLog, "qgc.adsb.adsbvehiclemanager")
+QGC_LOGGING_CATEGORY(ADSBVehicleManagerLog, "ADSB.ADSBVehicleManager")
 
 Q_APPLICATION_STATIC(ADSBVehicleManager, _adsbVehicleManager, SettingsManager::instance()->adsbVehicleManagerSettings());
 
@@ -37,6 +29,8 @@ ADSBVehicleManager::ADSBVehicleManager(ADSBVehicleManagerSettings *settings, QOb
     _adsbVehicleCleanupTimer->setSingleShot(false);
     _adsbVehicleCleanupTimer->setInterval(1000);
     (void) connect(_adsbVehicleCleanupTimer, &QTimer::timeout, this, &ADSBVehicleManager::_cleanupStaleVehicles);
+    // Always run: vehicles can also arrive via mavlink messages, not just the tcp link
+    _adsbVehicleCleanupTimer->start();
 
     Fact* const adsbEnabled = _adsbSettings->adsbServerConnectEnabled();
     Fact* const hostAddress = _adsbSettings->adsbServerHostAddress();
@@ -57,6 +51,8 @@ ADSBVehicleManager::ADSBVehicleManager(ADSBVehicleManagerSettings *settings, QOb
 
 ADSBVehicleManager::~ADSBVehicleManager()
 {
+    _stop();
+
     // qCDebug(ADSBVehicleManagerLog) << Q_FUNC_INFO << this;
 }
 
@@ -162,30 +158,51 @@ void ADSBVehicleManager::adsbVehicleUpdate(const ADSB::VehicleInfo_t &vehicleInf
 
 void ADSBVehicleManager::_start(const QString &hostAddress, quint16 port)
 {
-    Q_ASSERT(!_adsbTcpLink);
-
-    ADSBTCPLink *adsbTcpLink = new ADSBTCPLink(QHostAddress(hostAddress), port, this);
-    if (!adsbTcpLink->init()) {
-        delete adsbTcpLink;
-        adsbTcpLink = nullptr;
-        qCWarning(ADSBVehicleManagerLog) << "Failed to Initialize TCP Link at:" << hostAddress << port;
+    if (_adsbTcpLink) {
+        qCWarning(ADSBVehicleManagerLog) << "TCP Link already started";
         return;
     }
 
-    _adsbTcpLink = adsbTcpLink;
-    (void) connect(_adsbTcpLink, &ADSBTCPLink::adsbVehicleUpdate, this, &ADSBVehicleManager::adsbVehicleUpdate, Qt::AutoConnection);
-    (void) connect(_adsbTcpLink, &ADSBTCPLink::errorOccurred, this, &ADSBVehicleManager::_linkError, Qt::AutoConnection);
+    if (hostAddress.isEmpty()) {
+        qCWarning(ADSBVehicleManagerLog) << "No ADSB server host address set";
+        return;
+    }
 
-    _adsbVehicleCleanupTimer->start();
+    // Run the link on a worker thread so socket reads and SBS-1 parsing stay off the ui thread.
+    // The thread is unparented so QObject parent-child destruction can never delete it while it
+    // is still running (which is fatal); _stop() manages its lifetime explicitly.
+    _adsbTcpLinkThread = new QThread();
+    _adsbTcpLinkThread->setObjectName(QStringLiteral("ADSBTCPLink"));
+
+    _adsbTcpLink = new ADSBTCPLink(hostAddress, port); // unparented, deleted when the thread finishes
+    _adsbTcpLink->moveToThread(_adsbTcpLinkThread);
+
+    (void) connect(_adsbTcpLinkThread, &QThread::started, _adsbTcpLink, &ADSBTCPLink::init);
+    (void) connect(_adsbTcpLinkThread, &QThread::finished, _adsbTcpLink, &QObject::deleteLater);
+    (void) connect(_adsbTcpLink, &ADSBTCPLink::adsbVehicleUpdate, this, &ADSBVehicleManager::adsbVehicleUpdate, Qt::QueuedConnection);
+    (void) connect(_adsbTcpLink, &ADSBTCPLink::errorOccurred, this, &ADSBVehicleManager::_linkError, Qt::QueuedConnection);
+
+    _adsbTcpLinkThread->start();
 }
 
 void ADSBVehicleManager::_stop()
 {
-    Q_CHECK_PTR(_adsbTcpLink);
-    _adsbTcpLink->deleteLater();
-    _adsbTcpLink = nullptr;
+    if (!_adsbTcpLinkThread) {
+        return;
+    }
 
-    _adsbVehicleCleanupTimer->stop();
+    _adsbTcpLinkThread->quit();
+    if (!_adsbTcpLinkThread->wait(kThreadStopTimeoutMs)) {
+        // Bail out without deleting or resetting state: destroying a still-running QThread is
+        // fatal, and clearing the pointers would allow a second link to be started alongside it.
+        qCWarning(ADSBVehicleManagerLog) << "ADSBTCPLink thread failed to stop";
+        return;
+    }
+    // wait() succeeded so the thread has finished: delete it directly rather than with
+    // deleteLater(), which would leak during shutdown once the event loop stops running.
+    delete _adsbTcpLinkThread;
+    _adsbTcpLinkThread = nullptr;
+    _adsbTcpLink = nullptr; // deleted via the thread finished connection
 
     _adsbVehicles->clearAndDeleteContents();
     _adsbICAOMap.clear();
@@ -215,5 +232,5 @@ void ADSBVehicleManager::_linkError(const QString &errorMsg, bool stopped)
         _adsbSettings->adsbServerConnectEnabled()->setRawValue(false);
     }
 
-    qgcApp()->showAppMessage(msg);
+    QGC::showAppMessage(msg);
 }

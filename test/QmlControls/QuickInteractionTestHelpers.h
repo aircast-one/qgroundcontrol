@@ -16,6 +16,8 @@
 #include <QtGui/QStyleHints>
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
+#include "ColoredSvgImageProvider.h"
+
 #include <QtQuick/QQuickView>
 #include <QtTest/QTest>
 
@@ -33,7 +35,7 @@ inline QPoint dragAnchorNudge()
 inline void clearQmlGlobalSettings(std::initializer_list<const char*> keys)
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     for (const char* key : keys) {
         settings.remove(QString::fromLatin1(key));
     }
@@ -43,6 +45,7 @@ inline void clearQmlGlobalSettings(std::initializer_list<const char*> keys)
 inline bool loadTestView(QQuickView& view, const QString& qmlResource)
 {
     view.engine()->addImportPath(QStringLiteral("qrc:/qml"));
+    view.engine()->addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
     view.setSource(QUrl(qmlResource));
     if (view.status() != QQuickView::Ready) {
         return false;

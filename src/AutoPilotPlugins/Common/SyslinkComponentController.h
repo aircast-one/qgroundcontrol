@@ -1,27 +1,17 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QVariant>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 #include "FactPanelController.h"
 
 class Fact;
 class Vehicle;
 
-Q_DECLARE_LOGGING_CATEGORY(SyslinkComponentControllerLog)
-
 class SyslinkComponentController : public FactPanelController
 {
     Q_OBJECT
+    QML_ELEMENT
     Q_PROPERTY(int          radioChannel    READ radioChannel   WRITE setRadioChannel   NOTIFY radioChannelChanged)
     Q_PROPERTY(QString      radioAddress    READ radioAddress   WRITE setRadioAddress   NOTIFY radioAddressChanged)
     Q_PROPERTY(int          radioRate       READ radioRate      WRITE setRadioRate      NOTIFY radioRateChanged)

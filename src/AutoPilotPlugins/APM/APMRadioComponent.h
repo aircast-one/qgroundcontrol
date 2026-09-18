@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "VehicleComponent.h"
@@ -23,9 +14,7 @@ public:
     QStringList setupCompleteChangedTriggerList() const final { return QStringList(); }
 
     QString name() const final { return _name; }
-    QString description() const final { return tr("The Radio Component is used to setup which channels on your RC Transmitter you will use for each vehicle control such as Roll, Pitch, Yaw and Throttle. "
-                                                  "It also allows you to assign switches and dials to the various flight modes. "
-                                                  "Prior to flight you must also calibrate the extents for all of your channels."); }
+    QString description() const final { return tr("Configure transmitter calibration and channel assignment."); }
     QString iconResource() const final { return QStringLiteral("/qmlimages/RadioComponentIcon.png"); }
     bool requiresSetup() const final { return true; }
     bool setupComplete() const final;

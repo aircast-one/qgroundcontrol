@@ -9,7 +9,7 @@
 
 import QtQuick
 
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 // Corner resize handle for a free-floating item. Must be declared as a child of `target`:
 // it anchors itself to the target's top-right corner. Pulling up or right enlarges along

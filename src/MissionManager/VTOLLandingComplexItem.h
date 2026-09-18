@@ -1,20 +1,7 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "LandingComplexItem.h"
 #include "Fact.h"
-
-#include <QtCore/QLoggingCategory>
-
-Q_DECLARE_LOGGING_CATEGORY(VTOLLandingComplexItemLog)
 
 class VTOLLandingPatternTest;
 class PlanMasterController;
@@ -38,7 +25,7 @@ public:
     // Overrides from VisualMissionItem
     void                save                        (QJsonArray&  missionItems) final;
 
-    static const QString name;
+    static constexpr const char* canonicalName = QT_TR_NOOP("VTOL Landing");
 
     static constexpr const char* settingsGroup =            "VTOLLanding";
     static constexpr const char* jsonComplexItemTypeValue = "vtolLandingPattern";

@@ -1,16 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QtSystemDetection>
 #ifdef Q_OS_ANDROID
     #include "qserialportinfo.h"
@@ -20,13 +10,13 @@
 
 class QGCSerialPortInfoTest;
 
-Q_DECLARE_LOGGING_CATEGORY(QGCSerialPortInfoLog)
-
-/// QGC's version of Qt QSerialPortInfo. It provides additional information about board types
+/// \brief QGC's version of Qt QSerialPortInfo. It provides additional information about board types
 /// that QGC cares about.
+
 class QGCSerialPortInfo : public QSerialPortInfo
 {
     friend class QGCSerialPortInfoTest;
+    friend class JsonResourceAuditTest;
 public:
     QGCSerialPortInfo();
     explicit QGCSerialPortInfo(const QSerialPort &port);
@@ -80,7 +70,7 @@ private:
     static QList<BoardInfo_t> _boardInfoList;
 
     struct BoardRegExpFallback_t {
-        QString regExp;
+        QRegularExpression regExp;
         BoardType_t boardType;
         bool androidOnly;
     };

@@ -1,19 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
-
 #include "ComplexMissionItem.h"
-
-Q_DECLARE_LOGGING_CATEGORY(LandingComplexItemLog)
 
 class PlanMasterController;
 class LandingComplexItemTest;
@@ -98,7 +85,8 @@ public:
     QString             commandDescription          (void) const final { return "Landing Pattern"; }
     QString             commandName                 (void) const final { return "Landing Pattern"; }
     QString             abbreviation                (void) const final { return "L"; }
-    QGeoCoordinate      coordinate                  (void) const final { return _finalApproachCoordinate; }
+    QGeoCoordinate      coordinate                  (void) const final { return exitCoordinate(); }
+    QGeoCoordinate      entryCoordinate             (void) const final { return _finalApproachCoordinate; }
     QGeoCoordinate      exitCoordinate              (void) const final { return _landingCoordinate; }
     int                 sequenceNumber              (void) const final { return _sequenceNumber; }
     double              specifiedFlightSpeed        (void) final { return std::numeric_limits<double>::quiet_NaN(); }
@@ -110,8 +98,9 @@ public:
     ReadyForSaveState   readyForSaveState           (void) const final;
     bool                exitCoordinateSameAsEntry   (void) const final { return false; }
     void                setDirty                    (bool dirty) final;
-    void                setCoordinate               (const QGeoCoordinate& coordinate) final { setFinalApproachCoordinate(coordinate); }
+    void                setCoordinate               (const QGeoCoordinate& coordinate) final;
     void                setSequenceNumber           (int sequenceNumber) final;
+    double              editableAlt                 (void) const final;
     double              amslEntryAlt                (void) const final;
     double              amslExitAlt                 (void) const final;
     double              minAMSLAltitude             (void) const final { return amslExitAlt(); }
@@ -209,5 +198,7 @@ private slots:
     void    _updateFinalApproachCoodinateAltitudeFromFact   (void);
     void    _updateLandingCoodinateAltitudeFromFact         (void);
 
+#ifdef QGC_UNITTEST_BUILD
     friend class LandingComplexItemTest;
+#endif
 };

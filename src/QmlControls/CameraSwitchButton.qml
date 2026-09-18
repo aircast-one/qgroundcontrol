@@ -9,7 +9,7 @@
 
 import QtQuick
 
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 // Translucent dark rounded overlay button used over the video feed to switch the
 // active camera/video source. Styled to match QGroundControl's on-video overlays.
@@ -37,7 +37,7 @@ Rectangle {
             height:                 cameraLabel.contentHeight
             width:                  height
             sourceSize.height:      height
-            source:                 "/qmlimages/camera.svg"
+            source:                 "/res/PlanSimpleItemCamera.svg"
             fillMode:               Image.PreserveAspectFit
             color:                  "white"
         }

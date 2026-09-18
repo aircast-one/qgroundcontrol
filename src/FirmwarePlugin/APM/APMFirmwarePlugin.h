@@ -1,23 +1,11 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "FirmwarePlugin.h"
 #include "FollowMe.h"
 #include "QGCMAVLink.h"
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QMutex>
 #include <QtNetwork/QAbstractSocket>
-
-Q_DECLARE_LOGGING_CATEGORY(APMFirmwarePluginLog)
 
 struct APMCustomMode
 {
@@ -29,7 +17,8 @@ struct APMCustomMode
     };
 };
 
-/// This is the base class for all stack specific APM firmware plugins
+/// \brief This is the base class for all stack specific APM firmware plugins
+///
 class APMFirmwarePlugin : public FirmwarePlugin
 {
     Q_OBJECT
@@ -40,7 +29,7 @@ public:
     bool isCapable(const Vehicle *vehicle, FirmwareCapabilities capabilities) const override;
     void setGuidedMode(Vehicle *vehicle, bool guidedMode) const override;
     void guidedModeTakeoff(Vehicle *vehicle, double altitudeRel) const override;
-    void guidedModeGotoLocation(Vehicle *vehicle, const QGeoCoordinate& gotoCoord, double forwardFlightLoiterRadius) const override;
+    bool guidedModeGotoLocation(Vehicle *vehicle, const QGeoCoordinate& gotoCoord, double forwardFlightLoiterRadius) const override;
     double minimumTakeoffAltitudeMeters(Vehicle *vehicle) const override;
     void startTakeoff(Vehicle *vehicle) const override;
     void startMission(Vehicle *vehicle) const override;
@@ -65,11 +54,8 @@ public:
     bool sendHomePositionToVehicle() const override { return true; }
     QString missionCommandOverrides(QGCMAVLink::VehicleClass_t vehicleClass) const override;
     QString _internalParameterMetaDataFile(const Vehicle* vehicle) const override;
-    FactMetaData *_getMetaDataForFact(QObject *parameterMetaData, const QString &name, FactMetaData::ValueType_t type, MAV_TYPE vehicleType) const override;
-    void _getParameterMetaDataVersionInfo(const QString &metaDataFile, int &majorVersion, int &minorVersion) const override;
-    QObject *_loadParameterMetaData(const QString &metaDataFile) override;
-    QString brandImageIndoor(const Vehicle *vehicle) const override { Q_UNUSED(vehicle); return QStringLiteral("/qmlimages/APM/BrandImage"); }
-    QString brandImageOutdoor(const Vehicle *vehicle) const override { Q_UNUSED(vehicle); return QStringLiteral("/qmlimages/APM/BrandImage"); }
+    MAV_AUTOPILOT _autopilotType() const override { return MAV_AUTOPILOT_ARDUPILOTMEGA; }
+    ParameterMetaData *_createParameterMetaData() override;
     QString getHobbsMeter(Vehicle *vehicle) const override;
     bool hasGripper(const Vehicle *vehicle) const override;
     const QVariantList &toolIndicators(const Vehicle *vehicle) override;
@@ -77,12 +63,12 @@ public:
     double minimumEquivalentAirspeed(Vehicle *vehicle) const override;
     bool fixedWingAirSpeedLimitsAvailable(Vehicle *vehicle) const override;
     void guidedModeChangeEquivalentAirspeedMetersSecond(Vehicle* vehicle, double airspeed_equiv) const override;
-    QVariant mainStatusIndicatorContentItem(const Vehicle* vehicle) const override;
     void sendGCSMotionReport(Vehicle *vehicle, const FollowMe::GCSMotionReport& motionReport, uint8_t estimatationCapabilities) const override;
+    QVariant expandedToolbarIndicatorSource  (const Vehicle* vehicle, const QString& indicatorName) const override;
 
     // support for changing speed in Copter guide mode:
     bool mulirotorSpeedLimitsAvailable(Vehicle *vehicle) const override;
-    double maximumHorizontalSpeedMultirotor(Vehicle *vehicle) const override;
+    double maximumHorizontalSpeedMultirotorMetersSecond(Vehicle *vehicle) const override;
     void guidedModeChangeGroundSpeedMetersSecond(Vehicle *vehicle, double speed) const override;
 
     static QPair<QMetaObject::Connection,QMetaObject::Connection> startCompensatingBaro(Vehicle *vehicle);
@@ -139,6 +125,15 @@ private:
 
     static uint8_t _reencodeMavlinkChannel();
     static QMutex &_reencodeMavlinkChannelMutex();
+
+    struct FirmwareParameterHeader {
+        MAV_AUTOPILOT firmwareType = MAV_AUTOPILOT_GENERIC;
+        MAV_TYPE vehicleType = MAV_TYPE_GENERIC;
+        QVersionNumber versionNumber;
+        FIRMWARE_VERSION_TYPE versionType;
+        QString gitRevision;
+    };
+    static FirmwareParameterHeader _parseParamsHeader(const QString &filePath);
 };
 
 /*===========================================================================*/

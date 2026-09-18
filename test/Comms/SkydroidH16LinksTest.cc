@@ -90,3 +90,5 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     video->primaryCameraName()->setRawValue(savedPrimaryName);
     video->multiViewEnabled()->setRawValue(savedMultiView);
 }
+
+UT_REGISTER_TEST(SkydroidH16LinksTest, TestLabel::Unit)

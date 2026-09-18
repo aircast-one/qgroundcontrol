@@ -1,16 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
-/// @file
-///     @author Don Gagne <don@thegagnes.com>
-
 #include "SafetyComponent.h"
 
 SafetyComponent::SafetyComponent(Vehicle* vehicle, AutoPilotPlugin* autopilot, QObject* parent) :
@@ -26,7 +13,7 @@ QString SafetyComponent::name(void) const
 
 QString SafetyComponent::description(void) const
 {
-    return QString();
+    return tr("Configure failsafe actions, geofence, return to launch, and land mode settings.");
 }
 
 QString SafetyComponent::iconResource(void) const
@@ -52,10 +39,16 @@ QStringList SafetyComponent::setupCompleteChangedTriggerList(void) const
 
 QUrl SafetyComponent::setupSource(void) const
 {
+    // Generated from Safety.VehicleConfig.json
     return QUrl::fromUserInput("qrc:/qml/QGroundControl/AutoPilotPlugins/PX4/SafetyComponent.qml");
 }
 
 QUrl SafetyComponent::summaryQmlSource(void) const
 {
     return QUrl::fromUserInput("qrc:/qml/QGroundControl/AutoPilotPlugins/PX4/SafetyComponentSummary.qml");
+}
+
+QString SafetyComponent::vehicleConfigJson(void) const
+{
+    return QStringLiteral(":/qml/QGroundControl/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json");
 }

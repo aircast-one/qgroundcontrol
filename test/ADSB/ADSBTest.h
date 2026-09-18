@@ -9,5 +9,10 @@ class ADSBTest : public UnitTest
 private slots:
     void _adsbVehicleTest();
     void _adsbTcpLinkTest();
+    void _adsbTcpLinkRejectsNullHostTest();
+    void _adsbTcpLinkIgnoresInvalidMessagesTest();
+    void _adsbTcpLinkCallsignMessageTest();
     void _adsbVehicleManagerTest();
+    void _adsbVehicleManagerExpirationTest();
+    void _adsbVehicleManagerStartStopTest();
 };

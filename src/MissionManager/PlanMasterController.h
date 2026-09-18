@@ -1,37 +1,36 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QObject>
-#include <QtCore/QLoggingCategory>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 #include "MissionController.h"
 #include "GeoFenceController.h"
 #include "RallyPointController.h"
-
-Q_DECLARE_LOGGING_CATEGORY(PlanMasterControllerLog)
+#include "QGCMAVLinkTypes.h"
 
 class QmlObjectListModel;
 class MultiVehicleManager;
 class Vehicle;
+#ifdef QGC_UNITTEST_BUILD
+class PlanMasterControllerTest;
+#endif
 
-/// Master controller for mission, fence, rally
+/// \brief Master controller for mission, fence, rally
+///
 class PlanMasterController : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
     Q_MOC_INCLUDE("QmlObjectListModel.h")
     Q_MOC_INCLUDE("Vehicle.h")
-    
+
+#ifdef QGC_UNITTEST_BUILD
+    friend class PlanMasterControllerTest;
+#endif
+
 public:
     PlanMasterController(QObject* parent = nullptr);
-#ifdef QT_DEBUG
+#ifdef QGC_UNITTEST_BUILD
     // Used by test code to create master controller with specific firmware/vehicle type
     PlanMasterController(MAV_AUTOPILOT firmwareType, MAV_TYPE vehicleType, QObject* parent = nullptr);
 #endif
@@ -39,21 +38,25 @@ public:
     ~PlanMasterController();
 
     Q_PROPERTY(bool                     flyView                 MEMBER _flyView)
-    Q_PROPERTY(Vehicle*                 controllerVehicle       READ controllerVehicle                      CONSTANT)                       ///< Offline controller vehicle
-    Q_PROPERTY(Vehicle*                 managerVehicle          READ managerVehicle                         NOTIFY managerVehicleChanged)   ///< Either active vehicle or _controllerVehicle if no active vehicle
+    Q_PROPERTY(Vehicle*                 controllerVehicle       READ controllerVehicle                      CONSTANT)                               ///< Offline controller vehicle
+    Q_PROPERTY(Vehicle*                 managerVehicle          READ managerVehicle                         NOTIFY managerVehicleChanged)           ///< Either active vehicle or _controllerVehicle if no active vehicle
     Q_PROPERTY(MissionController*       missionController       READ missionController                      CONSTANT)
     Q_PROPERTY(GeoFenceController*      geoFenceController      READ geoFenceController                     CONSTANT)
     Q_PROPERTY(RallyPointController*    rallyPointController    READ rallyPointController                   CONSTANT)
-    Q_PROPERTY(bool                     offline                 READ offline                                NOTIFY offlineChanged)          ///< true: controller is not connected to an active vehicle
-    Q_PROPERTY(bool                     containsItems           READ containsItems                          NOTIFY containsItemsChanged)    ///< true: Elemement is non-empty
-    Q_PROPERTY(bool                     syncInProgress          READ syncInProgress                         NOTIFY syncInProgressChanged)   ///< true: Information is currently being saved/sent, false: no active save/send in progress
-    Q_PROPERTY(bool                     dirty                   READ dirty                  WRITE setDirty  NOTIFY dirtyChanged)            ///< true: Unsaved/sent changes are present, false: no changes since last save/send
-    Q_PROPERTY(QString                  fileExtension           READ fileExtension                          CONSTANT)                       ///< File extension for missions
+    Q_PROPERTY(bool                     offline                 READ offline                                NOTIFY offlineChanged)                  ///< true: controller is not connected to an active vehicle
+    Q_PROPERTY(bool                     containsItems           READ containsItems                          NOTIFY containsItemsChanged)            ///< true: Elemement is non-empty
+    Q_PROPERTY(bool                     showCreateFromTemplate  READ showCreateFromTemplate                 NOTIFY showCreateFromTemplateChanged)   ///< true: No plan items and not in manual-creation mode; UI should show "create new plan" template selection
+    Q_PROPERTY(bool                     syncInProgress          READ syncInProgress                         NOTIFY syncInProgressChanged)           ///< true: Information is currently being saved/sent, false: no active save/send in progress
+    Q_PROPERTY(bool                     dirtyForSave            READ dirtyForSave                           NOTIFY dirtyForSaveChanged)             ///< true: Unsaved changes to disk are present, false: no changes since last save to disk
+    Q_PROPERTY(bool                     dirtyForUpload          READ dirtyForUpload                         NOTIFY dirtyForUploadChanged)           ///< true: Unsent changes are present, false: no changes since last upload/download sync
+    Q_PROPERTY(QString                  fileExtension           READ fileExtension                          CONSTANT)                               ///< File extension for missions
     Q_PROPERTY(QString                  kmlFileExtension        READ kmlFileExtension                       CONSTANT)
-    Q_PROPERTY(QString                  currentPlanFile         READ currentPlanFile                        NOTIFY currentPlanFileChanged)
-    Q_PROPERTY(QStringList              loadNameFilters         READ loadNameFilters                        CONSTANT)                       ///< File filter list loading plan files
-    Q_PROPERTY(QStringList              saveNameFilters         READ saveNameFilters                        CONSTANT)                       ///< File filter list saving plan files
-    Q_PROPERTY(QmlObjectListModel*      planCreators            MEMBER _planCreators                        NOTIFY planCreatorsChanged)
+    Q_PROPERTY(QString                  currentPlanFile         READ currentPlanFile                        NOTIFY currentPlanFileChanged)          ///< Fully qualified path, empty if not yet saved
+    Q_PROPERTY(QString                  currentPlanFileName     READ currentPlanFileName                    NOTIFY currentPlanFileChanged)          ///< Base name of currentPlanFile, no path or extension
+    Q_PROPERTY(QStringList              loadNameFilters         READ loadNameFilters                        CONSTANT)                               ///< File filter list loading plan files
+    Q_PROPERTY(QStringList              saveNameFilters         READ saveNameFilters                        CONSTANT)                               ///< File filter list saving plan files
+    Q_PROPERTY(QmlObjectListModel*      planCreators            READ planCreators                           NOTIFY planCreatorsChanged)
+    Q_PROPERTY(bool                     userSelectedManualCreation READ userSelectedManualCreation WRITE setUserSelectedManualCreation NOTIFY userSelectedManualCreationChanged) ///< true: User is not using a template to create the plan
 
     /// Should be called immediately upon Component.onCompleted.
     Q_INVOKABLE void start(void);
@@ -78,80 +81,118 @@ public:
     Q_INVOKABLE void loadFromVehicle(void);
     Q_INVOKABLE void sendToVehicle(void);
     Q_INVOKABLE void loadFromFile(const QString& filename);
-    Q_INVOKABLE void saveToCurrent();
-    Q_INVOKABLE void saveToFile(const QString& filename);
+    Q_INVOKABLE bool saveToCurrent();
+    Q_INVOKABLE bool saveToFile(const QString& filename);
     Q_INVOKABLE void saveToKml(const QString& filename);
-    Q_INVOKABLE void removeAll(void);                       ///< Removes all from controller only, synce required to remove from vehicle
-    Q_INVOKABLE void removeAllFromVehicle(void);            ///< Removes all from vehicle and controller
 
-    MissionController*      missionController(void)     { return &_missionController; }
-    GeoFenceController*     geoFenceController(void)    { return &_geoFenceController; }
-    RallyPointController*   rallyPointController(void)  { return &_rallyPointController; }
+    Q_INVOKABLE void removeAll(void); ///< Removes all from controller only, sync required to remove from vehicle
+    Q_INVOKABLE void removeAllFromVehicle(void); ///< Removes all from vehicle and controller
 
-    bool        offline         (void) const { return _offline; }
-    bool        containsItems   (void) const;
-    bool        syncInProgress  (void) const;
-    bool        dirty           (void) const;
-    void        setDirty        (bool dirty);
-    QString     fileExtension   (void) const;
-    QString     kmlFileExtension(void) const;
-    QString     currentPlanFile (void) const { return _currentPlanFile; }
-    QStringList loadNameFilters (void) const;
-    QStringList saveNameFilters (void) const;
-    bool        isEmpty         (void) const;
+    MissionController* missionController(void) { return &_missionController; }
+    GeoFenceController* geoFenceController(void) { return &_geoFenceController; }
+    RallyPointController* rallyPointController(void) { return &_rallyPointController; }
 
-    void        setFlyView(bool flyView) { _flyView = flyView; }
+    bool offline(void) const { return _offline; }
+    bool containsItems(void) const;
+    bool showCreateFromTemplate(void) const { return !containsItems() && !_userSelectedManualCreation; }
+    bool syncInProgress(void) const;
+    bool dirtyForSave(void) const { return _dirtyForSave; }
+    bool dirtyForUpload(void) const { return _dirtyForUpload; }
+    QString fileExtension(void) const;
+    QString kmlFileExtension(void) const;
+    QString currentPlanFile(void) const { return _currentPlanFile; }
+    QString currentPlanFileName(void) const;
+    QStringList loadNameFilters(void) const;
+    QStringList saveNameFilters(void) const;
+    bool isEmpty(void) const;
+    bool userSelectedManualCreation(void) const { return _userSelectedManualCreation; }
+    QmlObjectListModel* planCreators(void) const { return _planCreators; }
 
-    QJsonDocument saveToJson    ();
+    void setFlyView(bool flyView) { _flyView = flyView; }
+    void setUserSelectedManualCreation(bool userSelectedManualCreation);
+
+    QJsonDocument saveToJson();
 
     Vehicle* controllerVehicle(void) { return _controllerVehicle; }
     Vehicle* managerVehicle(void) { return _managerVehicle; }
 
-    static constexpr int   kPlanFileVersion =            1;
-    static constexpr const char* kPlanFileType =               "Plan";
-    static constexpr const char* kJsonMissionObjectKey =       "mission";
-    static constexpr const char* kJsonGeoFenceObjectKey =      "geoFence";
-    static constexpr const char* kJsonRallyPointsObjectKey =   "rallyPoints";
+    static constexpr int kPlanFileVersion = 1;
+    static constexpr const char* kPlanFileType = "Plan";
+    static constexpr const char* kJsonMissionObjectKey = "mission";
+    static constexpr const char* kJsonGeoFenceObjectKey = "geoFence";
+    static constexpr const char* kJsonRallyPointsObjectKey = "rallyPoints";
 
 signals:
-    void containsItemsChanged               (bool containsItems);
-    void syncInProgressChanged              (void);
-    void dirtyChanged                       (bool dirty);
-    void offlineChanged                     (bool offlineEditing);
-    void currentPlanFileChanged             (void);
-    void planCreatorsChanged                (QmlObjectListModel* planCreators);
-    void managerVehicleChanged              (Vehicle* managerVehicle);
-    void promptForPlanUsageOnVehicleChange  (void);
+    void containsItemsChanged();
+    void showCreateFromTemplateChanged();
+    void syncInProgressChanged(void);
+    void dirtyForSaveChanged(bool dirtyForSave);
+    void dirtyForUploadChanged(bool dirtyForUpload);
+    void offlineChanged(bool offlineEditing);
+    void currentPlanFileChanged(void);
+    void planCreatorsChanged(QmlObjectListModel* planCreators);
+    void managerVehicleChanged(Vehicle* managerVehicle);
+    void promptForPlanUsageOnVehicleChange(void);
+    void userSelectedManualCreationChanged();
 
 private slots:
-    void _activeVehicleChanged      (Vehicle* activeVehicle);
-    void _loadMissionComplete       (void);
-    void _loadGeoFenceComplete      (void);
-    void _loadRallyPointsComplete   (void);
-    void _sendMissionComplete       (void);
-    void _sendGeoFenceComplete      (void);
-    void _sendRallyPointsComplete   (void);
-    void _updateOverallDirty        (void);
-    void _updatePlanCreatorsList    (void);
+    void _activeVehicleChanged(Vehicle* activeVehicle);
+    void _loadMissionComplete(void);
+    void _loadGeoFenceComplete(void);
+    void _loadRallyPointsComplete(void);
+    void _sendMissionComplete(void);
+    void _sendGeoFenceComplete(void);
+    void _sendRallyPointsComplete(void);
+    void _updateOverallDirty(void);
+    void _updateShowCreateFromTemplate(void);
+    void _updatePlanCreatorsList(void);
 
 private:
-    void _commonInit                (void);
-    void _showPlanFromManagerVehicle(void);
+    /// Sequences the explicit loadFromVehicle/sendToVehicle chains: Mission -> GeoFence -> RallyPoints.
+    /// Idle means no transfer was requested, so manager loadComplete/sendComplete signals (e.g. a send
+    /// from another controller) must be ignored. InitialPlanLoad marks the automatic download at vehicle
+    /// connect and completes on Vehicle::initialPlanRequestCompleteChanged (unsupported sections never
+    /// emit loadComplete).
+    enum class SyncSequence {
+        Idle,
+        Mission,
+        GeoFence,
+        RallyPoints,
+        InitialPlanLoad,
+    };
 
-    MultiVehicleManager*    _multiVehicleMgr =          nullptr;
-    Vehicle*                _controllerVehicle =        nullptr;    ///< Offline controller vehicle
-    Vehicle*                _managerVehicle =           nullptr;    ///< Either active vehicle or _controllerVehicle if none
-    bool                    _flyView =                  true;
-    bool                    _offline =                  true;
-    MissionController       _missionController;
-    GeoFenceController      _geoFenceController;
-    RallyPointController    _rallyPointController;
-    bool                    _loadGeoFence =             false;
-    bool                    _loadRallyPoints =          false;
-    bool                    _sendGeoFence =             false;
-    bool                    _sendRallyPoints =          false;
-    QString                 _currentPlanFile;
-    bool                    _deleteWhenSendCompleted =  false;
-    bool                    _previousOverallDirty =     false;
-    QmlObjectListModel*     _planCreators =             nullptr;
+    void _commonInit(void);
+    void _showPlanFromManagerVehicle(void);
+    void _initialPlanRequestCompleteChanged(bool initialPlanRequestComplete);
+    void _setDirtyForSave(bool dirtyForSave);
+    void _setDirtyForUpload(bool dirtyForUpload);
+    void _setDirtyStates(bool dirtyForSave, bool dirtyForUpload);
+    void _clearCurrentPlanFile();
+    bool _loadPlanJson(const QByteArray& bytes, QString& errorString);
+
+#ifdef QGC_UNITTEST_BUILD
+    // Used by unit tests to set dirty flags for initial state
+    void _setDirtyForSaveUnitTest(bool dirtyForSave) { _dirtyForSave = dirtyForSave; }
+    void _setDirtyForUploadUnitTest(bool dirtyForUpload) { _dirtyForUpload = dirtyForUpload; }
+#endif
+
+    MultiVehicleManager* _multiVehicleMgr = nullptr;
+    Vehicle* _controllerVehicle = nullptr;    ///< Offline controller vehicle
+    Vehicle* _managerVehicle = nullptr;       ///< Either active vehicle or _controllerVehicle if none
+    bool _flyView = true;
+    bool _offline = true;
+    MissionController _missionController;
+    GeoFenceController _geoFenceController;
+    RallyPointController _rallyPointController;
+    SyncSequence _loadSequence = SyncSequence::Idle;
+    SyncSequence _sendSequence = SyncSequence::Idle;
+    QString _currentPlanFile;
+    bool _deleteWhenSendCompleted = false;
+    bool _dirtyForSave = false;
+    bool _dirtyForUpload = false;
+    bool _showCreateFromTemplate = true;
+    bool _suppressOverallDirtyUpdate = false;
+    QmlObjectListModel* _planCreators = nullptr;
+    QGCMAVLinkTypes::VehicleClass_t _planCreatorsVehicleClass = -1;
+    bool _userSelectedManualCreation = false;
 };

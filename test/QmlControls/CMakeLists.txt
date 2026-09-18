@@ -1,5 +1,18 @@
+# ============================================================================
+# QmlControls Unit Tests
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        ObjectItemModelBaseTest.cc
+        ObjectItemModelBaseTest.h
+        ObjectListModelBaseTest.cc
+        ObjectListModelBaseTest.h
+        QmlObjectListModelTest.cc
+        QmlObjectListModelTest.h
+        QmlObjectTreeModelTest.cc
+        QmlObjectTreeModelTest.h
+        TestDirtyObject.h
         DragToPositionTest.cc
         DragToPositionTest.h
         PipViewTest.cc
@@ -9,11 +22,9 @@ target_sources(${CMAKE_PROJECT_NAME}
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# qt_add_qml_module(QmlControlsTest
-#     URI qmlcontrolstest
-#     VERSION 1.0
-#     QML_FILES
-#         QGCControlDebug.qml
-#         QmlTest.qml
-#     IMPORT_PATH ${QT_QML_OUTPUT_DIRECTORY}
-# )
+add_qgc_test(ObjectItemModelBaseTest LABELS Unit)
+add_qgc_test(ObjectListModelBaseTest LABELS Unit)
+add_qgc_test(QmlObjectListModelTest LABELS Unit)
+add_qgc_test(QmlObjectTreeModelTest LABELS Unit)
+add_qgc_test(DragToPositionTest LABELS Unit)
+add_qgc_test(PipViewTest LABELS Unit)

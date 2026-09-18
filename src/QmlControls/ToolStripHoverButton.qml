@@ -1,29 +1,21 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 
-import QGroundControl.ScreenTools
-import QGroundControl.Palette
+import QGroundControl
+import QGroundControl.Controls
 
 Button {
     id:             control
+    objectName:     toolStripAction ? toolStripAction.objectName : ""
     width:          contentLayoutItem.contentWidth + (contentMargins * 2)
     height:         width
     hoverEnabled:   !ScreenTools.isMobile
-    enabled:        toolStripAction.enabled
-    visible:        toolStripAction.visible
-    imageSource:    toolStripAction.showAlternateIcon ? modelData.alternateIconSource : modelData.iconSource
-    text:           toolStripAction.text
-    checked:        toolStripAction.checked
-    checkable:      toolStripAction.dropPanelComponent || modelData.checkable
+    enabled:        toolStripAction ? toolStripAction.enabled : true
+    visible:        toolStripAction ? toolStripAction.visible : true
+    imageSource:    (toolStripAction && modelData) ? (toolStripAction.showAlternateIcon ? modelData.alternateIconSource : modelData.iconSource) : ""
+    text:           toolStripAction ? toolStripAction.text : ""
+    checked:        toolStripAction ? toolStripAction.checked : false
+    checkable:      toolStripAction ? (toolStripAction.dropPanelComponent || (modelData && modelData.checkable)) : false
 
     property var    toolStripAction:    undefined
     property var    dropPanel:          undefined
@@ -36,12 +28,12 @@ Button {
     property real imageScale:        forceImageScale11 && (text == "") ? 0.8 : 0.6
     property real contentMargins:    innerText.height * 0.1
 
-    property color _currentContentColor:  (checked || pressed) ? qgcPal.buttonHighlightText : qgcPal.buttonText
-    property color _currentContentColorSecondary:  (checked || pressed) ? qgcPal.buttonText : qgcPal.buttonHighlight
+    property color _currentContentColor:  (checked || pressed) ? qgcPal.buttonHighlightText : qgcPal.text
+    property color _currentContentColorSecondary:  (checked || pressed) ? qgcPal.text : qgcPal.buttonHighlight
 
     signal dropped(int index)
 
-    onCheckedChanged: toolStripAction.checked = checked
+    onCheckedChanged: { if (toolStripAction) toolStripAction.checked = checked }
 
     onClicked: {
         if (mainWindow.allowViewSwitch()) {
@@ -68,7 +60,7 @@ Button {
 
         Column {
             anchors.centerIn:   parent
-            spacing:        contentMargins * 2
+            spacing:            0
 
             Image {
                 id:                         innerImageColorful
@@ -82,7 +74,7 @@ Button {
                 sourceSize.width:           width
                 anchors.horizontalCenter:   parent.horizontalCenter
                 source:                     control.imageSource
-                visible:                    source != "" && modelData.fullColorIcon
+                visible:                    source != "" && !!modelData && modelData.fullColorIcon
             }
 
             QGCColoredImage {
@@ -97,11 +89,11 @@ Button {
                 sourceSize.height:          height
                 sourceSize.width:           width
                 anchors.horizontalCenter:   parent.horizontalCenter
-                visible:                    source != "" && !modelData.fullColorIcon
-                
+                visible:                    source != "" && !(modelData && modelData.fullColorIcon)
+
                 QGCColoredImage {
                     id:                         innerImageSecondColor
-                    source:                     modelData.alternateIconSource
+                    source:                     modelData ? modelData.alternateIconSource : ""
                     height:                     contentLayoutItem.height * imageScale
                     width:                      contentLayoutItem.width  * imageScale
                     smooth:                     true
@@ -112,7 +104,7 @@ Button {
                     sourceSize.height:          height
                     sourceSize.width:           width
                     anchors.horizontalCenter:   parent.horizontalCenter
-                    visible:                    source != "" && modelData.biColorIcon
+                    visible:                    source != "" && !!modelData && modelData.biColorIcon
                 }
             }
 
@@ -128,10 +120,9 @@ Button {
     }
 
     background: Rectangle {
-        id:             buttonBkRect
-        color:          (control.checked || control.pressed) ?
-                            qgcPal.buttonHighlight :
-                            ((control.enabled && control.hovered) ? qgcPal.toolStripHoverColor : qgcPal.toolbarBackground)
-        anchors.fill:   parent
+        id:     buttonBkRect
+        color:  (control.checked || control.pressed) ?
+                    qgcPal.buttonHighlight :
+                    ((control.enabled && control.hovered) ? qgcPal.toolStripHoverColor : "transparent")
     }
 }

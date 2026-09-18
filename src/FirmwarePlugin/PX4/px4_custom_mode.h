@@ -1,83 +1,51 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
+#pragma once
 
-/****************************************************************************
- *
- * Copyright (c) 2013-2020 PX4 Development Team. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- * 3. Neither the name PX4 nor the names of its contributors may be
- *    used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
- * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
- * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- *
- ****************************************************************************/
-
-/**
- * @file px4_custom_mode.h
- * PX4 custom flight modes
- *
- */
-
-#ifndef PX4_CUSTOM_MODE_H_
-#define PX4_CUSTOM_MODE_H_
+// Mirror of PX4's src/modules/commander/px4_custom_mode.h (source of truth),
+// except PX4CustomMode at the bottom which is QGC-specific.
+// Values are transmitted over MAVLink: never renumber or insert, only append.
 
 #include <stdint.h>
 
 enum PX4_CUSTOM_MAIN_MODE {
 	PX4_CUSTOM_MAIN_MODE_MANUAL = 1,
-	PX4_CUSTOM_MAIN_MODE_ALTCTL,
-	PX4_CUSTOM_MAIN_MODE_POSCTL,
-	PX4_CUSTOM_MAIN_MODE_AUTO,
-	PX4_CUSTOM_MAIN_MODE_ACRO,
-	PX4_CUSTOM_MAIN_MODE_OFFBOARD,
-	PX4_CUSTOM_MAIN_MODE_STABILIZED,
-	PX4_CUSTOM_MAIN_MODE_RATTITUDE,
-	PX4_CUSTOM_MAIN_MODE_SIMPLE /* unused, but reserved for future use */
+	PX4_CUSTOM_MAIN_MODE_ALTCTL = 2,
+	PX4_CUSTOM_MAIN_MODE_POSCTL = 3,
+	PX4_CUSTOM_MAIN_MODE_AUTO = 4,
+	PX4_CUSTOM_MAIN_MODE_ACRO = 5,
+	PX4_CUSTOM_MAIN_MODE_OFFBOARD = 6,
+	PX4_CUSTOM_MAIN_MODE_STABILIZED = 7,
+	PX4_CUSTOM_MAIN_MODE_RATTITUDE_DEPRECATED = 8,
+	PX4_CUSTOM_MAIN_MODE_SIMPLE = 9, /* unused, but reserved for future use */
+	PX4_CUSTOM_MAIN_MODE_TERMINATION = 10,
+	PX4_CUSTOM_MAIN_MODE_ALTITUDE_CRUISE = 11
 };
 
 enum PX4_CUSTOM_SUB_MODE_AUTO {
 	PX4_CUSTOM_SUB_MODE_AUTO_READY = 1,
-	PX4_CUSTOM_SUB_MODE_AUTO_TAKEOFF,
-	PX4_CUSTOM_SUB_MODE_AUTO_LOITER,
-	PX4_CUSTOM_SUB_MODE_AUTO_MISSION,
-	PX4_CUSTOM_SUB_MODE_AUTO_RTL,
-	PX4_CUSTOM_SUB_MODE_AUTO_LAND,
-	PX4_CUSTOM_SUB_MODE_AUTO_RTGS,
-	PX4_CUSTOM_SUB_MODE_AUTO_FOLLOW_TARGET,
-	PX4_CUSTOM_SUB_MODE_AUTO_PRECLAND
+	PX4_CUSTOM_SUB_MODE_AUTO_TAKEOFF = 2,
+	PX4_CUSTOM_SUB_MODE_AUTO_LOITER = 3,
+	PX4_CUSTOM_SUB_MODE_AUTO_MISSION = 4,
+	PX4_CUSTOM_SUB_MODE_AUTO_RTL = 5,
+	PX4_CUSTOM_SUB_MODE_AUTO_LAND = 6,
+	PX4_CUSTOM_SUB_MODE_AUTO_RESERVED_DO_NOT_USE = 7, // was PX4_CUSTOM_SUB_MODE_AUTO_RTGS, deleted 2020-03-05
+	PX4_CUSTOM_SUB_MODE_AUTO_FOLLOW_TARGET = 8,
+	PX4_CUSTOM_SUB_MODE_AUTO_PRECLAND = 9,
+	PX4_CUSTOM_SUB_MODE_AUTO_VTOL_TAKEOFF = 10,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL1 = 11,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL2 = 12,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL3 = 13,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL4 = 14,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL5 = 15,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL6 = 16,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL7 = 17,
+	PX4_CUSTOM_SUB_MODE_EXTERNAL8 = 18,
+	PX4_CUSTOM_SUB_MODE_GUIDED_COURSE = 19,
 };
 
 enum PX4_CUSTOM_SUB_MODE_POSCTL {
     PX4_CUSTOM_SUB_MODE_POSCTL_POSCTL = 0,
-    PX4_CUSTOM_SUB_MODE_POSCTL_ORBIT
+    PX4_CUSTOM_SUB_MODE_POSCTL_ORBIT = 1,
+    PX4_CUSTOM_SUB_MODE_POSCTL_SLOW = 2
 };
 
 union px4_custom_mode {
@@ -96,15 +64,18 @@ union px4_custom_mode {
 
 struct PX4CustomMode{
     enum Mode : uint32_t{
-        MANUAL              = PX4_CUSTOM_MAIN_MODE_MANUAL       <<16,
-        STABILIZED          = PX4_CUSTOM_MAIN_MODE_STABILIZED   <<16,
-        ACRO                = PX4_CUSTOM_MAIN_MODE_ACRO         <<16,
-        RATTITUDE           = PX4_CUSTOM_MAIN_MODE_RATTITUDE    <<16,
-        ALTCTL              = PX4_CUSTOM_MAIN_MODE_ALTCTL       <<16,
-        OFFBOARD            = PX4_CUSTOM_MAIN_MODE_OFFBOARD     <<16,
-        SIMPLE              = PX4_CUSTOM_MAIN_MODE_SIMPLE       <<16,
+        MANUAL              = PX4_CUSTOM_MAIN_MODE_MANUAL          <<16,
+        STABILIZED          = PX4_CUSTOM_MAIN_MODE_STABILIZED      <<16,
+        ACRO                = PX4_CUSTOM_MAIN_MODE_ACRO            <<16,
+        RATTITUDE           = PX4_CUSTOM_MAIN_MODE_RATTITUDE_DEPRECATED <<16,
+        ALTCTL              = PX4_CUSTOM_MAIN_MODE_ALTCTL          <<16,
+        OFFBOARD            = PX4_CUSTOM_MAIN_MODE_OFFBOARD        <<16,
+        SIMPLE              = PX4_CUSTOM_MAIN_MODE_SIMPLE          <<16,
+        TERMINATION         = PX4_CUSTOM_MAIN_MODE_TERMINATION     <<16,
+        ALTITUDE_CRUISE     = PX4_CUSTOM_MAIN_MODE_ALTITUDE_CRUISE <<16,
         POSCTL_POSCTL       = PX4_CUSTOM_MAIN_MODE_POSCTL       <<16 | (PX4_CUSTOM_SUB_MODE_POSCTL_POSCTL      << 24 ),
         POSCTL_ORBIT        = PX4_CUSTOM_MAIN_MODE_POSCTL       <<16 | (PX4_CUSTOM_SUB_MODE_POSCTL_ORBIT       << 24 ),
+        POSCTL_SLOW         = PX4_CUSTOM_MAIN_MODE_POSCTL       <<16 | (PX4_CUSTOM_SUB_MODE_POSCTL_SLOW        << 24 ),
         AUTO_LOITER         = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_LOITER        << 24 ),
         AUTO_MISSION        = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_MISSION       << 24 ),
         AUTO_RTL            = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_RTL           << 24 ),
@@ -112,9 +83,8 @@ struct PX4CustomMode{
         AUTO_LAND           = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_LAND          << 24 ),
         AUTO_PRECLAND       = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_PRECLAND      << 24 ),
         AUTO_READY          = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_READY         << 24 ),
-        AUTO_RTGS           = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_RTGS          << 24 ),
         AUTO_TAKEOFF        = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_TAKEOFF       << 24 ),
+        AUTO_VTOL_TAKEOFF   = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_AUTO_VTOL_TAKEOFF  << 24 ),
+        AUTO_GUIDED_COURSE  = PX4_CUSTOM_MAIN_MODE_AUTO         <<16 | (PX4_CUSTOM_SUB_MODE_GUIDED_COURSE      << 24 ),
     };
 };
-
-#endif /* PX4_CUSTOM_MODE_H_ */

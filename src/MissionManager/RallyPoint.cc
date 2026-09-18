@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "RallyPoint.h"
 
 QMap<QString, FactMetaData*> RallyPoint::_metaDataMap;
@@ -49,7 +40,7 @@ const RallyPoint& RallyPoint::operator=(const RallyPoint& other)
 }
 
 RallyPoint::~RallyPoint()
-{    
+{
 
 }
 
@@ -57,16 +48,16 @@ void RallyPoint::_factSetup(void)
 {
     _cacheFactMetadata();
 
-    _longitudeFact.setMetaData(_metaDataMap[_longitudeFactName]);
     _latitudeFact.setMetaData(_metaDataMap[_latitudeFactName]);
+    _longitudeFact.setMetaData(_metaDataMap[_longitudeFactName]);
     _altitudeFact.setMetaData(_metaDataMap[_altitudeFactName]);
 
-    _textFieldFacts.append(QVariant::fromValue(&_longitudeFact));
     _textFieldFacts.append(QVariant::fromValue(&_latitudeFact));
+    _textFieldFacts.append(QVariant::fromValue(&_longitudeFact));
     _textFieldFacts.append(QVariant::fromValue(&_altitudeFact));
 
-    connect(&_longitudeFact, &Fact::valueChanged, this, &RallyPoint::_sendCoordinateChanged);
     connect(&_latitudeFact, &Fact::valueChanged, this, &RallyPoint::_sendCoordinateChanged);
+    connect(&_longitudeFact, &Fact::valueChanged, this, &RallyPoint::_sendCoordinateChanged);
     connect(&_altitudeFact, &Fact::valueChanged, this, &RallyPoint::_sendCoordinateChanged);
 }
 

@@ -1,13 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #pragma once
 
 #include "VisualMissionItem.h"
@@ -17,7 +7,8 @@
 class SpeedSection;
 class CameraSection;
 
-/// A SimpleMissionItem is used to represent a single MissionItem to the ui.
+/// \brief A SimpleMissionItem is used to represent a single MissionItem to the ui.
+///
 class SimpleMissionItem : public VisualMissionItem
 {
     Q_OBJECT
@@ -34,9 +25,9 @@ public:
     Q_PROPERTY(bool             friendlyEditAllowed     READ friendlyEditAllowed                                NOTIFY friendlyEditAllowedChanged)
     Q_PROPERTY(bool             rawEdit                 READ rawEdit                WRITE setRawEdit            NOTIFY rawEditChanged)              ///< true: raw item editing with all params
     Q_PROPERTY(bool             specifiesAltitude       READ specifiesAltitude                                  NOTIFY commandChanged)
-    Q_PROPERTY(Fact*            altitude                READ altitude                                           CONSTANT)                           ///< Altitude as specified by altitudeMode. Not necessarily true mission item altitude
-    Q_PROPERTY(QGroundControlQmlGlobal::AltMode altitudeMode READ altitudeMode WRITE setAltitudeMode       NOTIFY altitudeModeChanged)
-    Q_PROPERTY(Fact*            amslAltAboveTerrain     READ amslAltAboveTerrain                                CONSTANT)                           ///< Actual AMSL altitude for item if altitudeMode == AltitudeAboveTerrain
+    Q_PROPERTY(Fact*            altitude                READ altitude                                           CONSTANT)                           ///< Altitude as specified by altitudeFrame. Not necessarily true mission item altitude
+    Q_PROPERTY(QGroundControlQmlGlobal::AltitudeFrame altitudeFrame READ altitudeFrame WRITE setAltitudeFrame       NOTIFY altitudeFrameChanged)
+    Q_PROPERTY(Fact*            amslAltAboveTerrain     READ amslAltAboveTerrain                                CONSTANT)                           ///< Actual AMSL altitude for item if altitudeFrame is AltitudeFrameCalcAboveTerrain or AltitudeFrameTerrain
     Q_PROPERTY(int              command                 READ command                WRITE setCommand            NOTIFY commandChanged)
     Q_PROPERTY(bool             isLoiterItem            READ isLoiterItem                                       NOTIFY isLoiterItemChanged)
     Q_PROPERTY(bool             showLoiterRadius        READ showLoiterRadius                                   NOTIFY showLoiterRadiusChanged)
@@ -47,9 +38,12 @@ public:
     Q_PROPERTY(QObject*         cameraSection           READ cameraSection                                      NOTIFY cameraSectionChanged)
 
     // These properties are used to display the editing ui
-    Q_PROPERTY(QmlObjectListModel*  comboboxFacts   READ comboboxFacts  CONSTANT)
-    Q_PROPERTY(QmlObjectListModel*  textFieldFacts  READ textFieldFacts CONSTANT)
-    Q_PROPERTY(QmlObjectListModel*  nanFacts        READ nanFacts       CONSTANT)
+    Q_PROPERTY(QmlObjectListModel*  comboboxFacts           READ comboboxFacts           CONSTANT)
+    Q_PROPERTY(QmlObjectListModel*  comboboxFactsAdvanced   READ comboboxFactsAdvanced   CONSTANT)
+    Q_PROPERTY(QmlObjectListModel*  textFieldFacts          READ textFieldFacts          CONSTANT)
+    Q_PROPERTY(QmlObjectListModel*  textFieldFactsAdvanced  READ textFieldFactsAdvanced  CONSTANT)
+    Q_PROPERTY(QmlObjectListModel*  nanFacts                READ nanFacts                CONSTANT)
+    Q_PROPERTY(QmlObjectListModel*  nanFactsAdvanced        READ nanFactsAdvanced        CONSTANT)
 
     /// This should be called before changing the command. It is needed if the command changes
     /// from an item which does not include a coordinate to an item which requires a coordinate.
@@ -64,14 +58,14 @@ public:
     bool scanForSections(QmlObjectListModel* visualItems, int scanIndex, PlanMasterController* masterController);
 
     // Property accesors
-    
+
     QString         category            (void) const;
     int             command             (void) const { return _missionItem._commandFact.cookedValue().toInt(); }
     MAV_CMD         mavCommand          (void) const { return static_cast<MAV_CMD>(command()); }
     bool            friendlyEditAllowed (void) const;
     bool            rawEdit             (void) const;
     bool            specifiesAltitude   (void) const;
-    QGroundControlQmlGlobal::AltMode altitudeMode(void) const { return _altitudeMode; }
+    QGroundControlQmlGlobal::AltitudeFrame altitudeFrame(void) const { return _altitudeFrame; }
     Fact*           altitude            (void) { return &_altitudeFact; }
     Fact*           amslAltAboveTerrain (void) { return &_amslAltAboveTerrainFact; }
     bool            isLoiterItem        (void) const;
@@ -82,12 +76,15 @@ public:
     SpeedSection*   speedSection        (void) { return _speedSection; }
 
     QmlObjectListModel* textFieldFacts  (void) { return &_textFieldFacts; }
+    QmlObjectListModel* textFieldFactsAdvanced (void) { return &_textFieldFactsAdvanced; }
     QmlObjectListModel* nanFacts        (void) { return &_nanFacts; }
+    QmlObjectListModel* nanFactsAdvanced (void) { return &_nanFactsAdvanced; }
     QmlObjectListModel* comboboxFacts   (void) { return &_comboboxFacts; }
+    QmlObjectListModel* comboboxFactsAdvanced (void) { return &_comboboxFactsAdvanced; }
 
     void setRawEdit(bool rawEdit);
-    void setAltitudeMode(QGroundControlQmlGlobal::AltMode altitudeMode);
-    
+    void setAltitudeFrame(QGroundControlQmlGlobal::AltitudeFrame altitudeFrame);
+
     void setCommandByIndex(int index);
 
     void setCommand(int command);
@@ -115,7 +112,9 @@ public:
     QString         commandName                 (void) const final;
     QString         abbreviation                (void) const final;
     QGeoCoordinate  coordinate                  (void) const final;
+    QGeoCoordinate  entryCoordinate             (void) const final { return coordinate(); }
     QGeoCoordinate  exitCoordinate              (void) const final { return coordinate(); }
+    double          editableAlt                 (void) const final;
     double          amslEntryAlt                (void) const final;
     double          amslExitAlt                 (void) const final { return amslEntryAlt(); }
     int             sequenceNumber              (void) const final { return _missionItem.sequenceNumber(); }
@@ -126,7 +125,7 @@ public:
     QString         mapVisualQML                (void) const override { return QStringLiteral("SimpleItemMapVisual.qml"); }
     void            appendMissionItems          (QList<MissionItem*>& items, QObject* missionItemParent) final;
     void            applyNewAltitude            (double newAltitude) final;
-    void            setMissionFlightStatus      (MissionController::MissionFlightStatus_t& missionFlightStatus) final;
+    void            setMissionFlightStatus      (MissionFlightStatus_t& missionFlightStatus) final;
     ReadyForSaveState readyForSaveState         (void) const final;
     double          additionalTimeDelay         (void) const final;
     bool            exitCoordinateSameAsEntry   (void) const final { return true; }
@@ -144,7 +143,7 @@ signals:
     void rawEditChanged             (bool rawEdit);
     void cameraSectionChanged       (QObject* cameraSection);
     void speedSectionChanged        (QObject* cameraSection);
-    void altitudeModeChanged        (void);
+    void altitudeFrameChanged        (void);
     void isLoiterItemChanged        (void);
     void showLoiterRadiusChanged    (void);
     void loiterRadiusChanged        (double loiterRadius);
@@ -156,7 +155,7 @@ private slots:
     void _sendCoordinateChanged                 (void);
     void _sendFriendlyEditAllowedChanged        (void);
     void _altitudeChanged                       (void);
-    void _altitudeModeChanged                   (void);
+    void _altitudeFrameChanged                   (void);
     void _terrainAltChanged                     (void);
     void _updateLastSequenceNumber              (void);
     void _rebuildFacts                          (void);
@@ -186,14 +185,17 @@ private:
 
     Fact                _supportedCommandFact;
 
-    QGroundControlQmlGlobal::AltMode    _altitudeMode = QGroundControlQmlGlobal::AltitudeModeRelative;
+    QGroundControlQmlGlobal::AltitudeFrame    _altitudeFrame = QGroundControlQmlGlobal::AltitudeFrameRelative;
     Fact                                _altitudeFact;
     Fact                                _amslAltAboveTerrainFact;
 
     QmlObjectListModel  _textFieldFacts;
+    QmlObjectListModel  _textFieldFactsAdvanced;
     QmlObjectListModel  _nanFacts;
+    QmlObjectListModel  _nanFactsAdvanced;
     QmlObjectListModel  _comboboxFacts;
-    
+    QmlObjectListModel  _comboboxFactsAdvanced;
+
     static FactMetaData*    _altitudeMetaData;
     static FactMetaData*    _commandMetaData;
     static FactMetaData*    _defaultParamMetaData;

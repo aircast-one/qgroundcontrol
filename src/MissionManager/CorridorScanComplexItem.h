@@ -1,21 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
-
-#include <QtCore/QLoggingCategory>
 
 #include "TransectStyleComplexItem.h"
 #include "SettingsFact.h"
 #include "QGCMapPolyline.h"
-
-Q_DECLARE_LOGGING_CATEGORY(CorridorScanComplexItemLog)
 
 class CorridorScanComplexItem : public TransectStyleComplexItem
 {
@@ -29,13 +16,23 @@ public:
     Q_PROPERTY(QGCMapPolyline*  corridorPolyline    READ corridorPolyline   CONSTANT)
     Q_PROPERTY(Fact*            corridorWidth       READ corridorWidth      CONSTANT)
 
+    // Note1: These values are persisted to plan files so they cannot be changed with breaking plan file back compat
+    // Note2: rotateEntryPoint expects these values in this order
+    enum EntryPointLocation {
+        EntryPointDefaultOrder = 0,                 // Standard transect generation order
+        EntryPointStartSameEndOppositeSide = 1,     // Start at same end, opposite side of center
+        EntryPointStartOppositeEndSameSide = 2,     // Start at opposite end, same side
+        EntryPointStartOppositeEndOppositeSide = 3, // Start at opposite end, opposite side
+    };
+    Q_ENUM(EntryPointLocation)
+
     Fact*           corridorWidth   (void) { return &_corridorWidthFact; }
     QGCMapPolyline* corridorPolyline(void) { return &_corridorPolyline; }
 
     Q_INVOKABLE void rotateEntryPoint(void);
 
     // Overrides from TransectStyleComplexItem
-    QString patternName         (void) const final { return name; }
+    QString patternName         (void) const final { return tr(canonicalName); }
     void    save                (QJsonArray&  planItems) final;
     bool    specifiesCoordinate (void) const final;
     double  timeBetweenShots    (void) final;
@@ -51,10 +48,11 @@ public:
     QString             commandDescription  (void) const final { return tr("Corridor Scan"); }
     QString             commandName         (void) const final { return tr("Corridor Scan"); }
     QString             abbreviation        (void) const final { return tr("C"); }
+    void                setCoordinate       (const QGeoCoordinate& coordinate) final;
     ReadyForSaveState   readyForSaveState   (void) const final;
     double              additionalTimeDelay (void) const final { return 0; }
 
-    static const QString name;
+    static constexpr const char* canonicalName = QT_TR_NOOP("Corridor Scan");
 
     static constexpr const char* settingsGroup =            "CorridorScan";
     static constexpr const char* corridorWidthName =        "CorridorWidth";
@@ -65,6 +63,7 @@ private slots:
     void _polylineDirtyChanged          (bool dirty);
     void _rebuildCorridorPolygon        (void);
     void _updateWizardMode              (void);
+    void _updateSpecifiesCoordinate     (void);
 
     // Overrides from TransectStyleComplexItem
     void _rebuildTransectsPhase1    (void) final;
@@ -79,10 +78,11 @@ private:
     QGCMapPolyline                  _corridorPolyline;
     QList<QList<QGeoCoordinate>>    _transectSegments;      ///< Internal transect segments including grid exit, turnaround and internal camera points
 
-    int                             _entryPoint;
+    EntryPointLocation              _entryPointLocation;
 
     QMap<QString, FactMetaData*>    _metaDataMap;
     SettingsFact                    _corridorWidthFact;
+    bool                            _specifiesCoordinate = false;
 
     static constexpr const char* _jsonEntryPointKey =       "EntryPoint";
 };

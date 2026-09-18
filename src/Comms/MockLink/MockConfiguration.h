@@ -1,33 +1,69 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "LinkConfiguration.h"
 
-#include <QtCore/QLoggingCategory>
-#include "MAVLinkLib.h"
-
-Q_DECLARE_LOGGING_CATEGORY(MockConfigurationLog)
+#include "MAVLinkEnums.h"
 
 class MockConfiguration : public LinkConfiguration
 {
     Q_OBJECT
-    Q_PROPERTY(int      firmware            READ firmware           WRITE setFirmware           NOTIFY firmwareChanged)
-    Q_PROPERTY(int      vehicle             READ vehicle            WRITE setVehicle            NOTIFY vehicleChanged)
-    Q_PROPERTY(bool     sendStatus          READ sendStatusText     WRITE setSendStatusText     NOTIFY sendStatusChanged)
-    Q_PROPERTY(bool     incrementVehicleId  READ incrementVehicleId WRITE setIncrementVehicleId NOTIFY incrementVehicleIdChanged)
+    Q_PROPERTY(int  firmware                             READ firmware                            WRITE setFirmware                            NOTIFY firmwareChanged)
+    Q_PROPERTY(int  vehicle                              READ vehicle                             WRITE setVehicle                             NOTIFY vehicleChanged)
+    Q_PROPERTY(bool sendStatus                           READ sendStatusText                      WRITE setSendStatusText                      NOTIFY sendStatusChanged)
+    Q_PROPERTY(bool apmStartFreshParams                  READ apmStartFreshParams                 WRITE setApmStartFreshParams                 NOTIFY apmStartFreshParamsChanged)
+    Q_PROPERTY(bool enableCamera                         READ enableCamera                        WRITE setEnableCamera                        NOTIFY enableCameraChanged)
+    Q_PROPERTY(bool enableGimbal                        READ enableGimbal                        WRITE setEnableGimbal                        NOTIFY enableGimbalChanged)
+    Q_PROPERTY(bool enableProximity                      READ enableProximity                     WRITE setEnableProximity                     NOTIFY enableProximityChanged)
+    Q_PROPERTY(bool gimbalHasRollAxis                   READ gimbalHasRollAxis                   WRITE setGimbalHasRollAxis                   NOTIFY gimbalHasRollAxisChanged)
+    Q_PROPERTY(bool gimbalHasPitchAxis                  READ gimbalHasPitchAxis                  WRITE setGimbalHasPitchAxis                  NOTIFY gimbalHasPitchAxisChanged)
+    Q_PROPERTY(bool gimbalHasYawAxis                    READ gimbalHasYawAxis                    WRITE setGimbalHasYawAxis                    NOTIFY gimbalHasYawAxisChanged)
+    Q_PROPERTY(bool gimbalHasYawFollow                  READ gimbalHasYawFollow                  WRITE setGimbalHasYawFollow                  NOTIFY gimbalHasYawFollowChanged)
+    Q_PROPERTY(bool gimbalHasYawLock                    READ gimbalHasYawLock                    WRITE setGimbalHasYawLock                    NOTIFY gimbalHasYawLockChanged)
+    Q_PROPERTY(bool gimbalHasRetract                    READ gimbalHasRetract                    WRITE setGimbalHasRetract                    NOTIFY gimbalHasRetractChanged)
+    Q_PROPERTY(bool gimbalHasNeutral                    READ gimbalHasNeutral                    WRITE setGimbalHasNeutral                    NOTIFY gimbalHasNeutralChanged)
+    Q_PROPERTY(bool incrementVehicleId                   READ incrementVehicleId                  WRITE setIncrementVehicleId                  NOTIFY incrementVehicleIdChanged)
+    Q_PROPERTY(bool cameraCaptureVideo                   READ cameraCaptureVideo                  WRITE setCameraCaptureVideo                  NOTIFY cameraCaptureVideoChanged)
+    Q_PROPERTY(bool cameraCaptureImage                   READ cameraCaptureImage                  WRITE setCameraCaptureImage                  NOTIFY cameraCaptureImageChanged)
+    Q_PROPERTY(bool cameraHasModes                       READ cameraHasModes                      WRITE setCameraHasModes                      NOTIFY cameraHasModesChanged)
+    Q_PROPERTY(bool cameraHasVideoStream                 READ cameraHasVideoStream                WRITE setCameraHasVideoStream                NOTIFY cameraHasVideoStreamChanged)
+    Q_PROPERTY(bool cameraCanCaptureImageInVideoMode     READ cameraCanCaptureImageInVideoMode    WRITE setCameraCanCaptureImageInVideoMode    NOTIFY cameraCanCaptureImageInVideoModeChanged)
+    Q_PROPERTY(bool cameraCanCaptureVideoInImageMode     READ cameraCanCaptureVideoInImageMode    WRITE setCameraCanCaptureVideoInImageMode    NOTIFY cameraCanCaptureVideoInImageModeChanged)
+    Q_PROPERTY(bool cameraHasBasicZoom                   READ cameraHasBasicZoom                  WRITE setCameraHasBasicZoom                  NOTIFY cameraHasBasicZoomChanged)
+    Q_PROPERTY(bool cameraHasTrackingPoint               READ cameraHasTrackingPoint              WRITE setCameraHasTrackingPoint              NOTIFY cameraHasTrackingPointChanged)
+    Q_PROPERTY(bool cameraHasTrackingRectangle           READ cameraHasTrackingRectangle          WRITE setCameraHasTrackingRectangle          NOTIFY cameraHasTrackingRectangleChanged)
+    Q_PROPERTY(int  videoStreamType                      READ videoStreamType                     WRITE setVideoStreamType                     NOTIFY videoStreamTypeChanged)
 
 public:
     explicit MockConfiguration(const QString &name, QObject *parent = nullptr);
     explicit MockConfiguration(const MockConfiguration *copy, QObject *parent = nullptr);
     ~MockConfiguration();
+
+    /// Options for the MockLink::start*MockLink helpers
+    enum Option {
+        OptionNone                = 0,
+        OptionSendStatusText      = 1 << 0,
+        OptionEnableCamera        = 1 << 1,
+        OptionEnableGimbal        = 1 << 2,
+        OptionEnableProximity     = 1 << 3,
+        OptionPreloadMission      = 1 << 4,
+        OptionStayMavlinkV1       = 1 << 5,
+        OptionAPMStartFreshParams = 1 << 6,
+        OptionFtpCapability       = 1 << 7,
+    };
+    Q_DECLARE_FLAGS(Options, Option)
+    Q_FLAG(Options)
+
+    /// Kind of live video stream MockLink serves (and advertises via VIDEO_STREAM_INFORMATION).
+    /// Order must match the combo box model in MockLinkSettings.qml / MockLink.qml.
+    enum VideoStreamType {
+        VideoStreamNone = 0,    ///< No stream served
+        VideoStreamRtpUdpH264,  ///< RTP/UDP H.264    -> udp://
+        VideoStreamRtpUdpH265,  ///< RTP/UDP H.265    -> udp265://
+        VideoStreamRtspH264,    ///< RTSP H.264       -> rtsp://
+        VideoStreamMpegTsUdp,   ///< MPEG-TS over UDP -> mpegts://
+        VideoStreamMpegTsTcp,   ///< MPEG-TS over TCP -> tcp://
+    };
+    Q_ENUM(VideoStreamType)
 
     LinkType type() const final { return LinkConfiguration::TypeMock; }
     void copyFrom(const LinkConfiguration *source) final;
@@ -51,38 +87,181 @@ public:
     void setVehicleType(MAV_TYPE vehicleType) { _vehicleType = vehicleType; emit vehicleChanged(); }
     bool sendStatusText() const { return _sendStatusText; }
     void setSendStatusText(bool sendStatusText) { _sendStatusText = sendStatusText; emit sendStatusChanged(); }
+    bool apmStartFreshParams() const { return _apmStartFreshParams; }
+    void setApmStartFreshParams(bool apmStartFreshParams) { _apmStartFreshParams = apmStartFreshParams; emit apmStartFreshParamsChanged(); }
+    bool enableCamera() const { return _enableCamera; }
+    void setEnableCamera(bool enableCamera) { _enableCamera = enableCamera; emit enableCameraChanged(); }
+    bool enableGimbal() const { return _enableGimbal; }
+    void setEnableGimbal(bool enableGimbal) { _enableGimbal = enableGimbal; emit enableGimbalChanged(); }
+    bool enableProximity() const { return _enableProximity; }
+    void setEnableProximity(bool enableProximity) { _enableProximity = enableProximity; emit enableProximityChanged(); }
+
+    bool gimbalHasRollAxis() const { return _gimbalHasRollAxis; }
+    void setGimbalHasRollAxis(bool value) { _gimbalHasRollAxis = value; emit gimbalHasRollAxisChanged(); }
+    bool gimbalHasPitchAxis() const { return _gimbalHasPitchAxis; }
+    void setGimbalHasPitchAxis(bool value) { _gimbalHasPitchAxis = value; emit gimbalHasPitchAxisChanged(); }
+    bool gimbalHasYawAxis() const { return _gimbalHasYawAxis; }
+    void setGimbalHasYawAxis(bool value) { _gimbalHasYawAxis = value; emit gimbalHasYawAxisChanged(); }
+    bool gimbalHasYawFollow() const { return _gimbalHasYawFollow; }
+    void setGimbalHasYawFollow(bool value) { _gimbalHasYawFollow = value; emit gimbalHasYawFollowChanged(); }
+    bool gimbalHasYawLock() const { return _gimbalHasYawLock; }
+    void setGimbalHasYawLock(bool value) { _gimbalHasYawLock = value; emit gimbalHasYawLockChanged(); }
+    bool gimbalHasRetract() const { return _gimbalHasRetract; }
+    void setGimbalHasRetract(bool value) { _gimbalHasRetract = value; emit gimbalHasRetractChanged(); }
+    bool gimbalHasNeutral() const { return _gimbalHasNeutral; }
+    void setGimbalHasNeutral(bool value) { _gimbalHasNeutral = value; emit gimbalHasNeutralChanged(); }
+
+    bool cameraCaptureVideo() const { return _cameraCaptureVideo; }
+    void setCameraCaptureVideo(bool value) { _cameraCaptureVideo = value; emit cameraCaptureVideoChanged(); }
+    bool cameraCaptureImage() const { return _cameraCaptureImage; }
+    void setCameraCaptureImage(bool value) { _cameraCaptureImage = value; emit cameraCaptureImageChanged(); }
+    bool cameraHasModes() const { return _cameraHasModes; }
+    void setCameraHasModes(bool value) { _cameraHasModes = value; emit cameraHasModesChanged(); }
+    bool cameraHasVideoStream() const { return _cameraHasVideoStream; }
+    void setCameraHasVideoStream(bool value) { _cameraHasVideoStream = value; emit cameraHasVideoStreamChanged(); }
+    bool cameraCanCaptureImageInVideoMode() const { return _cameraCanCaptureImageInVideoMode; }
+    void setCameraCanCaptureImageInVideoMode(bool value) { _cameraCanCaptureImageInVideoMode = value; emit cameraCanCaptureImageInVideoModeChanged(); }
+    bool cameraCanCaptureVideoInImageMode() const { return _cameraCanCaptureVideoInImageMode; }
+    void setCameraCanCaptureVideoInImageMode(bool value) { _cameraCanCaptureVideoInImageMode = value; emit cameraCanCaptureVideoInImageModeChanged(); }
+    bool cameraHasBasicZoom() const { return _cameraHasBasicZoom; }
+    void setCameraHasBasicZoom(bool value) { _cameraHasBasicZoom = value; emit cameraHasBasicZoomChanged(); }
+    bool cameraHasTrackingPoint() const { return _cameraHasTrackingPoint; }
+    void setCameraHasTrackingPoint(bool value) { _cameraHasTrackingPoint = value; emit cameraHasTrackingPointChanged(); }
+    bool cameraHasTrackingRectangle() const { return _cameraHasTrackingRectangle; }
+    void setCameraHasTrackingRectangle(bool value) { _cameraHasTrackingRectangle = value; emit cameraHasTrackingRectangleChanged(); }
+
+    int videoStreamType() const { return static_cast<int>(_videoStreamType); }
+    void setVideoStreamType(int value) { _videoStreamType = videoStreamTypeFromInt(value); emit videoStreamTypeChanged(); }
+    VideoStreamType videoStreamTypeEnum() const { return _videoStreamType; }
+
+    /// Maps an int (QML combo index / persisted setting) to a valid VideoStreamType.
+    /// Out-of-range values (e.g. corrupted settings) map to VideoStreamNone.
+    static VideoStreamType videoStreamTypeFromInt(int value)
+    {
+        return ((value >= VideoStreamNone) && (value <= VideoStreamMpegTsTcp)) ? static_cast<VideoStreamType>(value) : VideoStreamNone;
+    }
 
     enum FailureMode_t {
-        FailNone,                                                   // No failures
-        FailParamNoReponseToRequestList,                            // Do no respond to PARAM_REQUEST_LIST
-        FailMissingParamOnInitialReqest,                            // Not all params are sent on initial request, should still succeed since QGC will re-query missing params
-        FailMissingParamOnAllRequests,                              // Not all params are sent on initial request, QGC retries will fail as well
-        FailInitialConnectRequestMessageAutopilotVersionFailure,    // REQUEST_MESSAGE:AUTOPILOT_VERSION returns failure
-        FailInitialConnectRequestMessageAutopilotVersionLost,       // REQUEST_MESSAGE:AUTOPILOT_VERSION success, AUTOPILOT_VERSION never sent
-        FailInitialConnectRequestMessageProtocolVersionFailure,     // REQUEST_MESSAGE:PROTOCOL_VERSION returns failure
-        FailInitialConnectRequestMessageProtocolVersionLost,        // REQUEST_MESSAGE:PROTOCOL_VERSION success, PROTOCOL_VERSION never sent
+        FailNone,                                                   ///< No failures
+        FailParamNoResponseToRequestList,                           ///< Do not respond to PARAM_REQUEST_LIST
+        FailMissingParamOnInitialRequest,                           ///< Not all params are sent on initial request, should still succeed since QGC will re-query missing params
+        FailMissingParamOnAllRequests,                              ///< Not all params are sent on initial request, QGC retries will fail as well
+        FailInitialConnectRequestMessageAutopilotVersionFailure,    ///< REQUEST_MESSAGE:AUTOPILOT_VERSION returns failure
+        FailInitialConnectRequestMessageAutopilotVersionLost,       ///< REQUEST_MESSAGE:AUTOPILOT_VERSION success, AUTOPILOT_VERSION never sent
     };
     FailureMode_t failureMode() const { return _failureMode; }
     void setFailureMode(FailureMode_t failureMode) { _failureMode = failureMode; }
+
+    // Test-only: not persisted via loadSettings/saveSettings
+    bool startArmed() const { return _startArmed; }
+    void setStartArmed(bool armed) { _startArmed = armed; }
+
+    // Test-only: when true, the simulated vehicle starts with a simple
+    // multirotor mission (takeoff, waypoint, RTL) already loaded. Not persisted.
+    bool preloadMission() const { return _preloadMission; }
+    void setPreloadMission(bool preloadMission) { _preloadMission = preloadMission; }
+
+    // Test-only: when true, outgoing traffic never upgrades from MAVLink v1 to v2,
+    // simulating a vehicle which only supports MAVLink v1. Not persisted.
+    bool stayMavlinkV1() const { return _stayMavlinkV1; }
+    void setStayMavlinkV1(bool stayV1) { _stayMavlinkV1 = stayV1; }
+
+    // Test-only: when true, the vehicle advertises MAV_PROTOCOL_CAPABILITY_FTP
+    // in AUTOPILOT_VERSION. Not persisted.
+    bool ftpCapability() const { return _ftpCapability; }
+    void setFtpCapability(bool ftpCapability) { _ftpCapability = ftpCapability; }
 
 signals:
     void firmwareChanged();
     void vehicleChanged();
     void sendStatusChanged();
+    void apmStartFreshParamsChanged();
+    void enableCameraChanged();
+    void enableGimbalChanged();
+    void enableProximityChanged();
+    void gimbalHasRollAxisChanged();
+    void gimbalHasPitchAxisChanged();
+    void gimbalHasYawAxisChanged();
+    void gimbalHasYawFollowChanged();
+    void gimbalHasYawLockChanged();
+    void gimbalHasRetractChanged();
+    void gimbalHasNeutralChanged();
     void incrementVehicleIdChanged();
+    void cameraCaptureVideoChanged();
+    void cameraCaptureImageChanged();
+    void cameraHasModesChanged();
+    void cameraHasVideoStreamChanged();
+    void cameraCanCaptureImageInVideoModeChanged();
+    void cameraCanCaptureVideoInImageModeChanged();
+    void cameraHasBasicZoomChanged();
+    void cameraHasTrackingPointChanged();
+    void cameraHasTrackingRectangleChanged();
+    void videoStreamTypeChanged();
 
 private:
     MAV_AUTOPILOT _firmwareType = MAV_AUTOPILOT_PX4;
     MAV_TYPE _vehicleType = MAV_TYPE_QUADROTOR;
     bool _sendStatusText = false;
+    bool _apmStartFreshParams = false;
+    bool _enableCamera = false;
+    bool _enableGimbal = false;
+    bool _enableProximity = false;
     FailureMode_t _failureMode = FailNone;
     bool _incrementVehicleId = true;
     uint16_t _boardVendorId = 0;
     uint16_t _boardProductId = 0;
+    bool _startArmed = false;
+    bool _preloadMission = false;
+    bool _stayMavlinkV1 = false;
+    bool _ftpCapability = false;
+
+    // Camera capability flags (defaults match current Camera 1 configuration)
+    bool _cameraCaptureVideo = true;
+    bool _cameraCaptureImage = true;
+    bool _cameraHasModes = true;
+    bool _cameraHasVideoStream = true;
+    bool _cameraCanCaptureImageInVideoMode = true;
+    bool _cameraCanCaptureVideoInImageMode = false;
+    bool _cameraHasBasicZoom = true;
+    bool _cameraHasTrackingPoint = true;
+    bool _cameraHasTrackingRectangle = true;
+    VideoStreamType _videoStreamType = VideoStreamNone;
+
+    // Gimbal capability flags (defaults - all enabled)
+    bool _gimbalHasRollAxis = true;
+    bool _gimbalHasPitchAxis = true;
+    bool _gimbalHasYawAxis = true;
+    bool _gimbalHasYawFollow = true;
+    bool _gimbalHasYawLock = true;
+    bool _gimbalHasRetract = true;
+    bool _gimbalHasNeutral = true;
 
     static constexpr const char *_firmwareTypeKey = "FirmwareType";
     static constexpr const char *_vehicleTypeKey = "VehicleType";
     static constexpr const char *_sendStatusTextKey = "SendStatusText";
+    static constexpr const char *_apmStartFreshParamsKey = "APMStartFreshParams";
+    static constexpr const char *_enableCameraKey = "EnableCamera";
+    static constexpr const char *_enableGimbalKey = "EnableGimbal";
+    static constexpr const char *_enableProximityKey = "EnableProximity";
+    static constexpr const char *_gimbalHasRollAxisKey = "GimbalHasRollAxis";
+    static constexpr const char *_gimbalHasPitchAxisKey = "GimbalHasPitchAxis";
+    static constexpr const char *_gimbalHasYawAxisKey = "GimbalHasYawAxis";
+    static constexpr const char *_gimbalHasYawFollowKey = "GimbalHasYawFollow";
+    static constexpr const char *_gimbalHasYawLockKey = "GimbalHasYawLock";
+    static constexpr const char *_gimbalHasRetractKey = "GimbalHasRetract";
+    static constexpr const char *_gimbalHasNeutralKey = "GimbalHasNeutral";
     static constexpr const char *_incrementVehicleIdKey = "IncrementVehicleId";
     static constexpr const char *_failureModeKey = "FailureMode";
+    static constexpr const char *_cameraCaptureVideoKey = "CameraCaptureVideo";
+    static constexpr const char *_cameraCaptureImageKey = "CameraCaptureImage";
+    static constexpr const char *_cameraHasModesKey = "CameraHasModes";
+    static constexpr const char *_cameraHasVideoStreamKey = "CameraHasVideoStream";
+    static constexpr const char *_cameraCanCaptureImageInVideoModeKey = "CameraCanCaptureImageInVideoMode";
+    static constexpr const char *_cameraCanCaptureVideoInImageModeKey = "CameraCanCaptureVideoInImageMode";
+    static constexpr const char *_cameraHasBasicZoomKey = "CameraHasBasicZoom";
+    static constexpr const char *_cameraHasTrackingPointKey = "CameraHasTrackingPoint";
+    static constexpr const char *_cameraHasTrackingRectangleKey = "CameraHasTrackingRectangle";
+    static constexpr const char *_videoStreamTypeKey = "VideoStreamType";
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(MockConfiguration::Options)

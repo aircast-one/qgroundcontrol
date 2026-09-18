@@ -1,28 +1,20 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include "PlanManager.h"
+#include <QtQmlIntegration/QtQmlIntegration>
 
-Q_DECLARE_LOGGING_CATEGORY(MissionManagerLog)
+#include "PlanManager.h"
 
 class Vehicle;
 
 class MissionManager : public PlanManager
 {
     Q_OBJECT
-    
+    QML_ELEMENT
+    QML_UNCREATABLE("")
 public:
     MissionManager(Vehicle* vehicle);
     ~MissionManager();
-        
+
     /// Current mission item as reported by MISSION_CURRENT
     int currentIndex(void) const { return _currentMissionIndex; }
 
@@ -37,8 +29,6 @@ public:
     /// Generates a new mission which starts from the specified index. It will include all the CMD_DO items
     /// from mission start to resumeIndex in the generate mission.
     void generateResumeMission(int resumeIndex);
-
-    static void registerQmlTypes();
 
 private slots:
     void _mavlinkMessageReceived(const mavlink_message_t& message);

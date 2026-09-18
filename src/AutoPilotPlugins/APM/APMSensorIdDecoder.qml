@@ -1,21 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2022 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 // Based on https://github.com/ArduPilot/MAVProxy/blob/9bf8b00fbc355650b060e546110877c7898baa81/MAVProxy/modules/lib/mp_util.py#L384
 
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import QGroundControl.FactSystem
-import QGroundControl.Palette
+import QGroundControl
 import QGroundControl.Controls
 
 QGCLabel {
@@ -116,10 +105,13 @@ QGCLabel {
         0x0F: 'ICP101XX',
         0x10: 'ICP201XX',
         0x11: 'MS5607',
-        0x12: 'MS5837',
+        0x12: 'MS5837_30BA',
         0x13: 'MS5637',
         0x14: 'BMP390',
-        0x15: 'BMP581'
+        0x15: 'BMP581',
+        0x16: 'SPA06',
+        0x17: 'AUAV',
+        0x18: 'MS5837_02BA'
     }
 
     property var airspeedTypes: {
@@ -136,13 +128,13 @@ QGCLabel {
     }
 
     function decode (device) {
-        var devid = parseInt(device.valueString)
-        var deviceName = device.name
-        var busType = busTypes[devid & 0x07]
-        var bus = (devid >> 3) & 0x1F
-        var address = (devid >> 8) & 0xFF
-        var devtype = (devid >> 16)
-        var decodedDevname;
+        let devid = parseInt(device.valueString)
+        let deviceName = device.name
+        let busType = busTypes[devid & 0x07]
+        let bus = (devid >> 3) & 0x1F
+        let address = (devid >> 8) & 0xFF
+        let devtype = (devid >> 16)
+        let decodedDevname;
 
         if (devid === 0) {
             return ""

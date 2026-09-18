@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "ArduCopterFirmwarePlugin.h"
 #include "ParameterManager.h"
 #include "Vehicle.h"
@@ -78,31 +69,96 @@ ArduCopterFirmwarePlugin::ArduCopterFirmwarePlugin(QObject *parent)
     updateAvailableFlightModes(availableFlightModes);
 
     if (!_remapParamNameIntialized) {
-        FirmwarePlugin::remapParamNameMap_t &remapV3_6 = _remapParamName[3][6];
-
-        remapV3_6["BATT_AMP_PERVLT"] =  QStringLiteral("BATT_AMP_PERVOL");
-        remapV3_6["BATT2_AMP_PERVLT"] = QStringLiteral("BATT2_AMP_PERVOL");
-        remapV3_6["BATT_LOW_MAH"] =     QStringLiteral("FS_BATT_MAH");
-        remapV3_6["BATT_LOW_VOLT"] =    QStringLiteral("FS_BATT_VOLTAGE");
-        remapV3_6["BATT_FS_LOW_ACT"] =  QStringLiteral("FS_BATT_ENABLE");
-        remapV3_6["PSC_ACCZ_P"] =       QStringLiteral("ACCEL_Z_P");
-        remapV3_6["PSC_ACCZ_I"] =       QStringLiteral("ACCEL_Z_I");
-
-        FirmwarePlugin::remapParamNameMap_t &remapV3_7 = _remapParamName[3][7];
-
-        remapV3_7["BATT_ARM_VOLT"] =    QStringLiteral("ARMING_VOLT_MIN");
-        remapV3_7["BATT2_ARM_VOLT"] =   QStringLiteral("ARMING_VOLT2_MIN");
-        remapV3_7["RC7_OPTION"] =       QStringLiteral("CH7_OPT");
-        remapV3_7["RC8_OPTION"] =       QStringLiteral("CH8_OPT");
-        remapV3_7["RC9_OPTION"] =       QStringLiteral("CH9_OPT");
-        remapV3_7["RC10_OPTION"] =      QStringLiteral("CH10_OPT");
-        remapV3_7["RC11_OPTION"] =      QStringLiteral("CH11_OPT");
-        remapV3_7["RC12_OPTION"] =      QStringLiteral("CH12_OPT");
-
         FirmwarePlugin::remapParamNameMap_t &remapV4_0 = _remapParamName[4][0];
 
-        remapV4_0["TUNE_MIN"] = QStringLiteral("TUNE_HIGH");
-        remapV3_7["TUNE_MAX"] = QStringLiteral("TUNE_LOW");
+        remapV4_0["TUNE_MIN"] = QStringLiteral("TUNE_LOW");
+        remapV4_0["TUNE_MAX"] = QStringLiteral("TUNE_HIGH");
+
+        // ArduPilot 4.7: massive parameter rename and SI unit conversion
+        FirmwarePlugin::remapParamNameMap_t &remapV4_7 = _remapParamName[4][7];
+
+        // Position controller: PSC_VELXY_* -> PSC_NE_VEL_*
+        remapV4_7["PSC_NE_VEL_P"]    = QStringLiteral("PSC_VELXY_P");
+        remapV4_7["PSC_NE_VEL_I"]    = QStringLiteral("PSC_VELXY_I");
+        remapV4_7["PSC_NE_VEL_D"]    = QStringLiteral("PSC_VELXY_D");
+        remapV4_7["PSC_NE_VEL_IMAX"] = QStringLiteral("PSC_VELXY_IMAX");
+        remapV4_7["PSC_NE_VEL_FLTE"] = QStringLiteral("PSC_VELXY_FLTE");
+        remapV4_7["PSC_NE_VEL_FLTD"] = QStringLiteral("PSC_VELXY_FLTD");
+        remapV4_7["PSC_NE_VEL_FF"]   = QStringLiteral("PSC_VELXY_FF");
+
+        // Position controller: PSC_VELZ_* -> PSC_D_VEL_*
+        remapV4_7["PSC_D_VEL_P"]     = QStringLiteral("PSC_VELZ_P");
+        remapV4_7["PSC_D_VEL_I"]     = QStringLiteral("PSC_VELZ_I");
+        remapV4_7["PSC_D_VEL_D"]     = QStringLiteral("PSC_VELZ_D");
+        remapV4_7["PSC_D_VEL_IMAX"]  = QStringLiteral("PSC_VELZ_IMAX");
+        remapV4_7["PSC_D_VEL_FLTE"]  = QStringLiteral("PSC_VELZ_FLTE");
+        remapV4_7["PSC_D_VEL_FF"]    = QStringLiteral("PSC_VELZ_FF");
+
+        // Position controller: PSC_ACCZ_* -> PSC_D_ACC_*
+        remapV4_7["PSC_D_ACC_P"]     = QStringLiteral("PSC_ACCZ_P");
+        remapV4_7["PSC_D_ACC_I"]     = QStringLiteral("PSC_ACCZ_I");
+        remapV4_7["PSC_D_ACC_D"]     = QStringLiteral("PSC_ACCZ_D");
+        remapV4_7["PSC_D_ACC_IMAX"]  = QStringLiteral("PSC_ACCZ_IMAX");
+        remapV4_7["PSC_D_ACC_FLTD"]  = QStringLiteral("PSC_ACCZ_FLTD");
+        remapV4_7["PSC_D_ACC_FLTE"]  = QStringLiteral("PSC_ACCZ_FLTE");
+        remapV4_7["PSC_D_ACC_FLTT"]  = QStringLiteral("PSC_ACCZ_FLTT");
+        remapV4_7["PSC_D_ACC_FF"]    = QStringLiteral("PSC_ACCZ_FF");
+        remapV4_7["PSC_D_ACC_SMAX"]  = QStringLiteral("PSC_ACCZ_SMAX");
+
+        // Position controller: PSC_POSXY_P -> PSC_NE_POS_P (simply renamed)
+        remapV4_7["PSC_NE_POS_P"]    = QStringLiteral("PSC_POSXY_P");
+
+        // Position controller: PSC_POSZ_P -> PSC_D_POS_P (simply renamed)
+        remapV4_7["PSC_D_POS_P"]     = QStringLiteral("PSC_POSZ_P");
+
+        // Waypoint navigation: WPNAV_* -> WP_*
+        remapV4_7["WP_ACC"]          = QStringLiteral("WPNAV_ACCEL");
+        remapV4_7["WP_ACC_CNR"]      = QStringLiteral("WPNAV_ACCEL_C");
+        remapV4_7["WP_ACC_Z"]        = QStringLiteral("WPNAV_ACCEL_Z");
+        remapV4_7["WP_RADIUS_M"]     = QStringLiteral("WPNAV_RADIUS");
+        remapV4_7["WP_SPD"]          = QStringLiteral("WPNAV_SPEED");
+        remapV4_7["WP_SPD_DN"]       = QStringLiteral("WPNAV_SPEED_DN");
+        remapV4_7["WP_SPD_UP"]       = QStringLiteral("WPNAV_SPEED_UP");
+
+        // RTL parameters
+        remapV4_7["RTL_ALT_M"]       = QStringLiteral("RTL_ALT");
+        remapV4_7["RTL_SPEED_MS"]    = QStringLiteral("RTL_SPEED");
+        remapV4_7["RTL_ALT_FINAL_M"] = QStringLiteral("RTL_ALT_FINAL");
+        remapV4_7["RTL_CLIMB_MIN_M"] = QStringLiteral("RTL_CLIMB_MIN");
+
+        // Landing parameters
+        remapV4_7["LAND_SPD_MS"]     = QStringLiteral("LAND_SPEED");
+        remapV4_7["LAND_SPD_HIGH_MS"]= QStringLiteral("LAND_SPEED_HIGH");
+        remapV4_7["LAND_ALT_LOW_M"]  = QStringLiteral("LAND_ALT_LOW");
+
+        // Loiter parameters
+        remapV4_7["LOIT_SPEED_MS"]   = QStringLiteral("LOIT_SPEED");
+        remapV4_7["LOIT_ACC_MAX_M"]  = QStringLiteral("LOIT_ACC_MAX");
+        remapV4_7["LOIT_BRK_ACC_M"]  = QStringLiteral("LOIT_BRK_ACCEL");
+        remapV4_7["LOIT_BRK_JRK_M"] = QStringLiteral("LOIT_BRK_JERK");
+
+        // Pilot parameters
+        remapV4_7["PILOT_ACC_Z"]     = QStringLiteral("PILOT_ACCEL_Z");
+        remapV4_7["PILOT_SPD_UP"]    = QStringLiteral("PILOT_SPEED_UP");
+        remapV4_7["PILOT_SPD_DN"]    = QStringLiteral("PILOT_SPEED_DN");
+        remapV4_7["PILOT_TKO_ALT_M"] = QStringLiteral("PILOT_TKOFF_ALT");
+
+        // Attitude controller
+        remapV4_7["ATC_ANGLE_MAX"]   = QStringLiteral("ANGLE_MAX");
+        remapV4_7["ATC_ACC_R_MAX"]   = QStringLiteral("ATC_ACCEL_R_MAX");
+        remapV4_7["ATC_ACC_P_MAX"]   = QStringLiteral("ATC_ACCEL_P_MAX");
+        remapV4_7["ATC_ACC_Y_MAX"]   = QStringLiteral("ATC_ACCEL_Y_MAX");
+        remapV4_7["ATC_RATE_WPY_MAX"]= QStringLiteral("ATC_SLEW_YAW");
+
+        // Circle
+        remapV4_7["CIRCLE_RADIUS_M"] = QStringLiteral("CIRCLE_RADIUS");
+
+        // PosHold
+        remapV4_7["PHLD_BRK_ANGLE"]  = QStringLiteral("PHLD_BRAKE_ANGLE");
+        remapV4_7["PHLD_BRK_RATE"]   = QStringLiteral("PHLD_BRAKE_RATE");
+
+        // EKF
+        remapV4_7["EK3_FLOW_MAX"]    = QStringLiteral("EK3_MAX_FLOW");
 
         _remapParamNameIntialized = true;
     }
@@ -115,7 +171,7 @@ ArduCopterFirmwarePlugin::~ArduCopterFirmwarePlugin()
 
 int ArduCopterFirmwarePlugin::remapParamNameHigestMinorVersionNumber(int majorVersionNumber) const
 {
-    return ((majorVersionNumber == 3) ? 7 : Vehicle::versionNotSetValue);
+    return ((majorVersionNumber == 4) ? 7 : Vehicle::versionNotSetValue);
 }
 
 bool ArduCopterFirmwarePlugin::multiRotorXConfig(Vehicle *vehicle) const

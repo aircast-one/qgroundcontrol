@@ -1,21 +1,36 @@
+# ============================================================================
+# Vehicle Module
+# Core vehicle state management and MAVLink communication
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         Autotune.cpp
         Autotune.h
+        FTPController.cc
+        FTPController.h
         FTPManager.cc
         FTPManager.h
         InitialConnectStateMachine.cc
         InitialConnectStateMachine.h
+        MavCommandQueue.cc
+        MavCommandQueue.h
         MAVLinkLogManager.cc
         MAVLinkLogManager.h
+        MessageIntervalManager.cc
+        MessageIntervalManager.h
         MultiVehicleManager.cc
         MultiVehicleManager.h
         RemoteIDManager.cc
         RemoteIDManager.h
+        RequestMessageCoordinator.cc
+        RequestMessageCoordinator.h
         StandardModes.cc
         StandardModes.h
         TerrainProtocolHandler.cc
         TerrainProtocolHandler.h
+        TerrainQueryCoordinator.cc
+        TerrainQueryCoordinator.h
         TrajectoryPoints.cc
         TrajectoryPoints.h
         Vehicle.cc
@@ -24,18 +39,14 @@ target_sources(${CMAKE_PROJECT_NAME}
         VehicleLinkManager.h
         VehicleObjectAvoidance.cc
         VehicleObjectAvoidance.h
+        VehicleSigningController.cc
+        VehicleSigningController.h
+        VehicleSupports.cc
+        VehicleSupports.h
+        VehicleTypes.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-qt_add_library(VehicleModule STATIC)
-
-qt_add_qml_module(VehicleModule
-    URI QGroundControl.Vehicle
-    VERSION 1.0
-    RESOURCE_PREFIX /qml
-    NO_PLUGIN # Required by Qt 6.6.3. TODO: Remove when no longer supported.
-)
 
 add_subdirectory(Actuators)
 add_subdirectory(ComponentInformation)

@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "ComplexMissionItem.h"
@@ -15,10 +6,6 @@
 #include "QGCMapPolygon.h"
 #include "CameraCalc.h"
 #include "TerrainQuery.h"
-
-#include <QtCore/QLoggingCategory>
-
-Q_DECLARE_LOGGING_CATEGORY(TransectStyleComplexItemLog)
 
 class PlanMasterController;
 
@@ -90,21 +77,23 @@ public:
     bool                isSimpleItem                (void) const final { return false; }
     bool                isStandaloneCoordinate      (void) const final { return false; }
     bool                specifiesAltitudeOnly       (void) const final { return false; }
-    QGeoCoordinate      coordinate                  (void) const final { return _coordinate; }
+    QGeoCoordinate      coordinate                  (void) const final { return entryCoordinate(); }
+    QGeoCoordinate      entryCoordinate             (void) const final { return _entryCoordinate; }
     QGeoCoordinate      exitCoordinate              (void) const final { return _exitCoordinate; }
     int                 sequenceNumber              (void) const final { return _sequenceNumber; }
     double              specifiedFlightSpeed        (void) final { return std::numeric_limits<double>::quiet_NaN(); }
     double              specifiedGimbalYaw          (void) final { return std::numeric_limits<double>::quiet_NaN(); }
     double              specifiedGimbalPitch        (void) final { return std::numeric_limits<double>::quiet_NaN(); }
-    void                setMissionFlightStatus      (MissionController::MissionFlightStatus_t& missionFlightStatus) final;
+    void                setMissionFlightStatus      (MissionFlightStatus_t& missionFlightStatus) final;
     ReadyForSaveState   readyForSaveState         (void) const override;
     QString             commandDescription          (void) const override { return tr("Transect"); }
     QString             commandName                 (void) const override { return tr("Transect"); }
     QString             abbreviation                (void) const override { return tr("T"); }
     bool                exitCoordinateSameAsEntry   (void) const final { return false; }
     void                setDirty                    (bool dirty) final;
-    void                setCoordinate               (const QGeoCoordinate& coordinate) final { Q_UNUSED(coordinate); }
+    void                setCoordinate               (const QGeoCoordinate& coordinate) override;
     void                setSequenceNumber           (int sequenceNumber) final;
+    double              editableAlt                 (void) const final;
     double              amslEntryAlt                (void) const final;
     double              amslExitAlt                 (void) const final;
     double              minAMSLAltitude             (void) const final;
@@ -118,6 +107,8 @@ public:
     static constexpr const char* terrainAdjustToleranceName            = "TerrainAdjustTolerance";
     static constexpr const char* terrainAdjustMaxClimbRateName         = "TerrainAdjustMaxClimbRate";
     static constexpr const char* terrainAdjustMaxDescentRateName       = "TerrainAdjustMaxDescentRate";
+
+    static constexpr int maxTransectCount = 1000; ///< Maximum number of transects allowed; spacing is raised to enforce this limit
 
 signals:
     void cameraShotsChanged             (void);
@@ -155,7 +146,7 @@ protected:
     void    _recalcComplexDistance          (void);
 
     int                 _sequenceNumber = 0;
-    QGeoCoordinate      _coordinate;
+    QGeoCoordinate      _entryCoordinate;
     QGeoCoordinate      _exitCoordinate;
     QGCMapPolygon       _surveyAreaPolygon;
 
@@ -245,5 +236,5 @@ private:
     QTimer                      _terrainPolyPathQueryTimer;
 
     // Deprecated json keys
-    static constexpr const char* _jsonTerrainFollowKeyDeprecated       = "FollowTerrain";
+    static constexpr const char* _jsonTerrainFollowKeyDeprecated = "FollowTerrain";
 };
