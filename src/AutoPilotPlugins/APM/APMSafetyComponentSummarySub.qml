@@ -33,14 +33,15 @@ Item {
     property Fact _failsafeBatteryVoltage:       controller.getParameterFact(-1, "r.BATT_LOW_VOLT", false)
     property Fact _failsafeBatteryCapacity:      controller.getParameterFact(-1, "r.BATT_LOW_MAH", false)
 
-    property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK")
+    property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK", false /* reportMissing */)
 
     Column {
         anchors.fill:       parent
 
         VehicleSummaryRow {
             labelText: qsTr("Arming Checks:")
-            valueText:  _armingCheck.value & 1 ? qsTr("Enabled") : qsTr("Some disabled")
+            valueText: _armingCheck !== null && (_armingCheck.value & 1) ? qsTr("Enabled") : qsTr("Some disabled")
+            visible:   _armingCheck !== null
         }
         VehicleSummaryRow {
             labelText: qsTr("GCS failsafe:")

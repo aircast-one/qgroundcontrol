@@ -36,8 +36,9 @@ Item {
         VehicleSummaryRow {
             labelText: qsTr("Arming Checks:")
             valueText: fact ? (fact.value & 1 ? qsTr("Enabled") : qsTr("Some disabled")) : ""
+            visible:   fact !== null
 
-            property Fact fact: controller.getParameterFact(-1, "ARMING_CHECK")
+            property Fact fact: controller.getParameterFact(-1, "ARMING_CHECK", false /* reportMissing */)
         }
 
         VehicleSummaryRow {

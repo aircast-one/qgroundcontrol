@@ -56,7 +56,7 @@ SetupPage {
             property Fact _failsafeBatteryCapacity:      controller.getParameterFact(-1, "r.BATT_LOW_MAH", false)
             property bool _batteryDetected:              controller.parameterExists(-1, "r.BATT_LOW_MAH")
 
-            property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK")
+            property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK", false /* reportMissing */)
 
             property real _margins:     ScreenTools.defaultFontPixelHeight
             property bool _showIcon:    !ScreenTools.isTinyScreen
@@ -351,6 +351,7 @@ SetupPage {
 
             Column {
                 spacing: _margins / 2
+                visible: _armingCheck !== null
 
                 QGCLabel {
                     text:           qsTr("Arming Checks")
@@ -385,7 +386,7 @@ SetupPage {
                             wrapMode:       Text.WordWrap
                             color:          qgcPal.warningText
                             text:            qsTr("Warning: Turning off arming checks can lead to loss of Vehicle control.")
-                            visible:        _armingCheck.value != 1
+                            visible:        _armingCheck !== null && _armingCheck.value != 1
                         }
                     }
                 } // Rectangle - Arming checks

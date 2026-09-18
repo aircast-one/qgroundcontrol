@@ -67,7 +67,7 @@ SetupPage {
             property Fact _rtlLoitTimeFact: controller.getParameterFact(-1, "RTL_LOIT_TIME")
             property Fact _rtlAltFinalFact: controller.getParameterFact(-1, "RTL_ALT_FINAL")
 
-            property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK")
+            property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK", false /* reportMissing */)
 
             property real _margins:     ScreenTools.defaultFontPixelHeight
             property bool _showIcon:    !ScreenTools.isTinyScreen
@@ -528,6 +528,7 @@ SetupPage {
 
             Column {
                 spacing: _margins / 2
+                visible: _armingCheck !== null
 
                 QGCLabel {
                     text:           qsTr("Arming Checks")
@@ -562,7 +563,7 @@ SetupPage {
                             wrapMode:       Text.WordWrap
                             color:          qgcPal.warningText
                             text:            qsTr("Warning: Turning off arming checks can lead to loss of Vehicle control.")
-                            visible:        _armingCheck.value != 1
+                            visible:        _armingCheck !== null && _armingCheck.value != 1
                         }
                     }
                 } // Rectangle - Arming checks
