@@ -1,4 +1,3 @@
-#ifdef QGC_RUST_CORE
 #include "CoreLink.h"
 
 #include "QGCCoreC.h"
@@ -200,5 +199,3 @@ void CoreLink::_writeBytes(const QByteArray &bytes)
         emit bytesSent(this, bytes);
     }
 }
-
-#endif

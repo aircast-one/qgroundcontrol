@@ -76,7 +76,6 @@ PacketRadioManager::PacketRadioManager(QObject *parent)
 
 void PacketRadioManager::_reportToCore()
 {
-#ifdef QGC_RUST_CORE
     static const QStringList tokens = { QStringLiteral("disabled"), QStringLiteral("noAdapter"), QStringLiteral("adapterUnavailable"),
                                         QStringLiteral("invalidKey"), QStringLiteral("listening"), QStringLiteral("receiving") };
     const auto whole = [](const QVariantList &values) {
@@ -103,7 +102,6 @@ void PacketRadioManager::_reportToCore()
     report.insert(QStringLiteral("startError"), _startError);
 
     (void) qgc_core_packet_radio_report(QJsonDocument(report).toJson(QJsonDocument::Compact).constData());
-#endif
 }
 
 PacketRadioManager::~PacketRadioManager()
