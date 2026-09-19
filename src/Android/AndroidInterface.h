@@ -10,6 +10,10 @@
 Q_DECLARE_LOGGING_CATEGORY(AndroidInterfaceLog)
 
 namespace AndroidInterface {
+
+void jniDeepLink(JNIEnv *env, jobject thiz, jstring url);
+void jniFontScaleChanged(JNIEnv *env, jobject thiz, jfloat scale);
+void jniSafeAreaInsets(JNIEnv *env, jobject thiz, jint left, jint top, jint right, jint bottom);
 void setNativeMethods();
 bool checkStoragePermissions();
 QString getSDCardPath();

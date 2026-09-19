@@ -123,7 +123,7 @@ static void jniOnImportResult(JNIEnv* env, jobject, jstring filePathA)
     callback(filePath);
 }
 
-static void jniDeepLink(JNIEnv *envA, jobject thizA, jstring urlA)
+void jniDeepLink(JNIEnv *envA, jobject thizA, jstring urlA)
 {
     Q_UNUSED(thizA);
 
@@ -157,12 +157,12 @@ AndroidInterface::SafeAreaHandler safeAreaHandler;
 SafeAreaInsets safeAreaInsets;
 }  // namespace
 
-static void jniFontScaleChanged(JNIEnv*, jobject, jfloat scale)
+void jniFontScaleChanged(JNIEnv*, jobject, jfloat scale)
 {
     ScreenToolsController::setSystemFontScale(scale);
 }
 
-static void jniSafeAreaInsets(JNIEnv*, jobject, jint left, jint top, jint right, jint bottom)
+void jniSafeAreaInsets(JNIEnv*, jobject, jint left, jint top, jint right, jint bottom)
 {
     qCDebug(AndroidInterfaceLog) << "Window insets" << left << top << right << bottom;
 
