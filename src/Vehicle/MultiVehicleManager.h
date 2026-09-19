@@ -1,36 +1,23 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
-/// @file
-///     @author Don Gagne <don@thegagnes.com>
-
 #pragma once
 
 #include <QtCore/QObject>
-#include <QtCore/QLoggingCategory>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 class LinkInterface;
 class Vehicle;
 class QmlObjectListModel;
 class QTimer;
 
-Q_DECLARE_LOGGING_CATEGORY(MultiVehicleManagerLog)
-
 class MultiVehicleManager : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
     Q_MOC_INCLUDE("QmlObjectListModel.h")
     Q_MOC_INCLUDE("LinkInterface.h")
     Q_MOC_INCLUDE("Vehicle.h")
-    Q_PROPERTY(bool                 activeVehicleAvailable          READ _getActiveVehicleAvailable                                         NOTIFY activeVehicleAvailableChanged)
-    Q_PROPERTY(bool                 parameterReadyVehicleAvailable  READ _getParameterReadyVehicleAvailable                                 NOTIFY parameterReadyVehicleAvailableChanged)
+    Q_PROPERTY(bool                 activeVehicleAvailable          READ activeVehicleAvailable                                             NOTIFY activeVehicleAvailableChanged)
+    Q_PROPERTY(bool                 parameterReadyVehicleAvailable  READ parameterReadyVehicleAvailable                                     NOTIFY parameterReadyVehicleAvailableChanged)
     Q_PROPERTY(Vehicle              *activeVehicle                  READ activeVehicle                      WRITE setActiveVehicle          NOTIFY activeVehicleChanged)
     Q_PROPERTY(QmlObjectListModel   *vehicles                       READ vehicles                                                           CONSTANT)
     Q_PROPERTY(QmlObjectListModel   *selectedVehicles               READ selectedVehicles                                                   CONSTANT)
@@ -41,7 +28,6 @@ public:
     ~MultiVehicleManager();
 
     static MultiVehicleManager *instance();
-    static void registerQmlTypes();
 
     void init();
     Q_INVOKABLE Vehicle *getVehicleById(int vehicleId) const;
@@ -53,6 +39,8 @@ public:
     Vehicle *offlineEditingVehicle() const { return _offlineEditingVehicle; }
     Vehicle *activeVehicle() const { return _activeVehicle; }
     void setActiveVehicle(Vehicle *vehicle);
+    bool activeVehicleAvailable() const { return _activeVehicleAvailable; }
+    bool parameterReadyVehicleAvailable() const { return _parameterReadyVehicleAvailable; }
 
 signals:
     void vehicleAdded(Vehicle *vehicle);
@@ -68,15 +56,12 @@ private slots:
     void _vehicleParametersReadyChanged(bool parametersReady);
     void _sendGCSHeartbeat();
     void _vehicleHeartbeatInfo(LinkInterface *link, int vehicleId, int componentId, int vehicleFirmwareType, int vehicleType);
-    void _requestProtocolVersion(unsigned version) const; /// This slot is connected to the Vehicle::requestProtocolVersion signal such that the vehicle manager tries to switch MAVLink to v2 if all vehicles support it
 
 private:
     bool _vehicleExists(int vehicleId);
     bool _vehicleSelected(int vehicleId);
     void _setActiveVehicle(Vehicle *vehicle);
-    bool _getActiveVehicleAvailable() const { return _activeVehicleAvailable; }
     void _setActiveVehicleAvailable(bool activeVehicleAvailable);
-    bool _getParameterReadyVehicleAvailable() const { return _parameterReadyVehicleAvailable; }
     void _setParameterReadyVehicleAvailable(bool parametersReady);
 
     QTimer *_gcsHeartbeatTimer = nullptr;           ///< Timer to emit heartbeats

@@ -89,7 +89,9 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> String {
-        std::fs::read_to_string(format!("{}/../test/MissionManager/{name}.mission", env!("CARGO_MANIFEST_DIR"))).unwrap()
+        std::fs::read_to_string(format!("{}/../test/MissionManager/{name}.mission", env!("CARGO_MANIFEST_DIR")))
+            .or_else(|_| std::fs::read_to_string(format!("{}/tests/fixtures/{name}.mission", env!("CARGO_MANIFEST_DIR"))))
+            .unwrap()
     }
 
     #[test]

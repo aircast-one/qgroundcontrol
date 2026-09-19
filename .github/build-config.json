@@ -1,0 +1,84 @@
+{
+  "$schema": "build-config.schema.json",
+  "qt": {
+    "version": "6.11.1",
+    "minimum_version": "6.11.0",
+    "modules": "qtgraphs qtlocation qtpositioning qtspeech qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors qtscxml qtwebsockets qthttpserver"
+  },
+  "android": {
+    "platform": "36",
+    "min_sdk": "28",
+    "build_tools": "36.0.0",
+    "cmdline_tools": "14742923",
+    "ndk_version": "r27c",
+    "ndk_full_version": "27.2.12479018",
+    "java_version": "21"
+  },
+  "apple": {
+    "xcode_version": "16.x",
+    "xcode_ios_version": "latest-stable",
+    "macos_deployment_target": "13.0",
+    "ios_deployment_target": "17.0"
+  },
+  "build": {
+    "cmake_minimum_version": "3.25",
+    "platform_workflows": "Linux,Windows,MacOS,Android"
+  },
+  "gstreamer": {
+    "version": {
+      "default": "1.28.4",
+      "minimum": "1.20.0",
+      "android": "1.28.4",
+      "ios": "1.28.4",
+      "macos": "1.28.4",
+      "windows": "1.28.4"
+    },
+    "plugins": {
+      "common": [
+        "app",
+        "coreelements",
+        "isomp4",
+        "libav",
+        "matroska",
+        "mpegtsdemux",
+        "multifile",
+        "opengl",
+        "openh264",
+        "playback",
+        "rtp",
+        "rtpmanager",
+        "rtsp",
+        "sdpelem",
+        "tcp",
+        "typefindfunctions",
+        "udp",
+        "videoparsersbad",
+        "vpx",
+        "videoconvertscale",
+        "videoconvert",
+        "videoscale",
+        "webrtc",
+        "webrtchttp",
+        "nice",
+        "dtls",
+        "srtp",
+        "sctp"
+      ],
+      "android": ["androidmedia", "dav1d"],
+      "apple": ["applemedia", "dav1d"],
+      "windows": ["d3d", "d3d11", "d3d12", "dav1d", "nvcodec"],
+      "linux": ["nvcodec", "qsv", "va", "vulkan"]
+    },
+    "checksums": {
+      "1.28.4": {
+        "android": "a48aeb1b4fbae67a2fe0a0daa55af4a6af22b48f15a9c09f09dcd9ab3e8e943e",
+        "windows_msvc_x64": "1a745d67225e43394a4a5db929c97397cb56e74b1c38bb77c6ded4b037d3c040",
+        "windows_msvc_arm64": "6f810ad85e0fe7b566ab2f2841c0fec52e010265af6883427652e0a159a40fc7",
+        "macos": "9f9ae8ba1a25eb42d6740c4e5f15b09ee6b9127b7359e9662c45a2b9a5029f85",
+        "macos_devel": "2758abb2abe10b79ad4cf17cbcf0a75e3cb71ee8ce01724960b8f3e0b715e065",
+        "ios": "d82c51bd81eafa77fd322c39ce7e6d663a5b860359ace6ed98060c87092e4845"
+      }
+    },
+    "ca_bundle_sha256": "f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9"
+  }
+}

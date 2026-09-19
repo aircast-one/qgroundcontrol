@@ -28,7 +28,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.healthAndArmingCheckReport.canTakeoff",
     "vehicle.healthAndArmingCheckReport.canStartMission",
     "plan.missionController.containsItems",
-    "planFly.missionController.missionItemCount",
+    "planFly.missionController.visualItems.count",
     "planFly.missionController.currentMissionIndex",
     "planFly.missionController.resumeMissionIndex",
     "settings.appSettings.useChecklist",
@@ -301,11 +301,13 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = object(&backend.get_fields(
         "vehicle",
-        "armed,flying,roiModeSupported,isROIEnabled,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     ));
+    let supports = object(&backend.get_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude"));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
-    let flying = object(&backend.get_fields("planFly.missionController", "missionItemCount,currentMissionIndex,resumeMissionIndex"));
+    let flying = object(&backend.get_fields("planFly.missionController", "currentMissionIndex,resumeMissionIndex"));
+    let items = object(&backend.get_fields("planFly.missionController.visualItems", "count"));
     let app = object(&backend.get_fields("settings.appSettings", "useChecklist,enforceChecklist"));
     let mode = text(&vehicle, "flightMode");
     let same_mode = |key: &str| !mode.is_empty() && text(&vehicle, key) == mode;
@@ -321,9 +323,9 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         connected: true,
         armed: flag(&vehicle, "armed"),
         flying: flag(&vehicle, "flying"),
-        guided_supported: flag(&vehicle, "guidedModeSupported"),
-        takeoff_supported: flag(&vehicle, "takeoffVehicleSupported"),
-        pause_supported: flag(&vehicle, "pauseVehicleSupported"),
+        guided_supported: flag(&supports, "guidedMode"),
+        takeoff_supported: flag(&supports, "guidedTakeoffWithAltitude") || flag(&supports, "guidedTakeoffWithoutAltitude"),
+        pause_supported: flag(&supports, "pauseVehicle"),
         fixed_wing,
         vtol: flag(&vehicle, "vtol"),
         vtol_in_fwd_flight,
@@ -346,10 +348,10 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         can_takeoff: gate("canTakeoff"),
         can_start_mission: gate("canStartMission"),
         mission_available: flag(&mission, "containsItems"),
-        mission_item_count: integer(&flying, "missionItemCount").unwrap_or(0),
+        mission_item_count: integer(&items, "count").unwrap_or(0),
         current_mission_index: integer(&flying, "currentMissionIndex").unwrap_or(-1),
         resume_from_sequence: integer(&flying, "resumeMissionIndex").unwrap_or(0),
-        roi_supported: flag(&vehicle, "roiModeSupported"),
+        roi_supported: flag(&supports, "roiMode"),
         roi_active: flag(&vehicle, "isROIEnabled"),
     }
 }
@@ -403,7 +405,8 @@ mod tests {
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
-                    "vehicle" => json!({ "kind": "object", "flying": true, "roiModeSupported": true, "isROIEnabled": self.0 }),
+                    "vehicle.supports" => json!({ "kind": "object", "roiMode": true }),
+                    "vehicle" => json!({ "kind": "object", "flying": true, "isROIEnabled": self.0 }),
                     _ => json!({ "kind": "object" }),
                 }
                 .to_string()
@@ -436,7 +439,8 @@ mod tests {
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
-                    "planFly.missionController" => json!({ "kind": "object", "missionItemCount": 12, "currentMissionIndex": 5, "resumeMissionIndex": self.0 }),
+                    "planFly.missionController.visualItems" => json!({ "kind": "object", "count": 12 }),
+                    "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": 5, "resumeMissionIndex": self.0 }),
                     "plan.missionController" => json!({ "kind": "object", "containsItems": true }),
                     _ => json!({ "kind": "object" }),
                 }
@@ -491,8 +495,9 @@ mod tests {
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    "vehicle.supports" => json!({ "kind": "object", "guidedMode": true }).to_string(),
                     "vehicle" => json!({
-                        "kind": "object", "armed": true, "flying": true, "guidedModeSupported": true, "flightMode": "Guided",
+                        "kind": "object", "armed": true, "flying": true, "flightMode": "Guided",
                         "fixedWing": self.fixed_wing, "haveFWSpeedLimits": self.fw_limits, "haveMRSpeedLimits": self.mr_limits,
                         "px4Firmware": false, "apmFirmware": false,
                     })
@@ -598,7 +603,8 @@ mod tests {
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
-                    "vehicle" => json!({ "kind": "object", "armed": false, "flying": false, "takeoffVehicleSupported": true, "guidedModeSupported": true, "checkListState": 0, "flightMode": "Hold", "rtlFlightMode": "Return" }),
+                    "vehicle.supports" => json!({ "kind": "object", "guidedMode": true, "guidedTakeoffWithAltitude": true }),
+                    "vehicle" => json!({ "kind": "object", "armed": false, "flying": false, "checkListState": 0, "flightMode": "Hold", "rtlFlightMode": "Return" }),
                     "vehicle.healthAndArmingCheckReport" => json!({ "kind": "object", "supported": true, "canArm": false, "canTakeoff": true, "canStartMission": true }),
                     "plan.missionController" => json!({ "kind": "object", "containsItems": false }),
                     "settings.appSettings" => json!({ "kind": "object", "facts": [ { "name": "useChecklist", "value": true }, { "name": "enforceChecklist", "value": false } ] }),
@@ -632,7 +638,8 @@ mod tests {
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
-                    "vehicle" => json!({ "kind": "object", "armed": true, "flying": true, "guidedModeSupported": true, "haveMRSpeedLimits": false, "apmFirmware": true, "px4Firmware": false, "flightMode": "Guided" }).to_string(),
+                    "vehicle.supports" => json!({ "kind": "object", "guidedMode": true }).to_string(),
+                    "vehicle" => json!({ "kind": "object", "armed": true, "flying": true, "haveMRSpeedLimits": false, "apmFirmware": true, "px4Firmware": false, "flightMode": "Guided" }).to_string(),
                     _ => json!({ "kind": "object" }).to_string(),
                 }
             }
@@ -665,9 +672,9 @@ mod loiter {
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                "vehicle.supports" => json!({ "kind": "object", "guidedMode": true }).to_string(),
                 "vehicle" => json!({
-                    "kind": "object", "armed": true, "flying": true, "guidedModeSupported": true,
-                    "fixedWing": self.forward, "vtolInFwdFlight": false, "flightMode": "Guided",
+                    "kind": "object", "armed": true, "flying": true, "fixedWing": self.forward, "vtolInFwdFlight": false, "flightMode": "Guided",
                 }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }

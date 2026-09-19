@@ -9,8 +9,8 @@
 
 import QtQuick
 import QtQuick.Controls
+import QGroundControl
 
-import QGroundControl.FactSystem
 
 Control {
     id:             control

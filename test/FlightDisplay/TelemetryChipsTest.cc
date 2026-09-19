@@ -9,6 +9,8 @@
 
 #include "TelemetryChipsTest.h"
 
+#include <QtCore/QRegularExpression>
+
 #include "QuickInteractionTestHelpers.h"
 #include "FactValueGrid.h"
 #include "QmlObjectListModel.h"
@@ -31,7 +33,7 @@ static const QString kGridSettingsGroup = QStringLiteral("TelemetryChips-");
 static void clearChipPositionSettings()
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     const QStringList keys = settings.allKeys();
     for (const QString& key : keys) {
         if (key.startsWith(kChipKeyPrefix)) {
@@ -69,7 +71,7 @@ private:
 static QVariant chipSetting(const QString& sizeKey, const QString& uid, const QString& suffix)
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     return settings.value(kChipKeyPrefix + uid + sizeKey + suffix);
 }
 
@@ -82,7 +84,7 @@ static QPointF storedChipPosition(const QString& sizeKey, const QString& uid)
 static void seedChipPosition(const QString& sizeKey, const QString& uid, const QPointF& pos)
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     settings.setValue(kChipKeyPrefix + uid + sizeKey + QStringLiteral("CustomPosition"), true);
     settings.setValue(kChipKeyPrefix + uid + sizeKey + QStringLiteral("PositionX"), QString::number(pos.x()));
     settings.setValue(kChipKeyPrefix + uid + sizeKey + QStringLiteral("PositionY"), QString::number(pos.y()));
@@ -159,6 +161,12 @@ static QStringList gridFactNames(FactValueGrid* grid)
         names.append(value ? value->property("factName").toString() : QString());
     }
     return names;
+}
+
+void TelemetryChipsTest::init()
+{
+    VehicleTestManualConnect::init();
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("mainWindow is not defined")));
 }
 
 void TelemetryChipsTest::_chipPerValueIsRendered()
@@ -547,3 +555,5 @@ void TelemetryChipsTest::_rowsKeepTheirPitchOnACoarseSlotGrid()
         QTRY_COMPARE(lower->y() - (*above)->y(), pitch);
     }
 }
+
+UT_REGISTER_TEST(TelemetryChipsTest, TestLabel::Unit)

@@ -13,8 +13,6 @@ import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
 
 Button {
     id:             control
@@ -30,6 +28,10 @@ Button {
     property bool   badgeVisible: false
     property string description:  ""
     property bool   listStyle:    false
+    property bool   expandable:   false
+    property bool   expanded:     false
+
+    signal toggleExpand()
 
     readonly property bool _hasTile: tileColor.a > 0 && !listStyle
     readonly property real _tileSize: Math.round(ScreenTools.defaultFontPixelHeight * 1.35)
@@ -141,6 +143,21 @@ Button {
             radius:                 width / 2
             color:                  qgcPal.colorRed
             visible:                control.badgeVisible
+        }
+
+        QGCColoredImage {
+            visible:    control.expandable
+            source:     "/InstrumentValueIcons/cheveron-right.svg"
+            color:      control.textColor
+            width:      ScreenTools.defaultFontPixelHeight * 0.75
+            height:     width
+            rotation:   control.expanded ? 90 : 0
+
+            MouseArea {
+                anchors.fill:       parent
+                anchors.margins:    -ScreenTools.defaultFontPixelWidth
+                onClicked:          control.toggleExpand()
+            }
         }
     }
 }

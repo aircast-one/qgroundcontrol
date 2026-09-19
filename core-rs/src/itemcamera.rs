@@ -9,7 +9,7 @@ use crate::router::Backend;
 // this recomputes when the selection moves or the items change, and rides the poll otherwise.
 pub const DEPS: &[&str] = &[
     "plan.missionController.currentPlanViewVIIndex",
-    "plan.missionController@visualItemsChanged",
+    "plan.missionController@visualItemsReset",
 ];
 
 fn fact<'a>(section: &'a Value, name: &str) -> Option<&'a Value> {

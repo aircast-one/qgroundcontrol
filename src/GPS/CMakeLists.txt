@@ -1,6 +1,21 @@
+# ============================================================================
+# GPS Module
+# GPS/GNSS positioning and RTK support
+# ============================================================================
+
+# RTCM + NTRIP are network/MAVLink-only — build even when QGC_NO_SERIAL_LINK skips the rest.
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_subdirectory(RTCM)
+add_subdirectory(NTRIP)
+
+# Everything below uses QSerialPort or spawns a serial-attached GPS process.
 if(QGC_NO_SERIAL_LINK)
     return()
 endif()
+
+add_subdirectory(Driver)
 
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
@@ -12,35 +27,14 @@ target_sources(${CMAKE_PROJECT_NAME}
         GPSRtk.h
         GPSRTKFactGroup.cc
         GPSRTKFactGroup.h
-        RTCMMavlink.cc
-        RTCMMavlink.h
-        satellite_info.h
-        sensor_gnss_relative.h
-        sensor_gps.h
+        SerialGPSTransport.cc
+        SerialGPSTransport.h
 )
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core)
-
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-#===========================================================================#
-
-CPMAddPackage(
-    NAME px4-gpsdrivers
-    GITHUB_REPOSITORY PX4/PX4-GPSDrivers
-    # Pinned to the main HEAD as of the v5.0.8 release (2025-10-08); upstream
-    # main later added a Settings arg to GPSDriverUBX that breaks this tree.
-    GIT_TAG 0b9695881bd1e8f830ab4538ab3acc0050019eba
-    SOURCE_SUBDIR src
+# ----------------------------------------------------------------------------
+# GPS/RTK Configuration Resources
+# ----------------------------------------------------------------------------
+qt_add_resources(${CMAKE_PROJECT_NAME} json_gps_drivers
+    PREFIX "/json/Vehicle"
+    FILES GPSRTKFact.json
 )
-
-file(GLOB GPS_DRIVERS_SOURCES "${px4-gpsdrivers_SOURCE_DIR}/src/*")
-target_sources(${CMAKE_PROJECT_NAME}
-    PRIVATE
-        definitions.h
-        ${GPS_DRIVERS_SOURCES}
-)
-
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE GPS_DEFINITIONS_HEADER=<${CMAKE_CURRENT_SOURCE_DIR}/definitions.h>)
-
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${px4-gpsdrivers_SOURCE_DIR}/src)

@@ -315,9 +315,9 @@ void FactValueGrid::_saveSettings(void)
         settings.setArrayIndex(colIndex);
         settings.beginWriteArray(_rowsKey);
 
-        for (int colIndex=0; colIndex<columns->count(); colIndex++) {
-            InstrumentValueData* value = columns->value<InstrumentValueData*>(colIndex);
-            settings.setArrayIndex(colIndex);
+        for (int rowIndex=0; rowIndex<columns->count(); rowIndex++) {
+            InstrumentValueData* value = columns->value<InstrumentValueData*>(rowIndex);
+            settings.setArrayIndex(rowIndex);
             _saveValueData(settings, value);
         }
 
@@ -343,6 +343,7 @@ void FactValueGrid::_resetFromSettings(void)
 {
     _preventSaveSettings = true;
 
+    _columns->clearAndDeleteContents();
     _columns->deleteLater();
 
     _columns    = new QmlObjectListModel(this);

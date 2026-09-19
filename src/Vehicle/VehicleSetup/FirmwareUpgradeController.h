@@ -1,20 +1,15 @@
-﻿/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-#pragma once
+﻿#pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 #include <QtCore/QTimer>
 #include <QtGui/QPixmap>
+#include <QtQmlIntegration/QtQmlIntegration>
 #include <QtQuick/QQuickItem>
 
 #include "QGCSerialPortInfo.h"
+
+class QGCFileDownload;
 
 class PX4FirmwareUpgradeThread;
 class PX4FirmwareUpgradeThreadController;
@@ -27,7 +22,10 @@ class Fact;
 class FirmwareUpgradeController : public QObject
 {
     Q_OBJECT
-    
+    QML_ELEMENT
+#ifdef QGC_UNITTEST_BUILD
+    friend class FirmwareUpgradeControllerTest; // Unit test
+#endif
 public:
         typedef enum {
             AutoPilotStackPX4 = 0,
@@ -91,19 +89,23 @@ public:
     Q_PROPERTY(QStringList          apmFirmwareUrls             MEMBER _apmFirmwareUrls                                             NOTIFY apmFirmwareNamesChanged)
     Q_PROPERTY(QString              px4StableVersion            READ px4StableVersion                                               NOTIFY px4StableVersionChanged)
     Q_PROPERTY(QString              px4BetaVersion              READ px4BetaVersion                                                 NOTIFY px4BetaVersionChanged)
+    Q_PROPERTY(QVariantList         availablePorts              MEMBER _availablePorts                                              NOTIFY availablePortsChanged)
 
     /// TextArea for log output
     Q_PROPERTY(QQuickItem* statusLog READ statusLog WRITE setStatusLog)
-    
+
     /// Progress bar for you know what
     Q_PROPERTY(QQuickItem* progressBar READ progressBar WRITE setProgressBar)
 
     /// Starts searching for boards on the background thread
     Q_INVOKABLE void startBoardSearch(void);
-    
+
+    /// Selects which serial port to flash. The worker will wait for this port to be in bootloader mode and then handshake.
+    Q_INVOKABLE void flashPort(const QString& systemLocation);
+
     /// Cancels whatever state the upgrade worker thread is in
     Q_INVOKABLE void cancel(void);
-    
+
     /// Called when the firmware type has been selected by the user to continue the flash process.
     Q_INVOKABLE void flash(AutoPilotStackType_t stackType,
                            FirmwareBuildType_t firmwareType = StableFirmware,
@@ -115,18 +117,18 @@ public:
     Q_INVOKABLE void flashSingleFirmwareMode(FirmwareBuildType_t firmwareType);
 
     Q_INVOKABLE FirmwareVehicleType_t vehicleTypeFromFirmwareSelectionIndex(int index);
-    
+
     // overload, not exposed to qml side
     void flash(const FirmwareIdentifier& firmwareId);
 
     // Property accessors
-    
+
     QQuickItem* progressBar(void) { return _progressBar; }
     void setProgressBar(QQuickItem* progressBar) { _progressBar = progressBar; }
-    
+
     QQuickItem* statusLog(void) { return _statusLog; }
     void setStatusLog(QQuickItem* statusLog) { _statusLog = statusLog; }
-    
+
     QString boardPort(void) { return _boardInfo.portName(); }
     QString boardDescription(void) { return _boardInfo.description(); }
 
@@ -154,15 +156,17 @@ signals:
     void flashComplete                  (void);
     void flashCancelled                 (void);
     void error                          (void);
+    void eraseStarted                   (void);
     void selectedFirmwareBuildTypeChanged(FirmwareBuildType_t firmwareType);
     void apmFirmwareNamesChanged        (void);
     void px4StableVersionChanged        (const QString& px4StableVersion);
     void px4BetaVersionChanged          (const QString& px4BetaVersion);
     void downloadingFirmwareListChanged (bool downloadingFirmwareList);
+    void availablePortsChanged          (void);
 
 private slots:
     void _firmwareDownloadProgress          (qint64 curr, qint64 total);
-    void _firmwareDownloadComplete          (QString remoteFile, QString localFile, QString errorMsg);
+    void _firmwareDownloadComplete          (bool success, const QString &localFile, const QString &errorMsg);
     void _foundBoard                        (bool firstAttempt, const QSerialPortInfo& portInfo, int boardType, QString boardName);
     void _noBoardFound                      (void);
     void _boardGone                         (void);
@@ -175,9 +179,10 @@ private slots:
     void _eraseStarted                      (void);
     void _eraseComplete                     (void);
     void _eraseProgressTick                 (void);
-    void _px4ReleasesGithubDownloadComplete (QString remoteFile, QString localFile, QString errorMsg);
-    void _ardupilotManifestDownloadComplete (QString remoteFile, QString localFile, QString errorMsg);
+    void _px4ReleasesGithubDownloadComplete (bool success, const QString &localFile, const QString &errorMsg);
+    void _ardupilotManifestDownloadComplete (bool success, const QString &localFile, const QString &errorMsg);
     void _buildAPMFirmwareNames             (void);
+    void _portsAvailable                    (const QVariantList& ports);
 
 private:
     QHash<FirmwareIdentifier, QString>* _firmwareHashForBoardId(int boardId);
@@ -209,17 +214,17 @@ private:
     uint32_t    _bootloaderVersion;         ///< Bootloader version
     uint32_t    _bootloaderBoardID;         ///< Board ID
     uint32_t    _bootloaderBoardFlashSize;  ///< Flash size in bytes of board
-    
+
     bool                 _startFlashWhenBootloaderFound;
     FirmwareIdentifier   _startFlashWhenBootloaderFoundFirmwareIdentity;
 
     QPixmap _boardIcon;             ///< Icon used to display image of board
-    
+
     QString _firmwareFilename;      ///< Image which we are going to flash to the board
-    
+
     /// @brief Thread controller which is used to run bootloader commands on separate thread
     PX4FirmwareUpgradeThreadController* _threadController;
-    
+
     static const int    _eraseTickMsec = 500;       ///< Progress bar update tick time for erase
     static const int    _eraseTotalMsec = 15000;    ///< Estimated amount of time erase takes
     int                 _eraseTickCount;            ///< Number of ticks for erase progress update
@@ -227,12 +232,12 @@ private:
 
     static const int    _findBoardTimeoutMsec = 30000;      ///< Amount of time for user to plug in USB
     static const int    _findBootloaderTimeoutMsec = 5000;  ///< Amount time to look for bootloader
-    
+
     QQuickItem*     _statusLog;         ///< Status log TextArea Qml control
     QQuickItem*     _progressBar;
-    
+
     bool _searchingForBoard;    ///< true: searching for board, false: search for bootloader
-    
+
     QSerialPortInfo                 _boardInfo;
     QGCSerialPortInfo::BoardType_t  _boardType;
     QString                         _boardTypeName;
@@ -282,6 +287,9 @@ private:
     QStringList                             _apmFirmwareUrls;
     Fact*                                   _apmChibiOSSetting;
     Fact*                                   _apmVehicleTypeSetting;
+    QVariantList                            _availablePorts;
+    QPointer<QGCFileDownload>               _activeDownloader;          ///< in-flight firmware download, aborted on cancel
+    bool                                    _flashCancelled = false;    ///< cancel was issued; ignore late download completions
 
     FirmwareBuildType_t     _manifestMavFirmwareVersionTypeToFirmwareBuildType  (const QString& manifestMavFirmwareVersionType);
     FirmwareVehicleType_t   _manifestMavTypeToFirmwareVehicleType               (const QString& manifestMavType);

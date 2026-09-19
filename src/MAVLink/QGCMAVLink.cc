@@ -1,18 +1,14 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "QGCMAVLink.h"
+#include "MAVLinkLib.h"
 #include "QGCLoggingCategory.h"
 
-QGC_LOGGING_CATEGORY(QGCMAVLinkLog, "qgc.mavlink.qgcmavlink")
+#include <QtCore/QCoreApplication>
+
+QGC_LOGGING_CATEGORY(QGCMAVLinkLog, "MAVLink.QGCMAVLink")
 
 const QHash<int, QString> QGCMAVLink::mavlinkCompIdHash {
+    { MAV_COMP_ID_AUTOPILOT1, "Autopilot" },
+    { MAV_COMP_ID_ONBOARD_COMPUTER, "Onboard Computer" },
     { MAV_COMP_ID_CAMERA,   "Camera1" },
     { MAV_COMP_ID_CAMERA2,  "Camera2" },
     { MAV_COMP_ID_CAMERA3,  "Camera3" },
@@ -74,8 +70,7 @@ QGCMAVLink::QGCMAVLink(QObject *parent)
     // qCDebug(StatusTextHandlerLog) << Q_FUNC_INFO << this;
 
    (void) qRegisterMetaType<mavlink_message_t>("mavlink_message_t");
-   (void) qRegisterMetaType<MAV_TYPE>("MAV_TYPE");
-   (void) qRegisterMetaType<MAV_AUTOPILOT>("MAV_AUTOPILOT");
+   // Removes dependence on Q_ENUM_NS static-init order for queued connections.
    (void) qRegisterMetaType<GRIPPER_ACTIONS>("GRIPPER_ACTIONS");
 }
 
@@ -124,14 +119,40 @@ QString QGCMAVLink::firmwareClassToString(FirmwareClass_t firmwareClass)
 {
     switch (firmwareClass) {
     case FirmwareClassPX4:
-        return QT_TRANSLATE_NOOP("Firmware Class", "PX4 Pro");
+        return QCoreApplication::translate("Firmware Class", "PX4 Pro");
     case FirmwareClassArduPilot:
-        return QT_TRANSLATE_NOOP("Firmware Class", "ArduPilot");
+        return QCoreApplication::translate("Firmware Class", "ArduPilot");
     case FirmwareClassGeneric:
-        return QT_TRANSLATE_NOOP("Firmware Class", "Generic");
+        return QCoreApplication::translate("Firmware Class", "Generic");
     default:
-        return QT_TRANSLATE_NOOP("Firmware Class", "Unknown");
+        return QCoreApplication::translate("Firmware Class", "Unknown");
     }
+}
+
+const char* QGCMAVLink::firmwareClassToCanonicalString(FirmwareClass_t firmwareClass)
+{
+    switch (firmwareClass) {
+    case FirmwareClassPX4:
+        return "PX4 Pro";
+    case FirmwareClassArduPilot:
+        return "ArduPilot";
+    case FirmwareClassGeneric:
+        return "Generic";
+    default:
+        return "Unknown";
+    }
+}
+
+MAV_AUTOPILOT QGCMAVLink::firmwareTypeFromString(const QString &firmwareTypeStr)
+{
+    const QString type = firmwareTypeStr.trimmed();
+    if (type == QLatin1String("ArduPilot")) {
+        return MAV_AUTOPILOT_ARDUPILOTMEGA;
+    }
+    if (type == QLatin1String("PX4 Pro")) {
+        return MAV_AUTOPILOT_PX4;
+    }
+    return MAV_AUTOPILOT_GENERIC;
 }
 
 bool QGCMAVLink::isAirship(MAV_TYPE mavType)
@@ -147,6 +168,11 @@ bool QGCMAVLink::isFixedWing(MAV_TYPE mavType)
 bool QGCMAVLink::isRoverBoat(MAV_TYPE mavType)
 {
     return vehicleClass(mavType) == VehicleClassRoverBoat;
+}
+
+bool QGCMAVLink::isSpacecraft(MAV_TYPE mavType)
+{
+    return vehicleClass(mavType) == VehicleClassSpacecraft;
 }
 
 bool QGCMAVLink::isSub(MAV_TYPE mavType)
@@ -172,6 +198,8 @@ QGCMAVLink::VehicleClass_t QGCMAVLink::vehicleClass(MAV_TYPE mavType)
         return VehicleClassRoverBoat;
     case MAV_TYPE_SUBMARINE:
         return VehicleClassSub;
+    case MAV_TYPE_SPACECRAFT_ORBITER:
+        return VehicleClassSpacecraft;
     case MAV_TYPE_QUADROTOR:
     case MAV_TYPE_COAXIAL:
     case MAV_TYPE_HELICOPTER:
@@ -200,21 +228,56 @@ QString QGCMAVLink::vehicleClassToUserVisibleString(VehicleClass_t vehicleClass)
 {
     switch (vehicleClass) {
     case VehicleClassAirship:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "Airship");
+        return QCoreApplication::translate("Vehicle Class", "Airship");
     case VehicleClassFixedWing:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "Fixed Wing");
+        return QCoreApplication::translate("Vehicle Class", "Fixed Wing");
     case VehicleClassRoverBoat:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "Rover-Boat");
+        return QCoreApplication::translate("Vehicle Class", "Rover-Boat");
     case VehicleClassSub:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "Sub");
+        return QCoreApplication::translate("Vehicle Class", "Sub");
+    case VehicleClassSpacecraft:
+        return QCoreApplication::translate("Vehicle Class", "Spacecraft");
     case VehicleClassMultiRotor:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "Multi-Rotor");
+        return QCoreApplication::translate("Vehicle Class", "Multi-Rotor");
     case VehicleClassVTOL:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "VTOL");
+        return QCoreApplication::translate("Vehicle Class", "VTOL");
     case VehicleClassGeneric:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "Generic");
+        return QCoreApplication::translate("Vehicle Class", "Generic");
     default:
-        return QT_TRANSLATE_NOOP("Vehicle Class", "Unknown");
+        return QCoreApplication::translate("Vehicle Class", "Unknown");
+    }
+}
+
+MAV_TYPE QGCMAVLink::vehicleTypeFromString(const QString &vehicleStr)
+{
+    const QString type = vehicleStr.trimmed();
+    if (type == QLatin1String("Multi-Rotor")) {
+        return MAV_TYPE_QUADROTOR;
+    }
+    if (type == QLatin1String("Fixed Wing")) {
+        return MAV_TYPE_FIXED_WING;
+    }
+    if (type == QLatin1String("Rover-Boat") || type == QLatin1String("Rover")) {
+        return MAV_TYPE_GROUND_ROVER;
+    }
+    if (type == QLatin1String("Sub")) {
+        return MAV_TYPE_SUBMARINE;
+    }
+    return MAV_TYPE_GENERIC;
+}
+
+const char* QGCMAVLink::vehicleClassToCanonicalString(VehicleClass_t vehicleClass)
+{
+    switch (vehicleClass) {
+    case VehicleClassAirship:   return "Airship";
+    case VehicleClassFixedWing: return "Fixed Wing";
+    case VehicleClassRoverBoat: return "Rover-Boat";
+    case VehicleClassSub:       return "Sub";
+    case VehicleClassSpacecraft:return "Spacecraft";
+    case VehicleClassMultiRotor:return "Multi-Rotor";
+    case VehicleClassVTOL:      return "VTOL";
+    case VehicleClassGeneric:   return "Generic";
+    default:                    return "Unknown";
     }
 }
 
@@ -229,6 +292,8 @@ QString QGCMAVLink::vehicleClassToInternalString(VehicleClass_t vehicleClass)
         return QStringLiteral("RoverBoat");
     case VehicleClassSub:
         return QStringLiteral("Sub");
+    case VehicleClassSpacecraft:
+        return QStringLiteral("Spacecraft");
     case VehicleClassMultiRotor:
         return QStringLiteral("MultiRotor");
     case VehicleClassVTOL:
@@ -240,7 +305,7 @@ QString QGCMAVLink::vehicleClassToInternalString(VehicleClass_t vehicleClass)
     }
 }
 
-QString QGCMAVLink::mavResultToString(MAV_RESULT result)
+QString QGCMAVLink::mavResultToString(uint8_t result)
 {
     switch (result) {
     case MAV_RESULT_ACCEPTED:
@@ -263,8 +328,8 @@ QString QGCMAVLink::mavResultToString(MAV_RESULT result)
 QString QGCMAVLink::mavSysStatusSensorToString(MAV_SYS_STATUS_SENSOR sysStatusSensor)
 {
     struct sensorInfo_s {
-        uint32_t    bit;
-        QString     sensorName;
+        MAV_SYS_STATUS_SENSOR bit;
+        const char*           sensorName;
     };
 
     static const sensorInfo_s rgSensorInfo[] = {
@@ -304,48 +369,48 @@ QString QGCMAVLink::mavSysStatusSensorToString(MAV_SYS_STATUS_SENSOR sysStatusSe
     for (size_t i=0; i<sizeof(rgSensorInfo)/sizeof(sensorInfo_s); i++) {
         const sensorInfo_s* pSensorInfo = &rgSensorInfo[i];
         if (sysStatusSensor == pSensorInfo->bit) {
-            return pSensorInfo->sensorName;
+            return QCoreApplication::translate("MAVLink SYS_STATUS_SENSOR value", pSensorInfo->sensorName);
         }
     }
 
     qWarning() << "QGCMAVLink::mavSysStatusSensorToString: Unknown sensor" << sysStatusSensor;
 
-    return QT_TRANSLATE_NOOP("MAVLink unknown SYS_STATUS_SENSOR value", "Unknown sensor");
+    return QCoreApplication::translate("MAVLink unknown SYS_STATUS_SENSOR value", "Unknown sensor");
 }
 
 QString QGCMAVLink::mavTypeToString(MAV_TYPE mavType) {
-    static const QMap<int, QString> typeNames = {
-        { MAV_TYPE_GENERIC,         tr("Generic micro air vehicle" )},
-        { MAV_TYPE_FIXED_WING,      tr("Fixed wing aircraft")},
-        { MAV_TYPE_QUADROTOR,       tr("Quadrotor")},
-        { MAV_TYPE_COAXIAL,         tr("Coaxial helicopter")},
-        { MAV_TYPE_HELICOPTER,      tr("Normal helicopter with tail rotor.")},
-        { MAV_TYPE_ANTENNA_TRACKER, tr("Ground installation")},
-        { MAV_TYPE_GCS,             tr("Operator control unit / ground control station")},
-        { MAV_TYPE_AIRSHIP,         tr("Airship, controlled")},
-        { MAV_TYPE_FREE_BALLOON,    tr("Free balloon, uncontrolled")},
-        { MAV_TYPE_ROCKET,          tr("Rocket")},
-        { MAV_TYPE_GROUND_ROVER,    tr("Ground rover")},
-        { MAV_TYPE_SURFACE_BOAT,    tr("Surface vessel, boat, ship")},
-        { MAV_TYPE_SUBMARINE,       tr("Submarine")},
-        { MAV_TYPE_HEXAROTOR,       tr("Hexarotor")},
-        { MAV_TYPE_OCTOROTOR,       tr("Octorotor")},
-        { MAV_TYPE_TRICOPTER,       tr("trirotor")},
-        { MAV_TYPE_FLAPPING_WING,   tr("Flapping wing")},
-        { MAV_TYPE_KITE,            tr("Kite")},
-        { MAV_TYPE_ONBOARD_CONTROLLER, tr("Onboard companion controller")},
-        { MAV_TYPE_VTOL_TAILSITTER_DUOROTOR,   tr("Two-rotor VTOL using control surfaces in vertical operation in addition. Tailsitter")},
-        { MAV_TYPE_VTOL_TAILSITTER_QUADROTOR,  tr("Quad-rotor VTOL using a V-shaped quad config in vertical operation. Tailsitter")},
-        { MAV_TYPE_VTOL_TILTROTOR,  tr("Tiltrotor VTOL")},
-        { MAV_TYPE_VTOL_FIXEDROTOR,  tr("VTOL Fixedrotor")},
-        { MAV_TYPE_VTOL_TAILSITTER,  tr("VTOL Tailsitter")},
-        { MAV_TYPE_VTOL_TILTWING,   tr("VTOL Tiltwing")},
-        { MAV_TYPE_VTOL_RESERVED5,  tr("VTOL reserved 5")},
-        { MAV_TYPE_GIMBAL,          tr("Onboard gimbal")},
-        { MAV_TYPE_ADSB,            tr("Onboard ADSB peripheral")},
-    };
-
-    return typeNames.value(mavType, "MAV_TYPE_UNKNOWN");
+    switch (mavType) {
+    case MAV_TYPE_GENERIC:                      return QCoreApplication::translate("MAV_TYPE", "Generic micro air vehicle");
+    case MAV_TYPE_FIXED_WING:                   return QCoreApplication::translate("MAV_TYPE", "Fixed wing aircraft");
+    case MAV_TYPE_QUADROTOR:                    return QCoreApplication::translate("MAV_TYPE", "Quadrotor");
+    case MAV_TYPE_COAXIAL:                      return QCoreApplication::translate("MAV_TYPE", "Coaxial helicopter");
+    case MAV_TYPE_HELICOPTER:                   return QCoreApplication::translate("MAV_TYPE", "Normal helicopter with tail rotor.");
+    case MAV_TYPE_ANTENNA_TRACKER:              return QCoreApplication::translate("MAV_TYPE", "Ground installation");
+    case MAV_TYPE_GCS:                          return QCoreApplication::translate("MAV_TYPE", "Operator control unit / ground control station");
+    case MAV_TYPE_AIRSHIP:                      return QCoreApplication::translate("MAV_TYPE", "Airship, controlled");
+    case MAV_TYPE_FREE_BALLOON:                 return QCoreApplication::translate("MAV_TYPE", "Free balloon, uncontrolled");
+    case MAV_TYPE_ROCKET:                       return QCoreApplication::translate("MAV_TYPE", "Rocket");
+    case MAV_TYPE_GROUND_ROVER:                 return QCoreApplication::translate("MAV_TYPE", "Ground rover");
+    case MAV_TYPE_SURFACE_BOAT:                 return QCoreApplication::translate("MAV_TYPE", "Surface vessel, boat, ship");
+    case MAV_TYPE_SUBMARINE:                    return QCoreApplication::translate("MAV_TYPE", "Submarine");
+    case MAV_TYPE_SPACECRAFT_ORBITER:           return QCoreApplication::translate("MAV_TYPE", "Spacecraft, orbiter");
+    case MAV_TYPE_HEXAROTOR:                    return QCoreApplication::translate("MAV_TYPE", "Hexarotor");
+    case MAV_TYPE_OCTOROTOR:                    return QCoreApplication::translate("MAV_TYPE", "Octorotor");
+    case MAV_TYPE_TRICOPTER:                    return QCoreApplication::translate("MAV_TYPE", "trirotor");
+    case MAV_TYPE_FLAPPING_WING:                return QCoreApplication::translate("MAV_TYPE", "Flapping wing");
+    case MAV_TYPE_KITE:                         return QCoreApplication::translate("MAV_TYPE", "Kite");
+    case MAV_TYPE_ONBOARD_CONTROLLER:           return QCoreApplication::translate("MAV_TYPE", "Onboard companion controller");
+    case MAV_TYPE_VTOL_TAILSITTER_DUOROTOR:     return QCoreApplication::translate("MAV_TYPE", "Two-rotor VTOL using control surfaces in vertical operation in addition. Tailsitter");
+    case MAV_TYPE_VTOL_TAILSITTER_QUADROTOR:    return QCoreApplication::translate("MAV_TYPE", "Quad-rotor VTOL using a V-shaped quad config in vertical operation. Tailsitter");
+    case MAV_TYPE_VTOL_TILTROTOR:               return QCoreApplication::translate("MAV_TYPE", "Tiltrotor VTOL");
+    case MAV_TYPE_VTOL_FIXEDROTOR:              return QCoreApplication::translate("MAV_TYPE", "VTOL Fixedrotor");
+    case MAV_TYPE_VTOL_TAILSITTER:              return QCoreApplication::translate("MAV_TYPE", "VTOL Tailsitter");
+    case MAV_TYPE_VTOL_TILTWING:                return QCoreApplication::translate("MAV_TYPE", "VTOL Tiltwing");
+    case MAV_TYPE_VTOL_RESERVED5:               return QCoreApplication::translate("MAV_TYPE", "VTOL reserved 5");
+    case MAV_TYPE_GIMBAL:                       return QCoreApplication::translate("MAV_TYPE", "Onboard gimbal");
+    case MAV_TYPE_ADSB:                         return QCoreApplication::translate("MAV_TYPE", "Onboard ADSB peripheral");
+    default:                                    return QStringLiteral("MAV_TYPE_UNKNOWN");
+    }
 }
 
 QString QGCMAVLink::firmwareVersionTypeToString(FIRMWARE_VERSION_TYPE firmwareVersionType)
@@ -363,6 +428,24 @@ QString QGCMAVLink::firmwareVersionTypeToString(FIRMWARE_VERSION_TYPE firmwareVe
     default:
         return QStringLiteral("");
     }
+}
+
+FIRMWARE_VERSION_TYPE QGCMAVLink::firmwareVersionTypeFromString(const QString &typeStr)
+{
+    const QString type = typeStr.trimmed();
+    if (type == QLatin1String("dev")) {
+        return FIRMWARE_VERSION_TYPE_DEV;
+    }
+    if (type == QLatin1String("alpha")) {
+        return FIRMWARE_VERSION_TYPE_ALPHA;
+    }
+    if (type == QLatin1String("beta")) {
+        return FIRMWARE_VERSION_TYPE_BETA;
+    }
+    if (type == QLatin1String("rc")) {
+        return FIRMWARE_VERSION_TYPE_RC;
+    }
+    return FIRMWARE_VERSION_TYPE_OFFICIAL;
 }
 
 int QGCMAVLink::motorCount(MAV_TYPE mavType, uint8_t frameType)
@@ -419,6 +502,8 @@ int QGCMAVLink::motorCount(MAV_TYPE mavType, uint8_t frameType)
             return -1;
         }
     }
+    case MAV_TYPE_SPACECRAFT_ORBITER:
+        return 8;
 
     default:
         return -1;
@@ -452,4 +537,17 @@ uint32_t QGCMAVLink::highLatencyFailuresToMavSysStatus(mavlink_high_latency2_t& 
     }
 
     return onboardControlSensorsEnabled;
+}
+
+QString QGCMAVLink::compIdToString(uint8_t compId)
+{
+    QString compIdStr;
+
+    if (mavlinkCompIdHash.contains(compId)) {
+        compIdStr = mavlinkCompIdHash.value(compId);
+    } else {
+        compIdStr = QStringLiteral("Unknown");
+    }
+
+    return QStringLiteral("%1 (%2)").arg(compIdStr).arg(static_cast<int>(compId));
 }

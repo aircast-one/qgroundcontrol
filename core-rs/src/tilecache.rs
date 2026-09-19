@@ -1,44 +1,47 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
-pub const PROVIDERS: [(&str, i32); 37] = [
-    ("Bing Hybrid", 308415137),
-    ("Bing Road", -201109620),
-    ("Bing Satellite", -636113614),
-    ("Copernicus", 1270231390),
-    ("CustomURL Custom", 641461492),
-    ("Eniro Topo", -1719639304),
-    ("Esri Terrain", 1177283281),
-    ("Esri World Satellite", 584748914),
-    ("Esri World Street", 324741496),
-    ("Google Hybrid", -180572015),
-    ("Google Labels", -459453944),
-    ("Google Satellite", -688114322),
-    ("Google Street Map", -649361553),
-    ("Google Terrain", 1651207517),
-    ("Japan-GSI Anaglyph", -1397826394),
-    ("Japan-GSI Contour", 134850610),
-    ("Japan-GSI Relief", -577685280),
-    ("Japan-GSI Seamless", 1266637725),
-    ("Japan-GSI Slope", 1550280749),
-    ("LINZ Basemap", -921597794),
-    ("MapQuest Map", 245015981),
-    ("MapQuest Sat", 1797877876),
-    ("Mapbox Bright", 2043432917),
-    ("Mapbox Custom", 1974515743),
-    ("Mapbox Dark", -1238823924),
-    ("Mapbox Hybrid", -257067776),
-    ("Mapbox Light", 2017851366),
-    ("Mapbox Outdoors", 441564750),
-    ("Mapbox Satellite", 1543086237),
-    ("Mapbox Streets", 687470815),
-    ("Mapbox StreetsBasic", -770441679),
-    ("Statkart Basemap", 1789023079),
-    ("Statkart Topo", 29830293),
-    ("Street Map", -1436319509),
-    ("Svalbard Topo", 1502309240),
-    ("VWorld Satellite Map", 557265812),
-    ("VWorld Street Map", 1897091046),
+pub const PROVIDERS: [(&str, i32); 40] = [
+    ("Bing Hybrid", 8),
+    ("Bing Road", 6),
+    ("Bing Satellite", 7),
+    ("Copernicus", 40),
+    ("CustomURL Custom", 39),
+    ("Eniro Topo", 14),
+    ("Esri Terrain", 17),
+    ("Esri World Satellite", 16),
+    ("Esri World Street", 15),
+    ("Google Hybrid", 4),
+    ("Google Labels", 5),
+    ("Google Satellite", 2),
+    ("Google Street Map", 1),
+    ("Google Terrain", 3),
+    ("Japan-GSI Anaglyph", 33),
+    ("Japan-GSI Contour", 31),
+    ("Japan-GSI Relief", 35),
+    ("Japan-GSI Seamless", 32),
+    ("Japan-GSI Slope", 34),
+    ("LINZ Basemap", 36),
+    ("MapQuest Map", 27),
+    ("MapQuest Sat", 28),
+    ("Mapbox Bright", 25),
+    ("Mapbox Custom", 26),
+    ("Mapbox Dark", 20),
+    ("Mapbox Hybrid", 22),
+    ("Mapbox Light", 19),
+    ("Mapbox Outdoors", 24),
+    ("Mapbox Satellite", 21),
+    ("Mapbox Streets", 18),
+    ("Mapbox StreetsBasic", 23),
+    ("OpenAIP", 38),
+    ("Statkart Basemap", 12),
+    ("Statkart Topo", 11),
+    ("Street Map", 37),
+    ("Svalbard Topo", 13),
+    ("TianDiTu Road", 9),
+    ("TianDiTu Satellite", 10),
+    ("VWorld Satellite Map", 30),
+    ("VWorld Street Map", 29),
 ];
 
 pub const DEFAULT_SET_NAME: &str = "Default Tile Set";
@@ -48,7 +51,7 @@ pub struct Tile {
     pub hash: String,
     pub format: String,
     pub image: Vec<u8>,
-    pub kind: String,
+    pub kind: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -94,12 +97,17 @@ pub struct Cache {
     connection: Connection,
 }
 
-const SCHEMA: [&str; 5] = [
+const SCHEMA: [&str; 10] = [
     "CREATE TABLE IF NOT EXISTS Tiles (tileID INTEGER PRIMARY KEY NOT NULL, hash TEXT NOT NULL UNIQUE, format TEXT NOT NULL, tile BLOB NULL, size INTEGER, type INTEGER, date INTEGER DEFAULT 0)",
-    "CREATE INDEX IF NOT EXISTS hash ON Tiles ( hash, size, type ) ",
     "CREATE TABLE IF NOT EXISTS TileSets (setID INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE, typeStr TEXT, topleftLat REAL DEFAULT 0.0, topleftLon REAL DEFAULT 0.0, bottomRightLat REAL DEFAULT 0.0, bottomRightLon REAL DEFAULT 0.0, minZoom INTEGER DEFAULT 3, maxZoom INTEGER DEFAULT 3, type INTEGER DEFAULT -1, numTiles INTEGER DEFAULT 0, defaultSet INTEGER DEFAULT 0, date INTEGER DEFAULT 0)",
-    "CREATE TABLE IF NOT EXISTS SetTiles (setID INTEGER, tileID INTEGER)",
-    "CREATE TABLE IF NOT EXISTS TilesDownload (setID INTEGER, hash TEXT NOT NULL UNIQUE, type INTEGER, x INTEGER, y INTEGER, z INTEGER, state INTEGER DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS SetTiles (setID INTEGER NOT NULL REFERENCES TileSets(setID) ON DELETE CASCADE, tileID INTEGER NOT NULL REFERENCES Tiles(tileID) ON DELETE CASCADE)",
+    "CREATE TABLE IF NOT EXISTS TilesDownload (setID INTEGER NOT NULL REFERENCES TileSets(setID) ON DELETE CASCADE, hash TEXT NOT NULL, type INTEGER, x INTEGER, y INTEGER, z INTEGER, state INTEGER DEFAULT 0)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_settiles_unique ON SetTiles(tileID, setID)",
+    "CREATE INDEX IF NOT EXISTS idx_settiles_setid ON SetTiles(setID)",
+    "CREATE INDEX IF NOT EXISTS idx_settiles_tileid ON SetTiles(tileID)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_tilesdownload_setid_hash ON TilesDownload(setID, hash)",
+    "CREATE INDEX IF NOT EXISTS idx_tilesdownload_setid_state ON TilesDownload(setID, state)",
+    "CREATE INDEX IF NOT EXISTS idx_tiles_date ON Tiles(date)",
 ];
 
 fn uri_escaped(path: &Path) -> String {
@@ -167,7 +175,7 @@ impl Cache {
     fn read_tile(&self, hash: &str) -> rusqlite::Result<Option<Tile>> {
         self.connection
             .query_row("SELECT tile, format, type FROM Tiles WHERE hash = ?1", params![hash], |row| {
-                Ok(Tile { hash: hash.to_string(), image: row.get(0)?, format: row.get(1)?, kind: row.get::<_, Option<String>>(2)?.unwrap_or_default() })
+                Ok(Tile { hash: hash.to_string(), image: row.get(0)?, format: row.get(1)?, kind: row.get::<_, Option<i64>>(2)?.unwrap_or(-1) as i32 })
             })
             .optional()
     }
@@ -325,20 +333,11 @@ mod tests {
             .collect();
         assert!(unreadable.is_empty(), "{unreadable:?}");
         let widths: Vec<usize> = PROVIDERS.iter().map(|(_, hash)| tile_hash(*hash, 8523, 5606, 14).len()).collect();
-        assert!(widths.contains(&29) && widths.contains(&30), "provider hashes are not all the same width, which is why the provider is read from the end rather than the start");
+        assert!(widths.iter().all(|width| *width == 29), "{widths:?}");
         assert_eq!(provider_of("short"), None);
         assert_eq!(provider_of(""), None);
     }
 
-    #[test]
-    fn qts_own_decoder_misreads_the_widest_provider_hashes() {
-        let widest: Vec<&str> = PROVIDERS.iter().filter(|(_, hash)| tile_hash(*hash, 8523, 5606, 14).len() > 29).map(|(name, _)| *name).collect();
-        assert_eq!(widest.len(), 4, "four provider hashes need eleven characters, so Qt's tileHashToType reads ten of them and answers a provider that is not there");
-        let hash = tile_hash(provider_hash(widest[0]).unwrap(), 8523, 5606, 14);
-        let qt_reads: i32 = hash[..10].parse().unwrap();
-        assert_ne!(qt_reads, provider_hash(widest[0]).unwrap());
-        assert_eq!(provider_named(qt_reads), None, "the number Qt reads names no provider at all, so this shows up as a lookup failure rather than a wrong map");
-    }
 
     #[test]
     fn the_schema_is_the_one_the_qt_engine_writes() {
@@ -384,7 +383,7 @@ mod tests {
     }
 
     fn tile(hash: &str, bytes: usize) -> Tile {
-        Tile { hash: hash.to_string(), format: "png".to_string(), image: vec![7u8; bytes], kind: "Bing Road".to_string() }
+        Tile { hash: hash.to_string(), format: "png".to_string(), image: vec![7u8; bytes], kind: provider_hash("Bing Road").unwrap() }
     }
 
     fn hash_for(x: i32) -> String {
@@ -421,7 +420,7 @@ mod tests {
         let served = cache.tile(&hash).unwrap().unwrap();
         assert_eq!(served.image.len(), 2048);
         assert_eq!(served.format, "png");
-        assert_eq!(served.kind, "Bing Road", "the provider name is what the Qt worker writes into this column, whatever the schema calls it");
+        assert_eq!(served.kind, provider_hash("Bing Road").unwrap(), "the provider id is what the Qt worker writes into this column");
         assert_eq!(cache.total_size().unwrap(), 2048);
         assert_eq!(cache.saved(cache.default_set().unwrap()).unwrap(), (1, 2048), "the set a tile was filed under counts it");
     }

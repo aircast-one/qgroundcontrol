@@ -1,17 +1,19 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
-import QGroundControl.FactSystem
+import QGroundControl
 import QGroundControl.FactControls
 import QGroundControl.Controls
-import QGroundControl.Palette
 
 /*
     IMPORTANT NOTE: Any changes made here must also be made to SensorsComponentSummary.qml
 */
 
 Item {
-    anchors.fill:   parent
+    implicitWidth: mainLayout.implicitWidth
+    implicitHeight: mainLayout.implicitHeight
+    width: parent.width  // grows when Loader is wider than implicitWidth
 
     FactPanelController { id: controller; }
 
@@ -21,8 +23,10 @@ Item {
     property Fact gyro0IdFact:  controller.getParameterFact(-1, "CAL_GYRO0_ID")
     property Fact accel0IdFact: controller.getParameterFact(-1, "CAL_ACC0_ID")
 
-    Column {
-        anchors.fill:       parent
+    ColumnLayout {
+        id: mainLayout
+        width: parent.width
+        spacing: 0
 
         VehicleSummaryRow {
             labelText: qsTr("Compass 0")

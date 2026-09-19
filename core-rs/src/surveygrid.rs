@@ -1,9 +1,8 @@
 use crate::geo::{geo_to_ned, ned_to_geo};
 
 const EARTH_MEAN_RADIUS_M: f64 = 6_371_007.2;
-const NO_SPACING_M: f64 = 100_000.0;
-const MIN_SPACING_M: f64 = 0.5;
-const GRID_MARGIN_M: f64 = 2000.0;
+const SWEEP_REACH_FACTOR: f64 = 1.5;
+const MAX_TRANSECT_COUNT: f64 = 1000.0;
 const DIRECTION_TOLERANCE_DEG: f64 = 1.0;
 
 pub const ENTRY_TOP_LEFT: i64 = 0;
@@ -339,7 +338,6 @@ fn pass(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) 
         .collect();
     let closed: Vec<Point> = flat.iter().copied().chain(std::iter::once(flat[0])).collect();
 
-    let spacing = if params.grid_spacing < MIN_SPACING_M { NO_SPACING_M } else { params.grid_spacing };
     let angle = clamp_grid_angle_90(params.grid_angle) + if refly { 90.0 } else { 0.0 };
 
     let xs = closed.iter().map(|p| p.0);
@@ -347,15 +345,25 @@ fn pass(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) 
     let (min_x, max_x) = xs.clone().fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
     let (min_y, max_y) = ys.clone().fold((f64::MAX, f64::MIN), |(lo, hi), y| (lo.min(y), hi.max(y)));
     let centre = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
-    let max_width = (max_x - min_x).max(max_y - min_y) + GRID_MARGIN_M;
+    let diagonal = ((max_x - min_x) * (max_x - min_x) + (max_y - min_y) * (max_y - min_y)).sqrt();
+    let max_width = diagonal * SWEEP_REACH_FACTOR;
+    if max_width <= 0.0 {
+        return Vec::new();
+    }
     let half_width = max_width / 2.0;
-
-    let count = ((max_width / spacing).ceil() as i64).max(1);
-    let lines: Vec<Line> = (0..count)
-        .map(|step| centre.0 - half_width + spacing * step as f64)
-        .take_while(|x| *x < centre.0 - half_width + max_width)
-        .map(|x| (rotate((x, centre.1 - half_width), centre, angle), rotate((x, centre.1 + half_width), centre, angle)))
-        .collect();
+    let sweep = |x: f64| (rotate((x, centre.1 - half_width), centre, angle), rotate((x, centre.1 + half_width), centre, angle));
+    let lines: Vec<Line> = if params.grid_spacing <= 0.0 {
+        vec![sweep(centre.0)]
+    } else {
+        let spacing = params.grid_spacing.max(diagonal / MAX_TRANSECT_COUNT);
+        let mut xs = Vec::new();
+        let mut x = centre.0 - half_width;
+        while x < centre.0 - half_width + max_width {
+            xs.push(x);
+            x += spacing;
+        }
+        xs.into_iter().map(sweep).collect()
+    };
 
     let crossed = intersect_with_polygon(&lines, &closed);
     let ordered = adjust_line_direction(&crossed);

@@ -9,11 +9,14 @@
 
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
-class RcChannelOverrideTest : public UnitTest
+class RcChannelOverrideTest : public VehicleTestManualConnect
 {
     Q_OBJECT
+
+protected:
+    void init() override;
 
 private slots:
     void _overrideHoldsOneChannelAndReleasesTheRest();

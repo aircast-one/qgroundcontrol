@@ -1,56 +1,48 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QString>
 
+#include "GPSProvider.h"
 #include "satellite_info.h"
-#include "sensor_gnss_relative.h"
 #include "sensor_gps.h"
-
-Q_DECLARE_LOGGING_CATEGORY(GPSRtkLog)
 
 class GPSRTKFactGroup;
 class FactGroup;
-class RTCMMavlink;
-class GPSProvider;
 
 class GPSRtk : public QObject
 {
     Q_OBJECT
 
 public:
-    GPSRtk(QObject *parent = nullptr);
+    explicit GPSRtk(QObject* parent = nullptr);
     ~GPSRtk();
 
-    static void registerQmlTypes();
-
-    void connectGPS(const QString &device, QStringView gps_type);
+    void connectGPS(const QString& device, QStringView gps_type);
     void disconnectGPS();
     bool connected() const;
-    FactGroup *gpsRtkFactGroup();
+    FactGroup* gpsRtkFactGroup();
+
+    struct SatelliteCounts
+    {
+        uint8_t inView = 0;
+        int used = 0;
+    };
+
+    /// Clamp count to the array bound and tally used-in-solution satellites.
+    static SatelliteCounts countSatellites(const satellite_info_s& msg);
 
 private slots:
-    void _satelliteInfoUpdate(const satellite_info_s &msg);
-    void _sensorGnssRelativeUpdate(const sensor_gnss_relative_s &msg);
-    void _sensorGpsUpdate(const sensor_gps_s &msg);
+    void _satelliteInfoUpdate(const satellite_info_s& msg);
+    void _sensorGpsUpdate(const sensor_gps_s& msg);
     void _onGPSConnect();
     void _onGPSDisconnect();
-    void _onGPSSurveyInStatus(float duration, float accuracyMM, double latitude, double longitude, float altitude, bool valid, bool active);
+    void _onGPSConnectionError(GPSConnectionError error);
+    void _onGPSSurveyInStatus(const GPSSurveyInStatus& status);
 
 private:
-    GPSProvider *_gpsProvider = nullptr;
-    RTCMMavlink *_rtcmMavlink = nullptr;
-    GPSRTKFactGroup *_gpsRtkFactGroup = nullptr;
+    GPSProvider* _gpsProvider = nullptr;
+    GPSRTKFactGroup* _gpsRtkFactGroup = nullptr;
 
     std::atomic_bool _requestGpsStop = false;
 

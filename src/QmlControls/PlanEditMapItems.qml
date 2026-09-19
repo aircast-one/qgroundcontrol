@@ -14,8 +14,7 @@ import QtPositioning
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FlightMap
-import QGroundControl.ScreenTools
-import QGroundControl.UTMSP
+import QGroundControl.PlanView
 
 // The editable half of the plan, drawn onto a map this layer does not own.
 //
@@ -122,17 +121,6 @@ Item {
         opacity:                _root._layerOpacity(_root.rallyInteractive)
     }
 
-    UTMSPMapVisuals {
-        enabled:                _root.utmspEnabled
-        map:                    _root.map
-        currentMissionItems:    _root._missionController.visualItems
-        myGeoFenceController:   _root._geoFenceController
-        interactive:            _root._editUtmsp
-        homePosition:           _root._missionController.plannedHomePosition
-        planView:               true
-        opacity:                _root._layerOpacity(_root.utmspInteractive)
-        resetCheck:             _root.resetGeofencePolygon
-    }
 
     Component {
         id: mapItemGroupComponent

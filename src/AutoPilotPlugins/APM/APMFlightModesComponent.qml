@@ -1,23 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import QGroundControl.FactSystem
+import QGroundControl
 import QGroundControl.FactControls
-import QGroundControl.Palette
 import QGroundControl.Controls
-import QGroundControl.Controllers
-import QGroundControl.ScreenTools
 
 SetupPage {
     id:             flightModePage
@@ -28,6 +15,7 @@ SetupPage {
     readonly property var    _pwmStrings:       [ "PWM 0 - 1230", "PWM 1231 - 1360", "PWM 1361 - 1490", "PWM 1491 - 1620", "PWM 1621 - 1749", "PWM 1750 +"]
 
     property real   _margins:                   ScreenTools.defaultFontPixelHeight
+    property real   _comboWidth:                ScreenTools.defaultFontPixelWidth * 30
     property Fact   _nullFact
     property bool   _fltmodeChExists:           controller.parameterExists(-1, _modeChannelParam)
     property Fact   _fltmodeCh:                 _fltmodeChExists ? controller.getParameterFact(-1, _modeChannelParam) : _nullFact
@@ -50,8 +38,8 @@ SetupPage {
             width:      availableWidth
             spacing:     _margins
 
-            Column {
-                spacing: _margins
+            QGCGroupBox {
+                title: qsTr("Flight Mode Settings") + (_fltmodeChExists ? "" : qsTr(" (Channel 5)"))
 
                 QGCLabel {
                     id:             flightModeLabel
@@ -84,8 +72,9 @@ SetupPage {
                             }
 
                             QGCComboBox {
-                                id:             modeChannelCombo
-                                width:          ScreenTools.defaultFontPixelWidth * 15
+                                id:              modeChannelCombo
+                                sizeToContents:  true
+                                Layout.maximumWidth: _comboWidth
                                 model:          [ qsTr("Not assigned"), qsTr("Channel 1"), qsTr("Channel 2"),
                                     qsTr("Channel 3"),    qsTr("Channel 4"), qsTr("Channel 5"),
                                     qsTr("Channel 6"),    qsTr("Channel 7"), qsTr("Channel 8") ]
@@ -116,7 +105,8 @@ SetupPage {
                                 model:  6
 
                                 FactComboBox {
-                                    Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 15
+                                    sizeToContents:         true
+                                    Layout.maximumWidth:    _comboWidth
                                     fact:                   controller.getParameterFact(-1, _modeParamPrefix + index)
                                     indexModel:             false
 
@@ -178,8 +168,8 @@ SetupPage {
                 }
             }
 
-            Column {
-                spacing: _margins
+            QGCGroupBox {
+                title: qsTr("Switch Options")
 
                 QGCLabel {
                     id:                 channelOptionsLabel
@@ -217,9 +207,10 @@ SetupPage {
                                 }
 
                                 FactComboBox {
-                                    id:         optCombo
-                                    width:      ScreenTools.defaultFontPixelWidth * 15
-                                    fact:       controller.getParameterFact(-1, "r.RC" + index + "_OPTION")
+                                    id:              optCombo
+                                    sizeToContents:  true
+                                    Layout.maximumWidth: _comboWidth
+                                    fact:       controller.getParameterFact(-1, "RC" + index + "_OPTION")
                                     indexModel: false
                                 }
                             }

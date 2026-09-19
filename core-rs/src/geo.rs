@@ -32,35 +32,73 @@ pub fn wrap(latitude: f64, longitude: f64) -> (f64, f64) {
     (clamp_latitude(latitude), wrap_longitude(longitude))
 }
 
+const WGS84_F: f64 = 1.0 / 298.257223563;
+const WGS84_E2: f64 = WGS84_F * (2.0 - WGS84_F);
+
+fn sincosd(degrees: f64) -> (f64, f64) {
+    let reduced = degrees % 360.0;
+    let quadrant = (reduced / 90.0).round();
+    let radians = (reduced - 90.0 * quadrant).to_radians();
+    let (s, c) = (radians.sin(), radians.cos());
+    match (quadrant as i64).rem_euclid(4) {
+        0 => (s, c),
+        1 => (c, -s),
+        2 => (-s, -c),
+        _ => (-c, s),
+    }
+}
+
+fn ecef(lat: f64, lon: f64, alt: f64) -> (f64, f64, f64) {
+    let (sin_phi, cos_phi) = sincosd(lat);
+    let (sin_lam, cos_lam) = sincosd(lon);
+    let n = WGS84_A / (1.0 - WGS84_E2 * sin_phi * sin_phi).sqrt();
+    let z = ((1.0 - WGS84_E2) * n + alt) * sin_phi;
+    let x = (n + alt) * cos_phi;
+    (x * cos_lam, x * sin_lam, z)
+}
+
+fn geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+    let lon = y.atan2(x);
+    let p = (x * x + y * y).sqrt();
+    let mut lat = z.atan2(p * (1.0 - WGS84_E2));
+    let mut alt = 0.0;
+    for _ in 0..12 {
+        let sin_lat = lat.sin();
+        let n = WGS84_A / (1.0 - WGS84_E2 * sin_lat * sin_lat).sqrt();
+        alt = if lat.cos().abs() > 1e-12 { p / lat.cos() - n } else { z.abs() - n * (1.0 - WGS84_E2) };
+        lat = z.atan2(p * (1.0 - WGS84_E2 * n / (n + alt)));
+    }
+    (lat.to_degrees(), lon.to_degrees(), alt)
+}
+
+fn finite_alt(alt: f64) -> f64 {
+    if alt.is_nan() { 0.0 } else { alt }
+}
+
 pub fn geo_to_ned(lat: f64, lon: f64, alt: f64, origin: (f64, f64, f64)) -> (f64, f64, f64) {
     let (olat, olon, oalt) = origin;
     if lat == olat && lon == olon && alt == oalt {
         return (0.0, 0.0, 0.0);
     }
-    let (lat_rad, lon_rad, ref_lat, ref_lon) = (lat.to_radians(), lon.to_radians(), olat.to_radians(), olon.to_radians());
-    let (sin_lat, cos_lat, cos_d_lon) = (lat_rad.sin(), lat_rad.cos(), (lon_rad - ref_lon).cos());
-    let (ref_sin, ref_cos) = (ref_lat.sin(), ref_lat.cos());
-    let c = (ref_sin * sin_lat + ref_cos * cos_lat * cos_d_lon).clamp(-1.0, 1.0).acos();
-    let k = if c.abs() < f64::EPSILON { 1.0 } else { c / c.sin() };
-    (
-        k * (ref_cos * sin_lat - ref_sin * cos_lat * cos_d_lon) * WGS84_A,
-        k * cos_lat * (lon_rad - ref_lon).sin() * WGS84_A,
-        -(alt - oalt),
-    )
+    let (ox, oy, oz) = ecef(olat, olon, finite_alt(oalt));
+    let (px, py, pz) = ecef(lat, lon, finite_alt(alt));
+    let (dx, dy, dz) = (px - ox, py - oy, pz - oz);
+    let ((sin_phi, cos_phi), (sin_lam, cos_lam)) = (sincosd(olat), sincosd(olon));
+    let east = -sin_lam * dx + cos_lam * dy;
+    let north = -sin_phi * cos_lam * dx - sin_phi * sin_lam * dy + cos_phi * dz;
+    let up = cos_phi * cos_lam * dx + cos_phi * sin_lam * dy + sin_phi * dz;
+    (north, east, -up)
 }
 
 pub fn ned_to_geo(x: f64, y: f64, z: f64, origin: (f64, f64, f64)) -> (f64, f64, f64) {
     let (olat, olon, oalt) = origin;
-    let (x_rad, y_rad) = (x / WGS84_A, y / WGS84_A);
-    let c = (x_rad * x_rad + y_rad * y_rad).sqrt();
-    let (sin_c, cos_c) = (c.sin(), c.cos());
-    let (ref_lat, ref_lon) = (olat.to_radians(), olon.to_radians());
-    let (ref_sin, ref_cos) = (ref_lat.sin(), ref_lat.cos());
-    let (lat_rad, lon_rad) = match c.abs() > f64::EPSILON {
-        true => ((cos_c * ref_sin + (x_rad * sin_c * ref_cos) / c).asin(), ref_lon + (y_rad * sin_c).atan2(c * ref_cos * cos_c - x_rad * ref_sin * sin_c)),
-        false => (ref_lat, ref_lon),
-    };
-    (lat_rad.to_degrees(), lon_rad.to_degrees(), -z + oalt)
+    let (north, east, up) = (x, y, -z);
+    let ((sin_phi, cos_phi), (sin_lam, cos_lam)) = (sincosd(olat), sincosd(olon));
+    let dx = -sin_lam * east - sin_phi * cos_lam * north + cos_phi * cos_lam * up;
+    let dy = cos_lam * east - sin_phi * sin_lam * north + cos_phi * sin_lam * up;
+    let dz = cos_phi * north + sin_phi * up;
+    let (ox, oy, oz) = ecef(olat, olon, finite_alt(oalt));
+    geodetic(ox + dx, oy + dy, oz + dz)
 }
 
 pub fn geo_to_utm(lat: f64, lon: f64) -> (u8, f64, f64) {
@@ -118,10 +156,10 @@ mod tests {
     #[test]
     fn ned_matches_geo_test() {
         let (x, y, z) = geo_to_ned(47.364869, 8.594398, 0.0, ORIGIN);
-        assert!(close(x, -1282.58731618) && close(y, 3490.85591324) && close(z, 0.0), "{x} {y} {z}");
+        assert!(close(x, -1280.954612) && close(y, 3497.196961) && close(z, 1.085830), "{x} {y} {z}");
         let (x, y, z) = geo_to_ned(ORIGIN.0, ORIGIN.1, 10.0, ORIGIN);
         assert!(close(x, 0.0) && close(y, 0.0) && close(z, -10.0));
-        let (lat, lon, alt) = ned_to_geo(-1282.58731618, 3490.85591324, 0.0, ORIGIN);
+        let (lat, lon, alt) = ned_to_geo(-1280.954612, 3497.196961, 1.085830, ORIGIN);
         assert!(close(lat, 47.364869) && close(lon, 8.594398) && close(alt, 0.0), "{lat} {lon} {alt}");
         let (lat, lon, alt) = ned_to_geo(0.0, 0.0, 0.0, ORIGIN);
         assert!(close(lat, ORIGIN.0) && close(lon, ORIGIN.1) && close(alt, 0.0));

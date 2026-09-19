@@ -13,12 +13,8 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.FactSystem
 import QGroundControl.FactControls
-import QGroundControl.Palette
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
-import QGroundControl.Controllers
 
 Item {
     id:             setupView
@@ -33,6 +29,20 @@ Item {
     property real   availableHeight:        height - pageLoader.y
     property bool   showAdvanced:           false
     property alias  advanced:               advancedCheckBox.checked
+    property string sectionIdFilter:        ""
+
+    function sectionVisible(sectionId) {
+        if (pageLoader.item && typeof pageLoader.item.sectionVisible === "function") {
+            return pageLoader.item.sectionVisible(sectionId)
+        }
+        return true
+    }
+
+    onSectionIdFilterChanged: {
+        if (pageLoader.item && typeof pageLoader.item.sectionIdFilter !== "undefined") {
+            pageLoader.item.sectionIdFilter = sectionIdFilter
+        }
+    }
 
     property bool   _vehicleIsRover:        globals.activeVehicle ? globals.activeVehicle.rover : false
     property bool   _vehicleArmed:          globals.activeVehicle ? globals.activeVehicle.armed : false
@@ -45,6 +55,9 @@ Item {
     Component.onCompleted: {
         if(pageLoader.item && pageLoader.item.setupPageCompleted) {
             pageLoader.item.setupPageCompleted()
+        }
+        if (pageLoader.item && typeof pageLoader.item.sectionIdFilter !== "undefined") {
+            pageLoader.item.sectionIdFilter = sectionIdFilter
         }
     }
 

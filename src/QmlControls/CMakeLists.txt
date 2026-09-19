@@ -1,7 +1,12 @@
+# ============================================================================
+# QML Controls Module
+# Reusable QML UI controls and controllers
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
-        EditPositionDialogController.cc
-        EditPositionDialogController.h
+        ColoredSvgImageProvider.cc
+        ColoredSvgImageProvider.h
         FactValueGrid.cc
         FactValueGrid.h
         FlightPathSegment.cc
@@ -14,6 +19,10 @@ target_sources(${CMAKE_PROJECT_NAME}
         MavlinkAction.h
         MavlinkActionManager.cc
         MavlinkActionManager.h
+        ObjectItemModelBase.cc
+        ObjectItemModelBase.h
+        ObjectListModelBase.cc
+        ObjectListModelBase.h
         OverlayPhysics.cc
         OverlayPhysics.h
         ParameterEditorController.cc
@@ -42,6 +51,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         QGroundControlQmlGlobal.h
         QmlObjectListModel.cc
         QmlObjectListModel.h
+        QmlObjectTreeModel.cc
+        QmlObjectTreeModel.h
         QmlUnitsConversion.h
         RCChannelMonitorController.cc
         RCChannelMonitorController.h
@@ -49,235 +60,183 @@ target_sources(${CMAKE_PROJECT_NAME}
         RCToParamDialogController.h
         ScreenToolsController.cc
         ScreenToolsController.h
+        ServoOutputMonitorController.cc
+        ServoOutputMonitorController.h
         TerrainProfile.cc
         TerrainProfile.h
         ToolStripAction.cc
         ToolStripAction.h
         ToolStripActionList.cc
         ToolStripActionList.h
+        TransformPositionController.cc
+        TransformPositionController.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-set_source_files_properties(OverlayBackdrop.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
-
+# ----------------------------------------------------------------------------
+# QML Controls Module
+# ----------------------------------------------------------------------------
 qt_add_library(QGroundControlControlsModule STATIC)
 
+set_source_files_properties(OverlayBackdrop.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(ScreenTools.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
+set(_qgc_controls_qml
+    AltFrameCombo.qml
+    AltFrameDialog.qml
+    AltModeMenu.qml
+    APMSubMotorDisplay.qml
+    AppSettings.qml
+    ArrangeableOverlayItem.qml
+    AutotuneUI.qml
+    AxisMonitor.qml
+    BatteryGlyph.qml
+    CameraSwitchButton.qml
+    ClickableColor.qml
+    ConfigSection.qml
+    ConnectionStatusRow.qml
+    DeadMouseArea.qml
+    DragToPosition.qml
+    DropButton.qml
+    DropPanel.qml
+    EditPositionDialog.qml
+    ExclusiveGroupItem.qml
+    FactSlider.qml
+    FileButton.qml
+    FixStatusDot.qml
+    FlightModeMenu.qml
+    GcsBatteryGlyph.qml
+    HeightIndicator.qml
+    HorizontalFactValueGrid.qml
+    IndicatorButton.qml
+    InstrumentValueEditDialog.qml
+    InstrumentValueLabel.qml
+    InstrumentValueValue.qml
+    JiggleAnimation.qml
+    JoystickThumbPad.qml
+    KMLOrSHPFileDialog.qml
+    LabelledButton.qml
+    LabelledComboBox.qml
+    LabelledFactMenu.qml
+    LabelledLabel.qml
+    LabelledSlider.qml
+    LogReplayStatusBar.qml
+    MissionCommandDialog.qml
+    MvPanelPage.qml
+    OfflineMapButton.qml
+    OverlayActivityCapsule.qml
+    OverlayActivityRing.qml
+    OverlayBackdrop.qml
+    OverlayCapsule.qml
+    OverlayCaption.qml
+    OverlayDisclosureRow.qml
+    OverlayEditBadge.qml
+    OverlayEditSlot.qml
+    OverlayGlass.qml
+    OverlayMenuItem.qml
+    OverlayMenuSeparator.qml
+    OverlayPill.qml
+    OverlayPopover.qml
+    OverlayRig.qml
+    OverlayRoundButton.qml
+    OverlaySegmentedControl.qml
+    OverlayShadowEffect.qml
+    OverlayViewSwitch.qml
+    ParameterDiffDialog.qml
+    ParameterEditor.qml
+    ParameterEditorDialog.qml
+    PIDTuning.qml
+    PipState.qml
+    PipView.qml
+    PlanEditMapItems.qml
+    PlanFactRow.qml
+    PlanGroupCard.qml
+    PlanGroupRow.qml
+    PlanSectionLabel.qml
+    PlanSwitchRow.qml
+    PreFlightCheckButton.qml
+    PreFlightCheckGroup.qml
+    PreFlightCheckModel.qml
+    QGCButton.qml
+    QGCCheckBox.qml
+    QGCCheckBoxSlider.qml
+    QGCColoredImage.qml
+    QGCColumnButton.qml
+    QGCComboBox.qml
+    QGCDelayButton.qml
+    QGCDynamicObjectManager.qml
+    QGCFileDialog.qml
+    QGCFlickable.qml
+    QGCFlickableScrollIndicator.qml
+    QGCGroupBox.qml
+    QGCLabel.qml
+    QGCListView.qml
+    QGCMapLabel.qml
+    QGCMarqueeLabel.qml
+    QGCMenu.qml
+    QGCMenuItem.qml
+    QGCMenuSeparator.qml
+    QGCMouseArea.qml
+    QGCMovableItem.qml
+    QGCOptionsComboBox.qml
+    QGCPageIndicator.qml
+    QGCPopupDialog.qml
+    QGCPopupDialogFactory.qml
+    QGCRadioButton.qml
+    QGCRoundButton.qml
+    QGCSimpleMessageDialog.qml
+    QGCSlider.qml
+    QGCSpinner.qml
+    QGCSwipeView.qml
+    QGCSwitch.qml
+    QGCTabBar.qml
+    QGCTabButton.qml
+    QGCTextField.qml
+    QGCToolBarButton.qml
+    QGCToolInsets.qml
+    QGCToolTip.qml
+    QGCVectorImage.qml
+    RallyPointEditor.qml
+    RCChannelMonitor.qml
+    RCToParamDialog.qml
+    ResizeHandle.qml
+    ScreenTools.qml
+    SectionHeader.qml
+    SelectableControl.qml
+    SettingsButton.qml
+    SettingsGroupLayout.qml
+    SetupPage.qml
+    SetupProgressBar.qml
+    SetupSheet.qml
+    SliderSwitch.qml
+    SubMenuButton.qml
+    TimedProgressTracker.qml
+    ToolDrawerPage.qml
+    ToolIndicatorPage.qml
+    ToolStrip.qml
+    ToolStripDropPanel.qml
+    ToolStripHoverButton.qml
+    ValueSlider.qml
+    VehicleRotationCal.qml
+    VehicleStatusSummary.qml
+    VehicleSummaryRow.qml
+    VideoSourceMenu.qml
+)
+
+# The Android head is native and never loads the Controls QML; only the C++ types are compiled.
 if(ANDROID)
-    qt_add_qml_module(QGroundControlControlsModule
-        URI QGroundControl.Controls
-        VERSION 1.0
-        RESOURCE_PREFIX /qml
-        NO_PLUGIN
-    )
-else()
-    qt_add_qml_module(QGroundControlControlsModule
-        URI QGroundControl.Controls
-        VERSION 1.0
-        RESOURCE_PREFIX /qml
-        QML_FILES
-            AltModeMenu.qml
-            AppSettings.qml
-            APMSubMotorDisplay.qml
-            AppMessages.qml
-            ArrangeableOverlayItem.qml
-            AutotuneUI.qml
-            AxisMonitor.qml
-            CameraSwitchButton.qml
-            ClickableColor.qml
-            DeadMouseArea.qml
-            DragToPosition.qml
-            DropButton.qml
-            DropPanel.qml
-            EditPositionDialog.qml
-            ExclusiveGroupItem.qml
-            FactSlider.qml
-            FactSliderPanel.qml
-            FileButton.qml
-            FlightModeMenu.qml
-            HeightIndicator.qml
-            HorizontalFactValueGrid.qml
-            SetupProgressBar.qml
-            SetupSheet.qml
-            InstrumentValueEditDialog.qml
-            InstrumentValueLabel.qml
-            InstrumentValueValue.qml
-            JiggleAnimation.qml
-            JoystickThumbPad.qml
-            KMLOrSHPFileDialog.qml
-            LabelledButton.qml
-            LabelledComboBox.qml
-            LabelledFactMenu.qml
-            LabelledLabel.qml
-            LabelledSlider.qml
-            LogReplayStatusBar.qml
-            MainWindowSavedState.qml
-            MAVLinkChart.qml
-            MAVLinkMessageButton.qml
-            MissionCommandDialog.qml
-            MissionItemIndexLabel.qml
-            MvPanelPage.qml
-            OfflineMapButton.qml
-            OverlayActivityCapsule.qml
-            OverlayActivityRing.qml
-            OverlayEditBadge.qml
-            OverlayEditSlot.qml
-            OverlayDisclosureRow.qml
-            OverlayMenuItem.qml
-            OverlayMenuSeparator.qml
-            OverlayBackdrop.qml
-            OverlayCaption.qml
-            OverlayCapsule.qml
-            OverlayGlass.qml
-            OverlayPill.qml
-            OverlayPopover.qml
-            OverlayRoundButton.qml
-            OverlaySegmentedControl.qml
-            OverlayRig.qml
-            OverlayViewSwitch.qml
-            OverlayShadowEffect.qml
-            ParameterDiffDialog.qml
-            ParameterEditor.qml
-            ParameterEditorDialog.qml
-            PIDTuning.qml
-            PipState.qml
-            PipView.qml
-            PreFlightCheckButton.qml
-            PreFlightCheckGroup.qml
-            PreFlightCheckModel.qml
-            QGCButton.qml
-            QGCCheckBox.qml
-            QGCCheckBoxSlider.qml
-            QGCColoredImage.qml
-            QGCColumnButton.qml
-            QGCComboBox.qml
-            QGCDynamicObjectManager.qml
-            QGCFileDialog.qml
-            QGCFlickable.qml
-            QGCFlickableScrollIndicator.qml
-            QGCGroupBox.qml
-            QGCLabel.qml
-            QGCSpinner.qml
-            QGCListView.qml
-            QGCMapLabel.qml
-            QGCMarqueeLabel.qml
-            QGCMenu.qml
-            QGCMenuItem.qml
-            QGCMenuSeparator.qml
-            QGCMouseArea.qml
-            QGCMovableItem.qml
-            QGCOptionsComboBox.qml
-            QGCPageIndicator.qml
-            QGCPopupDialog.qml
-            QGCRadioButton.qml
-            QGCRoundButton.qml
-            QGCSimpleMessageDialog.qml
-            QGCSlider.qml
-            QGCSwipeView.qml
-            QGCSwitch.qml
-            QGCTabBar.qml
-            QGCTabButton.qml
-            QGCTextField.qml
-            QGCToolBarButton.qml
-            QGCToolTip.qml
-            QGCToolInsets.qml
-            RCChannelMonitor.qml
-            RCToParamDialog.qml
-            SectionHeader.qml
-            SelectableControl.qml
-            SettingsButton.qml
-            SettingsGroupLayout.qml
-            SetupPage.qml
-            SliderSwitch.qml
-            SubMenuButton.qml
-            TimedProgressTracker.qml
-            ToolIndicatorPage.qml
-            ToolStrip.qml
-            ToolStripDropPanel.qml
-            ToolStripHoverButton.qml
-            ValueSlider.qml
-            VehicleRotationCal.qml
-            VehicleSummaryRow.qml
-            VideoSourceMenu.qml
-
-    # Due to the fact t hatset_source_files_properties with QT_RESOURCE_ALIAS doesn't work in cmombination with qt_qdd_add_qml_module on Windows.
-    # We had to move various qml files to this directory to get things to work. We will revisit this in the 5.1 release.
-
-            # src/AnalyzeView/
-            AnalyzePage.qml
-
-            # src/FirstRunPromptDialogs/
-            FirstRunPrompt.qml
-
-            # src/PlanView/
-            CameraCalcCamera.qml
-            CameraCalcGrid.qml
-            CameraSection.qml
-            CorridorScanEditor.qml
-            CorridorScanMapVisual.qml
-            FWLandingPatternEditor.qml
-            FWLandingPatternMapVisual.qml
-            GeoFenceEditor.qml
-            GeoFenceMapVisuals.qml
-            MissionItemEditor.qml
-            MissionItemMapVisual.qml
-            MissionItemStatus.qml
-            MissionSettingsEditor.qml
-            PlanEditToolbar.qml
-            PlanEditMapItems.qml
-            PlanGroupCard.qml
-            PlanGroupRow.qml
-            ToolDrawerPage.qml
-            PlanFactRow.qml
-            PlanSectionLabel.qml
-            PlanSwitchRow.qml
-            PlanToolBarIndicators.qml
-            PlanView.qml
-            RallyPointEditor.qml
-            RallyPointMapVisuals.qml
-            SimpleItemEditor.qml
-            SimpleItemMapVisual.qml
-            StructureScanEditor.qml
-            StructureScanMapVisual.qml
-            SurveyItemEditor.qml
-            SurveyMapVisual.qml
-            TakeoffItemMapVisual.qml
-            TerrainStatus.qml
-            TransectStyleComplexItemEditor.qml
-            TransectStyleComplexItemStats.qml
-            TransectStyleComplexItemTabBar.qml
-            TransectStyleComplexItemTerrainFollow.qml
-            TransectStyleMapVisuals.qml
-            VTOLLandingPatternEditor.qml
-            VTOLLandingPatternMapVisual.qml
-
-            # src/UI/preferences/
-            OfflineMapInfo.qml
-
-            # src/UI/toolbar/
-            BatteryGlyph.qml
-            GcsBatteryGlyph.qml
-            BatteryIndicator.qml
-            FlightModeIndicator.qml
-            FlightModeMenuIndicator.qml
-            FlyViewToolBar.qml
-            FlyViewToolBarIndicators.qml
-            GPSIndicator.qml
-            GPSIndicatorPage.qml
-            MainStatusIndicator.qml
-            VehicleStatusSummary.qml
-            MainStatusIndicatorOfflinePage.qml
-            PlanViewToolBar.qml
-            RemoteIDIndicatorPage.qml
-            SignalStrength.qml
-            VehicleMessageList.qml
-
-            # src/QtLocationPlugin/QMLControl/
-            OfflineMapEditor.qml
-
-        NO_PLUGIN # Required by Qt 6.6.3. TODO: Remove when no longer supported.
-    )
+    set(_qgc_controls_qml "")
 endif()
+
+qt_add_qml_module(QGroundControlControlsModule
+    URI QGroundControl.Controls
+    VERSION 1.0
+    RESOURCE_PREFIX /qml
+    QML_FILES
+        ${_qgc_controls_qml}
+    NO_PLUGIN
+)
 
 qt_add_shaders(QGroundControlControlsModule "qgc_glass_shaders"
     PREFIX "/shaders"
@@ -285,18 +244,41 @@ qt_add_shaders(QGroundControlControlsModule "qgc_glass_shaders"
     FILES Shaders/LiquidGlass.frag
 )
 
-qt_add_library(ScreenToolsModule STATIC)
+qgc_add_json_resources(json_controls)
 
-set_source_files_properties(ScreenTools.qml PROPERTIES
-    QT_QML_SINGLETON_TYPE TRUE
+qt_add_resources(QGroundControlControlsModule qmlcontrols_resources
+    PREFIX "/res"
+    BASE "${CMAKE_SOURCE_DIR}/resources"
+    FILES
+        "${CMAKE_SOURCE_DIR}/resources/ArrowRight.svg"
+        "${CMAKE_SOURCE_DIR}/resources/buttonRight.svg"
+        "${CMAKE_SOURCE_DIR}/resources/chevron-down.svg"
+        "${CMAKE_SOURCE_DIR}/resources/chevron-up.svg"
+        "${CMAKE_SOURCE_DIR}/resources/clockwise-arrow.svg"
+        "${CMAKE_SOURCE_DIR}/resources/counter-clockwise-arrow.svg"
+        "${CMAKE_SOURCE_DIR}/resources/JoystickBezelLight.png"
 )
 
-qt_add_qml_module(ScreenToolsModule
-    URI QGroundControl.ScreenTools
-    VERSION 1.0
-    RESOURCE_PREFIX /qml
-    QML_FILES
-        ScreenTools.qml
-    NO_PLUGIN # Required by Qt 6.6.3. TODO: Remove when no longer supported.
+# subMenuButtonImage.png aliases the shared CogWheels.png at the repo root.
+set_source_files_properties("${CMAKE_SOURCE_DIR}/resources/CogWheels.png"
+    PROPERTIES QT_RESOURCE_ALIAS "subMenuButtonImage.png")
+
+qt_add_resources(QGroundControlControlsModule qmlcontrols_qmlimages
+    PREFIX "/qmlimages"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}"
+    FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/arrow-down.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/checkbox-check.svg"
+        "${CMAKE_SOURCE_DIR}/resources/CogWheels.png"
 )
 
+# Globbed because FactValueGrid enumerates :/InstrumentValueIcons/ at runtime
+# to build the icon picker — every SVG in the directory must be embedded.
+file(GLOB INSTRUMENT_VALUE_ICONS CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/resources/InstrumentValueIcons/*.svg"
+)
+qt_add_resources(QGroundControlControlsModule instrument_value_icons
+    PREFIX "/InstrumentValueIcons"
+    BASE "${CMAKE_SOURCE_DIR}/resources/InstrumentValueIcons"
+    FILES ${INSTRUMENT_VALUE_ICONS}
+)

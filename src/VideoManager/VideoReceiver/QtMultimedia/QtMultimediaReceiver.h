@@ -1,22 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QMetaObject>
 #include <QtCore/QString>
 #include <QtCore/QTimer>
 
 #include "VideoReceiver.h"
-
-Q_DECLARE_LOGGING_CATEGORY(QtMultimediaReceiverLog)
 
 class QMediaPlayer;
 class QVideoSink;
@@ -34,7 +22,6 @@ public:
     explicit QtMultimediaReceiver(QObject *parent = nullptr);
     virtual ~QtMultimediaReceiver();
 
-    static bool enabled();
     static void *createVideoSink(QQuickItem *widget, QObject *parent = nullptr);
     static void releaseVideoSink(void *sink);
     static VideoReceiver *createVideoReceiver(QObject *parent);

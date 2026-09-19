@@ -7,7 +7,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.visualItems.count",
     "plan.missionController.currentPlanViewVIIndex",
     "plan.missionController.containsItems",
-    "plan.missionController@visualItemsChanged",
+    "plan.missionController@visualItemsReset",
     "plan.missionController@newItemsFromVehicle",
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",

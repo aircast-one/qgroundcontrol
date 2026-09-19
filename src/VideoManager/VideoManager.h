@@ -1,30 +1,27 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
+#include <atomic>
+#include <chrono>
+
+#include <QtCore/QFuture>
 #include <QtCore/QHash>
-#include <QtCore/QLoggingCategory>
-#include <QtCore/QObject>
+#include <QtCore/QMutex>
 #include <QtCore/QPointer>
-#include <QtCore/QRunnable>
+#include <QtCore/QPromise>
+#include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtCore/QStringList>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 // #include <QtQmlIntegration/QtQmlIntegration>
+#include <QtQmlIntegration/QtQmlIntegration>
 
-Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
+#ifdef QGC_UNITTEST_BUILD
+#include <functional>
+#endif
 
 class QQuickWindow;
 class QQuickItem;
-class FinishVideoInitialization;
 class SubtitleWriter;
 class Vehicle;
 class VideoReceiver;
@@ -33,9 +30,10 @@ class VideoSettings;
 class VideoManager : public QObject
 {
     Q_OBJECT
-    // QML_ELEMENT
-    // QML_UNCREATABLE("")
+    QML_ELEMENT
+    QML_UNCREATABLE("")
     Q_MOC_INCLUDE("Vehicle.h")
+
     Q_PROPERTY(bool     gstreamerEnabled        READ gstreamerEnabled                           CONSTANT)
     Q_PROPERTY(bool     qtmultimediaEnabled     READ qtmultimediaEnabled                        CONSTANT)
     Q_PROPERTY(bool     uvcEnabled              READ uvcEnabled                                 CONSTANT)
@@ -44,15 +42,15 @@ class VideoManager : public QObject
     Q_PROPERTY(QStringList cameraStatuses       READ cameraStatuses                             NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraConnecting    READ cameraConnecting                           NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraRecording     READ cameraRecording                            NOTIFY recordingChanged)
+    Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(QString  activeSourceLabel       READ activeSourceLabel                          NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(int      videoSourceCount        READ videoSourceCount                           NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     fullScreen              READ fullScreen             WRITE setfullScreen NOTIFY fullScreenChanged)
     Q_PROPERTY(bool     hasThermal              READ hasThermal                                 NOTIFY decodingChanged)
     Q_PROPERTY(bool     hasVideo                READ hasVideo                                   NOTIFY hasVideoChanged)
     Q_PROPERTY(bool     isStreamSource          READ isStreamSource                             NOTIFY isStreamSourceChanged)
     Q_PROPERTY(bool     isUvc                   READ isUvc                                      NOTIFY isUvcChanged)
-    Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
-    Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
-    Q_PROPERTY(QString  activeSourceLabel       READ activeSourceLabel                          NOTIFY activeVideoSourceChanged)
-    Q_PROPERTY(int      videoSourceCount        READ videoSourceCount                           NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     recording               READ recording                                  NOTIFY recordingChanged)
     Q_PROPERTY(bool     streaming               READ streaming                                  NOTIFY streamingChanged)
     Q_PROPERTY(double   aspectRatio             READ aspectRatio                                NOTIFY aspectRatioChanged)
@@ -63,12 +61,15 @@ class VideoManager : public QObject
     Q_PROPERTY(QString  imageFile               READ imageFile                                  NOTIFY imageFileChanged)
     Q_PROPERTY(QString  uvcVideoSourceID        READ uvcVideoSourceID                           NOTIFY uvcVideoSourceIDChanged)
 
+    friend class VideoManagerInitTest;
+    friend class VideoManagerTest;
+    friend class VideoCameraSwitchTest;
+
 public:
     explicit VideoManager(QObject *parent = nullptr);
     ~VideoManager();
 
     static VideoManager *instance();
-    static void registerQmlTypes();
 
     Q_INVOKABLE void grabImage(const QString &imageFile = QString());
     Q_INVOKABLE void startRecording(const QString &videoFile = QString());
@@ -78,20 +79,11 @@ public:
     Q_INVOKABLE void setActiveVideoSource(int index);
     Q_INVOKABLE void setNativeRendering(bool nativeRendering);
     Q_INVOKABLE void switchActiveVideoSource();
-
-    /// Number of picture-in-picture tile slots available for simultaneous multi-view.
     Q_INVOKABLE int maxVideoTiles() const;
-    /// 1-based camera number shown in tile `slot`, or 0 when the slot is unused/multi-view is off.
     Q_INVOKABLE int tileCameraNumber(int slot) const;
-    /// Makes the camera shown in tile `slot` the main (active) view.
     Q_INVOKABLE void promoteTile(int slot);
-    /// Hands a tile's video item to the manager so its sink can be created. The tile items
-    /// are created independently of C++ init order, so binding happens whenever both exist.
-    /// Pass null while the tile is collapsed: the receiver keeps streaming but stops
-    /// feeding the invisible item.
     Q_INVOKABLE void registerTileItem(int slot, QQuickItem *item);
-    /// Connection status per camera index; an empty entry means frames are rendering.
-    /// Bindable: re-evaluates on camerasChanged.
+    Q_INVOKABLE QString cameraName(int index) const;
     QStringList cameraStatuses() const;
     /// True per camera index while a connection attempt is in flight, as opposed to a state
     /// that will not change on its own (no URL, bad URL). Only the former earns a spinner.
@@ -101,14 +93,12 @@ public:
     quint64 cameraFramesDecoded(int index) const;
     quint64 cameraBytesReceived(int index) const;
     qint64 cameraSecondsSinceLastFrame(int index) const;
-    /// Display name for the camera at `index` (its configured name, or "Camera N").
-    Q_INVOKABLE QString cameraName(int index) const;
 
-    void init(QQuickWindow *rootWindow);
+    void init(QQuickWindow *mainWindow);
     Q_INVOKABLE bool initForItem(QQuickItem *item) { init(item ? item->window() : nullptr); return _initialized; }
-    /// Initialise with no scene graph, for a head that renders video itself.
-    /// setNativeRendering(true) must come first, or receivers are bound to QtQuick widgets that do not exist.
     Q_INVOKABLE bool initNative() { init(nullptr); return _initialized; }
+    void startVideoBackendInit();
+    bool waitForVideoBackendReady(std::chrono::milliseconds timeout = std::chrono::minutes(1));
     void cleanup();
     bool autoStreamConfigured() const;
     bool decoding() const { return _decoding; }
@@ -147,7 +137,7 @@ signals:
     void isAutoStreamChanged();
     void isStreamSourceChanged();
     void isUvcChanged();
-    void recordingChanged();
+    void recordingChanged(bool recording);
     void recordingStarted(const QString &filename);
     void streamingChanged();
     void uvcVideoSourceIDChanged();
@@ -163,7 +153,18 @@ private:
 
 
     friend class VideoManagerTest;
+    enum class InitState : uint8_t {
+        NotStarted,
+        Pending,
+        BackendReady,
+        QmlReady,
+        Running,
+        Failed
+    };
 
+    void _initAfterQmlIsReady();
+    void _onBackendInitComplete(bool success);
+    void _createVideoReceivers();
     void _initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window);
     bool _updateAutoStream(VideoReceiver *receiver);
     bool _updateUVC(VideoReceiver *receiver);
@@ -202,28 +203,27 @@ private:
     QHash<int, QPointer<QQuickItem>> _tileWidgets;
     QPointer<QQuickItem> _mainWidget;
     QHash<QString, ReceiverState> _receiverState;
-
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;
+    QQuickWindow *_mainWindow = nullptr;
+    Vehicle *_activeVehicle = nullptr;
 
+    std::atomic<InitState> _initState = InitState::NotStarted;
+    // Orders _backendInitFuture publication against cross-thread waiters.
+    QMutex _initFutureMutex;
+    QFuture<bool> _backendInitFuture;
     bool _initialized = false;
+    bool _backendDisabledForTests = false;
     bool _fullScreen = false;
+
     QAtomicInteger<bool> _decoding = false;
     QAtomicInteger<bool> _recording = false;
     QAtomicInteger<bool> _streaming = false;
     QSize _videoSize;
     QString _imageFile;
     QString _uvcVideoSourceID;
-    Vehicle *_activeVehicle = nullptr;
-};
 
-/*===========================================================================*/
-
-class FinishVideoInitialization : public QRunnable
-{
-public:
-    FinishVideoInitialization();
-    ~FinishVideoInitialization();
-
-    void run() final;
+#ifdef QGC_UNITTEST_BUILD
+    std::function<void()> _createVideoReceiversForTest;
+#endif
 };

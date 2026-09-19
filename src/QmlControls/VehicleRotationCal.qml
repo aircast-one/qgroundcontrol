@@ -12,13 +12,20 @@ import QtQuick.Controls
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 Rectangle {
     id: _root
 
-    property bool   calValid:           false
-    property bool   calInProgress:      false
+    enum CalState {
+        Idle,
+        Incomplete,
+        InProgress,
+        Completed
+    }
+
+    property int    calState:           VehicleRotationCal.CalState.Idle
+    property bool   calValid:           calState === VehicleRotationCal.CalState.Completed
+    property bool   calInProgress:      calState === VehicleRotationCal.CalState.InProgress
     property string calInProgressText:  qsTr("Hold Still")
     property var    imageSource:        ""
 

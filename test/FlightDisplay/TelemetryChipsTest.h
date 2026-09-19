@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
 class TelemetryChipsTestMainWindow : public QObject
 {
@@ -19,9 +19,12 @@ public:
     Q_INVOKABLE void registerWindowDragExclusion(QObject*) {}
 };
 
-class TelemetryChipsTest : public UnitTest
+class TelemetryChipsTest : public VehicleTestManualConnect
 {
     Q_OBJECT
+
+protected:
+    void init() override;
 
 private slots:
     void _chipPerValueIsRendered();

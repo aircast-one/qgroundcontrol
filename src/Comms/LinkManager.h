@@ -1,18 +1,12 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QList>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QPointer>
+#include <QtCore/QMutex>
+#include <QtCore/QMutexLocker>
 #include <QtCore/QStringList>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 #include <limits>
 
@@ -21,9 +15,6 @@
 #ifndef QGC_NO_SERIAL_LINK
     #include "QGCSerialPortInfo.h"
 #endif
-
-Q_DECLARE_LOGGING_CATEGORY(LinkManagerLog)
-Q_DECLARE_LOGGING_CATEGORY(LinkManagerVerboseLog)
 
 class AutoConnectSettings;
 class LogReplayLink;
@@ -38,10 +29,14 @@ class UdpIODevice;
 ///        The Link Manager organizes the physical Links. It can manage arbitrary
 ///        links and takes care of connecting them as well assigning the correct
 ///        protocol instance to transport the link data into the application.
+///
 class LinkManager : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
     Q_MOC_INCLUDE("QmlObjectListModel.h")
+    Q_MOC_INCLUDE("LogReplayLink.h")
     Q_PROPERTY(bool isBluetoothAvailable READ isBluetoothAvailable NOTIFY isBluetoothAvailableChanged)
     Q_PROPERTY(QmlObjectListModel *linkConfigurations READ _qmlLinkConfigurations CONSTANT)
     Q_PROPERTY(QStringList linkTypeStrings READ linkTypeStrings CONSTANT)
@@ -52,12 +47,13 @@ class LinkManager : public QObject
     Q_PROPERTY(QString failedLinkName READ failedLinkName NOTIFY failedLinkChanged)
     Q_PROPERTY(bool connectingStalled READ connectingStalled NOTIFY connectingStalledChanged)
 
+    friend class LinkManagerTest;
+
 public:
     explicit LinkManager(QObject *parent = nullptr);
     ~LinkManager();
 
     static LinkManager *instance();
-    static void registerQmlTypes();
 
     void init();
 
@@ -80,13 +76,16 @@ public:
     /// writes by path, which stay in memory; this is the commit. A head that fails partway through an edit
     /// simply does not call it, and the half applied change is gone at restart rather than saved.
     Q_INVOKABLE void commitLinkConfigurations() { saveLinkConfigurationList(); }
+    Q_INVOKABLE void disconnectLink(LinkInterface *link);
+    /// Stop a link and suppress auto-reconnect, working whether or not a live link currently exists.
+    Q_INVOKABLE void disconnectLinkConfiguration(LinkConfiguration *config);
     Q_INVOKABLE void createMavlinkForwardingSupportLink();
     Q_INVOKABLE void endMavlinkForwardingSupportLink();
     /// Called to signal app shutdown. Disconnects all links while turning off auto-connect.
     Q_INVOKABLE void shutdown();
     Q_INVOKABLE LogReplayLink *startLogReplay(const QString &logFile);
 
-    QList<SharedLinkInterfacePtr> links() { return _rgLinks; }
+    QList<SharedLinkInterfacePtr> links();
     QmlObjectListModel *linkConfigurations() { return _qmlLinkConfigurations(); }
     QStringList linkTypeStrings() const;
     QStringList linkTypeIds() const;
@@ -116,9 +115,6 @@ public:
     /// Returns pointer to the mavlink support forwarding link, or nullptr if it does not exist
     SharedLinkInterfacePtr mavlinkForwardingSupportLink();
 
-    /// Re-initilize the mavlink signing for all links. Used when the signing key changes.
-    void resetMavlinkSigning();
-
     void disconnectAll();
 
     /// Allocates a mavlink channel for use
@@ -130,7 +126,7 @@ public:
     /// by using this method to get access to the shared pointer.
     SharedLinkInterfacePtr sharedLinkInterfacePointerForLink(const LinkInterface *link);
 
-    bool containsLink(const LinkInterface *link) const;
+    bool containsLink(const LinkInterface *link);
 
     SharedLinkConfigurationPtr addConfiguration(LinkConfiguration *config);
 
@@ -150,6 +146,7 @@ signals:
     void isBluetoothAvailableChanged();
 
 private slots:
+    void _linkConnected();
     void _linkDisconnected();
     void _communicationError(const QString &title, const QString &error, LinkConfiguration::ErrorRemedy remedy);
     void _setFailedLink(LinkConfiguration *config);
@@ -163,10 +160,8 @@ private:
     void _removeConfiguration(const LinkConfiguration *config);
     void _addUDPAutoConnectLink();
     void _addMAVLinkForwardingLink();
+    void _reconnectAutoConnectLinks();
     void _createDynamicForwardLink(const char *linkName, const QString &hostName);
-#ifdef QGC_ZEROCONF_ENABLED
-    void _addZeroConfAutoConnectLink();
-#endif
 
     QTimer *_portListTimer = nullptr;
     QTimer *_connectingStallTimer = nullptr;
@@ -181,6 +176,7 @@ private:
     QPointer<LinkConfiguration> _failedLink;
     bool _connectingStalled = false;
 
+    mutable QMutex _linksMutex;                             ///< Protects _rgLinks access from multiple threads
     QList<SharedLinkInterfacePtr> _rgLinks;
     QList<SharedLinkConfigurationPtr> _rgLinkConfigs;
 
@@ -213,14 +209,13 @@ signals:
     void commPortsChanged();
 
 private:
-    bool _isSerialPortConnected() const;
+    bool _isSerialPortConnected();
     void _updateSerialPorts();
     bool _allowAutoConnectToBoard(QGCSerialPortInfo::BoardType_t boardType) const;
     void _addSerialAutoConnectLink();
-    bool _portAlreadyConnected(const QString &portName) const;
+    bool _portAlreadyConnected(const QString &portName);
     void _filterCompositePorts(QList<QGCSerialPortInfo> &portList);
 
-    UdpIODevice *_nmeaSocket = nullptr;
     QMap<QString, int> _autoconnectPortWaitList;   ///< key: QGCSerialPortInfo::systemLocation, value: wait count
     QList<SerialLink*> _activeLinkCheckList;       ///< List of links we are waiting for a vehicle to show up on
     QStringList _commPortList;
@@ -230,4 +225,7 @@ private:
     uint32_t _nmeaBaud = 0;
     QSerialPort *_nmeaPort = nullptr;
 #endif // QGC_NO_SERIAL_LINK
+
+    // NMEA UDP is network-only; available regardless of QGC_NO_SERIAL_LINK.
+    UdpIODevice *_nmeaSocket = nullptr;
 };

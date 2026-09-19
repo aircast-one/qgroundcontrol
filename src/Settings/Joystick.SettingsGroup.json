@@ -1,0 +1,159 @@
+{
+    "version": 1,
+    "fileType": "FactMetaData",
+    "QGC.MetaData.Facts": [
+        {
+            "name": "calibrated",
+            "shortDesc": "Joystick calibrated",
+            "type": "bool",
+            "default": false,
+            "label": "Joystick calibrated"
+        },
+        {
+            "name": "circleCorrection",
+            "shortDesc": "Enable circle correction for joystick input",
+            "type": "bool",
+            "default": false,
+            "label": "Enable circle correction for joystick input"
+        },
+        {
+            "name": "useDeadband",
+            "shortDesc": "Use deadband for joystick input",
+            "type": "bool",
+            "default": true,
+            "label": "Use deadband for joystick input"
+        },
+        {
+            "name": "negativeThrust",
+            "shortDesc": "Enable negative thrust (reverse) on throttle axis",
+            "type": "bool",
+            "default": false,
+            "label": "Enable negative thrust (reverse) on throttle axis"
+        },
+        {
+            "name": "throttleSmoothing",
+            "shortDesc": "Enable throttle accumulator mode",
+            "type": "bool",
+            "default": false,
+            "label": "Enable throttle accumulator mode"
+        },
+        {
+            "name": "axisFrequencyHz",
+            "shortDesc": "Axis Update Frequency",
+            "type": "double",
+            "default": 25,
+            "units": "Hz",
+            "min": 0.25,
+            "max": 200,
+            "userMin": 0.25,
+            "userMax": 200,
+            "decimalPlaces": 2,
+            "label": "Axis Update Frequency"
+        },
+        {
+            "name": "buttonFrequencyHz",
+            "shortDesc": "Button Repeat Frequency",
+            "type": "double",
+            "default": 5,
+            "units": "Hz",
+            "min": 0.25,
+            "max": 50,
+            "userMin": 0.25,
+            "userMax": 50,
+            "decimalPlaces": 2,
+            "label": "Button Repeat Frequency"
+        },
+        {
+            "name": "throttleModeCenterZero",
+            "shortDesc": "Enable center zero throttle mode",
+            "type": "bool",
+            "default": false,
+            "label": "Enable center zero throttle mode"
+        },
+        {
+            "name": "transmitterMode",
+            "shortDesc": "Transmitter mode (1-4)",
+            "type": "uint32",
+            "default": 2,
+            "label": "Transmitter mode (1-4)"
+        },
+        {
+            "name": "exponentialPct",
+            "shortDesc": "Stick Exponential",
+            "type": "double",
+            "default": 0,
+            "units": "%",
+            "decimalPlaces": 1,
+            "min": 0,
+            "max": 50,
+            "userMin": 0,
+            "userMax": 50,
+            "label": "Stick Exponential"
+        },
+        {
+            "name": "enableManualControlPitchExtension",
+            "shortDesc": "Enable manual control pitch extension",
+            "type": "bool",
+            "default": false,
+            "label": "Enable manual control pitch extension"
+        },
+        {
+            "name": "enableManualControlRollExtension",
+            "shortDesc": "Enable manual control roll extension",
+            "type": "bool",
+            "default": false,
+            "label": "Enable manual control roll extension"
+        },
+        {
+            "name": "additionalAxesFunction",
+            "shortDesc": "Function for additional axes (manual control or RC override)",
+            "type": "uint32",
+            "enumStrings": "MANUAL_CONTROL,RC_CHANNELS_OVERRIDE",
+            "enumValues": "0,1",
+            "default": 0,
+            "label": "Function for additional axes"
+        },
+        {
+            "name": "enableAdditionalAxis1",
+            "shortDesc": "Enable additional axis 1",
+            "type": "bool",
+            "default": false,
+            "label": "Enable additional axis 1"
+        },
+        {
+            "name": "enableAdditionalAxis2",
+            "shortDesc": "Enable additional axis 2",
+            "type": "bool",
+            "default": false,
+            "label": "Enable additional axis 2"
+        },
+        {
+            "name": "enableAdditionalAxis3",
+            "shortDesc": "Enable additional axis 3",
+            "type": "bool",
+            "default": false,
+            "label": "Enable additional axis 3"
+        },
+        {
+            "name": "enableAdditionalAxis4",
+            "shortDesc": "Enable additional axis 4",
+            "type": "bool",
+            "default": false,
+            "label": "Enable additional axis 4"
+        },
+        {
+            "name": "enableAdditionalAxis5",
+            "shortDesc": "Enable additional axis 5",
+            "type": "bool",
+            "default": false,
+            "label": "Enable additional axis 5"
+        },
+        {
+            "name": "enableAdditionalAxis6",
+            "shortDesc": "Enable additional axis 6",
+            "type": "bool",
+            "default": false,
+            "label": "Enable additional axis 6"
+        }
+    ]
+}

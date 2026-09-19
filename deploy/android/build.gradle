@@ -5,7 +5,8 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.8.0'
+        classpath 'com.android.tools.build:gradle:9.2.1'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0"
     }
 }
 
@@ -20,11 +21,18 @@ apply plugin: project.hasProperty("qtGradlePluginType") ? qtGradlePluginType : '
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
     //noinspection GradleDependency
-    implementation 'androidx.core:core:1.13.1'
-    implementation 'com.github.mik3y:usb-serial-for-android:3.8.1'
+    implementation 'androidx.core:core:1.18.0'
+    implementation 'com.github.mik3y:usb-serial-for-android:3.10.0'
+    testImplementation 'junit:junit:4.13.2'
 }
 
-def getTimestampStr() { return new Date().format('yyyyMMddHHmmss') }
+def resolveCpmJavaSourceDir = {
+    // CMake copies CPM Java dependencies into <CMAKE_BINARY_DIR>/extra_java_sources.
+    // androiddeployqt copies this build.gradle into <CMAKE_BINARY_DIR>/android-build-*/,
+    // so the CPM sources are the sibling 'extra_java_sources' of the Gradle project dir.
+    final File cpmDir = new File(project.projectDir.parentFile, 'extra_java_sources')
+    return cpmDir.exists() ? cpmDir : null
+}
 
 android {
     /*******************************************************
@@ -41,31 +49,40 @@ android {
      * Changing them manually might break the compilation!
      *******************************************************/
 
-    // namespace = androidPackageName
-    namespace = "org.mavlink.qgroundcontrol"
+    namespace androidPackageName
     compileSdkVersion androidCompileSdkVersion
     buildToolsVersion androidBuildToolsVersion
-    ndkVersion = androidNdkVersion
-
-    // Extract native libraries from the APK
-    packagingOptions.jniLibs.useLegacyPackaging = true
+    ndkVersion androidNdkVersion
 
     sourceSets {
         main {
             manifest.srcFile 'AndroidManifest.xml'
-            java.srcDirs = [qtAndroidDir + '/src', 'src', 'java']
+            java.srcDirs = [qtAndroidDir + '/src', 'src', 'java'].tap {
+                def cpmJava = resolveCpmJavaSourceDir()
+                if (cpmJava != null) {
+                    it.add(cpmJava.absolutePath)
+                    println "cpmJavaSrcDir: ${cpmJava.absolutePath}"
+                } else {
+                    println "cpmJavaSrcDir: <not found>"
+                }
+            }
+            java.filter.exclude 'test/**'
+            kotlin.srcDirs = [qtAndroidDir + '/src', 'src', 'kotlin']
             aidl.srcDirs = [qtAndroidDir + '/src', 'src', 'aidl']
             res.srcDirs = [qtAndroidDir + '/res', 'res']
             resources.srcDirs = ['resources']
             renderscript.srcDirs = ['src']
             assets.srcDirs = ['assets']
             jniLibs.srcDirs = ['libs']
-       }
+        }
+        test {
+            java.srcDirs = ['src/test/java']
+        }
     }
 
     tasks.withType(JavaCompile) {
         options.incremental = true
-        // options.compilerArgs += ['-Xlint:deprecation']
+        options.compilerArgs += ['-Xlint:all'] // deprecation
     }
 
     buildFeatures {
@@ -73,17 +90,25 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 
-    lintOptions {
+    lint {
         abortOnError = false
+        checkReleaseBuilds = true
+        lintConfig = file("lint.xml")
     }
 
-    // Do not compress Qt binary resources file
     aaptOptions {
+        // Do not compress Qt binary resources file
         noCompress 'rcc'
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = legacyPackaging
+        }
     }
 
     defaultConfig {
@@ -92,20 +117,37 @@ android {
         targetSdkVersion qtTargetSdkVersion
         ndk.abiFilters = qtTargetAbiList.split(",")
 
-        // println "applicationId: ${applicationId}"
-        println "minSdkVersion: ${minSdkVersion}"
-        println "targetSdkVersion: ${targetSdkVersion}"
+        println "applicationId: ${applicationId}"
+        println "minSdk: ${minSdkVersion}"
+        println "targetSdk: ${targetSdkVersion}"
         println "ndk.abiFilters: ${ndk.abiFilters}"
-        println "versionCode: ${versionCode}"
-        println "versionName: ${versionName}"
     }
 
-    println "timestamp: " + getTimestampStr()
-    println "androidPackageName: ${namespace}"
-    println "androidCompileSdkVersion: ${compileSdkVersion}"
-    println "androidBuildToolsVersion: ${buildToolsVersion}"
-    println "androidNdkVersion: ${ndkVersion}"
-    println "project.name: ${project.name}"
+    println "compileSdkVersion: ${compileSdkVersion}"
+    println "buildToolsVersion: ${buildToolsVersion}"
+    println "ndkVersion: ${ndkVersion}"
+    println "project.name: ${rootProject.name}"
+    println "buildDir: ${buildDir}"
     println "qtAndroidDir: ${qtAndroidDir}"
+    println "qtGradlePluginType: ${qtGradlePluginType}"
+    println "legacyPackaging: ${legacyPackaging}"
+    println "gradleVersion: ${gradle.gradleVersion}"
     println "Java Version: " + JavaVersion.current()
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    packagingOptions {
+        // exclude 'lib/*/*_qmltooling_*'
+        exclude 'lib/*/*_Controls_FluentWinUI3_*'
+        exclude 'lib/*/*_Controls_Fusion_*'
+        exclude 'lib/*/*_Controls_Imagine_*'
+        exclude 'lib/*/*_Controls_Material_*'
+        exclude 'lib/*/*_Controls_Universal_*'
+    }
 }

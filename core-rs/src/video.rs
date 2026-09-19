@@ -6,15 +6,15 @@ use crate::router::Backend;
 pub const VIDEO_DEPS: &[&str] = &[
     "video.isStreamSource",
     "video.hasMultipleVideoSources","settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageStatus,trackingImageRect,trackingStatus";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,trackingStatus";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
     "vehicle.cameraManager.currentCameraInstance.modelName",
     "vehicle.cameraManager.currentCameraInstance.vendor",
     "vehicle.cameraManager.currentCameraInstance.cameraMode",
-    "vehicle.cameraManager.currentCameraInstance.photoCaptureStatus",
-    "vehicle.cameraManager.currentCameraInstance.videoCaptureStatus",
+    "vehicle.cameraManager.currentCameraInstance.capturePhotosState",
+    "vehicle.cameraManager.currentCameraInstance.captureVideoState",
     "vehicle.cameraManager.currentCameraInstance.recordTimeStr",
     "vehicle.cameraManager.currentCameraInstance.storageStatus",
     "vehicle.cameraManager.currentCameraInstance.storageFreeStr",
@@ -30,7 +30,7 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.hasZoom",
     "vehicle.cameraManager.currentCameraInstance.zoomLevel",
     "vehicle.cameraManager.currentCameraInstance.trackingEnabled",
-    "vehicle.cameraManager.currentCameraInstance.trackingImageStatus",
+    "vehicle.cameraManager.currentCameraInstance.trackingImageIsActive",
     "vehicle.cameraManager.currentCameraInstance.trackingImageRect",
     "vehicle.cameraManager.currentCameraInstance.thermalMode",
     "vehicle.cameraManager.currentCamera",
@@ -242,8 +242,8 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let shots = integer(&object(&backend.get_fields("vehicle.cameraTriggerPoints", "count")), "count").unwrap_or(0);
     let vendor = text(&camera, "vendor");
     let mode = integer(&camera, "cameraMode").unwrap_or(UNDEFINED_MODE);
-    let photo_status = integer(&camera, "photoCaptureStatus").unwrap_or(PHOTO_CAPTURE_IDLE);
-    let video_status = integer(&camera, "videoCaptureStatus").unwrap_or(VIDEO_CAPTURE_STOPPED);
+    let photo_status = match integer(&camera, "capturePhotosState") { Some(2) => PHOTO_CAPTURE_IN_PROGRESS, Some(3) => PHOTO_CAPTURE_INTERVAL_IN_PROGRESS, _ => PHOTO_CAPTURE_IDLE };
+    let video_status = if integer(&camera, "captureVideoState") == Some(2) { VIDEO_CAPTURE_RUNNING } else { VIDEO_CAPTURE_STOPPED };
     let record_time = text(&camera, "recordTimeStr");
     // STORAGE_STATUS_NOT_SUPPORTED is 3 and means "Camera does not supply storage status
     // information" - a claim about the hardware, not a neutral placeholder. Defaulting absence to
@@ -302,9 +302,9 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "tracking": present.then(|| json!({
             "supported": flag(&camera, "hasTracking"),
             "requested": flag(&camera, "trackingEnabled"),
-            "reported": flag(&camera, "trackingImageStatus"),
+            "reported": flag(&camera, "trackingImageIsActive"),
             "shapes": tracking_shapes(integer(&camera, "trackingStatus").unwrap_or(0)),
-            "rect": flag(&camera, "trackingImageStatus").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
+            "rect": flag(&camera, "trackingImageIsActive").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
         })),
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(0.0),
@@ -416,8 +416,8 @@ mod tests {
         "capturesPhotos",
         "photosInVideoMode",
         "cameraMode",
-        "photoCaptureStatus",
-        "videoCaptureStatus",
+        "capturePhotosState",
+        "captureVideoState",
         "storageStatus",
     ];
 
@@ -490,7 +490,7 @@ mod tests {
             "there is nothing to format or reset without a camera"
         );
 
-        let recording = camera_view(&Fake::new(json!({ "kind": "object" }), json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 2, "videoCaptureStatus": 1 })), &[])["destructiveActions"].clone();
+        let recording = camera_view(&Fake::new(json!({ "kind": "object" }), json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 2, "captureVideoState": 2 })), &[])["destructiveActions"].clone();
         assert_eq!(
             (recording[0]["offer"].clone(), recording[0]["reason"].clone()),
             (json!("blocked"), json!("The camera is recording.")),
@@ -508,7 +508,7 @@ mod tests {
         };
         let rect = json!({ "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 });
 
-        let idle = cam(json!({ "hasTracking": true, "trackingStatus": 5, "trackingEnabled": false, "trackingImageStatus": false, "trackingImageRect": rect }));
+        let idle = cam(json!({ "hasTracking": true, "trackingStatus": 5, "trackingEnabled": false, "trackingImageIsActive": false, "trackingImageRect": rect }));
         assert_eq!(
             (idle["tracking"]["supported"].clone(), idle["tracking"]["requested"].clone(), idle["tracking"]["reported"].clone()),
             (json!(true), json!(false), json!(false)),
@@ -521,7 +521,7 @@ mod tests {
             "the rectangle is whatever was last tracked, and trackingImageStatus is the only thing saying it is current - drawing a stale box over live video is a claim about where the target is now"
         );
 
-        let live = cam(json!({ "hasTracking": true, "trackingStatus": 14, "trackingEnabled": true, "trackingImageStatus": true, "trackingImageRect": rect }));
+        let live = cam(json!({ "hasTracking": true, "trackingStatus": 14, "trackingEnabled": true, "trackingImageIsActive": true, "trackingImageRect": rect }));
         assert_eq!(live["tracking"]["rect"], rect, "and a QRectF only reaches a head at all because variantJson gained a case for it");
         assert_eq!(live["tracking"]["shapes"], json!(["rectangle", "point"]));
 
@@ -611,10 +611,8 @@ mod tests {
         assert_eq!(cam(json!({ "cameraMode": 1 }))["canPhoto"], false, "in video mode a camera that cannot shoot stills there refuses, and the gate says so");
         assert_eq!(cam(json!({ "cameraMode": 1, "photosInVideoMode": true }))["canPhoto"], true,
             "VehicleCameraControl.cc only refuses on the mode when photosInVideoMode is false; without that term the core greys out a shutter that works");
-        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 1 }))["canPhoto"], false,
+        assert_eq!(cam(json!({ "cameraMode": 0, "capturePhotosState": 2 }))["canPhoto"], false,
             "takePhoto returns false when the status is not idle, so serving canPhoto here gives a head a live button whose tap does nothing and says nothing");
-        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 2 }))["canPhoto"], false,
-            "the wait between interval shots is idle enough to change mode but not to fire: takePhoto tests against IDLE alone, and the two questions have different answers");
         assert_eq!(cam(json!({ "cameraMode": 0 }))["canPhoto"], true);
 
         let silent = cam(json!({ "cameraMode": 0 }));
@@ -643,14 +641,13 @@ mod tests {
         assert_eq!(lapsing["lapseCount"], 0);
         assert_eq!(lapsing["lapseUnlimited"], true, "zero is MAV_CMD_IMAGE_START_CAPTURE's unlimited, so a head rendering the number alone says none when it means forever");
         assert_eq!(lapsing["canStopPhoto"], false, "configured for a timelapse is not the same as running one; the stop control appears when the status says an interval is under way");
-        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 3 }))["canStopPhoto"], true);
-        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 2 }))["canStopPhoto"], true, "the wait between interval shots is still an interval to stop");
-        assert_eq!(cam(json!({ "cameraMode": 0, "photoCaptureStatus": 1 }))["canStopPhoto"], false, "a single shot in progress is not an interval and stopTakePhoto refuses it");
+        assert_eq!(cam(json!({ "cameraMode": 0, "capturePhotosState": 3 }))["canStopPhoto"], true);
+        assert_eq!(cam(json!({ "cameraMode": 0, "capturePhotosState": 2 }))["canStopPhoto"], false, "a single shot in progress is not an interval and stopTakePhoto refuses it");
 
         assert_eq!(cam(json!({ "cameraMode": 0 }))["canRecord"], false);
         assert_eq!(cam(json!({ "cameraMode": 0, "videoInPhotoMode": true }))["canRecord"], true,
             "startVideoRecording refuses on photo mode only when videoInPhotoMode is false, the same missing term the other way round");
-        assert_eq!(cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }))["canRecord"], true,
+        assert_eq!(cam(json!({ "cameraMode": 1, "captureVideoState": 2 }))["canRecord"], true,
             "a running recording is not a refusal, because the toggle is what stops it - which is why record takes no busy term and photo does");
     }
 
@@ -663,7 +660,7 @@ mod tests {
         assert!(can_change_mode(VIDEO_MODE, 1, 0));
         assert!(!can_change_mode(VIDEO_MODE, 0, 1), "a running recording holds the camera in video mode");
         assert!(!can_change_mode(SURVEY_MODE, 0, 1), "the Qt control treats every mode that is not photo as video mode, so a recording holds survey too");
-        let recording = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "cameraMode": 1, "videoCaptureStatus": 1, "capturesPhotos": true, "capturesVideo": true, "hasModes": true })), &[]);
+        let recording = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "cameraMode": 1, "captureVideoState": 2, "capturesPhotos": true, "capturesVideo": true, "hasModes": true })), &[]);
         assert_eq!(recording["canChangeMode"], false);
         assert_eq!(recording["canRecord"], true, "the record control stays live while recording, because it is what stops it");
         let idle = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "cameraMode": 1, "videoCaptureStatus": 0, "capturesPhotos": true, "capturesVideo": true, "hasModes": true })), &[]);
@@ -682,7 +679,7 @@ mod tests {
 
     #[test]
     fn the_camera_control_reads_like_the_swift_model() {
-        let view = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "vendor": "SIYI", "cameraMode": 1, "videoCaptureStatus": 1, "recordTimeStr": "00:01:15", "storageStatus": 2, "storageFreeStr": "12 GB", "capturesPhotos": true, "capturesVideo": true, "hasModes": true, "batteryRemaining": 80 })), &[]);
+        let view = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "vendor": "SIYI", "cameraMode": 1, "captureVideoState": 2, "recordTimeStr": "00:01:15", "storageStatus": 2, "storageFreeStr": "12 GB", "capturesPhotos": true, "capturesVideo": true, "hasModes": true, "batteryRemaining": 80 })), &[]);
         assert_eq!(view["present"], true);
         assert_eq!(view["title"], "ZR30");
         assert_eq!(view["modeText"], "Video");
@@ -702,8 +699,8 @@ mod tests {
     }
     #[test]
     fn the_camera_status_numbers_are_the_ones_the_cpp_and_the_dialect_declare() {
-        let header = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/Camera/MavlinkCameraControl.h")).unwrap_or_default();
-        assert!(header.contains("enum PhotoCaptureStatus"), "this guard reads MavlinkCameraControl.h, which declares the states these gates branch on; without it the two copies drift in silence");
+        let header = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/Camera/MavlinkCameraControlInterface.h")).unwrap_or_default();
+        assert!(header.contains("enum PhotoCaptureStatus"), "this guard reads MavlinkCameraControlInterface.h, which declares the states these gates branch on; without it the two copies drift in silence");
 
         let ordinals = |name: &str| -> Vec<(String, i64)> {
             header

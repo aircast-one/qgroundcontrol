@@ -14,8 +14,6 @@ import QtQuick.Dialogs
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
 
 Popup {
     id:                 root
@@ -34,6 +32,10 @@ Popup {
     property var    dialogProperties
     property bool   destroyOnClose:         true
     property bool   preventClose:           false
+
+    property bool   bypassNavigationCheck:  false
+    property real   maxContentAvailableWidth:  mainWindow.width - _contentMargin * 6
+    property real   maxContentAvailableHeight: mainWindow.height - titleLabel.height - buttonRow.height - _contentMargin * 6
 
     readonly property real headerMinWidth: titleLabel.implicitWidth + rejectButton.width + acceptButton.width + buttonRow.spacing * 2
 
@@ -81,7 +83,7 @@ Popup {
     }
 
     function _accept() {
-        if (_acceptAllowed && acceptButton.enabled && mainWindow.allowViewSwitch(_previousValidationErrorCount)) {
+        if (_acceptAllowed && acceptButton.enabled && (bypassNavigationCheck || mainWindow.allowViewSwitch(_previousValidationErrorCount))) {
             accepted()
             if (preventClose) {
                 preventClose = false
@@ -92,7 +94,7 @@ Popup {
     }
 
     function _reject() {
-        if (_rejectAllowed && ((buttons & Dialog.Cancel) || mainWindow.allowViewSwitch(_previousValidationErrorCount))) {
+        if (_rejectAllowed && ((buttons & Dialog.Cancel) || bypassNavigationCheck || mainWindow.allowViewSwitch(_previousValidationErrorCount))) {
             rejected()
             if (preventClose) {
                 preventClose = false
@@ -177,8 +179,8 @@ Popup {
             Layout.preferredWidth:  Math.min(maxAvailableWidth, totalContentWidth)
             Layout.preferredHeight: Math.min(maxAvailableHeight, totalContentHeight)
 
-            property real maxAvailableWidth:    mainWindow.width - _contentMargin * 6
-            property real maxAvailableHeight:   mainWindow.height - titleLabel.height - buttonRow.height - _contentMargin * 6
+            property real maxAvailableWidth:    root.maxContentAvailableWidth
+            property real maxAvailableHeight:   root.maxContentAvailableHeight
             property real totalContentWidth:    dialogContentParent.childrenRect.width
             property real totalContentHeight:   dialogContentParent.childrenRect.height
 

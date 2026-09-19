@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "SettingsGroup.h"
 #include "QGCCorePlugin.h"
 
@@ -14,22 +5,24 @@
 
 SettingsGroup::SettingsGroup(const QString& name, const QString& settingsGroup, QObject* parent)
     : QObject       (parent)
-    , _visible      (QGCCorePlugin::instance()->overrideSettingsGroupVisibility(name))
+    , _userVisible  (QGCCorePlugin::instance()->overrideSettingsGroupVisibility(name))
     , _name         (name)
     , _settingsGroup(settingsGroup)
 {
     QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
 
-    _nameToMetaDataMap = FactMetaData::createMapFromJsonFile(QString(kJsonFile).arg(name), this);
+    _nameToMetaDataMap = FactMetaData::createMapFromJsonFile(QString(kJsonFileTemplate).arg(name), this);
 }
 
 SettingsFact* SettingsGroup::_createSettingsFact(const QString& factName)
 {
     FactMetaData* m = _nameToMetaDataMap[factName];
     if(!m) {
-        qCritical() << "Fact name " << factName << "not found in" << QString(kJsonFile).arg(_name);
+        qCritical() << "Fact name " << factName << "not found in" << QString(kJsonFileTemplate).arg(_name);
         exit(-1);
+    }
+    if (m->label().isEmpty()) {
+        qCritical() << "Missing or empty label for" << factName << "in" << QString(kJsonFileTemplate).arg(_name);
     }
     return new SettingsFact(_settingsGroup, m, this);
 }
-

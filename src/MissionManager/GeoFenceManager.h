@@ -1,18 +1,7 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QObject>
 #include <QtPositioning/QGeoCoordinate>
-#include <QtCore/QLoggingCategory>
-
 #include "QGCFencePolygon.h"
 #include "QGCFenceCircle.h"
 #include "PlanManager.h"
@@ -20,18 +9,18 @@
 class Vehicle;
 class QmlObjectListModel;
 
-Q_DECLARE_LOGGING_CATEGORY(GeoFenceManagerLog)
+/// \brief This is the base class for firmware specific geofence managers.
+///
+/// A geofence manager is responsible for communicating with the vehicle to set/get geofence settings.
 
-/// This is the base class for firmware specific geofence managers. A geofence manager is responsible
-/// for communicating with the vehicle to set/get geofence settings.
 class GeoFenceManager : public PlanManager
 {
     Q_OBJECT
-    
+
 public:
     GeoFenceManager(Vehicle* vehicle);
     ~GeoFenceManager();
-    
+
     bool supported(void) const;
 
     /// Signals sendComplete when done
@@ -60,7 +49,7 @@ public:
         BadPolygonItemFormat,   ///< Error re-creating polygons from mission items
         InvalidCircleRadius,
     } ErrorCode_t;
-    
+
 signals:
     void loadComplete       (void);
     void inProgressChanged  (bool inProgress);

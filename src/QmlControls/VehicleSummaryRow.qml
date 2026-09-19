@@ -3,11 +3,13 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 RowLayout {
     property string labelText: "Label"
     property string valueText: "value"
+    property string valueColor: ""
+    property bool   showDivider: true
 
     width:   parent.width
     height:  ScreenTools.defaultFontPixelHeight * 1.7
@@ -22,7 +24,7 @@ RowLayout {
     QGCLabel {
         Layout.maximumWidth:    parent.width * 0.6
         text:                   valueText
-        color:                  Qt.alpha(QGroundControl.globalPalette.text, 0.55)
+        color:                  valueColor !== "" ? valueColor : Qt.alpha(QGroundControl.globalPalette.text, 0.55)
         elide:                  Text.ElideRight
         horizontalAlignment:    Text.AlignRight
     }

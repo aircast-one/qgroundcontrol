@@ -1,5 +1,5 @@
 ---
-qt_version: 6.8.3
+qt_version: 6.11.1
 ---
 
 # Getting Started with Source and Builds
@@ -14,27 +14,14 @@ Versions are provided for all platforms.
 
 ## Source Code
 
-Source code for _QGroundControl_ is kept on GitHub here: https://github.com/mavlink/qgroundcontrol.
+Source code for _QGroundControl_ is kept on [GitHub](https://github.com/mavlink/qgroundcontrol).
 It is [dual-licensed under Apache 2.0 and GPLv3](https://github.com/mavlink/qgroundcontrol/blob/master/.github/COPYING.md).
 
-To get the source files:
+To get the source files, clone the repo (or your fork):
 
-1. Clone the repo (or your fork) including submodules:
-
-   ```sh
-   git clone --recursive -j8 https://github.com/mavlink/qgroundcontrol.git
-   ```
-
-2. Update submodules (required each time you pull new source code):
-
-   ```sh
-   git submodule update --recursive
-   ```
-
-:::tip
-Github source-code zip files cannot be used because these do not contain the appropriate submodule source code.
-You must use git!
-:::
+```sh
+git clone -j8 https://github.com/mavlink/qgroundcontrol.git
+```
 
 ## Build QGroundControl
 
@@ -47,9 +34,9 @@ We support Linux builds using a container found on the source tree of the reposi
 ### Native Builds
 
 _QGroundControl_ builds are supported for macOS, Linux, Windows, and Android. Creating a version of QGC for iOS is theoretically possible but is no longer supported as a standard build.
-_QGroundControl_ uses [Qt](http://www.qt.io) as its cross-platform support library. 
+_QGroundControl_ uses [Qt](http://www.qt.io) as its cross-platform support library.
 
-The required version of Qt is {{ $frontmatter.qt_version }} **(only)**. 
+The required version of Qt is {{ $frontmatter.qt_version }} **(only)**.
 
   ::: warning
   **Do not use any other version of Qt!**
@@ -68,67 +55,73 @@ To install Qt:
 1. Download and run the [Qt Online Installer](https://www.qt.io/download-qt-installer-oss)
    - **Ubuntu:**
      - Set the downloaded file to executable using: `chmod +x`.
-     - You may also need to install libxcb-cursor0
+     - It may also be necessary to install _libxcb-cursor0_.
 
-1. On the _Installation Folder_ page select "Custom Installation"    
+1. On the _Installation Folder_ page select "Custom Installation"
 
 1. On the _Select Components_ page:
 
-   - I you don't see _Qt {{ $frontmatter.qt_version }}_ listed check the _Archive_ checkbox and click _Filter_.
+- I you don't see _Qt {{ $frontmatter.qt_version }}_ listed check the _Archive_ checkbox and click _Filter_.
 - Under Qt -> _Qt {{ $frontmatter.qt_version }}_ select:
-   - **Windows**: MSVC 2022 _arch_ - where _arch_ is the architecture of your machine
-   - **Mac**: Desktop
-   - **Linux**: Desktop gcc 64-bit
-   - **Android**: Android
+  - **Windows**: MSVC 2022 \<_arch_\> - where \<_arch_\> is the architecture of your machine
+  - **Mac**: Desktop
+  - **Linux**: Desktop gcc 64-bit
+  - **Android**: Android
 - Select all _Additional Libraries_
 - Deselect QT Design Studio
 
 1. Install Additional Packages (Platform Specific)
 
-   - **Ubuntu:** `sudo bash ./qgroundcontrol/tools/setup/install-dependencies-debian.sh`
+   Run these from the root of the cloned repository (`cd qgroundcontrol`):
+
+   - **Ubuntu:** `python3 tools/setup/install_dependencies --platform debian`
    - **Fedora:** `sudo dnf install speech-dispatcher SDL2-devel SDL2 systemd-devel patchelf`
    - **Arch Linux:** `pacman -Sy speech-dispatcher patchelf`
-   - **Mac** `sh qgroundcontrol/tools/setup/install-dependencies-osx.sh`
-   - **Android** [Setup](https://doc.qt.io/qt-6/android-getting-started.html). JDK17 is required for the latest updated versions. NDK Version: 25.1.8937393
-       You can confirm it is being used by reviewing the project setting: **Projects > Manage Kits > Devices > Android (tab) > Android Settings > _JDK location_**.
-	Note: Visit here for more detailed configurations [android.yml](.github/workflows/android.yml)
+   - **Mac:** `python3 tools/setup/install_dependencies --platform macos`
+   - **Windows:** `python tools/setup/install_dependencies --platform windows`
 
-1. Install Optional/OS-Specific Functionality
+     This is the same script used by CI. By default it installs only GStreamer (x64 only, from the QGC dependency mirror). Optional flags: `--nsis` installs NSIS (needed to build the installer), `--msvc` installs the Visual Studio 2022 Build Tools C++ workload, and `--vulkan` installs the Vulkan SDK.
+
+   - **Android:** Installing dependencies for Android is quite involved. You are better off using Qt documentation for Android setup instructions. Read [Qt 6 for Android](https://doc.qt.io/qt-6/android.html) carefully. Continue with [Getting Started with Qt 6 for Android](https://doc.qt.io/qt-6/android-getting-started.html).
+
+1. Install OS-Specific Functionalities
 
    ::: info
+   QGC is built exclusively with CMake; qmake builds are no longer supported.
    Optional features that are dependent on the operating system and user-installed libraries are linked/described below.
-   These features can be forcibly enabled/disabled by specifying additional values to qmake.
+   These features can be forcibly enabled/disabled by passing additional `-D` options to CMake (e.g. `-DQGC_ENABLE_GST_VIDEOSTREAMING=OFF`).
    :::
 
-   - **Video Streaming/Gstreamer:** - see [Video Streaming](https://github.com/mavlink/qgroundcontrol/blob/master/src/VideoManager/VideoReceiver/GStreamer/README.md)
+   - **Video Streaming/GStreamer:** - installed by the dependency script above, or downloaded automatically at CMake configure time on Windows/macOS if not already present. See [Video Streaming](https://github.com/mavlink/qgroundcontrol/blob/master/src/VideoManager/VideoReceiver/GStreamer/README.md) for details. Note: when cross-compiling for Windows ARM64 from an x64 host, disable video streaming with `-DQGC_ENABLE_GST_VIDEOSTREAMING=OFF` (this is what CI does) — the ARM64 GStreamer SDK installer cannot run on an x64 host, so the automatic download will fail.
+   - **Windows Installer:** - building the Windows installer requires [NSIS](https://nsis.sourceforge.io/Download), which the dependency script above installs when run with `--nsis`.
 
+#### Install Visual Studio Compiler (Windows Only) {#vs}
 
-#### Install Visual Studio (Windows Only) {#vs}
+An MSVC 2022 C++ toolchain is required. Either of the following works:
 
-Install [Visual Studio 2022 Community Edition](https://visualstudio.microsoft.com/downloads/).
+- The [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/) with the _C++ build tools_ workload (this is what CI uses, and what the dependency script above installs when run with `--msvc`), or
+- [Visual Studio 2022 Community Edition](https://visualstudio.microsoft.com/downloads/) with the _Desktop development with C++_ workload, if you also want the IDE.
 
-When installing, select _Desktop development with C++_ as shown:
-
-![Visual Studio 2019 - Select Desktop Environment with C++](../../../assets/dev_getting_started/visual_studio_select_features.png)
-
-::: info
-Visual Studio is ONLY used to get the compiler. Building _QGroundControl_ is done using [Qt Creator](#qt-creator) or [cmake](#cmake) directly as outlined below.
-:::
+   ::: info
+   Visual Studio is ONLY used to get the compiler. Building _QGroundControl_ is done using [Qt Creator](#qt-creator) or [cmake](#cmake) directly as outlined below.
+   :::
 
 #### Building using Qt Creator {#qt-creator}
 
 1. Launch _Qt Creator_, select Open Project and select the **CMakeLists.txt** file.
 1. On the _Configure Project_ page it should default to the version of Qt you just installed using the instruction above. If not select that kit from the list and click _Configure Project_.
 
-1. Build using the "hammer" (or "play") icons or the menus:
+   :::tip
+   Don't forget to check boxes in case you want to build a Release instead of Debug, or check the other types. To create the installation file go to the "Deploy Settings" Tab, click in the menu button "Add Deploy Step", select "CMake Install" and as argument you must set at least `--config Release`.
+   :::
 
-   ![QtCreator Build Button](../../../assets/dev_getting_started/qt_creator_build_qgc.png)
+1. Build using the "hammer" icon. After that, in order to deploy the build, use the "play" icon. Or use the menu Build on top for a detailed alternative.
 
 #### Build using CMake on CLI {#cmake}
 
 Example commands to build a default QGC and run it afterwards:
 
-1. Make sure you cloned the repository and updated the submodules before, see chapter _Source Code_ above and switch into the repository folder:
+1. Make sure you cloned the repository before, see chapter _Source Code_ above and switch into the repository folder:
 
    ```sh
    cd qgroundcontrol
@@ -137,17 +130,19 @@ Example commands to build a default QGC and run it afterwards:
 1. Configure:
 
    ```sh
-   ~/Qt/6.8.3/gcc_64/bin/qt-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+   ~/Qt/{{ $frontmatter.qt_version }}/gcc_64/bin/qt-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
    ```
 
-   Change the directory for qt-cmake to match your install location for Qt and the kit you want to use.
-   
+   Change the directory for `qt-cmake` to match your install location for Qt and the kit you want to use.
+
+   **Windows**: use the corresponding kit path, e.g. `C:\Qt\{{ $frontmatter.qt_version }}\msvc2022_64\bin\qt-cmake.bat`, from a _x64 Native Tools Command Prompt for VS 2022_.
+
    **Mac**: To Sign/Notarize/Staple the QGC app bundle, add `-DQGC_MACOS_SIGN_WITH_IDENTITY=ON` to the configure command line. During the `install` phase the following environment variables will need to be available:
-   
-   * `QGC_MACOS_SIGNING_IDENTITY` - Signing identity for your Developer ID certificate which must be in the keychain
-   * `QGC_MACOS_NOTARIZATION_USERNAME` - Username for your Apple Developer Account
-   * `QGC_MACOS_NOTARIZATION_PASSWORD` - App specific password for Notarization from your Apple Developer Account
-   * `QGC_MACOS_NOTARIZATION_TEAM_ID` - Apple Developer Account Team ID
+
+   - `QGC_MACOS_SIGNING_IDENTITY` - Signing identity for your Developer ID certificate which must be in the keychain
+   - `QGC_MACOS_NOTARIZATION_USERNAME` - Username for your Apple Developer Account
+   - `QGC_MACOS_NOTARIZATION_PASSWORD` - App specific password for Notarization from your Apple Developer Account
+   - `QGC_MACOS_NOTARIZATION_TEAM_ID` - Apple Developer Account Team ID
 
 1. Build
 
@@ -161,6 +156,8 @@ Example commands to build a default QGC and run it afterwards:
    ./build/Debug/QGroundControl
    ```
 
+   On Windows: `build\Debug\QGroundControl.exe`
+
 ### Vagrant
 
 [Vagrant](https://www.vagrantup.com/) can be used to build and run _QGroundControl_ within a Linux virtual machine (the build can also be run on the host machine if it is compatible).
@@ -171,14 +168,60 @@ Example commands to build a default QGC and run it afterwards:
 
 ### Additional Build Notes for all Supported OS
 
-- **Parallel builds:** For non Windows builds, you can use the `-j#` option to run parellel builds.
+- **Parallel builds:** You can use the `-j#` option with `cmake --build` to control the number of parallel build jobs.
 - **If you get this error when running _QGroundControl_**: `/usr/lib/x86_64-linux-gnu/libstdc++.so.6: version 'GLIBCXX_3.4.20' not found.`, you need to either update to the latest _gcc_, or install the latest _libstdc++.6_ using: `sudo apt-get install libstdc++6`.
 - **Unit tests:** To run the [unit tests](../contribute/unit_tests.md), build in `debug` mode with `QGC_UNITTEST_BUILD` definition, and then copy `deploy/qgroundcontrol-start.sh` script into the `debug` directory before running the tests.
+
+### Build Caching
+
+QGC uses two build caches, both enabled automatically at configure time and stored in the source
+tree so they survive build directory deletion:
+
+- **ccache** caches compiler output (`.ccache/`). Used if `ccache` is installed and on your `PATH`.
+- **moccache** caches Qt moc output (`.cache/moccache/`). QGC has a large number of moc-processed
+  headers, so on clean builds, branch switches, and rebuilds after deleting the build directory a
+  warm moccache skips the entire moc phase. Controlled by the `QGC_USE_MOCCACHE` CMake option
+  (ON by default; not supported on Windows).
+
+Neither cache requires any setup. To bypass moccache for a single build set `MOCCACHE_DISABLE=1`,
+or configure with `-DQGC_USE_MOCCACHE=OFF` to turn it off entirely.
+
+#### moccache Details
+
+moccache (`tools/moccache.py`) is a content-addressed cache wired in automatically as the
+`CMAKE_AUTOMOC_EXECUTABLE` via a launcher script generated at configure time. Cached moc output
+is keyed on moc version + arguments + input content + transitive include contents + the input's
+path relative to the output directory (moc embeds that relative path as an `#include` in its
+output, so build trees laid out at a different depth intentionally don't share entries). Entries
+are otherwise shared across build trees: build-dir paths are rewritten to a token, like ccache's
+`base_dir`.
+
+Cache misses fall through to the real moc and never fail the build; corrupt or stale entries are
+re-validated by content hash on every use.
+
+Environment variables (set by the launcher, overridable at build time):
+
+| Variable            | Default                  | Purpose                                            |
+| ------------------- | ------------------------ | -------------------------------------------------- |
+| `MOCCACHE_DIR`      | `<repo>/.cache/moccache` | Cache location (persisted by CI, like ccache)      |
+| `MOCCACHE_MAX_SIZE` | `256M`                   | LRU auto-trim threshold (trims after misses)       |
+| `MOCCACHE_DISABLE`  | unset                    | Pass through to real moc (no caching)              |
+| `MOCCACHE_STATS`    | unset                    | Append hit/miss lines to `$MOCCACHE_DIR/stats.log` |
+
+```sh
+MOCCACHE_STATS=1 just build                             # Log hits/misses during a build
+python3 ./tools/moccache.py --trim --max-size 256M      # Explicitly trim the cache (LRU)
+MOCCACHE_DISABLE=1 just build                           # Bypass the cache for one build
+```
 
 ## Building QGC Installation Files
 
 You can additionally create installation file(s) for _QGroundControl_ as part of the normal build process.
 
 ```sh
-cmake --install . --config Release
+cmake --install build --config Release
 ```
+
+Use the same build directory you passed to `-B` when configuring, and a configuration (`Release`/`Debug`) that you actually built.
+
+On Windows this creates the NSIS installer (requires NSIS, installed by the dependency script when run with `--nsis`).

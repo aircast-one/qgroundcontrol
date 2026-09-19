@@ -1,22 +1,33 @@
+# ============================================================================
+# LibEvents - MAVLink Event Handling
+# Event logging, health reporting, and arming checks
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         EventHandler.cc
         EventHandler.h
         HealthAndArmingCheckReport.cc
         HealthAndArmingCheckReport.h
-        logging.cpp
+        LibEvents.cc
+        LibEvents.h
+        MAVLinkEventManager.cc
+        MAVLinkEventManager.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-#===========================================================================#
+# ============================================================================
+# LibEvents Library Integration
+# ============================================================================
 
 CPMAddPackage(
     NAME libevents
     GITHUB_REPOSITORY mavlink/libevents
-    GIT_TAG main
+    GIT_TAG 840a88ea226d4eb0fd4c391ce860317422756435
     SOURCE_SUBDIR libs/cpp
+    EXCLUDE_FROM_ALL YES
 )
 
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE libevents)
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${libevents_SOURCE_DIR}/libs/cpp)
+target_include_directories(${CMAKE_PROJECT_NAME} SYSTEM PRIVATE ${libevents_SOURCE_DIR}/libs/cpp)

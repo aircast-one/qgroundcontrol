@@ -143,8 +143,13 @@ mod tests {
 
         let groups = include_str!("../../src/Settings/RTK.SettingsGroup.json");
         assert!(groups.contains("useFixedBasePosition"), "the settings group file has moved, so the premise below is being checked against nothing");
+        let bool_with_enum_strings = serde_json::from_str::<serde_json::Value>(groups).unwrap()["QGC.MetaData.Facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|fact| fact["type"] == "bool" && fact.get("enumStrings").is_some());
         assert!(
-            !groups.contains("enumStrings"),
+            !bool_with_enum_strings,
             "RTK is the group where a bool most obviously wants two labels - QGC draws useFixedBasePosition as a Survey-In / Specify position radio pair - and it declares none. Across all 22 settings groups, 198 facts, 59 of them bool, not one bool declares enumStrings, which is why the ordering above has never mattered. If that changes this fails here rather than rendering a silent switch"
         );
     }

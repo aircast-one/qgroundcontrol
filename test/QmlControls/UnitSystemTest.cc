@@ -85,3 +85,5 @@ void UnitSystemTest::_outOfRangeSystemChangesNothing()
 
     QCOMPARE(units()->areaUnits()->rawValue(), before);
 }
+
+UT_REGISTER_TEST(UnitSystemTest, TestLabel::Unit)

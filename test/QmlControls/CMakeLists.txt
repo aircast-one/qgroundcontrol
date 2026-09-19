@@ -1,11 +1,22 @@
+# ============================================================================
+# QmlControls Unit Tests
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        ObjectItemModelBaseTest.cc
+        ObjectItemModelBaseTest.h
+        ObjectListModelBaseTest.cc
+        ObjectListModelBaseTest.h
+        QmlObjectListModelTest.cc
+        QmlObjectListModelTest.h
+        QmlObjectTreeModelTest.cc
+        QmlObjectTreeModelTest.h
+        TestDirtyObject.h
         DragToPositionTest.cc
         DragToPositionTest.h
         FlyViewToolBarEditTest.cc
         FlyViewToolBarEditTest.h
-        QGCColoredImageTest.cc
-        QGCColoredImageTest.h
         OverlayBackdropTest.cc
         OverlayBackdropTest.h
         OverlayPaletteTest.cc
@@ -41,11 +52,24 @@ target_sources(${CMAKE_PROJECT_NAME}
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# qt_add_qml_module(QmlControlsTest
-#     URI qmlcontrolstest
-#     VERSION 1.0
-#     QML_FILES
-#         QGCControlDebug.qml
-#         QmlTest.qml
-#     IMPORT_PATH ${QT_QML_OUTPUT_DIRECTORY}
-# )
+add_qgc_test(ObjectItemModelBaseTest LABELS Unit)
+add_qgc_test(ObjectListModelBaseTest LABELS Unit)
+add_qgc_test(QmlObjectListModelTest LABELS Unit)
+add_qgc_test(QmlObjectTreeModelTest LABELS Unit)
+add_qgc_test(DragToPositionTest LABELS Unit)
+add_qgc_test(PipViewTest LABELS Unit)
+add_qgc_test(FlyViewToolBarEditTest LABELS Unit)
+add_qgc_test(OverlayBackdropTest LABELS Unit)
+add_qgc_test(OverlayPaletteTest LABELS Unit)
+add_qgc_test(OverlayRigTest LABELS Unit)
+add_qgc_test(OverlaySegmentedControlTest LABELS Unit)
+add_qgc_test(OverlayViewSwitchTest LABELS Unit)
+add_qgc_test(PipRevealTest LABELS Unit)
+add_qgc_test(PlanToolBarIndicatorsTest LABELS Unit)
+add_qgc_test(PlanViewLayoutTest LABELS Unit)
+add_qgc_test(PlatformThemeTest LABELS Unit)
+add_qgc_test(SafeAreaTest LABELS Unit)
+add_qgc_test(ScreenToolsTest LABELS Unit)
+add_qgc_test(SettingsSearchTest LABELS Unit)
+add_qgc_test(UnitSystemTest LABELS Unit)
+add_qgc_test(VehicleStatusSummaryTest LABELS Unit)

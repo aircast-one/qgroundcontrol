@@ -1,18 +1,7 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
-import QGroundControl.Palette
 
 /// This is the dial background for the compass
 
@@ -23,7 +12,7 @@ Item {
 
     function translateCenterToAngleX(radius, angle) {
         return radius * Math.sin(angle * (Math.PI / 180))
-    } 
+    }
 
     function translateCenterToAngleY(radius, angle) {
         return -radius * Math.cos(angle * (Math.PI / 180))
@@ -32,6 +21,7 @@ Item {
     QGCLabel {
         anchors.centerIn:   parent
         text:               "N"
+        rotation:           _lockNoseUpCompass ? _heading : 0
 
         transform: Translate {
             x: translateCenterToAngleX(control.offsetRadius, 0)
@@ -42,6 +32,7 @@ Item {
     QGCLabel {
         anchors.centerIn:   parent
         text:               "E"
+        rotation:           _lockNoseUpCompass ? _heading : 0
 
         transform: Translate {
             x: translateCenterToAngleX(control.offsetRadius, 90)
@@ -52,6 +43,7 @@ Item {
     QGCLabel {
         anchors.centerIn:   parent
         text:               "S"
+        rotation:           _lockNoseUpCompass ? _heading : 0
 
         transform: Translate {
             x: translateCenterToAngleX(control.offsetRadius, 180)
@@ -62,6 +54,7 @@ Item {
     QGCLabel {
         anchors.centerIn:   parent
         text:               "W"
+        rotation:           _lockNoseUpCompass ? _heading : 0
 
         transform: Translate {
             x: translateCenterToAngleX(control.offsetRadius, 270)
@@ -74,11 +67,11 @@ Item {
         model: 4
 
         Rectangle {
-            id:                 majorTick
             x:                  size / 2
             width:              1
             height:             ScreenTools.defaultFontPixelHeight * 0.5
             color:              qgcPal.text
+            antialiasing:       true
 
             transform: Rotation {
                 origin.x:   0
@@ -93,12 +86,12 @@ Item {
         model: 8
 
         Rectangle {
-            id:                 majorTick
             x:                  size / 2
             y:                  _margin
             width:              1
             height:             _margin
             color:              qgcPal.text
+            antialiasing:       true
 
             property real _margin: ScreenTools.defaultFontPixelHeight * 0.25
 
@@ -108,5 +101,5 @@ Item {
                 angle:      45 / 2 + (45 * index)
             }
         }
-    }    
+    }
 }

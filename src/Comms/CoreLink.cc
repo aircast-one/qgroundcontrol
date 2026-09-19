@@ -42,7 +42,7 @@ CoreLink::~CoreLink()
 {
     CoreLink::disconnect();
     QMutexLocker locker(&_registryMutex);
-    _links.remove(_id);
+    _links.remove(_coreLinkId);
 }
 
 bool CoreLink::enabled()
@@ -156,7 +156,7 @@ void CoreLink::_stateChanged(uint32_t id, bool open, const char *reason, void *u
 
 bool CoreLink::_connect()
 {
-    if (_id != 0) {
+    if (_coreLinkId != 0) {
         return true;
     }
     const QJsonObject opened = takeJson(qgc_core_link_open(configJson(_config.get()).constData()));
@@ -167,10 +167,10 @@ bool CoreLink::_connect()
         emit communicationError(tr("Link Error"), reason, editAddress ? LinkConfiguration::RemedyEditAddress : LinkConfiguration::RemedyRetry);
         return false;
     }
-    _id = static_cast<uint32_t>(opened.value(QStringLiteral("id")).toInt());
+    _coreLinkId = static_cast<uint32_t>(opened.value(QStringLiteral("id")).toInt());
     {
         QMutexLocker locker(&_registryMutex);
-        _links.insert(_id, this);
+        _links.insert(_coreLinkId, this);
     }
     emit connected();
     return true;
@@ -178,11 +178,11 @@ bool CoreLink::_connect()
 
 void CoreLink::disconnect()
 {
-    if (_id == 0) {
+    if (_coreLinkId == 0) {
         return;
     }
-    const uint32_t id = _id;
-    _id = 0;
+    const uint32_t id = _coreLinkId;
+    _coreLinkId = 0;
     {
         QMutexLocker locker(&_registryMutex);
         _links.remove(id);
@@ -193,10 +193,10 @@ void CoreLink::disconnect()
 
 void CoreLink::_writeBytes(const QByteArray &bytes)
 {
-    if (_id == 0 || bytes.isEmpty()) {
+    if (_coreLinkId == 0 || bytes.isEmpty()) {
         return;
     }
-    if (qgc_core_link_write(_id, reinterpret_cast<const uint8_t *>(bytes.constData()), static_cast<size_t>(bytes.size()))) {
+    if (qgc_core_link_write(_coreLinkId, reinterpret_cast<const uint8_t *>(bytes.constData()), static_cast<size_t>(bytes.size()))) {
         emit bytesSent(this, bytes);
     }
 }

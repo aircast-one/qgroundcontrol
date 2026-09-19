@@ -1,7 +1,7 @@
 import QtQuick
 
 import QGroundControl
-import QGroundControl.FlightDisplay
+import QGroundControl.FlyView
 
 Item {
     id: root

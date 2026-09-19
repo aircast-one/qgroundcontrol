@@ -95,3 +95,5 @@ void OverlayViewSwitchTest::_tapOnTheCurrentOptionReportsReselectedNotActivated(
     QCOMPARE(view.rootObject()->property("lastReselected").toInt(), 0);
     QCOMPARE(view.rootObject()->property("activatedCount").toInt(), 0);
 }
+
+UT_REGISTER_TEST(OverlayViewSwitchTest, TestLabel::Unit)

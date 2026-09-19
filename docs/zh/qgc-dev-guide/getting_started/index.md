@@ -1,5 +1,5 @@
 ---
-qt_version: 6.8.3
+qt_version: 6.11.1
 ---
 
 # 从源码开始并构建
@@ -14,27 +14,14 @@ qt_version: 6.8.3
 
 ## 源代码
 
-_QGroundControl_ 的源代码保存在GitHub 上：https://github.com/mavlink/qgroundcontrol。
+Source code for _QGroundControl_ is kept on [GitHub](https://github.com/mavlink/qgroundcontrol).
 它采用 [Apache 2.0 和 GPLv3 双重授权](https://github.com/mavlink/qgroundcontrol/blob/master/.github/COPYING.md)。
 
-要获取源文件, 请执行以下操作:
+To get the source files, clone the repo (or your fork):
 
-1. 克隆存储库 (或您的分叉), 包括子模块：
-
-  ```sh
-  git clone --recursive -j8 https://github.com/mavlink/qgroundcontrol.git
-  ```
-
-2. 2.更新子模块（每次拉新源代码时都这样做）：
-
-  ```sh
-  git submodule update --recursive
-  ```
-
-:::tip
-提示：不能使用Github以zip形式下载源文件，因为zip压缩包中不包含相应的子模块源代码。 你必须使用git工具！
-你必须使用git工具！
-:::
+```sh
+git clone -j8 https://github.com/mavlink/qgroundcontrol.git
+```
 
 ## 构建QGroundControl开发环境
 
@@ -66,54 +53,62 @@ QGC 已通过指定 Qt 版本（{{ $frontmatter.qt_version }}）的全面测试�
 如何安装Qt：
 
 1. 下载并运行[Qt Online Installer](https://www.qt.io/download-qt-installer-oss)
-  - **Ubuntu:**
-    - 使用以下命令将下载的文件设置为可执行文件：`chmod + x`
-    - 您可能还需要安装 libxcb-cursor0
+   - **Ubuntu:**
+     - 使用以下命令将下载的文件设置为可执行文件：`chmod + x`
+     - It may also be necessary to install _libxcb-cursor0_.
 
 2. 在 _Installation 文件夹页面选择"自定义安装"
 
 3. 在 _选择组件_ 页面：
 
-  - 如果您没有看到 {{ $frontmatter.qt_version }}_ 列出_Qt选中 _Archive_ 复选框并单击 _Filter_。
-
-- 在 Qt -> _Qt {{ $frontmatter.qt_version }}_ 下选择：
-  - **Windows**: MSVC 2022 _arch_ - 其中 “arch” 指的是您机器的架构
-  - **Mac**：桌面
-  - **Linux**: gcc 64-bit 桌面
+- I you don't see _Qt {{ $frontmatter.qt_version }}_ listed check the _Archive_ checkbox and click _Filter_.
+- Under Qt -> _Qt {{ $frontmatter.qt_version }}_ select:
+  - **Windows**: MSVC 2022 \<_arch_\> - where \<_arch_\> is the architecture of your machine
+  - **Mac**: Desktop
+  - **Linux**: Desktop gcc 64-bit
   - **Android**: Android
-- 选择所有 _Additional Libraries_
-- 取消选择 QT Design Studio
+- Select all _Additional Libraries_
+- Deselect QT Design Studio
 
 1. 安装附加软件包(特殊平台)
 
-  - **Ubuntu:** `sudo bash ./qgroundcontrol/tools/setup/install-dependencies-debian.sh`
-  - **Fedora:** `sudo dnf install speech-dispatcher SDL2-devel SDL2 systemd-devel patchelf`
-  - **Arch Linux:** `pacman -Sy speech-dispatcher patchelf`
-  - **Mac** `sh qgroundcontrol/tools/setup/macos-dependencies.sh`
-  - **Android** [Setup](https://doc.qt.io/qt-6/android-getting-started.html)。 最新版本需要 JDK17 。 NDK 版本：25.1.8937393
-    您可以通过审查项目设置确认它正在使用：**Projects > Managing Kits >  Devices > Android (tab) > Android Settings > _JDK location_**。
-    注意：访问此处查看更详细的配置 [android.yml](.github/workflows/android.yml)
+   Run these from the root of the cloned repository (`cd qgroundcontrol`):
 
-2. 安装可选/特定操作功能
+   - **Ubuntu:** `python3 tools/setup/install_dependencies --platform debian`
+
+   - **Fedora:** `sudo dnf install speech-dispatcher SDL2-devel SDL2 systemd-devel patchelf`
+
+   - **Arch Linux:** `pacman -Sy speech-dispatcher patchelf`
+
+   - **Mac:** `python3 tools/setup/install_dependencies --platform macos`
+
+   - **Windows:** `python tools/setup/install_dependencies --platform windows`
+
+     This is the same script used by CI. By default it installs only GStreamer (x64 only, from the QGC dependency mirror). Optional flags: `--nsis` installs NSIS (needed to build the installer), `--msvc` installs the Visual Studio 2022 Build Tools C++ workload, and `--vulkan` installs the Vulkan SDK.
+
+   - **Android:** Installing dependencies for Android is quite involved. You are better off using Qt documentation for Android setup instructions. Read [Qt 6 for Android](https://doc.qt.io/qt-6/android.html) carefully. Continue with [Getting Started with Qt 6 for Android](https://doc.qt.io/qt-6/android-getting-started.html).
+
+2. Install OS-Specific Functionalities
+
+   ::: info
+   QGC is built exclusively with CMake; qmake builds are no longer supported.
+   Optional features that are dependent on the operating system and user-installed libraries are linked/described below.
+   These features can be forcibly enabled/disabled by passing additional `-D` options to CMake (e.g. `-DQGC_ENABLE_GST_VIDEOSTREAMING=OFF`).
+   :::
+
+   - **Video Streaming/GStreamer:** - installed by the dependency script above, or downloaded automatically at CMake configure time on Windows/macOS if not already present. See [Video Streaming](https://github.com/mavlink/qgroundcontrol/blob/master/src/VideoManager/VideoReceiver/GStreamer/README.md) for details. Note: when cross-compiling for Windows ARM64 from an x64 host, disable video streaming with `-DQGC_ENABLE_GST_VIDEOSTREAMING=OFF` (this is what CI does) — the ARM64 GStreamer SDK installer cannot run on an x64 host, so the automatic download will fail.
+   - **Windows Installer:** - building the Windows installer requires [NSIS](https://nsis.sourceforge.io/Download), which the dependency script above installs when run with `--nsis`.
+
+#### Install Visual Studio Compiler (Windows Only) {#vs}
+
+An MSVC 2022 C++ toolchain is required. Either of the following works:
+
+- The [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/) with the _C++ build tools_ workload (this is what CI uses, and what the dependency script above installs when run with `--msvc`), or
+- [Visual Studio 2022 Community Edition](https://visualstudio.microsoft.com/downloads/) with the _Desktop development with C++_ workload, if you also want the IDE.
 
   ::: info
-  依赖操作系统和用户安装的库的可选功能在下面链接/描述。
-  这些功能可以被强制启用/禁用，为qmake指定额外的值。
+  Visual Studio is ONLY used to get the compiler. Building _QGroundControl_ is done using [Qt Creator](#qt-creator) or [cmake](#cmake) directly as outlined below.
   :::
-
-  - **视频流/Gstream:** - 查看 [视频流](https://github.com/mavlink/qgroundcontrol/blob/master/src/VideoManager/VideoReceiver/GStreamer/README.md)
-
-#### 安装 Visual Studio (仅限Windows) {#vs}
-
-安装 [Visual Studio 2022 Community Edition](https://visualstudio.microsoft.com/downloads/)。
-
-进行安装时，选择 _使用 C++ 进行桌面开发_ ：
-
-![Visual Studio 2019 - 选择基于 C++ 的桌面开发环境](../../../assets/dev_getting_started/visual_studio_select_features.png)
-
-:::info
-Visual Studio 仅用于获取编译器。 构建 _QGroundControl_ 可直接按以下概述，使用 [Qt Creator](#qt-creator) 或 [cmake](#cmake) 完成。
-:::
 
 #### 使用 Qt Creator {#qt-creator} 进行构建
 
@@ -121,39 +116,52 @@ Visual Studio 仅用于获取编译器。 构建 _QGroundControl_ 可直接按�
 
 2. 在 _Configure Project_ 页面上，它应该默认您刚刚使用上面的说明安装的 Qt 版本。 如果不从列表中选择该套件，然后点击 _Configure Project_。
 
-3. 使用"hammer" (或"play") 图标或菜单构建：
+   :::tip
+   Don't forget to check boxes in case you want to build a Release instead of Debug, or check the other types. To create the installation file go to the "Deploy Settings" Tab, click in the menu button "Add Deploy Step", select "CMake Install" and as argument you must set at least `--config Release`.
+   :::
 
-  ![QtCreator Build Button](../../../assets/dev_getting_started/qt_creator_build_qgc.png)
+3. Build using the "hammer" icon. After that, in order to deploy the build, use the "play" icon. Or use the menu Build on top for a detailed alternative.
 
 #### 在CLI（命令行界面）使用 CMake {#cmake} 进行构建
 
 构建默认的 QGC 示例命令并在此后运行它：
 
-1. 请确保您克隆了仓库并先更新子模块，见上文 _源代码_ 章节并切换到仓库文件夹：
+1. Make sure you cloned the repository before, see chapter _Source Code_ above and switch into the repository folder:
 
-  ```sh
-  cd qgroundcontrol
-  ```
+   ```sh
+   cd qgroundcontrol
+   ```
 
 2. 配置：
 
-  ```sh
-  ~/Qt/6.8.3/gcc_64/bin/qt-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-  ```
+   ```sh
+   ~/Qt/{{ $frontmatter.qt_version }}/gcc_64/bin/qt-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+   ```
 
-  修改 qt-cmake 的目录，使其与你安装 Qt 的位置以及你想要使用的工具包相匹配。
+   Change the directory for `qt-cmake` to match your install location for Qt and the kit you want to use.
+
+   **Windows**: use the corresponding kit path, e.g. `C:\Qt\{{ $frontmatter.qt_version }}\msvc2022_64\bin\qt-cmake.bat`, from a _x64 Native Tools Command Prompt for VS 2022_.
+
+   **Mac**: To Sign/Notarize/Staple the QGC app bundle, add `-DQGC_MACOS_SIGN_WITH_IDENTITY=ON` to the configure command line. During the `install` phase the following environment variables will need to be available:
+
+   - `QGC_MACOS_SIGNING_IDENTITY` - Signing identity for your Developer ID certificate which must be in the keychain
+   - `QGC_MACOS_NOTARIZATION_USERNAME` - Username for your Apple Developer Account
+   - `QGC_MACOS_NOTARIZATION_PASSWORD` - App specific password for Notarization from your Apple Developer Account
+   - `QGC_MACOS_NOTARIZATION_TEAM_ID` - Apple Developer Account Team ID
 
 3. 构建
 
-  ```sh
-  cmake --build build --config Debug
-  ```
+   ```sh
+   cmake --build build --config Debug
+   ```
 
 4. Run the QGroundcontrol binary that was just built: `./staging/QGroundControl`
 
-  ```sh
-  ./build/Debug/QGroundControl
-  ```
+   ```sh
+   ./build/Debug/QGroundControl
+   ```
+
+   On Windows: `build\Debug\QGroundControl.exe`
 
 ### Vagrant
 
@@ -165,14 +173,60 @@ Visual Studio 仅用于获取编译器。 构建 _QGroundControl_ 可直接按�
 
 ### 所有支持的操作系统的额外构建备注
 
-- **并行构建：** 对于非Windows构建，您可以使用 "-j#" 选项来运行并行构建。
-- **如果你在运行 _QGroundControll_**时遇到此错误: `/usr/lib/x86_64-linux-gnu/libstdc++.so.6: version 'GLIBCXX_3.4.20' not found.`，你需要更新到最新的 _gcc_ ，或者通过使用 `sudo apt-get install libstdc++6` 安装最新的 _libstdc++.6_ 。
+- **Parallel builds:** You can use the `-j#` option with `cmake --build` to control the number of parallel build jobs.
+- **如果你在运行 _QGroundControll_**&#x65F6;遇到此错误: `/usr/lib/x86_64-linux-gnu/libstdc++.so.6: version 'GLIBCXX_3.4.20' not found.`，你需要更新到最新的 _gcc_ ，或者通过使用 `sudo apt-get install libstdc++6` 安装最新的 _libstdc++.6_ 。
 - **单元测试:** 若要运行 [单元测试](../contribute/unit_tests.md)，使用 `QGC_UNITEST_BUILD` 定义在 `debug` 模式下构建，然后复制 `deposition / qgroundcontrol-start。 运行测试前，将 `deploy/qgroundcontrol-start.sh\` 脚本复制到debug目录中。
+
+### Build Caching
+
+QGC uses two build caches, both enabled automatically at configure time and stored in the source
+tree so they survive build directory deletion:
+
+- **ccache** caches compiler output (`.ccache/`). Used if `ccache` is installed and on your `PATH`.
+- **moccache** caches Qt moc output (`.cache/moccache/`). QGC has a large number of moc-processed
+  headers, so on clean builds, branch switches, and rebuilds after deleting the build directory a
+  warm moccache skips the entire moc phase. Controlled by the `QGC_USE_MOCCACHE` CMake option
+  (ON by default; not supported on Windows).
+
+Neither cache requires any setup. To bypass moccache for a single build set `MOCCACHE_DISABLE=1`,
+or configure with `-DQGC_USE_MOCCACHE=OFF` to turn it off entirely.
+
+#### moccache Details
+
+moccache (`tools/moccache.py`) is a content-addressed cache wired in automatically as the
+`CMAKE_AUTOMOC_EXECUTABLE` via a launcher script generated at configure time. Cached moc output
+is keyed on moc version + arguments + input content + transitive include contents + the input's
+path relative to the output directory (moc embeds that relative path as an `#include` in its
+output, so build trees laid out at a different depth intentionally don't share entries). Entries
+are otherwise shared across build trees: build-dir paths are rewritten to a token, like ccache's
+`base_dir`.
+
+Cache misses fall through to the real moc and never fail the build; corrupt or stale entries are
+re-validated by content hash on every use.
+
+Environment variables (set by the launcher, overridable at build time):
+
+| Variable            | Default                  | Purpose                                                          |
+| ------------------- | ------------------------ | ---------------------------------------------------------------- |
+| `MOCCACHE_DIR`      | `<repo>/.cache/moccache` | Cache location (persisted by CI, like ccache) |
+| `MOCCACHE_MAX_SIZE` | `256M`                   | LRU auto-trim threshold (trims after misses)  |
+| `MOCCACHE_DISABLE`  | unset                    | Pass through to real moc (no caching)         |
+| `MOCCACHE_STATS`    | unset                    | Append hit/miss lines to `$MOCCACHE_DIR/stats.log`               |
+
+```sh
+MOCCACHE_STATS=1 just build                             # Log hits/misses during a build
+python3 ./tools/moccache.py --trim --max-size 256M      # Explicitly trim the cache (LRU)
+MOCCACHE_DISABLE=1 just build                           # Bypass the cache for one build
+```
 
 ## 构建 QGC 安装文件
 
 作为正常构建过程的一部分，您还可以为 _QGroundControl_ 创建安装文件。
 
 ```sh
-cmake --install . --config Release
+cmake --install build --config Release
 ```
+
+Use the same build directory you passed to `-B` when configuring, and a configuration (`Release`/`Debug`) that you actually built.
+
+On Windows this creates the NSIS installer (requires NSIS, installed by the dependency script when run with `--nsis`).

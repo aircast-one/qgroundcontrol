@@ -136,3 +136,5 @@ void PacketRadioTest::_selectAdapterTest()
     const std::vector<DeviceId> unsupportedNameMatch = {makeDevice("Some Hub [0:1]", false)};
     QVERIFY(PacketRadioManager::selectAdapter(unsupportedNameMatch, "Some Hub [0:1]") == nullptr);
 }
+
+UT_REGISTER_TEST(PacketRadioTest, TestLabel::Unit)

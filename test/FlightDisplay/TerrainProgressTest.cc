@@ -26,3 +26,5 @@ void TerrainProgressTest::_bannerIsRigFurnitureWhileItExists()
 
     QTRY_COMPARE(view.rootObject()->property("statics").toInt(), 0);
 }
+
+UT_REGISTER_TEST(TerrainProgressTest, TestLabel::Unit)

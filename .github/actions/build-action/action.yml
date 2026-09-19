@@ -1,0 +1,30 @@
+name: Build action
+description: Build action whose dist hasn't been updated from source
+inputs:
+  repo:
+    description: Target repo to build
+    required: true
+  ref:
+    description: The branch, tag or SHA to checkout
+    required: false
+    default: master
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7
+      with:
+        repository: ${{ inputs.repo }}
+        ref: ${{ inputs.ref }}
+        path: build-action
+        persist-credentials: false
+
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 'lts/*'
+
+    - name: Build ${{ inputs.repo }}
+      run: |
+        cd build-action
+        npm ci || npm install
+        npm run build
+      shell: bash

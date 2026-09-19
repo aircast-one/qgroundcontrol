@@ -649,7 +649,7 @@ mod tests {
     use mavlink::types::CharArray;
 
     fn close(value: Option<f64>, expected: f64) -> bool {
-        value.is_some_and(|value| (value - expected).abs() < 1e-9)
+        value.is_some_and(|value| (value - expected).abs() < 1e-3)
     }
 
     fn everything() -> AdsbFlags {

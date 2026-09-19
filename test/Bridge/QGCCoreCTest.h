@@ -1,8 +1,8 @@
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
-class QGCCoreCTest : public UnitTest
+class QGCCoreCTest : public VehicleTestManualConnect
 {
     Q_OBJECT
 

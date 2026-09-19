@@ -1,0 +1,26 @@
+{
+    "version": 1,
+    "fileType": "SettingsPages",
+    "pages": [
+        {
+            "name": "3D View",
+            "qml": "Viewer3DSettings.qml",
+            "icon": "qrc:/qml/QGroundControl/Viewer3D/City3DMapIcon.svg",
+            "pageDefinition": "Viewer3D.SettingsUI.json",
+            "visible": "QGroundControl.settingsManager.viewer3DSettings.userVisible"
+        },
+        {
+            "name": "App Logging",
+            "qml": "LoggingSettings.qml",
+            "icon": "qrc:/InstrumentValueIcons/conversation.svg",
+            "pageDefinition": "Logging.SettingsUI.json"
+        },
+        {
+            "name": "NTRIP/RTK",
+            "qml": "NTRIPSettings.qml",
+            "icon": "qrc:/InstrumentValueIcons/globe.svg",
+            "visible": "QGroundControl.settingsManager && QGroundControl.settingsManager.ntripSettings !== undefined",
+            "pageDefinition": "NTRIP.SettingsUI.json"
+        }
+    ]
+}

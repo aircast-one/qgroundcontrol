@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <!-- Monochrome city skyline. Toolstrip icons are recolored via
+         QGCColoredImage using the alpha channel only, so detail must be
+         punched out as transparent holes (fill-rule evenodd). -->
+    <path fill="#000000" fill-rule="evenodd" d="
+        M2 11h6v11H2z
+        M3.5 13h1v1h-1z M5.5 13h1v1h-1z
+        M3.5 16h1v1h-1z M5.5 16h1v1h-1z
+        M3.5 19h1v1h-1z M5.5 19h1v1h-1z
+        M9 5h6v17H9z
+        M10.5 7h1v1h-1z M12.5 7h1v1h-1z
+        M10.5 10h1v1h-1z M12.5 10h1v1h-1z
+        M10.5 13h1v1h-1z M12.5 13h1v1h-1z
+        M10.5 16h1v1h-1z M12.5 16h1v1h-1z
+        M10.5 19h1v1h-1z M12.5 19h1v1h-1z
+        M16 13h6v9h-6z
+        M17.5 15h1v1h-1z M19.5 15h1v1h-1z
+        M17.5 18h1v1h-1z M19.5 18h1v1h-1z"/>
+</svg>

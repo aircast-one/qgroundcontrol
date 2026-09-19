@@ -5,7 +5,6 @@ import QtQuick.Controls
 import QtQuick.Window
 
 import QGroundControl
-import QGroundControl.ScreenToolsController
 
 /*!
 */
@@ -110,6 +109,7 @@ Item {
     property real implicitSliderHeight:             isMobile ? Math.max(defaultFontPixelHeight, minTouchPixels) : defaultFontPixelHeight
     // It's not possible to centralize an even number of pixels, checkBoxIndicatorSize should be an odd number to allow centralization
     property real buttonBorderRadius:               Math.round(defaultFontPixelHeight * ScreenToolsController.controlRadiusRatio)
+    property real defaultBorderRadius:              buttonBorderRadius
 
     property bool capsuleControls:                  ScreenToolsController.capsuleControls
     property real checkBoxIndicatorSize:            2 * Math.floor(defaultFontPixelHeight * (isMobile ? 1.5 : 1.0) / 2) + 1

@@ -11,10 +11,13 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QTimer>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 class GCSBattery : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
 
     Q_PROPERTY(int  level     READ level     NOTIFY stateChanged)
     Q_PROPERTY(bool charging  READ charging  NOTIFY stateChanged)

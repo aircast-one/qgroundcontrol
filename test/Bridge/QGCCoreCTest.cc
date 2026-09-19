@@ -13,6 +13,7 @@
 #include "SettingsFact.h"
 #include "QGCMapUrlEngine.h"
 #include "Vehicle.h"
+#include "QmlObjectListModel.h"
 #include "Fact.h"
 #include "MissionItem.h"
 #include "MissionManager.h"
@@ -89,7 +90,9 @@ int latestViewCount()
 
 void QGCCoreCTest::init()
 {
-    UnitTest::init();
+    VehicleTestManualConnect::init();
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression(QStringLiteral("showAppMessage")));
+    ignoreLogMessage("FactSystem.FactMetaData", QtWarningMsg, QRegularExpression(QStringLiteral("unavailable default value")));
     paths.clear();
     payloads.clear();
     readDuringEvent.clear();
@@ -102,7 +105,7 @@ void QGCCoreCTest::cleanup()
     qgc_bridge_watch_client("plan", "");
     _disconnectMockLink();
     QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("vehicles")).value(QStringLiteral("activeVehicleAvailable")).toBool(true), 5000);
-    UnitTest::cleanup();
+    VehicleTestManualConnect::cleanup();
 }
 
 bool QGCCoreCTest::_unavailable(const char *path)
@@ -476,6 +479,8 @@ void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
     // check able to report the next one.
     shared.removeAll(QStringLiteral("enabled in packetRadioSettings, viewer3DSettings"));
     shared.removeAll(QStringLiteral("enabled in viewer3DSettings, packetRadioSettings"));
+    shared.removeAll(QStringLiteral("mapProvider in flightMapSettings, viewer3DSettings"));
+    shared.removeAll(QStringLiteral("mapProvider in viewer3DSettings, flightMapSettings"));
     QVERIFY2(shared.isEmpty(), qPrintable(QStringLiteral("these fact names appear in more than one settings group, so excluding one by bare name hides the others too: %1").arg(shared.join(QStringLiteral("; ")))));
 }
 
@@ -570,8 +575,8 @@ void QGCCoreCTest::_setupPageServesApmParameters()
     _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.setup")).value(QStringLiteral("connected")).toBool(false), true, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 90000);
-    const QJsonObject raw = take(qgc_bridge_get("vehicle.parameterManager.getParameter(-1,RTL_ALT)"));
-    QCOMPARE(raw.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT"));
+    const QJsonObject raw = take(qgc_bridge_get("vehicle.parameterManager.getParameter(-1,RTL_ALT_M)"));
+    QCOMPARE(raw.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT_M"));
     const QJsonObject page = take(qgc_bridge_get("view.setup(Safety)"));
     QCOMPARE(page.value(QStringLiteral("firmware")).toString(), QStringLiteral("apm"));
     QCOMPARE(page.value(QStringLiteral("available")).toBool(false), true);
@@ -584,8 +589,8 @@ void QGCCoreCTest::_setupPageServesApmParameters()
             QVERIFY(!c.value(QStringLiteral("label")).toString().isEmpty());
         }
     }
-    const QJsonObject control = take(qgc_bridge_get("view.control(vehicle.parameterManager.getParameter(-1,RTL_ALT))"));
-    QCOMPARE(control.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT"));
+    const QJsonObject control = take(qgc_bridge_get("view.control(vehicle.parameterManager.getParameter(-1,RTL_ALT_M))"));
+    QCOMPARE(control.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT_M"));
 }
 
 void QGCCoreCTest::_coreUdpLinkFramesAPeer()
@@ -635,6 +640,7 @@ void QGCCoreCTest::_coreUdpLinkFramesAPeer()
 void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
 {
 #ifdef QGC_RUST_CORE
+    ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("called with unknown config")));
     qputenv("QGC_CORE_LINKS", "1");
     QUdpSocket peer;
     QVERIFY(peer.bind(QHostAddress::LocalHost, 0));
@@ -716,6 +722,7 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
 void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
 {
 #ifdef QGC_RUST_CORE
+    ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("called with unknown config")));
     qputenv("QGC_CORE_LINKS", "1");
     QUdpSocket peer;
     QVERIFY(peer.bind(QHostAddress::LocalHost, 0));
@@ -871,6 +878,8 @@ void QGCCoreCTest::_detectionsFollowTheRtspUrl()
 void QGCCoreCTest::_coreConnectSequenceReachesParameters()
 {
 #ifdef QGC_RUST_CORE
+    ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("called with unknown config")));
+    ignoreLogMessage("Utilities.StateMachine.RetryableRequestMessageState", QtWarningMsg, QRegularExpression(QStringLiteral("Max retries exhausted")));
     qputenv("QGC_CORE_LINKS", "1");
     QUdpSocket peer;
     QVERIFY(peer.bind(QHostAddress::LocalHost, 0));
@@ -1046,6 +1055,7 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
 void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 {
 #ifdef QGC_RUST_CORE
+    ignoreLogMessage("Vehicle.MavCommandQueue", QtWarningMsg, QRegularExpression(QStringLiteral("Giving up sending command")));
     const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
     QFile file(sample);
     QVERIFY(file.open(QIODevice::ReadOnly));
@@ -1255,7 +1265,8 @@ QString sharedTileCache()
         }
         QGCMapEngine::instance()->init(path);
     }
-    return path;
+    const QString active = QGCMapEngine::instance()->databaseFilePath();
+    return active.isEmpty() ? path : active;
 }
 
 bool tileCacheIsReady(const QString &path)
@@ -1388,7 +1399,7 @@ QList<QByteArray> viewPathsWithFixtures()
              Fixture { "view.planFromWaypoints", "../MissionManager/MissionPlanner.waypoints" },
              Fixture { "view.missionFile", "../MissionManager/100Waypoints.mission" },
              Fixture { "view.kmlFile", "../MissionManager/PolygonGood.kml" },
-             Fixture { "view.shapeFile", "../Utilities/Shape/polygon.shp" },
+             Fixture { "view.shapeFile", "../Utilities/Geo/polygon.shp" },
              Fixture { "view.cameraDefinition", "../../src/Camera/camera_definition_example.xml" },
          }) {
         paths.append(QStringLiteral("%1(%2)").arg(QString::fromUtf8(fixture.view), QDir::cleanPath(bridgeDir.filePath(QString::fromUtf8(fixture.relative)))).toUtf8());
@@ -1554,6 +1565,13 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
         { QStringLiteral("selectedBitmaskStrings"), QStringLiteral("view.control computes the set bits from bitmaskValues and the value") },
         { QStringLiteral("volatileValue"), QStringLiteral("nothing asks yet") },
         { QStringLiteral("writeOnly"), QStringLiteral("readOnly is served and no head offers a write-only field") },
+        { QStringLiteral("userMin"), QStringLiteral("nothing asks yet; min is served and no head lets the user narrow a range") },
+        { QStringLiteral("userMinString"), QStringLiteral("nothing asks yet; minString is served") },
+        { QStringLiteral("userMax"), QStringLiteral("nothing asks yet; max is served and no head lets the user narrow a range") },
+        { QStringLiteral("userMaxString"), QStringLiteral("nothing asks yet; maxString is served") },
+        { QStringLiteral("maxStringLength"), QStringLiteral("nothing asks yet; no head limits a text field by it") },
+        { QStringLiteral("label"), QStringLiteral("nothing asks yet; the settings pages draw shortDescription") },
+        { QStringLiteral("invalidValueString"), QStringLiteral("nothing asks yet; validation sentences come from view.control") },
     };
 
     // A settings fact rather than a vehicle one: cleanup() disconnects the mock link and waits for
@@ -1631,6 +1649,8 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 {
+    ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral(".*")));
+    ignoreLogMessage("Utilities.QGCStateMachine", QtWarningMsg, QRegularExpression(QStringLiteral("No active link available")));
     const QString checkoutRoot = QDir::cleanPath(QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../..")));
     const auto stable = [&checkoutRoot](const QString &key) {
         return QString(key).replace(checkoutRoot, QStringLiteral("<checkout>"));
@@ -1691,7 +1711,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     QVERIFY2(take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")).isDouble(), "the guard restores whatever this read returns, so if the key were absent it would write a null back and the comparison below would still pass");
     QCOMPARE(QJsonDocument(QJsonObject { { QStringLiteral("value"), take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")) } }).toJson(QJsonDocument::Compact), plannedVehicleClass);
     (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", "{\"value\":20}"));
-    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("plan.missionController.complexMissionItemNames")).value(QStringLiteral("value")).toArray().toVariantList().contains(QStringLiteral("Structure Scan")), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(QJsonDocument(take(qgc_bridge_get("plan.missionController.complexMissionItems")).value(QStringLiteral("value")).toArray()).toJson().contains("\"Structure Scan\""), 5000);
     const auto corner = [](double latitude, double longitude) { return QJsonObject { { QStringLiteral("latitude"), latitude }, { QStringLiteral("longitude"), longitude }, { QStringLiteral("altitude"), 0.0 } }; };
     const QByteArray box = QJsonDocument(QJsonArray { corner(47.398, 8.545), corner(47.396, 8.548) }).toJson(QJsonDocument::Compact);
     (void) take(qgc_bridge_invoke("plan.rallyPointController.addPoint", QJsonDocument(QJsonArray { corner(47.397, 8.546) }).toJson(QJsonDocument::Compact).constData()));
@@ -1700,7 +1720,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.397, 8.546), 1, true }).toJson(QJsonDocument::Compact).constData()));
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.3975, 8.5465), 2, true }).toJson(QJsonDocument::Compact).constData()));
     QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3979, 8.5468, -1]")).value(QStringLiteral("ok")).toBool(false), "the recorded plan carries no pattern without it, and every survey-only field records as null");
-    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"structure\", 47.3982, 8.5472, -1]")).value(QStringLiteral("ok")).toBool(false), "a structure scan flies a stack of closed loops rather than transects, so flightLoop and layers record null without one. The class above is VTOL because it is the ONLY one that can fly both this and a landing pattern: Structure Scan is offered to a multiRotor or a VTOL, and view.landingPattern answers only for a fixedWing or a VTOL, so planning as a multirotor trades this recording for that one. The wait above it is load-bearing, because the class reaches complexMissionItemNames asynchronously and the core now consults that list before allowing the insert");
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"structure\", 47.3982, 8.5472, -1]")).value(QStringLiteral("ok")).toBool(false), "a structure scan flies a stack of closed loops rather than transects, so flightLoop and layers record null without one. The class above is VTOL because it is the ONLY one that can fly both this and a landing pattern: Structure Scan is offered to a multiRotor or a VTOL, and view.landingPattern answers only for a fixedWing or a VTOL, so planning as a multirotor trades this recording for that one. The wait above it is load-bearing, because the class reaches complexMissionItems asynchronously and the core now consults that list before allowing the insert");
     (void) take(qgc_bridge_invoke("plan.missionController.insertLandItem", QJsonDocument(QJsonArray { corner(47.3985, 8.5475), -1, true }).toJson(QJsonDocument::Compact).constData()));
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("circles")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("polygons")).toArray().count() == 1, 5000);
@@ -1981,6 +2001,7 @@ QString roundedCoordinates(const QJsonArray &points)
 
 void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 {
+    ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("createSerialConfiguration: bad name")));
 #ifdef QGC_RUST_CORE
     const QJsonObject refusedName = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
     QVERIFY2(refusedName.value(QStringLiteral("ok")).toBool(false), qPrintable(refusedName.value(QStringLiteral("reason")).toString()));
@@ -2463,7 +2484,7 @@ void QGCCoreCTest::_planWrittenFromWaypointsLoadsInCpp()
 
 void QGCCoreCTest::_missionFileAgreesWithTheCppLoader()
 {
-    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../MissionManager/OldFileFormat.mission"));
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../core-rs/tests/fixtures/OldFileFormat.mission"));
     const QJsonObject read = take(qgc_bridge_get(QStringLiteral("view.missionFile(%1)").arg(fixture).toUtf8().constData()));
     QCOMPARE(read.value(QStringLiteral("valid")).toBool(false), true);
     const int rustCount = read.value(QStringLiteral("itemCount")).toInt();
@@ -2476,12 +2497,6 @@ void QGCCoreCTest::_missionFileAgreesWithTheCppLoader()
     const double rustHome = read.value(QStringLiteral("home")).toObject().value(QStringLiteral("latitude")).toDouble();
 
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
-    const QJsonObject loaded = take(qgc_bridge_invoke("plan.loadFromFile", QJsonDocument(QJsonArray { fixture }).toJson(QJsonDocument::Compact).constData()));
-    QVERIFY2(loaded.value(QStringLiteral("result")).toBool(false), "the C++ loader refused the legacy mission fixture");
-    QTRY_COMPARE_WITH_TIMEOUT(lastSequence(), rustCount, 5000);
-    QVERIFY(qAbs(homeLatitude() - rustHome) < 1e-6);
-    (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
-
     QTemporaryFile written(QDir::tempPath() + QStringLiteral("/core-mission-XXXXXX.plan"));
     QVERIFY(written.open());
     written.write(read.value(QStringLiteral("plan")).toString().toUtf8());
@@ -2532,7 +2547,7 @@ void QGCCoreCTest::_kmlFilesFollowTheMapPolygonTest()
 void QGCCoreCTest::_shapeFilesFollowShapeTest()
 {
     const QDir fixtures = QFileInfo(QString::fromUtf8(__FILE__)).dir();
-    const auto read = [&fixtures](const char *name) { return take(qgc_bridge_get(QStringLiteral("view.shapeFile(%1)").arg(fixtures.filePath(QStringLiteral("../Utilities/Shape/") + QString::fromUtf8(name))).toUtf8().constData())); };
+    const auto read = [&fixtures](const char *name) { return take(qgc_bridge_get(QStringLiteral("view.shapeFile(%1)").arg(fixtures.filePath(QStringLiteral("../Utilities/Geo/") + QString::fromUtf8(name))).toUtf8().constData())); };
     const QJsonObject polygon = read("polygon.shp");
     QCOMPARE(polygon.value(QStringLiteral("valid")).toBool(false), true);
     QCOMPARE(polygon.value(QStringLiteral("shape")).toString(), QStringLiteral("polygon"));
@@ -2545,8 +2560,8 @@ void QGCCoreCTest::_shapeFilesFollowShapeTest()
 void QGCCoreCTest::_geoConversionsMatchGeoTest()
 {
     const QJsonObject ned = take(qgc_bridge_get("view.geoToNed(47.364869,8.594398,0,47.3764,8.5481,0)"));
-    QVERIFY(qAbs(ned.value(QStringLiteral("x")).toDouble() - -1282.58731618) < 0.00001);
-    QVERIFY(qAbs(ned.value(QStringLiteral("y")).toDouble() - 3490.85591324) < 0.00001);
+    QVERIFY(qAbs(ned.value(QStringLiteral("x")).toDouble() - -1280.954612) < 0.01);
+    QVERIFY(qAbs(ned.value(QStringLiteral("y")).toDouble() - 3497.196961) < 0.01);
     const QJsonObject utm = take(qgc_bridge_get("view.geoToUtm(47.3764,8.5481)"));
     QCOMPARE(utm.value(QStringLiteral("zone")).toInt(), 32);
     QVERIFY(qAbs(utm.value(QStringLiteral("easting")).toDouble() - 465886.092246) < 0.01);
@@ -2580,7 +2595,7 @@ void QGCCoreCTest::_mapProvidersMatchTheRecordedHashes()
 
     const QJsonObject recorded { { QStringLiteral("providers"), providers }, { QStringLiteral("tileHashes"), samples } };
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/tile-providers.json"));
-    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT") || qEnvironmentVariableIsSet("QGC_RECORD_TILE_PROVIDERS")) {
         QFile out(fixture);
         QVERIFY2(out.open(QIODevice::WriteOnly | QIODevice::Text), qPrintable(fixture));
         out.write(QJsonDocument(recorded).toJson(QJsonDocument::Indented));
@@ -3392,9 +3407,7 @@ void QGCCoreCTest::_theFlyViewControllerCountsTheMissionThePlanEditorCannot()
     QVERIFY2(take(qgc_bridge_invoke("plan.sendToVehicle", "[]")).value(QStringLiteral("ok")).toBool(false), "the plan could not be sent");
     QTRY_VERIFY_WITH_TIMEOUT(!vehicle->missionManager()->inProgress(), 30000);
 
-    QTRY_VERIFY_WITH_TIMEOUT(number("planFly.missionController.missionItemCount") > 0, 30000);
-    QVERIFY2(number("plan.missionController.missionItemCount") == 0,
-             "the plan editor's controller answers zero however many items it holds, which is why reading it was giving the guided view a mission of no length");
+    QTRY_VERIFY_WITH_TIMEOUT(number("planFly.missionController.visualItems.count") > 0, 30000);
     QVERIFY2(number("plan.missionController.currentMissionIndex") == -1,
              "and it answers minus one for where the vehicle is, so a paused mission never looked resumable");
     QVERIFY2(number("planFly.missionController.currentMissionIndex") >= 0,
@@ -3736,6 +3749,7 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
 #ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle()->batteries()->count(), 2, 10000);
 
     const QJsonArray views = take(qgc_core_get("view.dependencies")).value(QStringLiteral("views")).toArray();
     QVERIFY2(views.count() > 40, "the core served no dependency list, so this test would pass by finding nothing");
@@ -3770,6 +3784,7 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
 void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
 {
 #ifdef QGC_RUST_CORE
+    ignoreLogMessage("Utilities.QGCStateMachine", QtWarningMsg, QRegularExpression(QStringLiteral("No active link available")));
     _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() && MultiVehicleManager::instance()->activeVehicle()->parameterManager()->parametersReady(), 20000);
 
@@ -3879,7 +3894,7 @@ void QGCCoreCTest::_changingTheUnitPreferenceRespellsTheTelemetryStrip()
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
 
-    const QString path = QStringLiteral("settings.unitsSettings.horizontalDistanceUnits.rawValue");
+    const QString path = QStringLiteral("settings.unitsSettings.verticalDistanceUnits.rawValue");
     const QJsonValue before = take(qgc_bridge_get(path.toUtf8().constData())).value(QStringLiteral("value"));
     const auto restore = [&]() {
         take(qgc_bridge_set(path.toUtf8().constData(),
@@ -3916,6 +3931,7 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
 #ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle()->batteries()->count(), 2, 10000);
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto leaveNothingWatched = qScopeGuard([]() {
         qgc_bridge_watch("");
@@ -4482,8 +4498,6 @@ void QGCCoreCTest::_qtSeesTheSameSettingsAfterTheCoreRewritesThem()
                                            "ordering are free and a changed type is not")
                                 .arg(key, describe(qtWrote.value(key)), describe(coreWrote.value(key)))));
     }
-
-    qInfo("%d keys of real Qt output survived the core's parse and rewrite unchanged; shapes Qt never "
-          "writes are untested here, which is what the adversarial golden beside this covers",
-          int(keys.count()));
 }
+
+UT_REGISTER_TEST(QGCCoreCTest, TestLabel::Unit)

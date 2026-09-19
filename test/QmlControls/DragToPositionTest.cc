@@ -11,6 +11,7 @@
 #include "QuickInteractionTestHelpers.h"
 
 #include <cmath>
+#include <QtCore/QRegularExpression>
 
 static const qreal kMargin = 8;
 
@@ -26,6 +27,12 @@ static bool loadView(QQuickView& view)
 static void dragPanel(QQuickView& view, const QPoint& from, const QPoint& to)
 {
     dragMouse(view, from, to, false);
+}
+
+void DragToPositionTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("qt.qpa.fonts", QtWarningMsg, QRegularExpression(QStringLiteral("Populating font family aliases")));
 }
 
 void DragToPositionTest::_dragRepositionsAndPersists()
@@ -70,6 +77,7 @@ void DragToPositionTest::_dragRepositionsAndPersists()
 
 void DragToPositionTest::_dragOffscreenClampsCommittedPosition()
 {
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("occurs outside target window")));
     clearPanelSettings();
 
     qreal edgeMargin = 0;
@@ -226,3 +234,5 @@ void DragToPositionTest::_defaultHomeKeepsItsOwnLayoutOffTheGrid()
     QCOMPARE(panel->x(), 10.0);
     QCOMPARE(panel->y(), 380.0);
 }
+
+UT_REGISTER_TEST(DragToPositionTest, TestLabel::Unit)

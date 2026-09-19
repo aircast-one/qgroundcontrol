@@ -8,6 +8,8 @@
  ****************************************************************************/
 
 #include "DebugApiServerTest.h"
+
+#include <QtCore/QRegularExpression>
 #include "DebugApiServer.h"
 
 #include "QuickInteractionTestHelpers.h"
@@ -36,6 +38,12 @@ QNetworkReply *_get(QNetworkAccessManager &network, quint16 port, const QString 
 }
 
 } // namespace
+
+void DebugApiServerTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("DEBUG API ENABLED")));
+}
 
 void DebugApiServerTest::_missingAuthHeaderRejected()
 {
@@ -452,3 +460,5 @@ void DebugApiServerTest::_uiWatchSurvivesConcurrentStreamsAndRequests()
     QVERIFY(firstBody.count('\n') >= 3);
     QVERIFY(secondBody.count('\n') >= 3);
 }
+
+UT_REGISTER_TEST(DebugApiServerTest, TestLabel::Unit)

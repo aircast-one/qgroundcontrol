@@ -9,6 +9,8 @@
 
 #include "QGCBridgeCoreTest.h"
 
+#include <QtCore/QRegularExpression>
+
 #include "QGCMapCircle.h"
 #include "QGCBridgeCore.h"
 #include "MultiVehicleManager.h"
@@ -61,14 +63,30 @@ QJsonObject callMethod(const QString &path, const QJsonArray &args = QJsonArray(
 
 void QGCBridgeCoreTest::init()
 {
-    UnitTest::init();
+    VehicleTestManualConnect::init();
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression(QStringLiteral("showAppMessage")));
+    ignoreLogMessage("AnalyzeView.MAVLinkConsoleController", QtWarningMsg, QRegularExpression(QStringLiteral("no active vehicle")));
 }
 
 void QGCBridgeCoreTest::cleanup()
 {
     QGCBridgeCore::watch(QStringList());
     QGCBridgeCore::setEventHandler(nullptr);
-    UnitTest::cleanup();
+    VehicleTestManualConnect::cleanup();
+}
+
+void QGCBridgeCoreTest::_resolvesLogDownloadRoot()
+{
+    const QJsonObject root = readObject(QStringLiteral("logDownload"));
+    QCOMPARE(root.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
+    QVERIFY(root.contains(QStringLiteral("requestingList")));
+    QVERIFY(root.contains(QStringLiteral("downloadingLogs")));
+    QVERIFY(root.value(QStringLiteral("children")).toArray().contains(QStringLiteral("model")));
+
+    const QJsonObject model = readObject(QStringLiteral("logDownload.model"));
+    QCOMPARE(model.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
+    QVERIFY(model.contains(QStringLiteral("elements")));
+    QCOMPARE(model.value(QStringLiteral("count")).toInt(), model.value(QStringLiteral("elements")).toArray().count());
 }
 
 void QGCBridgeCoreTest::_readsScalarProperty()
@@ -158,7 +176,9 @@ void QGCBridgeCoreTest::_resolvesAccessorCall()
     QCOMPARE(json.value(QStringLiteral("kind")).toString(), QStringLiteral("fact"));
     QCOMPARE(json.value(QStringLiteral("name")).toString(), QStringLiteral("heading"));
 
+    expectLogMessage("FactSystem.FactGroup", QtWarningMsg, QRegularExpression(QStringLiteral("Unknown Fact")));
     const QJsonObject missing = readObject(QString::fromLatin1(kVehicleFactGroup) + QStringLiteral(".getFact(no_such_fact)"));
+    verifyExpectedLogMessage();
     QVERIFY(missing.value(QStringLiteral("kind")).toString() != QStringLiteral("fact"));
     QVERIFY(missing.value(QStringLiteral("value")).isNull());
 }
@@ -345,19 +365,6 @@ void QGCBridgeCoreTest::_resolvesMavlinkConsoleRoot()
     QCOMPARE(recalled.value(QStringLiteral("result")).toString(), QStringLiteral("help"));
 }
 
-void QGCBridgeCoreTest::_resolvesLogDownloadRoot()
-{
-    const QJsonObject root = readObject(QStringLiteral("logDownload"));
-    QCOMPARE(root.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
-    QVERIFY(root.contains(QStringLiteral("requestingList")));
-    QVERIFY(root.contains(QStringLiteral("downloadingLogs")));
-    QVERIFY(root.value(QStringLiteral("children")).toArray().contains(QStringLiteral("model")));
-
-    const QJsonObject model = readObject(QStringLiteral("logDownload.model"));
-    QCOMPARE(model.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
-    QVERIFY(model.contains(QStringLiteral("elements")));
-    QCOMPARE(model.value(QStringLiteral("count")).toInt(), model.value(QStringLiteral("elements")).toArray().count());
-}
 
 void QGCBridgeCoreTest::_rejectsUnknownPaths()
 {
@@ -704,31 +711,17 @@ void QGCBridgeCoreTest::_aProjectedReadIsSmallerAndKeepsWhatWasAsked()
     (void) QGCBridgeCore::get(path);
     (void) QGCBridgeCore::getFields(path, wanted);
 
-    QElapsedTimer clock;
-    clock.start();
     const QString whole = QGCBridgeCore::get(path);
-    const qint64 wholeUs = clock.nsecsElapsed() / 1000;
 
     // Every plain property the full read produced, so this isolates fact compaction
     // from the field list: same fields, compact facts.
     const QJsonObject sample = parse(whole).value(QStringLiteral("elements")).toArray().at(1).toObject();
     const QString allFields = QStringList(sample.keys()).join(QLatin1Char(','));
-    clock.restart();
     const QString factsOnly = QGCBridgeCore::getFields(path, allFields);
-    const qint64 factsOnlyUs = clock.nsecsElapsed() / 1000;
 
-    clock.restart();
     const QString star = QGCBridgeCore::getFields(path, QStringLiteral("*"));
-    const qint64 starUs = clock.nsecsElapsed() / 1000;
 
-    clock.restart();
     const QString projected = QGCBridgeCore::getFields(path, wanted);
-    const qint64 projectedUs = clock.nsecsElapsed() / 1000;
-
-    qDebug() << "SPLIT whole" << whole.size() << "b" << wholeUs << "us"
-             << "| star" << star.size() << "b" << starUs << "us"
-             << "| compact-facts-only" << factsOnly.size() << "b" << factsOnlyUs << "us"
-             << "| +field-list" << projected.size() << "b" << projectedUs << "us";
 
     // "*" is the cheap win with no field list to maintain: it must at least halve the
     // payload on its own, and naming fields must narrow it further rather than being the
@@ -914,3 +907,5 @@ void QGCBridgeCoreTest::_aRefusedLoadLeavesTheExistingPlanAlone()
 
     QFile::remove(rubbish);
 }
+
+UT_REGISTER_TEST(QGCBridgeCoreTest, TestLabel::Unit)

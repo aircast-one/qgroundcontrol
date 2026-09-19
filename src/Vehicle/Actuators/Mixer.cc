@@ -1,14 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "Mixer.h"
 #include "ParameterManager.h"
+#include "QGCLoggingCategory.h"
+
+QGC_LOGGING_CATEGORY(MixerLog, "Vehicle.Actuators.Mixer")
 
 using namespace Mixer;
 
@@ -48,7 +42,7 @@ ChannelConfigInstance* ChannelConfig::instantiate(int paramIndex, int actuatorTy
         }
         factAddedCb(function(), fact);
     } else {
-        qCDebug(ActuatorsConfigLog) << "ActuatorOutputChannel: Param does not exist:" << param;
+        qCDebug(MixerLog) << "ActuatorOutputChannel: Param does not exist:" << param;
     }
 
     ChannelConfigInstance* instance = new ChannelConfigInstance(this, fact, *this);
@@ -243,9 +237,9 @@ MixerChannel::MixerChannel(QObject *parent, const QString &label, int actuatorFu
                     _currentSelectIdentifierValue = fact->rawValue().toInt();
                 }
             } else {
-                for (int i = 0; i < rule->applyIdentifiers.size(); ++i) {
-                    if (channelConfig->identifier() == rule->applyIdentifiers[i]) {
-                        instance->setRuleApplyIdentifierIdx(i);
+                for (int applyIndex = 0; applyIndex < rule->applyIdentifiers.size(); ++applyIndex) {
+                    if (channelConfig->identifier() == rule->applyIdentifiers[applyIndex]) {
+                        instance->setRuleApplyIdentifierIdx(applyIndex);
                     }
                 }
             }
@@ -404,7 +398,7 @@ void Mixers::reset(const ActuatorTypes& actuatorTypes, const MixerOptions& mixer
     _rules = rules;
     _mixerConditions.clear();
     for (const auto& mixerOption : _mixerOptions) {
-        _mixerConditions.append(Condition(mixerOption.option, _parameterManager));
+        _mixerConditions.append(Condition(mixerOption.option, _parameterManager, "mixer-option"));
     }
     update();
 }
@@ -431,7 +425,7 @@ void Mixers::update()
 
         subscribeFact(_mixerConditions[_selectedMixer].fact());
 
-        qCDebug(ActuatorsConfigLog) << "selected mixer index:" << _selectedMixer;
+        qCDebug(MixerLog) << "selected mixer index:" << _selectedMixer;
 
         const auto& actuatorGroups = _mixerOptions[_selectedMixer].actuators;
         QMap<QString, int> actuatorTypeCount;
@@ -505,7 +499,7 @@ void Mixers::update()
                     actuatorFunction = actuatorType->functionMin + actuatorTypeIndex;
                     label = _functions.value(actuatorFunction).label;
                     if (label == "") {
-                        qCWarning(ActuatorsConfigLog) << "No label for output function" << actuatorFunction;
+                        qCWarning(MixerLog) << "No label for output function" << actuatorFunction;
                     }
                     QString itemLabelPrefix{};
                     if (actuatorGroup.itemLabelPrefix.size() == 1) {
@@ -632,7 +626,7 @@ QString Mixers::helpUrl() const
 Fact* Mixers::getFact(const QString& paramName)
 {
     if (!_parameterManager->parameterExists(ParameterManager::defaultComponentId, paramName)) {
-        qCDebug(ActuatorsConfigLog) << "Mixers: Param does not exist:" << paramName;
+        qCDebug(MixerLog) << "Mixers: Param does not exist:" << paramName;
         return nullptr;
     }
     Fact* fact = _parameterManager->getParameter(ParameterManager::defaultComponentId, paramName);

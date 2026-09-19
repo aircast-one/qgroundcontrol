@@ -1,4 +1,6 @@
 #include "LinkStateTest.h"
+
+#include <QtCore/QRegularExpression>
 #include "LinkManager.h"
 #include "TCPLink.h"
 
@@ -33,6 +35,13 @@ void connectAndWaitForLink(SharedLinkConfigurationPtr config)
 }
 
 } // namespace
+
+void LinkStateTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Socket error|Communication error")));
+    ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Connection to")));
+}
 
 void LinkStateTest::_connectingNameFollowsTheLink()
 {
@@ -99,3 +108,5 @@ void LinkStateTest::_newConnectClearsTheFailure()
     LinkManager::instance()->removeConfiguration(broken.get());
     LinkManager::instance()->removeConfiguration(working.get());
 }
+
+UT_REGISTER_TEST(LinkStateTest, TestLabel::Unit)

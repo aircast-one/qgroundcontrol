@@ -90,7 +90,7 @@
 class QGCPalette : public QObject
 {
     Q_OBJECT
-    // QML_ELEMENT
+    QML_ELEMENT
 
 public:
     enum ColorGroup {
@@ -120,6 +120,10 @@ public:
     DEFINE_QGC_COLOR(overlayInkInverse,             setOverlayInkInverse)
     DEFINE_QGC_COLOR(overlayCard,                   setOverlayCard)
     DEFINE_QGC_COLOR(toolbarText,                   setToolbarText)
+    DEFINE_QGC_COLOR(windowTransparent,             setWindowTransparent)
+    DEFINE_QGC_COLOR(modifiedParamValue,            setModifiedParamValue)
+    DEFINE_QGC_COLOR(photoCaptureButtonColor,       setPhotoCaptureButtonColor)
+    DEFINE_QGC_COLOR(videoCaptureButtonColor,       setVideoCaptureButtonColor)
     DEFINE_QGC_COLOR(windowShadeLight,              setWindowShadeLight)
     DEFINE_QGC_COLOR(windowShade,                   setWindowShade)
     DEFINE_QGC_COLOR(windowShadeDark,               setWindowShadeDark)

@@ -93,3 +93,5 @@ void VehicleStatusSummaryTest::_noVehicleDataReadsAsNominal()
     QCOMPARE(summary->property("faultList").toString(), QString());
     QCOMPARE(summary->property("nominal").toBool(), true);
 }
+
+UT_REGISTER_TEST(VehicleStatusSummaryTest, TestLabel::Unit)

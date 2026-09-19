@@ -1,14 +1,15 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
-import QGroundControl.FactSystem
+import QGroundControl
 import QGroundControl.FactControls
 import QGroundControl.Controls
-import QGroundControl.Controllers
-import QGroundControl.Palette
 
 Item {
-    anchors.fill:   parent
+    implicitWidth: mainLayout.implicitWidth
+    implicitHeight: mainLayout.implicitHeight
+    width: parent.width  // grows when Loader is wider than implicitWidth
 
     FactPanelController { id: controller; }
 
@@ -37,8 +38,10 @@ Item {
         }
     }
 
-    Column {
-        anchors.fill:       parent
+    ColumnLayout {
+        id: mainLayout
+        spacing: 0
+
         VehicleSummaryRow {
             id: nameRow;
             labelText: qsTr("Frame Type")

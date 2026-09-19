@@ -8,3 +8,5 @@ Exec=@CMAKE_PROJECT_NAME@ %u
 Terminal=false
 Categories=Utility;
 MimeType=x-scheme-handler/aircast-qgc;
+Keywords=mavlink;drone;uav;ardupilot;pixhawk;px4;gcs;
+StartupWMClass=@CMAKE_PROJECT_NAME@

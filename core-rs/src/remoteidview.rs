@@ -7,10 +7,10 @@ use crate::router::Backend;
 pub const GROUP: &str = "settings.remoteIDSettings";
 pub const GCS_POSITION: &str = "positionManager.gcsPosition";
 pub const GCS_TIMESTAMP: &str = "positionManager.gcsPositionTimestamp";
-const FACTS: [&str; 21] = ["operatorID", "operatorIDValid", "operatorIDType", "sendOperatorID", "selfIDFree", "selfIDEmergency", "selfIDExtended", "selfIDType", "sendSelfID", "basicID", "basicIDType", "basicIDUaType", "sendBasicID", "region", "locationType", "latitudeFixed", "longitudeFixed", "altitudeFixed", "classificationType", "categoryEU", "classEU"];
+const FACTS: [&str; 21] = ["operatorIDEU", "operatorIDFAA", "operatorIDType", "sendOperatorID", "selfIDFree", "selfIDEmergency", "selfIDExtended", "selfIDType", "sendSelfID", "basicID", "basicIDType", "basicIDUaType", "sendBasicID", "region", "locationType", "latitudeFixed", "longitudeFixed", "altitudeFixed", "classificationType", "categoryEU", "classEU"];
 
 pub fn deps() -> Vec<String> {
-    FACTS.iter().map(|f| format!("{GROUP}.{f}.rawValue")).chain([GCS_POSITION.to_string(), GCS_TIMESTAMP.to_string()]).collect()
+    FACTS.iter().map(|f| format!("{GROUP}.{f}.rawValue")).chain([format!("{GROUP}.operatorIDValidForRegion"), GCS_POSITION.to_string(), GCS_TIMESTAMP.to_string()]).collect()
 }
 
 fn fact_path(name: &str) -> String {
@@ -21,11 +21,12 @@ pub fn settings(backend: &dyn Backend) -> Settings {
     let number = |name: &str| value_number(&backend.get(&fact_path(name))).unwrap_or(0.0);
     let text = |name: &str| value_string(&backend.get(&fact_path(name)));
     let flag = |name: &str| object(&backend.get(&fact_path(name))).get("value").and_then(Value::as_bool).unwrap_or(false);
+    let region = number("region") as i64;
     Settings {
-        region: number("region") as i64,
-        operator_id: text("operatorID"),
+        region,
+        operator_id: text(if region == 1 { "operatorIDEU" } else { "operatorIDFAA" }),
         operator_id_type: number("operatorIDType") as i64,
-        operator_id_valid: flag("operatorIDValid"),
+        operator_id_valid: object(&backend.get(&format!("{GROUP}.operatorIDValidForRegion"))).get("value").and_then(Value::as_bool).unwrap_or(false),
         send_operator_id: flag("sendOperatorID"),
         basic_id: text("basicID"),
         basic_id_type: number("basicIDType") as i64,
@@ -69,7 +70,7 @@ mod tests {
         fn get(&self, path: &str) -> String {
             match path {
                 "settings.remoteIDSettings.region.rawValue" => json!({ "kind": "value", "value": 1 }),
-                "settings.remoteIDSettings.operatorID.rawValue" => json!({ "kind": "value", "value": "FIN87astrdge12k8" }),
+                "settings.remoteIDSettings.operatorIDEU.rawValue" => json!({ "kind": "value", "value": "FIN87astrdge12k8" }),
                 "settings.remoteIDSettings.sendBasicID.rawValue" => json!({ "kind": "value", "value": true }),
                 "settings.remoteIDSettings.latitudeFixed.rawValue" => json!({ "kind": "value", "value": 47.25 }),
                 "positionManager.gcsPosition" => json!({ "kind": "value", "value": { "valid": true, "latitude": 47.5, "longitude": 8.5, "altitude": null } }),
@@ -92,7 +93,7 @@ mod tests {
         assert!(fresh.valid && fresh.latitude == 47.5 && fresh.age_ms == 100);
         assert!(fresh.altitude.is_nan(), "a coordinate without an altitude keeps saying so, for the FAA rule");
         assert_eq!(fix(&Fake, 1_700_000_006_000).age_ms, 6_000, "the fix ages from the position manager's own timestamp");
-        assert_eq!(deps().len(), 23);
+        assert_eq!(deps().len(), 24);
         assert!(deps().contains(&"settings.remoteIDSettings.classEU.rawValue".to_string()));
     }
 }

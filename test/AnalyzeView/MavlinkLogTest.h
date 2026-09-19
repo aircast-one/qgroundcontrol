@@ -1,32 +1,29 @@
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTest.h"
 
-#include <QtCore/QDir>
-#include <QtCore/QStringList>
-
-class MavlinkLogTest : public UnitTest
+class MavlinkLogTest : public VehicleTest
 {
     Q_OBJECT
 
 private slots:
-    void init(void);
-    void cleanup(void);
+    void init();
+    void cleanup();
 
-    void _orphanedLogIsSavedToTheTelemetryDirectory(void);
-    void _zeroLengthOrphanIsDeleted(void);
-    void _deleteTempLogFilesEmptiesTheTempDirectory(void);
+    void _bootLogDetectionCancel_test();
+    void _bootLogDetectionSave_test();
+    void _bootLogDetectionZeroLength_test();
+    void _connectLogNoArm_test();
+    void _connectLogArm_test();
+    void _deleteTempLogFiles_test();
 
 signals:
-    void checkForLostLogFiles(void);
+    void checkForLostLogFiles();
 
 private:
-    void        _createTempLogFile(bool zeroLength);
-    QDir        _telemetryDir(void);
-    QStringList _savedLogs(void);
-    QStringList _tempLogs(void);
-    void        _removeSavedLogsNotIn(const QStringList& keep);
+    void _createTempLogFile(bool zeroLength);
+    void _connectLogWorker(bool arm);
 
-    static constexpr const char* _tempLogFileTemplate = "FlightDataXXXXXX";
-    static constexpr const char* _logFileExtension    = "mavlink";
+    static constexpr const char* _tempLogFileTemplate = "FlightDataXXXXXX";       ///< Template for temporary log file
+    static constexpr const char* _logFileExtension = "mavlink";                   ///< Extension for log files
 };

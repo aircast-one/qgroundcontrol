@@ -1,8 +1,13 @@
 {
-    "SetTiles": "table CREATE TABLE SetTiles (setID INTEGER, tileID INTEGER)",
+    "SetTiles": "table CREATE TABLE SetTiles (setID INTEGER NOT NULL REFERENCES TileSets(setID) ON DELETE CASCADE, tileID INTEGER NOT NULL REFERENCES Tiles(tileID) ON DELETE CASCADE)",
     "TileSets": "table CREATE TABLE TileSets (setID INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE, typeStr TEXT, topleftLat REAL DEFAULT 0.0, topleftLon REAL DEFAULT 0.0, bottomRightLat REAL DEFAULT 0.0, bottomRightLon REAL DEFAULT 0.0, minZoom INTEGER DEFAULT 3, maxZoom INTEGER DEFAULT 3, type INTEGER DEFAULT -1, numTiles INTEGER DEFAULT 0, defaultSet INTEGER DEFAULT 0, date INTEGER DEFAULT 0)",
     "Tiles": "table CREATE TABLE Tiles (tileID INTEGER PRIMARY KEY NOT NULL, hash TEXT NOT NULL UNIQUE, format TEXT NOT NULL, tile BLOB NULL, size INTEGER, type INTEGER, date INTEGER DEFAULT 0)",
-    "TilesDownload": "table CREATE TABLE TilesDownload (setID INTEGER, hash TEXT NOT NULL UNIQUE, type INTEGER, x INTEGER, y INTEGER, z INTEGER, state INTEGER DEFAULT 0)",
+    "TilesDownload": "table CREATE TABLE TilesDownload (setID INTEGER NOT NULL REFERENCES TileSets(setID) ON DELETE CASCADE, hash TEXT NOT NULL, type INTEGER, x INTEGER, y INTEGER, z INTEGER, state INTEGER DEFAULT 0)",
     "_tileSets": "{\"Default Tile Set\":1}",
-    "hash": "index CREATE INDEX hash ON Tiles ( hash, size, type ) "
+    "idx_settiles_setid": "index CREATE INDEX idx_settiles_setid ON SetTiles(setID)",
+    "idx_settiles_tileid": "index CREATE INDEX idx_settiles_tileid ON SetTiles(tileID)",
+    "idx_settiles_unique": "index CREATE UNIQUE INDEX idx_settiles_unique ON SetTiles(tileID, setID)",
+    "idx_tiles_date": "index CREATE INDEX idx_tiles_date ON Tiles(date)",
+    "idx_tilesdownload_setid_hash": "index CREATE UNIQUE INDEX idx_tilesdownload_setid_hash ON TilesDownload(setID, hash)",
+    "idx_tilesdownload_setid_state": "index CREATE INDEX idx_tilesdownload_setid_state ON TilesDownload(setID, state)"
 }

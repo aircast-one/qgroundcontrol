@@ -11,7 +11,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 // A hairline between groups of menu rows. Sets destructive or state-changing entries apart from
 // the routine ones above them, so the last row is reached deliberately rather than by momentum.

@@ -70,3 +70,5 @@ void FlightModeReportingTest::_advancedModesAreASettableSubsetAndLeaveEverydayMo
         QVERIFY2(all.contains(mode), qPrintable(mode));
     }
 }
+
+UT_REGISTER_TEST(FlightModeReportingTest, TestLabel::Unit)

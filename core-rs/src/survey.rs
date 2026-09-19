@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{Unit, flag, object, refused};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.dirty",
+pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.dirty",
     "settings.unitsSettings.areaUnits",
     "settings.unitsSettings.horizontalDistanceUnits",
 ];

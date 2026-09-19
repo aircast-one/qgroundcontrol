@@ -1,20 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QString>
 #include <QtCore/QDir>
 #include <QtCore/QMap>
-
-Q_DECLARE_LOGGING_CATEGORY(ComponentInformationCacheLog)
 
 /**
  * Simple file cache with a maximum number of files and LRU retention policy based on last access

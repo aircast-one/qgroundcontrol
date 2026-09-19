@@ -7,8 +7,6 @@ Bu talimatlar PX4 ve ArduPilot'taki çoğu araç türü için geçerlidir.
 Araca özel talimatlar, alt konular olarak sağlanır (örn. [ Motor Kurulumu (ArduSub) ](../setup_view/motors_ardusub.md)).
 :::
 
-![Motorların Testi](../../../assets/setup/Motors.png)
-
 ## Test Adımları
 
 Motorları test etmek için:
@@ -34,5 +32,5 @@ Motorları test etmek için:
 
 ## Ek Bilgi
 
-- [Basic Configuration > Motor Setup](http://docs.px4.io/master/en/config/motors.html) (_PX4 User Guide_) -Buradan, PX4 için ek bilgiler bulabilirsiniz.
+- [Basic Configuration > Motor Setup](http://docs.px4.io/main/en/config/motors.html) (_PX4 User Guide_) - This contains additional PX4-specific information.
 - [ESCS and Motors](https://ardupilot.org/copter/docs/connect-escs-and-motors.html#motor-order-diagrams) - This is the Motor order diagrams for all frames

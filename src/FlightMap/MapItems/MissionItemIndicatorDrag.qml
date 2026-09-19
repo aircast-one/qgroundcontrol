@@ -1,17 +1,7 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtLocation
 
 import QGroundControl
-import QGroundControl.ScreenTools
 import QGroundControl.Controls
 
 /// Use to drag a MissionItemIndicator
@@ -72,6 +62,7 @@ Rectangle {
         drag.maximumY:      itemDragger.parent.height - parent.height
         preventStealing:    true
         enabled:            itemDragger.visible
+        cursorShape:        drag.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
 
         onClicked: {
             focus = true

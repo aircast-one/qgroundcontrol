@@ -1,4 +1,4 @@
-# QGroundControl Dev Guide
+# QGroundControl Dev Guide (Daily Builds)
 
 [![Discuss](https://img.shields.io/badge/discuss-dev-ff69b4.svg)](http://discuss.px4.io/c/qgroundcontrol/qgroundcontrol-developers)
 [![Discord](https://discordapp.com/api/guilds/1022170275984457759/widget.png?style=shield)](https://discord.com/channels/1022170275984457759/1022185820683255908)
@@ -48,8 +48,8 @@ The translation projects (and join links) are listed below:
 
 The PX4 Developer Guide contains additional information about the (common) docs/translation toolchain:
 
-- [Documentation](https://dev.px4.io/en/contribute/docs.html)
-- [Translation](https://dev.px4.io/en/contribute/docs.html)
+- [Documentation](https://docs.px4.io/main/en/contribute/docs)
+- [Translation](https://docs.px4.io/main/en/contribute/docs.html)
 
 ## License
 

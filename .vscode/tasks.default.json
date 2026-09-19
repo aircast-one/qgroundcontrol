@@ -1,0 +1,157 @@
+{
+  "inputs": [
+    {
+      "description": "Test class name (e.g., FactSystemTest)",
+      "id": "testClass",
+      "type": "promptString"
+    }
+  ],
+  "tasks": [
+    {
+      "args": [
+        "-B",
+        "build",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DQGC_BUILD_TESTING=ON"
+      ],
+      "command": "qt-cmake",
+      "group": "build",
+      "label": "CMake: Configure (Debug)",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "-B",
+        "build",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DQGC_BUILD_TESTING=OFF"
+      ],
+      "command": "qt-cmake",
+      "group": "build",
+      "label": "CMake: Configure (Release)",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "--build",
+        "build",
+        "--parallel"
+      ],
+      "command": "cmake",
+      "group": {
+        "isDefault": true,
+        "kind": "build"
+      },
+      "label": "CMake: Build",
+      "problemMatcher": "$gcc",
+      "type": "shell"
+    },
+    {
+      "args": [
+        "--build",
+        "build",
+        "--target",
+        "clean"
+      ],
+      "command": "cmake",
+      "group": "build",
+      "label": "CMake: Clean",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "--test-dir",
+        "build",
+        "--output-on-failure"
+      ],
+      "command": "ctest",
+      "dependsOn": "CMake: Build",
+      "group": {
+        "isDefault": true,
+        "kind": "test"
+      },
+      "label": "Run Unit Tests",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "--test-dir",
+        "build",
+        "--output-on-failure",
+        "-R",
+        "${input:testClass}"
+      ],
+      "command": "ctest",
+      "dependsOn": "CMake: Build",
+      "group": "test",
+      "label": "Run Specific Test",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "./tools/analyze.py",
+        "--tool",
+        "clang-format"
+      ],
+      "command": "python3",
+      "group": "none",
+      "label": "Format: Check Changed Files",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "./tools/analyze.py",
+        "--tool",
+        "clang-format",
+        "--fix"
+      ],
+      "command": "python3",
+      "group": "none",
+      "label": "Format: Fix Changed Files",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "./tools/analyze.py"
+      ],
+      "command": "python3",
+      "group": "none",
+      "label": "Static Analysis",
+      "problemMatcher": "$gcc",
+      "type": "shell"
+    },
+    {
+      "args": [
+        "run",
+        "--all-files"
+      ],
+      "command": "pre-commit",
+      "group": "none",
+      "label": "Pre-commit: Run All",
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "args": [
+        "${workspaceFolder}/tools/translations/qgc_lupdate.py"
+      ],
+      "command": "python3",
+      "group": "none",
+      "label": "Update Translations",
+      "problemMatcher": [],
+      "type": "shell"
+    }
+  ],
+  "version": "2.0.0"
+}

@@ -17,7 +17,7 @@
 
 namespace {
 
-QColor withAlpha(const QColor &color, int alpha)
+[[maybe_unused]] QColor withAlpha(const QColor &color, int alpha)
 {
     QColor result(color);
     result.setAlpha(alpha);

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.supportsTerrainFrame", "plan.missionController.containsItems", "corePlugin.options.showMissionAbsoluteAltitude"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.supports.terrainFrame", "plan.missionController.containsItems", "corePlugin.options.showMissionAbsoluteAltitude"];
 
 pub const MIXED: i64 = 0;
 pub const RELATIVE: i64 = 1;
@@ -91,13 +91,13 @@ pub fn modes(inputs: &Inputs) -> Vec<Value> {
 
 pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
     let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
-    let vehicle = object(&backend.get_fields("vehicle", "supportsTerrainFrame"));
+    let vehicle = object(&backend.get_fields("vehicle.supports", "terrainFrame"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
     let options = object(&backend.get_fields("corePlugin.options", "showMissionAbsoluteAltitude"));
     let inputs = Inputs {
         mission: args.first().map(|a| a != "item").unwrap_or(true),
         current: args.get(1).and_then(|a| a.trim().parse().ok()).unwrap_or(-1),
-        holds_altitude_above_terrain: flag(&vehicles, "activeVehicleAvailable") && flag(&vehicle, "supportsTerrainFrame"),
+        holds_altitude_above_terrain: flag(&vehicles, "activeVehicleAvailable") && flag(&vehicle, "terrainFrame"),
         has_items: flag(&mission, "containsItems"),
         show_absolute: options.get("showMissionAbsoluteAltitude").and_then(Value::as_bool).unwrap_or(true),
     };
@@ -194,7 +194,7 @@ mod tests {
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
                 "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
-                "vehicle" => json!({ "kind": "object", "supportsTerrainFrame": self.terrain }).to_string(),
+                "vehicle.supports" => json!({ "kind": "object", "terrainFrame": self.terrain }).to_string(),
                 "plan.missionController" => json!({ "kind": "object", "containsItems": self.items }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
@@ -221,12 +221,12 @@ mod tests {
     fn the_altitude_modes_are_the_ordinals_qgc_declares() {
         let header = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/QmlControls/QGroundControlQmlGlobal.h")).unwrap_or_default();
         let body = header
-            .split_once("enum AltMode")
+            .split_once("enum AltitudeFrame")
             .and_then(|(_, rest)| rest.split_once('{'))
             .and_then(|(_, rest)| rest.split_once('}'))
             .map(|(body, _)| body.to_string())
             .unwrap_or_default();
-        assert!(body.contains("AltitudeModeRelative"), "this guard reads QGroundControlQmlGlobal.h, where the modes are declared; a rename there would leave every assertion below comparing nothing");
+        assert!(body.contains("AltitudeFrameRelative"), "this guard reads QGroundControlQmlGlobal.h, where the modes are declared; a rename there would leave every assertion below comparing nothing");
 
         let uncommented = body.lines().map(|line| line.split("//").next().unwrap_or("")).collect::<Vec<_>>().join(" ");
         let declared: Vec<(String, i64)> = uncommented
@@ -245,7 +245,7 @@ mod tests {
         let at = |name: &str| declared.iter().find(|(n, _)| n == name).map(|(_, v)| *v);
 
         assert_eq!(
-            [at("AltitudeModeMixed"), at("AltitudeModeRelative"), at("AltitudeModeAbsolute"), at("AltitudeModeCalcAboveTerrain"), at("AltitudeModeTerrainFrame")],
+            [at("AltitudeFrameMixed"), at("AltitudeFrameRelative"), at("AltitudeFrameAbsolute"), at("AltitudeFrameCalcAboveTerrain"), at("AltitudeFrameTerrain")],
             [Some(MIXED), Some(RELATIVE), Some(ABSOLUTE), Some(CALC_ABOVE_TERRAIN), Some(TERRAIN_FRAME)],
             "these decide what a waypoint's altitude is measured FROM, so a shifted ordinal flies the aircraft at a height nobody asked for"
         );

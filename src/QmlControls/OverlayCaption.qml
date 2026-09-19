@@ -11,7 +11,6 @@ import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 // Small outlined caption drawn under an overlay control (camera chrome, RC controls).
 QGCLabel {

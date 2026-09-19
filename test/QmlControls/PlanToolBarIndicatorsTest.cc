@@ -4,6 +4,8 @@
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlPropertyMap>
 
+#include <memory>
+
 #include <algorithm>
 
 namespace {
@@ -57,7 +59,8 @@ void resize(QQuickView &view, int width)
 
 void PlanToolBarIndicatorsTest::_narrowRowKeepsEveryControlInside()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     Row row;
     QVERIFY(load(view, globals, row));
@@ -70,7 +73,8 @@ void PlanToolBarIndicatorsTest::_narrowRowKeepsEveryControlInside()
 
 void PlanToolBarIndicatorsTest::_wideRowShowsTheFigures()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     Row row;
     QVERIFY(load(view, globals, row));
@@ -81,3 +85,5 @@ void PlanToolBarIndicatorsTest::_wideRowShowsTheFigures()
     QTRY_VERIFY(row.everyVisibleChildInside());
     QVERIFY(row.name->width() >= row.fontPixelWidth() * 10 - kTolerance);
 }
+
+UT_REGISTER_TEST(PlanToolBarIndicatorsTest, TestLabel::Unit)

@@ -11,7 +11,7 @@ import QtQuick
 import QtQuick.Controls
 
 import QGroundControl
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 // Themed replacement for the Basic-style white ToolTip: same overlay capsule as the rest of
 // the on-picture chrome.

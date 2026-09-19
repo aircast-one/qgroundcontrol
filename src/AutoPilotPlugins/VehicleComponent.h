@@ -1,19 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QStringList>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 #include "AutoPilotPlugin.h"
 
@@ -21,13 +12,14 @@ class Vehicle;
 class QQuickItem;
 class QQmlContext;
 
-Q_DECLARE_LOGGING_CATEGORY(VehicleComponentLog)
-
-/// A vehicle component is an object which abstracts the physical portion of a vehicle into a set of
+/// \brief A vehicle component is an object which abstracts the physical portion of a vehicle into a set of
 /// configurable values and user interface.
+
 class VehicleComponent : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
 
     Q_PROPERTY(QString  name                                                READ name                   CONSTANT)
     Q_PROPERTY(QString  description                                         READ description            CONSTANT)
@@ -39,18 +31,43 @@ class VehicleComponent : public QObject
     Q_PROPERTY(bool     allowSetupWhileArmed                                READ allowSetupWhileArmed   CONSTANT)
     Q_PROPERTY(bool     allowSetupWhileFlying                               READ allowSetupWhileFlying  CONSTANT)
     Q_PROPERTY(AutoPilotPlugin::KnownVehicleComponent KnownVehicleComponent READ KnownVehicleComponent  CONSTANT)
+    Q_PROPERTY(QStringList sectionIds                                       READ sectionIds             NOTIFY sectionIdsChanged)
+    Q_PROPERTY(QVariantMap sectionKeywords                                  READ sectionKeywords        NOTIFY sectionIdsChanged)
+    Q_PROPERTY(QString  vehicleConfigJson                                   READ vehicleConfigJson      CONSTANT)
+    Q_PROPERTY(bool     showFirstSectionOnRootClick                         READ showFirstSectionOnRootClick CONSTANT)
 
 public:
     explicit VehicleComponent(Vehicle *vehicle, AutoPilotPlugin *autopilot, AutoPilotPlugin::KnownVehicleComponent KnownVehicleComponent, QObject *parent = nullptr);
     virtual ~VehicleComponent();
 
     virtual QString name() const = 0;
-    virtual QString description() const = 0;
+    virtual QString description() const { return QString(); }
     virtual QString iconResource() const = 0;
     virtual bool requiresSetup() const = 0;
     virtual bool setupComplete() const = 0;
     virtual QUrl setupSource() const = 0;
     virtual QUrl summaryQmlSource() const = 0;
+
+    /// Resource path to a VehicleConfig.json page definition, or empty if none.
+    virtual QString vehicleConfigJson() const { return QString(); }
+
+    /// Untranslated section IDs for sidebar navigation. Auto-populated from vehicleConfigJson() JSON.
+    /// Repeat sections are expanded by probing vehicle parameters. IDs are stable across locales and
+    /// are used for section filtering; display uses sectionDisplayName() or the JSON translation context.
+    virtual QStringList sectionIds() const;
+
+    /// Translated display name for a section ID. Default returns the ID unchanged (JSON-driven
+    /// components are translated by the view using the JSON filename context).
+    Q_INVOKABLE virtual QString sectionDisplayName(const QString& sectionId) const { return sectionId; }
+
+    /// Search keywords per section, keyed by section ID. Values are original-case translatable terms.
+    QVariantMap sectionKeywords() const;
+
+    /// When true, clicking the root component in the tree selects the first section instead of showing all.
+    virtual bool showFirstSectionOnRootClick() const { return false; }
+
+    /// Returns setup-complete status for a section ID. Default returns true (no per-section tracking).
+    Q_INVOKABLE virtual bool sectionSetupComplete(const QString &sectionId) const { Q_UNUSED(sectionId); return true; }
 
     // @return true: Setup panel can be shown while vehicle is armed
     virtual bool allowSetupWhileArmed() const { return false; }
@@ -73,12 +90,30 @@ public:
 signals:
     void setupCompleteChanged();
     void setupSourceChanged();
+    void sectionIdsChanged();
 
 protected slots:
-    void _triggerUpdated(QVariant value) { emit setupCompleteChanged(); }
+    void _triggerUpdated(QVariant /*value*/) { emit setupCompleteChanged(); }
 
 protected:
     Vehicle *_vehicle = nullptr;
     AutoPilotPlugin *_autopilot = nullptr;
     AutoPilotPlugin::KnownVehicleComponent _KnownVehicleComponent;
+
+private:
+    /// Lazily parse the vehicleConfigJson() file to populate _expandedSectionIds and _repeatFilters.
+    void _ensureSectionsCached() const;
+
+    /// Metadata for a repeat group that has enableParam/disabledParamValue filtering.
+    struct RepeatFilter {
+        QStringList sectionIds;     ///< Expanded section IDs in this repeat group
+        QStringList paramNames;     ///< Corresponding full enableParam names (e.g., BATT_MONITOR)
+        int         disabledValue = 0;
+        QString     disabledHeading; ///< From disabledSection.heading (empty if no disabledSection)
+    };
+
+    mutable QStringList            _expandedSectionIds;  ///< All section IDs before enable/disable filtering
+    mutable QVector<RepeatFilter>  _repeatFilters;     ///< Filter metadata for repeat groups with enableParam
+    mutable QMap<QString, QStringList> _sectionKeywords;  ///< section ID -> original-case translatable search terms
+    mutable bool                   _sectionsCached = false;
 };

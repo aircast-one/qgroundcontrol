@@ -63,7 +63,7 @@ fn range_meters_second(backend: &dyn Backend) -> Option<Range> {
             Range { label: "Airspeed", command: "guidedModeChangeEquivalentAirspeedMetersSecond", minimum, maximum, initial: (minimum + maximum) / 2.0 }
         }
         false => {
-            let maximum = number("vehicle.maximumHorizontalSpeedMultirotor")?;
+            let maximum = number("vehicle.maximumHorizontalSpeedMultirotorMetersSecond")?;
             Range { label: "Ground speed", command: "guidedModeChangeGroundSpeedMetersSecond", minimum: SLOWEST_GROUND_SPEED_METERS_SECOND, maximum, initial: maximum / 2.0 }
         }
     };
@@ -97,7 +97,7 @@ mod tests {
         }
         fn invoke(&self, path: &str, _a: &str) -> String {
             let result = match path {
-                "vehicle.maximumHorizontalSpeedMultirotor" => self.maximum,
+                "vehicle.maximumHorizontalSpeedMultirotorMetersSecond" => self.maximum,
                 "vehicle.minimumEquivalentAirspeed" => 8.0,
                 "vehicle.maximumEquivalentAirspeed" => self.maximum,
                 _ => 1.0,

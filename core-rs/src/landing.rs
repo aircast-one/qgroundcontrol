@@ -4,7 +4,7 @@ use crate::read::{Unit, format_measure, object, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
-    "plan.missionController.missionItemCount",
+    "plan.missionController.visualItems.count",
     "plan.missionController.containsItems",
     "plan.dirty",
     "settings.unitsSettings.horizontalDistanceUnits",

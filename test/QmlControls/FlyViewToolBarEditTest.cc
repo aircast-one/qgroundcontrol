@@ -107,3 +107,5 @@ void FlyViewToolBarEditTest::_editModeSwallowsTapsOnTheStatusPill()
     QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, itemCenter(pill));
     QCOMPARE(view.rootObject()->property("drawerCount").toInt(), 1);
 }
+
+UT_REGISTER_TEST(FlyViewToolBarEditTest, TestLabel::Unit)

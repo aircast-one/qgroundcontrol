@@ -1,9 +1,10 @@
 import QtQuick
 import QtPositioning
 
+import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FlightMap
-import QGroundControl.ScreenTools
+import QGroundControl.PlanView
 
 Item {
     id:     root
@@ -36,6 +37,7 @@ Item {
 
     FlightMap {
         id:           map
+        property rect centerViewport: Qt.rect(0, 0, width, height)
         anchors.fill: parent
         center:       QtPositioning.coordinate(47.4, 8.5)
         zoomLevel:    10

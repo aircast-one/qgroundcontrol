@@ -10,7 +10,7 @@
 import QtQuick
 
 import QGroundControl
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 // The edit-mode corner badge. With a rig and editKey it toggles the item hidden or back;
 // without them it is a plain delete badge and the caller handles clicked().

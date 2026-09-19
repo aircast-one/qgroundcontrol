@@ -1,16 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "RallyPointController.h"
 #include "RallyPoint.h"
 #include "Vehicle.h"
-#include "JsonHelper.h"
+#include "GeoJsonHelper.h"
+#include "JsonParsing.h"
 #include "SettingsManager.h"
 #include "AppSettings.h"
 #include "PlanMasterController.h"
@@ -20,14 +12,14 @@
 
 #include <QtCore/QJsonArray>
 
-QGC_LOGGING_CATEGORY(RallyPointControllerLog, "RallyPointControllerLog")
+QGC_LOGGING_CATEGORY(RallyPointControllerLog, "PlanManager.RallyPointController")
 
 RallyPointController::RallyPointController(PlanMasterController* masterController, QObject* parent)
     : PlanElementController (masterController, parent)
     , _managerVehicle               (masterController->managerVehicle())
     , _rallyPointManager    (masterController->managerVehicle()->rallyPointManager())
 {
-    connect(&_points, &QmlObjectListModel::countChanged, this, &RallyPointController::_updateContainsItems);
+    connect(&_points, &QmlObjectListModel::countChanged, this, &RallyPointController::containsItemsChanged);
 }
 
 RallyPointController::~RallyPointController()
@@ -37,7 +29,7 @@ RallyPointController::~RallyPointController()
 
 void RallyPointController::start(bool flyView)
 {
-    qCDebug(GeoFenceControllerLog) << "start flyView" << flyView;
+    qCDebug(RallyPointControllerLog) << "start flyView" << flyView;
 
     _managerVehicleChanged(_masterController->managerVehicle());
     connect(_masterController, &PlanMasterController::managerVehicleChanged, this, &RallyPointController::_managerVehicleChanged);
@@ -66,14 +58,8 @@ void RallyPointController::_managerVehicleChanged(Vehicle* managerVehicle)
     connect(_rallyPointManager, &RallyPointManager::removeAllComplete,  this, &RallyPointController::_managerRemoveAllComplete);
     connect(_rallyPointManager, &RallyPointManager::inProgressChanged,  this, &RallyPointController::syncInProgressChanged);
 
-    //-- RallyPointController::supported() tests both the capability bit AND the protocol version.
     (void) connect(_managerVehicle, &Vehicle::capabilityBitsChanged, this, [this](uint64_t capabilityBits) {
         Q_UNUSED(capabilityBits);
-        emit supportedChanged(supported());
-    });
-
-    (void) connect(_managerVehicle, &Vehicle::requestProtocolVersion, this, [this](unsigned version) {
-        Q_UNUSED(version);
         emit supportedChanged(supported());
     });
 
@@ -86,29 +72,29 @@ bool RallyPointController::load(const QJsonObject& json, QString& errorString)
 
     errorString.clear();
 
-    if (json.contains(JsonHelper::jsonVersionKey) && json[JsonHelper::jsonVersionKey].toInt() == 1) {
+    if (json.contains(JsonParsing::jsonVersionKey) && json[JsonParsing::jsonVersionKey].toInt() == 1) {
         // We just ignore old version 1 data
         return true;
     }
 
-    QList<JsonHelper::KeyValidateInfo> keyInfoList = {
-        { JsonHelper::jsonVersionKey,   QJsonValue::Double, true },
+    QList<JsonParsing::KeyValidateInfo> keyInfoList = {
+        { JsonParsing::jsonVersionKey,   QJsonValue::Double, true },
         { _jsonPointsKey,               QJsonValue::Array,  true },
     };
-    if (!JsonHelper::validateKeys(json, keyInfoList, errorString)) {
+    if (!JsonParsing::validateKeys(json, keyInfoList, errorString)) {
         return false;
     }
 
     QString errorStr;
     QString errorMessage = tr("Rally: %1");
 
-    if (json[JsonHelper::jsonVersionKey].toInt() != _jsonCurrentVersion) {
+    if (json[JsonParsing::jsonVersionKey].toInt() != _jsonCurrentVersion) {
         errorString = tr("Rally Points supports version %1").arg(_jsonCurrentVersion);
         return false;
     }
 
     QList<QGeoCoordinate> rgPoints;
-    if (!JsonHelper::loadGeoCoordinateArray(json[_jsonPointsKey], true /* altitudeRequired */, rgPoints, errorStr)) {
+    if (!GeoJsonHelper::loadGeoCoordinateArray(json[_jsonPointsKey], true /* altitudeRequired */, rgPoints, errorStr)) {
         errorString = errorMessage.arg(errorStr);
         return false;
     }
@@ -127,12 +113,12 @@ bool RallyPointController::load(const QJsonObject& json, QString& errorString)
 
 void RallyPointController::save(QJsonObject& json)
 {
-    json[JsonHelper::jsonVersionKey] = _jsonCurrentVersion;
+    json[JsonParsing::jsonVersionKey] = _jsonCurrentVersion;
 
     QJsonArray rgPoints;
     QJsonValue jsonPoint;
     for (int i=0; i<_points.count(); i++) {
-        JsonHelper::saveGeoCoordinate(qobject_cast<RallyPoint*>(_points[i])->coordinate(), true /* writeAltitude */, jsonPoint);
+        GeoJsonHelper::saveGeoCoordinate(qobject_cast<RallyPoint*>(_points[i])->coordinate(), true /* writeAltitude */, jsonPoint);
         rgPoints.append(jsonPoint);
     }
     json[_jsonPointsKey] = QJsonValue(rgPoints);
@@ -148,9 +134,9 @@ void RallyPointController::removeAll(void)
 void RallyPointController::removeAllFromVehicle(void)
 {
     if (_masterController->offline()) {
-        qCWarning(RallyPointControllerLog) << "RallyPointController::removeAllFromVehicle called while offline";
+        qCCritical(RallyPointControllerLog) << "RallyPointController::removeAllFromVehicle called while offline";
     } else if (syncInProgress()) {
-        qCWarning(RallyPointControllerLog) << "RallyPointController::removeAllFromVehicle called while syncInProgress";
+        qCCritical(RallyPointControllerLog) << "RallyPointController::removeAllFromVehicle called while syncInProgress";
     } else {
         _rallyPointManager->removeAll();
     }
@@ -159,9 +145,9 @@ void RallyPointController::removeAllFromVehicle(void)
 void RallyPointController::loadFromVehicle(void)
 {
     if (_masterController->offline()) {
-        qCWarning(RallyPointControllerLog) << "RallyPointController::loadFromVehicle called while offline";
+        qCCritical(RallyPointControllerLog) << "RallyPointController::loadFromVehicle called while offline";
     } else if (syncInProgress()) {
-        qCWarning(RallyPointControllerLog) << "RallyPointController::loadFromVehicle called while syncInProgress";
+        qCCritical(RallyPointControllerLog) << "RallyPointController::loadFromVehicle called while syncInProgress";
     } else {
         _itemsRequested = true;
         _rallyPointManager->loadFromVehicle();
@@ -171,9 +157,9 @@ void RallyPointController::loadFromVehicle(void)
 void RallyPointController::sendToVehicle(void)
 {
     if (_masterController->offline()) {
-        qCWarning(RallyPointControllerLog) << "RallyPointController::sendToVehicle called while offline";
+        qCCritical(RallyPointControllerLog) << "RallyPointController::sendToVehicle called while offline";
     } else if (syncInProgress()) {
-        qCWarning(RallyPointControllerLog) << "RallyPointController::sendToVehicle called while syncInProgress";
+        qCCritical(RallyPointControllerLog) << "RallyPointController::sendToVehicle called while syncInProgress";
     } else {
         qCDebug(RallyPointControllerLog) << "RallyPointController::sendToVehicle";
         setDirty(false);
@@ -261,7 +247,7 @@ void RallyPointController::addPoint(QGeoCoordinate point)
 
 bool RallyPointController::supported(void) const
 {
-    return (_managerVehicle->capabilityBits() & MAV_PROTOCOL_CAPABILITY_MISSION_RALLY) && (_managerVehicle->maxProtoVersion() >= 200);
+    return _managerVehicle->capabilityBits() & MAV_PROTOCOL_CAPABILITY_MISSION_RALLY;
 }
 
 void RallyPointController::removePoint(QObject* rallyPoint)
@@ -301,16 +287,11 @@ bool RallyPointController::containsItems(void) const
     return _points.count() > 0;
 }
 
-void RallyPointController::_updateContainsItems(void)
-{
-    emit containsItemsChanged(containsItems());
-}
-
 bool RallyPointController::showPlanFromManagerVehicle (void)
 {
     qCDebug(RallyPointControllerLog) << "showPlanFromManagerVehicle _flyView" << _flyView;
     if (_masterController->offline()) {
-        qCWarning(RallyPointControllerLog) << "RallyPointController::showPlanFromManagerVehicle called while offline";
+        qCCritical(RallyPointControllerLog) << "RallyPointController::showPlanFromManagerVehicle called while offline";
         return true;    // stops further propagation of showPlanFromManagerVehicle due to error
     } else {
         if (!_managerVehicle->initialPlanRequestComplete()) {

@@ -2,6 +2,7 @@ import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
+import QGroundControl.Toolbar
 
 Item {
     id:     root

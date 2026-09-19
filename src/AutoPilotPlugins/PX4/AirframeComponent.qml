@@ -1,23 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 
-import QGroundControl.FactSystem
+import QGroundControl
 import QGroundControl.FactControls
-import QGroundControl.Palette
 import QGroundControl.Controls
-import QGroundControl.Controllers
-import QGroundControl.ScreenTools
 
 SetupPage {
     id:             airframePage
@@ -108,16 +95,17 @@ SetupPage {
                     text:           (controller.currentVehicleName != "" ?
                                          qsTr("You've connected a %1.").arg(controller.currentVehicleName) :
                                          qsTr("Airframe is not set.")) +
-                                    qsTr("To change this configuration, select the desired airframe below then click 'Apply and Restart'.")
+                                    qsTr(" To change this configuration, select the desired airframe below then click 'Apply and Restart'.")
                     font.bold:      true
                     wrapMode:       Text.WordWrap
                 }
 
                 QGCButton {
                     id:             applyButton
+                    objectName:     "airframeSetup_applyButton"
                     anchors.right:  parent.right
                     text:           qsTr("Apply and Restart")
-                    onClicked:      mainWindow.showMessageDialog(qsTr("Apply and Restart"),
+                    onClicked:      QGroundControl.showMessageDialog(airframePage, qsTr("Apply and Restart"),
                                                                  qsTr("Clicking 'Apply' will save the changes you have made to your airframe configuration.<br><br>\
                                                                         All vehicle parameters other than Radio Calibration will be reset.<br><br>\
                                                                         Your vehicle will also be restarted in order to complete the process."),
@@ -147,9 +135,13 @@ SetupPage {
 
                     // Outer summary item rectangle
                     Rectangle {
+                        objectName: "airframeTypeBox_" + index
                         width:  _boxWidth
                         height: ScreenTools.defaultFontPixelHeight * 14
                         color:  qgcPal.window
+
+                        property string airframeTypeName:     modelData.name
+                        property bool   airframeTypeSelected: airframeCheckBox.checked
 
                         readonly property real titleHeight: ScreenTools.defaultFontPixelHeight * 1.75
                         readonly property real innerMargin: ScreenTools.defaultFontPixelWidth
@@ -198,7 +190,6 @@ SetupPage {
 
                                 onCheckedChanged: {
                                     if (checked && combo.currentIndex !== -1) {
-                                        console.log("check box change", combo.currentIndex)
                                         controller.autostartId = modelData.airframes[combo.currentIndex].autostartId
                                     }
                                 }
@@ -206,7 +197,7 @@ SetupPage {
 
                             QGCComboBox {
                                 id:                 combo
-                                objectName:         modelData.airframeType + "ComboBox"
+                                objectName:         modelData.name + "ComboBox"
                                 anchors.margins:    innerMargin
                                 anchors.bottom:     parent.bottom
                                 anchors.left:       parent.left

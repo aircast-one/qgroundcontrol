@@ -12,14 +12,6 @@
 namespace
 {
 
-LinkConfiguration *configurationAt(int index)
-{
-    QmlObjectListModel *const model = LinkManager::instance()->linkConfigurations();
-    if (!model || (index < 0) || (index >= model->count())) {
-        return nullptr;
-    }
-    return qobject_cast<LinkConfiguration *>(model->get(index));
-}
 
 } // namespace
 

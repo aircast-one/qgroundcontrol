@@ -9,17 +9,18 @@
 
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
-class QGCBridgeCoreTest : public UnitTest
+class QGCBridgeCoreTest : public VehicleTestManualConnect
 {
     Q_OBJECT
 
 private slots:
-    void init();
-    void cleanup();
+    void init() override;
+    void cleanup() override;
 
     void _readsScalarProperty();
+    void _resolvesLogDownloadRoot();
     void _readsFactWithMetadata();
     void _readsFactsOfSettingsGroup();
     void _writesFactValue();
@@ -42,7 +43,6 @@ private slots:
     void _invokeReturnsValue();
     void _invokeConvertsArguments();
     void _rejectsUnknownPaths();
-    void _resolvesLogDownloadRoot();
     void _resolvesMavlinkConsoleRoot();
     void _resolvesMavlinkInspectorRoot();
     void _invokeReturnsAFactObject();

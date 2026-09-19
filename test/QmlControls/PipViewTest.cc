@@ -11,6 +11,7 @@
 #include "QuickInteractionTestHelpers.h"
 
 #include <QtCore/QSettings>
+#include <QtCore/QRegularExpression>
 
 static const qreal kMargin = 8;
 static const qreal kTestViewWidth = 800;
@@ -24,6 +25,13 @@ static void clearPipSettings()
 static bool loadView(QQuickView& view)
 {
     return loadTestView(view, QStringLiteral("qrc:/unittest/PipViewTest.qml"));
+}
+
+void PipViewTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("qt.qpa.fonts", QtWarningMsg, QRegularExpression(QStringLiteral("Populating font family aliases")));
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("occurs outside target window")));
 }
 
 void PipViewTest::_dragRepositionsAndPersists()
@@ -76,6 +84,7 @@ void PipViewTest::_dragRepositionsAndPersists()
 
 void PipViewTest::_dragOffscreenClampsCommittedPosition()
 {
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("occurs outside target window")));
     clearPipSettings();
 
     QQuickView view;
@@ -243,14 +252,14 @@ void PipViewTest::_sizeKeepsItsShareWhenTheViewportNarrows()
 static void seedPipSizeSetting(const QString& value)
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     settings.setValue(QStringLiteral("PIPSize"), value);
 }
 
 static QString storedPipSizeSetting()
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     return settings.value(QStringLiteral("PIPSize")).toString();
 }
 
@@ -453,3 +462,5 @@ void PipViewTest::_gripResizeNeverReachesTheItemBeneath()
 
     QCOMPARE(view.rootObject()->property("fullItemDrags").toInt(), 0);
 }
+
+UT_REGISTER_TEST(PipViewTest, TestLabel::Unit)

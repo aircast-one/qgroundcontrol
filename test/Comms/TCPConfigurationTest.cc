@@ -27,3 +27,5 @@ void TCPConfigurationTest::_copyFromCarriesHostAndPort()
     QCOMPARE(target.host(), QStringLiteral("drone.local"));
     QCOMPARE(target.port(), static_cast<quint16>(5761));
 }
+
+UT_REGISTER_TEST(TCPConfigurationTest, TestLabel::Unit)

@@ -1,11 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
 #pragma once
 
 #include "MapProvider.h"
@@ -18,8 +10,8 @@ public:
             QStringLiteral("CustomURL Custom"),
             QStringLiteral(""),
             QStringLiteral(""),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::CustomMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::CustomMap) {}
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
@@ -33,8 +25,8 @@ protected:
             mapName,
             QStringLiteral("https://cyberjapandata.gsi.go.jp/xyz/std"),
             imageFormat,
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::StreetMap)
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::StreetMap)
         , _mapTypeId(mapName) {}
 
 private:
@@ -102,13 +94,30 @@ public:
             QStringLiteral("LINZ Basemap"),
             QStringLiteral("https://basemaps.linz.govt.nz/v1/tiles/aerial"),
             QStringLiteral("png"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::SatelliteMapDay) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::SatelliteMapDay) {}
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
 
     const QString _mapUrl = QStringLiteral("https://basemaps.linz.govt.nz/v1/tiles/aerial/EPSG:3857/%1/%2/%3.%4?api=d01ev80nqcjxddfvc6amyvkk1ka");
+};
+
+class OpenAIPMapProvider : public MapProvider
+{
+public:
+    OpenAIPMapProvider()
+        : MapProvider(
+            QStringLiteral("OpenAIP"),
+            QStringLiteral("https://www.openaip.net"),
+            QStringLiteral("png"),
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::CustomMap) {}
+
+private:
+    QString _getURL(int x, int y, int zoom) const final;
+
+    const QString _mapUrl = QStringLiteral("https://api.tiles.openaip.net/api/data/openaip/%1/%2/%3.png");
 };
 
 class OpenStreetMapProvider : public MapProvider
@@ -119,8 +128,8 @@ public:
             QStringLiteral("Street Map"),
             QStringLiteral("https://www.openstreetmap.org"),
             QStringLiteral("png"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::StreetMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::StreetMap) {}
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
@@ -136,15 +145,15 @@ protected:
             mapName,
             QStringLiteral("https://norgeskart.no/"),
             QStringLiteral("png"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::StreetMap)
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::StreetMap)
         , _mapTypeId(mapName) {}
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
 
     const QString _mapTypeId;
-    const QString _mapUrl = QStringLiteral("https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/%1/%2/%3");
+    const QString _mapUrl = QStringLiteral("https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/%1/%2/%3.png");
 };
 
 class StatkartTopoMapProvider : public StatkartMapProvider
@@ -173,8 +182,8 @@ public:
             QStringLiteral("Svalbard Topo"),
             QStringLiteral("https://www.npolar.no/"),
             QStringLiteral("png"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::StreetMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::StreetMap) {}
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
@@ -191,8 +200,8 @@ public:
             QStringLiteral("Eniro Topo"),
             QStringLiteral("https://www.eniro.se/"),
             QStringLiteral("png"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::StreetMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::StreetMap) {}
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
@@ -203,12 +212,12 @@ private:
 class MapQuestMapProvider : public MapProvider
 {
 protected:
-    MapQuestMapProvider(const QString &mapName, const QString &mapTypeId, QGeoMapType::MapStyle mapType)
+    MapQuestMapProvider(const QString &mapName, const QString &mapTypeId, MapProvider::MapStyle mapType)
         : MapProvider(
             mapName,
             QStringLiteral("https://mapquest.com"),
             QStringLiteral("jpg"),
-            AVERAGE_TILE_SIZE,
+            QGC_AVERAGE_TILE_SIZE,
             mapType)
         , _mapTypeId(mapName) {}
 
@@ -226,7 +235,7 @@ public:
         : MapQuestMapProvider(
             QStringLiteral("MapQuest Map"),
             QStringLiteral("map"),
-            QGeoMapType::StreetMap) {}
+            MapProvider::StreetMap) {}
 };
 
 class MapQuestSatMapProvider : public MapQuestMapProvider
@@ -236,13 +245,13 @@ public:
         : MapQuestMapProvider(
             QStringLiteral("MapQuest Sat"),
             QStringLiteral("sat"),
-            QGeoMapType::SatelliteMapDay) {}
+            MapProvider::SatelliteMapDay) {}
 };
 
 class VWorldMapProvider : public MapProvider
 {
 protected:
-    VWorldMapProvider(const QString &mapName, const QString &mapTypeId, const QString &imageFormat, quint32 averageSize, QGeoMapType::MapStyle mapStyle)
+    VWorldMapProvider(const QString &mapName, const QString &mapTypeId, const QString &imageFormat, quint32 averageSize, MapProvider::MapStyle mapStyle)
         : MapProvider(
             mapName,
             QStringLiteral("www.vworld.kr"),
@@ -266,8 +275,8 @@ public:
             QStringLiteral("VWorld Street Map"),
             QStringLiteral("Base"),
             QStringLiteral("png"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::StreetMap) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::StreetMap) {}
 };
 
 class VWorldSatMapProvider : public VWorldMapProvider
@@ -278,6 +287,6 @@ public:
             QStringLiteral("VWorld Satellite Map"),
             QStringLiteral("Satellite"),
             QStringLiteral("jpeg"),
-            AVERAGE_TILE_SIZE,
-            QGeoMapType::SatelliteMapDay) {}
+            QGC_AVERAGE_TILE_SIZE,
+            MapProvider::SatelliteMapDay) {}
 };

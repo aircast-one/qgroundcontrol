@@ -10,12 +10,12 @@
 import QtQuick
 import QtQuick.Controls
 
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
+import QGroundControl
+import QGroundControl.Controls
 
 Slider {
     id:             control
-    implicitHeight: ScreenTools.implicitSliderHeight
+    implicitHeight: ScreenTools.implicitSliderHeight + (showBoundaryValues ? minLabel.contentHeight : 0)
     leftPadding:    0
     rightPadding:   0
     topPadding:     0
@@ -26,6 +26,7 @@ Slider {
     property bool zeroCentered:         false
     property bool displayValue:         false
     property bool indicatorBarVisible:  true
+    property bool showBoundaryValues:   false
 
     property real _implicitBarLength:   Math.round(ScreenTools.defaultFontPixelWidth * 20)
     property real _barHeight:           Math.round(ScreenTools.defaultFontPixelHeight / 3)
@@ -79,5 +80,25 @@ Slider {
             font.pointSize:     ScreenTools.smallFontPointSize
             color:              "#000000"
         }
+    }
+
+    QGCLabel {
+        id:                 minLabel
+        anchors.left:       parent.left
+        anchors.leftMargin: control.leftPadding
+        anchors.bottom:     parent.bottom
+        text:               control.from.toFixed(1)
+        font.pointSize:     ScreenTools.smallFontPointSize
+        visible:            control.showBoundaryValues
+    }
+
+    QGCLabel {
+        id:                 maxLabel
+        anchors.right:      parent.right
+        anchors.rightMargin: control.rightPadding
+        anchors.bottom:     parent.bottom
+        text:               control.to.toFixed(1)
+        font.pointSize:     ScreenTools.smallFontPointSize
+        visible:            control.showBoundaryValues
     }
 }

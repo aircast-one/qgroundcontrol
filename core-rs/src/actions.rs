@@ -243,6 +243,9 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": "the plan view has no item selected, so there is no point to insert against" });
     };
     let at_sequence = Some(at_sequence);
+    if !insertable(backend).home_set {
+        backend.invoke("plan.missionController.setHomePosition", &json!([{ "latitude": latitude, "longitude": longitude, "altitude": 0.0 }]).to_string());
+    }
     if let Some(reason) = refusal(kind, &insertable(backend)) {
         return json!({ "ok": false, "reason": reason, "refused": kind.id, "atSequence": at_sequence });
     }
@@ -309,7 +312,7 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     let Some(clockwise) = args.get(3).and_then(Value::as_bool) else {
         return json!({ "ok": false, "reason": "An orbit has to turn one way or the other." });
     };
-    if !crate::read::flag(&object(&backend.get_fields("vehicle", "orbitModeSupported")), "orbitModeSupported") {
+    if !crate::read::flag(&object(&backend.get_fields("vehicle.supports", "orbitMode")), "orbitMode") {
         return json!({ "ok": false, "reason": "This vehicle does not support orbiting." });
     }
     let limit = |name: &str| crate::read::value_number(&backend.get(&format!("settings.flyViewSettings.{name}.rawValue")));
@@ -532,7 +535,7 @@ mod tests {
             Cam { camera: base, fired: RefCell::new(vec![]) }
         };
 
-        let busy = cam(json!({ "cameraMode": 0, "photoCaptureStatus": 1 }));
+        let busy = cam(json!({ "cameraMode": 0, "capturePhotosState": 2 }));
         let answer = run(&busy, PHOTO, "[]");
         assert_eq!(answer["ok"], false);
         assert!(answer["reason"].as_str().unwrap().contains("still taking"), "takePhoto returns false here with only a qCWarning, so the whole point of owning the action is that the head gets a sentence instead of nothing: {answer}");
@@ -550,10 +553,10 @@ mod tests {
         let in_video = cam(json!({ "cameraMode": 1, "photosInVideoMode": true }));
         assert_eq!(run(&in_video, PHOTO, "[]")["ok"], true, "a camera that shoots stills in video mode is not refused, which is the term view.camera was missing");
 
-        let recording = cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }));
+        let recording = cam(json!({ "cameraMode": 1, "captureVideoState": 2 }));
         assert_eq!(run(&recording, RECORD, "[]")["ok"], true, "the toggle is what stops a running recording");
         assert_eq!(*recording.fired.borrow(), vec![format!("{CAMERA}.toggleVideoRecording")]);
-        let held = cam(json!({ "cameraMode": 1, "videoCaptureStatus": 1 }));
+        let held = cam(json!({ "cameraMode": 1, "captureVideoState": 2 }));
         let answer = run(&held, MODE, "[\"photo\"]");
         assert_eq!(answer["ok"], false);
         assert!(answer["reason"].as_str().unwrap().contains("recording"), "{answer}");
@@ -585,7 +588,7 @@ mod tests {
         assert_eq!(run(&single, PHOTO, "[]")["started"], "single");
         assert_eq!(run(&cam(json!({ "cameraMode": 0 })), PHOTO, "[]")["lapseCount"], Value::Null, "a single shot has no interval to report, and a count beside it would read as one");
 
-        let mid_interval = cam(json!({ "cameraMode": 0, "photoCaptureStatus": 3 }));
+        let mid_interval = cam(json!({ "cameraMode": 0, "capturePhotosState": 3 }));
         let answer = run(&mid_interval, STOP_PHOTO, "[]");
         assert_eq!(answer["ok"], true, "stopTakePhoto is the only way to end an unlimited timelapse and nothing in QGC's QML calls it");
         assert_eq!(*mid_interval.fired.borrow(), vec![format!("{CAMERA}.stopTakePhoto")]);
@@ -1047,7 +1050,7 @@ pub(super) mod orbiting {
         }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
-                "vehicle" => json!({ "kind": "object", "orbitModeSupported": self.supported }).to_string(),
+                "vehicle.supports" => json!({ "kind": "object", "orbitMode": self.supported }).to_string(),
                 _ => String::new(),
             }
         }

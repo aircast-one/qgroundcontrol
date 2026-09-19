@@ -792,3 +792,5 @@ void OverlayRigTest::_gapReadoutMarksTheGutterBesideANeighbour()
                                       Q_ARG(QVariant, right->x() + right->width() + margin + 30), Q_ARG(QVariant, right->y())));
     QVERIFY(readouts.toList().isEmpty());
 }
+
+UT_REGISTER_TEST(OverlayRigTest, TestLabel::Unit)

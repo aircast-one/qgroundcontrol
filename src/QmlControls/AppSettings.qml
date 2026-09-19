@@ -13,9 +13,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.Palette
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 import QGroundControl.AppSettings
 
 ToolDrawerPage {
@@ -72,7 +70,7 @@ ToolDrawerPage {
     }
 
     function showSettingsPage(settingsPageUrl) {
-        const page = settingsPagesModel.pages().find(candidate => candidate.url === settingsPageUrl)
+        const page = settingsPagesModel.pages().find(candidate => candidate.url === settingsPageUrl || candidate.name === settingsPageUrl || candidate.url.endsWith("/" + settingsPageUrl.replace(/ /g, "") + "Settings.qml"))
         if (!page) {
             console.warn("showSettingsPage: no settings page with url", settingsPageUrl)
             return

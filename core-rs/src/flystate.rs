@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.telemetryLRSSI", "vehicle.telemetryRRSSI", "vehicle.telemetryLNoise", "vehicle.telemetryRNoise", "vehicle.telemetryRXErrors"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors"];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -74,22 +74,23 @@ fn flying_to(backend: &dyn Backend) -> Option<i64> {
 // field is zero before the first RADIO_STATUS arrives - so zero here is "no radio has spoken",
 // not a reading of zero dBm. Serving the numbers ungated would let a head draw -0 dBm and a
 // healthy-looking link for a radio that has never reported.
-fn telemetry(vehicle: &Value) -> Value {
-    let reading = |name: &str| vehicle.get(name).and_then(Value::as_i64);
-    match reading("telemetryLRSSI").filter(|local| *local != 0) {
+fn telemetry(radio: &Value) -> Value {
+    let reading = |name: &str| radio.get(name).and_then(|fact| fact.get("value").or(Some(fact))).and_then(Value::as_i64);
+    match reading("lrssi").filter(|local| *local != 0) {
         None => Value::Null,
         Some(local) => json!({
             "localRssiDbm": local,
-            "remoteRssiDbm": reading("telemetryRRSSI"),
-            "localNoise": reading("telemetryLNoise"),
-            "remoteNoise": reading("telemetryRNoise"),
-            "receiveErrors": reading("telemetryRXErrors"),
+            "remoteRssiDbm": reading("rrssi"),
+            "localNoise": reading("lNoise"),
+            "remoteNoise": reading("rNoise"),
+            "receiveErrors": reading("rxErrors"),
         }),
     }
 }
 
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio,rcChannelOverrideActive,telemetryLRSSI,telemetryRRSSI,telemetryLNoise,telemetryRNoise,telemetryRXErrors"));
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio,rcChannelOverrideActive"));
+    let radio = object(&backend.get_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     // _commLostCheck returns early when the watch is disabled, so communicationLost never updates
     // and false means "nobody is looking" rather than "every link is fine". view.frame and
@@ -124,7 +125,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // false but unknown - the same distinction contactLost makes, and the one that decides
         // whether a head may draw "manual control is not being overridden" or must draw nothing.
         "rcOverride": connected.then(|| flag(&vehicle, "rcChannelOverrideActive")),
-        "telemetry": telemetry(&vehicle),
+        "telemetry": telemetry(&radio),
     })
 }
 
@@ -145,6 +146,7 @@ mod tests {
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
                 "vehicle" => self.vehicle.to_string(),
+                "vehicle.radioStatus" => self.vehicle.get("radioStatus").cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": self.flying_to }).to_string(),
                 "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost, "communicationLostEnabled": true }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
@@ -179,11 +181,7 @@ mod tests {
     fn a_radio_that_has_never_reported_is_not_a_radio_at_zero_dbm() {
         let radio = |local: i64| {
             let mut vehicle = aloft(true, true, false);
-            vehicle["telemetryLRSSI"] = json!(local);
-            vehicle["telemetryRRSSI"] = json!(-42);
-            vehicle["telemetryLNoise"] = json!(12);
-            vehicle["telemetryRNoise"] = json!(14);
-            vehicle["telemetryRXErrors"] = json!(3);
+            vehicle["radioStatus"] = json!({ "kind": "object", "lrssi": { "value": local }, "rrssi": { "value": -42 }, "lNoise": { "value": 12 }, "rNoise": { "value": 14 }, "rxErrors": { "value": 3 } });
             fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])["telemetry"].clone()
         };
 

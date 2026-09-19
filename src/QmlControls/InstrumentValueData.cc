@@ -9,19 +9,13 @@
 
 #include "InstrumentValueData.h"
 #include "FactValueGrid.h"
-#include "QGC.h"
+#include "QGCMath.h"
 #include "QmlObjectListModel.h"
 #include "MultiVehicleManager.h"
 #include "Vehicle.h"
 #include "FactGroup.h"
+#include <QtCore/QCoreApplication>
 #include <QtCore/QUuid>
-
-const QStringList InstrumentValueData::_rangeTypeNames = {
-    QT_TRANSLATE_NOOP("InstrumentValue", "None"),
-    QT_TRANSLATE_NOOP("InstrumentValue", "Color"),
-    QT_TRANSLATE_NOOP("InstrumentValue", "Opacity"),
-    QT_TRANSLATE_NOOP("InstrumentValue", "Icon"),
-};
 
 InstrumentValueData::InstrumentValueData(FactValueGrid* factValueGrid, QObject* parent)
     : QObject       (parent)
@@ -29,6 +23,12 @@ InstrumentValueData::InstrumentValueData(FactValueGrid* factValueGrid, QObject* 
     , _vehicle      (factValueGrid->currentVehicle())
     , _uid          (QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
+    _rangeTypeNames = {
+        QCoreApplication::translate("InstrumentValue", "None"),
+        QCoreApplication::translate("InstrumentValue", "Color"),
+        QCoreApplication::translate("InstrumentValue", "Opacity"),
+        QCoreApplication::translate("InstrumentValue", "Icon"),
+    };
     connect(this, &InstrumentValueData::rangeTypeChanged,       this, &InstrumentValueData::_resetRangeInfo);
     connect(this, &InstrumentValueData::rangeTypeChanged,       this, &InstrumentValueData::_updateRanges);
     connect(this, &InstrumentValueData::rangeValuesChanged,     this, &InstrumentValueData::_updateRanges);

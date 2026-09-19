@@ -1,65 +1,55 @@
 package org.mavlink.qgroundcontrol;
 
 import java.io.File;
-import java.util.List;
-import java.lang.reflect.Method;
-
-import android.content.Context;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.res.Configuration;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Environment;
-import android.os.PowerManager;
-import android.net.wifi.WifiManager;
-import android.provider.Settings;
-import android.util.Log;
-import android.view.View;
-import android.view.WindowManager;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import android.app.Activity;
-import android.os.storage.StorageManager;
-import android.os.storage.StorageVolume;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
+import android.content.Intent;
+import android.content.Context;
+import android.content.res.Configuration;
+import android.database.Cursor;
+import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.Bundle;
+import android.provider.OpenableColumns;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+
 import org.qtproject.qt.android.bindings.QtActivity;
 
 public class QGCActivity extends QtActivity {
     private static final String TAG = QGCActivity.class.getSimpleName();
-    private static final String SCREEN_BRIGHT_WAKE_LOCK_TAG = "QGroundControl";
     private static final String MULTICAST_LOCK_TAG = "QGroundControl";
+    private static volatile QGCActivity m_instance = null;
 
-    private static QGCActivity m_instance = null;
+    private static final int IMPORT_FILE_REQUEST_CODE = 42;
+    private static String s_importDestPath = "";
 
-    private PowerManager.WakeLock m_wakeLock;
     private WifiManager.MulticastLock m_wifiMulticastLock;
-
-    public QGCActivity() {
-        m_instance = this;
-    }
-
-    public static QGCActivity getInstance() {
-        return m_instance;
-    }
+    private volatile QGCStoragePermissionController m_storagePermissionController;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        m_instance = this;
 
+        QGCLogger.initialize(getApplicationContext());
         nativeInit();
         reportWindowInsets();
-        acquireWakeLock();
-        keepScreenOn();
         setupMulticastLock();
 
         QGCUsbSerialManager.initialize(this);
+        QGCSDLManager.initialize(this);
+        m_storagePermissionController = new QGCStoragePermissionController(this);
 
         QGCBridge.setHost(new QGCBridge.Host() {
             @Override
@@ -73,34 +63,6 @@ public class QGCActivity extends QtActivity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         nativeFontScaleChanged(newConfig.fontScale);
-    }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-
-        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) {
-            return;
-        }
-
-        final Uri data = intent.getData();
-        if (data != null) {
-            nativeDeepLink(data.toString());
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        try {
-            releaseMulticastLock();
-            releaseWakeLock();
-            QGCUsbSerialManager.cleanup(this);
-        } catch (final Exception e) {
-            Log.e(TAG, "Exception onDestroy()", e);
-        }
-
-        super.onDestroy();
     }
 
     public static void setSystemBarAppearance(boolean lightBars) {
@@ -128,135 +90,306 @@ public class QGCActivity extends QtActivity {
         ViewCompat.requestApplyInsets(decor);
     }
 
-    private void keepScreenOn() {
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    @Override
+    protected void onPause() {
+        if (m_storagePermissionController != null) {
+            m_storagePermissionController.onPause();
+        }
+        QGCSDLManager.onPause();
+        super.onPause();
     }
 
-    private void acquireWakeLock() {
-        final PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        m_wakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, SCREEN_BRIGHT_WAKE_LOCK_TAG);
-        if (m_wakeLock != null) {
-            m_wakeLock.acquire();
-        } else {
-            Log.w(TAG, "SCREEN_BRIGHT_WAKE_LOCK not acquired!");
+    @Override
+    protected void onResume() {
+        super.onResume();
+        QGCSDLManager.onResume();
+
+        if (m_storagePermissionController != null) {
+            final Boolean granted = m_storagePermissionController.onResume();
+            if (granted != null) {
+                nativeStoragePermissionsResult(granted);
+            }
         }
     }
 
-    private void releaseWakeLock() {
-        if (m_wakeLock != null && m_wakeLock.isHeld()) {
-            m_wakeLock.release();
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) {
+            return;
+        }
+
+        final Uri data = intent.getData();
+        if (data != null) {
+            nativeDeepLink(data.toString());
         }
     }
 
+    @Override
+    protected void onDestroy() {
+        try {
+            QGCSDLManager.cleanup();
+            releaseMulticastLock();
+            QGCUsbSerialManager.cleanup(this);
+        } catch (final Exception e) {
+            QGCLogger.e(TAG, "Exception onDestroy()", e);
+        }
+
+        if (m_instance == this) {
+            m_instance = null;
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == IMPORT_FILE_REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                final Uri uri = data.getData();
+                if (uri != null) {
+                    final String importedPath = copyFileToDestination(uri, s_importDestPath);
+                    onImportResult(importedPath != null ? importedPath : "");
+                } else {
+                    QGCLogger.w(TAG, "onActivityResult: null URI for file import");
+                    onImportResult("");
+                }
+            } else {
+                QGCLogger.i(TAG, "onActivityResult: file import cancelled or no data returned");
+                onImportResult("");
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    /**
+     * Sets up a multicast lock to allow multicast packets.
+     */
     private void setupMulticastLock() {
         if (m_wifiMulticastLock == null) {
             final WifiManager wifi = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+            if (wifi == null) {
+                QGCLogger.w(TAG, "WifiManager is unavailable; multicast lock not acquired");
+                return;
+            }
             m_wifiMulticastLock = wifi.createMulticastLock(MULTICAST_LOCK_TAG);
-            m_wifiMulticastLock.setReferenceCounted(true);
+            m_wifiMulticastLock.setReferenceCounted(false);
         }
 
+        if (m_wifiMulticastLock == null) {
+            return;
+        }
         m_wifiMulticastLock.acquire();
-        Log.d(TAG, "Multicast lock: " + m_wifiMulticastLock.toString());
+        QGCLogger.d(TAG, "Multicast lock: " + m_wifiMulticastLock.toString());
     }
 
+    /**
+     * Releases the multicast lock if held.
+     */
     private void releaseMulticastLock() {
         if (m_wifiMulticastLock != null && m_wifiMulticastLock.isHeld()) {
             m_wifiMulticastLock.release();
-            Log.d(TAG, "Multicast lock released.");
+            QGCLogger.d(TAG, "Multicast lock released.");
         }
+    }
+
+    /**
+     * Copies a file identified by a content URI to the specified destination directory.
+     *
+     * @param uri     Content URI of the source file returned by ACTION_OPEN_DOCUMENT.
+     * @param destDir Fully-qualified path of the destination directory.
+     * @return Fully-qualified path of the copied file, or null on failure.
+     */
+    private String copyFileToDestination(final Uri uri, final String destDir) {
+        String displayName = "";
+        try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                final int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (nameIndex >= 0) {
+                    displayName = cursor.getString(nameIndex);                    
+                    displayName = sanitizeFilename(displayName);
+                }
+            }
+        } catch (Exception e) {
+            QGCLogger.e(TAG, "Failed to query display name for URI: " + uri, e);
+        }
+
+        if (displayName.isEmpty()) {
+            QGCLogger.e(TAG, "copyFileToDestination: can't get exact file name");
+            return null;
+        }
+
+        if (destDir == null || destDir.isEmpty()) {
+            QGCLogger.e(TAG, "copyFileToDestination: destination directory is empty");
+            return null;
+        }
+
+        if (!isValidImportFileName(displayName)) {
+            QGCLogger.w(TAG, "Rejected non-.plan file: " + displayName);
+            return null;
+        }
+
+        final File destDirectory = new File(destDir);
+        if (!destDirectory.exists()) {
+            QGCLogger.e(TAG, "Destination directory does not exist: " + destDir);
+            return null;
+        }
+        File destFile;
+        try {
+            destFile = resolveDestFile(destDirectory, displayName);
+        }  catch (Exception e) {
+            QGCLogger.e(TAG, "failed to get filename for: " + displayName, e);
+            return null;
+        }
+        try (InputStream is = getContentResolver().openInputStream(uri);
+            FileOutputStream fos = new FileOutputStream(destFile)) {
+            final byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+            }
+            QGCLogger.i(TAG, "File imported successfully to: " + destFile.getAbsolutePath());
+            return destFile.getAbsolutePath();
+        } catch (Exception e) {
+            QGCLogger.e(TAG, "Failed to copy file to destination", e);
+            return null;
+        }
+    }
+
+    /**
+     * sanitize file name.
+     */
+    static String sanitizeFilename(String displayName) {
+        String[] badCharacters = new String[] { "..", "/" };
+        String[] segments = displayName.split("/");
+        String fileName = segments[segments.length - 1];
+        for (String suspString : badCharacters) {
+            fileName = fileName.replace(suspString, "_");
+        }
+        return fileName;
+    }
+
+    /**
+     * Returns a File inside destDir whose path does not yet exist.
+     */
+    static File resolveDestFile(final File destDir, final String displayName) {
+        File candidate = new File(destDir, displayName);
+        if (!candidate.exists()) {
+            return candidate;
+        }
+
+        final int dotIndex = displayName.lastIndexOf('.');
+        final String base = (dotIndex >= 0) ? displayName.substring(0, dotIndex) : displayName;
+        final String ext  = (dotIndex >= 0) ? displayName.substring(dotIndex)    : "";
+
+        for (int i = 1; i <= Integer.MAX_VALUE; i++) {
+            candidate = new File(destDir, base + "_" + i + ext);
+            if (!candidate.exists()) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("resolveDestFile: no free filename found under " + destDir);
+    }
+
+    /**
+     * Returns true when is a valid mission-file name that may be imported.
+     * A valid name is non-null, non-empty, and ends with the .plan extension
+     */
+    public static boolean isValidImportFileName(final String displayName) {
+        if (displayName == null || displayName.isEmpty()) {
+            return false;
+        }
+        return displayName.toLowerCase(java.util.Locale.ROOT).endsWith(".plan");
     }
 
     public static String getSDCardPath() {
-        StorageManager storageManager = (StorageManager)m_instance.getSystemService(Activity.STORAGE_SERVICE);
-        List<StorageVolume> volumes = storageManager.getStorageVolumes();
-        
-        for (StorageVolume vol : volumes) {
-            if (!vol.isRemovable()) {
-                continue;
-            }
-            
-            String path = null;
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                File directory = vol.getDirectory();
-                if (directory != null) {
-                    path = directory.getAbsolutePath();
-                }
-            } else {
-                try {
-                    Method mMethodGetPath = vol.getClass().getMethod("getPath");
-                    path = (String) mMethodGetPath.invoke(vol);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to get path via reflection", e);
-                    continue;
-                }
-            }
-            
-            if (path != null && !path.isEmpty()) {
-                Log.i(TAG, "removable sd card mounted at " + path);
-                return path;
-            }
+        final QGCActivity activity = m_instance;
+        if (activity == null) {
+            QGCLogger.e(TAG, "Activity instance is null");
+            return "";
         }
-        
-        Log.w(TAG, "No removable SD card found");
-        return "";
+        if (activity.m_storagePermissionController == null) {
+            activity.m_storagePermissionController = new QGCStoragePermissionController(activity);
+        }
+        return activity.m_storagePermissionController.getSDCardPath();
     }
 
+    /**
+     * Checks and requests storage permissions for SD card access.
+     * Android 11+ uses app-scoped storage and does not require runtime storage
+     * permissions for app-owned directories.
+     *
+     * @return true if permissions are granted, false otherwise
+     */
     public static boolean checkStoragePermissions() {
-        if (m_instance == null) {
-            Log.e(TAG, "Activity instance is null");
+        final QGCActivity activity = m_instance;
+        if (activity == null) {
+            QGCLogger.e(TAG, "Activity instance is null");
             return false;
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                Log.i(TAG, "MANAGE_EXTERNAL_STORAGE not granted, requesting...");
-                try {
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                    intent.setData(Uri.parse("package:" + m_instance.getPackageName()));
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    m_instance.startActivity(intent);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to open storage permission settings", e);
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    m_instance.startActivity(intent);
-                }
-                return false;
-            }
-            Log.i(TAG, "MANAGE_EXTERNAL_STORAGE already granted");
-            return true;
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            String[] permissions = {
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-            };
-
-            boolean allGranted = true;
-            for (String permission : permissions) {
-                if (ContextCompat.checkSelfPermission(m_instance, permission) != PackageManager.PERMISSION_GRANTED) {
-                    allGranted = false;
-                    break;
-                }
-            }
-
-            if (!allGranted) {
-                Log.i(TAG, "Storage permissions not granted, requesting...");
-                ActivityCompat.requestPermissions(m_instance, permissions, 1);
-                return false;
-            }
-
-            Log.i(TAG, "Storage permissions already granted");
-            return true;
-        } else {
-            return true;
+        if (activity.m_storagePermissionController == null) {
+            activity.m_storagePermissionController = new QGCStoragePermissionController(activity);
         }
+        return activity.m_storagePermissionController.checkStoragePermissions();
     }
 
+    /**
+     * Opens Android's native file picker using ACTION_OPEN_DOCUMENT.
+     * The selected file will be copied to the provided destination directory.
+     *
+     * @param destPath Fully-qualified path of the destination Missions directory.
+     */
+    public static void openFileImportDialog(final String destPath) {
+        if (m_instance == null) {
+            QGCLogger.e(TAG, "Activity instance is null");
+            return;
+        }
+        s_importDestPath = (destPath != null) ? destPath : "";
+        m_instance.runOnUiThread(() -> {
+            final Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            m_instance.startActivityForResult(intent, IMPORT_FILE_REQUEST_CODE);
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (m_storagePermissionController == null) {
+            m_storagePermissionController = new QGCStoragePermissionController(this);
+        }
+
+        final Boolean granted = m_storagePermissionController.onRequestPermissionsResult(requestCode, grantResults);
+        if (granted == null) {
+            return;
+        }
+
+        nativeStoragePermissionsResult(granted);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (QGCSDLManager.handleMotionEvent(event)) return true;
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (QGCSDLManager.handleKeyEvent(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
+    // Native C++ functions
     public native boolean nativeInit();
-    public native void nativeSafeAreaInsets(int left, int top, int right, int bottom);
     public native void nativeDeepLink(final String url);
-    public native void nativeFontScaleChanged(final float scale);
     public native void qgcLogDebug(final String message);
     public native void qgcLogWarning(final String message);
+    public native void nativeStoragePermissionsResult(boolean granted);
+    public native void onImportResult(final String filePath);
+    public native void nativeSafeAreaInsets(int left, int top, int right, int bottom);
+    public native void nativeFontScaleChanged(final float scale);
 }

@@ -1,3 +1,9 @@
+# ============================================================================
+# Qt Multimedia Video Receiver Backend
+# Qt6 Multimedia-based video streaming and UVC camera support — always built;
+# selected at runtime when QGC_GST_STREAMING is not defined.
+# ============================================================================
+
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         QtMultimediaReceiver.cc
@@ -7,11 +13,3 @@ target_sources(${CMAKE_PROJECT_NAME}
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-if(QGC_ENABLE_QT_VIDEOSTREAMING)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_QT_STREAMING)
-endif()
-
-if(NOT QGC_ENABLE_UVC)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_DISABLE_UVC)
-endif()

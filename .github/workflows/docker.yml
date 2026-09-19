@@ -1,0 +1,206 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - master
+      - 'Stable*'
+    tags:
+      - 'v*'
+    paths-ignore:
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  changes:
+    uses: ./.github/workflows/_detect-changes.yml
+    with:
+      platform: docker-linux docker-android
+
+  plan-builds:
+    name: Plan Docker Builds
+    runs-on: ubuntu-latest
+    needs: changes
+    if: always() && !cancelled()
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_jobs: ${{ steps.plan.outputs.has_jobs }}
+    steps:
+      - name: Checkout planner
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          # Bootstrap shim (ci_bootstrap.py + tools/_bootstrap.py + common/__init__.py + common/gh_actions.py)
+          # also appears in linux.yml (debug-matrix), pr-checks.yml (size), _cache-cleanup.yml. Keep aligned —
+          # GHA composite actions can't run before checkout, so this list can't be deduplicated structurally.
+          sparse-checkout: |
+            .github/scripts/plan_docker_builds.py
+            .github/scripts/ci_bootstrap.py
+            deploy/docker/variants.json
+            tools/_bootstrap.py
+            tools/common/__init__.py
+            tools/common/file_traversal.py
+            tools/common/gh_actions.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Plan matrix
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LINUX: ${{ needs.changes.outputs.docker_linux }}
+          ANDROID: ${{ needs.changes.outputs.docker_android }}
+        run: python3 "${GITHUB_WORKSPACE}/.github/scripts/plan_docker_builds.py"
+
+  build:
+    name: Docker ${{ matrix.platform }}
+    runs-on: ${{ github.repository_owner == 'mavlink' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && format('runs-on={0}/runner=linux-x64-builder', github.run_id) || 'ubuntu-latest' }}
+    needs: [changes, plan-builds]
+    if: always() && !cancelled() && needs.plan-builds.outputs.has_jobs == 'true'
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan-builds.outputs.matrix) }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Enable RunsOn magic cache
+        if: github.repository_owner == 'mavlink' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: runs-on/action@v2
+        with:
+          metrics: cpu,network,memory,disk,io
+          show_costs: summary
+
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Free Disk Space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Resolve push target
+        id: push-target
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: >-
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/docker_helper.py" resolve-push-target
+          --event-name "${EVENT_NAME}"
+          --repo "${REPO}"
+          --ref "${REF}"
+
+      - name: Build with Docker
+        uses: ./.github/actions/docker
+        with:
+          target: ${{ matrix.target }}
+          variant: ${{ matrix.variant }}
+          build-args: ${{ matrix.build_args }}
+          fuse: ${{ matrix.fuse }}
+          docker-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          docker-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          push-image: ${{ steps.push-target.outputs.ref }}
+
+      - name: Find build artifact
+        id: artifact
+        run: >-
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/find_artifact.py"
+          --build-dir "${{ github.workspace }}/build"
+          --pattern "${MATRIX_ARTIFACT_PATTERN}"
+        env:
+          MATRIX_ARTIFACT_PATTERN: ${{ matrix.artifact_pattern }}
+
+      # Per-distro artifact: `variant` keys the name so the parallel matrix entries
+      # (linux, linux-debian, linux-fedora, linux-arch, ...) don't collide.
+      - name: Upload build artifact
+        if: steps.artifact.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: qgroundcontrol-${{ matrix.variant }}
+          path: ${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      # Native distro package (.deb/.rpm/.pkg.tar.zst) alongside the AppImage on
+      # x86_64 Linux variants; empty package_pattern (aarch64, Android) skips both.
+      - name: Find native package
+        id: package
+        if: matrix.package_pattern != ''
+        run: >-
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/find_artifact.py"
+          --build-dir "${{ github.workspace }}/build"
+          --pattern "${MATRIX_PACKAGE_PATTERN}"
+        env:
+          MATRIX_PACKAGE_PATTERN: ${{ matrix.package_pattern }}
+
+      # .deb only: dpkg-deb isn't available for the RPM/Arch variants, and their
+      # CPM-vendored dev-file leakage is already prevented at the CMake level.
+      - name: Verify package contains no development files
+        if: matrix.package_pattern == '*.deb' && steps.package.outputs.found == 'true'
+        run: >-
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/verify_package_contents.py"
+          --package-path "${PACKAGE_PATH}"
+        env:
+          PACKAGE_PATH: ${{ steps.package.outputs.path }}
+
+      - name: Upload native package
+        if: matrix.package_pattern != '' && steps.package.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: qgroundcontrol-${{ matrix.variant }}-package
+          path: ${{ steps.package.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Generate CPM dependency SBOM
+        if: steps.artifact.outputs.found == 'true'
+        run: >-
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/generate_cpm_sbom.py"
+          --build-dir "${{ github.workspace }}/build"
+          -o cpm-sbom.cdx.json
+
+      - name: Scan SBOM with Grype
+        if: steps.artifact.outputs.found == 'true'
+        id: grype
+        uses: anchore/scan-action@v7
+        with:
+          sbom: cpm-sbom.cdx.json
+          fail-build: false
+          severity-cutoff: high
+          only-fixed: true
+          output-format: sarif
+
+      - name: Upload Grype results to GitHub Security
+        if: steps.artifact.outputs.found == 'true'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: 'grype-${{ matrix.platform }}'

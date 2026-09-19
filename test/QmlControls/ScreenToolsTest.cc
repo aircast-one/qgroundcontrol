@@ -81,3 +81,5 @@ void ScreenToolsTest::_systemFontScaleMultipliesTheBase()
     ScreenToolsController::setSystemFontScale(1.0);
     QTRY_VERIFY(qFuzzyCompare(readReal(view, "basePointSize"), kBasePointSize));
 }
+
+UT_REGISTER_TEST(ScreenToolsTest, TestLabel::Unit)

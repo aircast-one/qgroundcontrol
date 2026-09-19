@@ -1,19 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "MockLinkMissionItemHandler.h"
 
 #include "MAVLinkProtocol.h"
 #include "MockLink.h"
 #include "QGCLoggingCategory.h"
 
-QGC_LOGGING_CATEGORY(MockLinkMissionItemHandlerLog, "qgc.comms.mocklink.mocklinkmissionitemhandler")
+QGC_LOGGING_CATEGORY(MockLinkMissionItemHandlerLog, "Comms.MockLink.MockLinkMissionItemHandler")
 
 MockLinkMissionItemHandler::MockLinkMissionItemHandler(MockLink *mockLink)
     : QObject(mockLink)
@@ -36,7 +27,39 @@ void MockLinkMissionItemHandler::_startMissionItemResponseTimer()
     _missionItemResponseTimer.start(500);
 }
 
-bool MockLinkMissionItemHandler::handleMessage(const mavlink_message_t &msg)
+void MockLinkMissionItemHandler::loadSimpleMultirotorMission()
+{
+    _missionItems.clear();
+
+    constexpr double homeLatitude = 47.397;
+    constexpr double homeLongitude = 8.5455;
+    constexpr float relativeAltitude = 50.0f;
+
+    const auto makeItem = [](uint16_t seq, uint16_t command, bool current, double latitude, double longitude, float altitude) {
+        mavlink_mission_item_int_t item{};
+        item.seq = seq;
+        item.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT;
+        item.command = command;
+        item.current = current ? 1 : 0;
+        item.autocontinue = 1;
+        item.x = static_cast<int32_t>(latitude * 1e7);
+        item.y = static_cast<int32_t>(longitude * 1e7);
+        item.z = altitude;
+        item.mission_type = MAV_MISSION_TYPE_MISSION;
+        return item;
+    };
+
+    // Seq 0: Takeoff
+    _missionItems[0] = makeItem(0, MAV_CMD_NAV_TAKEOFF, true, homeLatitude, homeLongitude, relativeAltitude);
+    // Seq 1: Waypoint
+    _missionItems[1] = makeItem(1, MAV_CMD_NAV_WAYPOINT, false, homeLatitude + 0.001, homeLongitude + 0.001, relativeAltitude);
+    // Seq 2: Return to launch
+    _missionItems[2] = makeItem(2, MAV_CMD_NAV_RETURN_TO_LAUNCH, false, 0.0, 0.0, 0.0);
+
+    qCDebug(MockLinkMissionItemHandlerLog) << "loadSimpleMultirotorMission seeded" << _missionItems.count() << "items";
+}
+
+bool MockLinkMissionItemHandler::handleMavlinkMessage(const mavlink_message_t &msg)
 {
     switch (msg.msgid) {
     case MAVLINK_MSG_ID_MISSION_REQUEST_LIST:
@@ -105,6 +128,9 @@ void MockLinkMissionItemHandler::_handleMissionRequestList(const mavlink_message
 
     _failReadRequest1FirstResponse = true;
 
+    mavlink_mission_request_list_t request{};
+    mavlink_msg_mission_request_list_decode(&msg, &request);
+
     if (_failureMode == FailReadRequestListNoResponse) {
         qCDebug(MockLinkMissionItemHandlerLog) << "_handleMissionRequestList not responding due to failure mode FailReadRequestListNoResponse";
         return;
@@ -118,10 +144,8 @@ void MockLinkMissionItemHandler::_handleMissionRequestList(const mavlink_message
 
     _failReadRequestListFirstResponse = true;
 
-    mavlink_mission_request_list_t request{};
-    mavlink_msg_mission_request_list_decode(&msg, &request);
-
     Q_ASSERT(request.target_system == _mockLink->vehicleId());
+    _requestListCounts[static_cast<MAV_MISSION_TYPE>(request.mission_type)]++;
 
     _requestType = static_cast<MAV_MISSION_TYPE>(request.mission_type);
 
@@ -147,7 +171,7 @@ void MockLinkMissionItemHandler::_handleMissionRequestList(const mavlink_message
     (void) mavlink_msg_mission_count_pack_chan(
         _mockLink->vehicleId(),
         MAV_COMP_ID_AUTOPILOT1,
-        _mockLink->mavlinkChannel(),
+        _mockLink->outgoingMavlinkChannel(),
         &responseMsg,               // Outgoing message
         msg.sysid,                  // Target is original sender
         msg.compid,                 // Target is original sender
@@ -226,7 +250,7 @@ void MockLinkMissionItemHandler::_handleMissionRequest(const mavlink_message_t &
     (void) mavlink_msg_mission_item_int_pack_chan(
         _mockLink->vehicleId(),
         MAV_COMP_ID_AUTOPILOT1,
-        _mockLink->mavlinkChannel(),
+        _mockLink->outgoingMavlinkChannel(),
         &responseMsg,                // Outgoing message
         msg.sysid,                   // Target is original sender
         msg.compid,                  // Target is original sender
@@ -318,7 +342,7 @@ void MockLinkMissionItemHandler::_requestNextMissionItem(int sequenceNumber)
     (void) mavlink_msg_mission_request_int_pack_chan(
         _mockLink->vehicleId(),
         MAV_COMP_ID_AUTOPILOT1,
-        _mockLink->mavlinkChannel(),
+        _mockLink->outgoingMavlinkChannel(),
         &message,
         MAVLinkProtocol::instance()->getSystemId(),
         MAVLinkProtocol::getComponentId(),
@@ -339,7 +363,7 @@ void MockLinkMissionItemHandler::_sendAck(MAV_MISSION_RESULT ackType) const
     (void) mavlink_msg_mission_ack_pack_chan(
         _mockLink->vehicleId(),
         MAV_COMP_ID_AUTOPILOT1,
-        _mockLink->mavlinkChannel(),
+        _mockLink->outgoingMavlinkChannel(),
         &message,
         MAVLinkProtocol::instance()->getSystemId(),
         MAVLinkProtocol::getComponentId(),

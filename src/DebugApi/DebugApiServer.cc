@@ -20,6 +20,7 @@
 #endif
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
+#include "ParameterEditorController.h"
 #include "PlanMasterController.h"
 #include "QmlObjectListModel.h"
 #include "TCPLink.h"
@@ -181,11 +182,8 @@ DebugApiServer::DebugApiServer(quint16 port, QObject *parent)
                 _messages.removeFirst();
             }
         });
-        _rcConnection = connect(vehicle, &Vehicle::rcChannelsChanged, this, [this](int channelCount, int *pwmValues) {
-            _rcValues.clear();
-            for (int i = 0; i < channelCount; ++i) {
-                _rcValues.append(pwmValues[i]);
-            }
+        _rcConnection = connect(vehicle, &Vehicle::rcChannelsRawChanged, this, [this](const QVector<int> &pwmValues) {
+            _rcValues = QList<int>(pwmValues.cbegin(), pwmValues.cend());
         });
     });
 
@@ -1460,15 +1458,16 @@ QByteArray DebugApiServer::_paramsFileJson(const QUrlQuery &query, bool save)
         return QJsonDocument(QJsonObject{{"saved", file}}).toJson(QJsonDocument::Compact);
     }
 
-    if (!paramFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    if (!paramFile.exists()) {
         return _errorJson(QStringLiteral("cannot read %1").arg(file));
     }
-    QTextStream stream(&paramFile);
-    const QString result = parameterManager->readParametersFromStream(stream);
-    return QJsonDocument(QJsonObject{
-        {"loaded", file},
-        {"notes", result},
-    }).toJson(QJsonDocument::Compact);
+    ParameterEditorController controller;
+    if (!controller.buildDiffFromFile(file)) {
+        return QJsonDocument(QJsonObject{{"loaded", file}, {"changed", 0}}).toJson(QJsonDocument::Compact);
+    }
+    const int changed = controller.diffList()->count();
+    controller.sendDiff();
+    return QJsonDocument(QJsonObject{{"loaded", file}, {"changed", changed}}).toJson(QJsonDocument::Compact);
 }
 
 QByteArray DebugApiServer::_calibrateJson(const QUrlQuery &query)
@@ -1600,7 +1599,7 @@ QByteArray DebugApiServer::_statusJson()
     }
 
     QSettings layoutSettings;
-    layoutSettings.beginGroup(QLatin1String(QGroundControlQmlGlobal::kQmlGlobalKeyName));
+    layoutSettings.beginGroup(QStringLiteral("QGCQml"));
     const QJsonObject layout{
         {"mainIsMap", layoutSettings.value(QStringLiteral("MainFlyWindowIsMap"), true).toBool()},
         {"pipExpanded", layoutSettings.value(QStringLiteral("IsPIPVisible"), true).toBool()},

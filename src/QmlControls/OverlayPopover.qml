@@ -13,7 +13,6 @@ import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 // A menu panel that drops beside the item it was opened from. The overlay material is opaque
 // here rather than refracting: a menu is read, not glanced at, and the map moving underneath a

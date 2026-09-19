@@ -103,3 +103,5 @@ void SettingsSearchTest::_everyMatchedPageIsVisible()
         }
     }
 }
+
+UT_REGISTER_TEST(SettingsSearchTest, TestLabel::Unit)

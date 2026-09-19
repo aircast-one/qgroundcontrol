@@ -9,9 +9,9 @@
 
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
-class FirmwareUpdateAvailableTest : public UnitTest
+class FirmwareUpdateAvailableTest : public VehicleTestManualConnect
 {
     Q_OBJECT
 

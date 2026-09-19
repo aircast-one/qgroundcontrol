@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "FactGroup.h"
@@ -38,10 +29,13 @@ class VehicleFactGroup : public FactGroup
     Q_PROPERTY(Fact *headingToNextWP        READ headingToNextWP        CONSTANT)
     Q_PROPERTY(Fact *distanceToNextWP       READ distanceToNextWP       CONSTANT)
     Q_PROPERTY(Fact *headingToHome          READ headingToHome          CONSTANT)
+    Q_PROPERTY(Fact *headingFromHome        READ headingFromHome        CONSTANT)
+    Q_PROPERTY(Fact *headingFromGCS         READ headingFromGCS         CONSTANT)
     Q_PROPERTY(Fact *distanceToGCS          READ distanceToGCS          CONSTANT)
     Q_PROPERTY(Fact *hobbs                  READ hobbs                  CONSTANT)
     Q_PROPERTY(Fact *throttlePct            READ throttlePct            CONSTANT)
     Q_PROPERTY(Fact *imuTemp                READ imuTemp                CONSTANT)
+    Q_PROPERTY(Fact *rcRSSI                 READ rcRSSI                 CONSTANT)
 
 public:
     explicit VehicleFactGroup(QObject *parent = nullptr);
@@ -70,12 +64,19 @@ public:
     Fact *headingToNextWP() { return &_headingToNextWPFact; }
     Fact *distanceToNextWP() { return &_distanceToNextWPFact; }
     Fact *headingToHome() { return &_headingToHomeFact; }
+    Fact *headingFromHome() { return &_headingFromHomeFact; }
+    Fact *headingFromGCS() { return &_headingFromGCSFact; }
     Fact *distanceToGCS() { return &_distanceToGCSFact; }
     Fact *hobbs() { return &_hobbsFact; }
     Fact *throttlePct() { return &_throttlePctFact; }
     Fact *imuTemp() { return &_imuTempFact; }
+    Fact *rcRSSI() { return &_rcRSSIFact; }
 
     void handleMessage(Vehicle *vehicle, const mavlink_message_t &message) override;
+
+    /// Write a raw RSSI sample (0-100, or 255 for invalid) through the low-pass filter
+    /// into the rcRSSI Fact. Called by Vehicle when an RC_CHANNELS message arrives.
+    void updateRCRSSI(uint8_t rssi);
 
 protected:
     void _handleAttitude(Vehicle *vehicle, const mavlink_message_t &message);
@@ -84,9 +85,7 @@ protected:
     void _handleVfrHud(const mavlink_message_t &message);
     void _handleRawImuTemp(const mavlink_message_t &message);
     void _handleNavControllerOutput(const mavlink_message_t &message);
-#ifndef QGC_NO_ARDUPILOT_DIALECT
     void _handleRangefinder(const mavlink_message_t &message);
-#endif
 
     Fact _rollFact = Fact(0, QStringLiteral("roll"), FactMetaData::valueTypeDouble);
     Fact _pitchFact = Fact(0, QStringLiteral("pitch"), FactMetaData::valueTypeDouble);
@@ -113,10 +112,13 @@ protected:
     Fact _headingToNextWPFact = Fact(0, QStringLiteral("headingToNextWP"), FactMetaData::valueTypeDouble);
     Fact _distanceToNextWPFact = Fact(0, QStringLiteral("distanceToNextWP"), FactMetaData::valueTypeDouble);
     Fact _headingToHomeFact = Fact(0, QStringLiteral("headingToHome"), FactMetaData::valueTypeDouble);
+    Fact _headingFromHomeFact = Fact(0, QStringLiteral("headingFromHome"),FactMetaData::valueTypeDouble);
+    Fact _headingFromGCSFact = Fact(0, QStringLiteral("headingFromGCS"),FactMetaData::valueTypeDouble);
     Fact _distanceToGCSFact = Fact(0, QStringLiteral("distanceToGCS"), FactMetaData::valueTypeDouble);
     Fact _hobbsFact = Fact(0, QStringLiteral("hobbs"), FactMetaData::valueTypeString);
     Fact _throttlePctFact = Fact(0, QStringLiteral("throttlePct"), FactMetaData::valueTypeUint16);
     Fact _imuTempFact = Fact(0, QStringLiteral("imuTemp"), FactMetaData::valueTypeInt16);
+    Fact _rcRSSIFact = Fact(0, QStringLiteral("rcRSSI"), FactMetaData::valueTypeUint8);
 
     float _altitudeTuningOffset = qQNaN();
 
@@ -127,4 +129,7 @@ private:
     void _handleAttitudeWorker(double rollRadians, double pitchRadians, double yawRadians);
 
     bool _receivingAttitudeQuaternion = false;
+
+    // Low-pass filter state for rcRSSI. 255 is the sentinel "invalid/uninitialized" value.
+    double _rcRSSIStore = 255.0;
 };

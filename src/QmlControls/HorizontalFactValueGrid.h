@@ -11,11 +11,14 @@
 
 #include "FactValueGrid.h"
 
+#include <QtQmlIntegration/QtQmlIntegration>
+
 class InstrumentValueData;
 
 class HorizontalFactValueGrid : public FactValueGrid
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(HorizontalFactValueGridTemplate)
 
 public:
     HorizontalFactValueGrid(QQuickItem *parent = nullptr);

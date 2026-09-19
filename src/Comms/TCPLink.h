@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QByteArray>
@@ -16,6 +7,12 @@
 
 #include "LinkConfiguration.h"
 #include "LinkInterface.h"
+
+#include <QtCore/QByteArray>
+#include <QtCore/QString>
+#include <QtNetwork/QAbstractSocket>
+
+#include <atomic>
 
 class QTcpSocket;
 class QThread;
@@ -32,7 +29,7 @@ class TCPConfiguration : public LinkConfiguration
 public:
     explicit TCPConfiguration(const QString &name, QObject *parent = nullptr);
     explicit TCPConfiguration(const TCPConfiguration *copy, QObject *parent = nullptr);
-    virtual ~TCPConfiguration();
+    ~TCPConfiguration() override;
 
     LinkType type() const override { return LinkConfiguration::TypeTcp; }
     void copyFrom(const LinkConfiguration *source) override;
@@ -43,9 +40,9 @@ public:
     QString summary() const override { return QStringLiteral("%1:%2").arg(host()).arg(_port); }
 
     QString host() const { return _host; }
-    void setHost(const QString &host) { if (host != _host) { _host = host; emit hostChanged(); emit summaryChanged(); } }
+    void setHost(const QString &host);
     quint16 port() const { return _port; }
-    void setPort(quint16 port) { if (port != _port) { _port = port; emit portChanged(); emit summaryChanged(); } }
+    void setPort(quint16 port);
 
 signals:
     void hostChanged();
@@ -62,7 +59,7 @@ class TCPWorker : public QObject
 
 public:
     explicit TCPWorker(const TCPConfiguration *config, QObject *parent = nullptr);
-    ~TCPWorker();
+    ~TCPWorker() override;
 
     bool isConnected() const;
 
@@ -89,7 +86,7 @@ private slots:
 private:
     const TCPConfiguration *_config = nullptr;
     QTcpSocket *_socket = nullptr;
-    bool _errorEmitted = false;
+    std::atomic<bool> _errorEmitted{false};
 };
 
 class TCPLink : public LinkInterface
@@ -98,7 +95,7 @@ class TCPLink : public LinkInterface
 
 public:
     explicit TCPLink(SharedLinkConfigurationPtr &config, QObject *parent = nullptr);
-    virtual ~TCPLink();
+    ~TCPLink() override;
 
     bool isConnected() const override;
     void disconnect() override;
@@ -118,4 +115,5 @@ private:
     const TCPConfiguration *_tcpConfig = nullptr;
     TCPWorker *_worker = nullptr;
     QThread *_workerThread = nullptr;
+    std::atomic<bool> _disconnectedEmitted{false};
 };

@@ -8,6 +8,8 @@
  ****************************************************************************/
 
 #include "RcChannelOverrideTest.h"
+
+#include <QtCore/QRegularExpression>
 #include "MockLink.h"
 #include "MultiVehicleManager.h"
 #include "Vehicle.h"
@@ -56,6 +58,12 @@ static bool lastOverrideSent(const QList<QVariantList>& writes, mavlink_rc_chann
         }
     }
     return found;
+}
+
+void RcChannelOverrideTest::init()
+{
+    VehicleTestManualConnect::init();
+    ignoreLogMessage("Vehicle.Vehicle", QtWarningMsg, QRegularExpression(QStringLiteral("setRcChannelOverride: channel out of range")));
 }
 
 void RcChannelOverrideTest::_overrideHoldsOneChannelAndReleasesTheRest()
@@ -196,3 +204,5 @@ void RcChannelOverrideTest::_grabbingAgainDuringReleaseCancelsIt()
 
     vehicle->clearRcChannelOverrides();
 }
+
+UT_REGISTER_TEST(RcChannelOverrideTest, TestLabel::Unit)

@@ -12,11 +12,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.AutoPilotPlugin
-import QGroundControl.Palette
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
-import QGroundControl.MultiVehicleManager
 
 ToolDrawerPage {
     id:         setupView

@@ -193,7 +193,14 @@ mod tests {
     use super::*;
 
     fn copter() -> Definitions {
-        parse(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/FirmwarePlugin/APM/ArduPilot-Parameter-Repository/Copter-4.6/apm.pdef.xml")).unwrap()).unwrap()
+        let cache = concat!(env!("CARGO_MANIFEST_DIR"), "/../.cache/CPM/ardupilotparams");
+        let xml = std::fs::read_dir(cache)
+            .expect("the ArduPilotParams CPM checkout made by configuring the C++ tree")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().join("Copter-4.6/apm.pdef.xml"))
+            .find(|path| path.exists())
+            .expect("Copter-4.6/apm.pdef.xml inside the ArduPilotParams CPM checkout");
+        parse(&std::fs::read_to_string(xml).unwrap()).unwrap()
     }
 
     #[test]

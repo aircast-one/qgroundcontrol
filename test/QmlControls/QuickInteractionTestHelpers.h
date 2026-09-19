@@ -16,6 +16,8 @@
 #include <QtGui/QStyleHints>
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
+#include "ColoredSvgImageProvider.h"
+
 #include <QtQuick/QQuickView>
 #include <QtTest/QTest>
 
@@ -34,9 +36,9 @@ template <typename Keys>
 inline void clearQmlGlobalSettings(const Keys& keys)
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
-    for (const auto& key : keys) {
-        settings.remove(QString(key));
+    settings.beginGroup(QStringLiteral("QGCQml"));
+    for (const char* key : keys) {
+        settings.remove(QString::fromLatin1(key));
     }
     settings.endGroup();
 }
@@ -53,7 +55,7 @@ inline void clearQmlGlobalSettings(std::initializer_list<const char*> keys)
 inline void clearDragPositionSettings(std::initializer_list<const char*> prefixes)
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     const QStringList keys = settings.allKeys();
     for (const char* prefix : prefixes) {
         for (const QString& key : keys) {
@@ -71,7 +73,7 @@ inline void clearDragPositionSettings(std::initializer_list<const char*> prefixe
 inline bool storedPosition(const QString& key)
 {
     QSettings settings;
-    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.beginGroup(QStringLiteral("QGCQml"));
     return settings.value(key).toBool();
 }
 
@@ -92,6 +94,7 @@ inline QQuickItem* findItemByName(QQuickItem* item, const QString& name)
 inline bool loadTestView(QQuickView& view, const QString& qmlResource)
 {
     view.engine()->addImportPath(QStringLiteral("qrc:/qml"));
+    view.engine()->addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
     view.setSource(QUrl(qmlResource));
     if (view.status() != QQuickView::Ready) {
         return false;

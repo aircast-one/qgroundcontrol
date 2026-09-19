@@ -17,6 +17,7 @@ qreal logical(int devicePixels)
 void SafeAreaTest::cleanup()
 {
     ScreenToolsController::setSafeAreaInsets(0, 0, 0, 0);
+    UnitTest::cleanup();
 }
 
 void SafeAreaTest::_insetsArriveInLogicalPixels()
@@ -100,3 +101,5 @@ void SafeAreaTest::_chromeInsetNeverGoesNegative()
 
     QCOMPARE(root->property("topEdgeInset").toReal(), 0.0);
 }
+
+UT_REGISTER_TEST(SafeAreaTest, TestLabel::Unit)

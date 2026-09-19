@@ -1,23 +1,12 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QObject>
 #include <QtCore/QDateTime>
 #include <QtCore/QTimer>
 #include <QtPositioning/QGeoPositionInfo>
-#include <QtCore/QLoggingCategory>
+#include <QtQmlIntegration/QtQmlIntegration>
 
-#include "MAVLinkLib.h"
-
-Q_DECLARE_LOGGING_CATEGORY(RemoteIDManagerLog)
+#include "MAVLinkMessageType.h"
 
 class RemoteIDSettings;
 class Vehicle;
@@ -26,34 +15,29 @@ class Vehicle;
 class RemoteIDManager : public QObject
 {
     Q_OBJECT
-
+    QML_ELEMENT
+    QML_UNCREATABLE("")
 public:
     RemoteIDManager(Vehicle* vehicle);
 
     Q_PROPERTY(bool    available            READ available          NOTIFY availableChanged)             ///< true: the vehicle supports Mavlink Open Drone ID messages
-    Q_PROPERTY(bool    armStatusGood        READ armStatusGood      NOTIFY armStatusGoodChanged)
+    Q_PROPERTY(bool    armStatusGoodToArm   READ armStatusGoodToArm NOTIFY armStatusGoodToArmChanged)    ///< true: RID device reports MAV_ODID_ARM_STATUS_GOOD_TO_ARM
     Q_PROPERTY(QString armStatusError       READ armStatusError     NOTIFY armStatusErrorChanged)
-    Q_PROPERTY(bool    commsGood            READ commsGood          NOTIFY commsGoodChanged)
-    Q_PROPERTY(bool    gcsGPSGood           READ gcsGPSGood         NOTIFY gcsGPSGoodChanged)
-    Q_PROPERTY(bool    basicIDGood          READ basicIDGood        NOTIFY basicIDGoodChanged)
+    Q_PROPERTY(bool    ridDeviceCommsGood   READ ridDeviceCommsGood NOTIFY ridDeviceCommsGoodChanged)    ///< true: receiving ODID_ARM_STATUS from the RID device at the expected rate
+    Q_PROPERTY(bool    gcsPositionUsable    READ gcsPositionUsable  NOTIFY gcsPositionUsableChanged)     ///< true: GCS position is valid/fresh enough to broadcast in OPEN_DRONE_ID_SYSTEM
+    Q_PROPERTY(bool    vehicleReportsBasicIDMissing READ vehicleReportsBasicIDMissing NOTIFY vehicleReportsBasicIDMissingChanged) ///< true: RID device reported it has no basic ID from device parameters or GCS
     Q_PROPERTY(bool    emergencyDeclared    READ emergencyDeclared  NOTIFY emergencyDeclaredChanged)
-    Q_PROPERTY(bool    operatorIDGood       READ operatorIDGood     NOTIFY operatorIDGoodChanged)
-
-
-    Q_INVOKABLE void checkOperatorID(const QString& operatorID);
-    Q_INVOKABLE void setOperatorID();
 
     // Declare emergency
     Q_INVOKABLE void setEmergency(bool declare);
 
     bool    available           (void) const { return _available; }
-    bool    armStatusGood       (void) const { return _armStatusGood; }
+    bool    armStatusGoodToArm  (void) const { return _armStatusGoodToArm; }
     QString armStatusError      (void) const { return _armStatusError; }
-    bool    commsGood           (void) const { return _commsGood; }
-    bool    gcsGPSGood          (void) const { return _gcsGPSGood; }
-    bool    basicIDGood         (void) const { return _basicIDGood; }
+    bool    ridDeviceCommsGood  (void) const { return _ridDeviceCommsGood; }
+    bool    gcsPositionUsable   (void) const { return _gcsPositionUsable; }
+    bool    vehicleReportsBasicIDMissing(void) const { return _vehicleReportsBasicIDMissing; }
     bool    emergencyDeclared   (void) const { return _emergencyDeclared;}
-    bool    operatorIDGood      (void) const { return _operatorIDGood; }
 
     void mavlinkMessageReceived (mavlink_message_t& message);
 
@@ -63,33 +47,25 @@ public:
         FIXED
     };
 
-    enum Region {
-        FAA,
-        EU
-    };
-
 signals:
     void availableChanged();
-    void armStatusGoodChanged();
+    void armStatusGoodToArmChanged();
     void armStatusErrorChanged();
-    void commsGoodChanged();
-    void gcsGPSGoodChanged();
-    void basicIDGoodChanged();
+    void ridDeviceCommsGoodChanged();
+    void gcsPositionUsableChanged();
+    void vehicleReportsBasicIDMissingChanged();
     void emergencyDeclaredChanged();
-    void operatorIDGoodChanged();
 
 private slots:
     void _odidTimeout();
     void _sendMessages();
-    void _updateLastGCSPositionInfo(QGeoPositionInfo update);
-    void _checkGCSBasicID();
 
 private:
     void _handleArmStatus(mavlink_message_t& message);
 
     // Self ID
     void        _sendSelfIDMsg ();
-    const char* _getSelfIDDescription();
+    QByteArray _getSelfIDDescription() const;
 
     // Operator ID
     void        _sendOperatorID ();
@@ -101,24 +77,22 @@ private:
     // Basic ID
     void        _sendBasicID();
 
-    bool _isEUOperatorIDValid(const QString& operatorID) const;
-    QChar _calculateLuhnMod36(const QString& input) const;
+    // GCS position status
+    void        _updateGcsPositionStatus(bool usable, const QString& error = QString());
 
     Vehicle*            _vehicle;
     RemoteIDSettings*   _settings;
 
     // Flags ODID
     bool    _available = false;
-    bool    _armStatusGood;
+    bool    _armStatusGoodToArm;
     QString _armStatusError;
-    bool    _commsGood;
-    bool    _gcsGPSGood;
-    bool    _basicIDGood;
-    bool    _GCSBasicIDValid;
-    bool    _operatorIDGood;
+    bool    _ridDeviceCommsGood;
+    bool    _gcsPositionUsable;
+    QString _gcsPositionError;
+    bool    _vehicleReportsBasicIDMissing;
 
     bool        _emergencyDeclared;
-    QDateTime   _lastGeoPositionTimeStamp;
     int         _targetSystem;
     int         _targetComponent;
 

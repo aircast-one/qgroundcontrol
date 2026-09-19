@@ -9,13 +9,12 @@ pub struct Group {
     pub json: &'static str,
 }
 
-pub const GROUPS: [Group; 22] = [
+pub const GROUPS: [Group; 21] = [
     Group { name: "ADSBVehicleManager", prefix: "ADSBVehicleManager", json: include_str!("../../src/Settings/ADSBVehicleManager.SettingsGroup.json") },
     Group { name: "APMMavlinkStreamRate", prefix: "APMMavlinkStreamRate", json: include_str!("../../src/Settings/APMMavlinkStreamRate.SettingsGroup.json") },
     Group { name: "App", prefix: "", json: include_str!("../../src/Settings/App.SettingsGroup.json") },
     Group { name: "AutoConnect", prefix: "AutoConnect", json: include_str!("../../src/Settings/AutoConnect.SettingsGroup.json") },
     Group { name: "BatteryIndicator", prefix: "BatteryIndicator", json: include_str!("../../src/Settings/BatteryIndicator.SettingsGroup.json") },
-    Group { name: "BrandImage", prefix: "Branding", json: include_str!("../../src/Settings/BrandImage.SettingsGroup.json") },
     Group { name: "FirmwareUpgrade", prefix: "FirmwareUpgrade", json: include_str!("../../src/Settings/FirmwareUpgrade.SettingsGroup.json") },
     Group { name: "FlightMap", prefix: "FlightMap", json: include_str!("../../src/Settings/FlightMap.SettingsGroup.json") },
     Group { name: "FlightMode", prefix: "FlightMode", json: include_str!("../../src/Settings/FlightMode.SettingsGroup.json") },
@@ -57,7 +56,6 @@ mod tests {
         assert!(loaded.iter().all(|(_, r)| r.as_ref().is_ok_and(|m| !m.is_empty())), "{loaded:?}");
         assert_eq!(settings_key("App", "offlineEditingCruiseSpeed").as_deref(), Some("offlineEditingCruiseSpeed"));
         assert_eq!(settings_key("Units", "customUnits").as_deref(), Some("Units/customUnits"));
-        assert_eq!(settings_key("BrandImage", "userBrandImageIndoor").as_deref(), Some("Branding/userBrandImageIndoor"));
         assert_eq!(settings_key("Nope", "x"), None);
         assert!(metadata("Units").unwrap().contains_key("customUnits"));
     }

@@ -1,4 +1,6 @@
 #include "TCPLinkErrorTest.h"
+
+#include <QtCore/QRegularExpression>
 #include "LinkManager.h"
 #include "TCPLink.h"
 
@@ -32,6 +34,13 @@ void connectAndWaitForFailure(SharedLinkConfigurationPtr config)
 }
 
 } // namespace
+
+void TCPLinkErrorTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Socket error|Communication error")));
+    ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Connection to")));
+}
 
 void TCPLinkErrorTest::_refusedConnectionAsksForTheAddress()
 {
@@ -70,3 +79,5 @@ void TCPLinkErrorTest::_newFailureClearsTheOldOne()
     LinkManager::instance()->removeConfiguration(stale.get());
     LinkManager::instance()->removeConfiguration(fresh.get());
 }
+
+UT_REGISTER_TEST(TCPLinkErrorTest, TestLabel::Unit)

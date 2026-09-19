@@ -9,11 +9,15 @@
 
 #pragma once
 
-#include "Fact.h"
-#include "FactValueGrid.h"
 
 #include <QtCore/QObject>
+#include <QtCore/QStringList>
+#include <QtCore/QVariantList>
+#include <QtGui/QColor>
+#include <QtQmlIntegration/QtQmlIntegration>
 
+class Fact;
+class FactValueGrid;
 class Vehicle;
 class FactGroup;
 class QmlObjectListModel;
@@ -21,6 +25,10 @@ class QmlObjectListModel;
 class InstrumentValueData : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
+    Q_MOC_INCLUDE("Fact.h")
+    Q_MOC_INCLUDE("FactValueGrid.h")
 
 public:
     enum RangeType {
@@ -29,7 +37,7 @@ public:
         OpacityRange,
         IconSelectRange,
     };
-    Q_ENUMS(RangeType)
+    Q_ENUM(RangeType)
 
     explicit InstrumentValueData(FactValueGrid* factValueGrid, QObject* parent);
 
@@ -145,10 +153,9 @@ private:
     QVariantList        _rangeIcons;
     QVariantList        _rangeOpacities;
 
-    static const QStringList _rangeTypeNames;
+    QStringList _rangeTypeNames;
 
 };
 
 QML_DECLARE_TYPE(InstrumentValueData)
 
-Q_DECLARE_METATYPE(InstrumentValueData::RangeType)

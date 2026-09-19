@@ -101,3 +101,5 @@ void PipRevealTest::_collapsedPipLeavesTheRig()
     QVERIFY(setExpanded(pip, true));
     QTRY_COMPARE_WITH_TIMEOUT(view.rootObject()->property("pipAnchored").toBool(), true, 3000);
 }
+
+UT_REGISTER_TEST(PipRevealTest, TestLabel::Unit)

@@ -1,35 +1,19 @@
-target_sources(${CMAKE_PROJECT_NAME}
-    PRIVATE
-        ExifParser.cc
-        ExifParser.h
-        GeoTagController.cc
-        GeoTagController.h
-        GeoTagWorker.cc
-        GeoTagWorker.h
-        LogDownloadController.cc
-        LogDownloadController.h
-        LogEntry.cc
-        LogEntry.h
-        MAVLinkChartController.cc
-        MAVLinkChartController.h
-        MAVLinkConsoleController.cc
-        MAVLinkConsoleController.h
-        MAVLinkInspectorController.cc
-        MAVLinkInspectorController.h
-        MAVLinkMessage.cc
-        MAVLinkMessage.h
-        MAVLinkMessageField.cc
-        MAVLinkMessageField.h
-        MAVLinkSystem.cc
-        MAVLinkSystem.h
-        PX4LogParser.cc
-        PX4LogParser.h
-        ULogParser.cc
-        ULogParser.h
-)
+# ============================================================================
+# Analyze View Module
+# Flight log analysis, MAVLink inspection, and telemetry visualization
+# ============================================================================
+
+add_subdirectory(GeoTag)
+add_subdirectory(LogViewer)
+add_subdirectory(MAVLinkConsole)
+add_subdirectory(MAVLinkInspector)
+add_subdirectory(OnboardLogs)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# ----------------------------------------------------------------------------
+# QML Module for Analyze View UI
+# ----------------------------------------------------------------------------
 qt_add_library(AnalyzeViewModule STATIC)
 
 qt_add_qml_module(AnalyzeViewModule
@@ -37,25 +21,39 @@ qt_add_qml_module(AnalyzeViewModule
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
+        AnalyzePage.qml
         AnalyzeView.qml
-        GeoTagPage.qml
-        LogDownloadPage.qml
-        MAVLinkConsolePage.qml
-        MAVLinkInspectorPage.qml
-        VibrationPage.qml
+        MAVLinkConsole/MAVLinkConsolePage.qml
+        MAVLinkInspector/MAVLinkChart.qml
+        MAVLinkInspector/MAVLinkMessageButton.qml
+        MAVLinkInspector/MAVLinkInspectorPage.qml
+        LogViewer/LogViewerPage.qml
+        OnboardLogs/OnboardLogPage.qml
+        Vibration/VibrationPage.qml
     NO_PLUGIN
 )
 
-#===========================================================================#
+# Flatten subdir paths into /qmlimages/<name>; VibrationPageIcon URL has no .png
+# extension (consumer is QGCCorePlugin.cc).
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/GeoTag/GeoTagIcon.svg"
+    PROPERTIES QT_RESOURCE_ALIAS "GeoTagIcon.svg")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/MAVLinkConsole/MAVLinkConsoleIcon.svg"
+    PROPERTIES QT_RESOURCE_ALIAS "MAVLinkConsoleIcon.svg")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/MAVLinkInspector/MAVLinkInspector.svg"
+    PROPERTIES QT_RESOURCE_ALIAS "MAVLinkInspector.svg")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/OnboardLogs/OnboardLogIcon.svg"
+    PROPERTIES QT_RESOURCE_ALIAS "OnboardLogIcon.svg")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Vibration/VibrationPageIcon.png"
+    PROPERTIES QT_RESOURCE_ALIAS "VibrationPageIcon")
 
-CPMAddPackage(
-    NAME ulog_cpp
-    GITHUB_REPOSITORY PX4/ulog_cpp
-    GIT_TAG main
+qt_add_resources(${CMAKE_PROJECT_NAME} analyzeview_qmlimages
+    PREFIX "/qmlimages"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}"
+    FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/FloatingWindow.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/GeoTag/GeoTagIcon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/MAVLinkConsole/MAVLinkConsoleIcon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/MAVLinkInspector/MAVLinkInspector.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/OnboardLogs/OnboardLogIcon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Vibration/VibrationPageIcon.png"
 )
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(ulog_cpp PRIVATE -Wno-unknown-warning-option)
-endif()
-
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ulog_cpp::ulog_cpp)

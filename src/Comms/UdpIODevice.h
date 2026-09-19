@@ -1,22 +1,12 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QByteArray>
-#include <QtCore/QLoggingCategory>
 #include <QtNetwork/QUdpSocket>
 
-Q_DECLARE_LOGGING_CATEGORY(UdpIODeviceLog)
-
-/// UdpIODevice provides a QIODevice interface over a QUdpSocket in server mode.
+/// \brief UdpIODevice provides a QIODevice interface over a QUdpSocket in server mode.
+///
 /// It allows line-based reading using canReadLine() and readLineData() even when the socket is in bound mode.
+///
 class UdpIODevice: public QUdpSocket
 {
     Q_OBJECT

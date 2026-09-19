@@ -11,7 +11,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 
 RowLayout {
@@ -21,6 +21,7 @@ RowLayout {
     property bool       showExpand:         false
     property string     expandText:         qsTr("Details")
     property bool       waitForParameters:  false
+    property bool       expandedComponentWaitForParameters: false
     property Component  contentComponent
     property Component  expandedComponent
     property var        pageProperties
@@ -33,9 +34,12 @@ RowLayout {
     property bool   parametersReady:    QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable
 
     property bool _loadPages: !waitForParameters || parametersReady
+    property bool _showExpand: showExpand && expandedComponent !== undefined
+    property bool _expandedParametersReady: !expandedComponentWaitForParameters || parametersReady
+    property string _waitingForParamsText: activeVehicle && activeVehicle.parameterManager.parameterDownloadSkipped ? qsTr("Parameters not available") : qsTr("Waiting for parameters...")
 
     QGCLabel {
-        text:       qsTr("Waiting for parameters...")
+        text:       control._waitingForParamsText
         visible:    waitForParameters && !parametersReady
     }
 
@@ -56,12 +60,19 @@ RowLayout {
         visible:                expanded
     }
     
+    QGCLabel {
+        text:               control._waitingForParamsText
+        visible:            expanded && !_expandedParametersReady
+        Layout.alignment:   Qt.AlignTop
+    }
+
     Loader {
         id:                     expandedItemLoader
+        objectName:             "indicatorExpandedLoader"
         Layout.alignment:       Qt.AlignTop
         Layout.preferredWidth:  visible ? -1 : 0
-        visible:                expanded
-        sourceComponent:        expanded ? expandedComponent : undefined
+        visible:                expanded && _expandedParametersReady
+        sourceComponent:        expanded && _expandedParametersReady ? expandedComponent : undefined
 
         property var pageProperties: control.pageProperties
     }

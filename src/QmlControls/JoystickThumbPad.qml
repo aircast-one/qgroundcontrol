@@ -2,8 +2,7 @@ import QtQuick
 import QtQuick.Controls
 
 import QGroundControl
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
+import QGroundControl.Controls
 
 Item {
     id:             _joyRoot
@@ -25,6 +24,7 @@ Item {
     property real   stickPositionX:         _centerXY
     property real   stickPositionY:         !yAxisReCenter ? height : height / 2
     property bool   alredyCreated:          false
+    property bool   touchActive:            false
     
     onStickPositionXChanged:            calculateXAxis()
     onStickPositionYChanged:            calculateYAxis()
@@ -254,7 +254,17 @@ Item {
         minimumTouchPoints:     1
         maximumTouchPoints:     1
         touchPoints:            [ TouchPoint { id: touchPoint } ]
-        onPressed:              touchPoints => _joyRoot.thumbDown(touchPoints)
-        onReleased:             _joyRoot.reCenter()
+        onPressed: touchPoints => {
+            _joyRoot.touchActive = true
+            _joyRoot.thumbDown(touchPoints)
+        }
+        onReleased: {
+            _joyRoot.touchActive = false
+            _joyRoot.reCenter()
+        }
+        onCanceled: {
+            _joyRoot.touchActive = false
+            _joyRoot.reCenter()
+        }
     }
 }

@@ -71,21 +71,21 @@
     "shortDesc": "Alt (Rel)",
     "type":             "double",
     "decimalPlaces":    1,
-    "units":            "m"
+    "units":            "vertical m"
 },
 {
     "name":             "altitudeAMSL",
     "shortDesc": "Alt (AMSL)",
     "type":             "double",
     "decimalPlaces":    1,
-    "units":            "m"
+    "units":            "vertical m"
 },
 {
     "name":             "altitudeAboveTerr",
     "shortDesc": "Alt (Above Terrain)",
     "type":             "double",
     "decimalPlaces":    1,
-    "units":            "m"
+    "units":            "vertical m"
 },
 {
     "name":             "flightDistance",
@@ -111,6 +111,20 @@
 {
     "name":             "headingToHome",
     "shortDesc": "Heading to Home",
+    "type":             "double",
+    "decimalPlaces":    0,
+    "units":            "deg"
+},
+{
+    "name":             "headingFromHome",
+    "shortDesc": "Heading from Home",
+    "type":             "double",
+    "decimalPlaces":    0,
+    "units":            "deg"
+},
+{
+    "name":             "headingFromGCS",
+    "shortDesc": "Heading from GCS",
     "type":             "double",
     "decimalPlaces":    0,
     "units":            "deg"
@@ -163,6 +177,12 @@
     "shortDesc": "Imu temperature",
     "type":             "int16",
     "units":            "°C"
+},
+{
+    "name":             "rcRSSI",
+    "shortDesc": "RC RSSI",
+    "type":             "uint8",
+    "units":            "%"
 }
 ]
 }

@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "MapProvider.h"
@@ -18,7 +9,7 @@ class BingMapProvider : public MapProvider
 {
 protected:
     BingMapProvider(const QString &mapName, const QString &mapTypeCode, const QString &imageFormat, quint32 averageSize,
-                    QGeoMapType::MapStyle mapType)
+                    MapProvider::MapStyle mapType)
         : MapProvider(mapName, QStringLiteral("https://www.bing.com/maps/"), imageFormat, averageSize, mapType)
         , _mapTypeId(mapTypeCode) {}
 
@@ -48,7 +39,7 @@ public:
             QStringLiteral("r"),
             QStringLiteral("png"),
             AVERAGE_BING_STREET_MAP,
-            QGeoMapType::StreetMap) {}
+            MapProvider::StreetMap) {}
 };
 
 class BingSatelliteMapProvider : public BingMapProvider
@@ -60,7 +51,7 @@ public:
             QStringLiteral("a"),
             QStringLiteral("jpg"),
             AVERAGE_BING_SAT_MAP,
-            QGeoMapType::SatelliteMapDay) {}
+            MapProvider::SatelliteMapDay) {}
 };
 
 class BingHybridMapProvider : public BingMapProvider
@@ -72,5 +63,5 @@ public:
             QStringLiteral("h"),
             QStringLiteral("jpg"),
             AVERAGE_BING_SAT_MAP,
-            QGeoMapType::HybridMap) {}
+            MapProvider::HybridMap) {}
 };

@@ -15,6 +15,9 @@ class DebugApiServerTest : public UnitTest
 {
     Q_OBJECT
 
+protected:
+    void init() override;
+
 private slots:
     void _missingAuthHeaderRejected();
     void _statusEndpoint();

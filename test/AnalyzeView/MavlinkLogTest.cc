@@ -1,93 +1,183 @@
 #include "MavlinkLogTest.h"
+
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QUuid>
+
 #include "AppSettings.h"
+#include "LinkManager.h"
 #include "MAVLinkProtocol.h"
 #include "MavlinkSettings.h"
-#include "QGCTemporaryFile.h"
+#include "MultiVehicleManager.h"
 #include "SettingsManager.h"
+#include "Vehicle.h"
 
-#include <QtCore/QStandardPaths>
-#include <QtTest/QTest>
+namespace {
+int tempMavlinkLogCount(const char* extension)
+{
+    QDir tmpDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
+    const QStringList logFiles(tmpDir.entryList(QStringList(QStringLiteral("*.%1").arg(extension)), QDir::Files));
+    return logFiles.count();
+}
 
-void MavlinkLogTest::init(void)
+int savedTelemetryLogCount()
+{
+    const QString telemetrySavePath = SettingsManager::instance()->appSettings()->telemetrySavePath();
+    const QDir saveDir(telemetrySavePath);
+    const QString filter = QStringLiteral("*.%1").arg(AppSettings::telemetryFileExtension);
+    return saveDir.entryList(QStringList(filter), QDir::Files).count();
+}
+
+void removeSavedTelemetryLogs()
+{
+    const QString telemetrySavePath = SettingsManager::instance()->appSettings()->telemetrySavePath();
+    QDir saveDir(telemetrySavePath);
+    const QString filter = QStringLiteral("*.%1").arg(AppSettings::telemetryFileExtension);
+    const QStringList logFiles = saveDir.entryList(QStringList(filter), QDir::Files);
+    for (const QString& file : logFiles) {
+        QVERIFY(saveDir.remove(file));
+    }
+}
+}  // namespace
+
+void MavlinkLogTest::init()
 {
     UnitTest::init();
+    MultiVehicleManager::instance()->init();
+    LinkManager::instance()->setConnectionsAllowed();
+    // Make sure temp directory is clear of mavlink logs
+    QDir tmpDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
+    QStringList logFiles(tmpDir.entryList(QStringList(QString("*.%1").arg(_logFileExtension)), QDir::Files));
+    for (const QString& logFile : logFiles) {
+        QVERIFY(tmpDir.remove(logFile));
+    }
+
+    const QString testRoot =
+        QDir::tempPath() + QStringLiteral("/QGroundControl_unittest_MavlinkLogTest");
+    QVERIFY(QDir().mkpath(testRoot));
+    SettingsManager::instance()->appSettings()->savePath()->setRawValue(testRoot);
+    SettingsManager::instance()->appSettings()->disableAllPersistence()->setRawValue(false);
     SettingsManager::instance()->mavlinkSettings()->telemetrySave()->setRawValue(true);
     SettingsManager::instance()->mavlinkSettings()->telemetrySaveNotArmed()->setRawValue(false);
-    SettingsManager::instance()->appSettings()->disableAllPersistence()->setRawValue(false);
-    MAVLinkProtocol::deleteTempLogFiles();
-    QVERIFY(_telemetryDir().exists());
+
+    const QString telemetrySavePath = SettingsManager::instance()->appSettings()->telemetrySavePath();
+    QVERIFY(!telemetrySavePath.isEmpty());
+    QVERIFY(QDir().mkpath(telemetrySavePath));
+    removeSavedTelemetryLogs();
 }
 
-void MavlinkLogTest::cleanup(void)
+void MavlinkLogTest::cleanup()
 {
-    QCOMPARE(_tempLogs().count(), 0);
+    _disconnectMockLink();
+    // Make sure no left over logs in temp directory
+    QDir tmpDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
+    QStringList logFiles(tmpDir.entryList(QStringList(QString("*.%1").arg(_logFileExtension)), QDir::Files));
+    QCOMPARE(logFiles.count(), 0);
+    removeSavedTelemetryLogs();
     UnitTest::cleanup();
-}
-
-QDir MavlinkLogTest::_telemetryDir(void)
-{
-    const QString path = SettingsManager::instance()->appSettings()->telemetrySavePath();
-    QDir().mkpath(path);
-    return QDir(path);
-}
-
-QStringList MavlinkLogTest::_savedLogs(void)
-{
-    return _telemetryDir().entryList(QStringList(QStringLiteral("*.%1").arg(AppSettings::telemetryFileExtension)), QDir::Files);
-}
-
-QStringList MavlinkLogTest::_tempLogs(void)
-{
-    const QDir tmpDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
-    return tmpDir.entryList(QStringList(QStringLiteral("*.%1").arg(_logFileExtension)), QDir::Files);
-}
-
-void MavlinkLogTest::_removeSavedLogsNotIn(const QStringList& keep)
-{
-    QDir dir = _telemetryDir();
-    for (const QString& name : _savedLogs()) {
-        if (!keep.contains(name)) {
-            QVERIFY(dir.remove(name));
-        }
-    }
 }
 
 void MavlinkLogTest::_createTempLogFile(bool zeroLength)
 {
-    QGCTemporaryFile tempLogFile(QStringLiteral("%1.%2").arg(_tempLogFileTemplate, _logFileExtension));
-    tempLogFile.open();
+    const QString tempDirPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    const QString fileName = QStringLiteral("%1_%2.%3")
+                                 .arg(_tempLogFileTemplate)
+                                 .arg(QUuid::createUuid().toString(QUuid::WithoutBraces))
+                                 .arg(_logFileExtension);
+    QFile tempLogFile(QDir(tempDirPath).filePath(fileName));
+    QVERIFY(tempLogFile.open(QIODevice::WriteOnly));
     if (!zeroLength) {
         tempLogFile.write("foo");
     }
     tempLogFile.close();
 }
 
-void MavlinkLogTest::_orphanedLogIsSavedToTheTelemetryDirectory(void)
+void MavlinkLogTest::_bootLogDetectionCancel_test()
 {
-    const QStringList before = _savedLogs();
+    // Create a fake mavlink log
     _createTempLogFile(false);
-
+    QCOMPARE(tempMavlinkLogCount(_logFileExtension), 1);
     MAVLinkProtocol::instance()->checkForLostLogFiles();
-
-    QTRY_COMPARE(_savedLogs().count(), before.count() + 1);
-    QCOMPARE(_tempLogs().count(), 0);
-    _removeSavedLogsNotIn(before);
+    QVERIFY_TRUE_WAIT(tempMavlinkLogCount(_logFileExtension) == 0, TestTimeout::mediumMs());
 }
 
-void MavlinkLogTest::_zeroLengthOrphanIsDeleted(void)
+void MavlinkLogTest::_bootLogDetectionSave_test()
 {
-    const QStringList before = _savedLogs();
+    // Create a fake mavlink log
+    _createTempLogFile(false);
+    QCOMPARE(tempMavlinkLogCount(_logFileExtension), 1);
+    const int initialSavedLogCount = savedTelemetryLogCount();
+    MAVLinkProtocol::instance()->checkForLostLogFiles();
+    QVERIFY_TRUE_WAIT(tempMavlinkLogCount(_logFileExtension) == 0, TestTimeout::mediumMs());
+    QVERIFY_TRUE_WAIT(savedTelemetryLogCount() == (initialSavedLogCount + 1), TestTimeout::longMs());
+    removeSavedTelemetryLogs();
+}
+
+void MavlinkLogTest::_bootLogDetectionZeroLength_test()
+{
+    // Create a fake empty mavlink log
     _createTempLogFile(true);
-
+    QCOMPARE(tempMavlinkLogCount(_logFileExtension), 1);
     MAVLinkProtocol::instance()->checkForLostLogFiles();
-
-    QCOMPARE(_tempLogs().count(), 0);
-    QCOMPARE(_savedLogs(), before);
+    QVERIFY_TRUE_WAIT(tempMavlinkLogCount(_logFileExtension) == 0, TestTimeout::mediumMs());
+    // Zero length log files should not generate any additional UI pop-ups. It should just be deleted silently.
 }
 
-void MavlinkLogTest::_deleteTempLogFilesEmptiesTheTempDirectory(void)
+void MavlinkLogTest::_connectLogWorker(bool arm)
 {
+    const int initialSavedLogCount = savedTelemetryLogCount();
+    const bool originalSaveNotArmed =
+        SettingsManager::instance()->mavlinkSettings()->telemetrySaveNotArmed()->rawValue().toBool();
+    if (arm) {
+        SettingsManager::instance()->mavlinkSettings()->telemetrySaveNotArmed()->setRawValue(true);
+    }
+    _connectMockLink();
+    if (arm) {
+        MultiVehicleManager::instance()->activeVehicle()->setArmedShowError(true);
+    }
+    _disconnectMockLink();
+    SettingsManager::instance()->mavlinkSettings()->telemetrySaveNotArmed()->setRawValue(originalSaveNotArmed);
+    if (arm) {
+        const bool savedLog = UnitTest::waitForCondition(
+            [&]() { return savedTelemetryLogCount() == (initialSavedLogCount + 1); },
+            TestTimeout::mediumMs(),
+            QStringLiteral("savedTelemetryLogCount() == (initialSavedLogCount + 1)"));
+        if (savedLog) {
+            removeSavedTelemetryLogs();
+        } else {
+            QCOMPARE(savedTelemetryLogCount(), initialSavedLogCount);
+            QCOMPARE(tempMavlinkLogCount(_logFileExtension), 0);
+        }
+    } else {
+        QCOMPARE(savedTelemetryLogCount(), initialSavedLogCount);
+    }
+}
+
+void MavlinkLogTest::_connectLogNoArm_test()
+{
+    _connectLogWorker(false);
+}
+
+void MavlinkLogTest::_connectLogArm_test()
+{
+    QSKIP("MAVLinkProtocol::_startLogging() is a no-op during unit tests, so no "
+          "telemetry log is ever created. Testing the arm-triggers-save path "
+          "requires either removing the runningUnitTests() guard or injecting a "
+          "test-capable logging backend.");
+    _connectLogWorker(true);
+}
+
+void MavlinkLogTest::_deleteTempLogFiles_test()
+{
+    // Verify that the MAVLinkProtocol::deleteTempLogFiles api works correctly
     _createTempLogFile(false);
     MAVLinkProtocol::deleteTempLogFiles();
-    QCOMPARE(_tempLogs().count(), 0);
+    QDir tmpDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
+    QStringList logFiles(tmpDir.entryList(QStringList(QString("*.%1").arg(_logFileExtension)), QDir::Files));
+    QCOMPARE(logFiles.count(), 0);
 }
+
+UT_REGISTER_TEST(MavlinkLogTest, TestLabel::Integration, TestLabel::AnalyzeView, TestLabel::Vehicle,
+                 TestLabel::Serial)

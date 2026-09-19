@@ -14,17 +14,13 @@ import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
-import QGroundControl.Controllers
-import QGroundControl.FactSystem
 import QGroundControl.FactControls
 
 Item {
     id:         _root
 
     property Fact   _editorDialogFact: Fact { }
-    property bool   _searchFilter:      searchText.text.trim() != "" || controller.showModifiedOnly
+    property bool   _searchFilter:      searchText.text.trim() != "" || controller.showModifiedOnly || controller.showFavoritesOnly
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property bool   _showRCToParam:     _activeVehicle.px4Firmware
     property var    _appSettings:       QGroundControl.settingsManager.appSettings

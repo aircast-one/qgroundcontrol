@@ -10,6 +10,7 @@
 #pragma once
 
 #include "QmlObjectListModel.h"
+#include <QtQmlIntegration/QtQmlIntegration>
 #include "QGCMAVLink.h"
 #include "Vehicle.h"
 
@@ -21,6 +22,7 @@ class InstrumentValueData;
 class FactValueGrid : public QQuickItem
 {
     Q_OBJECT
+    QML_ELEMENT
 
 public:
     FactValueGrid(QQuickItem *parent = nullptr);

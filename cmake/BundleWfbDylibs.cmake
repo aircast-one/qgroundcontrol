@@ -64,6 +64,14 @@ file(REMOVE_RECURSE "${staging_dir}")
 execute_process(COMMAND install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_BINARY}"
                 ERROR_QUIET)
 
+if(DEP_BINARY AND NOT DEP_BINARY STREQUAL APP_BINARY)
+    execute_process(COMMAND codesign --force --sign - "${DEP_BINARY}"
+                    RESULT_VARIABLE dep_sign_result ERROR_VARIABLE dep_sign_error)
+    if(NOT dep_sign_result EQUAL 0)
+        message(FATAL_ERROR "wfb bundling: failed to sign ${DEP_BINARY}: ${dep_sign_error}")
+    endif()
+endif()
+
 execute_process(COMMAND codesign --force --sign - "${APP_BUNDLE}"
                 RESULT_VARIABLE sign_result ERROR_VARIABLE sign_error)
 if(NOT sign_result EQUAL 0)

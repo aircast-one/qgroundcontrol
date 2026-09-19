@@ -9,6 +9,8 @@
 
 #include "CameraControlTest.h"
 
+#include <QtCore/QRegularExpression>
+
 #include <algorithm>
 #include "QuickInteractionTestHelpers.h"
 #include "FlyViewSettings.h"
@@ -18,6 +20,8 @@
 #include <QtCore/QSettings>
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlPropertyMap>
+
+#include <memory>
 #include <QtQuick/QQuickItem>
 static bool hasVisibleItemWithText(QQuickItem* item, const QString& text)
 {
@@ -126,11 +130,20 @@ static void restoreRcControls(FlyViewSettings* const settings, const QVariant& s
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
+void CameraControlTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("qml", QtWarningMsg, QRegularExpression(QStringLiteral("rcControls setting is not valid JSON")));
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("Unable to assign \\[undefined\\] to bool")));
+}
+
 void CameraControlTest::_unmappedChannelsShowNoControls()
 {
     ChannelMappingScope mapping(0, 0, 0, 0);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -143,7 +156,9 @@ void CameraControlTest::_mappedChannelsRevealTheirControls()
 {
     ChannelMappingScope mapping(13, 14, 10, 9);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -159,7 +174,9 @@ void CameraControlTest::_rcSlidersAlternateEdgesClearOfTheCameraCluster()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"First","channel":7,"type":"slider"},{"label":"Second","channel":8,"type":"slider"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -189,7 +206,9 @@ void CameraControlTest::_aimingIsIncrementalAndClamped()
 {
     ChannelMappingScope mapping(13, 14, 0, 0);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -217,7 +236,8 @@ void CameraControlTest::_aimingIsIncrementalAndClamped()
 
 void CameraControlTest::_settingsExposeTheChannelMapping()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     globals.insert(QStringLiteral("activeVehicle"), QVariant());
 
     QQuickView view;
@@ -237,7 +257,9 @@ void CameraControlTest::_settingsFlagConflictingChannels()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Spray","channel":7,"type":"button"},{"label":"","channel":10,"type":"slider"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     globals.insert(QStringLiteral("activeVehicle"), QVariant());
 
     QQuickView view;
@@ -270,7 +292,9 @@ void CameraControlTest::_removingAControlOffersUndo()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Spray","channel":7,"type":"button"},{"label":"Pan","channel":8,"type":"slider"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     globals.insert(QStringLiteral("activeVehicle"), QVariant());
 
     QQuickView view;
@@ -299,7 +323,8 @@ void CameraControlTest::_removingAControlOffersUndo()
 
 void CameraControlTest::_scrollToItemPositionsTheFlickableAtTheSection()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     globals.insert(QStringLiteral("activeVehicle"), QVariant());
 
     QQuickView view;
@@ -329,7 +354,9 @@ void CameraControlTest::_pendingScrollFlagScrollsOnPageOpen()
     qsettings.beginGroup(QStringLiteral("QGCQml"));
     qsettings.setValue(QStringLiteral("scrollToRcControls"), true);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     globals.insert(QStringLiteral("activeVehicle"), QVariant());
 
     QQuickView view;
@@ -361,7 +388,9 @@ void CameraControlTest::_customRcControlsAppearForTheirChannels()
         R"({"label":"Duplicate","channel":8,"type":"button"},)"
         R"({"label":"Zoom clash","channel":10,"type":"button"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -396,7 +425,9 @@ void CameraControlTest::_threePositionSwitchCyclesThroughPositions()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Mode","channel":5,"type":"switch3"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -419,7 +450,9 @@ void CameraControlTest::_momentarySwitchTogglesCheckedOnPressAndRelease()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Arm","channel":6,"type":"momentary"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -444,7 +477,9 @@ void CameraControlTest::_sliderOrientationCanBeHorizontal()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Pan","channel":7,"type":"slider","orientation":"horizontal"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -463,7 +498,9 @@ void CameraControlTest::_malformedRcControlsSettingLeavesTheLayerEmptyAndIntact(
     const QString corrupt = QStringLiteral(R"([{"label":"Pan","channel":7,)");
     settings->rcControls()->setRawValue(corrupt);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -486,7 +523,9 @@ void CameraControlTest::_rotateBadgeFlipsSliderOrientationAndPersistsIt()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Pan","channel":7,"type":"slider"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -530,7 +569,9 @@ void CameraControlTest::_addingAControlHighlightsItInTheFlyView()
     qsettings.beginGroup(QStringLiteral("QGCQml"));
     qsettings.setValue(QStringLiteral("rcControlJustAdded"), QStringLiteral("7"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -558,7 +599,9 @@ void CameraControlTest::_longPressHintHidesOnceEditModeIsDiscovered()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Pan","channel":7,"type":"slider"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -591,7 +634,9 @@ void CameraControlTest::_momentarySwitchReleasesWhenEditModeInterruptsThePress()
     settings->rcControls()->setRawValue(QStringLiteral(
         R"([{"label":"Arm","channel":6,"type":"momentary"}])"));
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -616,7 +661,8 @@ void CameraControlTest::_momentarySwitchReleasesWhenEditModeInterruptsThePress()
 
 void CameraControlTest::_overrideIndicatorLaysOutForTheToolbar()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     globals.insert(QStringLiteral("activeVehicle"), QVariant());
 
     QQuickView view;
@@ -632,7 +678,9 @@ void CameraControlTest::_rcFallbackUsedWhenNoGimbalManager()
 {
     ChannelMappingScope mapping(13, 14, 0, 0);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -651,7 +699,9 @@ void CameraControlTest::_aimDragDrivesTheGimbal()
 {
     ChannelMappingScope mapping(13, 14, 0, 0);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -678,7 +728,9 @@ void CameraControlTest::_shutterAppearsForAMappedRecordChannel()
     {
         ChannelMappingScope mapping(0, 0, 0, 0, 0);
 
-        QQmlPropertyMap globals;
+        const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+        QQmlPropertyMap &globals = *globalsOwner;
         QQuickView view;
         QVERIFY(loadLayer(view, globals));
         QQuickItem* const shutter = view.rootObject()->findChild<QQuickItem*>(QStringLiteral("cameraShutterButton"));
@@ -688,7 +740,9 @@ void CameraControlTest::_shutterAppearsForAMappedRecordChannel()
 
     ChannelMappingScope mapping(0, 0, 0, 0, 11);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -713,7 +767,9 @@ void CameraControlTest::_pinchAndSliderShareOneZoomValue()
 {
     ChannelMappingScope mapping(0, 0, 10, 0);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -740,7 +796,9 @@ void CameraControlTest::_yawModeButtonOnlyWithAGimbalManager()
 {
     ChannelMappingScope mapping(13, 14, 0, 0);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -764,7 +822,9 @@ void CameraControlTest::_shutterFollowsTheRecordChannelWhenTheStreamIsDead()
 
     ChannelMappingScope mapping(0, 0, 0, 0, 11);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -788,7 +848,9 @@ void CameraControlTest::_aimAreaMustNotHoldOntoTouchPoints()
 {
     ChannelMappingScope mapping(13, 14, 10, 0);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -810,7 +872,9 @@ void CameraControlTest::_joystickSharingOneChannelForBothAxesIsRejected()
     settings->gimbalTiltChannel()->setRawValue(13);
     settings->gimbalPanChannel()->setRawValue(13);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     QVERIFY(loadLayer(view, globals));
 
@@ -826,3 +890,5 @@ void CameraControlTest::_joystickSharingOneChannelForBothAxesIsRejected()
     settings->gimbalTiltChannel()->setRawValue(savedTilt);
     settings->gimbalPanChannel()->setRawValue(savedPan);
 }
+
+UT_REGISTER_TEST(CameraControlTest, TestLabel::Unit)

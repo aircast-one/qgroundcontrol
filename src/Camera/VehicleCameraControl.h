@@ -1,15 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include "MavlinkCameraControl.h"
+#include "MavlinkCameraControlInterface.h"
 #include "QmlObjectListModel.h"
 
 class QGCVideoStreamInfo;
@@ -18,7 +9,8 @@ class QDomNode;
 class QDomNodeList;
 
 //-----------------------------------------------------------------------------
-/// Camera option exclusions
+/// \brief Camera option exclusions
+///
 class QGCCameraOptionExclusion : public QObject
 {
 public:
@@ -29,7 +21,8 @@ public:
 };
 
 //-----------------------------------------------------------------------------
-/// Camera option ranges
+/// \brief Camera option ranges
+///
 class QGCCameraOptionRange : public QObject
 {
 public:
@@ -43,120 +36,123 @@ public:
     QVariantList optVariants;
 };
 
-//-----------------------------------------------------------------------------
-/// MAVLink Camera API controller
-class VehicleCameraControl : public MavlinkCameraControl
+/// \brief MAVLink Camera API controller - connected to a real mavlink v2 camera
+///
+class VehicleCameraControl : public MavlinkCameraControlInterface
 {
+    Q_OBJECT
 public:
     VehicleCameraControl(const mavlink_camera_information_t* info, Vehicle* vehicle, int compID, QObject* parent = nullptr);
-    virtual ~VehicleCameraControl();
+    ~VehicleCameraControl() override;
 
-    Q_INVOKABLE virtual void setCameraModeVideo     ();
-    Q_INVOKABLE virtual void setCameraModePhoto     ();
-    Q_INVOKABLE virtual void toggleCameraMode       ();
-    Q_INVOKABLE virtual bool takePhoto              ();
-    Q_INVOKABLE virtual bool stopTakePhoto          ();
-    Q_INVOKABLE virtual bool startVideoRecording    ();
-    Q_INVOKABLE virtual bool stopVideoRecording     ();
-    Q_INVOKABLE virtual bool toggleVideoRecording   ();
-    Q_INVOKABLE virtual void resetSettings          ();
-    Q_INVOKABLE virtual void formatCard             (int id = 1);
-    Q_INVOKABLE virtual void stepZoom               (int direction);
-    Q_INVOKABLE virtual void startZoom              (int direction);
-    Q_INVOKABLE virtual void stopZoom               ();
-    Q_INVOKABLE virtual void stopStream             ();
-    Q_INVOKABLE virtual void resumeStream           ();
-    Q_INVOKABLE virtual void startTracking          (QRectF rec);
-    Q_INVOKABLE virtual void startTracking          (QPointF point, double radius);
-    Q_INVOKABLE virtual void stopTracking           ();
+    Q_INVOKABLE void setCameraModeVideo() override;
+    Q_INVOKABLE void setCameraModePhoto() override;
+    Q_INVOKABLE void toggleCameraMode       () override;
+    Q_INVOKABLE bool takePhoto              () override;
+    Q_INVOKABLE bool stopTakePhoto          () override;
+    Q_INVOKABLE bool startVideoRecording    () override;
+    Q_INVOKABLE bool stopVideoRecording     () override;
+    Q_INVOKABLE bool toggleVideoRecording   () override;
+    Q_INVOKABLE void resetSettings          () override;
+    Q_INVOKABLE void formatCard             (int id = 1) override;
+    Q_INVOKABLE void stepZoom               (int direction) override;
+    Q_INVOKABLE void startZoom              (int direction) override;
+    Q_INVOKABLE void stopZoom               () override;
+    Q_INVOKABLE void stepFocus              (int direction) override;
+    Q_INVOKABLE void startFocus             (int direction) override;
+    Q_INVOKABLE void stopFocus              () override;
+    Q_INVOKABLE void stopStream             () override;
+    Q_INVOKABLE void resumeStream           () override;
+    Q_INVOKABLE void startTrackingRect      (QRectF rec) override;
+    Q_INVOKABLE void startTrackingPoint     (QPointF point, double radius) override;
+    Q_INVOKABLE void stopTracking           () override;
 
-    virtual int         version             () { return _version; }
-    virtual QString     modelName           () { return _modelName; }
-    virtual QString     vendor              () { return _vendor; }
-    virtual QString     firmwareVersion     ();
-    virtual qreal       focalLength         () { return static_cast<qreal>(_info.focal_length); }
-    virtual QSizeF      sensorSize          () { return QSizeF(static_cast<qreal>(_info.sensor_size_h), static_cast<qreal>(_info.sensor_size_v)); }
-    virtual QSize       resolution          () { return QSize(_info.resolution_h, _info.resolution_v); }
-    virtual bool        capturesVideo       () { return _info.flags & CAMERA_CAP_FLAGS_CAPTURE_VIDEO; }
-    virtual bool        capturesPhotos      () { return _info.flags & CAMERA_CAP_FLAGS_CAPTURE_IMAGE; }
-    virtual bool        hasModes            () { return _info.flags & CAMERA_CAP_FLAGS_HAS_MODES; }
-    virtual bool        hasZoom             () { return _info.flags & CAMERA_CAP_FLAGS_HAS_BASIC_ZOOM; }
-    virtual bool        hasFocus            () { return _info.flags & CAMERA_CAP_FLAGS_HAS_BASIC_FOCUS; }
-    virtual bool        hasTracking         () { return _trackingStatus & TRACKING_SUPPORTED; }
-    virtual bool        hasVideoStream      () { return _info.flags & CAMERA_CAP_FLAGS_HAS_VIDEO_STREAM; }
-    virtual bool        photosInVideoMode   () { return _info.flags & CAMERA_CAP_FLAGS_CAN_CAPTURE_IMAGE_IN_VIDEO_MODE; }
-    virtual bool        videoInPhotoMode    () { return _info.flags & CAMERA_CAP_FLAGS_CAN_CAPTURE_VIDEO_IN_IMAGE_MODE; }
+    int         version             () const override { return _version; }
+    QString     modelName           () const override { return _modelName; }
+    QString     vendor              () const override { return _vendor; }
+    QString     firmwareVersion     () const override;
+    qreal       focalLength         () const override { return static_cast<qreal>(_mavlinkCameraInfo.focal_length); }
+    QSizeF      sensorSize          () const override { return QSizeF(static_cast<qreal>(_mavlinkCameraInfo.sensor_size_h), static_cast<qreal>(_mavlinkCameraInfo.sensor_size_v)); }
+    QSize       resolution          () const override { return QSize(_mavlinkCameraInfo.resolution_h, _mavlinkCameraInfo.resolution_v); }
+    bool        capturesVideo       () const override;
+    bool        capturesPhotos      () const override;
+    bool        hasModes            () const override { return _mavlinkCameraInfo.flags & CAMERA_CAP_FLAGS_HAS_MODES; }
+    bool        hasZoom             () const override { return _mavlinkCameraInfo.flags & CAMERA_CAP_FLAGS_HAS_BASIC_ZOOM; }
+    bool        hasFocus            () const override { return _mavlinkCameraInfo.flags & CAMERA_CAP_FLAGS_HAS_BASIC_FOCUS; }
+    bool        hasTracking         () const override { return _hasTrackingRectCapability || _hasTrackingPointCapability; }
+    bool        supportsTrackingPoint() const override { return _hasTrackingPointCapability; }
+    bool        supportsTrackingRect () const override { return _hasTrackingRectCapability; }
+    bool        hasVideoStream      () const override { return _mavlinkCameraInfo.flags & CAMERA_CAP_FLAGS_HAS_VIDEO_STREAM; }
+    bool        photosInVideoMode   () const override { return _mavlinkCameraInfo.flags & CAMERA_CAP_FLAGS_CAN_CAPTURE_IMAGE_IN_VIDEO_MODE; }
+    bool        videoInPhotoMode    () const override { return _mavlinkCameraInfo.flags & CAMERA_CAP_FLAGS_CAN_CAPTURE_VIDEO_IN_IMAGE_MODE; }
+    CaptureVideoState captureVideoState() const override;
+    CapturePhotosState capturePhotosState() const override;
 
-    virtual int                 compID              () { return _compID; }
-    virtual bool                isBasic             () { return _settings.size() == 0; }
-    virtual VideoCaptureStatus  videoCaptureStatus  ();
-    virtual PhotoCaptureStatus  photoCaptureStatus  ();
-    virtual PhotoCaptureMode    photoCaptureMode    () { return _photoMode; }
-    virtual qreal               photoLapse          () { return _photoLapse; }
-    virtual int                 photoLapseCount     () { return _photoLapseCount; }
-    virtual CameraMode          cameraMode          () { return _cameraMode; }
-    virtual StorageStatus       storageStatus       () { return _storageStatus; }
-    virtual QStringList         activeSettings      ();
-    virtual quint32             storageFree         () { return _storageFree;  }
-    virtual QString             storageFreeStr      ();
-    virtual quint32             storageTotal        () { return _storageTotal; }
-    virtual int                 batteryRemaining    () { return _batteryRemaining; }
-    virtual QString             batteryRemainingStr ();
-    virtual bool                paramComplete       () { return _paramComplete; }
-    virtual qreal               zoomLevel           () { return _zoomLevel; }
-    virtual qreal               focusLevel          () { return _focusLevel; }
+    int                 compID              () const override { return _compID; }
+    bool                isBasic             () const override { return _settings.size() == 0; }
+    StorageStatus       storageStatus       () const override { return _storageStatus; }
+    QStringList         activeSettings      () const override;
+    quint32             storageFree         () const override { return _storageFree;  }
+    QString             storageFreeStr      () const override;
+    quint32             storageTotal        () const override { return _storageTotal; }
+    int                 batteryRemaining    () const override { return _batteryRemaining; }
+    QString             batteryRemainingStr () const override;
+    bool                paramComplete       () const override { return _paramComplete; }
+    qreal               zoomLevel           () const override { return _zoomLevel; }
+    qreal               focusLevel          () const override { return _focusLevel; }
 
-    virtual QmlObjectListModel* streams             () { return &_streams; }
-    virtual QGCVideoStreamInfo* currentStreamInstance();
-    virtual QGCVideoStreamInfo* thermalStreamInstance();
-    virtual int                 currentStream       () { return _currentStream; }
-    virtual void                setCurrentStream    (int stream);
-    virtual bool                autoStream          ();
-    virtual quint32             recordTime          () { return _recordTime; }
-    virtual QString             recordTimeStr       ();
+    QmlObjectListModel* streams             () override { return &_streams; }
+    QGCVideoStreamInfo* currentStreamInstance() override;
+    QGCVideoStreamInfo* thermalStreamInstance() override;
+    int                 currentStream       () const override { return _currentStream; }
+    void                setCurrentStream    (int stream) override;
+    bool                autoStream          () const override;
+    quint32             recordTime          () const override { return _recordTime; }
+    QString             recordTimeStr       () const override;
 
-    virtual QStringList streamLabels        () { return _streamLabels; }
+    QStringList streamLabels        () const override { return _streamLabels; }
 
-    virtual ThermalViewMode thermalMode     () { return _thermalMode; }
-    virtual void        setThermalMode      (ThermalViewMode mode);
-    virtual double      thermalOpacity      () { return _thermalOpacity; }
-    virtual void        setThermalOpacity   (double val);
+    ThermalViewMode thermalMode     () const override { return _thermalMode; }
+    void        setThermalMode      (ThermalViewMode mode) override;
+    double      thermalOpacity      () const override { return _thermalOpacity; }
+    void        setThermalOpacity   (double val) override;
 
-    virtual void        setZoomLevel        (qreal level);
-    virtual void        setFocusLevel       (qreal level);
-    virtual void        setCameraMode       (CameraMode mode);
-    virtual void        setPhotoCaptureMode        (PhotoCaptureMode mode);
-    virtual void        setPhotoLapse       (qreal interval);
-    virtual void        setPhotoLapseCount  (int count);
+    void        setZoomLevel        (qreal level) override;
+    void        setFocusLevel       (qreal level) override;
+    void        setCameraMode(CameraMode cameraMode) override;
+    void        setPhotoCaptureMode        (PhotoCaptureMode mode) override;
+    void        setPhotoLapse       (qreal interval) override;
+    void        setPhotoLapseCount  (int count) override;
 
-    virtual void        handleSettings      (const mavlink_camera_settings_t& settings);
-    virtual void        handleCaptureStatus (const mavlink_camera_capture_status_t& capStatus);
-    virtual void        handleParamAck      (const mavlink_param_ext_ack_t& ack);
-    virtual void        handleParamValue    (const mavlink_param_ext_value_t& value);
-    virtual void        handleStorageInfo   (const mavlink_storage_information_t& st);
-    virtual void        handleBatteryStatus (const mavlink_battery_status_t& bs);
-    virtual void        handleTrackingImageStatus(const mavlink_camera_tracking_image_status_t *tis);
-    virtual void        handleVideoInfo     (const mavlink_video_stream_information_t *vi);
-    virtual void        handleVideoStatus   (const mavlink_video_stream_status_t *vs);
+    void        handleCameraSettings(const mavlink_camera_settings_t& settings) override;
+    void        handleCameraCaptureStatus(const mavlink_camera_capture_status_t& cameraCaptureStatus) override;
+    void        handleParamExtAck   (const mavlink_param_ext_ack_t& paramExtAck) override;
+    void        handleParamExtValue (const mavlink_param_ext_value_t& paramExtValue) override;
+    void        handleStorageInformation(const mavlink_storage_information_t& storageInformation) override;
+    void        handleBatteryStatus (const mavlink_battery_status_t& bs) override;
+    void        handleTrackingImageStatus(const mavlink_camera_tracking_image_status_t &trackingImageStatus) override;
+    void        handleVideoStreamInformation(const mavlink_video_stream_information_t &videoStreamInformation) override;
+    void        handleVideoStreamStatus(const mavlink_video_stream_status_t &videoStreamStatus) override;
 
-    virtual bool        trackingEnabled     () { return _trackingStatus & TRACKING_ENABLED; }
-    virtual void        setTrackingEnabled  (bool set);
+    bool        trackingEnabled     () const override { return _trackingEnabled; }
+    void        setTrackingEnabled  (bool set) override;
 
-    virtual TrackingStatus trackingStatus   () { return _trackingStatus; }
+    bool trackingImageIsActive() const override { return _trackingImageIsActive; }
+    bool trackingImageIsPoint() const override { return _trackingImageIsPoint; }
+    QRectF trackingImageRect() const override { return _trackingImageRect; }
+    QPointF trackingImagePoint() const override { return _trackingImagePoint; }
+    qreal trackingImageRadius() const override { return _trackingImageRadius; }
 
-    virtual bool trackingImageStatus() { return _trackingImageStatus.tracking_status == 1; }
-    virtual QRectF trackingImageRect() { return _trackingImageRect; }
-
-    virtual Fact*   exposureMode        ();
-    virtual Fact*   ev                  ();
-    virtual Fact*   iso                 ();
-    virtual Fact*   shutterSpeed        ();
-    virtual Fact*   aperture            ();
-    virtual Fact*   wb                  ();
-    virtual Fact*   mode                ();
-    virtual void    factChanged         (Fact* pFact);
-    virtual bool    incomingParameter   (Fact* pFact, QVariant& newValue);
-    virtual bool    validateParameter   (Fact* pFact, QVariant& newValue);
+    Fact*   exposureMode        () override;
+    Fact*   ev                  () override;
+    Fact*   iso                 () override;
+    Fact*   shutterSpeed        () override;
+    Fact*   aperture            () override;
+    Fact*   wb                  () override;
+    Fact*   mode                () override;
+    void    factChanged         (Fact* pFact) override;
+    bool    incomingParameter   (Fact* pFact, QVariant& newValue) override;
+    bool    validateParameter   (Fact* pFact, QVariant& newValue) override;
 
     static constexpr const char* kCondition       = "condition";
     static constexpr const char* kControl         = "control";
@@ -210,8 +206,8 @@ public:
     static constexpr const char* kCAM_MODE        = "CAM_MODE";
 
 protected:
-    virtual void    _setVideoStatus         (VideoCaptureStatus status);
-    virtual void    _setPhotoStatus         (PhotoCaptureStatus status);
+    virtual void    _setVideoCaptureStatus  (VideoCaptureStatus captureStatus);
+    virtual void    _setPhotoCaptureStatus  (PhotoCaptureStatus captureStatus);
     virtual void    _setCameraMode          (CameraMode mode);
     virtual void    _requestStreamInfo      (uint8_t streamID);
     virtual void    _requestStreamStatus    (uint8_t streamID);
@@ -229,13 +225,14 @@ protected slots:
     virtual void    _downloadFinished       ();
     virtual void    _mavCommandResult       (int vehicleId, int component, int command, int result, int failureCode);
     virtual void    _dataReady              (QByteArray data);
-    virtual void    _paramDone              ();
     virtual void    _streamInfoTimeout      ();
     virtual void    _streamStatusTimeout    ();
     virtual void    _cameraSettingsTimeout  ();
     virtual void    _storageInfoTimeout     ();
     virtual void    _recTimerHandler        ();
     virtual void    _checkForVideoStreams   ();
+    virtual void    _onVideoManagerRecordingChanged  (bool recording);
+    void            _paramDone              () override;
 
 private:
     bool    _handleLocalization             (QByteArray& bytes);
@@ -259,9 +256,8 @@ private:
     QString         _getParamName           (const char* param_id);
 
 protected:
-    Vehicle*                            _vehicle            = nullptr;
     int                                 _compID             = 0;
-    mavlink_camera_information_t        _info;
+    mavlink_camera_information_t        _mavlinkCameraInfo;
     int                                 _version            = 0;
     bool                                _cached             = false;
     bool                                _paramComplete      = false;
@@ -274,13 +270,7 @@ protected:
     QString                             _modelName;
     QString                             _vendor;
     QString                             _cacheFile;
-    CameraMode                          _cameraMode         = CAM_MODE_UNDEFINED;
     StorageStatus                       _storageStatus      = STORAGE_NOT_SUPPORTED;
-    PhotoCaptureMode                    _photoMode          = PHOTO_CAPTURE_SINGLE;
-    qreal                               _photoLapse         = 1.0;
-    int                                 _photoLapseCount    = 0;
-    VideoCaptureStatus                  _video_status       = VIDEO_CAPTURE_STATUS_UNDEFINED;
-    PhotoCaptureStatus                  _photo_status       = PHOTO_CAPTURE_STATUS_UNDEFINED;
     QStringList                         _activeSettings;
     QStringList                         _settings;
     QTimer                              _captureStatusTimer;
@@ -294,7 +284,6 @@ protected:
     int                                 _storageInfoRetries = 0;
     int                                 _captureInfoRetries = 0;
     bool                                _resetting          = false;
-    QTimer                              _recTimer;
     QTime                               _recTime;
     uint32_t                            _recordTime         = 0;
     //-- Parameters that require a full update
@@ -309,15 +298,19 @@ protected:
     QTimer                              _streamInfoTimer;
     QTimer                              _streamStatusTimer;
     QTimer                              _cameraSettingsTimer;
+    QTimer                              _cameraSettingsRefreshTimer;
     QTimer                              _storageInfoTimer;
     QmlObjectListModel                  _streams;
     QStringList                         _streamLabels;
     ThermalViewMode                     _thermalMode        = THERMAL_BLEND;
     double                              _thermalOpacity     = 85.0;
-    TrackingStatus                      _trackingStatus     = TRACKING_UNKNOWN;
-    QRectF                              _trackingMarquee;
-    QPointF                             _trackingPoint;
-    double                              _trackingRadius     = 0.0;
-    mavlink_camera_tracking_image_status_t  _trackingImageStatus;
+    bool                                _hasTrackingRectCapability = false;
+    bool                                _hasTrackingPointCapability = false;
+    bool                                _trackingEnabled      = false;
+    bool                                    _trackingImageIsActive = false;
+    bool                                    _trackingImageIsPoint = false;
+    mavlink_camera_tracking_image_status_t  _trackingImageStatus{};
     QRectF                                  _trackingImageRect;
+    QPointF                                 _trackingImagePoint;
+    qreal                                   _trackingImageRadius = 0.0;
 };

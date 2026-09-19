@@ -1,10 +1,14 @@
 #include "PlanViewLayoutTest.h"
+
+#include <QtCore/QRegularExpression>
 #include "QuickInteractionTestHelpers.h"
 #include "SettingsManager.h"
 #include "PlanViewSettings.h"
 
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlPropertyMap>
+
+#include <memory>
 
 namespace {
 
@@ -95,9 +99,18 @@ qreal expectedWideWidth(const Layout &layout)
 
 }
 
+void PlanViewLayoutTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("First item is not MissionSettingsItem")));
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("(CameraSection|MissionSettingsEditor|SimpleItemEditor).qml.*TypeError")));
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("Required property missionItem was not initialized")));
+}
+
 void PlanViewLayoutTest::_narrowWindowStacksTheInspectorUnderTheDock()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
@@ -114,7 +127,8 @@ void PlanViewLayoutTest::_narrowWindowStacksTheInspectorUnderTheDock()
 void PlanViewLayoutTest::_narrowWindowGivesTheTerrainProfileItsOwnBand()
 {
     MissionStatusScope status(true);
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
@@ -133,7 +147,8 @@ void PlanViewLayoutTest::_narrowWindowGivesTheTerrainProfileItsOwnBand()
 
 void PlanViewLayoutTest::_wideWindowKeepsTheInspectorOnTheRight()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
@@ -148,7 +163,8 @@ void PlanViewLayoutTest::_wideWindowKeepsTheInspectorOnTheRight()
 
 void PlanViewLayoutTest::_rotatingBackRestoresTheSideInspector()
 {
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
+    QQmlPropertyMap &globals = *globalsOwner;
     QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
@@ -165,3 +181,5 @@ void PlanViewLayoutTest::_rotatingBackRestoresTheSideInspector()
     QVERIFY(near(layout.inspector->width(), expectedWideWidth(layout)));
     QVERIFY(near(layout.dock->y(), (layout.panelHeight() - layout.dock->height()) / 2));
 }
+
+UT_REGISTER_TEST(PlanViewLayoutTest, TestLabel::Unit)

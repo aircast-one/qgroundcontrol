@@ -1,4 +1,4 @@
-# QGroundControl开发指南
+# QGroundControl Dev Guide (Daily Builds)
 
 [![Discuss](https://img.shields.io/badge/discuss-dev-ff69b4.svg)](http://discuss.px4.io/c/qgroundcontrol/qgroundcontrol-developers)
 [![Discord](https://discordapp.com/api/guilds/1022170275984457759/widget.png?style=shield)](https://discord.com/channels/1022170275984457759/1022185820683255908)
@@ -48,8 +48,8 @@ QGC 用户界面是使用 Qt Qml 实现的。 Qml 提供硬件加速，它是平
 
 PX4 开发者指南包含更多关于（通用）文件翻译工具链的信息：
 
-- [文档](https://dev.px4.io/en/contribute/docs.html)
-- [翻译](https://dev.px4.io/en/contribute/docs.html)
+- [Documentation](https://docs.px4.io/main/en/contribute/docs)
+- [Translation](https://docs.px4.io/main/en/contribute/docs.html)
 
 ## 许可证
 

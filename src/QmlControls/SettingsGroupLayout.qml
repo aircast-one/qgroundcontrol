@@ -2,8 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.ScreenTools
-import QGroundControl.Palette
+import QGroundControl.Controls
 
 ColumnLayout {
     id:                 control    
@@ -19,6 +18,9 @@ ColumnLayout {
     property string outerBorderColor    : defaultBorderColor
 
     property string heading
+    property string headingDescription
+    property real   defaultHeadingPointSize: ScreenTools.smallFontPointSize
+    property real   headingPointSize:        defaultHeadingPointSize
     property string headingAction
     property string description
     property bool   showDividers:       true
@@ -47,7 +49,7 @@ ColumnLayout {
         QGCLabel {
             Layout.fillWidth:   true
             text:               heading
-            font.pointSize:     ScreenTools.smallFontPointSize
+            font.pointSize:     headingPointSize
             color:              Qt.alpha(QGroundControl.globalPalette.text, 0.6)
         }
 

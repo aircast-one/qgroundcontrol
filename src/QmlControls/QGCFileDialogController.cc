@@ -1,13 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #include "QGCFileDialogController.h"
 #include "QGCLoggingCategory.h"
 #include "SettingsManager.h"
@@ -15,17 +5,62 @@
 
 #include <QtCore/QDir>
 
-QGC_LOGGING_CATEGORY(QGCFileDialogControllerLog, "qgc.qmlcontrols.qgcfiledialogcontroller")
+#ifdef Q_OS_ANDROID
+#include <QtCore/QPointer>
+#include "AndroidInterface.h"
+#endif
+
+QGC_LOGGING_CATEGORY(QGCFileDialogControllerLog, "QMLControls.QGCFileDialogController")
+
+#ifdef QGC_UNITTEST_BUILD
+static bool s_testHookArmed = false;
+static QString s_testNextFile;
+
+bool QGCFileDialogController::testHookArmed()
+{
+    return s_testHookArmed;
+}
+
+QString QGCFileDialogController::takeTestNextFile()
+{
+    s_testHookArmed = false;
+    const QString file = s_testNextFile;
+    s_testNextFile.clear();
+    return file;
+}
+
+void QGCFileDialogController::setTestNextFileForAccept(const QString &file)
+{
+    s_testHookArmed = true;
+    s_testNextFile = file;
+}
+
+void QGCFileDialogController::setTestRejectNext()
+{
+    s_testHookArmed = true;
+    s_testNextFile.clear();
+}
+#else
+bool QGCFileDialogController::testHookArmed()
+{
+    return false;
+}
+
+QString QGCFileDialogController::takeTestNextFile()
+{
+    return QString();
+}
+#endif
 
 QGCFileDialogController::QGCFileDialogController(QObject *parent)
     : QObject(parent)
 {
-    // qCDebug(QGCFileDialogControllerLog) << Q_FUNC_INFO << this;
+    qCDebug(QGCFileDialogControllerLog) << this;
 }
 
 QGCFileDialogController::~QGCFileDialogController()
 {
-    // qCDebug(QGCFileDialogControllerLog) << Q_FUNC_INFO << this;
+    qCDebug(QGCFileDialogControllerLog) << this;
 }
 
 QStringList QGCFileDialogController::getFiles(const QString &directoryPath, const QStringList &nameFilters)
@@ -108,9 +143,75 @@ QString QGCFileDialogController::urlToLocalFile(QUrl url)
 {
     // For some strange reason on Qt6 running on Linux files returned by FileDialog are not returned as local file urls.
     // Seems to be new behavior with Qt6.
+    QString result;
     if (url.isLocalFile()) {
-        return url.toLocalFile();
+        result = url.toLocalFile();
+    } else {
+        result = url.toString();
     }
 
-    return url.toString();
+#ifndef Q_OS_WIN
+    // Qt6 Linux FileDialog can return file URLs missing the third slash
+    // (file://path instead of file:///path). Qt parses that as host=first-segment,
+    // path=rest, and toLocalFile() yields "//host/rest" (UNC-style). On non-Windows
+    // platforms drop the spurious leading slash so it becomes a normal absolute path.
+    if (result.startsWith(QStringLiteral("//"))) {
+        result = result.mid(1);
+    }
+#endif
+
+    return result;
 }
+
+QUrl QGCFileDialogController::localFileToUrl(const QString &localFile)
+{
+    // Empty in, empty out - QUrl::fromLocalFile("") would return the degenerate "file:" url
+    return localFile.isEmpty() ? QUrl() : QUrl::fromLocalFile(localFile);
+}
+
+void QGCFileDialogController::importFromNativePicker()
+{
+#ifdef Q_OS_ANDROID
+    const QString missionPath = SettingsManager::instance()->appSettings()->missionSavePath();
+    if (missionPath.isEmpty()) {
+        qCWarning(QGCFileDialogControllerLog) << "Missions save path is empty";
+        emit importFailed(tr("Missions directory is not configured"));
+        return;
+    }
+
+    QDir dir(missionPath);
+    if (!dir.exists()) {
+        qCWarning(QGCFileDialogControllerLog) << "Missions save path does not exist";
+        emit importFailed(tr("Missions save path does not exist"));
+        return;
+    }
+
+    QPointer<QGCFileDialogController> self = this;
+    AndroidInterface::openFileImportDialog(missionPath, [self](const QString& filePath) {
+        if (self) {
+            QMetaObject::invokeMethod(
+                self,
+                [filePath, self]() { self->_handleImportResult(filePath); },
+                Qt::QueuedConnection);
+        }
+    });
+#else
+    qCWarning(QGCFileDialogControllerLog) << Q_FUNC_INFO << "only supported on Android";
+#endif
+}
+
+#ifdef Q_OS_ANDROID
+
+void QGCFileDialogController::_handleImportResult(const QString& filePath)
+{
+    if (filePath.isEmpty()) {
+        qCWarning(QGCFileDialogControllerLog) << "Import failed: empty file path received from Java";
+        emit importFailed(tr("Failed to import file"));
+        return;
+    }
+
+    qCDebug(QGCFileDialogControllerLog) << "File imported successfully to:" << filePath;
+    emit fileImported(filePath);
+}
+
+#endif // Q_OS_ANDROID

@@ -1,19 +1,7 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "FlyViewSettings.h"
-
-#include <QtQml/QQmlEngine>
 
 DECLARE_SETTINGGROUP(FlyView, "FlyView")
 {
-    qmlRegisterUncreatableType<FlyViewSettings>("QGroundControl.SettingsManager", 1, 0, "FlyViewSettings", "Reference only"); \
 }
 
 DECLARE_SETTINGSFACT(FlyViewSettings, guidedMinimumAltitude)
@@ -38,3 +26,4 @@ DECLARE_SETTINGSFACT(FlyViewSettings, cameraZoomChannel)
 DECLARE_SETTINGSFACT(FlyViewSettings, cameraLightChannel)
 DECLARE_SETTINGSFACT(FlyViewSettings, cameraRecordChannel)
 DECLARE_SETTINGSFACT(FlyViewSettings, rcControls)
+DECLARE_SETTINGSFACT(FlyViewSettings, enableAutomaticMissionPopups)

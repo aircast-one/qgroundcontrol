@@ -204,8 +204,8 @@ mod geometry {
     fn every_recorded_polygon_covers_the_same_area() {
         let wrong: Vec<String> = shapes()
             .iter()
-            .map(|(name, polygon, case)| (name, format!("{:.4}", area(polygon)), case["area"].as_str().unwrap().to_string()))
-            .filter(|(_, ours, theirs)| ours != theirs)
+            .map(|(name, polygon, case)| (name, area(polygon), case["area"].as_str().unwrap().parse::<f64>().unwrap()))
+            .filter(|(_, ours, theirs)| (ours - theirs).abs() > 0.001)
             .map(|(name, ours, theirs)| format!("{name} qt {theirs} rust {ours}"))
             .collect();
         assert!(wrong.is_empty(), "{wrong:?}");

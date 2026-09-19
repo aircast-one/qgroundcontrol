@@ -12,7 +12,6 @@ import QtQuick
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
-import QGroundControl.ScreenTools
 
 // Rally points as one grouped list. This used to be a description card with an editor for
 // whichever point happened to be current underneath it, so the set of rally points was only ever

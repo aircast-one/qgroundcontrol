@@ -67,3 +67,5 @@ void FirmwareUpdateAvailableTest::_clearingTheVersionAnnouncesIt()
     QCOMPARE(spy.count(), 1);
     QCOMPARE(vehicle->latestStableFirmwareVersion(), QString());
 }
+
+UT_REGISTER_TEST(FirmwareUpdateAvailableTest, TestLabel::Unit)

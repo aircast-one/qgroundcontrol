@@ -12,7 +12,6 @@ import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 // A row that picks one of a fact's enum values. The alternative in a grouped list is an embedded
 // combo box, which on macOS draws a system control with its own fill and a saturated chevron

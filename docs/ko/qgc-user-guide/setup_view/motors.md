@@ -7,8 +7,6 @@
 기체별 설명서는 하위 주제로 제공됩니다(예: [모터 설정(ArduSub)](../setup_view/motors_ardusub.md)).
 :::
 
-![모터 테스트](../../../assets/setup/Motors.png)
-
 ## 테스트 절차
 
 모터를 테스트하려면:
@@ -34,5 +32,5 @@
 
 ## 추가 정보
 
-- [기본 설정 > 모터 설정](http://docs.px4.io/master/en/config/motors.html) (_PX4 사용자 가이드_) - 여기에는 추가 PX4 관련 정보를 설명합니다.
+- [Basic Configuration > Motor Setup](http://docs.px4.io/main/en/config/motors.html) (_PX4 User Guide_) - This contains additional PX4-specific information.
 - [ESCS and Motors](https://ardupilot.org/copter/docs/connect-escs-and-motors.html#motor-order-diagrams) - This is the Motor order diagrams for all frames

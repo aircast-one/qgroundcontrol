@@ -116,3 +116,5 @@ void PlatformThemeTest::_paletteRolesDeriveFromTheHostTones()
         QCOMPARE(disabled.primaryButtonText(), t.inkMuted);
     }
 }
+
+UT_REGISTER_TEST(PlatformThemeTest, TestLabel::Unit)

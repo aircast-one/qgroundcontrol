@@ -1,17 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #include "ComponentInformationTranslation.h"
 #include "QGCCachedFileDownload.h"
-#include "JsonHelper.h"
-#include "QGCLZMA.h"
+#include "JsonParsing.h"
+#include "JsonSchemaValidator.h"
+#include "QGCCompression.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QStandardPaths>
@@ -20,7 +11,7 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/QXmlStreamReader>
 
-QGC_LOGGING_CATEGORY(ComponentInformationTranslationLog, "ComponentInformationTranslationLog")
+QGC_LOGGING_CATEGORY(ComponentInformationTranslationLog, "ComponentInformation.ComponentInformationTranslation")
 
 ComponentInformationTranslation::ComponentInformationTranslation(QObject* parent,
                                                                  QGCCachedFileDownload* cachedFileDownload)
@@ -29,66 +20,70 @@ ComponentInformationTranslation::ComponentInformationTranslation(QObject* parent
 }
 
 bool ComponentInformationTranslation::downloadAndTranslate(const QString& summaryJsonFile,
-                                                           const QString& toTranslateJsonFile, int maxCacheAgeSec)
+                                                           const QString& toTranslateJsonFile, int maxCacheAgeSec, const QString& componentName)
 {
+    // Metadata is authored in English, no translation needed
+    const QString locale = QLocale::system().name();
+    if (locale.startsWith(QLatin1String("en"))) {
+        qCDebug(ComponentInformationTranslationLog) << "Skipping translation for English locale" << locale << "for" << componentName;
+        return false;
+    }
+
     // Parse summary: find url for current locale
     _toTranslateJsonFile = toTranslateJsonFile;
-    QString locale = QLocale::system().name();
-    QString url = getUrlFromSummaryJson(summaryJsonFile, locale);
+    QString url = getUrlFromSummaryJson(summaryJsonFile, locale, componentName);
     if (url.isEmpty()) {
         return false;
     }
 
     // Download file
-    connect(_cachedFileDownload, &QGCCachedFileDownload::downloadComplete, this, &ComponentInformationTranslation::onDownloadCompleted);
+    connect(_cachedFileDownload, &QGCCachedFileDownload::finished, this, &ComponentInformationTranslation::onDownloadCompleted);
     if (!_cachedFileDownload->download(url, maxCacheAgeSec)) {
         qCWarning(ComponentInformationTranslationLog) << "Metadata translation download failed";
-        disconnect(_cachedFileDownload, &QGCCachedFileDownload::downloadComplete, this, &ComponentInformationTranslation::onDownloadCompleted);
+        disconnect(_cachedFileDownload, &QGCCachedFileDownload::finished, this, &ComponentInformationTranslation::onDownloadCompleted);
         return false;
     }
     return true;
 }
 
-QString ComponentInformationTranslation::getUrlFromSummaryJson(const QString &summaryJsonFile, const QString &locale)
+QString ComponentInformationTranslation::getUrlFromSummaryJson(const QString &summaryJsonFile, const QString &locale, const QString &componentName)
 {
     QString         errorString;
     QJsonDocument   jsonDoc;
 
-    if (!JsonHelper::isJsonFile(summaryJsonFile, jsonDoc, errorString)) {
-        qCWarning(ComponentInformationTranslationLog) << "Metadata translation summary json file open failed:" << errorString;
+    if (!JsonParsing::isJsonFile(summaryJsonFile, jsonDoc, errorString)) {
+        qCWarning(ComponentInformationTranslationLog) << "Metadata translation summary json file open failed for" << componentName << ":" << errorString;
         return "";
     }
     QJsonObject jsonObj = jsonDoc.object();
 
     QJsonObject localeObj = jsonObj[locale].toObject();
     if (localeObj.isEmpty()) {
-        qCWarning(ComponentInformationTranslationLog) << "Locale " << locale << " not found in json";
+        qCWarning(ComponentInformationTranslationLog) << "Locale" << locale << "not found in translation json for" << componentName;
         return "";
     }
 
     QString url = localeObj["url"].toString();
     if (url.isEmpty()) {
-        qCWarning(ComponentInformationTranslationLog) << "Locale " << locale << ": no url set";
+        qCWarning(ComponentInformationTranslationLog) << "Locale" << locale << "has no url in translation json for" << componentName;
     }
     return url;
 }
 
-void ComponentInformationTranslation::onDownloadCompleted(QString remoteFile, QString localFile, QString errorMsg)
+void ComponentInformationTranslation::onDownloadCompleted(bool success, const QString &localFile, QString errorMsg, [[maybe_unused]] bool fromCache)
 {
-    disconnect(_cachedFileDownload, &QGCCachedFileDownload::downloadComplete, this, &ComponentInformationTranslation::onDownloadCompleted);
+    disconnect(_cachedFileDownload, &QGCCachedFileDownload::finished, this, &ComponentInformationTranslation::onDownloadCompleted);
 
     QString tsFileName = localFile;
     bool deleteFile = false;
-    if (errorMsg.isEmpty()) {
-
-        // Decompress if needed
-        if (localFile.endsWith(".lzma", Qt::CaseInsensitive) || localFile.endsWith(".xz", Qt::CaseInsensitive)) {
-            tsFileName = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).absoluteFilePath("qgc_translation_file_decompressed.ts");
-            if (QGCLZMA::inflateLZMAFile(localFile, tsFileName)) {
-                deleteFile = true;
-            } else {
-                errorMsg = "Inflate of compressed json failed, " + remoteFile;
-            }
+    if (success) {
+        const QString tempPath = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).absoluteFilePath("qgc_translation_file_decompressed.ts");
+        tsFileName = QGCCompression::decompressIfNeeded(localFile, tempPath, false);
+        if (tsFileName.isEmpty()) {
+            const QString remoteFile = _cachedFileDownload->url().toString();
+            errorMsg = "Decompression of translation file failed: " + remoteFile;
+        } else if (tsFileName != localFile) {
+            deleteFile = true;  // Mark for cleanup since we decompressed
         }
     }
 
@@ -110,16 +105,22 @@ void ComponentInformationTranslation::onDownloadCompleted(QString remoteFile, QS
 
 QString ComponentInformationTranslation::translateJsonUsingTS(const QString &toTranslateJsonFile, const QString &tsFile)
 {
-    qCInfo(ComponentInformationTranslationLog) << "Translating" << toTranslateJsonFile << "using" << tsFile;
+    qCDebug(ComponentInformationTranslationLog) << "Translating" << toTranslateJsonFile << "using" << tsFile;
 
     // Open JSON and get the 'translation' object
     QString         errorString;
     QJsonDocument   jsonDoc;
 
-    if (!JsonHelper::isJsonFile(toTranslateJsonFile, jsonDoc, errorString)) {
+    if (!JsonParsing::isJsonFile(toTranslateJsonFile, jsonDoc, errorString)) {
         qCWarning(ComponentInformationTranslationLog) << "Metadata json file to translate open failed:" << errorString;
         return "";
     }
+
+    QString schemaError;
+    if (!JsonSchemaValidator::validate(jsonDoc, QStringLiteral(":/json/component_metadata/translation.schema.json"), schemaError)) {
+        qCWarning(ComponentInformationTranslationLog) << "Translation json schema validation failed:" << schemaError;
+    }
+
     QJsonObject jsonObj = jsonDoc.object();
 
     QJsonObject translationObj = jsonObj["translation"].toObject();
@@ -212,7 +213,7 @@ QString ComponentInformationTranslation::translateJsonUsingTS(const QString &toT
     translatedFile.write(jsonDoc.toJson());
     translatedFile.close();
 
-    qCInfo(ComponentInformationTranslationLog) << "JSON file" << toTranslateJsonFile << "successfully translated to" << translatedFileName;
+    qCDebug(ComponentInformationTranslationLog) << "JSON file" << toTranslateJsonFile << "successfully translated to" << translatedFileName;
     return translatedFileName;
 }
 

@@ -71,3 +71,5 @@ void OverlaySegmentedControlTest::_disabledSegmentReportsNothing()
     QCOMPARE(view.rootObject()->property("activatedCount").toInt(), 1);
     QCOMPARE(view.rootObject()->property("lastActivated").toInt(), 2);
 }
+
+UT_REGISTER_TEST(OverlaySegmentedControlTest, TestLabel::Unit)

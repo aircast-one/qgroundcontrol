@@ -122,7 +122,7 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> String {
-        format!("{}/../test/Utilities/Shape/{name}", env!("CARGO_MANIFEST_DIR"))
+        format!("{}/../test/Utilities/Geo/{name}", env!("CARGO_MANIFEST_DIR"))
     }
 
     #[test]

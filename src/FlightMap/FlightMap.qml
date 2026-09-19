@@ -1,28 +1,13 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Shapes
 import QtLocation
 import QtPositioning
 import QtQuick.Dialogs
-import Qt.labs.animation
 
 import QGroundControl
-import QGroundControl.FactSystem
 import QGroundControl.Controls
 import QGroundControl.FlightMap
-import QGroundControl.ScreenTools
-import QGroundControl.MultiVehicleManager
-import QGroundControl.Vehicle
-import QGroundControl.QGCPositionManager
 
 Map {
     id: _map
@@ -34,16 +19,20 @@ Map {
     property bool   isSatelliteMap:                 activeMapType.name.indexOf("Satellite") > -1 || activeMapType.name.indexOf("Hybrid") > -1
     property var    gcsPosition:                    QGroundControl.qgcPositionManger.gcsPosition
     property real   gcsHeading:                     QGroundControl.qgcPositionManger.gcsHeading
-    property bool   allowGCSLocationCenter:         false
-    property bool   allowVehicleLocationCenter:     false
-    property bool   firstGCSPositionReceived:       false
-    property bool   firstVehiclePositionReceived:   false
-    property bool   planView:                       false
+    property bool   allowGCSLocationCenter:         false   ///< true: map will center/zoom to gcs location one time
+    property bool   allowVehicleLocationCenter:     false   ///< true: map will center/zoom to vehicle location one time
+    property bool   firstGCSPositionReceived:       false   ///< true: first gcs position update was responded to
+    property bool   firstVehiclePositionReceived:   false   ///< true: first vehicle position update was responded to
+    property bool   planView:                       false   ///< true: map being using for Plan view, items should be draggable
+    property bool   pinchZoomDisabledByVirtualJoysticks: false ///< true: disable pinch-to-zoom while virtual joystick thumbs are down
 
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
     property var    _activeVehicleCoordinate:   _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
 
     function setVisibleRegion(region) {
+        // This works around a bug on Qt where if you set a visibleRegion and then the user moves or zooms the map
+        // and then you set the same visibleRegion the map will not move/scale appropriately since it thinks there
+        // is nothing to do.
         let maxZoomLevel = 20
         _map.visibleRegion = QtPositioning.rectangle(QtPositioning.coordinate(0, 0), QtPositioning.coordinate(0, 0))
         _map.visibleRegion = region
@@ -61,7 +50,13 @@ Map {
     }
 
     function centerToSpecifiedLocation() {
-        specifyMapPositionDialog.createObject(mainWindow).open()
+        specifyMapPositionDialogFactory.open()
+    }
+
+    QGCPopupDialogFactory {
+        id: specifyMapPositionDialogFactory
+
+        dialogComponent: specifyMapPositionDialog
     }
 
     Component {
@@ -118,6 +113,8 @@ Map {
     signal mapClicked(var position)
     signal mapRightClicked(var position)
     
+    signal mapPressAndHold(var position)
+
     function _zoomAbout(point, levels) {
         const anchor = _map.toCoordinate(point, false)
         _map.zoomLevel += levels
@@ -125,8 +122,9 @@ Map {
     }
 
     PinchHandler {
-        id:     pinchHandler
-        target: null
+        id:      pinchHandler
+        target:  null
+        enabled: !_map.pinchZoomDisabledByVirtualJoysticks
 
         onActiveChanged: if (active) flickAnimation.stop()
         onScaleChanged: (delta) => _zoomAbout(pinchHandler.centroid.position, Math.log2(delta))
@@ -237,7 +235,7 @@ Map {
     MapQuickItem {
         anchorPoint.x:  sourceItem.width / 2
         anchorPoint.y:  sourceItem.height / 2
-        visible:        gcsPosition.isValid
+        visible:        gcsPosition.isValid && !planView
         coordinate:     gcsPosition
 
         sourceItem: Item {

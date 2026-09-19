@@ -1,31 +1,22 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
-#include <QtCore/QJsonArray>
 #include <QtCore/QMap>
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 #include "Fact.h"
-#include "MAVLinkLib.h"
+#include "MAVLinkMessageType.h"
 
 class Vehicle;
 
-Q_DECLARE_LOGGING_CATEGORY(FactGroupLog)
-
-/// Used to group Facts together into an object hierarachy.
+/// \brief Used to group Facts together into an object hierarachy.
+///
 class FactGroup : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("")
     Q_PROPERTY(QStringList  factNames           READ factNames          NOTIFY factNamesChanged)
     Q_PROPERTY(QStringList  factGroupNames      READ factGroupNames     NOTIFY factGroupNamesChanged)
     Q_PROPERTY(bool         telemetryAvailable  READ telemetryAvailable NOTIFY telemetryAvailableChanged)   ///< false: No telemetry for these values has been received
@@ -55,7 +46,7 @@ public:
     const QMap<QString, FactGroup*> &factGroups() const { return _nameToFactGroupMap; }
 
     /// Allows a FactGroup to parse incoming messages and fill in values
-    virtual void handleMessage(Vehicle *vehicle, const mavlink_message_t &message) {}
+    virtual void handleMessage(Vehicle * /*vehicle*/, const mavlink_message_t & /*message*/) {}
 
 signals:
     void factNamesChanged();

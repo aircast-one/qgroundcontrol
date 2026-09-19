@@ -1,346 +1,250 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "UnitTestList.h"
-#include "UnitTest.h"
+
+#include <QtCore/QCoreApplication>
+#include <QtCore/QElapsedTimer>
+#include <QtCore/QSet>
+
 #include "QGCLoggingCategory.h"
+#include "UnitTestTileGenerator.h"
 
-// ADSB
-#include "ADSBTest.h"
+QGC_LOGGING_CATEGORY(UnitTestListLog, "Test.UnitTestList")
 
-// Bridge
-#include "QGCBridgeCoreTest.h"
-#ifdef QGC_RUST_CORE
-#include "QGCCoreCTest.h"
-#endif
-#ifdef QGC_WFB_ENABLED
-#include "PacketRadioTest.h"
-#endif
+// ============================================================================
+// Test Execution Functions
+// ============================================================================
 
-// AnalyzeView
-#include "ExifParserTest.h"
-#include "GeoTagControllerTest.h"
-#include "MavlinkLogTest.h"
-#include "LogDownloadTest.h"
-#include "PX4LogParserTest.h"
-#include "ULogParserTest.h"
+namespace QGCUnitTest {
 
-
-
-// AutoPilotPlugins
-#include "RadioConfigTest.h"
-
-// AircastSetup
-#include "AircastDeviceSetupTest.h"
-
-// Camera
-#include "QGCCameraManagerTest.h"
-
-// Comms
-#include "QGCSerialPortInfoTest.h"
-#include "TCPConfigurationTest.h"
-#include "TCPLinkErrorTest.h"
-#include "LinkStateTest.h"
-#include "LinkDuplicateConnectTest.h"
-#include "UDPConfigurationTest.h"
-
-// DebugApi
-#include "DebugApiServerTest.h"
-
-// FactSystem
-#include "FactSystemTestGeneric.h"
-#include "FactSystemTestPX4.h"
-#include "ParameterManagerTest.h"
-
-// FollowMe
-#include "FollowMeTest.h"
-
-// GPS
-#include "GpsTest.h"
-
-// MAVLink
-#include "StatusTextHandlerTest.h"
-#include "SigningTest.h"
-#include "SysStatusSensorInfoTest.h"
-
-// MissionManager
-#include "CameraCalcTest.h"
-#include "CameraSectionTest.h"
-#include "CorridorScanComplexItemTest.h"
-#include "FWLandingPatternTest.h"
-#include "LandingComplexItemTest.h"
-#include "MissionCommandTreeEditorTest.h"
-#include "MissionCommandTreeTest.h"
-#include "MissionControllerManagerTest.h"
-#include "MissionControllerTest.h"
-#include "MissionItemTest.h"
-#include "MissionManagerTest.h"
-#include "MissionSettingsTest.h"
-#include "PlanMasterControllerTest.h"
-#include "QGCMapPolygonTest.h"
-#include "QGCMapPolylineTest.h"
-#include "SectionTest.h"
-#include "SimpleMissionItemTest.h"
-#include "SpeedSectionTest.h"
-#include "StructureScanComplexItemTest.h"
-#include "SurveyComplexItemTest.h"
-#include "TransectStyleComplexItemTest.h"
-#include "VisualMissionItemTest.h"
-
-// qgcunittest
-#include "ComponentInformationCacheTest.h"
-#include "ComponentInformationTranslationTest.h"
-
-// QmlControls
-#include "DragToPositionTest.h"
-#include "OverlayBackdropTest.h"
-#include "OverlayPaletteTest.h"
-#include "PlatformThemeTest.h"
-#include "QGCColoredImageTest.h"
-#include "OverlaySegmentedControlTest.h"
-#include "FlyViewToolBarEditTest.h"
-#include "OverlayViewSwitchTest.h"
-#include "PlanToolBarIndicatorsTest.h"
-#include "PlanViewLayoutTest.h"
-#include "ScreenToolsTest.h"
-#include "SafeAreaTest.h"
-#include "SettingsSearchTest.h"
-#include "UnitSystemTest.h"
-#include "VehicleStatusSummaryTest.h"
-#include "OverlayRigTest.h"
-#include "PipRevealTest.h"
-#include "PipViewTest.h"
-#include "VideoTileTest.h"
-
-// VideoManager
-#include "SkydroidH16LinksTest.h"
-#include "VideoManagerTest.h"
-
-// Terrain
-#include "TerrainQueryTest.h"
-#include "TerrainTileTest.h"
-
-// QtLocationPlugin
-#include "QGCTileCacheWorkerTest.h"
-#include "QGeoMapReplyQGCTest.h"
-
-// UI
-
-// Utilities
-// Audio
-#include "AudioOutputTest.h"
-// Compression
-#include "DecompressionTest.h"
-// FileSystem
-#include "QGCFileDownloadTest.h"
-#include "QGCSettingsRecoveryTest.h"
-// Geo
-#include "GeoTest.h"
-// Shape
-#include "ShapeTest.h"
-
-// Vehicle
-// Components
-#include "ComponentInformationCacheTest.h"
-#include "ComponentInformationTranslationTest.h"
-#include "FTPManagerTest.h"
-#include "InitialConnectTest.h"
-#include "MAVLinkLogManagerTest.h"
-#include "RequestMessageTest.h"
-#include "SendMavCommandWithHandlerTest.h"
-#include "SendMavCommandWithSignallingTest.h"
-#include "RcChannelOverrideTest.h"
-#include "CameraControlTest.h"
-#include "FlightMapTest.h"
-#include "TelemetryChipsTest.h"
-#include "TerrainProgressTest.h"
-#include "FirmwareUpdateAvailableTest.h"
-#include "FlightModeReportingTest.h"
-#include "VehicleLinkManagerTest.h"
-
-// Missing
-// #include "FlightGearUnitTest.h"
-// #include "LinkManagerTest.h"
-// #include "SendMavCommandTest.h"
-// #include "TCPLinkTest.h"
-
-QGC_LOGGING_CATEGORY(UnitTestsLog, "qgc.test.unittestlist")
-
-int runTests(bool stress, QStringView unitTestOptions)
+int runTests(const QStringList& unitTests, int iterations, const QString& outputFile, TestLabels labelFilter)
 {
-    // ADSB
-    UT_REGISTER_TEST(ADSBTest)
-    UT_REGISTER_TEST(QGCBridgeCoreTest)
-#ifdef QGC_RUST_CORE
-    UT_REGISTER_TEST(QGCCoreCTest)
-#endif
-#ifdef QGC_WFB_ENABLED
-    UT_REGISTER_TEST(PacketRadioTest)
-#endif
+    // Serve synthetic tiles on tile cache misses so no test ever hits the network
+    UnitTestTileGenerator::install();
 
-    // AnalyzeView
-    UT_REGISTER_TEST(ExifParserTest)
-    UT_REGISTER_TEST(GeoTagControllerTest)
-    UT_REGISTER_TEST(MavlinkLogTest)
-    UT_REGISTER_TEST(LogDownloadTest)
-    UT_REGISTER_TEST(PX4LogParserTest)
-    UT_REGISTER_TEST(ULogParserTest)
+    // Determine which tests to run
+    QStringList testsToRun;
+    if (unitTests.isEmpty()) {
+        // No specific tests - run all matching the label filter
+        testsToRun = registeredTestNames(labelFilter);
+    } else {
+        // Validate requested test names
+        const QStringList invalid = validateTestNames(unitTests);
+        if (!invalid.isEmpty()) {
+            qCWarning(UnitTestListLog) << "Unknown test(s):" << invalid.join(", ");
+            qCWarning(UnitTestListLog) << "Available tests:" << UnitTest::registeredTests().join(", ");
+            return -static_cast<int>(invalid.size());
+        }
+        testsToRun = unitTests;
+    }
 
-    // AutoPilotPlugins
-    UT_REGISTER_TEST(RadioConfigTest)
+    if (testsToRun.isEmpty()) {
+        qCWarning(UnitTestListLog) << "No tests to run";
+        return 0;
+    }
 
-    // AircastSetup
-    UT_REGISTER_TEST(AircastDeviceSetupTest)
+    // Started only after the early returns above: the worker thread must be shut down
+    // before returning (see shutdownMapEngine below), so don't start it until the run
+    // is definitely happening.
+    UnitTestTileGenerator::initMapEngine();
 
-    // Camera
-    UT_REGISTER_TEST(QGCCameraManagerTest)
-
-    // Comms
-    UT_REGISTER_TEST(QGCSerialPortInfoTest)
-    UT_REGISTER_TEST(TCPConfigurationTest)
-    UT_REGISTER_TEST(TCPLinkErrorTest)
-    UT_REGISTER_TEST(LinkStateTest)
-    UT_REGISTER_TEST(LinkDuplicateConnectTest)
-    UT_REGISTER_TEST(UDPConfigurationTest)
-
-    // DebugApi
-    UT_REGISTER_TEST(DebugApiServerTest)
-
-    // FactSystem
-    UT_REGISTER_TEST(FactSystemTestGeneric)
-    UT_REGISTER_TEST(FactSystemTestPX4)
-    UT_REGISTER_TEST(ParameterManagerTest)
-
-    // FollowMe
-    UT_REGISTER_TEST(FollowMeTest)
-
-    // GPS
-    UT_REGISTER_TEST(GpsTest)
-
-    // MAVLink
-    UT_REGISTER_TEST(StatusTextHandlerTest)
-    UT_REGISTER_TEST(SigningTest)
-    UT_REGISTER_TEST(SysStatusSensorInfoTest)
-
-    // MissionManager
-    UT_REGISTER_TEST(CameraCalcTest)
-    UT_REGISTER_TEST(CameraSectionTest)
-    UT_REGISTER_TEST(CorridorScanComplexItemTest)
-    UT_REGISTER_TEST(FWLandingPatternTest)
-    UT_REGISTER_TEST(LandingComplexItemTest)
-    UT_REGISTER_TEST_STANDALONE(MissionCommandTreeEditorTest)
-    UT_REGISTER_TEST(MissionCommandTreeTest)
-    UT_REGISTER_TEST(MissionControllerManagerTest)
-    UT_REGISTER_TEST(MissionControllerTest)
-    UT_REGISTER_TEST(MissionItemTest)
-    UT_REGISTER_TEST(MissionManagerTest)
-    UT_REGISTER_TEST(MissionSettingsTest)
-    UT_REGISTER_TEST(PlanMasterControllerTest)
-    UT_REGISTER_TEST(QGCMapPolygonTest)
-    UT_REGISTER_TEST(QGCMapPolylineTest)
-    UT_REGISTER_TEST(SectionTest)
-    UT_REGISTER_TEST(SimpleMissionItemTest)
-    UT_REGISTER_TEST(SpeedSectionTest)
-    UT_REGISTER_TEST(StructureScanComplexItemTest)
-    UT_REGISTER_TEST(SurveyComplexItemTest)
-    UT_REGISTER_TEST(TransectStyleComplexItemTest)
-    UT_REGISTER_TEST(VisualMissionItemTest)
-
-    // qgcunittest
-
-    // QmlControls
-    UT_REGISTER_TEST(DragToPositionTest)
-    UT_REGISTER_TEST(OverlayBackdropTest)
-    UT_REGISTER_TEST(OverlayPaletteTest)
-    UT_REGISTER_TEST(PlatformThemeTest)
-    UT_REGISTER_TEST(QGCColoredImageTest)
-    UT_REGISTER_TEST(OverlaySegmentedControlTest)
-    UT_REGISTER_TEST(FlyViewToolBarEditTest)
-    UT_REGISTER_TEST(OverlayViewSwitchTest)
-    UT_REGISTER_TEST(PlanToolBarIndicatorsTest)
-    UT_REGISTER_TEST(PlanViewLayoutTest)
-    UT_REGISTER_TEST(ScreenToolsTest)
-    UT_REGISTER_TEST(SafeAreaTest)
-    UT_REGISTER_TEST(SettingsSearchTest)
-    UT_REGISTER_TEST(UnitSystemTest)
-    UT_REGISTER_TEST(VehicleStatusSummaryTest)
-    UT_REGISTER_TEST(OverlayRigTest)
-    UT_REGISTER_TEST(PipRevealTest)
-    UT_REGISTER_TEST(PipViewTest)
-    UT_REGISTER_TEST(VideoTileTest)
-
-    // VideoManager
-    UT_REGISTER_TEST(SkydroidH16LinksTest)
-    UT_REGISTER_TEST(VideoManagerTest)
-
-    // Terrain
-    UT_REGISTER_TEST(TerrainQueryTest)
-    UT_REGISTER_TEST(TerrainTileTest)
-
-    // QtLocationPlugin
-    UT_REGISTER_TEST(QGCTileCacheWorkerTest)
-    UT_REGISTER_TEST(QGeoMapReplyQGCTest)
-
-    // UI
-
-    // Utilities
-    // Audio
-    UT_REGISTER_TEST(AudioOutputTest)
-    // Compression
-    UT_REGISTER_TEST(DecompressionTest)
-    // FileSystem
-    UT_REGISTER_TEST(QGCFileDownloadTest)
-    UT_REGISTER_TEST(QGCSettingsRecoveryTest)
-    // Geo
-    UT_REGISTER_TEST(GeoTest)
-    // Shape
-    UT_REGISTER_TEST(ShapeTest)
-
-    // Vehicle
-    // Components
-    UT_REGISTER_TEST(ComponentInformationCacheTest)
-    UT_REGISTER_TEST(ComponentInformationTranslationTest)
-    UT_REGISTER_TEST(FTPManagerTest)
-    UT_REGISTER_TEST(InitialConnectTest)
-    UT_REGISTER_TEST(MAVLinkLogManagerTest)
-    UT_REGISTER_TEST(RequestMessageTest)
-    UT_REGISTER_TEST(SendMavCommandWithHandlerTest)
-    UT_REGISTER_TEST(SendMavCommandWithSignallingTest)
-    UT_REGISTER_TEST(RcChannelOverrideTest)
-    UT_REGISTER_TEST(CameraControlTest)
-    UT_REGISTER_TEST(FlightMapTest)
-    UT_REGISTER_TEST(TelemetryChipsTest)
-    UT_REGISTER_TEST(TerrainProgressTest)
-    UT_REGISTER_TEST(FirmwareUpdateAvailableTest)
-    UT_REGISTER_TEST(FlightModeReportingTest)
-    UT_REGISTER_TEST(VehicleLinkManagerTest)
-
-    // Missing
-    // UT_REGISTER_TEST(FlightGearUnitTest)
-    // UT_REGISTER_TEST(LinkManagerTest)
-    // UT_REGISTER_TEST(SendMavCommandTest)
-    // UT_REGISTER_TEST(TCPLinkTest)
-
+    iterations = qMax(1, iterations);
     int result = 0;
 
-    for (int i=0; i < (stress ? 20 : 1); i++) {
-        // Run the test
-        const int failures = UnitTest::run(unitTestOptions);
+    for (int i = 0; i < iterations; ++i) {
+        int failures = 0;
+
+        for (const QString& test : testsToRun) {
+            failures += UnitTest::run(test, outputFile, labelFilter);
+        }
+
         if (failures == 0) {
-            qDebug() << "ALL TESTS PASSED";
-            result = 0;
+            if (iterations > 1) {
+                qCDebug(UnitTestListLog).noquote()
+                    << QString("ALL TESTS PASSED (iteration %1/%2)").arg(i + 1).arg(iterations);
+            } else {
+                qCDebug(UnitTestListLog) << "ALL TESTS PASSED";
+            }
         } else {
-            qDebug() << failures << " TESTS FAILED!";
+            qCWarning(UnitTestListLog) << failures << "TESTS FAILED!";
             result = -failures;
             break;
         }
     }
 
+    // Stop the tile cache worker while the app still exists: its database teardown
+    // cannot run after QApplication destruction.
+    UnitTestTileGenerator::shutdownMapEngine();
+
     return result;
 }
+
+int runLightweightTests(const QStringList& unitTests, int iterations, const QString& outputFile,
+                        TestLabels labelFilter)
+{
+    if (!QCoreApplication::instance()) {
+        qCWarning(UnitTestListLog) << "runLightweightTests called with no QCoreApplication instance";
+        return -1;
+    }
+
+    // Serve synthetic tiles on tile cache misses so no test ever hits the network
+    UnitTestTileGenerator::install();
+
+    QStringList testsToRun;
+    if (unitTests.isEmpty()) {
+        testsToRun = UnitTest::registeredLightweightTests(labelFilter);
+    } else {
+        QStringList nonLightweight;
+        for (const QString& name : unitTests) {
+            if (UnitTest::isLightweightTest(name)) {
+                testsToRun.append(name);
+            } else {
+                nonLightweight.append(name);
+            }
+        }
+        if (!nonLightweight.isEmpty()) {
+            qCWarning(UnitTestListLog)
+                << "Requested test(s) are not lightweight (must run on the full-app path):"
+                << nonLightweight.join(QStringLiteral(", "));
+            return -static_cast<int>(nonLightweight.size());
+        }
+    }
+
+    if (testsToRun.isEmpty()) {
+        qCInfo(UnitTestListLog) << "No lightweight tests to run";
+        return 0;
+    }
+
+    iterations = qMax(1, iterations);
+    int result = 0;
+    for (int i = 0; i < iterations; ++i) {
+        int failures = 0;
+        for (const QString& test : testsToRun) {
+            failures += UnitTest::run(test, outputFile, labelFilter);
+        }
+        if (failures != 0) {
+            qCWarning(UnitTestListLog) << failures << "LIGHTWEIGHT TESTS FAILED!";
+            result = -failures;
+            break;
+        }
+    }
+    return result;
+}
+
+QStringList registeredTestNames()
+{
+    return UnitTest::registeredTests();
+}
+
+QStringList registeredTestNames(TestLabels labelFilter)
+{
+    return UnitTest::registeredTests(labelFilter);
+}
+
+int registeredTestCount()
+{
+    return UnitTest::testCount();
+}
+
+bool isTestRegistered(const QString& testName)
+{
+    return UnitTest::registeredTests().contains(testName);
+}
+
+QStringList validateTestNames(const QStringList& testNames)
+{
+    const QStringList registered = UnitTest::registeredTests();
+
+    // Use QSet for O(1) lookup instead of O(n) QStringList::contains()
+    const QSet<QString> registeredSet(registered.cbegin(), registered.cend());
+
+    QStringList invalid;
+    invalid.reserve(testNames.size());
+
+    for (const QString& name : testNames) {
+        if (!registeredSet.contains(name)) {
+            invalid.append(name);
+        }
+    }
+
+    return invalid;
+}
+
+int handleTestOptions(const QGCCommandLineParser::CommandLineParseResult& args)
+{
+    // Parse label filter if provided
+    TestLabels labelFilter;
+    if (args.labelFilter.has_value() && !args.labelFilter->isEmpty()) {
+        const QStringList requestedLabels = args.labelFilter->split(',', Qt::SkipEmptyParts);
+        QStringList invalidLabels;
+        invalidLabels.reserve(requestedLabels.size());
+        for (const QString& labelName : requestedLabels) {
+            if (labelFromString(labelName) == TestLabel::None) {
+                invalidLabels.append(labelName.trimmed());
+            }
+        }
+        if (!invalidLabels.isEmpty()) {
+            qCWarning(UnitTestListLog) << "Invalid label(s):" << invalidLabels.join(", ");
+            qCWarning(UnitTestListLog) << "Available labels:" << availableLabelNames().join(", ");
+            return -1;
+        }
+
+        labelFilter = parseLabels(args.labelFilter.value());
+        if (labelFilter == TestLabels()) {
+            qCWarning(UnitTestListLog) << "Invalid label filter:" << args.labelFilter.value();
+            qCWarning(UnitTestListLog) << "Available labels:" << availableLabelNames().join(", ");
+            return -1;
+        }
+    }
+
+    // Handle --list-tests
+    if (args.listTests) {
+        const QStringList tests = registeredTestNames(labelFilter);
+        const QString filterDesc =
+            labelFilter != TestLabels() ? QString(" matching %1").arg(labelsToString(labelFilter)) : QString();
+
+        qCInfo(UnitTestListLog).noquote() << QString("Available unit tests%1: %2").arg(filterDesc).arg(tests.count());
+
+        for (const QString& test : tests) {
+            qInfo().noquote() << "  " << test;
+        }
+
+        qCInfo(UnitTestListLog).noquote() << QString("\nAvailable labels: %1").arg(availableLabelNames().join(", "));
+
+        return 0;
+    }
+
+    // Handle --unittest
+    if (args.runningUnitTests) {
+        // Count tests that will run
+        const QStringList testsToRun = args.unitTests.isEmpty() ? registeredTestNames(labelFilter) : args.unitTests;
+        const int testCount = testsToRun.count();
+
+        const QString filterDesc =
+            labelFilter != TestLabels() ? QString(" %1").arg(labelsToString(labelFilter)) : QString();
+
+        qCInfo(UnitTestListLog).noquote() << QString("Running %1 unit test(s)%2...").arg(testCount).arg(filterDesc);
+
+        QElapsedTimer timer;
+        timer.start();
+
+        const int stressIterations =
+            args.stressUnitTests
+                ? static_cast<int>(args.stressUnitTestsCount > 0 ? args.stressUnitTestsCount : kStressIterations)
+                : 1;
+
+        const int exitCode =
+            runTests(args.unitTests, stressIterations, args.unitTestOutput.value_or(QString()), labelFilter);
+
+        const qint64 elapsed = timer.elapsed();
+        if (exitCode == 0) {
+            qCInfo(UnitTestListLog).noquote() << QString("All %1 test(s) passed in %2 ms").arg(testCount).arg(elapsed);
+        } else {
+            qCWarning(UnitTestListLog).noquote()
+                << QString("%1 test(s) failed (ran in %2 ms)").arg(-exitCode).arg(elapsed);
+        }
+        return exitCode;
+    }
+
+    return 0;
+}
+
+}  // namespace QGCUnitTest

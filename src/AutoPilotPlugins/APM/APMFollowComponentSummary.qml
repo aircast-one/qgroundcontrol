@@ -1,21 +1,15 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
-import QGroundControl.FactSystem
+import QGroundControl
 import QGroundControl.FactControls
 import QGroundControl.Controls
 
 Item {
-    anchors.fill: parent
+    implicitWidth: mainLayout.implicitWidth
+    implicitHeight: mainLayout.implicitHeight
+    width: parent.width  // grows when Loader is wider than implicitWidth
 
     FactPanelController { id: controller }
 
@@ -37,8 +31,9 @@ Item {
         { label: qsTr("Yaw Behavior"),      fact: getFact("FOLL_YAW_BEHAVE"),   visible: followParamsAvailable }
     ]
 
-    Column {
-        anchors.fill: parent
+    ColumnLayout {
+        id: mainLayout
+        spacing: 0
 
         Repeater {
             model: followItems

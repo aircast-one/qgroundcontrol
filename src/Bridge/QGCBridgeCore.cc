@@ -10,10 +10,10 @@
 
 #include "Fact.h"
 #include "LinkManager.h"
-#include "LogDownloadController.h"
 #include "MAVLinkConsoleController.h"
 #include "APMSensorsComponentController.h"
 #include "GeoTagController.h"
+#include "OnboardLogController.h"
 #include "VideoManager.h"
 #include "MAVLinkInspectorController.h"
 #include "RadioComponentController.h"
@@ -29,7 +29,6 @@
 #include "SettingsManager.h"
 #include "Vehicle.h"
 
-#include <QtCore/QSequentialIterable>
 #include <QtCore/QSet>
 #include <QtCore/QSize>
 #include <QtCore/QCoreApplication>
@@ -108,11 +107,15 @@ QObject *rootObject(const QString &name)
     if (name == QLatin1String("corePlugin")) {
         return QGCCorePlugin::instance();
     }
-    if (name == QLatin1String("logDownload")) {
-        return LogDownloadController::instance();
-    }
     if (name == QLatin1String("video")) {
         return VideoManager::instance();
+    }
+    if (name == QLatin1String("logDownload")) {
+        static OnboardLogController *logs = nullptr;
+        if (!logs) {
+            logs = new OnboardLogController(QCoreApplication::instance());
+        }
+        return logs;
     }
     if (name == QLatin1String("geoTag")) {
         static GeoTagController *geoTag = nullptr;
@@ -332,9 +335,10 @@ QJsonValue variantJson(const QVariant &value)
     // Any registered sequential container, not just QVariantList: QList<int> and
     // QList<qreal> reach QJsonValue::fromVariant as themselves and come back null, so a
     // property like objectAvoidance.distances read as empty with nothing reporting why.
-    if (value.canConvert<QSequentialIterable>() && value.metaType().id() != QMetaType::QString) {
+    const int typeId = value.metaType().id();
+    if (value.canConvert<QVariantList>() && typeId != QMetaType::QString && typeId != QMetaType::QByteArray) {
         QJsonArray array;
-        const QSequentialIterable iterable = value.value<QSequentialIterable>();
+        const QVariantList iterable = value.toList();
         for (const QVariant &element : iterable) {
             if (QObject *const child = element.value<QObject *>()) {
                 array.append(objectJson(child));
@@ -395,6 +399,7 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("valueEqualsDefault"),
         QStringLiteral("longDescription"),
         QStringLiteral("visible"),
+        QStringLiteral("userVisible"),
     };
 
     QJsonObject json;

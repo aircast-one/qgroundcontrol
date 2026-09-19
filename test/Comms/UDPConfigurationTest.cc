@@ -150,3 +150,5 @@ void UDPConfigurationTest::_outOfRangePortFallsBackToTheDefault()
     QVERIFY(QMetaObject::invokeMethod(settings, "saveSettings"));
     QCOMPARE(config.localPort(), configuredListenPort());
 }
+
+UT_REGISTER_TEST(UDPConfigurationTest, TestLabel::Unit)

@@ -15,6 +15,9 @@ class CameraControlTest : public UnitTest
 {
     Q_OBJECT
 
+protected:
+    void init() override;
+
 private slots:
     void _unmappedChannelsShowNoControls();
     void _mappedChannelsRevealTheirControls();

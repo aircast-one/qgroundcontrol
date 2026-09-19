@@ -29,8 +29,8 @@ void qgc_map_tile_fetch(const char *mapType, int x, int y, int zoom,
     // the tile, which the task owns.
     (void) QObject::connect(task, &QGCFetchTileTask::tileFetched, task,
                             [handler, context](QGCCacheTile *tile) {
-        if (tile && !tile->img().isEmpty()) {
-            const QByteArray &bytes = tile->img();
+        if (tile && !tile->img.isEmpty()) {
+            const QByteArray &bytes = tile->img;
             handler(reinterpret_cast<const unsigned char *>(bytes.constData()), bytes.size(), context);
         } else {
             handler(nullptr, 0, context);

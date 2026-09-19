@@ -20,10 +20,10 @@ public:
     ~CoreLink() override;
 
     void disconnect() override;
-    bool isConnected() const override { return _id != 0; }
+    bool isConnected() const override { return _coreLinkId != 0; }
     bool isSecureConnection() const override;
 
-    uint32_t coreId() const { return _id; }
+    uint32_t coreId() const { return _coreLinkId; }
 
     static bool enabled();
     static bool handles(LinkConfiguration::LinkType type);
@@ -38,7 +38,7 @@ private:
     static void _bytesArrived(uint32_t id, const uint8_t *bytes, size_t len, void *user);
     static void _stateChanged(uint32_t id, bool open, const char *reason, void *user);
 
-    uint32_t _id = 0;
+    uint32_t _coreLinkId = 0;
 
     static QMutex _registryMutex;
     static QHash<uint32_t, CoreLink *> _links;

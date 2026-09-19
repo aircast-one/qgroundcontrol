@@ -174,7 +174,7 @@ mod tests {
         let vehicles = [VehicleClass::Generic, VehicleClass::FixedWing, VehicleClass::MultiRotor, VehicleClass::Vtol, VehicleClass::Sub, VehicleClass::Rover];
         assert!(firmwares.iter().all(|f| vehicles.iter().all(|v| entries(file(*f, *v)).is_ok())));
         let base = tree(Firmware::Generic, VehicleClass::Generic);
-        assert_eq!(base.len(), 90);
+        assert_eq!(base.len(), 89);
         assert_eq!(base[&176].friendly_name, "Set flight mode");
         assert_eq!(base[&95].friendly_name, "Home Position");
         assert!(base[&95].specifies_coordinate && base.values().all(|c| !c.raw_name.is_empty()));
@@ -199,7 +199,7 @@ mod tests {
     fn firmware_layers_stack_on_top_of_the_vehicle_layer() {
         let px4 = tree(Firmware::Px4, VehicleClass::MultiRotor);
         let apm = tree(Firmware::ArduPilot, VehicleClass::MultiRotor);
-        assert!(px4.len() >= 90 && apm.len() >= 90);
+        assert!(px4.len() >= 89 && apm.len() >= 89);
         assert_ne!(px4, apm);
         assert!(px4[&17].hidden.contains(&3));
     }

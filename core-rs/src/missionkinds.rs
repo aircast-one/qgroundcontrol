@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{object, refused};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.complexMissionItemNames", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed"];
+pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed"];
 const DEFAULT_AREA_METRES: f64 = 150.0;
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -47,12 +47,14 @@ pub fn by_class(class: &str) -> Option<&'static Kind> {
 
 const NEEDS_TAKEOFF_FIRST: &str = "This mission starts from the ground, so a takeoff has to come before anything else.";
 const ALREADY_TAKES_OFF: &str = "The mission already takes off before this point.";
+const NEEDS_HOME_FIRST: &str = "Set the home position before adding anything to the mission.";
 const LAND_COMES_LAST: &str = "A landing goes after the takeoff and after every place the vehicle flies through.";
 const NOT_AFTER_LANDING: &str = "The vehicle has already landed at this point in the mission.";
 const NOT_FOR_THIS_VEHICLE: &str = "This kind of vehicle does not fly that pattern.";
 
 pub struct Insertable {
     pub at_sequence: Option<i64>,
+    pub home_set: bool,
     pub only_takeoff: bool,
     pub takeoff: bool,
     pub land: bool,
@@ -72,17 +74,18 @@ impl Insertable {
 pub fn insertable(backend: &dyn Backend) -> Insertable {
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        "complexMissionItemNames,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed",
+        "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed",
     ));
     let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
         at_sequence: mission.get("currentPlanViewSeqNum").and_then(Value::as_i64).filter(|sequence| *sequence >= 0),
+        home_set: answered("homePositionSet", true),
         only_takeoff: answered("onlyInsertTakeoffValid", true),
         takeoff: answered("isInsertTakeoffValid", true),
         land: answered("isInsertLandValid", false),
         fly_through: answered("flyThroughCommandsAllowed", true),
-        patterns: mission.get("complexMissionItemNames").and_then(Value::as_array).map(|names| {
-            names.iter().filter_map(Value::as_str).map(str::to_string).collect()
+        patterns: mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
+            names.iter().filter_map(|name| name.as_str().or_else(|| name.get("canonicalName").and_then(Value::as_str))).map(str::to_string).collect()
         }),
     }
 }
@@ -90,6 +93,9 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
 pub fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
     if !insertable.offers(kind) {
         return Some(NOT_FOR_THIS_VEHICLE);
+    }
+    if !insertable.home_set {
+        return Some(NEEDS_HOME_FIRST);
     }
     match kind.id {
         "takeoff" if !insertable.takeoff => Some(ALREADY_TAKES_OFF),
@@ -340,7 +346,7 @@ mod offering {
     }
 
     fn flying(mut state: Value, patterns: &[&str]) -> Value {
-        state["complexMissionItemNames"] = json!(patterns);
+        state["complexMissionItems"] = json!(patterns);
         state
     }
 

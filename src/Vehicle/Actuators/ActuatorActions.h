@@ -1,17 +1,13 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "Common.h"
-#include "Vehicle.h"
+#include "VehicleTypes.h"
+#include "MAVLinkMessageType.h"
+#include "MAVLinkEnums.h"
+#include "QGCMAVLinkTypes.h"
 #include "QmlObjectListModel.h"
+
+class Vehicle;
 
 #include <QtCore/QObject>
 #include <QtCore/QString>
@@ -48,8 +44,8 @@ public:
     Q_INVOKABLE void trigger();
 
 private:
-    static void ackHandlerEntry(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, Vehicle::MavCmdResultFailureCode_t failureCode);
-    void ackHandler(MAV_RESULT commandResult, Vehicle::MavCmdResultFailureCode_t failureCode);
+    static void ackHandlerEntry(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, VehicleTypes::MavCmdResultFailureCode_t failureCode);
+    void ackHandler(MAV_RESULT commandResult, VehicleTypes::MavCmdResultFailureCode_t failureCode);
     void sendMavlinkRequest();
 
     const QString _label;

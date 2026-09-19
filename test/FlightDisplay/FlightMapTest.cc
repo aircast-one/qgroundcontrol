@@ -1,5 +1,7 @@
 #include "FlightMapTest.h"
 
+#include <QtCore/QRegularExpression>
+
 #include "QuickInteractionTestHelpers.h"
 
 #include <QtGui/QNativeGestureEvent>
@@ -48,6 +50,12 @@ static QPointF pointOf(QQuickItem* map, const QGeoCoordinate& coordinate)
 static bool near(const QPointF& a, const QPointF& b)
 {
     return (a - b).manhattanLength() < 2;
+}
+
+void FlightMapTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("Binding loop detected")));
 }
 
 void FlightMapTest::_trackpadOrMagicMouseScrollPans()
@@ -232,3 +240,5 @@ void FlightMapTest::_lostReleaseDoesNotLeaveTheMapStuckToTheCursor()
     QCOMPARE(map->property("panStarts").toInt(), 1);
     QCOMPARE(map->property("panStops").toInt(), 1);
 }
+
+UT_REGISTER_TEST(FlightMapTest, TestLabel::Unit)

@@ -1,9 +1,9 @@
 import QtQuick
 import QtPositioning
 
+import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Controllers
-import QGroundControl.ScreenTools
+import QGroundControl.PlanView
 
 Item {
     id:     root

@@ -11,8 +11,6 @@ import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.FactSystem
-import QGroundControl.ScreenTools
 
 PlanGroupRow {
     id: _root

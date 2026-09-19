@@ -1,4 +1,6 @@
 #include "LinkDuplicateConnectTest.h"
+
+#include <QtCore/QRegularExpression>
 #include "LinkManager.h"
 #include "TCPLink.h"
 
@@ -18,6 +20,12 @@ SharedLinkConfigurationPtr addLocalTcpConfig(const QString &name, quint16 port)
 }
 
 } // namespace
+
+void LinkDuplicateConnectTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("createAndConnectLink")));
+}
 
 void LinkDuplicateConnectTest::_connectingTwiceReusesTheSameLink()
 {
@@ -111,3 +119,5 @@ void LinkDuplicateConnectTest::_createAndConnectLinkConnectsAndRegisters()
     QTRY_VERIFY_WITH_TIMEOUT(!made->link(), 5000);
     LinkManager::instance()->removeConfiguration(made);
 }
+
+UT_REGISTER_TEST(LinkDuplicateConnectTest, TestLabel::Unit)

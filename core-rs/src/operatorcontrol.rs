@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
-    "vehicle.sysidInControl",
+    "vehicle.gcsMain",
     "vehicle.gcsControlStatusFlags_SystemManager",
     "vehicle.gcsControlStatusFlags_TakeoverAllowed",
     "vehicle.firstControlStatusReceived",
@@ -13,7 +13,7 @@ pub const DEPS: &[&str] = &[
     "settings.mavlinkSettings.gcsMavlinkSystemID",
 ];
 
-const FIELDS: &str = "sysidInControl,gcsControlStatusFlags_SystemManager,gcsControlStatusFlags_TakeoverAllowed,firstControlStatusReceived,sendControlRequestAllowed,operatorControlTakeoverTimeoutMsecs";
+const FIELDS: &str = "gcsMain,gcsControlStatusFlags_SystemManager,gcsControlStatusFlags_TakeoverAllowed,firstControlStatusReceived,sendControlRequestAllowed,operatorControlTakeoverTimeoutMsecs";
 
 fn integer(read: &Value, key: &str) -> Option<i64> {
     read.get(key).and_then(Value::as_i64)
@@ -35,7 +35,7 @@ pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
         });
     }
     let known = flag(&vehicle, "firstControlStatusReceived");
-    let holder = integer(&vehicle, "sysidInControl");
+    let holder = integer(&vehicle, "gcsMain");
     let ours = crate::read::value_number(&backend.get("settings.mavlinkSettings.gcsMavlinkSystemID.rawValue")).map(|id| id as i64);
     let answered = |yes: bool| known.then_some(yes);
     json!({
@@ -85,7 +85,7 @@ mod tests {
             match path {
                 "vehicle" => json!({
                     "kind": "object",
-                    "sysidInControl": self.holder,
+                    "gcsMain": self.holder,
                     "gcsControlStatusFlags_SystemManager": true,
                     "gcsControlStatusFlags_TakeoverAllowed": self.takeover,
                     "firstControlStatusReceived": self.known,
@@ -136,13 +136,13 @@ mod tests {
     #[test]
     fn a_vehicle_that_has_not_said_who_is_flying_it_is_not_a_vehicle_flown_by_someone_else() {
         let silent = operator_control_view(&Station { known: false, holder: Some(0), takeover: false, own_id: Some(250) }, &[]);
-        assert_eq!(silent["inControl"], Value::Null, "before any CONTROL_STATUS arrives sysidInControl is 0 and both flags are false, which is byte-identical to another station holding it with takeover denied - firstControlStatusReceived is the only thing that tells them apart");
+        assert_eq!(silent["inControl"], Value::Null, "before any CONTROL_STATUS arrives gcsMain is 0 and both flags are false, which is byte-identical to another station holding it with takeover denied - firstControlStatusReceived is the only thing that tells them apart");
         assert_eq!(silent["takeoverAllowed"], Value::Null);
         assert_eq!(silent["holderSystemId"], Value::Null);
         assert!(silent["reason"].as_str().unwrap().contains("not said"));
 
         let ours = operator_control_view(&Station { known: true, holder: Some(250), takeover: false, own_id: Some(250) }, &[]);
-        assert_eq!(ours["inControl"], true, "being in control is sysidInControl matching THIS ground station's own MAVLink system id, a GCS-side setting - comparing against the vehicle's id would be wrong on every non-default station");
+        assert_eq!(ours["inControl"], true, "being in control is gcsMain matching THIS ground station's own MAVLink system id, a GCS-side setting - comparing against the vehicle's id would be wrong on every non-default station");
         assert_eq!(ours["reason"], "");
 
         let theirs = operator_control_view(&Station { known: true, holder: Some(42), takeover: true, own_id: Some(250) }, &[]);

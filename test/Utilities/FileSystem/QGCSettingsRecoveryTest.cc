@@ -2,6 +2,7 @@
 #include "QGCSettingsRecovery.h"
 
 #include <QtCore/QFile>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QSettings>
 #include <QtCore/QTemporaryDir>
 #include <QtTest/QTest>
@@ -30,7 +31,9 @@ void QGCSettingsRecoveryTest::_unreadableFileIsReplaced()
     {
         QSettings settings(path, QSettings::IniFormat);
         QVERIFY(!settings.isWritable());
+        expectLogMessage("qgc.utilities.filesystem.qgcsettingsrecovery", QtWarningMsg, QRegularExpression(QStringLiteral("moved aside and recreated")));
         QVERIFY(QGCSettingsRecovery::moveAsideIfUnwritable(settings));
+        verifyExpectedLogMessage();
         QVERIFY(settings.isWritable());
         settings.setValue(QStringLiteral("General/appFontPointSize"), 11);
     }
@@ -48,7 +51,9 @@ void QGCSettingsRecoveryTest::_readOnlyFileKeepsItsValues()
     {
         QSettings settings(path, QSettings::IniFormat);
         QVERIFY(!settings.isWritable());
+        expectLogMessage("qgc.utilities.filesystem.qgcsettingsrecovery", QtWarningMsg, QRegularExpression(QStringLiteral("moved aside and recreated")));
         QVERIFY(QGCSettingsRecovery::moveAsideIfUnwritable(settings));
+        verifyExpectedLogMessage();
         settings.setValue(QStringLiteral("General/appFontPointSize"), 11);
     }
 
@@ -67,3 +72,5 @@ void QGCSettingsRecoveryTest::_writableFileIsLeftAlone()
     QVERIFY(!QGCSettingsRecovery::moveAsideIfUnwritable(settings));
     QVERIFY(!QFile::exists(path + QStringLiteral(".unwritable")));
 }
+
+UT_REGISTER_TEST(QGCSettingsRecoveryTest, TestLabel::Unit)

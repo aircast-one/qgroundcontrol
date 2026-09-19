@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "VehicleWindFactGroup.h"
 #include "Vehicle.h"
 
@@ -38,11 +29,9 @@ void VehicleWindFactGroup::handleMessage(Vehicle *vehicle, const mavlink_message
     case MAVLINK_MSG_ID_HIGH_LATENCY2:
         _handleHighLatency2(message);
         break;
-#ifndef QGC_NO_ARDUPILOT_DIALECT
     case MAVLINK_MSG_ID_WIND:
         _handleWind(message);
         break;
-#endif
     default:
         break;
     }
@@ -88,7 +77,6 @@ void VehicleWindFactGroup::_handleWindCov(const mavlink_message_t &message)
     _setTelemetryAvailable(true);
 }
 
-#ifndef QGC_NO_ARDUPILOT_DIALECT
 void VehicleWindFactGroup::_handleWind(const mavlink_message_t &message)
 {
     mavlink_wind_t wind{};
@@ -105,4 +93,3 @@ void VehicleWindFactGroup::_handleWind(const mavlink_message_t &message)
 
     _setTelemetryAvailable(true);
 }
-#endif

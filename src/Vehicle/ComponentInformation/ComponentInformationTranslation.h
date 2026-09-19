@@ -1,28 +1,18 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QJsonObject>
 #include <QtCore/QHash>
 #include <QtCore/QObject>
 #include <QtCore/QString>
-#include <QtCore/QLoggingCategory>
-
-Q_DECLARE_LOGGING_CATEGORY(ComponentInformationTranslationLog)
-
 class QGCCachedFileDownload;
 
 class ComponentInformationTranslation : public QObject
 {
     Q_OBJECT
-    
+#ifdef QGC_UNITTEST_BUILD
+    friend class ComponentInformationTranslationTest; // Unit test
+#endif
+
 public:
     ComponentInformationTranslation(QObject* parent, QGCCachedFileDownload* cachedFileDownload);
 
@@ -32,7 +22,7 @@ public:
     ///     @param toTranslateJsonFile json file to be translated
     ///     @param maxCacheAgeSec Maximum age of cached item in seconds
     /// @return true: Asynchronous download has started, false: Download initialization failed
-    bool downloadAndTranslate(const QString& summaryJsonFile, const QString& toTranslateJsonFile, int maxCacheAgeSec);
+    bool downloadAndTranslate(const QString& summaryJsonFile, const QString& toTranslateJsonFile, int maxCacheAgeSec, const QString& componentName);
 
     QString translateJsonUsingTS(const QString& toTranslateJsonFile, const QString& tsFile);
 
@@ -40,9 +30,9 @@ signals:
     void downloadComplete(QString translatedJsonTempFile, QString errorMsg);
 
 private slots:
-    void onDownloadCompleted(QString remoteFile, QString localFile, QString errorMsg);
+    void onDownloadCompleted(bool success, const QString &localFile, QString errorMsg, bool fromCache);
 private:
-    QString getUrlFromSummaryJson(const QString& summaryJsonFile, const QString& locale);
+    QString getUrlFromSummaryJson(const QString& summaryJsonFile, const QString& locale, const QString& componentName);
 
     static QJsonObject translate(const QJsonObject& translationObj, const QHash<QString, QString>& translations, QJsonObject doc);
 

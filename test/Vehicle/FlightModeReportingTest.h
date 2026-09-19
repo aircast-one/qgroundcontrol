@@ -9,9 +9,9 @@
 
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
-class FlightModeReportingTest : public UnitTest
+class FlightModeReportingTest : public VehicleTestManualConnect
 {
     Q_OBJECT
 

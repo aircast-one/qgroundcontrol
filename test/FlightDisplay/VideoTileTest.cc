@@ -4,6 +4,9 @@
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlPropertyMap>
 
+#include <QtCore/QRegularExpression>
+#include <memory>
+
 #include "SettingsManager.h"
 #include "VideoSettings.h"
 
@@ -40,14 +43,23 @@ static QQuickItem* findTile(QQuickView& view, int cameraNumber)
     });
 }
 
+void VideoTileTest::init()
+{
+    UnitTest::init();
+    ignoreLogMessage("qt.qpa.fonts", QtWarningMsg, QRegularExpression(QStringLiteral("Populating font family aliases")));
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("onFlyViewActiveChanged")));
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("mainWindow is not defined")));
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("activeVehicle' of null")));
+}
+
 void VideoTileTest::_tuckPersistsAcrossReload()
 {
     clearQmlGlobalSettings({"VideoRailTucked"});
 
     {
-        QQmlPropertyMap globals;
+        const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
         QQuickView view;
-        QVERIFY(loadVideoView(view, globals));
+        QVERIFY(loadVideoView(view, *globals));
 
         QQuickItem* layer = findNamed(view, QStringLiteral("tiles"));
         QVERIFY(layer);
@@ -58,9 +70,9 @@ void VideoTileTest::_tuckPersistsAcrossReload()
     }
 
     {
-        QQmlPropertyMap globals2;
+        const std::unique_ptr<QQmlPropertyMap> globals2(QQmlPropertyMap::create());
         QQuickView view2;
-        QVERIFY(loadVideoView(view2, globals2));
+        QVERIFY(loadVideoView(view2, *globals2));
 
         QQuickItem* layer2 = findNamed(view2, QStringLiteral("tiles"));
         QVERIFY(layer2);
@@ -70,9 +82,9 @@ void VideoTileTest::_tuckPersistsAcrossReload()
         QVERIFY(!layer2->property("tucked").toBool());
     }
 
-    QQmlPropertyMap globals3;
+    const std::unique_ptr<QQmlPropertyMap> globals3(QQmlPropertyMap::create());
     QQuickView view3;
-    QVERIFY(loadVideoView(view3, globals3));
+    QVERIFY(loadVideoView(view3, *globals3));
 
     QQuickItem* layer3 = findNamed(view3, QStringLiteral("tiles"));
     QVERIFY(layer3);
@@ -91,9 +103,9 @@ void VideoTileTest::_extraCameraTileAttachedToPip()
         QStringLiteral(R"([{"name":"Cam2","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/2"}])"));
     videoSettings->multiViewEnabled()->setRawValue(true);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
     QQuickView view;
-    QVERIFY(loadVideoView(view, globals));
+    QVERIFY(loadVideoView(view, *globals));
 
     QQuickItem* tile = findTile(view, 2);
     QVERIFY(tile);
@@ -121,9 +133,9 @@ void VideoTileTest::_gridPersistsAcrossReload()
     clearQmlGlobalSettings({"VideoRailGrid"});
 
     {
-        QQmlPropertyMap globals;
+        const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
         QQuickView view;
-        QVERIFY(loadVideoView(view, globals));
+        QVERIFY(loadVideoView(view, *globals));
 
         QQuickItem* layer = findNamed(view, QStringLiteral("tiles"));
         QVERIFY(layer);
@@ -132,9 +144,9 @@ void VideoTileTest::_gridPersistsAcrossReload()
         QVERIFY(layer->property("grid").toBool());
     }
 
-    QQmlPropertyMap globals2;
+    const std::unique_ptr<QQmlPropertyMap> globals2(QQmlPropertyMap::create());
     QQuickView view2;
-    QVERIFY(loadVideoView(view2, globals2));
+    QVERIFY(loadVideoView(view2, *globals2));
 
     QQuickItem* layer2 = findNamed(view2, QStringLiteral("tiles"));
     QVERIFY(layer2);
@@ -159,9 +171,9 @@ void VideoTileTest::_focusLayoutOverflowsIntoMore()
         {"name":"Cam5","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/5"}])"));
     videoSettings->multiViewEnabled()->setRawValue(true);
 
-    QQmlPropertyMap globals;
+    const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
     QQuickView view;
-    QVERIFY(loadVideoView(view, globals));
+    QVERIFY(loadVideoView(view, *globals));
 
     QQuickItem* layer = findNamed(view, QStringLiteral("tiles"));
     QQuickItem* more = findNamed(view, QStringLiteral("videoTileMore"));
@@ -192,9 +204,9 @@ void VideoTileTest::_focusLayoutOverflowsIntoMore()
 void VideoTileTest::_statusPillRegistersAsAnObstacleOwnedByThePip()
 {
     QQuickView view;
-    QQmlPropertyMap globals;
-    globals.insert(QStringLiteral("activeVehicle"), QVariant());
-    view.engine()->rootContext()->setContextProperty(QStringLiteral("globals"), &globals);
+    const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
+    globals->insert(QStringLiteral("activeVehicle"), QVariant());
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("globals"), globals.get());
     QVERIFY(loadTestView(view, QStringLiteral("qrc:/unittest/StatusPillTest.qml")));
 
     QQuickItem *const pill = findNamed(view, QStringLiteral("videoStatusPill"));
@@ -211,3 +223,5 @@ void VideoTileTest::_statusPillRegistersAsAnObstacleOwnedByThePip()
     QCOMPARE(owners.count(), 1);
     QCOMPARE(owners.first().value<QQuickItem*>(), pip);
 }
+
+UT_REGISTER_TEST(VideoTileTest, TestLabel::Unit)

@@ -3,13 +3,13 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.ScreenTools
-import QGroundControl.Palette
+import QGroundControl.Controls
 
 ColumnLayout {
     id:         _root
     spacing:    0
 
+    property var    map
     property string heightText: qsTr("30 ft")
 
     property color _textColor:  QGroundControl.globalPalette.overlayInk

@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "VehicleComponent.h"
@@ -23,7 +14,7 @@ public:
     QStringList setupCompleteChangedTriggerList() const final;
 
     QString name() const final { return _name; }
-    QString description() const final { return tr("Frame Setup is used to select the airframe which matches your vehicle."); }
+    QString description() const final { return tr("Configure the airframe type that matches your vehicle."); }
     QString iconResource() const final { return QStringLiteral("/qmlimages/AirframeComponentIcon.png"); }
     bool requiresSetup() const final { return _requiresFrameSetup; }
     bool setupComplete() const final;

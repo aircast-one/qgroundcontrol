@@ -1,6 +1,7 @@
 import QtQuick
 import QtPositioning
 
+import QGroundControl
 import QGroundControl.FlightMap
 
 FlightMap {

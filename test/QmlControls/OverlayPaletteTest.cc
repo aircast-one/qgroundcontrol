@@ -71,3 +71,5 @@ void OverlayPaletteTest::_materialFollowsTheThemeLikeTheWindow()
     QVERIFY((luminance(lightGlass) > luminance(dark.overlayGlass()))
             == (luminance(lightWindow) > luminance(dark.window())));
 }
+
+UT_REGISTER_TEST(OverlayPaletteTest, TestLabel::Unit)

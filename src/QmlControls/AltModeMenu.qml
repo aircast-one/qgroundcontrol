@@ -12,7 +12,6 @@ import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 // Picks the frame altitudes are measured in. Opens beside the row that shows the current mode,
 // marks that mode, and dims the ones the mission or vehicle will not accept rather than hiding

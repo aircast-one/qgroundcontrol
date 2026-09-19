@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(firmware.enums[1].label, "PX4 Pro");
         assert_eq!(firmware.default, Some(Value::from(12)));
         let cruise = &app["offlineEditingCruiseSpeed"];
-        assert_eq!((cruise.value_type, cruise.units.as_deref(), cruise.decimal_places), (ValueType::Double, Some("m/s"), Some(2)));
+        assert_eq!((cruise.value_type, cruise.units.as_deref(), cruise.decimal_places), (ValueType::Double, Some("m/s"), Some(1)));
         assert_eq!((cruise.min.clone(), cruise.default.clone()), (Some(Value::from(1.0)), Some(Value::from(15.0))));
         assert!(cruise.has_control && !cruise.qgc_reboot_required);
     }

@@ -1,18 +1,11 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QAtomicInteger>
+#include <atomic>
+
 #include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtCore/QTimer>
+#include <QtQmlIntegration/QtQmlIntegration>
 
 class QGCVideoStreamInfo;
 class QQuickItem;
@@ -20,32 +13,40 @@ class QQuickItem;
 class VideoReceiver : public QObject
 {
     Q_OBJECT
-
+    QML_ELEMENT
+    QML_UNCREATABLE("")
 public:
+    /// Backend-specific decoded-frame sink.
+    using VideoSinkHandle = void *;
+
     explicit VideoReceiver(QObject *parent = nullptr)
         : QObject(parent)
     {}
 
     bool isThermal() const { return (_name == QStringLiteral("thermalVideo")); }
 
-    void *sink() { return _sink; }
+    VideoSinkHandle sink() const { return _sink; }
     QQuickItem *widget() { return _widget; }
     QString name() const { return _name; }
     QString uri() const { return _uri; }
     bool started() const { return _started; }
     bool lowLatency() const { return _lowLatency; }
+    int rtpJitterLatencyMs() const { return _rtpJitterLatencyMs; }
+    bool autoReconnect() const { return _autoReconnect; }
     QGCVideoStreamInfo *videoStreamInfo() { return _videoStreamInfo; }
     QString recordingOutput() const { return _recordingOutput; }
-    quint64 framesDecoded() const { return _framesDecoded.loadRelaxed(); }
-    quint64 bytesReceived() const { return _bytesReceived.loadRelaxed(); }
-    qint64 lastFrameSeconds() const { return _lastFrameSeconds.loadRelaxed(); }
+    quint64 framesDecoded() const { return _framesDecoded.load(std::memory_order_relaxed); }
+    quint64 bytesReceived() const { return _bytesReceived.load(std::memory_order_relaxed); }
+    qint64 lastFrameSeconds() const { return _lastFrameSeconds.load(std::memory_order_relaxed); }
 
-    virtual void setSink(void *sink) { if (sink != _sink) { _sink = sink; emit sinkChanged(_sink); } }
+    virtual void setSink(VideoSinkHandle sink) { if (sink != _sink) { _sink = sink; emit sinkChanged(_sink); } }
     virtual void setWidget(QQuickItem *widget) { if (widget != _widget) { _widget = widget; emit widgetChanged(_widget); } }
     void setName(const QString &name) { if (name != _name) { _name = name; emit nameChanged(_name); } }
     void setUri(const QString &uri) { if (uri != _uri) { _uri = uri; emit uriChanged(_uri); } }
     void setStarted(bool started) { if (started != _started) { _started = started; emit startedChanged(_started); } }
     void setLowLatency(bool lowLatency) { if (lowLatency != _lowLatency) { _lowLatency = lowLatency; emit lowLatencyChanged(_lowLatency); } }
+    void setRtpJitterLatencyMs(int ms) { if (ms != _rtpJitterLatencyMs) { _rtpJitterLatencyMs = ms; emit rtpJitterLatencyMsChanged(_rtpJitterLatencyMs); } }
+    void setAutoReconnect(bool enabled) { if (enabled != _autoReconnect) { _autoReconnect = enabled; emit autoReconnectChanged(_autoReconnect); } }
     void setVideoStreamInfo(QGCVideoStreamInfo *videoStreamInfo) { if (videoStreamInfo != _videoStreamInfo) { _videoStreamInfo = videoStreamInfo; emit videoStreamInfoChanged(); } }
 
     // QMediaFormat::FileFormat
@@ -79,11 +80,13 @@ signals:
     void recordingStarted(const QString &filename);
     void videoSizeChanged(QSize size);
 
-    void sinkChanged(void *sink);
+    void sinkChanged(VideoSinkHandle sink);
     void nameChanged(const QString &name);
     void uriChanged(const QString &uri);
     void startedChanged(bool started);
     void lowLatencyChanged(bool lowLatency);
+    void rtpJitterLatencyMsChanged(int ms);
+    void autoReconnectChanged(bool enabled);
     void videoStreamInfoChanged();
     void widgetChanged(QQuickItem *widget);
 
@@ -99,27 +102,31 @@ public slots:
     virtual void start(uint32_t timeout) = 0;
     void setTimeout(uint32_t timeout) { _timeout = timeout; }
     virtual void stop() = 0;
-    virtual void startDecoding(void *sink) = 0;
+    virtual void startDecoding(VideoSinkHandle sink) = 0;
     virtual void stopDecoding() = 0;
     virtual void startRecording(const QString &videoFile, FILE_FORMAT format) = 0;
     virtual void stopRecording() = 0;
     virtual void takeScreenshot(const QString &imageFile) = 0;
 
 protected:
-    QAtomicInteger<quint64> _framesDecoded = 0;
-    QAtomicInteger<quint64> _bytesReceived = 0;
-    QAtomicInteger<qint64> _lastFrameSeconds = 0;
+    std::atomic<quint64> _framesDecoded = 0;
+    std::atomic<quint64> _bytesReceived = 0;
+    std::atomic<qint64> _lastFrameSeconds = 0;
 
-    void *_sink = nullptr;
+    VideoSinkHandle _sink = nullptr;
     QQuickItem *_widget = nullptr;
     QGCVideoStreamInfo *_videoStreamInfo = nullptr;
     QString _name;
     QString _uri;
     bool _started = false;
-    bool _decoding = false;
+    // Flipped on streaming threads, read cross-thread (e.g. tee probe logging).
+    std::atomic<bool> _decoding = false;
     bool _recording = false;
     bool _streaming = false;
     bool _lowLatency = false;
+    int _rtpJitterLatencyMs = 80;
+    // Written live on the GUI thread, read on the receiver worker thread.
+    std::atomic<bool> _autoReconnect = true;     ///< RTSP/UDP auto-reconnect with exponential backoff on watchdog/error.
     bool _resetVideoSink = false;
     bool _endOfStream = false;
     bool _removingDecoder = false;
@@ -129,10 +136,11 @@ protected:
     //      0 - default buffer length
     //      N - buffer length, ms
     int _buffer = 0;
-    qint64 _lastSourceFrameTime = 0;
-    qint64 _lastVideoFrameTime = 0;
+    // Written on streaming threads (pad probes), read/written by the watchdog on the worker thread.
+    std::atomic<qint64> _lastSourceFrameTime = 0;
+    std::atomic<qint64> _lastVideoFrameTime = 0;
+    int _statsTickCounter = 0;
     QTimer _watchdogTimer;
-    uint32_t _signalDepth = 0;
     uint32_t _timeout = 0;
     QString _recordingOutput;
 

@@ -11,7 +11,6 @@ import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 QGCLabel {
     width:          parent ? parent.width : implicitWidth

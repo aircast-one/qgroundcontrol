@@ -69,3 +69,5 @@ void OverlayBackdropTest::_nothingResolvesWithoutARegisteredBackdrop()
     QVERIFY(load(view));
     QCOMPARE(resolve(view, "resolvedNothing"), nullptr);
 }
+
+UT_REGISTER_TEST(OverlayBackdropTest, TestLabel::Unit)

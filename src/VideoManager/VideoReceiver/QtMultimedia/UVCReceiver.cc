@@ -1,13 +1,5 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "UVCReceiver.h"
+#include "AppMessages.h"
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 #include "SettingsManager.h"
@@ -23,7 +15,7 @@
 #include <QtMultimediaQuick/private/qquickvideooutput_p.h>
 #include <QtQuick/QQuickItem>
 
-QGC_LOGGING_CATEGORY(UVCReceiverLog, "qgc.videomanager.videoreceiver.qtmultimedia.uvcreceiver")
+QGC_LOGGING_CATEGORY(UVCReceiverLog, "Video.UVCReceiver")
 
 UVCReceiver::UVCReceiver(QObject *parent)
     : QtMultimediaReceiver(parent)
@@ -41,11 +33,6 @@ UVCReceiver::UVCReceiver(QObject *parent)
         adjustAspectRatio();
     });
 
-    // QMediaDevices::defaultVideoInput()
-    (void) connect(_mediaDevices, &QMediaDevices::videoInputsChanged, this, [this] {
-
-    });
-
     checkPermission();
 }
 
@@ -56,11 +43,7 @@ UVCReceiver::~UVCReceiver()
 
 bool UVCReceiver::enabled()
 {
-#ifdef QGC_DISABLE_UVC
-    return false;
-#else
     return !QMediaDevices::videoInputs().isEmpty();
-#endif
 }
 
 void UVCReceiver::adjustAspectRatio()
@@ -76,9 +59,11 @@ void UVCReceiver::adjustAspectRatio()
 
     const QSize resolution = cameraFormat.resolution();
     if (resolution.isValid()) {
-        const qreal aspectRatio = resolution.width() / resolution.height();
-        const qreal height = height * aspectRatio;
-        _videoOutput->setHeight(height * aspectRatio);
+        const qreal aspectRatio = static_cast<qreal>(resolution.width()) / resolution.height();
+        const qreal width = _videoOutput->width();
+        if (width > 0.0) {
+            _videoOutput->setHeight(width / aspectRatio);
+        }
     }
 }
 
@@ -100,7 +85,7 @@ void UVCReceiver::checkPermission()
     if (qApp->checkPermission(cameraPermission) == Qt::PermissionStatus::Undetermined) {
         qApp->requestPermission(cameraPermission, qgcApp(), [](const QPermission &permission) {
             if (permission.status() != Qt::PermissionStatus::Granted) {
-                qgcApp()->showAppMessage(QStringLiteral("Failed to get camera permission"));
+                QGC::showAppMessage(QStringLiteral("Failed to get camera permission"));
             }
         });
     }

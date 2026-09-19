@@ -6,6 +6,9 @@ class FlightMapTest : public UnitTest
 {
     Q_OBJECT
 
+protected:
+    void init() override;
+
 private slots:
     void _trackpadOrMagicMouseScrollPans();
     void _momentumKeepsPanningAfterTheStopSignal();

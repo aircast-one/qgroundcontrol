@@ -6,7 +6,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicles.selectedVehicles.count", "vehicle.id"];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,pauseVehicleSupported,coordinate";
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate";
 const WATCHED_PER_VEHICLE: [&str; 4] = ["armed", "flying", "flightMode", "coordinate"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
@@ -82,6 +82,7 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .map(|index| {
             let read = object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS));
             let link = object(&backend.get_fields(&format!("vehicles.vehicles.{index}.vehicleLinkManager"), "primaryLinkName,communicationLost,communicationLostEnabled"));
+            let supports = object(&backend.get_fields(&format!("vehicles.vehicles.{index}.supports"), "pauseVehicle"));
             let id = integer(&read, "id");
             json!({
                 "id": id,
@@ -96,7 +97,7 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "flying": flag(&read, "flying"),
                 "flightMode": text(&read, "flightMode"),
                 "missionFlightMode": text(&read, "missionFlightMode"),
-                "pauseSupported": flag(&read, "pauseVehicleSupported"),
+                "pauseSupported": flag(&supports, "pauseVehicle"),
                 "selected": id.is_some_and(|id| chosen_ids.contains(&id)),
             })
         })
@@ -165,6 +166,7 @@ mod tests {
                 let (index, tail) = rest.split_once('.').unwrap_or((rest, ""));
                 if let Some(vehicle) = index.parse::<usize>().ok().and_then(|index| self.0.get(index)) {
                     return match tail {
+                        "supports" => json!({ "kind": "object", "pauseVehicle": vehicle["pauseVehicleSupported"] }).to_string(),
                         "vehicleLinkManager" => json!({ "kind": "object", "primaryLinkName": vehicle["link"], "communicationLost": vehicle["quiet"], "communicationLostEnabled": vehicle.get("watching").cloned().unwrap_or(json!(true)) }).to_string(),
                         _ => vehicle.to_string(),
                     };
