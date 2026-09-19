@@ -1,4 +1,7 @@
 #include "QGCCorePlugin.h"
+#ifdef QGC_GST_STREAMING
+#include "GStreamer.h"
+#endif
 #include "AppSettings.h"
 #ifdef Q_OS_ANDROID
 #include "Viewer3DSettings.h"
@@ -43,9 +46,6 @@
 #include <QtQuick/QQuickItem>
 #ifdef QGC_QWINDOWKIT
 #include <QWKQuick/qwkquickglobal.h>
-#ifdef QGC_GST_STREAMING
-#include "GStreamer.h"
-#endif
 #endif
 
 QGC_LOGGING_CATEGORY(QGCCorePluginLog, "API.QGCCorePlugin");

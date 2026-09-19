@@ -98,7 +98,7 @@ function(qgc_apply_global_hardening)
     endif()
 
     foreach(_flag IN LISTS _cxx)
-        add_compile_options("$<$<NOT:$<CONFIG:Debug>>:${_flag}>")
+        add_compile_options("$<$<AND:$<NOT:$<CONFIG:Debug>>,$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>>:${_flag}>")
     endforeach()
     foreach(_flag IN LISTS _link)
         add_link_options("$<$<NOT:$<CONFIG:Debug>>:${_flag}>")
