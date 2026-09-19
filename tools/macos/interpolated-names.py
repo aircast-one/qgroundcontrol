@@ -88,7 +88,7 @@ if not lists or not labels or not survey or not sensors:
     sys.exit(1)
 
 ok = check("ItemFact.lists", lists, ["src/MissionManager/SimpleMissionItem.h"], False)
-ok &= check("GeoTagStore.labels", labels, ["src/AnalyzeView/GeoTagController.h"], True)
+ok &= check("GeoTagStore.labels", labels, ["src/AnalyzeView/GeoTag/GeoTagController.h"], True)
 # A survey's shot count lives on the transect base class and its flown distance on the complex
 # base above it, so this one spans two headers.
 ok &= check("SurveyWatch.properties", survey,
