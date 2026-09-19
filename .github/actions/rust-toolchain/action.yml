@@ -1,0 +1,68 @@
+name: Rust Toolchain
+description: Make cargo able to build core-rs for this job's targets. The Rust core is part of the application, so every platform build needs it.
+
+inputs:
+  targets:
+    description: "Space-separated rustup target triples to add (e.g. 'aarch64-apple-ios')"
+    required: false
+    default: ""
+  android-abis:
+    description: "Semicolon- or space-separated Android ABIs to add Rust targets for (e.g. 'arm64-v8a;armeabi-v7a'). Empty for desktop builds."
+    required: false
+    default: ""
+  cargo-ndk:
+    description: "Install cargo-ndk at the version pinned in build-config.json"
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install rustup
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v cargo >/dev/null 2>&1; then
+          cargo --version
+          exit 0
+        fi
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --profile minimal --default-toolchain stable
+        echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+
+    - name: Add Rust targets
+      if: inputs.targets != ''
+      shell: bash
+      env:
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        set -euo pipefail
+        for target in ${TARGETS}; do
+          rustup target add "${target}"
+        done
+
+    - name: Add Rust Android targets
+      if: inputs.android-abis != ''
+      shell: bash
+      env:
+        ABIS: ${{ inputs.android-abis }}
+      run: |
+        set -euo pipefail
+        for abi in ${ABIS//;/ }; do
+          case "${abi}" in
+            arm64-v8a)   target=aarch64-linux-android ;;
+            armeabi-v7a) target=armv7-linux-androideabi ;;
+            x86_64)      target=x86_64-linux-android ;;
+            x86)         target=i686-linux-android ;;
+            *) echo "::error::No Rust target is mapped to the Android ABI ${abi}"; exit 1 ;;
+          esac
+          rustup target add "${target}"
+        done
+
+    - name: Install cargo-ndk
+      if: inputs.cargo-ndk == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(python3 tools/setup/read_config.py --get rust.cargo_ndk_version)"
+        cargo install cargo-ndk --locked --version "${version}"

@@ -8,7 +8,8 @@
     "android",
     "apple",
     "build",
-    "gstreamer"
+    "gstreamer",
+    "rust"
   ],
   "properties": {
     "$schema": {
@@ -93,6 +94,18 @@
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+$",
           "description": "iOS minimum deployment target"
+        }
+      }
+    },
+    "rust": {
+      "type": "object",
+      "required": ["cargo_ndk_version"],
+      "additionalProperties": false,
+      "properties": {
+        "cargo_ndk_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "cargo-ndk version used to cross-compile core-rs for Android"
         }
       }
     },

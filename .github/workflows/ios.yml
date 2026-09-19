@@ -71,6 +71,11 @@ jobs:
           build-type: ${{ matrix.build_type }}
           cpm-modules: ${{ runner.temp }}/build/cpm_modules
 
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
+        with:
+          targets: aarch64-apple-ios
+
       - name: Configure
         uses: ./.github/actions/cmake-configure
         with:

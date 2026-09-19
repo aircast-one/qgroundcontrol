@@ -150,6 +150,12 @@ jobs:
         if: runner.os == 'Linux'
         uses: ./.github/actions/install-dependencies
 
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
+        with:
+          android-abis: ${{ env.QT_ANDROID_ABIS }}
+          cargo-ndk: 'true'
+
       - name: Create Debug Keystore
         if: ${{ env.QT_ANDROID_KEYSTORE_STORE_PASS == '' || !matrix.primary }}
         shell: bash

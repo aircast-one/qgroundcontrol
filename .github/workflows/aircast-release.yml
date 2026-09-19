@@ -111,6 +111,12 @@ jobs:
       - name: Install host build dependencies
         uses: ./.github/actions/install-dependencies
 
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
+        with:
+          android-abis: ${{ env.QT_ANDROID_ABIS }}
+          cargo-ndk: 'true'
+
       - name: Install release signing keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -244,6 +250,9 @@ jobs:
 
       - name: Install Dependencies
         uses: ./.github/actions/install-dependencies
+
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
 
       - name: Install packet radio native deps
         # libusb/libsodium are the wfb-ng receiver's native deps, copied into the
@@ -412,6 +421,9 @@ jobs:
           aqt-source: ${{ env.AQT_SOURCE }}
           build-type: Release
 
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
+
       - name: Configure
         uses: ./.github/actions/cmake-configure
         with:
@@ -494,6 +506,9 @@ jobs:
           aqt-source: ${{ env.AQT_SOURCE }}
           build-type: Release
 
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
+
       - name: Configure
         uses: ./.github/actions/cmake-configure
         with:
@@ -570,6 +585,9 @@ jobs:
 
       - name: Install Dependencies
         uses: ./.github/actions/install-dependencies
+
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
 
       - name: Configure
         uses: ./.github/actions/cmake-configure
