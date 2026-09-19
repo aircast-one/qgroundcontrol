@@ -33,6 +33,7 @@ runs:
     - name: Add Rust targets
       if: inputs.targets != ''
       shell: bash
+      working-directory: core-rs
       env:
         TARGETS: ${{ inputs.targets }}
       run: |
@@ -40,10 +41,13 @@ runs:
         for target in ${TARGETS}; do
           rustup target add "${target}"
         done
+        rustup show active-toolchain
+        rustup target list --installed
 
     - name: Add Rust Android targets
       if: inputs.android-abis != ''
       shell: bash
+      working-directory: core-rs
       env:
         ABIS: ${{ inputs.android-abis }}
       run: |
@@ -58,6 +62,8 @@ runs:
           esac
           rustup target add "${target}"
         done
+        rustup show active-toolchain
+        rustup target list --installed
 
     - name: Install cargo-ndk
       if: inputs.cargo-ndk == 'true'

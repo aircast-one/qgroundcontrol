@@ -11,6 +11,7 @@ function(qgc_rust_require_target triple)
     endif()
     execute_process(
         COMMAND ${QGC_RUSTUP} target list --installed
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE installed
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET
