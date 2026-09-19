@@ -28,10 +28,15 @@ jstring jniGet(JNIEnv *env, jclass clazz, jstring pathA)
 jstring jniCoreLinkOpen(JNIEnv *env, jclass clazz, jstring configA)
 {
     Q_UNUSED(clazz);
+#ifdef QGC_RUST_CORE
     char *const result = qgc_core_link_open(QJniObject(configA).toString().toUtf8().constData());
     jstring answer = env->NewStringUTF(result ? result : "");
     qgc_bridge_free(result);
     return answer;
+#else
+    Q_UNUSED(configA);
+    return env->NewStringUTF("{\"ok\":false,\"reason\":\"this build has no Rust core\"}");
+#endif
 }
 
 jstring jniGetFields(JNIEnv *env, jclass clazz, jstring pathA, jstring fieldsA)
