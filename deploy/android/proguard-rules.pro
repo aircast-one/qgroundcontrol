@@ -25,6 +25,9 @@
 -keep class org.mavlink.qgroundcontrol.QGCFtdiSerialDriver$QGCFtdiSerialPort { *; }
 -keep class org.mavlink.qgroundcontrol.QGCFtdiDriver { *; }
 -keep class org.mavlink.qgroundcontrol.QGCSDLManager { *; }
+# The bridge is called only from C++ and from the native head linking this AAR,
+# so nothing inside the package reaches it.
+-keep class org.mavlink.qgroundcontrol.QGCBridge** { *; }
 
 # SDL - native method stubs required for JNI registration
 -keep class org.libsdl.app.** { *; }
