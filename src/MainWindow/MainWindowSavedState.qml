@@ -45,7 +45,9 @@ Item {
                 window.y = s.y;
                 window.width = s.width;
                 window.height = s.height;
-                window.visibility = s.visibility;
+                if (!QGroundControl.corePlugin.hostProvidesUI) {
+                    window.visibility = s.visibility;
+                }
             } else {
                 _setDefaultDesktopWindowSize()
             }

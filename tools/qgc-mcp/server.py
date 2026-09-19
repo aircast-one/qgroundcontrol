@@ -558,14 +558,14 @@ def native_windows() -> list[dict]:
 @mcp.tool()
 def native_screenshot(window: str = "") -> Image:
     """Screenshot one AppKit window by title, captured by window id so it works even when the
-    window is behind others. Omit `window` to take the one hosting Qt. For the Qt scene's own
+    window is behind others. Omit `window` to take the front visible one. For the Qt scene's own
     render surface use `screenshot` instead."""
     windows = _api("/native/windows").get("windows", [])
     visible = [w for w in windows if w.get("visible")]
     if window:
         matches = [w for w in visible if w.get("title") == window]
     else:
-        matches = [w for w in visible if w.get("hostsQt")] or visible
+        matches = visible
     if not matches:
         titles = ", ".join(repr(w.get("title", "")) for w in visible) or "none"
         raise RuntimeError(f"no visible window {window!r}; visible windows: {titles}")

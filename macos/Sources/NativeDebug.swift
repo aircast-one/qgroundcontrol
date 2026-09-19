@@ -46,7 +46,6 @@ enum NativeDebug {
                     "height": Int(frame.height.rounded()),
                 ],
                 "contentSize": ["width": Int(content.width.rounded()), "height": Int(content.height.rounded())],
-                "hostsQt": window.contentView is QtHostView,
             ]
         }
         return ["windows": entries, "screenHeight": Int(screenHeight.rounded())]

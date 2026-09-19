@@ -304,18 +304,18 @@ void QGCCorePlugin::setupEmbeddedEngine(QObject *rootObject)
 namespace
 {
 
-bool s_hostProvidesPlanUI = false;
+bool s_hostProvidesUI = false;
 
 } // namespace
 
-void QGCCorePlugin::setHostProvidesPlanUI(bool provides)
+void QGCCorePlugin::setHostProvidesUI(bool provides)
 {
-    s_hostProvidesPlanUI = provides;
+    s_hostProvidesUI = provides;
 }
 
-bool QGCCorePlugin::hostProvidesPlanUI() const
+bool QGCCorePlugin::hostProvidesUI() const
 {
-    return s_hostProvidesPlanUI;
+    return s_hostProvidesUI;
 }
 
 void QGCCorePlugin::destroyQmlApplicationEngine(QQmlApplicationEngine *qmlEngine)

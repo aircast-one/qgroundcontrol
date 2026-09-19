@@ -9,13 +9,13 @@ enum AppShell {
             arguments: CommandLine.arguments,
             executable: Bundle.main.executableURL?.deletingPathExtension().lastPathComponent
                 ?? ProcessInfo.processInfo.processName)
-        qgc_set_host_provides_plan_ui(nativeWindows ? 1 : 0)
+        qgc_set_host_provides_ui(nativeWindows ? 1 : 0)
         let startCode = qgc_start(argc, argv)
         guard startCode == 0 else { return startCode }
 
         if nativeWindows {
             installMenuBar()
-            QtHostWindow.shared.show()
+            FlyWindow.shared.show()
         }
 
         let exitCode = qgc_run()

@@ -1101,6 +1101,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         video.stopWatching()
         video.stopDetections()
         window = nil
+        NSApp.terminate(nil)
     }
 }
 

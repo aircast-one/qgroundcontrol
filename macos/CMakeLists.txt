@@ -140,7 +140,6 @@ add_library(QGCNativeUI STATIC
     Sources/NativeDebug.swift
     Sources/NativeProbe.swift
     Sources/Probeable.swift
-    Sources/QtHostWindow.swift
     Sources/FlyStateModel.swift
     Sources/FlyTelemetryModel.swift
     Sources/FlyDetailModel.swift
