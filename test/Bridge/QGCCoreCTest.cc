@@ -639,7 +639,6 @@ void QGCCoreCTest::_coreUdpLinkFramesAPeer()
 
 void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
 {
-#ifdef QGC_RUST_CORE
     ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("called with unknown config")));
     qputenv("QGC_CORE_LINKS", "1");
     QUdpSocket peer;
@@ -714,14 +713,10 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!vehicleUp(), 10000);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
 {
-#ifdef QGC_RUST_CORE
     ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("called with unknown config")));
     qputenv("QGC_CORE_LINKS", "1");
     QUdpSocket peer;
@@ -846,14 +841,10 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(!MultiVehicleManager::instance()->activeVehicle(), 10000);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_detectionsFollowTheRtspUrl()
 {
-#ifdef QGC_RUST_CORE
     const QString before = take(qgc_bridge_get("settings.videoSettings.rtspUrl.rawValue")).value(QStringLiteral("value")).toString();
     const auto restore = qScopeGuard([before]() {
         take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"\"}"));
@@ -870,14 +861,10 @@ void QGCCoreCTest::_detectionsFollowTheRtspUrl()
     QVERIFY(detections.value(QStringLiteral("boxes")).toArray().isEmpty());
     QVERIFY(take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"\"}")).value(QStringLiteral("ok")).toBool(false));
     QCOMPARE(take(qgc_bridge_get("view.detections")).value(QStringLiteral("available")).toBool(true), false);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_coreConnectSequenceReachesParameters()
 {
-#ifdef QGC_RUST_CORE
     ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("called with unknown config")));
     ignoreLogMessage("Utilities.StateMachine.RetryableRequestMessageState", QtWarningMsg, QRegularExpression(QStringLiteral("Max retries exhausted")));
     qputenv("QGC_CORE_LINKS", "1");
@@ -1047,14 +1034,10 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(!MultiVehicleManager::instance()->activeVehicle(), 10000);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 {
-#ifdef QGC_RUST_CORE
     ignoreLogMessage("Vehicle.MavCommandQueue", QtWarningMsg, QRegularExpression(QStringLiteral("Giving up sending command")));
     const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
     QFile file(sample);
@@ -1157,9 +1140,6 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
         const QString percent = close(factValue("vehicle.batteries.0.percentRemaining"), coreBatteries.first().toObject().value(QStringLiteral("percentRemaining")).toDouble(), 0.5, "battery percent");
         QVERIFY2(percent.isEmpty(), qPrintable(percent));
     }
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_videoAndCameraAreServed()
@@ -1491,7 +1471,6 @@ static QString _shapeDifference(const QJsonObject &was, const QJsonObject &now)
 
 void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
 {
-#ifdef QGC_RUST_CORE
     // kViewPaths is hand written and nothing tied it to the registry, so a view added to VIEWS was
     // simply absent from the contract - its shape pinned by nothing, and indistinguishable from the
     // eighteen absent on purpose. view.instrumentGroups was added and recorded nothing until this
@@ -1536,7 +1515,6 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
         }
     }
     QVERIFY2(stale.isEmpty(), qPrintable(QStringLiteral("recorded AND excused, so the reason carried here is no longer true: %1").arg(stale.join(QStringLiteral(", ")))));
-#endif
 }
 
 void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
@@ -2002,7 +1980,6 @@ QString roundedCoordinates(const QJsonArray &points)
 void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 {
     ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("createSerialConfiguration: bad name")));
-#ifdef QGC_RUST_CORE
     const QJsonObject refusedName = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
     QVERIFY2(refusedName.value(QStringLiteral("ok")).toBool(false), qPrintable(refusedName.value(QStringLiteral("reason")).toString()));
     QCOMPARE(refusedName.value(QStringLiteral("result")).toBool(true), false);
@@ -2020,14 +1997,10 @@ void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 
     QVERIFY2(!refusedBaud.value(QStringLiteral("reason")).toString().contains(QStringLiteral("does not resolve")),
              "createSerialConfiguration must be reachable through the bridge; the four step flow it replaces passes a configuration pointer no head can hold");
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
 {
-#ifdef QGC_RUST_CORE
     const QList<SurveyCase> cases = {
         { "square-0deg",            polygonSquare(),   0.0,   60.0, 40.0,  0.0, false , false, 0 },
         { "square-30deg",           polygonSquare(),  30.0,   60.0, 40.0,  0.0, false , false, 0 },
@@ -2390,9 +2363,6 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         const QByteArray now = QJsonDocument(recorded.value(key).toObject()).toJson(QJsonDocument::Compact);
         QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
     }
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_tlogSummaryDecodesTheSampleLog()
@@ -2674,7 +2644,6 @@ void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
 
 void QGCCoreCTest::_polygonGeometryMatchesTheRecordedOracle()
 {
-#ifdef QGC_RUST_CORE
     const QList<QPair<QString, QJsonArray>> shapes = {
         { QStringLiteral("square"),   polygonSquare()   },
         { QStringLiteral("triangle"), polygonTriangle() },
@@ -2773,14 +2742,10 @@ void QGCCoreCTest::_polygonGeometryMatchesTheRecordedOracle()
     in.close();
     const QString difference = _jsonDifferences(expected, recorded);
     QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
 {
-#ifdef QGC_RUST_CORE
     const auto reversedOf = [](const QJsonArray &shape) {
         QJsonArray reversed;
         for (int vertex = shape.count() - 1; vertex >= 0; vertex--) {
@@ -2872,14 +2837,10 @@ void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
     in.close();
     const QString difference = _jsonDifferences(expected, recorded);
     QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
 {
-#ifdef QGC_RUST_CORE
     const auto notices = []() {
         return take(qgc_bridge_get("host.notices")).value(QStringLiteral("value")).toArray();
     };
@@ -3011,14 +2972,10 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QCOMPARE(notices().at(8).toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 14"));
     QCOMPARE(notices().last().toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 69"));
     drain();
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_everyNameTheCoreHandsAHeadToInterpolateResolves()
 {
-#ifdef QGC_RUST_CORE
     const QJsonArray kinds = take(qgc_core_get("view.missionKinds")).value(QStringLiteral("kinds")).toArray();
     QVERIFY2(!kinds.isEmpty(), "the core offers no mission kinds, so this test would pass by checking nothing");
 
@@ -3064,14 +3021,10 @@ void QGCCoreCTest::_everyNameTheCoreHandsAHeadToInterpolateResolves()
     restore();
 
     QVERIFY2(unreachable.isEmpty(), qPrintable(QStringLiteral("the core names things the bridge cannot resolve:\n%1").arg(unreachable.join(QStringLiteral("\n")))));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     bool stillConnected = true;
     const auto disconnectWhenDone = qScopeGuard([this, &stillConnected]() {
@@ -3180,14 +3133,10 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
     in.close();
     const QString difference = _jsonDifferences(expected, recorded);
     QVERIFY2(difference.isEmpty(), qPrintable(QStringLiteral("the recording no longer matches: %1").arg(difference)));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
     Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
@@ -3287,14 +3236,10 @@ void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
         }
     }
     QVERIFY2(differences.isEmpty(), qPrintable(QStringLiteral("a survey of %1 items did not survive the round trip:\n%2").arg(uploaded.count()).arg(differences.join(QStringLiteral("\n")))));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theCoreRefusesAMissionItemThePlanHasDecidedAgainst()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -3375,14 +3320,10 @@ void QGCCoreCTest::_theCoreRefusesAMissionItemThePlanHasDecidedAgainst()
     QVERIFY2(unknown.value(QStringLiteral("unknown")).toString() == QStringLiteral("Fixed Wing Landing Pattern"),
              "QGC has item types this catalogue does not list, and a head holding one has to tell being unlisted apart from being turned down");
     QCOMPARE(settled(), withCorridor - 1);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theFlyViewControllerCountsTheMissionThePlanEditorCannot()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     bool stillConnected = true;
     const auto disconnectWhenDone = qScopeGuard([this, &stillConnected]() {
@@ -3415,14 +3356,10 @@ void QGCCoreCTest::_theFlyViewControllerCountsTheMissionThePlanEditorCannot()
 
     _disconnectMockLink();
     stillConnected = false;
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_everyRootTheCoreReadsFromIsRegistered()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
 
@@ -3448,14 +3385,10 @@ void QGCCoreCTest::_everyRootTheCoreReadsFromIsRegistered()
     QCOMPARE(take(qgc_bridge_get("corePlugin.options.showMissionAbsoluteAltitude")).value(QStringLiteral("value")).toBool(), true);
     QVERIFY2(take(qgc_bridge_get("notARoot")).value(QStringLiteral("kind")).toString() == QStringLiteral("null"),
              "a root that does not exist has to answer null, or the check above proves nothing");
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_setupSeesTheComponentsTheVehicleReports()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 90000);
@@ -3482,14 +3415,10 @@ void QGCCoreCTest::_setupSeesTheComponentsTheVehicleReports()
         }
     }
     QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("the setup view is missing components the vehicle reports: %1").arg(missing.join(QStringLiteral(", ")))));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_listsRecordedAsEmptyAreCheckedAgainstAVehicle()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.sensors")).value(QStringLiteral("available")).toBool(false), 10000);
@@ -3515,14 +3444,10 @@ void QGCCoreCTest::_listsRecordedAsEmptyAreCheckedAgainstAVehicle()
         }
     }
     QCOMPARE(failing.count(), unhealthy);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_aMisspelledPropertyIsToldApartFromANullOne()
 {
-#ifdef QGC_RUST_CORE
     const QJsonObject typo = take(qgc_bridge_get("settings.appSettings.audioMutedd"));
     QCOMPARE(typo.value(QStringLiteral("kind")).toString(), QStringLiteral("value"));
     QVERIFY2(typo.value(QStringLiteral("found")).toBool(true) == false,
@@ -3541,14 +3466,10 @@ void QGCCoreCTest::_aMisspelledPropertyIsToldApartFromANullOne()
 
     const QJsonObject noSuchRoot = take(qgc_bridge_get("settingsss.appSettings.audioMuted"));
     QCOMPARE(noSuchRoot.value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_missionStatisticsAnswerOnThePlanTheEditorHolds()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -3581,14 +3502,10 @@ void QGCCoreCTest::_missionStatisticsAnswerOnThePlanTheEditorHolds()
     QVERIFY2(number("missionTime") > 0.0, "a mission with distance takes time to fly");
     QVERIFY2(number("maxAMSLAltitude") >= number("minAMSLAltitude"), "the altitude range is the wrong way round");
     QVERIFY2(number("batteriesRequired") != 0.0, "batteries required reads zero, which is either a vehicle with no battery model or a number that never varies");
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
 {
-#ifdef QGC_RUST_CORE
     const QString databasePath = sharedTileCache();
     QTRY_VERIFY_WITH_TIMEOUT(tileCacheIsReady(databasePath), 20000);
     const auto closeWhenDone = qScopeGuard([]() { qgc_core_tile_close(); });
@@ -3656,14 +3573,10 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
     char *const spelled = qgc_core_tile_hash(qgc_core_tile_provider(type.toUtf8().constData()), x, y, zoom);
     QCOMPARE(QString::fromUtf8(spelled), hash);
     qgc_core_free(spelled);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theMissionSummaryArrivesOnItsOwnAfterAnEdit()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard([&restore]() {
@@ -3691,14 +3604,10 @@ void QGCCoreCTest::_theMissionSummaryArrivesOnItsOwnAfterAnEdit()
     QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the second waypoint was refused");
     QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.missionSummary")), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(distance() > afterTwo, 10000);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard([&restore]() {
@@ -3739,14 +3648,10 @@ void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
     const QString mistyped = payloadFor(absent);
     QVERIFY2(!mistyped.contains(QStringLiteral("fired")), qPrintable(QStringLiteral("a signal that does not exist reported itself as firing: ") + mistyped));
     QVERIFY2(mistyped.isEmpty() || mistyped.contains(QStringLiteral("false")), qPrintable(QStringLiteral("a path naming no signal and no property answered as though it resolved: ") + mistyped));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
     QTRY_COMPARE_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle()->batteries()->count(), 2, 10000);
@@ -3776,14 +3681,10 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
     }
     QVERIFY2(checked > 100, qPrintable(QStringLiteral("only %1 deps were resolved, which is too few to be the whole set").arg(checked)));
     QVERIFY2(unknown.isEmpty(), qPrintable(QStringLiteral("these deps name nothing the bridge has, so their views never recompute: %1").arg(unknown.join(QStringLiteral(", ")))));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
 {
-#ifdef QGC_RUST_CORE
     ignoreLogMessage("Utilities.QGCStateMachine", QtWarningMsg, QRegularExpression(QStringLiteral("No active link available")));
     _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() && MultiVehicleManager::instance()->activeVehicle()->parameterManager()->parametersReady(), 20000);
@@ -3852,14 +3753,10 @@ void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
     QVERIFY2(paths.contains(QStringLiteral("view.modeSlots")),
              qPrintable(QStringLiteral("the slot changed from %1 to %2 and no one watching the panel was told")
                             .arg(firstMode, take(qgc_core_get("view.modeSlots")).value(QStringLiteral("slots")).toArray().at(0).toObject().value(QStringLiteral("mode")).toString())));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_replacingAPlanWithOneTheSameLengthStillWakesTheItemList()
 {
-#ifdef QGC_RUST_CORE
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../MissionManager/SectionTest.plan"));
     const QByteArray loadArgs = QJsonDocument(QJsonArray { fixture }).toJson(QJsonDocument::Compact);
 
@@ -3883,14 +3780,10 @@ void QGCCoreCTest::_replacingAPlanWithOneTheSameLengthStillWakesTheItemList()
     QCOMPARE(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count(), held);
     QVERIFY2(paths.contains(QStringLiteral("view.missionItems")),
              qPrintable(QStringLiteral("the plan was replaced with another of %1 items and nobody watching the list was told").arg(held)));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_changingTheUnitPreferenceRespellsTheTelemetryStrip()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
 
@@ -3921,14 +3814,10 @@ void QGCCoreCTest::_changingTheUnitPreferenceRespellsTheTelemetryStrip()
     QTRY_COMPARE_WITH_TIMEOUT(strip(), QStringLiteral("ft"), 5000);
     choose(1);
     QTRY_COMPARE_WITH_TIMEOUT(strip(), QStringLiteral("m"), 5000);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
     QTRY_COMPARE_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle()->batteries()->count(), 2, 10000);
@@ -3979,14 +3868,10 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
     QVERIFY2(unbound.isEmpty(),
              qPrintable(QStringLiteral("%1 of %2 deps bound to no signal, so their views are served by the idle poll rather than watched: %3")
                             .arg(unbound.count()).arg(reported.count()).arg(unbound.mid(0, 14).join(QStringLiteral(", ")))));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -4058,14 +3943,10 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 7, 20000);
     agree("ending in a landing");
 
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_everyClassTheCatalogueNamesIsTheClassTheEditorBuilds()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -4096,14 +3977,10 @@ void QGCCoreCTest::_everyClassTheCatalogueNamesIsTheClassTheEditorBuilds()
         checked++;
     }
     QVERIFY2(checked >= 2, qPrintable(QStringLiteral("only %1 classes were checked, too few to be the complex kinds").arg(checked)));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_aTakeoffReportedInsertedHasAPlaceOnTheMap()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -4128,14 +4005,10 @@ void QGCCoreCTest::_aTakeoffReportedInsertedHasAPlaceOnTheMap()
     QCOMPARE(takeoff.value(QStringLiteral("movable")).toBool(!hasPlace), hasPlace);
     QVERIFY2(hasPlace != takeoff.value(QStringLiteral("altitudeOnly")).toBool(false),
              "a command either names a place or only a height, and a head drawing pins needs those to be the same answer");
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
@@ -4159,14 +4032,10 @@ void QGCCoreCTest::_theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge(
              "every mode id came back zero, which is what an unmatched name list looks like");
 
     reads("plan.missionController.visualItems.0.additionalTimeDelay");
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -4213,14 +4082,10 @@ void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
     const QJsonObject takeoff = listed.at(kinds.indexOf(QStringLiteral("takeoff"))).toObject();
     QVERIFY2(takeoff.value(QStringLiteral("coordinate")).toObject().value(QStringLiteral("latitude")).toDouble() != 0.0,
              "an item that has a place on the map has to carry it, or the list is a list of names");
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theModeSlotsReadTheChannelTheVehicleNames()
 {
-#ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 90000);
@@ -4251,14 +4116,10 @@ void QGCCoreCTest::_theModeSlotsReadTheChannelTheVehicleNames()
     QVERIFY2(wrong.isEmpty(), qPrintable(wrong.join(QStringLiteral("; "))));
     QVERIFY2(!listed.first().toObject().value(QStringLiteral("mode")).toString().isEmpty(),
              "every slot read as empty, which is what reading the wrong parameter names looks like");
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -4321,14 +4182,10 @@ void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
              qPrintable(QStringLiteral("the core named %1 paths a head cannot write, and a write that does not resolve does not happen and says nothing:\n%2")
                             .arg(unwritable.count())
                             .arg(unwritable.join(QStringLiteral("\n")))));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theFleetIsNamedAndTheCommandedOneCanBeChosen()
 {
-#ifdef QGC_RUST_CORE
     const QJsonObject none = take(qgc_core_get("view.vehicles"));
     QCOMPARE(none.value(QStringLiteral("count")).toInt(-1), 0);
     QCOMPARE(none.value(QStringLiteral("ambiguous")).toBool(true), false);
@@ -4358,14 +4215,10 @@ void QGCCoreCTest::_theFleetIsNamedAndTheCommandedOneCanBeChosen()
     const QJsonObject absent = take(qgc_core_invoke("vehicles.setActive", "[99]"));
     QCOMPARE(absent.value(QStringLiteral("ok")).toBool(true), false);
     QCOMPARE(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), id);
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorner()
 {
-#ifdef QGC_RUST_CORE
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
     const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
     const auto leaveNoPlanBehind = qScopeGuard(restore);
@@ -4414,9 +4267,6 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
     QVERIFY2(flown > 0.0, "the summary reported no distance for a plan with a survey in it");
     QVERIFY2(axis > flown * 0.9,
              qPrintable(QStringLiteral("the profile axis spans %1 m for a mission the summary says is %2 m").arg(axis).arg(flown)));
-#else
-    QSKIP("the Rust core is not linked into this build");
-#endif
 }
 
 void QGCCoreCTest::_qtReadsBackEveryValueTheRustWriterSpells()

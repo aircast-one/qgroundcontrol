@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef QGC_RUST_CORE
-
 #include "LinkConfiguration.h"
 #include "LinkInterface.h"
 
@@ -44,5 +42,3 @@ private:
     static QHash<uint32_t, CoreLink *> _links;
     static bool _sinksInstalled;
 };
-
-#endif

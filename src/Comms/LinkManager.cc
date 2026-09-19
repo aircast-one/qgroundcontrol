@@ -10,9 +10,7 @@
 #include "MavlinkSettings.h"
 #include "AutoConnectSettings.h"
 #include "TCPLink.h"
-#ifdef QGC_RUST_CORE
 #include "CoreLink.h"
-#endif
 #include "UDPLink.h"
 
 #include "BluetoothLink.h"
@@ -154,11 +152,9 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
 
 
     SharedLinkInterfacePtr link = nullptr;
-#ifdef QGC_RUST_CORE
     if (CoreLink::enabled() && CoreLink::handles(config->type())) {
         link = std::make_shared<CoreLink>(config);
     }
-#endif
     if (!link)
     switch(config->type()) {
 #ifndef QGC_NO_SERIAL_LINK

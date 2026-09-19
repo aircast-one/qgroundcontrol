@@ -1,10 +1,3 @@
-option(QGC_RUST_CORE "Route the bridge through the Rust core" ON)
-
-if(NOT QGC_RUST_CORE)
-    message(WARNING "core-rs/: QGC_RUST_CORE=OFF, so the bridge routes straight to Qt. This is not the configuration that ships.")
-    return()
-endif()
-
 find_program(QGC_CARGO cargo)
 if(NOT QGC_CARGO)
     message(FATAL_ERROR "core-rs/: cargo was not found on PATH and the Rust core is part of this application. Install the Rust toolchain from https://rustup.rs and configure again.")
@@ -164,4 +157,3 @@ endif()
 
 add_dependencies(${CMAKE_PROJECT_NAME} qgc_core_cargo)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE qgc_core)
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_RUST_CORE)
