@@ -4,7 +4,9 @@
 #include "QGCLoggingCategory.h"
 #include "SettingsManager.h"
 #include "AppSettings.h"
+#ifndef QGC_NO_SERIAL_LINK
 #include "SerialLink.h"
+#endif
 #include "TCPLink.h"
 #include "UDPLink.h"
 
