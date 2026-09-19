@@ -144,7 +144,6 @@ extraSeconds
 fenceSupported
 file
 filename
-finalApproach
 firmware
 firmwareFence
 first
@@ -381,7 +380,6 @@ silentReason
 silentText
 simple
 skipEnabled
-slopeStart
 slot
 snrUnit
 source

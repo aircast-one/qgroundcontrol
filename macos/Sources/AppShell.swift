@@ -2,13 +2,20 @@ import AppKit
 import QGCBridgeC
 import QGCEntry
 
+final class QuitTarget: NSObject {
+    @objc func requestQuit() {
+        qgc_request_quit()
+    }
+}
+
 enum AppShell {
+    static let quitTarget = QuitTarget()
+
     static func run(_ argc: Int32, _ argv: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32 {
         NativeDebug.install()
         let nativeWindows = LaunchMode.drawsNativeWindows(
             arguments: CommandLine.arguments,
-            executable: Bundle.main.executableURL?.deletingPathExtension().lastPathComponent
-                ?? ProcessInfo.processInfo.processName)
+            bundleDeclaresNativeUI: LaunchMode.bundleDeclaresNativeUI(Bundle.main.infoDictionary))
         qgc_set_host_provides_ui(nativeWindows ? 1 : 0)
         let startCode = qgc_start(argc, argv)
         guard startCode == 0 else { return startCode }
@@ -30,7 +37,8 @@ enum AppShell {
         appMenu.addItem(withTitle: "About \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = appMenu.addItem(withTitle: "Quit \(appName)", action: #selector(QuitTarget.requestQuit), keyEquivalent: "q")
+        quit.target = AppShell.quitTarget
 
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")

@@ -28,6 +28,7 @@ struct Runtime
     std::unique_ptr<QGCApplication> app;
     std::optional<QGCCommandLineParser::CommandLineParseResult> args;
     std::optional<int> earlyExitCode;
+    bool hostProvidesUI = false;
 };
 
 Runtime g_runtime;
@@ -48,7 +49,7 @@ int qgc_start(int argc, char *argv[])
         return 0;
     }
 
-    g_runtime.app = std::make_unique<QGCApplication>(argc, argv, args);
+    g_runtime.app = std::make_unique<QGCApplication>(argc, argv, args, g_runtime.hostProvidesUI);
     QGCApplication &app = *g_runtime.app;
 
     for (int i = 1; i < argc; i++) {
@@ -104,6 +105,20 @@ int qgc_run(void)
         return app.exec();
     }
     Q_UNREACHABLE();
+}
+
+void qgc_set_host_provides_ui(int provides)
+{
+    g_runtime.hostProvidesUI = (provides != 0);
+}
+
+void qgc_request_quit(void)
+{
+    if (!g_runtime.app) {
+        return;
+    }
+    g_runtime.app->closeVehicleConnections();
+    g_runtime.app->quit();
 }
 
 void qgc_shutdown(void)

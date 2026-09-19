@@ -1,4 +1,5 @@
 import AppKit
+import QGCEntry
 import SwiftUI
 
 struct FlyPanel: View {
@@ -1101,7 +1102,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         video.stopWatching()
         video.stopDetections()
         window = nil
-        NSApp.terminate(nil)
+        qgc_request_quit()
     }
 }
 

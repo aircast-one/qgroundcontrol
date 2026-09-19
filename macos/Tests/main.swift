@@ -6129,7 +6129,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2280
+let assertionFloor = 2283
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -9970,25 +9970,29 @@ func checkAVertexHandleSaysWhichKindItIs() {
 
 
 func checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder() {
-    expect(LaunchMode.drawsNativeWindows(arguments: ["AircastQGC"], executable: "AircastQGCNative"),
-           "THE NAME IS WHAT MAKES A DOUBLE-CLICK WORK. One executable ships as two apps, and the "
-           + "bundle whose name ends Native draws this head -- an operator opening an app from "
-           + "Finder passes no arguments, which is why every shipped macOS app until now drew "
-           + "Qt's UI and this head had never been in a release")
-    expect(LaunchMode.drawsNativeWindows(arguments: ["AircastQGC"], executable: "AircastQGC") == false,
-           "and the ordinary name still draws Qt's UI, so the app that has always shipped keeps "
-           + "shipping unchanged beside the new one")
+    expect(LaunchMode.drawsNativeWindows(arguments: ["AircastQGC"], bundleDeclaresNativeUI: true),
+           "THE BUNDLE IS WHAT MAKES A DOUBLE-CLICK WORK. One executable ships as two apps, and "
+           + "the one whose Info.plist declares QGCNativeUI draws this head -- an operator opening "
+           + "an app from Finder passes no arguments")
+    expect(LaunchMode.drawsNativeWindows(arguments: ["AircastQGC"], bundleDeclaresNativeUI: false) == false,
+           "and a bundle without the key still draws Qt's UI, so the app that has always shipped "
+           + "keeps shipping unchanged beside the new one")
     expect(LaunchMode.drawsNativeWindows(arguments: ["AircastQGC", "--native-window"],
-                                         executable: "AircastQGC"),
-           "THE FLAG STAYS AND STAYS FIRST: the dev rig launches the Debug bundle under its "
-           + "ordinary name and would otherwise have no way in")
+                                         bundleDeclaresNativeUI: false),
+           "THE FLAG STAYS AND STAYS FIRST: the dev rig launches the Debug bundle from the build "
+           + "tree, whose plist carries no key, and would otherwise have no way in")
     expect(LaunchMode.drawsNativeWindows(arguments: ["AircastQGC", "--allow-multiple"],
-                                         executable: "AircastQGC") == false,
+                                         bundleDeclaresNativeUI: false) == false,
            "another flag is not this flag -- the match is on the whole argument, so a longer "
            + "option that merely contains it cannot switch the whole UI over")
-    expect(LaunchMode.drawsNativeWindows(arguments: [], executable: "AircastQGCNative"),
-           "an empty argument list is the Finder case and the name still decides it")
-    expect(LaunchMode.drawsNativeWindows(arguments: [], executable: "NativeAircastQGC") == false,
-           "the SUFFIX is the rule, not the substring: a name that merely contains the word is a "
-           + "different app and must not be handed a different user interface")
+    expect(LaunchMode.drawsNativeWindows(arguments: [], bundleDeclaresNativeUI: true),
+           "an empty argument list is the Finder case and the key still decides it")
+    expect(LaunchMode.bundleDeclaresNativeUI(["QGCNativeUI": true as NSNumber]),
+           "the key is read as a boolean, which is what PlistBuddy writes for `bool true`")
+    expect(LaunchMode.bundleDeclaresNativeUI(["QGCNativeUI": false as NSNumber]) == false,
+           "and a key written false is a refusal, not merely a presence check")
+    expect(LaunchMode.bundleDeclaresNativeUI(["CFBundleName": "AircastQGC"]) == false,
+           "a plist without the key draws Qt's UI")
+    expect(LaunchMode.bundleDeclaresNativeUI(nil) == false,
+           "and so does a process with no bundle at all, which is how a bare binary runs")
 }

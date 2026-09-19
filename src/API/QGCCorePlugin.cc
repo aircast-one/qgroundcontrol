@@ -301,23 +301,6 @@ void QGCCorePlugin::setupEmbeddedEngine(QObject *rootObject)
     _setQmlContextProperties(engine);
 }
 
-namespace
-{
-
-bool s_hostProvidesUI = false;
-
-} // namespace
-
-void QGCCorePlugin::setHostProvidesUI(bool provides)
-{
-    s_hostProvidesUI = provides;
-}
-
-bool QGCCorePlugin::hostProvidesUI() const
-{
-    return s_hostProvidesUI;
-}
-
 void QGCCorePlugin::destroyQmlApplicationEngine(QQmlApplicationEngine *qmlEngine)
 {
     delete qmlEngine;

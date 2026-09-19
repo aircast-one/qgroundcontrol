@@ -28,7 +28,7 @@ import QGroundControl.AnalyzeView
 
 ApplicationWindow {
     id:             mainWindow
-    visible:        !hostProvidesUI
+    visible:        true
 
     Component.onCompleted: {
         firstRunPromptManager.nextPrompt()
@@ -147,7 +147,6 @@ ApplicationWindow {
     property bool flyViewActive: true
     readonly property bool hostProvidesNavigation: false
     readonly property bool hostProvidesGuidedActions: false
-    readonly property bool hostProvidesUI: QGroundControl.corePlugin.hostProvidesUI
 
     function showPlanView() {
         flyViewActive = false
@@ -331,7 +330,6 @@ ApplicationWindow {
     Loader {
         id:             planViewLoader
         anchors.fill:   parent
-        active:         !mainWindow.hostProvidesUI
 
         sourceComponent: PlanView {
             map:            flyView.mapControl

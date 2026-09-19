@@ -311,6 +311,11 @@ bool QGCApplication::_initQmlRootWindow()
     QGCCorePlugin::instance()->init();
     MAVLinkProtocol::instance()->init();
     MultiVehicleManager::instance()->init();
+
+    if (_embeddedHost) {
+        return true;
+    }
+
     _qmlAppEngine = QGCCorePlugin::instance()->createQmlApplicationEngine(this);
     QObject::connect(_qmlAppEngine, &QQmlApplicationEngine::objectCreationFailed, this, QCoreApplication::quit,
                      Qt::QueuedConnection);
@@ -320,9 +325,7 @@ bool QGCApplication::_initQmlRootWindow()
     _qmlAppEngine->addImageProvider(_qgcImageProviderId, new QGCImageProvider());
     _qmlAppEngine->addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
 
-    if (!_embeddedHost) {
-        QGCCorePlugin::instance()->createRootWindow(_qmlAppEngine);
-    }
+    QGCCorePlugin::instance()->createRootWindow(_qmlAppEngine);
 
     // The root QQuickWindow exists now (load() is synchronous) but its scene graph has not been
     // initialized yet -- the only safe point to apply RHI graphics config / forced device.
@@ -975,6 +978,19 @@ void QGCApplication::_applyDeviceTelemetry(const QString &host, const QJsonObjec
     }
 }
 
+void QGCApplication::closeVehicleConnections()
+{
+    if (_connectionsClosed) {
+        return;
+    }
+    _connectionsClosed = true;
+
+    LinkManager::instance()->shutdown();
+    if (_videoManagerInitialized) {
+        VideoManager::instance()->stopVideo();
+    }
+}
+
 bool QGCApplication::event(QEvent* e)
 {
     if (e->type() == QEvent::FileOpen) {
@@ -985,11 +1001,7 @@ bool QGCApplication::event(QEvent* e)
 
     if (e->type() == QEvent::Quit) {
         if (!_mainRootWindow) {
-            return QGuiApplication::event(e);
-        }
-        if (QGCCorePlugin::instance()->hostProvidesUI()) {
-            LinkManager::instance()->shutdown();
-            VideoManager::instance()->stopVideo();
+            closeVehicleConnections();
             return QGuiApplication::event(e);
         }
         // On OSX if the user selects Quit from the menu (or Command-Q) the ApplicationWindow does not signal closing.
@@ -1015,6 +1027,10 @@ bool QGCApplication::event(QEvent* e)
 
 QGCImageProvider* QGCApplication::qgcImageProvider()
 {
+    if (!_qmlAppEngine) {
+        return nullptr;
+    }
+
     return dynamic_cast<QGCImageProvider*>(_qmlAppEngine->imageProvider(_qgcImageProviderId));
 }
 

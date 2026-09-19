@@ -3623,7 +3623,9 @@ void Vehicle::_createImageProtocolManager()
     _imageProtocolManager = new ImageProtocolManager(this);
     (void) connect(_imageProtocolManager, &ImageProtocolManager::flowImageIndexChanged, this, &Vehicle::flowImageIndexChanged);
     (void) connect(_imageProtocolManager, &ImageProtocolManager::imageReady, this, [this](const QImage &image) {
-        qgcApp()->qgcImageProvider()->setImage(image, _systemID);
+        if (QGCImageProvider *const provider = qgcApp()->qgcImageProvider()) {
+            provider->setImage(image, _systemID);
+        }
     });
 }
 

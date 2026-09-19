@@ -45,7 +45,6 @@ class QGCCorePlugin : public QObject
     Q_PROPERTY(bool showInitialSetupVehiclePreferences  READ showInitialSetupVehiclePreferences                              CONSTANT)
     Q_PROPERTY(bool showInitialSetupMeasurementUnits    READ showInitialSetupMeasurementUnits                                CONSTANT)
     Q_PROPERTY(int defaultSettings                      READ defaultSettings                                                CONSTANT)
-    Q_PROPERTY(bool hostProvidesUI                  READ hostProvidesUI                                             CONSTANT)
     Q_PROPERTY(int initialSetupPromptId                 MEMBER kInitialSetupPromptId                                       CONSTANT)
     Q_PROPERTY(const QGCOptions *options                READ options                                                        CONSTANT)
     Q_PROPERTY(const QmlObjectListModel *customMapItems READ customMapItems                                                 CONSTANT)
@@ -69,9 +68,6 @@ public:
     /// The default settings panel to show
     /// @return The settings index
     virtual int defaultSettings() { return 0; }
-
-    bool hostProvidesUI() const;
-    static void setHostProvidesUI(bool provides);
 
     /// Global options
     /// @return An instance of QGCOptions

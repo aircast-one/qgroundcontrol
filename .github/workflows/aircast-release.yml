@@ -325,6 +325,9 @@ jobs:
           # A separate identifier on purpose: two apps sharing one id share one preferences
           # domain, and the first to write settings would answer for the other.
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier org.aircast.qgc.native" "$PLIST"
+          # The key IS the switch: an operator opening an app from Finder passes no arguments,
+          # so nothing but the bundle can say which of the two UIs this copy draws.
+          /usr/libexec/PlistBuddy -c "Add :QGCNativeUI bool true" "$PLIST"
           # Re-signed because renaming the executable and editing Info.plist invalidate the
           # signature the install step applied; ad-hoc matches what that step does when no
           # identity is configured, and macOS refuses to launch a bundle whose seal is broken.

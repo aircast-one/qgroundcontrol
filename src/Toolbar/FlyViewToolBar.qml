@@ -76,7 +76,6 @@ Rectangle {
             rig:                    overlayRig
             swallowsTaps:           true
             editKey:                "viewSwitch"
-            visible:                !mainWindow.hostProvidesUI
             Layout.preferredHeight: _clusterHeight
             Layout.preferredWidth:  viewSwitchControl.implicitWidth
             Layout.minimumWidth:    Layout.preferredWidth

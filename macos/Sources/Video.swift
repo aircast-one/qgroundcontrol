@@ -55,6 +55,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         guard !askedForNative, qgc_video_available() else { return }
         askedForNative = true
         Bridge.invoke("video.setNativeRendering", [true])
+        Bridge.invoke("video.initNative")
         refresh()
     }
 

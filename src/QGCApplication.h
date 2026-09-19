@@ -76,6 +76,10 @@ public:
 
     bool event(QEvent *e) final;
 
+    /// Shut the link manager and video down, the same sequence QML's finishCloseProcess runs.
+    /// Idempotent: the quit that follows delivers QEvent::Quit here again.
+    void closeVehicleConnections();
+
     /// Handle an aircast-qgc:// deep link (from the OS open-url event or a
     /// command-line argument): sets the camera video source from its query, or
     /// with host=<device> configures cameras and telemetry from an aircastd device.
@@ -164,6 +168,7 @@ private:
     bool _fakeMobile = false;    ///< true: Fake ui into displaying mobile interface
     bool _logOutput = false;    ///< true: Log Qt debug output to file
     bool _embeddedHost = false;
+    bool _connectionsClosed = false;
     quint8 _systemId = 0; ///< MAVLink system ID, 0 means not set
     QTime _lastRebootMessageTime;    ///< showRebootAppMessage() debounce state
 

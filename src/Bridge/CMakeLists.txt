@@ -16,7 +16,6 @@ target_sources(${CMAKE_PROJECT_NAME}
 if(APPLE AND NOT IOS)
     target_sources(${CMAKE_PROJECT_NAME}
         PRIVATE
-            QGCEmbed.cc
             QGCLinksC.cc
             QGCLinksC.h
             QGCMapTileC.cc
