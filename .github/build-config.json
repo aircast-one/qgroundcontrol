@@ -20,6 +20,9 @@
     "macos_deployment_target": "13.0",
     "ios_deployment_target": "17.0"
   },
+  "rust": {
+    "cargo_ndk_version": "4.1.2"
+  },
   "build": {
     "cmake_minimum_version": "3.25",
     "platform_workflows": "Linux,Windows,MacOS,Android"
