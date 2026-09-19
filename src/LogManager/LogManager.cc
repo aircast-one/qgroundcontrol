@@ -555,3 +555,10 @@ LogEntry LogManager::buildEntry(QtMsgType type, const QMessageLogContext& contex
     entry.buildFormatted();
     return entry;
 }
+
+void LogManager::recordForTests(QtMsgType type, const QMessageLogContext& context, const QString& msg)
+{
+    if (auto* inst = instance()) {
+        inst->log(type, context, msg);
+    }
+}

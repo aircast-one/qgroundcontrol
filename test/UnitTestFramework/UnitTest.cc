@@ -713,6 +713,7 @@ static void testCaptureHandler(QtMsgType type, const QMessageLogContext &context
 {
     // Capture for unit‑test introspection
     LogManager::captureIfEnabled(type, context, msg);
+    LogManager::recordForTests(type, context, msg);
 
     // Chain to QTest's handler for normal test output
     const QtMessageHandler handler = s_qtestHandler.load(std::memory_order_acquire);

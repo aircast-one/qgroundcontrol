@@ -29,6 +29,7 @@ class LogManager : public QObject
     Q_PROPERTY(QString      lastError   READ lastError  NOTIFY lastErrorChanged)
 
 public:
+    static void recordForTests(QtMsgType type, const QMessageLogContext& context, const QString& msg);
     ~LogManager();
 
     static LogManager* instance();
