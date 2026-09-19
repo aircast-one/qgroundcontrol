@@ -154,6 +154,9 @@ add_library(qgc_core STATIC IMPORTED GLOBAL)
 set_target_properties(qgc_core PROPERTIES IMPORTED_LOCATION ${QGC_RUST_LIB})
 if(UNIX AND NOT APPLE AND NOT ANDROID)
     set_property(TARGET qgc_core PROPERTY INTERFACE_LINK_LIBRARIES udev rt util pthread m dl)
+elseif(WIN32)
+    set_property(TARGET qgc_core PROPERTY INTERFACE_LINK_LIBRARIES
+        advapi32 bcrypt cfgmgr32 dbghelp kernel32 ntdll setupapi userenv ws2_32)
 endif()
 
 add_dependencies(${CMAKE_PROJECT_NAME} qgc_core_cargo)

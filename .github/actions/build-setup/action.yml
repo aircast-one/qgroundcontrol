@@ -190,9 +190,9 @@ runs:
       with:
         arch: ${{ (inputs.qt-arch == 'win64_msvc2022_64' && 'x64') || (inputs.qt-arch == 'win64_msvc2022_arm64' && 'arm64') || 'amd64_arm64' }}
 
-    # windows-11-arm's PATH puts Git for Windows' /usr/bin/link.exe (GNU coreutils hardlink tool) ahead of MSVC's link.exe, breaking Rust crates that shell out to `link.exe` for MSVC targets. windows-2022 doesn't have this ordering issue. See rust-lang/rust#42825.
-    - name: Fix Rust linker resolution (Windows ARM64 native)
-      if: inputs.mode == 'desktop' && runner.os == 'Windows' && runner.arch == 'ARM64'
+    # Git for Windows' /usr/bin/link.exe (GNU coreutils hardlink tool) is what rustc finds when it falls back to a PATH search for MSVC's link.exe, on windows-2022 as well as windows-11-arm. See rust-lang/rust#42825.
+    - name: Fix Rust linker resolution (Windows)
+      if: inputs.mode == 'desktop' && runner.os == 'Windows'
       shell: bash
       run: |
         git_link="/c/Program Files/Git/usr/bin/link.exe"
