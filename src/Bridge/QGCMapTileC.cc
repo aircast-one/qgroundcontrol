@@ -1,18 +1,25 @@
 #include "QGCMapTileC.h"
 
-#include "QGCCacheTile.h"
+#include "Fact.h"
+#include "FlightMapSettings.h"
 #include "QGCMapEngine.h"
-#include "QGCMapTasks.h"
 #include "QGCMapUrlEngine.h"
 #include "QGCQtThread.h"
 #include "QGCTileCache.h"
+#include "QGCTileFetchReply.h"
 #include "SettingsManager.h"
-#include "FlightMapSettings.h"
-#include "Fact.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QString>
+#include <QtNetwork/QNetworkAccessManager>
 
 #include <cstring>
+
+static QNetworkAccessManager *tileNetworkManager()
+{
+    static QNetworkAccessManager *const manager = new QNetworkAccessManager(QCoreApplication::instance());
+    return manager;
+}
 
 void qgc_map_tile_fetch(const char *mapType, int x, int y, int zoom,
                         QGCTileHandler handler, void *context)
@@ -26,31 +33,27 @@ void qgc_map_tile_fetch(const char *mapType, int x, int y, int zoom,
     qgcOnQtThreadVoid([&] {
         QGCMapEngine::instance()->init(QGCTileCache::getDatabaseFilePath());
 
-        const QString hash = UrlFactory::getTileHash(type, x, y, zoom);
+        const int mapId = UrlFactory::getQtMapIdFromProviderType(type);
+        const QNetworkRequest request = QGCTileFetchReply::networkRequest(mapId, x, y, zoom);
+        if (request.url().isEmpty()) {
+            handler(nullptr, 0, context);
+            return;
+        }
 
-        QGCFetchTileTask *const task = new QGCFetchTileTask(hash);
-
-        // Qt::DirectConnection: the worker signals from its own thread and the handler
-        // only copies bytes out, so there is nothing to marshal and nothing to outlive
-        // the tile, which the task owns.
-        (void) QObject::connect(task, &QGCFetchTileTask::tileFetched, task,
-                                [handler, context](QGCCacheTile *tile) {
-            if (tile && !tile->img.isEmpty()) {
-                const QByteArray &bytes = tile->img;
-                handler(reinterpret_cast<const unsigned char *>(bytes.constData()), bytes.size(), context);
-            } else {
+        QGCTileFetchReply *const reply = new QGCTileFetchReply(tileNetworkManager(), request, mapId, x, y, zoom);
+        (void) QObject::connect(reply, &QGCTileFetchReply::finished, reply, [reply, handler, context] {
+            reply->deleteLater();
+            if (reply->error() != QGCTileFetchReply::NoError || reply->mapImageData().isEmpty()) {
                 handler(nullptr, 0, context);
+                return;
             }
-        }, Qt::DirectConnection);
+            const QByteArray bytes = reply->mapImageData();
+            handler(reinterpret_cast<const unsigned char *>(bytes.constData()), bytes.size(), context);
+        });
 
-        (void) QObject::connect(task, &QGCMapTask::error, task,
-                                [handler, context](QGCMapTask::TaskType, QStringView) {
+        if (!reply->init()) {
+            reply->deleteLater();
             handler(nullptr, 0, context);
-        }, Qt::DirectConnection);
-
-        if (!QGCMapEngine::instance()->addTask(task)) {
-            handler(nullptr, 0, context);
-            delete task;
         }
     });
 }
@@ -58,8 +61,6 @@ void qgc_map_tile_fetch(const char *mapType, int x, int y, int zoom,
 char *qgc_map_current_type(void)
 {
     return qgcOnQtThread([]() -> char * {
-        // QGC names imagery as "<provider> <type>", e.g. "Bing Satellite", which is what
-        // the tile hash is keyed on.
         FlightMapSettings *const settings = SettingsManager::instance()->flightMapSettings();
         if (!settings) {
             return strdup("");
