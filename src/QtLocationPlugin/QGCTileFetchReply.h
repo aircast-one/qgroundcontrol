@@ -10,9 +10,6 @@ struct QGCCacheTile;
 class QNetworkAccessManager;
 class QSslError;
 
-/// Fetches one map tile: cache first, network on a cache miss, and writes what the network
-/// returned back into the cache. Free of QtLocation; the QML map plugin wraps one of these
-/// in a QGeoTiledMapReply and the terrain and native map paths use it directly.
 class QGCTileFetchReply : public QObject
 {
     Q_OBJECT
@@ -29,7 +26,6 @@ public:
                       int mapId, int x, int y, int zoom, QObject *parent = nullptr);
     ~QGCTileFetchReply();
 
-    /// Starts the fetch. Returns false when the cache task could not be queued.
     bool init();
     void abort();
 

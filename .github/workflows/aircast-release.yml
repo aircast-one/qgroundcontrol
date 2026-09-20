@@ -308,9 +308,6 @@ jobs:
             hdiutil detach /Volumes/AircastQGC -force && break || sleep 3
           done || true
 
-      # The native head ships a second bundle, from its own configure. QGC_HEADLESS_CORE
-      # compiles the library without the QML/GUI half and links no Qt GUI module, so this
-      # binary is not the DMG's binary any more and cannot be copied from it.
       - name: CMake configure (headless core)
         uses: ./.github/actions/cmake-configure
         with:
@@ -381,9 +378,6 @@ jobs:
           fi
           "$DST/Contents/MacOS/AircastQGCNative" --simple-boot-test
 
-      # The headless core exists so the native head stops loading Qt's GUI stack. Nothing
-      # else notices when a new source quietly links one back in, so the bundle is inspected.
-      # QtGui is the one exception: Qt's own QtStateMachine names it in its link interface.
       - name: No Qt GUI module in the native bundle
         working-directory: ${{ runner.temp }}/build
         run: |

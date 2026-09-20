@@ -92,8 +92,6 @@ void KMLPlanDomDocument::addMission(Vehicle* vehicle, QmlObjectListModel* visual
 
 void KMLPlanDomDocument::_addStyles(void)
 {
-    // The palette spells both of these as single colours, identical in the light and dark
-    // themes, so the export does not need the palette to know them.
     const QString missionTrajectory = QStringLiteral("#0a84ff");
     const QString surveyPolygonInterior = QStringLiteral("#008000");
 

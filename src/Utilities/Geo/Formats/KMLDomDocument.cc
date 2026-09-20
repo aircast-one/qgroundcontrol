@@ -32,10 +32,9 @@ QString KMLDomDocument::kmlCoordString(const QGeoCoordinate &coord)
     return QStringLiteral("%1,%2,%3").arg(QString::number(coord.longitude(), 'f', 7), QString::number(coord.latitude(), 'f', 7), QString::number(altitude, 'f', 2));
 }
 
-QString KMLDomDocument::kmlColorString(const QString &color, double opacity)
+QString KMLDomDocument::kmlColorString(const QString &rrggbbColor, double opacity)
 {
-    // KML wants aabbggrr; the argument is the "#rrggbb" the styles are written in.
-    const QString rgb = color.startsWith(QLatin1Char('#')) ? color.mid(1) : color;
+    const QString rgb = rrggbbColor.startsWith(QLatin1Char('#')) ? rrggbbColor.mid(1) : rrggbbColor;
     const int red = rgb.mid(0, 2).toInt(nullptr, 16);
     const int green = rgb.mid(2, 2).toInt(nullptr, 16);
     const int blue = rgb.mid(4, 2).toInt(nullptr, 16);
@@ -112,18 +111,18 @@ QDomElement KMLDomDocument::addStyle(const QString &id)
     return styleElement;
 }
 
-void KMLDomDocument::addLineStyle(QDomElement &styleElement, const QString &color, int width, double opacity)
+void KMLDomDocument::addLineStyle(QDomElement &styleElement, const QString &rrggbbColor, int width, double opacity)
 {
     QDomElement lineStyleElement = createElement("LineStyle");
-    addTextElement(lineStyleElement, "color", kmlColorString(color, opacity));
+    addTextElement(lineStyleElement, "color", kmlColorString(rrggbbColor, opacity));
     addTextElement(lineStyleElement, "width", QString::number(width));
     (void) styleElement.appendChild(lineStyleElement);
 }
 
-void KMLDomDocument::addPolyStyle(QDomElement &styleElement, const QString &color, double opacity)
+void KMLDomDocument::addPolyStyle(QDomElement &styleElement, const QString &rrggbbColor, double opacity)
 {
     QDomElement polyStyleElement = createElement("PolyStyle");
-    addTextElement(polyStyleElement, "color", kmlColorString(color, opacity));
+    addTextElement(polyStyleElement, "color", kmlColorString(rrggbbColor, opacity));
     (void) styleElement.appendChild(polyStyleElement);
 }
 

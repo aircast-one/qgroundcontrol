@@ -24,7 +24,6 @@ void qgc_map_tile_fetch(const char *mapType, int x, int y, int zoom,
     const QString type = QString::fromUtf8(mapType);
 
     qgcOnQtThreadVoid([&] {
-        // Nothing else starts the cache worker when no QML map plugin is loaded; init() is idempotent.
         QGCMapEngine::instance()->init(QGCTileCache::getDatabaseFilePath());
 
         const QString hash = UrlFactory::getTileHash(type, x, y, zoom);

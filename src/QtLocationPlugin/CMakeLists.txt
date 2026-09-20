@@ -45,8 +45,6 @@ set(QGC_LOCATION_CACHE_SOURCES
     QGCTileSet.h
 )
 
-# The QtLocation geoservice plugin. A headless build draws its own map and never loads the
-# QML Map element, so none of this is compiled and Qt6::Location is not linked.
 set(QGC_LOCATION_PLUGIN_SOURCES
     QGeoFileTileCacheQGC.cpp
     QGeoFileTileCacheQGC.h

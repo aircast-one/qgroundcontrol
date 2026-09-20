@@ -23,9 +23,8 @@ public:
 
     // Style helpers
     QDomElement addStyle(const QString &id);
-    /// @param color "#rrggbb"
-    void addLineStyle(QDomElement &styleElement, const QString &color, int width = 1, double opacity = 1.0);
-    void addPolyStyle(QDomElement &styleElement, const QString &color, double opacity = 1.0);
+    void addLineStyle(QDomElement &styleElement, const QString &rrggbbColor, int width = 1, double opacity = 1.0);
+    void addPolyStyle(QDomElement &styleElement, const QString &rrggbbColor, double opacity = 1.0);
 
     // Geometry element helpers
     QDomElement addPoint(QDomElement &parent, const QGeoCoordinate &coord,
@@ -37,7 +36,7 @@ public:
                            const QString &altitudeMode = QLatin1String("clampToGround"));
 
     // Formatting utilities (static - can be used without instantiating)
-    static QString kmlColorString(const QString &color, double opacity = 1);
+    static QString kmlColorString(const QString &rrggbbColor, double opacity = 1);
     static QString kmlCoordString(const QGeoCoordinate &coord);
 
     // KML constants

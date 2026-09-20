@@ -64,7 +64,6 @@ if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/${QGC_CUSTOM_DIR}")
     include(CustomOverrides)
 endif()
 
-# The headless core has no QML to test and links no QtTest/QtQuickTest.
 if(QGC_HEADLESS_CORE)
     set(QGC_BUILD_TESTING OFF CACHE BOOL "Enable unit tests" FORCE)
     set(QGC_NATIVE_UI ON CACHE BOOL "Build the in-tree Swift UI into the macOS app" FORCE)

@@ -4,9 +4,6 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QThread>
 
-/// Runs @p body on the thread that owns the application object, blocking until it returns.
-/// A host that owns the main thread calls the C ABI from there, and Qt objects may only be
-/// touched on Qt's own thread.
 template <typename Fn>
 auto qgcOnQtThread(Fn body) -> decltype(body())
 {

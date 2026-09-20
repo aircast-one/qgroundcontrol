@@ -132,7 +132,6 @@ bool _verifyPlugins()
     };
     // Mirrors GSTREAMER_RUNTIME_REQUIRED_PLUGINS (PluginPolicy.cmake) plus qgc,
     // so a stripped registry fails loudly instead of at first stream attempt.
-    // The headless core has no qgcvideosinkbin: it renders through the appsink the host owns.
 #ifdef QGC_HEADLESS_CORE
     static constexpr std::array<const char*, 12> kRequiredPlugins = {
         "coreelements", "isomp4",     "matroska", "multifile", "opengl",          "playback",

@@ -48,8 +48,6 @@ QGeoPolygon _polygon(const QJsonArray &rings)
     return polygon;
 }
 
-/// Flattens a GeoJSON document into the shape variants QGC consumes, in document order.
-/// A Point becomes a QGeoCircle so an unsupported-geometry file is still "shapes found".
 void _collectShapes(const QJsonValue &value, QVariantList &shapes, int depth)
 {
     if (depth >= kMaxGeometryDepth) {

@@ -361,7 +361,6 @@ void AppSettings::_indoorPaletteChanged(void)
 void AppSettings::_applyPaletteTheme()
 {
 #ifdef QGC_HEADLESS_CORE
-    // The native head owns its own appearance; there is no QML palette or window chrome here.
 #else
     const int setting = indoorPalette()->rawValue().toInt();
     const bool dark = (setting == FollowSystemPalette)

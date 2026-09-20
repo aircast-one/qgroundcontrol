@@ -172,23 +172,18 @@ enum NativeDebug {
     }
 }
 
-/// The debug API serves from Qt's thread, which is not the main thread once Qt runs its loop
-/// off it. Every hook below touches AppKit, so it has to be answered on the main thread.
-///
-/// The wait is bounded because the main thread can itself be blocked reading the bridge, and
-/// this thread is the one that answers those reads: a plain sync would deadlock the pair.
 private func onMainThread(_ body: @escaping () -> [String: Any]) -> [String: Any] {
     if Thread.isMainThread {
         return body()
     }
 
-    var answer: [String: Any] = ["ok": false, "error": "the main thread did not answer in 5s"]
+    var answer: [String: Any] = ["ok": false, "error": "the main thread did not answer in 15s"]
     let done = DispatchSemaphore(value: 0)
     DispatchQueue.main.async {
         answer = body()
         done.signal()
     }
-    _ = done.wait(timeout: .now() + .seconds(5))
+    _ = done.wait(timeout: .now() + .seconds(15))
     return answer
 }
 

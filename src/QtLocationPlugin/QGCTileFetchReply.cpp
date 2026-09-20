@@ -19,7 +19,6 @@
 QGC_LOGGING_CATEGORY(QGCTileFetchReplyLog, "QtLocationPlugin.QGCTileFetchReply")
 
 namespace {
-// Keep pooled sockets warm across sparse tile/terrain fetches; Qt 6.11 otherwise reaps idle ones after 2 min.
 constexpr int kConnectionCacheExpirySecs = 300;
 constexpr std::chrono::seconds kTcpKeepAliveIdle{60};
 constexpr std::chrono::seconds kTcpKeepAliveInterval{30};

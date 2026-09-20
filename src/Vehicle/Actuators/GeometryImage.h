@@ -11,15 +11,12 @@
 #include <QtQuick/QQuickImageProvider>
 #endif
 
-
 namespace GeometryImage {
 
 /**
  * Renders an image of an airframe geometry (currently only multirotor)
  */
 #ifdef QGC_HEADLESS_CORE
-/// Headless keeps the geometry model - motor count, click hit-testing, the actuator list the
-/// motor-assignment flow edits - and drops the painting the QML image provider did.
 class VehicleGeometryImageProvider
 #else
 class VehicleGeometryImageProvider : public QQuickImageProvider

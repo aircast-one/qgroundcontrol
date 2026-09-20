@@ -19,9 +19,6 @@ include(GStreamer/Orchestrator)
 
 # QGCGStreamer: one static lib for the self-contained HwBuffers + gstqgc leaf layer (no app deps).
 # PUBLIC usage reqs flow to the app via the link below; facade sources stay app-side (need app headers).
-# The headless core keeps only the appsink path, so the gstqgc plugin and the zero-copy
-# HwBuffers paths - the only sources this target owns - are not built. What is left is the
-# usage requirements the facade needs, which an INTERFACE library carries.
 if(QGC_HEADLESS_CORE)
     add_library(QGCGStreamer INTERFACE)
     set(_qgc_gst_scope INTERFACE)

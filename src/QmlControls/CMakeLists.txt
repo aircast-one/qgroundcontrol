@@ -48,8 +48,6 @@ target_sources(${CMAKE_PROJECT_NAME}
         TransformPositionController.h
 )
 
-# QML-only controls: image providers, the palette, the screen-tools singleton, the
-# instrument value grid and the QQuickItem-drawn terrain profile.
 if(NOT QGC_HEADLESS_CORE)
     target_sources(${CMAKE_PROJECT_NAME}
         PRIVATE

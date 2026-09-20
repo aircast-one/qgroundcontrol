@@ -285,8 +285,6 @@ elseif(MACOS)
     endif()
 
     install(CODE "set(CREATE_DMG_PROGRAM \"${CREATE_DMG_PROGRAM}\")")
-    # The headless configure exists only to produce the native bundle, which the release
-    # workflow renames and packages itself; a second AircastQGC.dmg from it ships nowhere.
     if(NOT QGC_HEADLESS_CORE)
         install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CreateMacDMG.cmake")
     endif()
