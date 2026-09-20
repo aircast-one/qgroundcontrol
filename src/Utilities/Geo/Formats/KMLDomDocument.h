@@ -1,10 +1,8 @@
 #pragma once
 
-#include <QtGui/QColor>
 #include <QtXml/QDomDocument>
 #include <QtXml/QDomElement>
 
-class QColor;
 class QGeoCoordinate;
 
 /// \brief Used to convert a Plan to a KML document
@@ -25,8 +23,9 @@ public:
 
     // Style helpers
     QDomElement addStyle(const QString &id);
-    void addLineStyle(QDomElement &styleElement, const QColor &color, int width = 1, double opacity = 1.0);
-    void addPolyStyle(QDomElement &styleElement, const QColor &color, double opacity = 1.0);
+    /// @param color "#rrggbb"
+    void addLineStyle(QDomElement &styleElement, const QString &color, int width = 1, double opacity = 1.0);
+    void addPolyStyle(QDomElement &styleElement, const QString &color, double opacity = 1.0);
 
     // Geometry element helpers
     QDomElement addPoint(QDomElement &parent, const QGeoCoordinate &coord,
@@ -38,7 +37,7 @@ public:
                            const QString &altitudeMode = QLatin1String("clampToGround"));
 
     // Formatting utilities (static - can be used without instantiating)
-    static QString kmlColorString(const QColor &color, double opacity = 1);
+    static QString kmlColorString(const QString &color, double opacity = 1);
     static QString kmlCoordString(const QGeoCoordinate &coord);
 
     // KML constants

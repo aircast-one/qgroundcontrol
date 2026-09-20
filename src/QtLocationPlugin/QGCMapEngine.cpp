@@ -9,7 +9,7 @@
 #include "QGCTile.h"
 #include "QGCTileCacheWorker.h"
 #include "QGCTileSet.h"
-#include "QGeoFileTileCacheQGC.h"
+#include "QGCTileCache.h"
 
 QGC_LOGGING_CATEGORY(QGCMapEngineLog, "QtLocationPlugin.QGCMapEngine")
 
@@ -98,7 +98,7 @@ void QGCMapEngine::_updateTotals(quint32 totaltiles, quint64 totalsize, quint32 
 {
     emit updateTotals(totaltiles, totalsize, defaulttiles, defaultsize);
 
-    const quint64 maxSize = static_cast<quint64>(QGeoFileTileCacheQGC::getMaxDiskCacheSetting()) * qPow(1024, 2);
+    const quint64 maxSize = static_cast<quint64>(QGCTileCache::getMaxDiskCacheSetting()) * qPow(1024, 2);
     if (!m_pruning && (defaultsize > maxSize)) {
         m_pruning = true;
 

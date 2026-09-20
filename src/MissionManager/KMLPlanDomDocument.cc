@@ -1,5 +1,4 @@
 #include "KMLPlanDomDocument.h"
-#include "QGCPalette.h"
 #include "MissionCommandTree.h"
 #include "MissionCommandUIInfo.h"
 #include "MissionItem.h"
@@ -93,12 +92,15 @@ void KMLPlanDomDocument::addMission(Vehicle* vehicle, QmlObjectListModel* visual
 
 void KMLPlanDomDocument::_addStyles(void)
 {
-    QGCPalette palette;
+    // The palette spells both of these as single colours, identical in the light and dark
+    // themes, so the export does not need the palette to know them.
+    const QString missionTrajectory = QStringLiteral("#0a84ff");
+    const QString surveyPolygonInterior = QStringLiteral("#008000");
 
     QDomElement missionLineStyle = addStyle(_missionLineStyleName);
-    addLineStyle(missionLineStyle, palette.mapMissionTrajectory(), 4);
+    addLineStyle(missionLineStyle, missionTrajectory, 4);
 
     QDomElement surveyStyle = addStyle(surveyPolygonStyleName);
-    addPolyStyle(surveyStyle, palette.surveyPolygonInterior(), 0.5);
-    addLineStyle(surveyStyle, palette.surveyPolygonInterior(), 1, 0.5);
+    addPolyStyle(surveyStyle, surveyPolygonInterior, 0.5);
+    addLineStyle(surveyStyle, surveyPolygonInterior, 1, 0.5);
 }

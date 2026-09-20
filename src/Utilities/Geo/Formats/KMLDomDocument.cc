@@ -1,7 +1,6 @@
 #include "KMLDomDocument.h"
 #include "QGCLoggingCategory.h"
 
-#include <QtGui/QColor>
 #include <QtPositioning/QGeoCoordinate>
 
 QGC_LOGGING_CATEGORY(KMLDomDocumentLog, "Utilities.KMLDomDocument")
@@ -33,9 +32,14 @@ QString KMLDomDocument::kmlCoordString(const QGeoCoordinate &coord)
     return QStringLiteral("%1,%2,%3").arg(QString::number(coord.longitude(), 'f', 7), QString::number(coord.latitude(), 'f', 7), QString::number(altitude, 'f', 2));
 }
 
-QString KMLDomDocument::kmlColorString(const QColor &color, double opacity)
+QString KMLDomDocument::kmlColorString(const QString &color, double opacity)
 {
-    return QStringLiteral("%1%2%3%4").arg(static_cast<int>(255.0 * opacity), 2, 16, QChar('0')).arg(color.blue(), 2, 16, QChar('0')).arg(color.green(), 2, 16, QChar('0')).arg(color.red(), 2, 16, QChar('0'));
+    // KML wants aabbggrr; the argument is the "#rrggbb" the styles are written in.
+    const QString rgb = color.startsWith(QLatin1Char('#')) ? color.mid(1) : color;
+    const int red = rgb.mid(0, 2).toInt(nullptr, 16);
+    const int green = rgb.mid(2, 2).toInt(nullptr, 16);
+    const int blue = rgb.mid(4, 2).toInt(nullptr, 16);
+    return QStringLiteral("%1%2%3%4").arg(static_cast<int>(255.0 * opacity), 2, 16, QChar('0')).arg(blue, 2, 16, QChar('0')).arg(green, 2, 16, QChar('0')).arg(red, 2, 16, QChar('0'));
 }
 
 void KMLDomDocument::_addStandardStyles()
@@ -108,7 +112,7 @@ QDomElement KMLDomDocument::addStyle(const QString &id)
     return styleElement;
 }
 
-void KMLDomDocument::addLineStyle(QDomElement &styleElement, const QColor &color, int width, double opacity)
+void KMLDomDocument::addLineStyle(QDomElement &styleElement, const QString &color, int width, double opacity)
 {
     QDomElement lineStyleElement = createElement("LineStyle");
     addTextElement(lineStyleElement, "color", kmlColorString(color, opacity));
@@ -116,7 +120,7 @@ void KMLDomDocument::addLineStyle(QDomElement &styleElement, const QColor &color
     (void) styleElement.appendChild(lineStyleElement);
 }
 
-void KMLDomDocument::addPolyStyle(QDomElement &styleElement, const QColor &color, double opacity)
+void KMLDomDocument::addPolyStyle(QDomElement &styleElement, const QString &color, double opacity)
 {
     QDomElement polyStyleElement = createElement("PolyStyle");
     addTextElement(polyStyleElement, "color", kmlColorString(color, opacity));

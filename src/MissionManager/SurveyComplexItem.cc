@@ -11,7 +11,7 @@
 #include "Vehicle.h"
 #include "QGCLoggingCategory.h"
 
-#include <QtGui/QPolygonF>
+#include "QGCPolygon2D.h"
 #include <QtCore/QJsonArray>
 #include <QtCore/QLineF>
 
@@ -523,7 +523,7 @@ void SurveyComplexItem::_intersectLinesWithRect(const QList<QLineF>& lineList, c
     }
 }
 
-void SurveyComplexItem::_intersectLinesWithPolygon(const QList<QLineF>& lineList, const QPolygonF& polygon, QList<QLineF>& resultLines)
+void SurveyComplexItem::_intersectLinesWithPolygon(const QList<QLineF>& lineList, const QList<QPointF>& polygon, QList<QLineF>& resultLines)
 {
     resultLines.clear();
 
@@ -680,13 +680,13 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
     // Convert polygon to bounding rect
 
     qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 Polygon";
-    QPolygonF polygon;
+    QList<QPointF> polygon;
     for (int i=0; i<polygonPoints.count(); i++) {
         qCDebug(SurveyComplexItemLog) << "Vertex" << polygonPoints[i];
         polygon << polygonPoints[i];
     }
     polygon << polygonPoints[0];
-    QRectF boundingRect = polygon.boundingRect();
+    QRectF boundingRect = QGCPolygon2D::boundingRect(polygon);
     QPointF boundingCenter = boundingRect.center();
     qCDebug(SurveyComplexItemLog) << "Bounding rect" << boundingRect.topLeft().x() << boundingRect.topLeft().y() << boundingRect.bottomRight().x() << boundingRect.bottomRight().y();
 

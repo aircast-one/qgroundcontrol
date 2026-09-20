@@ -6,8 +6,8 @@
 #include "QGCMapEngine.h"
 #include "QGCMapTasks.h"
 #include "QGCMapUrlEngine.h"
-#include "QGeoFileTileCacheQGC.h"
-#include "QGeoTileFetcherQGC.h"
+#include "QGCTileCache.h"
+#include "QGCTileFetchReply.h"
 
 #include <QtCore/QFile>
 #include <QtCore/QString>
@@ -42,7 +42,7 @@ Viewer3DTileReply::Viewer3DTileReply(int zoomLevel, int tileX, int tileY, int ma
     _tile.zoomLevel = zoomLevel;
     _tile.mapId = mapId;
 
-    QGCFetchTileTask *task = QGeoFileTileCacheQGC::createFetchTileTask(mapType, tileX, tileY, zoomLevel);
+    QGCFetchTileTask *task = QGCTileCache::createFetchTileTask(mapType, tileX, tileY, zoomLevel);
     connect(task, &QGCFetchTileTask::tileFetched, this, &Viewer3DTileReply::_onCacheHit);
     connect(task, &QGCMapTask::error, this, [this](QGCMapTask::TaskType, const QString &) { _onCacheMiss(); });
     if (!getQGCMapEngine()->addTask(task)) {
@@ -63,7 +63,7 @@ Viewer3DTileReply::~Viewer3DTileReply()
 
 void Viewer3DTileReply::_prepareDownload()
 {
-    const QNetworkRequest request = QGeoTileFetcherQGC::getNetworkRequest(_tile.mapId, _tile.x, _tile.y, _tile.zoomLevel);
+    const QNetworkRequest request = QGCTileFetchReply::networkRequest(_tile.mapId, _tile.x, _tile.y, _tile.zoomLevel);
     _reply = _networkManager->get(request);
     connect(_reply, &QNetworkReply::finished, this, &Viewer3DTileReply::_onRequestFinished);
     connect(_reply, &QNetworkReply::errorOccurred, this, &Viewer3DTileReply::_onRequestError);
@@ -111,7 +111,7 @@ void Viewer3DTileReply::_onRequestFinished()
     const SharedMapProvider mapProvider = UrlFactory::getMapProviderFromQtMapId(_tile.mapId);
     if (mapProvider && !_tile.data.isEmpty()) {
         const QString format = mapProvider->getImageFormat(_tile.data);
-        QGeoFileTileCacheQGC::cacheTile(mapProvider->getMapName(), _tile.x, _tile.y, _tile.zoomLevel, _tile.data, format);
+        QGCTileCache::cacheTile(mapProvider->getMapName(), _tile.x, _tile.y, _tile.zoomLevel, _tile.data, format);
     }
 
     emit tileDone(_tile);

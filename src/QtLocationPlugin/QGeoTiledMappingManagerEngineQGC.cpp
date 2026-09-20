@@ -19,6 +19,7 @@
 #include "QGCMapEngine.h"
 #include "QGCMapEngineManager.h"
 #include "QGCMapUrlEngine.h"
+#include "QGCTileCache.h"
 #include "QGeoFileTileCacheQGC.h"
 #include "QGeoTiledMapQGC.h"
 #include "QGeoTileFetcherQGC.h"
@@ -77,7 +78,7 @@ QGeoTiledMappingManagerEngineQGC::QGeoTiledMappingManagerEngineQGC(const QVarian
     // MapEngine must be init after fileTileCache
     static std::once_flag mapEngineInit;
     std::call_once(mapEngineInit, [fileTileCache]() {
-        getQGCMapEngine()->init(fileTileCache->getDatabaseFilePath());
+        getQGCMapEngine()->init(QGCTileCache::getDatabaseFilePath());
     });
 
     m_prefetchStyle = QGCNetworkHelper::isInternetAvailable() ? QGeoTiledMap::PrefetchTwoNeighbourLayers : QGeoTiledMap::NoPrefetching;

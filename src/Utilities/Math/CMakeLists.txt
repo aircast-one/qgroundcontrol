@@ -1,6 +1,8 @@
 qt_add_library(QGCMath STATIC
     QGCMath.cc
     QGCMath.h
+    QGCPolygon2D.cc
+    QGCPolygon2D.h
 )
 
 target_link_libraries(QGCMath

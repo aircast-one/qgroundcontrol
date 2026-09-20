@@ -1,13 +1,15 @@
 #include "QGCMapEngineManager.h"
 
 #include <QtCore/QApplicationStatic>
+#ifndef QGC_HEADLESS_CORE
+#include <QtQml/QQmlEngine>
+#endif
 #include <QtCore/QDir>
 #include <QtCore/QDirIterator>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QSettings>
 #include <QtCore/QStorageInfo>
 #include <QtCore/QTemporaryDir>
-#include <QtQml/QQmlEngine>
 
 #include "ElevationMapProvider.h"
 #include "FlightMapSettings.h"
@@ -19,7 +21,7 @@
 #include "QGCMapEngine.h"
 #include "QGCMapTasks.h"
 #include "QGCMapUrlEngine.h"
-#include "QGeoFileTileCacheQGC.h"
+#include "QGCTileCache.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 
@@ -40,7 +42,9 @@ QGCMapEngineManager::QGCMapEngineManager(QObject *parent)
 {
     qCDebug(QGCMapEngineManagerLog) << this;
 
+#ifndef QGC_HEADLESS_CORE
     (void) qmlRegisterUncreatableType<QGCMapEngineManager>("QGroundControl.QGCMapEngineManager", 1, 0, "QGCMapEngineManager", "Reference only");
+#endif
 
     (void) connect(getQGCMapEngine(), &QGCMapEngine::updateTotals, this, &QGCMapEngineManager::_updateTotals, Qt::UniqueConnection);
 }

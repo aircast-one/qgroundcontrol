@@ -1,6 +1,5 @@
 #include "KMLDomDocumentTest.h"
 
-#include <QtGui/QColor>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtXml/QDomDocument>
 
@@ -12,26 +11,26 @@ void KMLDomDocumentTest::_kmlColorStringOpaque_test()
 {
     // KML color format is AABBGGRR (alpha, blue, green, red)
     // Red (255,0,0) at full opacity → "ff0000ff"
-    QCOMPARE(KMLDomDocument::kmlColorString(QColor(255, 0, 0), 1.0), QStringLiteral("ff0000ff"));
+    QCOMPARE(KMLDomDocument::kmlColorString(QStringLiteral("#ff0000"), 1.0), QStringLiteral("ff0000ff"));
     // Green (0,255,0) → "ff00ff00"
-    QCOMPARE(KMLDomDocument::kmlColorString(QColor(0, 255, 0), 1.0), QStringLiteral("ff00ff00"));
+    QCOMPARE(KMLDomDocument::kmlColorString(QStringLiteral("#00ff00"), 1.0), QStringLiteral("ff00ff00"));
     // Blue (0,0,255) → "ffff0000"
-    QCOMPARE(KMLDomDocument::kmlColorString(QColor(0, 0, 255), 1.0), QStringLiteral("ffff0000"));
+    QCOMPARE(KMLDomDocument::kmlColorString(QStringLiteral("#0000ff"), 1.0), QStringLiteral("ffff0000"));
     // White (255,255,255) → "ffffffff"
-    QCOMPARE(KMLDomDocument::kmlColorString(QColor(255, 255, 255), 1.0), QStringLiteral("ffffffff"));
+    QCOMPARE(KMLDomDocument::kmlColorString(QStringLiteral("#ffffff"), 1.0), QStringLiteral("ffffffff"));
 }
 
 void KMLDomDocumentTest::_kmlColorStringPartialOpacity_test()
 {
     // 50% opacity → alpha = 127 (0x7f)
-    const QString result = KMLDomDocument::kmlColorString(QColor(255, 0, 0), 0.5);
+    const QString result = KMLDomDocument::kmlColorString(QStringLiteral("#ff0000"), 0.5);
     QVERIFY(result.startsWith(QStringLiteral("7f")));
     QVERIFY(result.endsWith(QStringLiteral("ff"))); // red component last
 }
 
 void KMLDomDocumentTest::_kmlColorStringBlack_test()
 {
-    QCOMPARE(KMLDomDocument::kmlColorString(QColor(0, 0, 0), 1.0), QStringLiteral("ff000000"));
+    QCOMPARE(KMLDomDocument::kmlColorString(QStringLiteral("#000000"), 1.0), QStringLiteral("ff000000"));
 }
 
 void KMLDomDocumentTest::_kmlCoordStringWithAltitude_test()
@@ -230,7 +229,7 @@ void KMLDomDocumentTest::_addLineStyle_test()
 {
     KMLDomDocument doc(QStringLiteral("Test"));
     QDomElement style = doc.addStyle(QStringLiteral("ls"));
-    doc.addLineStyle(style, QColor(255, 0, 0), 3, 1.0);
+    doc.addLineStyle(style, QStringLiteral("#ff0000"), 3, 1.0);
 
     const QDomElement lineStyle = style.firstChildElement(QStringLiteral("LineStyle"));
     QVERIFY(!lineStyle.isNull());
@@ -244,7 +243,7 @@ void KMLDomDocumentTest::_addPolyStyle_test()
 {
     KMLDomDocument doc(QStringLiteral("Test"));
     QDomElement style = doc.addStyle(QStringLiteral("ps"));
-    doc.addPolyStyle(style, QColor(0, 255, 0), 0.5);
+    doc.addPolyStyle(style, QStringLiteral("#00ff00"), 0.5);
 
     const QDomElement polyStyle = style.firstChildElement(QStringLiteral("PolyStyle"));
     QVERIFY(!polyStyle.isNull());
