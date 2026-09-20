@@ -26,7 +26,9 @@ set(deploy_tool_options_arg "")
 set(deploy_include_plugins "")
 
 if(MACOS OR WIN32)
-    list(APPEND deploy_tool_options_arg "-qmldir=${CMAKE_SOURCE_DIR}")
+    if(NOT QGC_HEADLESS_CORE)
+        list(APPEND deploy_tool_options_arg "-qmldir=${CMAKE_SOURCE_DIR}")
+    endif()
     if(MACOS)
         list(APPEND deploy_tool_options_arg "-appstore-compliant")
     endif()
@@ -53,16 +55,25 @@ if(LINUX)
         qsqlmysql qsqlpsql qsqlodbc qsqloci qsqlibase qsqlmimer qtiff)
 endif()
 
-qt_generate_deploy_qml_app_script(
-    TARGET ${QGC_APP_TARGET}
-    OUTPUT_SCRIPT deploy_script
-    MACOS_BUNDLE_POST_BUILD
-    NO_UNSUPPORTED_PLATFORM_ERROR
-    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
-    DEPLOY_TOOL_OPTIONS ${deploy_tool_options_arg}
-    ${deploy_include_plugins}
-    ${deploy_exclude_plugins}
-)
+if(QGC_HEADLESS_CORE)
+    qt_generate_deploy_app_script(
+        TARGET ${QGC_APP_TARGET}
+        OUTPUT_SCRIPT deploy_script
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        DEPLOY_TOOL_OPTIONS ${deploy_tool_options_arg}
+    )
+else()
+    qt_generate_deploy_qml_app_script(
+        TARGET ${QGC_APP_TARGET}
+        OUTPUT_SCRIPT deploy_script
+        MACOS_BUNDLE_POST_BUILD
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+        DEPLOY_TOOL_OPTIONS ${deploy_tool_options_arg}
+        ${deploy_include_plugins}
+        ${deploy_exclude_plugins}
+    )
+endif()
 
 install(SCRIPT ${deploy_script})
 message(STATUS "QGC: Qt deployment script: ${deploy_script}")
