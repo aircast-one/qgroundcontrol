@@ -147,7 +147,6 @@ android {
         exclude 'lib/*/*_Controls_FluentWinUI3_*'
         exclude 'lib/*/*_Controls_Fusion_*'
         exclude 'lib/*/*_Controls_Imagine_*'
-        exclude 'lib/*/*_Controls_Material_*'
         exclude 'lib/*/*_Controls_Universal_*'
     }
 }
