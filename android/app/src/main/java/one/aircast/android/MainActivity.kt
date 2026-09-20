@@ -91,6 +91,7 @@ import one.aircast.android.ui.FlyPortrait
 import one.aircast.android.ui.PinnedEmergencyStop
 import one.aircast.android.ui.flyIsPortrait
 import org.mavlink.qgroundcontrol.QGCBridge
+import org.mavlink.qgroundcontrol.QGCSDLManager
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 import org.qtproject.qt.android.QtQuickView
 import org.qtproject.qt.android.QtRelaunchGuard
@@ -145,6 +146,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         QGCBridge.setHost(this)
         Qgc.start()
         QGCUsbSerialManager.initialize(this)
+        QGCSDLManager.initialize(this)
 
         acquireMulticastLock()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -184,6 +186,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
     override fun onDestroy() {
         if (live === this) live = null
         if (isChangingConfigurations) QtRelaunchGuard.forgetActivity(this)
+        runCatching { QGCSDLManager.cleanup() }
         runCatching { QGCUsbSerialManager.cleanup(this) }
         multicastLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
