@@ -386,7 +386,7 @@ jobs:
           FOUND=0
           for BIN in "$APP/Contents/MacOS/AircastQGCNative" "$APP/Contents/Frameworks/libAircastQGC.dylib"; do
             echo "== $BIN"
-            otool -L "$BIN" | grep -oE 'Qt[A-Za-z0-9]+\.framework' | sort -u
+            otool -L "$BIN" | { grep -oE 'Qt[A-Za-z0-9]+\.framework' || true; } | sort -u
             if otool -L "$BIN" | grep -qE 'Qt(Quick|Qml|Location|Multimedia|Widgets|Svg|Graphs|Quick3D|ShaderTools|OpenGL|QuickTest|Test)[A-Za-z0-9]*\.framework'; then
               echo "::error::$BIN links a Qt GUI module"
               FOUND=1
