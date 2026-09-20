@@ -25,6 +25,7 @@ namespace
 {
 struct Runtime
 {
+    int argc = 0;
     std::unique_ptr<QGCApplication> app;
     std::optional<QGCCommandLineParser::CommandLineParseResult> args;
     std::optional<int> earlyExitCode;
@@ -55,7 +56,8 @@ int qgc_start(int argc, char *argv[])
     }
 #endif
 
-    g_runtime.app = std::make_unique<QGCApplication>(argc, argv, args, g_runtime.hostProvidesUI);
+    g_runtime.argc = argc;
+    g_runtime.app = std::make_unique<QGCApplication>(g_runtime.argc, argv, args, g_runtime.hostProvidesUI);
     QGCApplication &app = *g_runtime.app;
 
     for (int i = 1; i < argc; i++) {
