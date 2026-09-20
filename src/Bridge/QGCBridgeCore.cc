@@ -861,6 +861,20 @@ QString jsonToString(const QJsonObject &json)
     return QString::fromUtf8(QJsonDocument(json).toJson(QJsonDocument::Compact));
 }
 
+bool applicationIsRunning()
+{
+    return QCoreApplication::instance() != nullptr;
+}
+
+QString applicationNotRunning()
+{
+    return jsonToString(QJsonObject {
+        { QStringLiteral("ok"), false },
+        { QStringLiteral("found"), false },
+        { QStringLiteral("reason"), QStringLiteral("the application is still starting") },
+    });
+}
+
 
 class Watcher : public QObject
 {
@@ -1115,6 +1129,10 @@ namespace QGCBridgeCore
 
 QString get(const QString &path)
 {
+    if (!applicationIsRunning()) {
+        return applicationNotRunning();
+    }
+
     QString result;
     runOnQtThread([&result, &path]() { result = jsonToString(readPath(path)); });
     return result;
@@ -1122,6 +1140,10 @@ QString get(const QString &path)
 
 QString getFields(const QString &path, const QString &fieldsCsv)
 {
+    if (!applicationIsRunning()) {
+        return applicationNotRunning();
+    }
+
     const QStringList requested = fieldsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
     QSet<QString> fields;
     for (const QString &field : requested) {
@@ -1163,6 +1185,10 @@ QString getFields(const QString &path, const QString &fieldsCsv)
 
 QString set(const QString &path, const QString &valueJson)
 {
+    if (!applicationIsRunning()) {
+        return applicationNotRunning();
+    }
+
     const std::optional<QVariant> value = variantFromJsonText(valueJson);
     if (!value) {
         return jsonToString(QJsonObject {
@@ -1178,6 +1204,10 @@ QString set(const QString &path, const QString &valueJson)
 
 QString invoke(const QString &path, const QString &argsJson)
 {
+    if (!applicationIsRunning()) {
+        return applicationNotRunning();
+    }
+
     const QJsonArray args = QJsonDocument::fromJson(argsJson.toUtf8()).array();
     QString result;
     runOnQtThread([&result, &path, &args]() { result = jsonToString(invokePath(path, args)); });
@@ -1195,6 +1225,10 @@ void watch(const QStringList &paths)
 
 QString watchStatus()
 {
+    if (!applicationIsRunning()) {
+        return applicationNotRunning();
+    }
+
     QString result;
     runOnQtThread([&result]() {
         result = jsonToString(QJsonObject { { QStringLiteral("paths"), watcher()->status() } });
