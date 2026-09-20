@@ -224,11 +224,6 @@ set(_qgc_controls_qml
     VideoSourceMenu.qml
 )
 
-# The Android head is native and never loads the Controls QML; only the C++ types are compiled.
-if(ANDROID)
-    set(_qgc_controls_qml "")
-endif()
-
 qt_add_qml_module(QGroundControlControlsModule
     URI QGroundControl.Controls
     VERSION 1.0

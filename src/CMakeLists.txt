@@ -45,10 +45,8 @@ add_subdirectory(Comms)
 add_subdirectory(DebugApi)
 add_subdirectory(FactSystem)
 add_subdirectory(FirmwarePlugin)
-if(NOT ANDROID)
-    add_subdirectory(FlyView)
-    add_subdirectory(FlightMap)
-endif()
+add_subdirectory(FlyView)
+add_subdirectory(FlightMap)
 add_subdirectory(FollowMe)
 add_subdirectory(Gimbal)
 add_subdirectory(iOS)
@@ -62,17 +60,13 @@ add_subdirectory(MissionManager)
 if(CMAKE_SYSTEM_NAME MATCHES "^(Darwin|Linux|Android)$")
     add_subdirectory(PacketRadio)
 endif()
-if(NOT ANDROID)
-    add_subdirectory(PlanView)
-endif()
+add_subdirectory(PlanView)
 add_subdirectory(PositionManager)
 add_subdirectory(QmlControls)
 add_subdirectory(Settings)
 add_subdirectory(Terrain)
 add_subdirectory(AppSettings)
-if(NOT ANDROID)
-    add_subdirectory(FirstRunPromptDialogs)
-endif()
+add_subdirectory(FirstRunPromptDialogs)
 add_subdirectory(Toolbar)
 add_subdirectory(Theme)
 add_subdirectory(Vehicle)
@@ -153,10 +147,10 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         AppSettingsModule
         AutoPilotPluginsCommonModule
         FactControlsModule
-        $<$<NOT:$<BOOL:${ANDROID}>>:FirstRunPromptDialogsModule>
-        $<$<NOT:$<BOOL:${ANDROID}>>:FlyViewModule>
-        $<$<NOT:$<BOOL:${ANDROID}>>:FlightMapModule>
-        $<$<NOT:$<BOOL:${ANDROID}>>:PlanViewModule>
+        FirstRunPromptDialogsModule
+        FlyViewModule
+        FlightMapModule
+        PlanViewModule
         QGroundControlControlsModule
         QGroundControlModule
         ToolbarModule

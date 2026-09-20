@@ -300,11 +300,9 @@ endif()
 # Resources go on the executable (not a library) to avoid Q_INIT_RESOURCE().
 # Don't route the big .qrcs through qt_add_big_resources — its pass2 object-file
 # output fails on MSVC ("No data signature found") when large data sections are elided.
-if(NOT ANDROID)
-    list(APPEND QGC_RESOURCES
-        "${CMAKE_SOURCE_DIR}/qgcresources.qrc"
-    )
-endif()
+list(APPEND QGC_RESOURCES
+    "${CMAKE_SOURCE_DIR}/qgcresources.qrc"
+)
 
 # ============================================================================
 # QGroundControl Executable Target
