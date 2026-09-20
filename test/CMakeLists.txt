@@ -20,6 +20,7 @@ target_sources(${CMAKE_PROJECT_NAME}
 # ----------------------------------------------------------------------------
 find_package(Qt6 REQUIRED COMPONENTS Test)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Test)
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES QT_SKIP_DEFAULT_TESTCASE_DIRS TRUE)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

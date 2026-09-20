@@ -199,7 +199,7 @@ set_target_properties(${CMAKE_PROJECT_NAME}
 
 # Helper STATIC libs declare their own tailored PCH; REUSE_FROM is impractical
 # because clang's PCH validator requires matching link-set-derived defines.
-target_precompile_headers(${CMAKE_PROJECT_NAME} PRIVATE pch.h)
+target_precompile_headers(${CMAKE_PROJECT_NAME} PRIVATE [["pch.h"]])
 
 # Side-effect-free (no qt_add_qml_module / qt_add_resources / static-init registration) — link-interface pruning is safe.
 set_target_properties(QGCFileSystem QGCSensors QGCAudio
