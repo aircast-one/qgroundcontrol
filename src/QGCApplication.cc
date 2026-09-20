@@ -364,10 +364,12 @@ void QGCApplication::_initForNormalAppBoot()
 
     // Set the window icon now that custom plugin has a chance to override it
 #ifdef Q_OS_LINUX
-    QUrl windowIcon = QUrl("qrc:/res/qgroundcontrol.ico");
-    windowIcon = _qmlAppEngine->interceptUrl(windowIcon, QQmlAbstractUrlInterceptor::UrlString);
-    // The interceptor needs "qrc:/path" but QIcon expects ":/path"
-    setWindowIcon(QIcon(":" + windowIcon.path()));
+    if (_qmlAppEngine) {
+        QUrl windowIcon = QUrl("qrc:/res/qgroundcontrol.ico");
+        windowIcon = _qmlAppEngine->interceptUrl(windowIcon, QQmlAbstractUrlInterceptor::UrlString);
+        // The interceptor needs "qrc:/path" but QIcon expects ":/path"
+        setWindowIcon(QIcon(":" + windowIcon.path()));
+    }
 #endif
 
     // Safe to show popup error messages now that main window is created

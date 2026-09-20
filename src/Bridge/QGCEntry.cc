@@ -49,6 +49,12 @@ int qgc_start(int argc, char *argv[])
         return 0;
     }
 
+#ifdef Q_OS_ANDROID
+    if (AndroidInterface::isEmbeddedHost()) {
+        g_runtime.hostProvidesUI = true;
+    }
+#endif
+
     g_runtime.app = std::make_unique<QGCApplication>(argc, argv, args, g_runtime.hostProvidesUI);
     QGCApplication &app = *g_runtime.app;
 
