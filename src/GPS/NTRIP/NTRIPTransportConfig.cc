@@ -8,25 +8,23 @@
 
 QString NTRIPTransportConfig::validationError() const
 {
-    const auto tr = [](const char* s) { return QCoreApplication::translate("NTRIPTransportConfig", s); };
-
     if (host.isEmpty()) {
-        return tr("No host address");
+        return QCoreApplication::translate("NTRIPTransportConfig", "No host address");
     }
     if (port <= 0 || port > 65535) {
-        return tr("Invalid port");
+        return QCoreApplication::translate("NTRIPTransportConfig", "Invalid port");
     }
 
     static const QRegularExpression controlChars(QStringLiteral("[\\r\\n\\x00-\\x1f]"));
     if (host.contains(controlChars)) {
-        return tr("Invalid host (contains control characters)");
+        return QCoreApplication::translate("NTRIPTransportConfig", "Invalid host (contains control characters)");
     }
     if (!mountpoint.isEmpty() && mountpoint.contains(controlChars)) {
-        return tr("Invalid mountpoint name (contains control characters)");
+        return QCoreApplication::translate("NTRIPTransportConfig", "Invalid mountpoint name (contains control characters)");
     }
     // RFC 7617 §2: the Basic-auth userid must not contain a colon.
     if (username.contains(QLatin1Char(':'))) {
-        return tr("Invalid username (must not contain ':')");
+        return QCoreApplication::translate("NTRIPTransportConfig", "Invalid username (must not contain ':')");
     }
 
     return QString();
