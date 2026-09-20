@@ -40,6 +40,11 @@ jobs:
           host: linux
           arch: linux_gcc_64
 
+      - name: Setup Python
+        uses: ./.github/actions/setup-python
+        with:
+          groups: scripts
+
       - name: Update translation files
         run: python3 tools/translations/qgc_lupdate.py
 
