@@ -6,8 +6,12 @@
 #include <QtCore/QRegularExpression>
 #include <QtCore/QApplicationStatic>
 #include <QtCore/QTimer>
+#ifdef QGC_HEADLESS_CORE
+#include "QGCSpeechC.h"
+#else
 #include <QtTextToSpeech/QTextToSpeech>
 #include <QtTextToSpeech/QVoice>
+#endif
 
 #include <algorithm>
 
@@ -40,11 +44,13 @@ Q_APPLICATION_STATIC(AudioOutput, _audioOutput);
 
 AudioOutput::AudioOutput(QObject *parent)
     : QObject(parent)
+#ifndef QGC_HEADLESS_CORE
     // Auto-select a real engine, except under unit tests where the "none" backend avoids probing
     // system plugins (e.g. speechd) that emit critical load errors and trip the strict log check.
     , _engine(QGC::runningUnitTests()
                   ? new QTextToSpeech(QStringLiteral("none"), this)
                   : new QTextToSpeech(this))
+#endif
 {
     // qCDebug(AudioOutputLog) << this;
 }
@@ -71,6 +77,10 @@ void AudioOutput::init(Fact* volumeFact, Fact* mutedFact)
     _volumeFact = volumeFact;
     _mutedFact = mutedFact;
 
+#ifdef QGC_HEADLESS_CORE
+    _speakCapable = true;
+    _finishInit();
+#else
     // Some QTextToSpeech backends (notably Android) initialize asynchronously, so finalize on Ready rather than bailing (Qt docs).
     (void) connect(_engine, &QTextToSpeech::stateChanged, this, [this](QTextToSpeech::State state) {
         if (state == QTextToSpeech::State::Ready) {
@@ -116,11 +126,14 @@ void AudioOutput::init(Fact* volumeFact, Fact* mutedFact)
             });
         }
     }
+#endif
 }
 
 void AudioOutput::_finishInit()
 {
+#ifndef QGC_HEADLESS_CORE
     _applyEngineSettings();
+#endif
 
     (void) connect(_volumeFact, &Fact::valueChanged, this, [this]() {
         _setVolume();
@@ -130,6 +143,7 @@ void AudioOutput::_finishInit()
         _setVolume();
     });
 
+#ifndef QGC_HEADLESS_CORE
     if (AudioOutputLog().isDebugEnabled()) {
         (void) connect(_engine, &QTextToSpeech::localeChanged, this, [](const QLocale &locale) {
             qCDebug(AudioOutputLog) << "TTS Locale change to:" << locale;
@@ -141,6 +155,7 @@ void AudioOutput::_finishInit()
             qCDebug(AudioOutputLog) << "TTS Saying:" << word << "ID:" << id << "Start:" << start << "Length:" << length;
         });
     }
+#endif
 
     _initialized = true;
     _setVolume();
@@ -158,6 +173,7 @@ bool AudioOutput::_mutedSetting() const
     return _mutedFact->rawValue().toBool();
 }
 
+#ifndef QGC_HEADLESS_CORE
 void AudioOutput::_applyEngineSettings()
 {
     if (_engine->state() != QTextToSpeech::State::Ready) {
@@ -177,6 +193,7 @@ void AudioOutput::_applyEngineSettings()
 
     _speakCapable = _engine->engineCapabilities().testFlag(QTextToSpeech::Capability::Speak);
 }
+#endif
 
 void AudioOutput::_setVolume()
 {
@@ -189,6 +206,7 @@ void AudioOutput::_setVolume()
     }
     _lastVolume = volume;
 
+#ifndef QGC_HEADLESS_CORE
     // Must normalize volume to 0.0 - 1.0 for QTextToSpeech
     const double normalizedVolume = volume / 100.0;
     (void) QMetaObject::invokeMethod(_engine, [this, volume, normalizedVolume]() {
@@ -199,6 +217,7 @@ void AudioOutput::_setVolume()
         }
         _engine->setVolume(normalizedVolume);
     });
+#endif
     qCDebug(AudioOutputLog) << "AudioOutput volume set to:" << volume << "%";
 }
 
@@ -230,6 +249,9 @@ void AudioOutput::say(const QString &text, TextMods textMods)
         return;
     }
 
+#ifdef QGC_HEADLESS_CORE
+    qgc_speak(outText.toUtf8().constData(), _volumeSetting() / 100.0);
+#else
     // All queue/counter mutation must stay on the engine thread (where stateChanged resets it).
     (void) QMetaObject::invokeMethod(_engine, [this, outText]() {
         if (_textQueueSize >= kMaxTextQueueSize) {
@@ -248,6 +270,7 @@ void AudioOutput::say(const QString &text, TextMods textMods)
         _textQueueSize++;
         qCDebug(AudioOutputLog) << "Enqueued text with index:" << index << ", Queue Size:" << _textQueueSize;
     });
+#endif
 }
 
 void AudioOutput::testAudioOutput()
@@ -257,9 +280,11 @@ void AudioOutput::testAudioOutput()
         return;
     }
 
+#ifndef QGC_HEADLESS_CORE
     // Main-thread only (QML-invoked): mutates the engine and counter directly without marshaling.
     _engine->stop(QTextToSpeech::BoundaryHint::Immediate);
     _textQueueSize = 0;
+#endif
 
     const QString testText = tr("Audio test. Volume is %1 percent").arg(_volumeSetting(), 0, 'f', 1);
     say(testText);

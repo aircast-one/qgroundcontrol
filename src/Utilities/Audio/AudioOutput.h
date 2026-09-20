@@ -48,7 +48,9 @@ public:
     void testAudioOutput();
 
 private:
+#ifndef QGC_HEADLESS_CORE
     QTextToSpeech *_engine = nullptr;
+#endif
     qsizetype _textQueueSize = 0;
     bool _initialized = false;
     bool _speakCapable = false;
@@ -65,8 +67,10 @@ private:
     /// Sets the TTS engine volume from the current Fact value.
     void _setVolume();
 
+#ifndef QGC_HEADLESS_CORE
     /// Applies engine-dependent settings (locale, cached capabilities) for the current engine.
     void _applyEngineSettings();
+#endif
 
     /// Finalizes initialization once the engine is Ready: applies settings, wires Facts, sets volume.
     void _finishInit();

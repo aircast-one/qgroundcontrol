@@ -172,40 +172,63 @@ enum NativeDebug {
     }
 }
 
+/// The debug API serves from Qt's thread, which is not the main thread once Qt runs its loop
+/// off it. Every hook below touches AppKit, so it has to be answered on the main thread.
+///
+/// The wait is bounded because the main thread can itself be blocked reading the bridge, and
+/// this thread is the one that answers those reads: a plain sync would deadlock the pair.
+private func onMainThread(_ body: @escaping () -> [String: Any]) -> [String: Any] {
+    if Thread.isMainThread {
+        return body()
+    }
+
+    var answer: [String: Any] = ["ok": false, "error": "the main thread did not answer in 5s"]
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async {
+        answer = body()
+        done.signal()
+    }
+    _ = done.wait(timeout: .now() + .seconds(5))
+    return answer
+}
+
 private func encode(_ value: [String: Any]) -> UnsafeMutablePointer<CChar>? {
     let data = (try? JSONSerialization.data(withJSONObject: value)) ?? Data("{}".utf8)
     return strdup(String(data: data, encoding: .utf8) ?? "{}")
 }
 
 private func qgcNativeWindows() -> UnsafeMutablePointer<CChar>? {
-    encode(NativeDebug.windows())
+    encode(onMainThread { NativeDebug.windows() })
 }
 
 private func qgcNativeClick(_ title: UnsafePointer<CChar>?, _ x: Double, _ y: Double) -> UnsafeMutablePointer<CChar>? {
-    encode(NativeDebug.click(window: title.map { String(cString: $0) } ?? "", x: x, y: y))
+    let window = title.map { String(cString: $0) } ?? ""
+    return encode(onMainThread { NativeDebug.click(window: window, x: x, y: y) })
 }
 
 private func qgcNativeType(_ title: UnsafePointer<CChar>?, _ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
-    encode(NativeDebug.type(window: title.map { String(cString: $0) } ?? "",
-                            text: text.map { String(cString: $0) } ?? ""))
+    let window = title.map { String(cString: $0) } ?? ""
+    let typed = text.map { String(cString: $0) } ?? ""
+    return encode(onMainThread { NativeDebug.type(window: window, text: typed) })
 }
 
 private func qgcNativeProbe(_ id: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?,
                            _ argsJson: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
     let raw = argsJson.map { String(cString: $0) } ?? "{}"
     let decoded = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any] ?? [:]
-    return encode(NativeDebug.probe(
-        id: id.map { String(cString: $0) } ?? "",
-        action: action.map { String(cString: $0) } ?? "",
-        args: decoded.mapValues { "\($0)" }))
+    let probeId = id.map { String(cString: $0) } ?? ""
+    let probeAction = action.map { String(cString: $0) } ?? ""
+    let args = decoded.mapValues { "\($0)" }
+    return encode(onMainThread { NativeDebug.probe(id: probeId, action: probeAction, args: args) })
 }
 
 private func qgcNativeMenu() -> UnsafeMutablePointer<CChar>? {
-    encode(NativeDebug.menu())
+    encode(onMainThread { NativeDebug.menu() })
 }
 
 private func qgcNativeMenuInvoke(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
-    encode(NativeDebug.invokeMenu(path: path.map { String(cString: $0) } ?? ""))
+    let item = path.map { String(cString: $0) } ?? ""
+    return encode(onMainThread { NativeDebug.invokeMenu(path: item) })
 }
 
 private func qgcNativeBridgeStats() -> UnsafeMutablePointer<CChar>? {

@@ -9,6 +9,9 @@ target_sources(${CMAKE_PROJECT_NAME}
         QGCCoreC.h
         QGCEntry.cc
         QGCEntry.h
+        QGCQtThread.h
+        QGCSpeechC.cc
+        QGCSpeechC.h
         QGCVideoC.cc
         QGCVideoC.h
 )

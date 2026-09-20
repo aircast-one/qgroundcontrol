@@ -23,6 +23,11 @@ module QGCNativeDebugC {
     export *
 }
 
+module QGCSpeechC {
+    header "QGCSpeechC.h"
+    export *
+}
+
 module QGCVideoC {
     header "QGCVideoC.h"
     export *

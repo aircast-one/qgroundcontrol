@@ -123,6 +123,7 @@ add_library(QGCNativeUI STATIC
     Sources/Frame.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift
+    Sources/Speech.swift
     Sources/Bridge.swift
     Sources/Labels.swift
     Sources/DetectionModel.swift
@@ -195,6 +196,7 @@ target_compile_definitions(${QGC_APP_TARGET} PRIVATE QGC_NATIVE_UI)
 target_link_libraries(${QGC_APP_TARGET}
     PRIVATE
         QGCNativeUI
+        "-framework AVFoundation"
         "-framework AppKit"
         "-framework SwiftUI"
         "-framework MapKit"

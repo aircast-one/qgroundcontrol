@@ -115,9 +115,36 @@ int qgc_run(void)
     Q_UNREACHABLE();
 }
 
+int qgc_core_headless(void)
+{
+#ifdef QGC_HEADLESS_CORE
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+int qgc_runs_event_loop(void)
+{
+    if (g_runtime.earlyExitCode || !g_runtime.args) {
+        return 0;
+    }
+    return (QGCCommandLineParser::determineAppMode(*g_runtime.args) == QGCCommandLineParser::AppMode::Gui) ? 1 : 0;
+}
+
 void qgc_set_host_provides_ui(int provides)
 {
     g_runtime.hostProvidesUI = (provides != 0);
+}
+
+void qgc_handle_deep_link(const char *url)
+{
+    if (!g_runtime.app || !url) {
+        return;
+    }
+    const QUrl parsed(QString::fromUtf8(url));
+    QGCApplication *const app = g_runtime.app.get();
+    (void) QMetaObject::invokeMethod(app, [app, parsed]() { app->handleDeepLink(parsed); }, Qt::QueuedConnection);
 }
 
 void qgc_request_quit(void)
