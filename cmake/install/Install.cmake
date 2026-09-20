@@ -243,6 +243,8 @@ elseif(MACOS)
             ${CMAKE_SOURCE_DIR}/src/Bridge/QGCLinksC.h
             ${CMAKE_SOURCE_DIR}/src/Bridge/QGCMapTileC.h
             ${CMAKE_SOURCE_DIR}/src/Bridge/QGCNativeDebugC.h
+            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCSpeechC.h
+            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCVideoC.h
             ${CMAKE_SOURCE_DIR}/src/Bridge/module.modulemap
         DESTINATION include/${CMAKE_PROJECT_NAME}
         COMPONENT sdk
@@ -283,7 +285,11 @@ elseif(MACOS)
     endif()
 
     install(CODE "set(CREATE_DMG_PROGRAM \"${CREATE_DMG_PROGRAM}\")")
-    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CreateMacDMG.cmake")
+    # The headless configure exists only to produce the native bundle, which the release
+    # workflow renames and packages itself; a second AircastQGC.dmg from it ships nowhere.
+    if(NOT QGC_HEADLESS_CORE)
+        install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CreateMacDMG.cmake")
+    endif()
 endif()
 
 # ============================================================================

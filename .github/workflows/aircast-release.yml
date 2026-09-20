@@ -308,12 +308,34 @@ jobs:
             hdiutil detach /Volumes/AircastQGC -force && break || sleep 3
           done || true
 
-      # The same executable, shipped a second time under a name ending "Native". AppShell reads
-      # that suffix and draws this fork's own macOS interface instead of Qt's; a Finder
-      # double-click passes no arguments, so before this the native head could not be opened at
-      # all outside a developer's terminal and had never been in a release. Built by COPYING
-      # rather than by configuring again: a second build costs the whole Qt compile to produce
-      # an identical binary, and two binaries can drift where one cannot.
+      # The native head ships a second bundle, from its own configure. QGC_HEADLESS_CORE
+      # compiles the library without the QML/GUI half and links no Qt GUI module, so this
+      # binary is not the DMG's binary any more and cannot be copied from it.
+      - name: CMake configure (headless core)
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build-headless
+          build-type: Release
+          stable: 'true'
+          extra-args: -DCMAKE_OSX_ARCHITECTURES=arm64 -DQGC_HEADLESS_CORE=ON -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.MACOS_SIGN == 'true' && 'ON' || 'OFF' }}
+
+      - name: Build (headless core)
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build-headless
+          build-type: Release
+
+      - name: Create headless app bundle
+        uses: ./.github/actions/cmake-install
+        with:
+          build-dir: ${{ runner.temp }}/build-headless
+          build-type: Release
+        env:
+          QGC_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          QGC_MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          QGC_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+
       - name: Build the native-UI bundle
         working-directory: ${{ runner.temp }}/build
         env:
@@ -323,7 +345,7 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
         run: |
           set -euo pipefail
-          SRC=staging/AircastQGC.app
+          SRC=../build-headless/staging/AircastQGC.app
           DST=staging-native/AircastQGCNative.app
           rm -rf staging-native && mkdir -p staging-native
           cp -R "$SRC" "$DST"
@@ -358,6 +380,25 @@ jobs:
             xcrun stapler validate "$DST"
           fi
           "$DST/Contents/MacOS/AircastQGCNative" --simple-boot-test
+
+      # The headless core exists so the native head stops loading Qt's GUI stack. Nothing
+      # else notices when a new source quietly links one back in, so the bundle is inspected.
+      # QtGui is the one exception: Qt's own QtStateMachine names it in its link interface.
+      - name: No Qt GUI module in the native bundle
+        working-directory: ${{ runner.temp }}/build
+        run: |
+          set -euo pipefail
+          APP=staging-native/AircastQGCNative.app
+          FOUND=0
+          for BIN in "$APP/Contents/MacOS/AircastQGCNative" "$APP/Contents/Frameworks/libAircastQGC.dylib"; do
+            echo "== $BIN"
+            otool -L "$BIN" | grep -oE 'Qt[A-Za-z0-9]+\.framework' | sort -u
+            if otool -L "$BIN" | grep -qE 'Qt(Quick|Qml|Location|Multimedia|Widgets|Svg|Graphs|Quick3D|ShaderTools|OpenGL|QuickTest|Test)[A-Za-z0-9]*\.framework'; then
+              echo "::error::$BIN links a Qt GUI module"
+              FOUND=1
+            fi
+          done
+          exit $FOUND
 
       - name: Package the native-UI DMG
         working-directory: ${{ runner.temp }}/build
