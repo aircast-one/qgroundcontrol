@@ -521,7 +521,7 @@ def output_github_actions(config: CcacheConfig) -> None:
     )
 
 
-def determine_cache_scope(event_name: str, ref_name: str, pr_number: str = "") -> str:
+def determine_cache_scope(event_name: str, ref_name: str, pr_number: str = "", ref_type: str = "branch") -> str:
     """Return the normalized cache scope used by CI."""
     scope = "shared"
     if event_name == "pull_request":
@@ -529,7 +529,7 @@ def determine_cache_scope(event_name: str, ref_name: str, pr_number: str = "") -
     elif event_name == "workflow_dispatch":
         scope = f"manual-{ref_name}"
     elif event_name == "push":
-        if ref_name != "master":
+        if ref_type != "tag" and ref_name not in ("master", "main"):
             scope = f"branch-{ref_name}"
     else:
         scope = f"{event_name}-{ref_name}"
@@ -713,6 +713,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     scope.add_argument("--event-name", required=True, help="GitHub event name")
     scope.add_argument("--ref-name", required=True, help="Git ref name")
     scope.add_argument("--pr-number", default="", help="Pull request number")
+    scope.add_argument("--ref-type", default="branch", help="Git ref type (branch or tag)")
 
     # -- windows-config ------------------------------------------------
     windows_cfg = sub.add_parser("windows-config", help="Resolve Windows ccache binary metadata")
@@ -794,7 +795,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_summary()
 
     if args.command == "scope":
-        scope = determine_cache_scope(args.event_name, args.ref_name, args.pr_number)
+        scope = determine_cache_scope(args.event_name, args.ref_name, args.pr_number, args.ref_type)
         print(scope)
         write_github_output({"scope": scope})
         return 0

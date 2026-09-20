@@ -48,8 +48,15 @@ runs:
       env:
         EVENT_NAME: ${{ github.event_name }}
         REF_NAME: ${{ github.ref_name }}
+        REF_TYPE: ${{ github.ref_type }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-      run: python3 "${GITHUB_WORKSPACE}/.github/scripts/ccache_helper.py" scope --event-name "${EVENT_NAME}" --ref-name "${REF_NAME}" --pr-number "${PR_NUMBER:-}"
+      run: python3 "${GITHUB_WORKSPACE}/.github/scripts/ccache_helper.py" scope --event-name "${EVENT_NAME}" --ref-name "${REF_NAME}" --ref-type "${REF_TYPE}" --pr-number "${PR_NUMBER:-}"
+
+    - name: Point ccache at the cached directory
+      shell: bash
+      run: |
+        echo "CCACHE_DIR=${GITHUB_WORKSPACE}/.ccache" >> "$GITHUB_ENV"
+        echo "CCACHE_BASEDIR=${GITHUB_WORKSPACE}" >> "$GITHUB_ENV"
 
     - name: Get ccache config
       id: ccache-config
