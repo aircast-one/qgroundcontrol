@@ -39,7 +39,9 @@ public:
     /// Points the /ui/* endpoints at a window the caller owns. Unit tests have no QML application
     /// engine, so mainRootWindow() is null and every endpoint that reads the scene can only be
     /// exercised on its failure path. Pass nullptr to go back to the application's own window.
+#ifndef QGC_HEADLESS_CORE
     static void setWindowForTesting(QQuickWindow *window);
+#endif
 
 private:
     void _handleConnection(QTcpSocket *socket);
@@ -49,21 +51,41 @@ private:
     QByteArray _nativeJson(const QString &path, const QUrlQuery &query);
 #endif
     static QByteArray _statusJson();
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _screenshotJson();
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiMouseStepJson(const QUrlQuery &query, QEvent::Type type);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiPinchJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiTapJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiPropJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiPropSetJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiAtJson(const QUrlQuery &query);
+#endif
 
     /// Streams one NDJSON sample per animation tick until the frame budget runs out or the peer
     /// hangs up. Polling for values that change every frame reads them a round trip apart;
     /// sampling on the GUI thread's own animation tick reads them where they actually are.
+#ifndef QGC_HEADLESS_CORE
     static bool _startWatch(QTcpSocket *socket, const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiResizeJson(const QUrlQuery &query);
+#endif
     static QByteArray _mockLinkJson(const QUrlQuery &query);
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiDismissJson();
+#endif
     static QByteArray _vehicleJson();
     static QByteArray _paramsJson(const QUrlQuery &query);
     static QByteArray _paramSetJson(const QUrlQuery &query);
@@ -74,12 +96,24 @@ private:
     QByteArray _rcJson() const;
     QByteArray _missionJson(const QUrlQuery &query, bool upload);
     PlanMasterController *_planController();
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiTreeJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiClickJson(const QUrlQuery &query, bool doubleClick);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiDragJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiHoverJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiTypeJson(const QUrlQuery &query);
+#endif
+#ifndef QGC_HEADLESS_CORE
     static QByteArray _uiKeyJson(const QUrlQuery &query);
+#endif
     static QByteArray _loggingJson(const QUrlQuery &query);
     static QByteArray _linksJson();
     static QByteArray _linkConnectJson(const QUrlQuery &query);
@@ -88,10 +122,14 @@ private:
 
     /// The window the /ui/* endpoints act on: the test override when one is set, otherwise the
     /// application's root window.
+#ifndef QGC_HEADLESS_CORE
     static QQuickWindow *_targetWindow();
+#endif
 
     static DebugApiServer *_instance;
+#ifndef QGC_HEADLESS_CORE
     static QQuickWindow *_testWindow;
+#endif
 
     QTcpServer *_server = nullptr;
     QMetaObject::Connection _messageConnection;

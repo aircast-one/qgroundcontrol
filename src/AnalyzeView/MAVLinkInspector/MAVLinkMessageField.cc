@@ -4,8 +4,10 @@
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 
+#ifndef QGC_HEADLESS_CORE
 #include <QtGraphs/QLineSeries>
 #include <QtGraphs/QAbstractSeries>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -30,6 +32,7 @@ QGCMAVLinkMessageField::~QGCMAVLinkMessageField()
     // qCDebug(MAVLinkMessageFieldLog) << Q_FUNC_INFO << this;
 }
 
+#ifndef QGC_HEADLESS_CORE
 void QGCMAVLinkMessageField::addSeries(MAVLinkChartController *chartController, QAbstractSeries *series)
 {
     if (_pSeries) {
@@ -46,6 +49,7 @@ void QGCMAVLinkMessageField::addSeries(MAVLinkChartController *chartController, 
     _currentBucketStart = -1;
     _msg->updateFieldSelection();
 }
+#endif
 
 void QGCMAVLinkMessageField::delSeries()
 {
@@ -56,8 +60,10 @@ void QGCMAVLinkMessageField::delSeries()
     _values.clear();
     _rangeMin = std::numeric_limits<qreal>::max();
     _rangeMax = std::numeric_limits<qreal>::lowest();
+#ifndef QGC_HEADLESS_CORE
     QLineSeries *const lineSeries = static_cast<QLineSeries*>(_pSeries);
     lineSeries->replace(_values);
+#endif
     _pSeries = nullptr;
     _chartController = nullptr;
     _bucketCount = 0;
@@ -245,6 +251,7 @@ void QGCMAVLinkMessageField::updateSeries()
         }
     }
 
+#ifndef QGC_HEADLESS_CORE
     QLineSeries *const lineSeries = static_cast<QLineSeries*>(_pSeries);
     if (s.isEmpty()) {
         lineSeries->clear();
@@ -252,4 +259,5 @@ void QGCMAVLinkMessageField::updateSeries()
     }
 
     lineSeries->replace(s);
+#endif
 }

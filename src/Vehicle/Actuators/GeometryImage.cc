@@ -94,11 +94,14 @@ static void generateTestGeometries([[maybe_unused]] VehicleGeometryImageProvider
 }
 
 VehicleGeometryImageProvider::VehicleGeometryImageProvider()
+#ifndef QGC_HEADLESS_CORE
 : QQuickImageProvider(QQuickImageProvider::Pixmap)
+#endif
 {
     generateTestGeometries(*this);
 }
 
+#ifndef QGC_HEADLESS_CORE
 void VehicleGeometryImageProvider::drawAxisIndicator(QPainter& p, const QPointF& origin, float fontSize, const QColor& color)
 {
     const float lineLength = fontSize * 2.f;
@@ -379,6 +382,8 @@ QPixmap VehicleGeometryImageProvider::requestPixmap([[maybe_unused]] const QStri
 
     return pixmap;
 }
+
+#endif
 
 VehicleGeometryImageProvider* VehicleGeometryImageProvider::instance()
 {

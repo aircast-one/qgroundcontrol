@@ -1,9 +1,11 @@
 #include "SubtitleWriter.h"
 
 #include "Fact.h"
+#ifndef QGC_HEADLESS_CORE
 #include "FactValueGrid.h"
 #include "HorizontalFactValueGrid.h"
 #include "InstrumentValueData.h"
+#endif
 #include "MultiVehicleManager.h"
 #include "QGCLoggingCategory.h"
 #include "QmlObjectListModel.h"
@@ -32,6 +34,7 @@ void SubtitleWriter::startCapturingTelemetry(const QString &videoFile, QSize siz
     _size = size;
     _facts.clear();
 
+#ifndef QGC_HEADLESS_CORE
     // Gather the facts currently displayed into _facts
     FactValueGrid *grid = new FactValueGrid();
     (void) grid->setProperty("settingsGroup", HorizontalFactValueGrid::telemetryBarSettingsGroup);
@@ -46,6 +49,7 @@ void SubtitleWriter::startCapturingTelemetry(const QString &videoFile, QSize siz
         }
     }
     grid->deleteLater();
+#endif
 
     // One subtitle always starts where the previous ended
     _lastEndTime = QTime(0, 0);

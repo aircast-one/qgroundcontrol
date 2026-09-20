@@ -45,7 +45,9 @@
 
 // Qt Qml/Quick - QML integration macros used in ~130 headers.
 // Note: QQuickItem intentionally omitted — pulls full QtQuick (scene graph, GL) everywhere.
+#ifndef QGC_HEADLESS_CORE
 #include <QtQml/QQmlEngine>
+#endif
 #include <QtQmlIntegration/QtQmlIntegration>
 
 // MAVLink - used in 400+ locations

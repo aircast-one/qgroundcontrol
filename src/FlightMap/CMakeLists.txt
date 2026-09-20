@@ -3,9 +3,7 @@
 # Map widgets, vehicle indicators, and mission visualization
 # ============================================================================
 
-qt_add_library(FlightMapModule STATIC)
-
-qt_add_qml_module(FlightMapModule
+qgc_qml_only_library(FlightMapModule
     URI QGroundControl.FlightMap
     VERSION 1.0
     RESOURCE_PREFIX /qml

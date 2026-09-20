@@ -30,9 +30,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 # ----------------------------------------------------------------------------
 # Common AutoPilot Plugins QML Module
 # ----------------------------------------------------------------------------
-qt_add_library(AutoPilotPluginsCommonModule STATIC)
-
-qt_add_qml_module(AutoPilotPluginsCommonModule
+qgc_qml_only_library(AutoPilotPluginsCommonModule
     URI QGroundControl.AutoPilotPlugins.Common
     VERSION 1.0
     RESOURCE_PREFIX /qml

@@ -1,4 +1,6 @@
 #include "SensorsComponentController.h"
+
+#include <QtQuick/QQuickItem>
 #include "AppMessages.h"
 #include "ParameterManager.h"
 #include "Vehicle.h"

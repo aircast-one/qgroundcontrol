@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include <QtQml/QQmlEngine>
 
 DECLARE_SETTINGSFACT(UnitsSettings, customUnits)
 

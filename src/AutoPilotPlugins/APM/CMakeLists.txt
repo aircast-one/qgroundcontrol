@@ -102,12 +102,7 @@ set(_apm_config_generated_qml ${GenerateConfigQmlAPM_OUTPUTS})
 # ----------------------------------------------------------------------------
 # APM QML Module
 # ----------------------------------------------------------------------------
-qt_add_library(AutoPilotPluginsAPMModule STATIC)
-
-# Ensure generated files exist before the module is built
-add_dependencies(AutoPilotPluginsAPMModule GenerateConfigQmlAPM)
-
-qt_add_qml_module(AutoPilotPluginsAPMModule
+qgc_qml_only_library(AutoPilotPluginsAPMModule
     URI QGroundControl.AutoPilotPlugins.APM
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -163,6 +158,10 @@ qt_add_qml_module(AutoPilotPluginsAPMModule
         VehicleConfig/APMTuningCopter.VehicleConfig.json
     NO_PLUGIN
 )
+
+if(NOT QGC_HEADLESS_CORE)
+    add_dependencies(AutoPilotPluginsAPMModule GenerateConfigQmlAPM)
+endif()
 
 # ----------------------------------------------------------------------------
 # APM Component Metadata

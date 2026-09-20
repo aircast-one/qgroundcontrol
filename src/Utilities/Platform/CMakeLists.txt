@@ -7,8 +7,6 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         Platform.cc
         Platform.h
-        GraphicsSetup.cc
-        GraphicsSetup.h
         RunGuard.cc
         RunGuard.h
 )
@@ -32,3 +30,11 @@ if(IOS)
 endif()
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+if(NOT QGC_HEADLESS_CORE)
+    target_sources(${CMAKE_PROJECT_NAME}
+        PRIVATE
+            GraphicsSetup.cc
+            GraphicsSetup.h
+    )
+endif()

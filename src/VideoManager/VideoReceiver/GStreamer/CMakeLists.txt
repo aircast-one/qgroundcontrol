@@ -19,32 +19,41 @@ include(GStreamer/Orchestrator)
 
 # QGCGStreamer: one static lib for the self-contained HwBuffers + gstqgc leaf layer (no app deps).
 # PUBLIC usage reqs flow to the app via the link below; facade sources stay app-side (need app headers).
-qt_add_library(QGCGStreamer STATIC)
+# The headless core keeps only the appsink path, so the gstqgc plugin and the zero-copy
+# HwBuffers paths - the only sources this target owns - are not built. What is left is the
+# usage requirements the facade needs, which an INTERFACE library carries.
+if(QGC_HEADLESS_CORE)
+    add_library(QGCGStreamer INTERFACE)
+    set(_qgc_gst_scope INTERFACE)
+else()
+    qt_add_library(QGCGStreamer STATIC)
+    set(_qgc_gst_scope PUBLIC)
+endif()
 
 target_link_libraries(QGCGStreamer
-    PUBLIC
+    ${_qgc_gst_scope}
         GStreamer::GStreamer
-        Qt6::Multimedia
-        Qt6::MultimediaPrivate
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Multimedia>
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::MultimediaPrivate>
         QGCLogging
 )
 
-target_compile_definitions(QGCGStreamer PUBLIC QGC_GST_STREAMING)
+target_compile_definitions(QGCGStreamer ${_qgc_gst_scope} QGC_GST_STREAMING)
 
 # gstreamer-rtsp-server-1.0 is only requested in Debug (MockLink test server) and may be absent
 # on minimal installs. Its api_rtsp_server target is already aggregated into GStreamer::GStreamer
 # when found; just flag availability for MockVideoStreamServer.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND GStreamer_RtspServer_FOUND)
-    target_compile_definitions(QGCGStreamer PUBLIC QGC_GST_RTSP_SERVER)
+    target_compile_definitions(QGCGStreamer ${_qgc_gst_scope} QGC_GST_RTSP_SERVER)
 endif()
 
 if(LINUX AND GStreamer_VERSION VERSION_LESS "1.28.0")
-    target_compile_definitions(QGCGStreamer PUBLIC QGC_GST_ENABLE_LEGACY_PARSEBIN_CAPS_FILTER=1)
+    target_compile_definitions(QGCGStreamer ${_qgc_gst_scope} QGC_GST_ENABLE_LEGACY_PARSEBIN_CAPS_FILTER=1)
 endif()
 
 # MockVideoStreamServer feeds MockLink's synthetic video stream; MockLink is Debug-only
 # (see Comms/MockLink/CMakeLists.txt), so only compile it in Debug to keep it out of release.
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT QGC_HEADLESS_CORE)
     target_sources(QGCGStreamer
         PRIVATE
             MockVideoStreamServer.cc
@@ -55,11 +64,11 @@ endif()
 # The *ForTest() helpers (singleFdImportEnabledForTest, clearForTest) compile only under this flag.
 # PUBLIC so both QGCGStreamer (helper defs) and the app target's GStreamerTest.cc (decls) see it.
 if(QGC_BUILD_TESTING)
-    target_compile_definitions(QGCGStreamer PUBLIC QGC_GST_BUILD_TESTING)
+    target_compile_definitions(QGCGStreamer ${_qgc_gst_scope} QGC_GST_BUILD_TESTING)
 endif()
 
 target_include_directories(QGCGStreamer
-    PUBLIC
+    ${_qgc_gst_scope}
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/gstqgc
         ${CMAKE_CURRENT_SOURCE_DIR}/HwBuffers
@@ -71,20 +80,24 @@ target_include_directories(QGCGStreamer
         ${CMAKE_CURRENT_SOURCE_DIR}/HwBuffers/apple
         ${CMAKE_CURRENT_SOURCE_DIR}/HwBuffers/android
         ${CMAKE_CURRENT_SOURCE_DIR}/HwBuffers/cuda
-    PRIVATE
-        ${CMAKE_BINARY_DIR}
 )
+
+if(NOT QGC_HEADLESS_CORE)
+    target_include_directories(QGCGStreamer PRIVATE ${CMAKE_BINARY_DIR})
+endif()
 
 # Qt6::MultimediaQuickPrivate is OPTIONAL at the root find_package; link it when present
 # (GStreamer.cc / GStreamerFrameMap.cc need MultimediaQuick) rather than failing configure.
-if(TARGET Qt6::MultimediaQuickPrivate)
+if(TARGET Qt6::MultimediaQuickPrivate AND NOT QGC_HEADLESS_CORE)
     target_link_libraries(QGCGStreamer PUBLIC Qt6::MultimediaQuickPrivate)
-else()
+elseif(NOT QGC_HEADLESS_CORE)
     message(WARNING "QGCGStreamer: Qt6::MultimediaQuickPrivate not found - GStreamer video sink integration may not build")
 endif()
 
-add_subdirectory(HwBuffers)
-add_subdirectory(gstqgc)
+if(NOT QGC_HEADLESS_CORE)
+    add_subdirectory(HwBuffers)
+    add_subdirectory(gstqgc)
+endif()
 
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE QGCGStreamer)
 
@@ -105,9 +118,15 @@ target_sources(${CMAKE_PROJECT_NAME}
         GstSourceFactory.h
         GstVideoReceiver.cc
         GstVideoReceiver.h
-        QGCQVideoSinkController.cc
-        QGCQVideoSinkController.h
 )
+
+if(NOT QGC_HEADLESS_CORE)
+    target_sources(${CMAKE_PROJECT_NAME}
+        PRIVATE
+            QGCQVideoSinkController.cc
+            QGCQVideoSinkController.h
+    )
+endif()
 
 # iOS xcframework ships no CA list / no keychain-via-OpenSSL; bundle a Mozilla NSS extract for
 # libgioopenssl (fetched at configure time, IOS.cmake). On the app target for MACOSX_PACKAGE_LOCATION.

@@ -9,8 +9,10 @@
 #include <QtCore/QStandardPaths>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
+#endif
 #include <array>
 #include <gst/rtsp/gstrtspurl.h>
 #include <span>

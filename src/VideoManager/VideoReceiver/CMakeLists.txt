@@ -13,6 +13,8 @@ target_sources(${CMAKE_PROJECT_NAME}
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(GStreamer)
-add_subdirectory(Offscreen)
-add_subdirectory(QtMultimedia)
+if(NOT QGC_HEADLESS_CORE)
+    add_subdirectory(Offscreen)
+    add_subdirectory(QtMultimedia)
+endif()
 # add_subdirectory(SceneGraph)

@@ -39,12 +39,7 @@ set(_generated_qml ${GenerateSettingsQml_OUTPUTS})
 # QML module
 # ---------------------------------------------------------------------------
 
-qt_add_library(AppSettingsModule STATIC)
-
-# Ensure generated files exist before the module is built
-add_dependencies(AppSettingsModule GenerateSettingsQml)
-
-qt_add_qml_module(AppSettingsModule
+qgc_qml_only_library(AppSettingsModule
     URI QGroundControl.AppSettings
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -99,6 +94,10 @@ qt_add_qml_module(AppSettingsModule
         UdpSettings.qml
     NO_PLUGIN
 )
+
+if(NOT QGC_HEADLESS_CORE)
+    add_dependencies(AppSettingsModule GenerateSettingsQml)
+endif()
 
 qt_add_resources(${CMAKE_PROJECT_NAME} appsettings_resources
     PREFIX "/res"

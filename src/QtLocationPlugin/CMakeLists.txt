@@ -3,10 +3,7 @@
 # Custom map tile providers and caching engine
 # ============================================================================
 
-qt_add_plugin(QGCLocation
-    STATIC
-    CLASS_NAME QGeoServiceProviderFactoryQGC
-    OUTPUT_TARGETS QGCLocation_targets
+set(QGC_LOCATION_CACHE_SOURCES
     Providers/BingMapProvider.cpp
     Providers/BingMapProvider.h
     Providers/ElevationMapProvider.cpp
@@ -41,7 +38,16 @@ qt_add_plugin(QGCLocation
     QGCTileCacheTypes.h
     QGCTileCacheWorker.cpp
     QGCTileCacheWorker.h
+    QGCTileCache.cpp
+    QGCTileCache.h
+    QGCTileFetchReply.cpp
+    QGCTileFetchReply.h
     QGCTileSet.h
+)
+
+# The QtLocation geoservice plugin. A headless build draws its own map and never loads the
+# QML Map element, so none of this is compiled and Qt6::Location is not linked.
+set(QGC_LOCATION_PLUGIN_SOURCES
     QGeoFileTileCacheQGC.cpp
     QGeoFileTileCacheQGC.h
     QGeoMapReplyQGC.cpp
@@ -55,6 +61,18 @@ qt_add_plugin(QGCLocation
     QGeoTileFetcherQGC.cpp
     QGeoTileFetcherQGC.h
 )
+
+if(QGC_HEADLESS_CORE)
+    qt_add_library(QGCLocation STATIC ${QGC_LOCATION_CACHE_SOURCES})
+else()
+    qt_add_plugin(QGCLocation
+        STATIC
+        CLASS_NAME QGeoServiceProviderFactoryQGC
+        OUTPUT_TARGETS QGCLocation_targets
+        ${QGC_LOCATION_CACHE_SOURCES}
+        ${QGC_LOCATION_PLUGIN_SOURCES}
+    )
+endif()
 
 if(IOS)
     target_compile_definitions(QGCLocation PRIVATE QGC_NO_GOOGLE_MAPS)
@@ -71,8 +89,8 @@ target_link_libraries(QGCLocation
         QGCNetwork
     PUBLIC
         Qt6::Core
-        Qt6::Location
-        Qt6::LocationPrivate
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Location>
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::LocationPrivate>
         Qt6::Network
 )
 
@@ -101,7 +119,6 @@ target_precompile_headers(QGCLocation PRIVATE
     <QtCore/QVariant>
     <QtNetwork/QNetworkRequest>
     <QtPositioning/QGeoCoordinate>
-    <QtQml/QQmlEngine>
 )
 
 qt_add_resources(${CMAKE_PROJECT_NAME} qtlocationplugin_resources

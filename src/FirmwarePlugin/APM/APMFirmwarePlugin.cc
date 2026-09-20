@@ -7,7 +7,6 @@
 #include "ParameterManager.h"
 #include "SettingsManager.h"
 
-#include <QtQml/QQmlEngine>
 #include "MavlinkSettings.h"
 #include "PlanViewSettings.h"
 #include "VideoSettings.h"

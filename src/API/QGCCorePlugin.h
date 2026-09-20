@@ -4,7 +4,9 @@
 #include <QtCore/QVariantList>
 #include <QtQmlIntegration/QtQmlIntegration>
 
+#ifndef QGC_HEADLESS_CORE
 #include "QGCPalette.h"
+#endif
 
 class ComplexMissionItem;
 class FactMetaData;
@@ -97,6 +99,7 @@ public:
     /// @return An instance of an alternate position source (or NULL if not available)
     virtual QGeoPositionInfoSource *createPositionSource(QObject *parent) { Q_UNUSED(parent); return nullptr; }
 
+#ifndef QGC_HEADLESS_CORE
     /// Allows a plugin to override the specified color name from the palette
     virtual void paletteOverride(const QString &colorName, QGCPalette::PaletteColorInfo_t &colorInfo) { Q_UNUSED(colorName); Q_UNUSED(colorInfo); };
 
@@ -119,6 +122,7 @@ public:
 
     /// Allows the plugin to override the creation of the root (native) window.
     virtual void createRootWindow(QQmlApplicationEngine *qmlEngine);
+#endif
 
     /// Allows the plugin to override the creation of VideoReceiver.
     virtual VideoReceiver *createVideoReceiver(QObject *parent);

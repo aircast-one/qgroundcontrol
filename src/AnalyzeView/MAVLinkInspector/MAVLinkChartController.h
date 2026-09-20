@@ -15,7 +15,9 @@ class MAVLinkChartController : public QObject
     QML_ELEMENT
     Q_MOC_INCLUDE("MAVLinkInspectorController.h")
     Q_MOC_INCLUDE("MAVLinkMessageField.h")
+#ifndef QGC_HEADLESS_CORE
     Q_MOC_INCLUDE("QtGraphs/qabstractseries.h")
+#endif
 
     Q_PROPERTY(MAVLinkInspectorController*  inspectorController READ inspectorController WRITE setInspectorController REQUIRED)
     Q_PROPERTY(int          chartIndex  MEMBER _chartIndex                          REQUIRED)
@@ -33,7 +35,9 @@ public:
     explicit MAVLinkChartController(QObject *parent = nullptr);
     ~MAVLinkChartController();
 
+#ifndef QGC_HEADLESS_CORE
     Q_INVOKABLE void addSeries(QGCMAVLinkMessageField *field, QAbstractSeries *series);
+#endif
     Q_INVOKABLE void delSeries(QGCMAVLinkMessageField *field);
 
     void setInspectorController(MAVLinkInspectorController *inspectorController);

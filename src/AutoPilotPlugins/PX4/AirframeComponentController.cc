@@ -1,6 +1,14 @@
 #include "QmlObjectListModel.h"
 #include "AirframeComponentController.h"
+#ifndef QGC_HEADLESS_CORE
+#include <QtGui/QCursor>
 #include <QtGui/QGuiApplication>
+#define QGC_SET_WAIT_CURSOR()  QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor))
+#define QGC_RESTORE_CURSOR()   QGuiApplication::restoreOverrideCursor()
+#else
+#define QGC_SET_WAIT_CURSOR()  do {} while (false)
+#define QGC_RESTORE_CURSOR()   do {} while (false)
+#endif
 #include "AirframeComponentAirframes.h"
 #include "MultiVehicleManager.h"
 #include "AppMessages.h"
@@ -11,7 +19,6 @@
 
 #include <QtCore/QThread>
 #include <QtCore/QVariant>
-#include <QtGui/QCursor>
 
 bool AirframeComponentController::_typesRegistered = false;
 
@@ -77,7 +84,7 @@ void AirframeComponentController::changeAutostart(void)
 		return;
 	}
 
-    QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
+    QGC_SET_WAIT_CURSOR();
 
     Fact* sysAutoStartFact  = getParameterFact(-1, "SYS_AUTOSTART");
     Fact* sysAutoConfigFact = getParameterFact(-1, "SYS_AUTOCONFIG");
@@ -113,7 +120,7 @@ void AirframeComponentController::_rebootAfterStackUnwind(void)
         QThread::usleep(500);
         QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     }
-    QGuiApplication::restoreOverrideCursor();
+    QGC_RESTORE_CURSOR();
     LinkManager::instance()->disconnectAll();
 }
 

@@ -309,3 +309,40 @@ function(qgc_add_json_resources name)
          "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_PATTERN}")
     qt_add_resources(${CMAKE_PROJECT_NAME} ${name} PREFIX "${ARG_PREFIX}" FILES ${_json})
 endfunction()
+
+# ----------------------------------------------------------------------------
+# qgc_qml_only_library
+# Declares a static library that carries nothing but QML. The headless core
+# loads no QML and links no Qt6::Qml, so nothing is declared there and callers
+# must drop the target from their link lists.
+# Args: target name, then the qt_add_qml_module arguments
+# ----------------------------------------------------------------------------
+macro(qgc_qml_only_library _qgc_qml_target)
+    if(QGC_HEADLESS_CORE)
+        add_library(${_qgc_qml_target} INTERFACE)
+    else()
+        qt_add_library(${_qgc_qml_target} STATIC)
+        qt_add_qml_module(${ARGV})
+    endif()
+endmacro()
+
+# ----------------------------------------------------------------------------
+# qgc_qml_module
+# Registers QML types and files on a library that also carries C++.
+# A no-op in the headless core, which keeps the C++ and drops the QML.
+# ----------------------------------------------------------------------------
+macro(qgc_qml_module)
+    if(NOT QGC_HEADLESS_CORE)
+        qt_add_qml_module(${ARGV})
+    endif()
+endmacro()
+
+# ----------------------------------------------------------------------------
+# qgc_qml_resources
+# qt_add_resources for files only QML reads.
+# ----------------------------------------------------------------------------
+macro(qgc_qml_resources)
+    if(NOT QGC_HEADLESS_CORE)
+        qt_add_resources(${ARGV})
+    endif()
+endmacro()

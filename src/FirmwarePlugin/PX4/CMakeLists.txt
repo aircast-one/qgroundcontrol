@@ -28,9 +28,7 @@ qt_add_resources(${CMAKE_PROJECT_NAME} firmaware_plugin_px4_resource
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-qt_add_library(PX4FirmwareModule STATIC)
-
-qt_add_qml_module(PX4FirmwareModule
+qgc_qml_only_library(PX4FirmwareModule
     URI QGroundControl.FirmwarePlugin.PX4
     VERSION 1.0
     RESOURCE_PREFIX /qml

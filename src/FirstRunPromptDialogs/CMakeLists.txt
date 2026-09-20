@@ -1,6 +1,4 @@
-qt_add_library(FirstRunPromptDialogsModule STATIC)
-
-qt_add_qml_module(FirstRunPromptDialogsModule
+qgc_qml_only_library(FirstRunPromptDialogsModule
     URI QGroundControl.FirstRunPromptDialogs
     VERSION 1.0
     RESOURCE_PREFIX /qml

@@ -11,12 +11,13 @@
 #include <QtCore/QRegularExpression>
 #include <QtCore/private/qthread_p.h>
 #include <QtCore/QUrlQuery>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QFileOpenEvent>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QIcon>
 #include <QtGui/QStyleHints>
-#include <QtNetwork/QNetworkAccessManager>
-#include <QtNetwork/QNetworkReply>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlContext>
 #include <QtQuick/QQuickImageProvider>
@@ -25,15 +26,14 @@
 #include <QtSvg/QSvgRenderer>
 
 #include "PlatformTheme.h"
+#endif
 
 #include <QtCore/private/qthread_p.h>
 
 #include "AppSettings.h"
 #include "AudioOutput.h"
-#include "ColoredSvgImageProvider.h"
 #include "DebugApiServer.h"
 #include "FollowMe.h"
-#include "GraphicsSetup.h"
 #include "JoystickManager.h"
 #include "JsonParsing.h"
 #include "LinkManager.h"
@@ -51,7 +51,6 @@
 #include "QGCCommandLineParser.h"
 #include "QGCCorePlugin.h"
 #include "QGCFileDownload.h"
-#include "QGCImageProvider.h"
 #include "QGCLoggingCategory.h"
 #include "QGCLoggingCategoryManager.h"
 #include "QGCNetworkHelper.h"
@@ -65,7 +64,12 @@
 #include "VideoManager.h"
 #include "qgc_version.h"
 
+#ifndef QGC_HEADLESS_CORE
+#include "ColoredSvgImageProvider.h"
+#include "GraphicsSetup.h"
 #include "OverlayPhysics.h"
+#include "QGCImageProvider.h"
+#endif
 #ifndef QGC_NO_SERIAL_LINK
 #include "SerialLink.h"
 #endif
@@ -74,7 +78,7 @@ QGC_LOGGING_CATEGORY(QGCApplicationLog, "API.QGCApplication")
 QGC_LOGGING_CATEGORY(QGCAppMessageLog, "API.QGCApplication.AppMessage")
 
 QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLineParser::CommandLineParseResult& cli, bool embeddedHost)
-    : QGuiApplication(argc, argv),
+    : QGC_APPLICATION_BASE(argc, argv),
       _runningUnitTests(cli.runningUnitTests),
       _simpleBootTest(cli.simpleBootTest),
       _fakeMobile(cli.fakeMobile),
@@ -118,13 +122,17 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
 #endif
     }
     setApplicationName(applicationName);
+#ifndef QGC_HEADLESS_CORE
     setDesktopFileName(QGC_PACKAGE_NAME);
+#endif
     setOrganizationName(QGC_ORG_NAME);
     setOrganizationDomain(QGC_ORG_DOMAIN);
     setApplicationVersion(QString(QGC_APP_VERSION_STR));
+#ifndef QGC_HEADLESS_CORE
     styleHints()->setMousePressAndHoldInterval(500);
 #ifdef Q_OS_LINUX
     setWindowIcon(QIcon(":/res/qgroundcontrol.ico"));
+#endif
 #endif
 
     // Set settings format
@@ -194,8 +202,10 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
     // We need to set language as early as possible prior to loading on JSON files.
     setLanguage();
 
+#ifndef QGC_HEADLESS_CORE
     // Force old SVG Tiny 1.2 behavior for compatibility
     QSvgRenderer::setDefaultOptions(QtSvg::Tiny12FeaturesOnly);
+#endif
 
 #ifndef QGC_DAILY_BUILD
     _checkForNewVersion();
@@ -217,12 +227,14 @@ void QGCApplication::setLanguage()
     //-- We have specific fonts for Korean
     if (_locale == QLocale::Korean) {
         qCDebug(QGCApplicationLog) << "Loading Korean fonts" << _locale.name();
+#ifndef QGC_HEADLESS_CORE
         if (QFontDatabase::addApplicationFont(":/fonts/NanumGothic-Regular") < 0) {
             qCWarning(QGCApplicationLog) << "Could not load /fonts/NanumGothic-Regular font";
         }
         if (QFontDatabase::addApplicationFont(":/fonts/NanumGothic-Bold") < 0) {
             qCWarning(QGCApplicationLog) << "Could not load /fonts/NanumGothic-Bold font";
         }
+#endif
     }
     qCDebug(QGCApplicationLog) << "Loading localizations for" << _locale.name();
     removeTranslator(JsonParsing::translator());
@@ -247,9 +259,11 @@ void QGCApplication::setLanguage()
         }
     }
 
+#ifndef QGC_HEADLESS_CORE
     if (_qmlAppEngine) {
         _qmlAppEngine->retranslate();
     }
+#endif
 
     emit languageChanged(_locale);
 }
@@ -266,6 +280,7 @@ void QGCApplication::init()
 
     LogManager::instance()->init();
 
+#ifndef QGC_HEADLESS_CORE
     qmlRegisterType<OverlayPhysics>("QGroundControl.Controls", 1, 0, "OverlayPhysics");
 
     // Although this should really be in _initForNormalAppBoot putting it here allowws us to create unit tests which pop
@@ -277,12 +292,20 @@ void QGCApplication::init()
     if (QFontDatabase::addApplicationFont(":/fonts/opensans-demibold") < 0) {
         qCWarning(QGCApplicationLog) << "Could not load /fonts/opensans-demibold font";
     }
+#endif
 
     if (_simpleBootTest) {
         // Since GStream builds are so problematic we initialize video during the simple boot test
         // to make sure it works and verfies plugin availability.
         const bool videoInitialized = _initVideo();
+#ifdef QGC_HEADLESS_CORE
+        QGCCorePlugin::instance()->init();
+        MAVLinkProtocol::instance()->init();
+        MultiVehicleManager::instance()->init();
+        const bool qmlRootLoaded = true;
+#else
         const bool qmlRootLoaded = _initQmlRootWindow();
+#endif
         _bootTestPassed = videoInitialized && qmlRootLoaded;
     } else if (_runningUnitTests) {
         _settingsReady = true;
@@ -305,6 +328,7 @@ bool QGCApplication::_initVideo()
     return initSucceeded;
 }
 
+#ifndef QGC_HEADLESS_CORE
 bool QGCApplication::_initQmlRootWindow()
 {
     QQuickStyle::setStyle(PlatformTheme::instance()->controlStyle());
@@ -334,11 +358,19 @@ bool QGCApplication::_initQmlRootWindow()
     return mainRootWindow() != nullptr;
 }
 
+#endif
+
 void QGCApplication::_initForNormalAppBoot()
 {
     (void) _initVideo();
 
+#ifdef QGC_HEADLESS_CORE
+    QGCCorePlugin::instance()->init();
+    MAVLinkProtocol::instance()->init();
+    MultiVehicleManager::instance()->init();
+#else
     (void) _initQmlRootWindow();
+#endif
 
     AudioOutput::instance()->init(SettingsManager::instance()->appSettings()->audioVolume(),
                                   SettingsManager::instance()->appSettings()->audioMuted());
@@ -346,9 +378,13 @@ void QGCApplication::_initForNormalAppBoot()
     QGCPositionManager::instance()->init();
     NTRIPManager::instance()->init();
     LinkManager::instance()->init();
+#ifdef QGC_HEADLESS_CORE
+    VideoManager::instance()->init();
+#else
     if (!_embeddedHost) {
         VideoManager::instance()->init(mainRootWindow());
     }
+#endif
 #ifdef QGC_WFB_ENABLED
     PacketRadioManager::instance()->init();
 #endif
@@ -363,7 +399,7 @@ void QGCApplication::_initForNormalAppBoot()
     }
 
     // Set the window icon now that custom plugin has a chance to override it
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_LINUX) && !defined(QGC_HEADLESS_CORE)
     if (_qmlAppEngine) {
         QUrl windowIcon = QUrl("qrc:/res/qgroundcontrol.ico");
         windowIcon = _qmlAppEngine->interceptUrl(windowIcon, QQmlAbstractUrlInterceptor::UrlString);
@@ -458,9 +494,11 @@ void QGCApplication::_missingParamsDisplay()
 
 QObject* QGCApplication::_rootQmlObject()
 {
+#ifndef QGC_HEADLESS_CORE
     if (_qmlAppEngine && _qmlAppEngine->rootObjects().size()) {
         return _qmlAppEngine->rootObjects()[0];
     }
+#endif
 
     return nullptr;
 }
@@ -583,6 +621,7 @@ void QGCApplication::_showDelayedAppMessages()
     }
 }
 
+#ifndef QGC_HEADLESS_CORE
 QQuickWindow* QGCApplication::mainRootWindow()
 {
     if (!_mainRootWindow) {
@@ -591,6 +630,7 @@ QQuickWindow* QGCApplication::mainRootWindow()
 
     return _mainRootWindow;
 }
+#endif
 
 void QGCApplication::showVehicleConfig()
 {
@@ -752,12 +792,12 @@ QT_WARNING_DISABLE_DEPRECATED
 bool QGCApplication::compressEvent(QEvent* event, QObject* receiver, QPostEventList* postedEvents)
 {
     if (event->type() != QEvent::MetaCall) {
-        return QGuiApplication::compressEvent(event, receiver, postedEvents);
+        return QGC_APPLICATION_BASE::compressEvent(event, receiver, postedEvents);
     }
 
     const QMetaCallEvent* mce = static_cast<QMetaCallEvent*>(event);
     if (!mce->sender() || !_compressedSignals.contains(mce->sender()->metaObject(), mce->signalId())) {
-        return QGuiApplication::compressEvent(event, receiver, postedEvents);
+        return QGC_APPLICATION_BASE::compressEvent(event, receiver, postedEvents);
     }
 
     // QMetaCallEvent::id() was removed in 6.11; its protected Data is reachable from a derived helper.
@@ -995,16 +1035,22 @@ void QGCApplication::closeVehicleConnections()
 
 bool QGCApplication::event(QEvent* e)
 {
+#ifndef QGC_HEADLESS_CORE
     if (e->type() == QEvent::FileOpen) {
         // macOS delivers custom-scheme URLs (aircast-qgc://) as a file-open event.
         handleDeepLink(static_cast<QFileOpenEvent*>(e)->url());
         return true;
     }
+#endif
 
     if (e->type() == QEvent::Quit) {
+#ifdef QGC_HEADLESS_CORE
+        closeVehicleConnections();
+        return QGC_APPLICATION_BASE::event(e);
+#else
         if (!_mainRootWindow) {
             closeVehicleConnections();
-            return QGuiApplication::event(e);
+            return QGC_APPLICATION_BASE::event(e);
         }
         // On OSX if the user selects Quit from the menu (or Command-Q) the ApplicationWindow does not signal closing.
         // Instead you get a Quit event here only. This in turn causes the standard QGC shutdown sequence to not run. So
@@ -1022,11 +1068,13 @@ bool QGCApplication::event(QEvent* e)
             e->ignore();
             return true;
         }
+#endif
     }
 
-    return QGuiApplication::event(e);
+    return QGC_APPLICATION_BASE::event(e);
 }
 
+#ifndef QGC_HEADLESS_CORE
 QGCImageProvider* QGCApplication::qgcImageProvider()
 {
     if (!_qmlAppEngine) {
@@ -1035,6 +1083,7 @@ QGCImageProvider* QGCApplication::qgcImageProvider()
 
     return dynamic_cast<QGCImageProvider*>(_qmlAppEngine->imageProvider(_qgcImageProviderId));
 }
+#endif
 
 void QGCApplication::shutdown()
 {
@@ -1046,10 +1095,12 @@ void QGCApplication::shutdown()
 
     // Engines from createQmlApplicationEngine must die through the destroy hook so the plugin
     // can release per-engine state; parent-based teardown in ~QGCApplication would bypass it.
+#ifndef QGC_HEADLESS_CORE
     if (_qmlAppEngine) {
         QGCCorePlugin::instance()->destroyQmlApplicationEngine(_qmlAppEngine);
         _qmlAppEngine = nullptr;
     }
+#endif
 
     QGCCorePlugin::instance()->cleanup();
 
@@ -1087,6 +1138,8 @@ void QGCApplication::shutdown()
         }
     }
 
+#ifndef QGC_HEADLESS_CORE
     // This is bad, but currently qobject inheritances are incorrect and cause crashes on exit without
     delete _qmlAppEngine;
+#endif
 }

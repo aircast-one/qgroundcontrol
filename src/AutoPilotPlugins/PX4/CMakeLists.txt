@@ -87,12 +87,7 @@ set(_config_generated_qml ${GenerateConfigQmlPX4_OUTPUTS})
 # ----------------------------------------------------------------------------
 # PX4 QML Module
 # ----------------------------------------------------------------------------
-qt_add_library(AutoPilotPluginsPX4Module STATIC)
-
-# Ensure generated files exist before the module is built
-add_dependencies(AutoPilotPluginsPX4Module GenerateConfigQmlPX4)
-
-qt_add_qml_module(AutoPilotPluginsPX4Module
+qgc_qml_only_library(AutoPilotPluginsPX4Module
     URI QGroundControl.AutoPilotPlugins.PX4
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -144,6 +139,10 @@ qt_add_qml_module(AutoPilotPluginsPX4Module
         VehicleConfig/Safety.VehicleConfig.json
     NO_PLUGIN
 )
+
+if(NOT QGC_HEADLESS_CORE)
+    add_dependencies(AutoPilotPluginsPX4Module GenerateConfigQmlPX4)
+endif()
 
 qt_add_resources(${CMAKE_PROJECT_NAME} autopilot_plugin_px4_qmlimages
     PREFIX "/qmlimages"

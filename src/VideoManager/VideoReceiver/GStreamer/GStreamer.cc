@@ -10,6 +10,7 @@
 #include <QtCore/QPointer>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QStringList>
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QGuiApplication>
 #include <QtGui/QScreen>
 #include <QtGui/QWindow>
@@ -18,6 +19,7 @@
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
+#endif
 #ifdef Q_OS_ANDROID
 #include <QtCore/QJniEnvironment>
 #include <QtCore/QJniObject>
@@ -33,16 +35,20 @@
 #include "GStreamerLogging.h"
 #include "GstScoped.h"
 #include "GstVideoReceiver.h"
+#ifndef QGC_HEADLESS_CORE
 #include "HwBuffers/common/HwBuffers.h"
 #if defined(QGC_HAS_ANY_GPU_PATH)
 #include <rhi/qrhi.h>
 
 #include "HwBuffers/common/QGCRhiCapture.h"
 #endif
+#endif
 #include "QGCLoggingCategory.h"
+#ifndef QGC_HEADLESS_CORE
 #include "QGCQVideoSinkController.h"
 #include "gstqgc/gstqgcqvideosink.h"
 #include "gstqgc/gstqgcvideosinkbin.h"
+#endif
 
 #ifdef Q_OS_LINUX
 #include <dlfcn.h>
@@ -64,7 +70,9 @@ G_BEGIN_DECLS
 extern void gst_init_static_plugins(void);
 #endif
 
+#ifndef QGC_HEADLESS_CORE
 GST_PLUGIN_STATIC_DECLARE(qgc);
+#endif
 G_END_DECLS
 
 namespace GStreamer {
@@ -82,13 +90,16 @@ void _registerPlugins()
         // gst_init() already pre-registered aren't re-added here.
         gst_init_static_plugins();
 #endif
+#ifndef QGC_HEADLESS_CORE
         GST_PLUGIN_STATIC_REGISTER(qgc);
+#endif
     });
 }
 
 // plugin_init can fail silently; confirm the element factory is exposed so failures surface here
 // rather than as a misleading "create returned nullptr" later. Common cause: iOS LTO / Android R8
 // stripping the GST_ELEMENT_REGISTER side effect.
+#ifndef QGC_HEADLESS_CORE
 bool requireFactory(const char* name, const char* hint)
 {
     const GstFactoryPtr factory = adoptFactory(gst_element_factory_find(name));
@@ -99,6 +110,7 @@ bool requireFactory(const char* name, const char* hint)
     qCDebug(GStreamerLog) << name << "factory available";
     return true;
 }
+#endif
 
 bool _verifyPlugins()
 {
@@ -120,10 +132,18 @@ bool _verifyPlugins()
     };
     // Mirrors GSTREAMER_RUNTIME_REQUIRED_PLUGINS (PluginPolicy.cmake) plus qgc,
     // so a stripped registry fails loudly instead of at first stream attempt.
+    // The headless core has no qgcvideosinkbin: it renders through the appsink the host owns.
+#ifdef QGC_HEADLESS_CORE
+    static constexpr std::array<const char*, 12> kRequiredPlugins = {
+        "coreelements", "isomp4",     "matroska", "multifile", "opengl",          "playback",
+        "rtp",          "rtpmanager", "rtsp",     "tcp",       "udp",             "videoparsersbad",
+    };
+#else
     static constexpr std::array<const char*, 13> kRequiredPlugins = {
         "qgc", "coreelements", "isomp4", "matroska", "multifile", "opengl",          "playback",
         "rtp", "rtpmanager",   "rtsp",   "tcp",      "udp",       "videoparsersbad",
     };
+#endif
     for (const char* name : kRequiredPlugins) {
         if (!hasPlugin(name)) {
             qCCritical(GStreamerLog) << "Required GStreamer plugin not found:" << name;
@@ -255,6 +275,7 @@ bool completeInit()
 
     GStreamer::logDecoderRanks();
 
+#ifndef QGC_HEADLESS_CORE
     if (!requireFactory("qgcqvideosink", "sink bin will fail to construct")) {
         return false;
     }
@@ -264,6 +285,7 @@ bool completeInit()
                         "add gstqgcelements.cc to a -force_load / keep rule.")) {
         return false;
     }
+#endif
 
     if (GStreamer::didExternalPluginLoaderFail()) {
         qCCritical(GStreamerLog)
@@ -290,6 +312,7 @@ bool initialize(const QStringList& arguments, const Environment::ValidationResul
     return completeInit();
 }
 
+#ifndef QGC_HEADLESS_CORE
 // Video sink refcount protocol: createVideoSink returns floating(1); ref on add to the pipeline,
 // unref on removal; releaseVideoSink drops the last ref. Keep the ref/unref sites balanced.
 void* createVideoSink(const VideoSinkConfig& config)
@@ -319,6 +342,8 @@ void* createVideoSink(const VideoSinkConfig& config)
     }
     return videoSinkBin;
 }
+
+#endif
 
 void *createNativeSink(QObject *parent)
 {
@@ -377,6 +402,7 @@ VideoReceiver* createVideoReceiver(QObject* parent)
     return new GstVideoReceiver(parent);
 }
 
+#ifndef QGC_HEADLESS_CORE
 bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* controllerParent)
 {
     if (!sinkBin || !videoSink || !controllerParent) {
@@ -447,6 +473,8 @@ void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget)
     QGCQVideoSinkController::syncActiveToWindowVisibility(receiver, videoOutput);
 }
 
+#endif
+
 void bindDebugLevelFact(Fact* fact, QObject* context)
 {
     if (!fact || !context)
@@ -455,6 +483,7 @@ void bindDebugLevelFact(Fact* fact, QObject* context)
                      [](const QVariant& value) { setDebugLevel(value.toInt()); });
 }
 
+#ifndef QGC_HEADLESS_CORE
 static const char* graphicsApiName(QSGRendererInterface::GraphicsApi api)
 {
     switch (api) {
@@ -530,6 +559,8 @@ void onMainWindowReady(QQuickWindow* window)
     qCInfo(GStreamerLog) << "Resolved RHI backend:" << graphicsApiName(api) << "→ zero-copy path:"
                          << zeroCopyFamilyForApi(api);
 }
+
+#endif
 
 QList<VideoDecoderOptions> availableDecoderFamilies()
 {

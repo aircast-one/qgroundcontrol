@@ -16,7 +16,9 @@
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QFileInfo>
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QGuiApplication>
+#endif
 #include <QtCore/QJsonDocument>
 
 QGC_LOGGING_CATEGORY(PlanMasterControllerLog, "PlanManager.PlanMasterController")
@@ -452,7 +454,12 @@ void PlanMasterController::setUndoTracking(bool tracking)
 
 void PlanMasterController::_captureUndoSnapshot(void)
 {
-    if (QGuiApplication::mouseButtons() != Qt::NoButton || syncInProgress() || _restoring) {
+#ifndef QGC_HEADLESS_CORE
+    if (QGuiApplication::mouseButtons() != Qt::NoButton) {
+        return;
+    }
+#endif
+    if (syncInProgress() || _restoring) {
         return;
     }
     const QByteArray snapshot = _planSnapshot();

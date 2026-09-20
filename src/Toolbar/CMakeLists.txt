@@ -1,6 +1,4 @@
-qt_add_library(ToolbarModule STATIC)
-
-qt_add_qml_module(ToolbarModule
+qgc_qml_only_library(ToolbarModule
     URI QGroundControl.Toolbar
     VERSION 1.0
     RESOURCE_PREFIX /qml

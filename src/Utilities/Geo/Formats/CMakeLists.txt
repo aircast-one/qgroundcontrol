@@ -13,7 +13,7 @@ qt_add_library(QGCGeoFormats STATIC
     SHPFileHelper.h
 )
 
-qt_add_qml_module(QGCGeoFormats
+qgc_qml_module(QGCGeoFormats
     URI QGroundControl.Geo
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -44,14 +44,14 @@ qgc_disable_dependency_warnings(shp)
 target_link_libraries(QGCGeoFormats
     PUBLIC
         Qt6::Core
-        Qt6::Gui
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Gui>
         Qt6::Positioning
-        Qt6::Qml
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Qml>
         Qt6::QmlIntegration
         Qt6::Xml
     PRIVATE
-        Qt6::Location
-        Qt6::LocationPrivate
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Location>
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::LocationPrivate>
         shp
         QGCGeoMath
         QGCLogging

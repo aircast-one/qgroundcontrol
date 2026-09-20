@@ -4,7 +4,9 @@
 #include "QGCApplication.h"
 
 #include <QtCore/QThread>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickWindow>
+#endif
 
 #ifdef QGC_GST_STREAMING
 #include "GStreamer.h"
@@ -16,7 +18,7 @@
 #include "QtMultimediaReceiver.h"
 #endif
 
-#ifdef QGC_GST_STREAMING
+#if defined(QGC_GST_STREAMING) && !defined(QGC_HEADLESS_CORE)
 namespace {
 
 bool d3d12ZeroCopyUnsupported()
@@ -34,7 +36,7 @@ bool d3d12ZeroCopyUnsupported()
 
 bool VideoBackend::gpuZeroCopyAllowedForCurrentGraphicsApi(bool forceCpuVideoPath, bool forceSoftwareDecoder)
 {
-#ifdef QGC_GST_STREAMING
+#if defined(QGC_GST_STREAMING) && !defined(QGC_HEADLESS_CORE)
     return !forceCpuVideoPath && !forceSoftwareDecoder && !d3d12ZeroCopyUnsupported();
 #else
     Q_UNUSED(forceCpuVideoPath);
@@ -54,8 +56,11 @@ VideoReceiver *VideoBackend::createReceiver(QObject *parent)
 
 void *VideoBackend::createSink(QQuickItem *widget, QObject *parent)
 {
-    [[maybe_unused]] const bool onGuiThread = (QThread::currentThread() == qApp->thread());
-    Q_ASSERT(onGuiThread);
+#ifdef QGC_HEADLESS_CORE
+    Q_UNUSED(widget);
+    Q_UNUSED(parent);
+    return nullptr;
+#else
 #ifdef QGC_GST_STREAMING
     Q_UNUSED(widget);
     Q_UNUSED(parent);
@@ -69,6 +74,7 @@ void *VideoBackend::createSink(QQuickItem *widget, QObject *parent)
     return GStreamer::createVideoSink(config);
 #else
     return QtMultimediaReceiver::createVideoSink(widget, parent);
+#endif
 #endif
 }
 
@@ -118,7 +124,7 @@ void VideoBackend::applyDecoderPriorities(int rawOption)
 
 void VideoBackend::onMainWindowReady(QQuickWindow *window)
 {
-#ifdef QGC_GST_STREAMING
+#if defined(QGC_GST_STREAMING) && !defined(QGC_HEADLESS_CORE)
     GStreamer::onMainWindowReady(window);
 #else
     Q_UNUSED(window);
@@ -137,7 +143,7 @@ void VideoBackend::bindDebugLevelFact(Fact *fact, QObject *context)
 
 void VideoBackend::attachSink(QObject *receiver, void *sink, QQuickItem *widget)
 {
-#ifdef QGC_GST_STREAMING
+#if defined(QGC_GST_STREAMING) && !defined(QGC_HEADLESS_CORE)
     GStreamer::attachAppSink(receiver, sink, widget);
 #else
     Q_UNUSED(receiver);

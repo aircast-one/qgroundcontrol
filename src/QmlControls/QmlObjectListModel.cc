@@ -1,7 +1,7 @@
 #include "QmlObjectListModel.h"
 
 #include <QtCore/QMetaMethod>
-#include <QtQml/QQmlEngine>
+#include "QGCCppOwnership.h"
 
 #include "QGCLoggingCategory.h"
 
@@ -203,7 +203,7 @@ void QmlObjectListModel::insert(int i, QObject* object)
         qCWarning(QmlObjectListModelLog) << "Invalid index - index:count" << i << _objectList.count() << this;
     }
     if (object) {
-        QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
+        qgcCppOwnership(object);
         if (!_skipDirtyFirstItem || i != 0) {
             connectDirtyChangedIfAvailable(object, this);
         }
@@ -221,7 +221,7 @@ void QmlObjectListModel::insert(int i, QList<QObject*> objects)
 
     int j = i;
     for (QObject* object: objects) {
-        QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
+        qgcCppOwnership(object);
 
         if (!_skipDirtyFirstItem || j != 0) {
             connectDirtyChangedIfAvailable(object, this);

@@ -2,13 +2,17 @@
 #include "MAVLinkProtocol.h"
 #include "MultiVehicleManager.h"
 #include "QGCLoggingCategory.h"
+#ifndef QGC_HEADLESS_CORE
 #include "QGCPalette.h"
+#endif
 #include "Vehicle.h"
 #include "VehicleLinkManager.h"
 
 #include <QtCore/qapplicationstatic.h>
-#include <QtGui/QGuiApplication>
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QClipboard>
+#include <QtGui/QGuiApplication>
+#endif
 
 QGC_LOGGING_CATEGORY(MAVLinkConsoleControllerLog, "AnalyzeView.MAVLinkConsoleController")
 
@@ -21,7 +25,9 @@ MAVLinkConsoleController *MAVLinkConsoleController::instance()
 
 MAVLinkConsoleController::MAVLinkConsoleController(QObject *parent)
     : QStringListModel(parent)
+#ifndef QGC_HEADLESS_CORE
     , _palette(new QGCPalette(this))
+#endif
 {
     qCDebug(MAVLinkConsoleControllerLog) << this;
 
@@ -64,7 +70,11 @@ void MAVLinkConsoleController::sendCommand(const QString &command)
 
 QString MAVLinkConsoleController::handleClipboard(const QString &command_pre)
 {
+#ifdef QGC_HEADLESS_CORE
+    QString clipboardData = command_pre;
+#else
     QString clipboardData = command_pre + QGuiApplication::clipboard()->text();
+#endif
 
     const int lastLinePos = clipboardData.lastIndexOf('\n');
     if (lastLinePos != -1) {
@@ -257,9 +267,13 @@ QString MAVLinkConsoleController::_transformLineForRichText(const QString &line)
     QString ret = line.toHtmlEscaped().replace(" ","&nbsp;").replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;");
 
     if (ret.startsWith("WARN", Qt::CaseSensitive)) {
+#ifndef QGC_HEADLESS_CORE
         (void) ret.replace(0, 4, "<font color=\"" + _palette->colorOrange().name() + "\">WARN</font>");
+#endif
     } else if (ret.startsWith("ERROR", Qt::CaseSensitive)) {
+#ifndef QGC_HEADLESS_CORE
         (void) ret.replace(0, 5, "<font color=\"" + _palette->colorRed().name() + "\">ERROR</font>");
+#endif
     }
 
     return ret;

@@ -75,7 +75,9 @@ public:
     // @return true: Setup panel can be shown while vehicle is flying (and armed)
     virtual bool allowSetupWhileFlying() const { return false; }
 
+#ifndef QGC_HEADLESS_CORE
     virtual void addSummaryQmlComponent(QQmlContext* context, QQuickItem* parent);
+#endif
 
     /// Returns an list of parameter names for which a change should cause the setupCompleteChanged
     /// signal to be emitted.

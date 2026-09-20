@@ -2,8 +2,6 @@
 # QGroundControl Module Library
 # ============================================================================
 
-qt_add_library(QGroundControlModule STATIC)
-
 # ----------------------------------------------------------------------------
 # QML Resources
 # ----------------------------------------------------------------------------
@@ -12,7 +10,7 @@ set_source_files_properties(MainWindow/MainWindow.qml
         QT_RESOURCE_ALIAS MainWindow.qml
 )
 
-qt_add_qml_module(QGroundControlModule
+qgc_qml_only_library(QGroundControlModule
     URI QGroundControl
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -68,10 +66,14 @@ add_subdirectory(Terrain)
 add_subdirectory(AppSettings)
 add_subdirectory(FirstRunPromptDialogs)
 add_subdirectory(Toolbar)
-add_subdirectory(Theme)
+if(NOT QGC_HEADLESS_CORE)
+    add_subdirectory(Theme)
+endif()
 add_subdirectory(Vehicle)
 add_subdirectory(VideoManager)
-add_subdirectory(Viewer3D)
+if(NOT QGC_HEADLESS_CORE)
+    add_subdirectory(Viewer3D)
+endif()
 
 # Platform-specific
 add_subdirectory(Android)
@@ -108,40 +110,60 @@ target_include_directories(${CMAKE_PROJECT_NAME}
 # Link Libraries
 # ============================================================================
 
+if(QGC_HEADLESS_CORE)
+    target_link_libraries(${CMAKE_PROJECT_NAME}
+        PRIVATE
+            Qt6::Concurrent
+            Qt6::Core
+            Qt6::CorePrivate
+            Qt6::HttpServer
+            Qt6::Network
+            Qt6::Positioning
+            Qt6::PositioningPrivate
+            Qt6::QmlIntegration
+            Qt6::Sql
+            Qt6::StateMachine
+            Qt6::Xml
+    )
+else()
+    target_link_libraries(${CMAKE_PROJECT_NAME}
+        PRIVATE
+            # Qt6 Core
+            Qt6::Graphs
+            Qt6::Concurrent
+            Qt6::Core
+            Qt6::CorePrivate
+            Qt6::Gui
+            Qt6::GuiPrivate
+            Qt6::HttpServer
+            Qt6::Network
+            Qt6::StateMachine
+            Qt6::Svg
+            Qt6::Xml
+
+            # Qt6 QML/Quick
+            Qt6::Qml
+            Qt6::QmlIntegration
+            Qt6::Quick
+            Qt6::Quick3D
+            Qt6::QuickControls2
+            Qt6::QuickVectorImage
+
+            # Qt6 Location
+            Qt6::Location
+            Qt6::LocationPrivate
+            Qt6::Positioning
+            Qt6::PositioningPrivate
+            Qt6::Sql
+
+            # Qt6 Multimedia
+            Qt6::Multimedia
+            Qt6::MultimediaQuickPrivate
+    )
+endif()
+
 target_link_libraries(${CMAKE_PROJECT_NAME}
     PRIVATE
-        # Qt6 Core
-        Qt6::Graphs
-        Qt6::Concurrent
-        Qt6::Core
-        Qt6::CorePrivate
-        Qt6::Gui
-        Qt6::GuiPrivate
-        Qt6::HttpServer
-        Qt6::Network
-        Qt6::StateMachine
-        Qt6::Svg
-        Qt6::Xml
-
-        # Qt6 QML/Quick
-        Qt6::Qml
-        Qt6::QmlIntegration
-        Qt6::Quick
-        Qt6::Quick3D
-        Qt6::QuickControls2
-        Qt6::QuickVectorImage
-
-        # Qt6 Location
-        Qt6::Location
-        Qt6::LocationPrivate
-        Qt6::Positioning
-        Qt6::PositioningPrivate
-        Qt6::Sql
-
-        # Qt6 Multimedia
-        Qt6::Multimedia
-        Qt6::MultimediaQuickPrivate
-
         # QGC Modules
         AnalyzeViewModule
         AppSettingsModule
@@ -163,7 +185,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE AutoPilotPluginsAPMModule)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE AutoPilotPluginsPX4Module)
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Viewer3DModule)
+if(NOT QGC_HEADLESS_CORE)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Viewer3DModule)
+endif()
 
 # ============================================================================
 # Compile Definitions

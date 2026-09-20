@@ -10,14 +10,14 @@
 #include "ObjectItemModelBase.h"
 #include "QGCLoggingCategory.h"
 
-#include <QtQml/QQmlEngine>
+#include "QGCCppOwnership.h"
 
 QGC_LOGGING_CATEGORY(ObjectItemModelBaseLog, "API.ObjectItemModelBase")
 
 ObjectItemModelBase::ObjectItemModelBase(QObject* parent)
     : QAbstractItemModel(parent)
 {
-    QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
+    qgcCppOwnership(this);
 }
 
 ObjectItemModelBase::~ObjectItemModelBase()

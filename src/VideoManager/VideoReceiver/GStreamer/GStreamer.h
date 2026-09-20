@@ -38,15 +38,19 @@ struct VideoSinkConfig
 
 bool completeInit();
 void setDebugLevel(int level);
+#ifndef QGC_HEADLESS_CORE
 void* createVideoSink(const VideoSinkConfig& config);
+#endif
 void releaseVideoSink(void* sink);
 void *createNativeSink(QObject *parent = nullptr);
 VideoReceiver* createVideoReceiver(QObject* parent = nullptr);
 
+#ifndef QGC_HEADLESS_CORE
 /// Wire @p videoSink into the qgcqvideosink element inside @p sinkBin and create a
 /// QGCQVideoSinkController child of @p controllerParent. Idempotent: prior controllers
 /// under the same parent are torn down first. Returns true on success.
 bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* controllerParent);
+#endif
 
 /// Hardware decoder families currently present in the GStreamer registry, as VideoDecoderOptions
 /// values (always omits ForceVideoDecoderDefault/Software). Lets the settings layer validate a
@@ -57,8 +61,10 @@ QList<VideoDecoderOptions> availableDecoderFamilies();
 // no-ops these for the QtMultimedia build; this header is included solely under QGC_GST_STREAMING.
 Environment::ValidationResult prepareEnvironment();
 bool initialize(const QStringList& arguments, const Environment::ValidationResult& envResult);
-void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget);
 void bindDebugLevelFact(Fact* fact, QObject* context);
+#ifndef QGC_HEADLESS_CORE
+void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget);
 void onMainWindowReady(QQuickWindow* window);
+#endif
 
 }  // namespace GStreamer

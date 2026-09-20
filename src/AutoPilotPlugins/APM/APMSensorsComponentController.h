@@ -8,7 +8,9 @@
 
 Q_DECLARE_LOGGING_CATEGORY(APMSensorsComponentControllerLog)
 Q_DECLARE_LOGGING_CATEGORY(APMSensorsComponentControllerVerboseLog)
+#ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickItem>
+#endif
 #include <QtQmlIntegration/QtQmlIntegration>
 
 class APMSensorsComponent;

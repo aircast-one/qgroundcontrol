@@ -10,7 +10,7 @@ qt_add_library(QGCLogging STATIC
     LoggingCategoryModel.h
 )
 
-qt_add_qml_module(QGCLogging
+qgc_qml_module(QGCLogging
     URI QGroundControl.Logging
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -19,7 +19,7 @@ qt_add_qml_module(QGCLogging
 target_link_libraries(QGCLogging
     PUBLIC
         Qt6::Core
-        Qt6::Qml
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Qml>
         Qt6::QmlIntegration
 )
 

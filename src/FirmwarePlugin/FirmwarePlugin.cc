@@ -15,7 +15,6 @@
 #include "VehicleCameraControl.h"
 #include "VehicleComponent.h"
 
-#include <QtQml/QQmlEngine>
 
 #include <QtCore/QPointer>
 #include "QGCCompression.h"

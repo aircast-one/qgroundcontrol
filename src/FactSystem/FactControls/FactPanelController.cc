@@ -6,7 +6,7 @@
 #include "QGCLoggingCategory.h"
 #include "Vehicle.h"
 
-#include <QtQml/QQmlEngine>
+#include "QGCCppOwnership.h"
 
 QGC_LOGGING_CATEGORY(FactPanelControllerLog, "FactSystem.FactPanelController")
 
@@ -58,7 +58,7 @@ Fact *FactPanelController::getParameterFact(int componentId, const QString &name
 {
     if (_vehicle && _vehicle->parameterManager()->parameterExists(componentId, name)) {
         Fact *const fact = _vehicle->parameterManager()->getParameter(componentId, name);
-        QQmlEngine::setObjectOwnership(fact, QQmlEngine::CppOwnership);
+        qgcCppOwnership(fact);
         return fact;
     }
 

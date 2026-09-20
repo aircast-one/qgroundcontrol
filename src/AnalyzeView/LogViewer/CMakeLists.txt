@@ -32,9 +32,7 @@ target_include_directories(${CMAKE_PROJECT_NAME}
 # ----------------------------------------------------------------------------
 # QML Module for Log Viewer UI components
 # ----------------------------------------------------------------------------
-qt_add_library(LogViewerModule STATIC)
-
-qt_add_qml_module(LogViewerModule
+qgc_qml_only_library(LogViewerModule
     URI QGroundControl.LogViewer
     VERSION 1.0
     RESOURCE_PREFIX /qml

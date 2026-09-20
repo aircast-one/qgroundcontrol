@@ -64,6 +64,12 @@ if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/${QGC_CUSTOM_DIR}")
     include(CustomOverrides)
 endif()
 
+# The headless core has no QML to test and links no QtTest/QtQuickTest.
+if(QGC_HEADLESS_CORE)
+    set(QGC_BUILD_TESTING OFF CACHE BOOL "Enable unit tests" FORCE)
+    set(QGC_NATIVE_UI ON CACHE BOOL "Build the in-tree Swift UI into the macOS app" FORCE)
+endif()
+
 # Disable testing if not explicitly enabled
 if(NOT QGC_BUILD_TESTING)
     set(BUILD_TESTING OFF CACHE INTERNAL "Disable testing by default" FORCE)
@@ -324,7 +330,7 @@ if(MACOS)
             INSTALL_RPATH "@executable_path/../Frameworks"
     )
     target_link_libraries(${QGC_APP_TARGET} PRIVATE ${CMAKE_PROJECT_NAME})
-    qt_add_qml_module(${QGC_APP_TARGET}
+    qgc_qml_module(${QGC_APP_TARGET}
         URI AircastQGCApp
         VERSION 1.0
         RESOURCE_PREFIX /app
@@ -370,7 +376,7 @@ endif()
 # ----------------------------------------------------------------------------
 # QML Module Configuration
 # ----------------------------------------------------------------------------
-qt_add_qml_module(${CMAKE_PROJECT_NAME}
+qgc_qml_module(${CMAKE_PROJECT_NAME}
     URI QGC
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -381,7 +387,7 @@ qt_add_qml_module(${CMAKE_PROJECT_NAME}
         QtQuick.Layouts
 )
 
-if(NOT ANDROID AND NOT IOS)
+if(NOT ANDROID AND NOT IOS AND NOT QGC_HEADLESS_CORE)
     CPMAddPackage(
         NAME qwindowkit
         GITHUB_REPOSITORY stdware/qwindowkit
@@ -424,6 +430,10 @@ if(QGC_BUILD_TESTING)
     # targets (${CMAKE_PROJECT_NAME}, QGroundControlModule, QGCLocation), so a single
     # target-scoped definition would not cover them all.
     add_compile_definitions(QGC_UNITTEST_BUILD)
+endif()
+
+if(QGC_HEADLESS_CORE)
+    add_compile_definitions(QGC_HEADLESS_CORE)
 endif()
 
 add_subdirectory(src)
@@ -471,7 +481,7 @@ qt_add_translations(${CMAKE_PROJECT_NAME}
 # ----------------------------------------------------------------------------
 qgc_set_qt_resource_alias("${CMAKE_SOURCE_DIR}/resources/qtquickcontrols2.conf")
 
-qt_add_resources(${CMAKE_PROJECT_NAME} "qgcresources_cmake"
+qgc_qml_resources(${CMAKE_PROJECT_NAME} "qgcresources_cmake"
     PREFIX "/"
     FILES "${CMAKE_SOURCE_DIR}/resources/qtquickcontrols2.conf"
 )
@@ -479,11 +489,17 @@ qt_add_resources(${CMAKE_PROJECT_NAME} "qgcresources_cmake"
 # ----------------------------------------------------------------------------
 # Qt Plugin Configuration
 # ----------------------------------------------------------------------------
-qt_import_plugins(${CMAKE_PROJECT_NAME}
-    INCLUDE Qt6::QSvgPlugin Qt6::QOffscreenIntegrationPlugin
-    EXCLUDE_BY_TYPE geoservices  # Use built-in location plugins
-    INCLUDE_BY_TYPE sqldrivers Qt6::QSQLiteDriverPlugin
-)
+if(QGC_HEADLESS_CORE)
+    qt_import_plugins(${CMAKE_PROJECT_NAME}
+        INCLUDE_BY_TYPE sqldrivers Qt6::QSQLiteDriverPlugin
+    )
+else()
+    qt_import_plugins(${CMAKE_PROJECT_NAME}
+        INCLUDE Qt6::QSvgPlugin Qt6::QOffscreenIntegrationPlugin
+        EXCLUDE_BY_TYPE geoservices  # Use built-in location plugins
+        INCLUDE_BY_TYPE sqldrivers Qt6::QSQLiteDriverPlugin
+    )
+endif()
 
 # Linux-specific Qt platform plugins
 if(LINUX)

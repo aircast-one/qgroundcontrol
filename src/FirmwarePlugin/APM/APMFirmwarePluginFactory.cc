@@ -37,7 +37,7 @@ FirmwarePlugin *APMFirmwarePluginFactory::firmwarePluginForAutopilot(MAV_AUTOPIL
         case MAV_TYPE_COAXIAL:
         case MAV_TYPE_HELICOPTER:
             if (!_arduCopterPluginInstance) {
-                _arduCopterPluginInstance = new ArduCopterFirmwarePlugin(this);
+                _arduCopterPluginInstance = new ArduCopterFirmwarePlugin;
             }
             return _arduCopterPluginInstance;
         case MAV_TYPE_VTOL_TAILSITTER_DUOROTOR:

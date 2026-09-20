@@ -31,8 +31,10 @@
 
 #include <QtCore/QLineF>
 #include <QtCore/QSettings>
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QClipboard>
 #include <QtGui/QGuiApplication>
+#endif
 
 #include "QGCLoggingCategory.h"
 
@@ -59,7 +61,9 @@ QGroundControlQmlGlobal::QGroundControlQmlGlobal(QObject *parent)
     , _multiVehicleManager(MultiVehicleManager::instance())
     , _settingsManager(SettingsManager::instance())
     , _corePlugin(QGCCorePlugin::instance())
+#ifndef QGC_HEADLESS_CORE
     , _globalPalette(new QGCPalette(this))
+#endif
 #ifndef QGC_NO_SERIAL_LINK
     , _gpsRtkFactGroup(GPSManager::instance()->gpsRtk()->gpsRtkFactGroup())
 #endif
@@ -341,6 +345,7 @@ QString QGroundControlQmlGlobal::altitudeFrameShortDescription(AltitudeFrame alt
     return QString();
 }
 
+#ifndef QGC_HEADLESS_CORE
 void QGroundControlQmlGlobal::showMessageDialog(
     QObject* owner,
     const QString& title,
@@ -351,6 +356,7 @@ void QGroundControlQmlGlobal::showMessageDialog(
 {
     emit showMessageDialogRequested(owner, title, text, buttons, acceptFunction, closeFunction);
 }
+#endif
 
 void QGroundControlQmlGlobal::testAudioOutput()
 {
@@ -359,7 +365,11 @@ void QGroundControlQmlGlobal::testAudioOutput()
 
 void QGroundControlQmlGlobal::copyToClipboard(const QString& text)
 {
+#ifndef QGC_HEADLESS_CORE
     QGuiApplication::clipboard()->setText(text);
+#else
+    Q_UNUSED(text);
+#endif
 }
 
 QString QGroundControlQmlGlobal::elevationProviderName()

@@ -12,8 +12,10 @@
 #include "FactMetaData.h"
 #include "FirmwarePluginManager.h"
 #include "QGCMAVLink.h"
+#ifndef QGC_HEADLESS_CORE
 #include "HorizontalFactValueGrid.h"
 #include "InstrumentValueData.h"
+#endif
 #include "JoystickManager.h"
 #include "QGCLoggingCategory.h"
 #include "QGCOptions.h"
@@ -191,6 +193,7 @@ bool QGCCorePlugin::showInitialSetupMeasurementUnits() const
     return true;
 }
 
+#ifndef QGC_HEADLESS_CORE
 void QGCCorePlugin::factValueGridCreateDefaultSettings(FactValueGrid* factValueGrid)
 {
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
@@ -310,6 +313,8 @@ void QGCCorePlugin::createRootWindow(QQmlApplicationEngine *qmlEngine)
 {
     qmlEngine->load(QUrl(QStringLiteral("qrc:/qml/QGroundControl/MainWindow.qml")));
 }
+
+#endif
 
 VideoReceiver *QGCCorePlugin::createVideoReceiver(QObject *parent)
 {

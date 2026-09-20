@@ -5,16 +5,8 @@
 
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
-        ColoredSvgImageProvider.cc
-        ColoredSvgImageProvider.h
-        FactValueGrid.cc
-        FactValueGrid.h
         FlightPathSegment.cc
         FlightPathSegment.h
-        HorizontalFactValueGrid.cc
-        HorizontalFactValueGrid.h
-        InstrumentValueData.cc
-        InstrumentValueData.h
         MavlinkAction.cc
         MavlinkAction.h
         MavlinkActionManager.cc
@@ -23,28 +15,20 @@ target_sources(${CMAKE_PROJECT_NAME}
         ObjectItemModelBase.h
         ObjectListModelBase.cc
         ObjectListModelBase.h
-        OverlayPhysics.cc
-        OverlayPhysics.h
         ParameterEditorController.cc
         ParameterEditorController.h
         QGCFenceCircle.cc
         QGCFenceCircle.h
         QGCFencePolygon.cc
         QGCFencePolygon.h
-        QGCFileDialogController.cc
-        QGCFileDialogController.h
         QGCGeoBoundingCube.cc
         QGCGeoBoundingCube.h
-        QGCImageProvider.cc
-        QGCImageProvider.h
         QGCMapCircle.cc
         QGCMapCircle.h
         QGCMapPolygon.cc
         QGCMapPolygon.h
         QGCMapPolyline.cc
         QGCMapPolyline.h
-        QGCPalette.cc
-        QGCPalette.h
         QGCQGeoCoordinate.cc
         QGCQGeoCoordinate.h
         QGroundControlQmlGlobal.cc
@@ -58,27 +42,49 @@ target_sources(${CMAKE_PROJECT_NAME}
         RCChannelMonitorController.h
         RCToParamDialogController.cc
         RCToParamDialogController.h
-        ScreenToolsController.cc
-        ScreenToolsController.h
         ServoOutputMonitorController.cc
         ServoOutputMonitorController.h
-        TerrainProfile.cc
-        TerrainProfile.h
-        ToolStripAction.cc
-        ToolStripAction.h
-        ToolStripActionList.cc
-        ToolStripActionList.h
         TransformPositionController.cc
         TransformPositionController.h
 )
+
+# QML-only controls: image providers, the palette, the screen-tools singleton, the
+# instrument value grid and the QQuickItem-drawn terrain profile.
+if(NOT QGC_HEADLESS_CORE)
+    target_sources(${CMAKE_PROJECT_NAME}
+        PRIVATE
+            ColoredSvgImageProvider.cc
+            ColoredSvgImageProvider.h
+            FactValueGrid.cc
+            FactValueGrid.h
+            HorizontalFactValueGrid.cc
+            HorizontalFactValueGrid.h
+            InstrumentValueData.cc
+            InstrumentValueData.h
+            OverlayPhysics.cc
+            OverlayPhysics.h
+            QGCFileDialogController.cc
+            QGCFileDialogController.h
+            QGCImageProvider.cc
+            QGCImageProvider.h
+            QGCPalette.cc
+            QGCPalette.h
+            ScreenToolsController.cc
+            ScreenToolsController.h
+            TerrainProfile.cc
+            TerrainProfile.h
+            ToolStripAction.cc
+            ToolStripAction.h
+            ToolStripActionList.cc
+            ToolStripActionList.h
+    )
+endif()
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ----------------------------------------------------------------------------
 # QML Controls Module
 # ----------------------------------------------------------------------------
-qt_add_library(QGroundControlControlsModule STATIC)
-
 set_source_files_properties(OverlayBackdrop.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(ScreenTools.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
@@ -224,7 +230,7 @@ set(_qgc_controls_qml
     VideoSourceMenu.qml
 )
 
-qt_add_qml_module(QGroundControlControlsModule
+qgc_qml_only_library(QGroundControlControlsModule
     URI QGroundControl.Controls
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -233,15 +239,17 @@ qt_add_qml_module(QGroundControlControlsModule
     NO_PLUGIN
 )
 
-qt_add_shaders(QGroundControlControlsModule "qgc_glass_shaders"
-    PREFIX "/shaders"
-    BASE "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
-    FILES Shaders/LiquidGlass.frag
-)
+if(NOT QGC_HEADLESS_CORE)
+    qt_add_shaders(QGroundControlControlsModule "qgc_glass_shaders"
+        PREFIX "/shaders"
+        BASE "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
+        FILES Shaders/LiquidGlass.frag
+    )
+endif()
 
 qgc_add_json_resources(json_controls)
 
-qt_add_resources(QGroundControlControlsModule qmlcontrols_resources
+qgc_qml_resources(QGroundControlControlsModule qmlcontrols_resources
     PREFIX "/res"
     BASE "${CMAKE_SOURCE_DIR}/resources"
     FILES
@@ -258,7 +266,7 @@ qt_add_resources(QGroundControlControlsModule qmlcontrols_resources
 set_source_files_properties("${CMAKE_SOURCE_DIR}/resources/CogWheels.png"
     PROPERTIES QT_RESOURCE_ALIAS "subMenuButtonImage.png")
 
-qt_add_resources(QGroundControlControlsModule qmlcontrols_qmlimages
+qgc_qml_resources(QGroundControlControlsModule qmlcontrols_qmlimages
     PREFIX "/qmlimages"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}"
     FILES
@@ -272,7 +280,7 @@ qt_add_resources(QGroundControlControlsModule qmlcontrols_qmlimages
 file(GLOB INSTRUMENT_VALUE_ICONS CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/resources/InstrumentValueIcons/*.svg"
 )
-qt_add_resources(QGroundControlControlsModule instrument_value_icons
+qgc_qml_resources(QGroundControlControlsModule instrument_value_icons
     PREFIX "/InstrumentValueIcons"
     BASE "${CMAKE_SOURCE_DIR}/resources/InstrumentValueIcons"
     FILES ${INSTRUMENT_VALUE_ICONS}

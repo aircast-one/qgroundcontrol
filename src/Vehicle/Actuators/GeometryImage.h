@@ -1,12 +1,15 @@
 #pragma once
 
-#include "QGCPalette.h"
 #include "Common.h"
 
 #include <QtCore/QObject>
+#include <QtCore/QSize>
 #include <QtCore/QString>
-#include <QtQuick/QQuickImageProvider>
+#ifndef QGC_HEADLESS_CORE
+#include "QGCPalette.h"
 #include <QtGui/QPainter>
+#include <QtQuick/QQuickImageProvider>
+#endif
 
 
 namespace GeometryImage {
@@ -14,7 +17,13 @@ namespace GeometryImage {
 /**
  * Renders an image of an airframe geometry (currently only multirotor)
  */
+#ifdef QGC_HEADLESS_CORE
+/// Headless keeps the geometry model - motor count, click hit-testing, the actuator list the
+/// motor-assignment flow edits - and drops the painting the QML image provider did.
+class VehicleGeometryImageProvider
+#else
 class VehicleGeometryImageProvider : public QQuickImageProvider
+#endif
 {
 public:
 
@@ -25,9 +34,11 @@ public:
         float radius;
     };
 
+#ifndef QGC_HEADLESS_CORE
     void drawAxisIndicator(QPainter& p, const QPointF& origin, float fontSize, const QColor& color);
 
     QPixmap requestPixmap(const QString& id, QSize* size, const QSize& requestedSize) override;
+#endif
 
     static VehicleGeometryImageProvider* instance();
 
@@ -45,7 +56,9 @@ private:
 
     QSize                   _imageSize;                 ///< size of the image requested, used to scale click positions
     QList<ImagePosition>    _actuatorImagePositions{};  ///< highlighted actuators image positions
+#ifndef QGC_HEADLESS_CORE
     QGCPalette              _palette;
+#endif
 };
 
 } // namespace GeometryImage

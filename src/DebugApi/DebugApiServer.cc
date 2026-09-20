@@ -53,16 +53,20 @@
 #include <QtCore/QPointer>
 #include <QtCore/QTextStream>
 #include <QtCore/QTimer>
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QKeySequence>
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QScreen>
+#endif
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QTcpServer>
 #include <QtNetwork/QTcpSocket>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 #include <qpa/qwindowsysteminterface.h>
+#endif
 
 #include <algorithm>
 #include <functional>
@@ -87,6 +91,7 @@ QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.debugapi.debugapiserver")
 // JSON shape) and strips the byte before writing the response.
 static constexpr char kErrorMarker = '\x01';
 
+#ifndef QGC_HEADLESS_CORE
 static constexpr int kMinWindowWidth      = 320;
 static constexpr int kMinWindowHeight     = 240;
 static constexpr int kDefaultGestureSteps = 12;
@@ -94,6 +99,7 @@ static constexpr int kMinGestureSteps     = 2;
 static constexpr int kMaxGestureSteps     = 100;
 static constexpr int kEventSliceMSecs     = 5;
 static constexpr int kResizeSettleMSecs   = 50;
+#endif
 
 class TouchCounter : public QObject
 {
@@ -113,13 +119,17 @@ protected:
     }
 };
 
+#ifndef QGC_HEADLESS_CORE
 static QPointingDevice *_touchDevice()
 {
     static QPointingDevice *device = QTest::createTouchDevice();
     return device;
 }
 
+#endif
+
 DebugApiServer *DebugApiServer::_instance = nullptr;
+#ifndef QGC_HEADLESS_CORE
 QQuickWindow *DebugApiServer::_testWindow = nullptr;
 
 void DebugApiServer::setWindowForTesting(QQuickWindow *window)
@@ -131,6 +141,8 @@ QQuickWindow *DebugApiServer::_targetWindow()
 {
     return _testWindow ? _testWindow : qgcApp()->mainRootWindow();
 }
+
+#endif
 
 void DebugApiServer::startIfConfigured(QObject *parent)
 {
@@ -232,9 +244,11 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
         } else if (requestLine.size() >= 2 && requestLine.at(0) == "GET") {
             const QUrl url = QUrl::fromEncoded(requestLine.at(1));
             if (url.path() == QStringLiteral("/ui/watch")) {
+#ifndef QGC_HEADLESS_CORE
                 if (_startWatch(socket, QUrlQuery(url))) {
                     return;
                 }
+#endif
                 body = QByteArrayLiteral("{\"error\":\"watch needs name and property on an existing item\"}");
                 statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
                 socket->write(statusLine + "\r\nContent-Type: application/json\r\nContent-Length: " +
@@ -305,10 +319,12 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
         }
         return _statusJson();
     }
+    #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/screenshot")) {
         return _screenshotJson();
     }
-    if (path.startsWith(QStringLiteral("/bridge/"))) {
+#endif
+        if (path.startsWith(QStringLiteral("/bridge/"))) {
         return _bridgeJson(path, query);
     }
 #ifdef Q_OS_MACOS
@@ -349,28 +365,42 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     if (path == QStringLiteral("/mission/download")) {
         return _missionJson(query, false);
     }
+    #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/tree")) {
         return _uiTreeJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/click")) {
         return _uiClickJson(query, false);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/doubleclick")) {
         return _uiClickJson(query, true);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/drag")) {
         return _uiDragJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/hover")) {
         return _uiHoverJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/type")) {
         return _uiTypeJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/key")) {
         return _uiKeyJson(query);
     }
-    if (path == QStringLiteral("/logging")) {
+#endif
+        if (path == QStringLiteral("/logging")) {
         return _loggingJson(query);
     }
     if (path == QStringLiteral("/links")) {
@@ -385,37 +415,57 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     if (path == QStringLiteral("/links/mocklink")) {
         return _mockLinkJson(query);
     }
+    #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/dismiss")) {
         return _uiDismissJson();
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/press")) {
         return _uiMouseStepJson(query, QEvent::MouseButtonPress);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/move")) {
         return _uiMouseStepJson(query, QEvent::MouseMove);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/release")) {
         return _uiMouseStepJson(query, QEvent::MouseButtonRelease);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/pinch")) {
         return _uiPinchJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/tap")) {
         return _uiTapJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/prop")) {
         return _uiPropJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/setprop")) {
         return _uiPropSetJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/at")) {
         return _uiAtJson(query);
     }
+#endif
+        #ifndef QGC_HEADLESS_CORE
     if (path == QStringLiteral("/ui/resize")) {
         return _uiResizeJson(query);
     }
-    if (path == QStringLiteral("/video/setting")) {
+#endif
+        if (path == QStringLiteral("/video/setting")) {
         return _videoSettingJson(query);
     }
     return QByteArray();
@@ -423,6 +473,7 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
 
 // Walks the visual (childItems) hierarchy: QML reparenting (pip swaps, Repeater delegates)
 // detaches the QObject parent chain, so findChildren() misses items the user can see.
+#ifndef QGC_HEADLESS_CORE
 static QQuickItem *_findVisibleItem(QQuickWindow *window, const QString &objectName)
 {
     QQuickItem *fallback = nullptr;
@@ -686,6 +737,8 @@ QByteArray DebugApiServer::_uiKeyJson(const QUrlQuery &query)
     return QJsonDocument(QJsonObject{{"key", keyName}}).toJson(QJsonDocument::Compact);
 }
 
+#endif
+
 QByteArray DebugApiServer::_loggingJson(const QUrlQuery &query)
 {
     const QString rules = query.queryItemValue(QStringLiteral("rules"), QUrl::FullyDecoded);
@@ -811,6 +864,7 @@ QByteArray DebugApiServer::_videoSettingJson(const QUrlQuery &query)
     return QJsonDocument(QJsonObject{{factName, QJsonValue::fromVariant(fact->rawValue())}}).toJson(QJsonDocument::Compact);
 }
 
+#ifndef QGC_HEADLESS_CORE
 QByteArray DebugApiServer::_uiResizeJson(const QUrlQuery &query)
 {
     QQuickWindow *window = _targetWindow();
@@ -1195,6 +1249,8 @@ QByteArray DebugApiServer::_uiMouseStepJson(const QUrlQuery &query, QEvent::Type
     }).toJson(QJsonDocument::Compact);
 }
 
+#endif
+
 QByteArray DebugApiServer::_mockLinkJson(const QUrlQuery &query)
 {
 #ifndef QT_DEBUG
@@ -1246,6 +1302,7 @@ QByteArray DebugApiServer::_mockLinkJson(const QUrlQuery &query)
 #endif
 }
 
+#ifndef QGC_HEADLESS_CORE
 QByteArray DebugApiServer::_uiDismissJson()
 {
     QQuickWindow *window = _targetWindow();
@@ -1303,6 +1360,8 @@ QByteArray DebugApiServer::_screenshotJson()
         {"imageToScene", image.width() > 0 ? sceneWidth / image.width() : 1.0},
     }).toJson(QJsonDocument::Compact);
 }
+
+#endif
 
 QByteArray DebugApiServer::_vehicleJson()
 {
@@ -1617,9 +1676,11 @@ QByteArray DebugApiServer::_statusJson()
         {"videoSize", QStringLiteral("%1x%2").arg(videoManager->videoSize().width()).arg(videoManager->videoSize().height())},
         {"cameras", cameras},
         {"layout", layout},
+#ifndef QGC_HEADLESS_CORE
         {"uiPressActive", s_uiPressActiveAt.has_value()},
         {"uiPressX", s_uiPressActiveAt ? s_uiPressActiveAt->x() : 0.0},
         {"uiPressY", s_uiPressActiveAt ? s_uiPressActiveAt->y() : 0.0},
+#endif
     };
     return QJsonDocument(status).toJson(QJsonDocument::Compact);
 }

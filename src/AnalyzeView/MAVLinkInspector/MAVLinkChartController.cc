@@ -4,7 +4,9 @@
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 
+#ifndef QGC_HEADLESS_CORE
 #include <QtGraphs/QAbstractSeries>
+#endif
 #include <QtCore/QTimer>
 
 static constexpr qreal kMinDelta = 1e-6;
@@ -159,6 +161,7 @@ void MAVLinkChartController::_refreshSeries()
     }
 }
 
+#ifndef QGC_HEADLESS_CORE
 void MAVLinkChartController::addSeries(QGCMAVLinkMessageField *field, QAbstractSeries *series)
 {
     if (!field || !series) {
@@ -178,6 +181,7 @@ void MAVLinkChartController::addSeries(QGCMAVLinkMessageField *field, QAbstractS
 
     _updateSeriesTimer->start(kUpdateFrequency);
 }
+#endif
 
 void MAVLinkChartController::delSeries(QGCMAVLinkMessageField *field)
 {

@@ -1,10 +1,11 @@
 #include "PacketRadioSettings.h"
 
-#include <QtQml/QQmlEngine>
 
 DECLARE_SETTINGGROUP(PacketRadio, "PacketRadio")
 {
+#ifndef QGC_HEADLESS_CORE
     qmlRegisterUncreatableType<PacketRadioSettings>("QGroundControl.SettingsManager", 1, 0, "PacketRadioSettings", "Reference only");
+#endif
 }
 
 DECLARE_SETTINGSFACT(PacketRadioSettings, enabled)

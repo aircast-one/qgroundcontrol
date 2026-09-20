@@ -23,9 +23,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 # ----------------------------------------------------------------------------
 # QML Module for GeoTag UI
 # ----------------------------------------------------------------------------
-qt_add_library(GeoTagModule STATIC)
-
-qt_add_qml_module(GeoTagModule
+qgc_qml_only_library(GeoTagModule
     URI QGroundControl.AnalyzeView.GeoTag
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -36,5 +34,7 @@ qt_add_qml_module(GeoTagModule
     NO_PLUGIN
 )
 
-target_link_libraries(GeoTagModule PRIVATE AnalyzeViewModule)
+if(NOT QGC_HEADLESS_CORE)
+    target_link_libraries(GeoTagModule PRIVATE AnalyzeViewModule)
+endif()
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE GeoTagModule)

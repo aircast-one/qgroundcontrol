@@ -14,7 +14,9 @@
 #include "VehicleLinkManager.h"
 #include "VideoReceiver.h"
 #include "VideoSettings.h"
+#ifndef QGC_HEADLESS_CORE
 #include "UVCReceiver.h"
+#endif
 #include "VideoBackend.h"
 
 #include <algorithm>
@@ -30,9 +32,11 @@
 #include <QtCore/QRunnable>
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
+#endif
 
 QGC_LOGGING_CATEGORY(VideoManagerLog, "Video.VideoManager")
 
@@ -168,6 +172,14 @@ bool VideoManager::waitForVideoBackendReady(std::chrono::milliseconds timeout)
     return _initState.load() != InitState::Failed;
 }
 
+#ifdef QGC_HEADLESS_CORE
+void VideoManager::init()
+{
+    if (_initialized) {
+        qCDebug(VideoManagerLog) << "Video Manager already initialized";
+        return;
+    }
+#else
 void VideoManager::init(QQuickWindow *mainWindow)
 {
     if (_initialized) {
@@ -184,6 +196,7 @@ void VideoManager::init(QQuickWindow *mainWindow)
     if (mainWindow) {
         VideoBackend::onMainWindowReady(mainWindow);
     }
+#endif
 
     (void) connect(_videoSettings->videoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->udpUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
@@ -221,13 +234,16 @@ void VideoManager::init(QQuickWindow *mainWindow)
         startVideoBackendInit();
     }
 
+#ifndef QGC_HEADLESS_CORE
     if (_mainWindow) {
         _mainWindow->scheduleRenderJob(
             QRunnable::create([this] {
                 QMetaObject::invokeMethod(this, &VideoManager::_initAfterQmlIsReady, Qt::QueuedConnection);
             }),
             QQuickWindow::AfterSynchronizingStage);
-    } else {
+    } else
+#endif
+    {
         QMetaObject::invokeMethod(this, &VideoManager::_initAfterQmlIsReady, Qt::QueuedConnection);
     }
 
@@ -236,10 +252,12 @@ void VideoManager::init(QQuickWindow *mainWindow)
 
 void VideoManager::_initAfterQmlIsReady()
 {
+#ifndef QGC_HEADLESS_CORE
     if (!_mainWindow && !_nativeRendering) {
         qCCritical(VideoManagerLog) << "_initAfterQmlIsReady called with NULL mainWindow";
         return;
     }
+#endif
 
     qCDebug(VideoManagerLog) << "_initAfterQmlIsReady";
 
@@ -311,10 +329,12 @@ void VideoManager::_createVideoReceivers()
         videoStreamList.append(_tileReceiverName(i));
     }
 
+#ifndef QGC_HEADLESS_CORE
     _mainWidget = _mainWindow ? _mainWindow->findChild<QQuickItem*>(QLatin1String(kMainReceiverName)) : nullptr;
     if (!_mainWidget && _mainWindow) {
         qCCritical(VideoManagerLog) << "main video widget not found";
     }
+#endif
 
     QStringList existing;
     existing.reserve(_videoReceivers.size());
@@ -334,7 +354,11 @@ void VideoManager::_createVideoReceivers()
         }
         receiver->setName(streamName);
 
+#ifdef QGC_HEADLESS_CORE
+        _initVideoReceiver(receiver);
+#else
         _initVideoReceiver(receiver, _mainWindow);
+#endif
     }
 
     _rebindWidgets();
@@ -526,7 +550,11 @@ bool VideoManager::gstreamerEnabled()
 
 bool VideoManager::uvcEnabled()
 {
+#ifdef QGC_HEADLESS_CORE
+    return false;
+#else
     return UVCReceiver::enabled();
+#endif
 }
 
 bool VideoManager::qtmultimediaEnabled()
@@ -636,11 +664,13 @@ QString VideoManager::_tileReceiverName(int slot)
     return QStringLiteral("extraVideo%1").arg(slot);
 }
 
+#ifndef QGC_HEADLESS_CORE
 void VideoManager::registerTileItem(int slot, QQuickItem *item)
 {
     _tileWidgets.insert(slot, item);
     _rebindWidgets();
 }
+#endif
 
 QStringList VideoManager::cameraStatuses() const
 {
@@ -791,6 +821,7 @@ int VideoManager::_cameraIndexForReceiver(const VideoReceiver *receiver) const
     return cameraIndex;
 }
 
+#ifndef QGC_HEADLESS_CORE
 QQuickItem *VideoManager::_widgetForCamera(int cameraIndex) const
 {
     if (cameraIndex < 0) {
@@ -808,6 +839,8 @@ QQuickItem *VideoManager::_widgetForCamera(int cameraIndex) const
     }
     return _tileWidgets.value(slot, nullptr);
 }
+
+#endif
 
 void VideoManager::setNativeRendering(bool nativeRendering)
 {
@@ -828,8 +861,12 @@ void VideoManager::_rebindWidgets()
         // QML item. On Android the QML fly view is still hosted, so init() finds its video
         // item by name and _widgetForCamera returns it — which silently kept the native
         // sink from ever being created, however the flag was set.
+#ifndef QGC_HEADLESS_CORE
         QQuickItem *desired =
             _nativeRendering ? nullptr : _widgetForCamera(_cameraIndexForReceiver(receiver));
+#else
+        constexpr void *desired = nullptr;
+#endif
         if (_nativeRendering && !desired && !receiver->sink()) {
             void *nativeSink = QGCCorePlugin::instance()->createNativeVideoSink(receiver);
             qCDebug(VideoManagerLog) << "native sink rebind" << receiver->name()
@@ -842,6 +879,7 @@ void VideoManager::_rebindWidgets()
             }
             continue;
         }
+#ifndef QGC_HEADLESS_CORE
         if (receiver->widget() == desired) {
             continue;
         }
@@ -861,6 +899,7 @@ void VideoManager::_rebindWidgets()
             }
         }
         VideoBackend::attachSink(receiver, receiver->sink(), desired);
+#endif
     }
     _refreshActiveReceiverState();
 }
@@ -964,17 +1003,23 @@ bool VideoManager::_updateUVC(VideoReceiver * /*receiver*/)
 
     const QString oldUvcVideoSrcID = _uvcVideoSourceID;
 
+#ifndef QGC_HEADLESS_CORE
+
     if (!UVCReceiver::enabled() || !hasVideo() || isStreamSource()) {
         _uvcVideoSourceID = QString();
     } else {
         _uvcVideoSourceID = UVCReceiver::getSourceId();
     }
 
+#endif
+
     if (oldUvcVideoSrcID != _uvcVideoSourceID) {
         qCDebug(VideoManagerLog) << "UVC changed from [" << oldUvcVideoSrcID << "] to [" << _uvcVideoSourceID << "]";
+#ifndef QGC_HEADLESS_CORE
         if (!_uvcVideoSourceID.isEmpty()) {
             UVCReceiver::checkPermission();
         }
+#endif
         result = true;
         emit uvcVideoSourceIDChanged();
         emit isUvcChanged();
@@ -1299,6 +1344,17 @@ void VideoManager::_holdStallRestartWhileSwitching()
     });
 }
 
+#ifdef QGC_HEADLESS_CORE
+void VideoManager::_initVideoReceiver(VideoReceiver *receiver)
+{
+    if (_videoReceivers.contains(receiver)) {
+        qCWarning(VideoManagerLog) << "Receiver already initialized";
+        return;
+    }
+
+    // Register before any setup so re-entry is blocked at every point below; error paths remove it.
+    _videoReceivers.append(receiver);
+#else
 void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window)
 {
     if (_videoReceivers.contains(receiver)) {
@@ -1332,6 +1388,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
         VideoBackend::attachSink(receiver, sink, widget);
     }
+#endif
 
     (void) connect(receiver, &VideoReceiver::onStartComplete, this, [this, receiver](VideoReceiver::STATUS status) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "Start complete, status:" << status;

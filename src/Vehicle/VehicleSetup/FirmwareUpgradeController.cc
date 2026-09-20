@@ -1,4 +1,6 @@
 ﻿#include "FirmwareUpgradeController.h"
+
+#include <QtQuick/QQuickItem>
 #include "PX4FirmwareUpgradeThread.h"
 #include "Bootloader.h"
 #include "QGCFileDownload.h"

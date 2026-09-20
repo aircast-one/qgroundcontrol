@@ -7,7 +7,11 @@
 #include <QtCore/QTime>
 #include <QtCore/QTimer>
 #include <QtCore/QTranslator>
+#ifdef QGC_HEADLESS_CORE
+#include <QtCore/QCoreApplication>
+#else
 #include <QtGui/QGuiApplication>
+#endif
 #include <QtCore/QUrl>
 
 namespace QGCCommandLineParser {
@@ -28,18 +32,25 @@ class QNetworkAccessManager;
 #if defined(qApp)
 #undef qApp
 #endif
-#define qApp (static_cast<QGCApplication*>(QGuiApplication::instance()))
 
 #if defined(qGuiApp)
 #undef qGuiApp
 #endif
+
+#ifdef QGC_HEADLESS_CORE
+#define qApp (static_cast<QGCApplication*>(QCoreApplication::instance()))
+#define QGC_APPLICATION_BASE QCoreApplication
+#else
+#define qApp (static_cast<QGCApplication*>(QGuiApplication::instance()))
 #define qGuiApp (static_cast<QGCApplication*>(QGuiApplication::instance()))
+#define QGC_APPLICATION_BASE QGuiApplication
+#endif
 
 #define qgcApp() qApp
 
 /// \brief The main application and management class.
 ///
-class QGCApplication : public QGuiApplication
+class QGCApplication : public QGC_APPLICATION_BASE
 {
     Q_OBJECT
 
@@ -66,7 +77,9 @@ public:
     bool fakeMobile() const { return _fakeMobile; }
 
     void setLanguage();
+#ifndef QGC_HEADLESS_CORE
     QQuickWindow *mainRootWindow();
+#endif
     uint64_t msecsSinceBoot() const { return _msecsElapsedTime.elapsed(); }
 
     /// Registers the signal such that only the last duplicate signal added is left in the queue.
@@ -94,6 +107,7 @@ public:
     void init();
     void shutdown();
 
+#ifndef QGC_HEADLESS_CORE
     /// Although public, these methods are internal and should only be called by UnitTest code
     QQmlApplicationEngine *qmlAppEngine() const { return _qmlAppEngine; }
     /// UI test harnesses create their own QML engine; registering it here lets app-level
@@ -104,6 +118,7 @@ public:
         _mainRootWindow = nullptr;    // cached from the previous engine's root object
         _uiTestMode = (engine != nullptr);
     }
+#endif
     /// showRebootAppMessage() debounces repeat messages (2 min). Tests reset the
     /// debounce per-test so each one deterministically sees its own message.
     void resetRebootMessageDebounce() { _lastRebootMessageTime = QTime(); }
@@ -130,7 +145,9 @@ public slots:
     /// Same as showRebootAppMessage() but the dialog also includes a button which reboots the active vehicle.
     void showRebootVehicleMessage(const QString &message, const QString &title = QString());
 
+#ifndef QGC_HEADLESS_CORE
     QGCImageProvider *qgcImageProvider();
+#endif
 
 private slots:
     /// Called when the delay timer fires to show the missing parameters warning
@@ -144,7 +161,9 @@ private:
 
     bool _initVideo();
 
+#ifndef QGC_HEADLESS_CORE
     bool _initQmlRootWindow();
+#endif
 
     /// Apply a validated aircast-qgc:// deep link to the video settings.
     void _applyDeepLink(const QUrl &url);
@@ -176,12 +195,16 @@ private:
     QTimer _missingParamsDelayedDisplayTimer;                               ///< Timer use to delay missing fact display
     QList<QPair<int,QString>> _missingParams;                               ///< List of missing parameter component id:name
 
+#ifndef QGC_HEADLESS_CORE
     QQmlApplicationEngine *_qmlAppEngine = nullptr;
+#endif
     bool _settingsUpgraded = false;    ///< true: Settings format has been upgrade to new version
     int _majorVersion = 0;
     int _minorVersion = 0;
     int _buildVersion = 0;
+#ifndef QGC_HEADLESS_CORE
     QQuickWindow *_mainRootWindow = nullptr;
+#endif
     QTranslator _qgcTranslatorSourceCode;           ///< translations for source code C++/Qml
     QTranslator _qgcTranslatorQtLibs;               ///< tranlsations for Qt libraries
     QLocale _locale;

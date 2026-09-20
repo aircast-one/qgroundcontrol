@@ -11,8 +11,10 @@
 #include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtCore/QStringList>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
+#endif
 // #include <QtQmlIntegration/QtQmlIntegration>
 #include <QtQmlIntegration/QtQmlIntegration>
 
@@ -82,7 +84,9 @@ public:
     Q_INVOKABLE int maxVideoTiles() const;
     Q_INVOKABLE int tileCameraNumber(int slot) const;
     Q_INVOKABLE void promoteTile(int slot);
+#ifndef QGC_HEADLESS_CORE
     Q_INVOKABLE void registerTileItem(int slot, QQuickItem *item);
+#endif
     Q_INVOKABLE QString cameraName(int index) const;
     QStringList cameraStatuses() const;
     /// True per camera index while a connection attempt is in flight, as opposed to a state
@@ -94,9 +98,14 @@ public:
     quint64 cameraBytesReceived(int index) const;
     qint64 cameraSecondsSinceLastFrame(int index) const;
 
+#ifdef QGC_HEADLESS_CORE
+    void init();
+    Q_INVOKABLE bool initNative() { init(); return _initialized; }
+#else
     void init(QQuickWindow *mainWindow);
     Q_INVOKABLE bool initForItem(QQuickItem *item) { init(item ? item->window() : nullptr); return _initialized; }
     Q_INVOKABLE bool initNative() { init(nullptr); return _initialized; }
+#endif
     void startVideoBackendInit();
     bool waitForVideoBackendReady(std::chrono::milliseconds timeout = std::chrono::minutes(1));
     void cleanup();
@@ -165,7 +174,11 @@ private:
     void _initAfterQmlIsReady();
     void _onBackendInitComplete(bool success);
     void _createVideoReceivers();
+#ifdef QGC_HEADLESS_CORE
+    void _initVideoReceiver(VideoReceiver *receiver);
+#else
     void _initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window);
+#endif
     bool _updateAutoStream(VideoReceiver *receiver);
     bool _updateUVC(VideoReceiver *receiver);
     bool _updateSettings(VideoReceiver *receiver);
@@ -173,7 +186,9 @@ private:
     QString _sourceToUri(const QString &source, const QString &url) const;
     int _cameraIndexForReceiver(const VideoReceiver *receiver) const;
     QString _cameraStatus(int index) const;
+#ifndef QGC_HEADLESS_CORE
     QQuickItem *_widgetForCamera(int cameraIndex) const;
+#endif
     void _rebindWidgets();
     void _refreshActiveReceiverState();
     void _setReceiverStatus(VideoReceiver *receiver, const QString &status, bool connecting = false);
@@ -200,12 +215,16 @@ private:
     };
 
     QList<VideoReceiver*> _videoReceivers;
+#ifndef QGC_HEADLESS_CORE
     QHash<int, QPointer<QQuickItem>> _tileWidgets;
     QPointer<QQuickItem> _mainWidget;
+#endif
     QHash<QString, ReceiverState> _receiverState;
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;
+#ifndef QGC_HEADLESS_CORE
     QQuickWindow *_mainWindow = nullptr;
+#endif
     Vehicle *_activeVehicle = nullptr;
 
     std::atomic<InitState> _initState = InitState::NotStarted;

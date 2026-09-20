@@ -5,7 +5,11 @@
 #include <QtCore/QTimer>
 #include <QtGui/QPixmap>
 #include <QtQmlIntegration/QtQmlIntegration>
+#ifdef QGC_HEADLESS_CORE
+class QQuickItem;
+#else
 #include <QtQuick/QQuickItem>
+#endif
 
 #include "QGCSerialPortInfo.h"
 
@@ -92,10 +96,14 @@ public:
     Q_PROPERTY(QVariantList         availablePorts              MEMBER _availablePorts                                              NOTIFY availablePortsChanged)
 
     /// TextArea for log output
+#ifndef QGC_HEADLESS_CORE
     Q_PROPERTY(QQuickItem* statusLog READ statusLog WRITE setStatusLog)
+#endif
 
     /// Progress bar for you know what
+#ifndef QGC_HEADLESS_CORE
     Q_PROPERTY(QQuickItem* progressBar READ progressBar WRITE setProgressBar)
+#endif
 
     /// Starts searching for boards on the background thread
     Q_INVOKABLE void startBoardSearch(void);

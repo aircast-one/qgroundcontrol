@@ -113,9 +113,7 @@ qt_add_resources(${CMAKE_PROJECT_NAME} "qgcresources_apm_params"
     FILES ${_apm_param_resources}
 )
 
-qt_add_library(APMFirmwareModule STATIC)
-
-qt_add_qml_module(APMFirmwareModule
+qgc_qml_only_library(APMFirmwareModule
     URI QGroundControl.FirmwarePlugin.APM
     VERSION 1.0
     RESOURCE_PREFIX /qml

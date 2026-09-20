@@ -26,7 +26,9 @@ public:
     bool isThermal() const { return (_name == QStringLiteral("thermalVideo")); }
 
     VideoSinkHandle sink() const { return _sink; }
+#ifndef QGC_HEADLESS_CORE
     QQuickItem *widget() { return _widget; }
+#endif
     QString name() const { return _name; }
     QString uri() const { return _uri; }
     bool started() const { return _started; }
@@ -40,7 +42,9 @@ public:
     qint64 lastFrameSeconds() const { return _lastFrameSeconds.load(std::memory_order_relaxed); }
 
     virtual void setSink(VideoSinkHandle sink) { if (sink != _sink) { _sink = sink; emit sinkChanged(_sink); } }
+#ifndef QGC_HEADLESS_CORE
     virtual void setWidget(QQuickItem *widget) { if (widget != _widget) { _widget = widget; emit widgetChanged(_widget); } }
+#endif
     void setName(const QString &name) { if (name != _name) { _name = name; emit nameChanged(_name); } }
     void setUri(const QString &uri) { if (uri != _uri) { _uri = uri; emit uriChanged(_uri); } }
     void setStarted(bool started) { if (started != _started) { _started = started; emit startedChanged(_started); } }
@@ -88,7 +92,9 @@ signals:
     void rtpJitterLatencyMsChanged(int ms);
     void autoReconnectChanged(bool enabled);
     void videoStreamInfoChanged();
+#ifndef QGC_HEADLESS_CORE
     void widgetChanged(QQuickItem *widget);
+#endif
 
     void onStartComplete(STATUS status);
     void onStopComplete(STATUS status);
@@ -114,7 +120,9 @@ protected:
     std::atomic<qint64> _lastFrameSeconds = 0;
 
     VideoSinkHandle _sink = nullptr;
+#ifndef QGC_HEADLESS_CORE
     QQuickItem *_widget = nullptr;
+#endif
     QGCVideoStreamInfo *_videoStreamInfo = nullptr;
     QString _name;
     QString _uri;

@@ -5,9 +5,10 @@
 
 #include <QtCore/QLocale>
 #include <QtCore/QUrl>
-#include <QtLocation/private/qgeomaptype_p.h>
-
 QGC_LOGGING_CATEGORY(MapProviderLog, "QtLocationPlugin.MapProvider")
+
+#ifndef QGC_HEADLESS_CORE
+#include <QtLocation/private/qgeomaptype_p.h>
 
 // MapProvider::MapStyle mirrors QGeoMapType::MapStyle to keep the public
 // header free of <QtLocation/private/qgeomaptype_p.h>. Catch drift at compile
@@ -24,6 +25,7 @@ static_assert(static_cast<int>(MapProvider::PedestrianMap)    == static_cast<int
 static_assert(static_cast<int>(MapProvider::CarNavigationMap) == static_cast<int>(QGeoMapType::CarNavigationMap));
 static_assert(static_cast<int>(MapProvider::CycleMap)         == static_cast<int>(QGeoMapType::CycleMap));
 static_assert(static_cast<int>(MapProvider::CustomMap)        == static_cast<int>(QGeoMapType::CustomMap));
+#endif
 
 // QtLocation expects MapIds to start at 1 and be sequential.
 int MapProvider::_mapIdIndex = 1;

@@ -30,14 +30,12 @@ add_subdirectory(Providers/Osm)
 # QML_ELEMENT classes live here so their MOC + qmltyperegistrar run on this
 # smaller target instead of the 47s ${CMAKE_PROJECT_NAME}_autogen step.
 # ----------------------------------------------------------------------------
-qt_add_library(Viewer3DModule STATIC)
-
 set_source_files_properties(Viewer3DQml/Images/city_3d_map_icon.svg PROPERTIES QT_RESOURCE_ALIAS City3DMapIcon.svg)
 set_source_files_properties(Viewer3DQml/Models3D/Shaders/earthMaterial.frag PROPERTIES QT_RESOURCE_ALIAS ShaderFragment/earthMaterial.frag)
 set_source_files_properties(Viewer3DQml/Models3D/Shaders/earthMaterial.vert PROPERTIES QT_RESOURCE_ALIAS ShaderVertex/earthMaterial.vert)
 set_source_files_properties(Viewer3DQml/Models3D/Viewer3DModel.qml PROPERTIES QT_RESOURCE_ALIAS Models3D/Viewer3DModel.qml)
 
-qt_add_qml_module(Viewer3DModule
+qgc_qml_only_library(Viewer3DModule
     URI QGroundControl.Viewer3D
     VERSION 1.0
     RESOURCE_PREFIX /qml

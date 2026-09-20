@@ -7,7 +7,9 @@ target_sources(${CMAKE_PROJECT_NAME}
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # QPA input injection (qwindowsysteminterface.h) — the same mechanism QTest uses
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::GuiPrivate Qt6::Test)
+if(NOT QGC_HEADLESS_CORE)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::GuiPrivate Qt6::Test)
+endif()
 
 # The debug API can read any QObject property and drive the vehicle, so a shipped build should
 # have to opt in rather than opt out. Defaults ON to keep every existing workflow working; a

@@ -15,7 +15,9 @@ static constexpr bool kGstEnabled = true;
 #else
 static constexpr bool kGstEnabled = false;
 #endif
+#ifndef QGC_HEADLESS_CORE
 #include "UVCReceiver.h"
+#endif
 
 DECLARE_SETTINGGROUP(Video, "Video")
 {
@@ -39,7 +41,11 @@ DECLARE_SETTINGGROUP(Video, "Video")
 #else
     videoSourceList.append(videoSourceHerelinkHotspot);
 #endif
+#ifdef QGC_HEADLESS_CORE
+    QStringList uvcDevices;
+#else
     QStringList uvcDevices = UVCReceiver::getDeviceNameList();
+#endif
     for (const QString& device : uvcDevices) {
         videoSourceList.append(device);
     }
@@ -434,10 +440,12 @@ bool VideoSettings::streamConfigured(void)
         qCDebug(VideoSettingsLog) << "Stream configured for Herelink Hotspot";
         return true;
     }
+#ifndef QGC_HEADLESS_CORE
     if (UVCReceiver::enabled() && UVCReceiver::deviceExists(vSource)) {
         qCDebug(VideoSettingsLog) << "Stream configured for UVC";
         return true;
     }
+#endif
     return false;
 }
 

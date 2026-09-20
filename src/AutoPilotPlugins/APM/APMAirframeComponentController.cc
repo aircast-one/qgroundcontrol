@@ -12,8 +12,15 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonParseError>
 #include <QtCore/QVariant>
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QCursor>
 #include <QtGui/QGuiApplication>
+#define QGC_SET_WAIT_CURSOR()  QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor))
+#define QGC_RESTORE_CURSOR()   QGuiApplication::restoreOverrideCursor()
+#else
+#define QGC_SET_WAIT_CURSOR()  do {} while (false)
+#define QGC_RESTORE_CURSOR()   do {} while (false)
+#endif
 
 QGC_LOGGING_CATEGORY(APMAirframeComponentControllerLog, "AutoPilotPlugins.APMAirframeComponentController")
 
@@ -74,7 +81,7 @@ void APMAirframeComponentController::_loadParametersFromDownloadFile(const QStri
     QFile parametersFile(downloadedParamFile);
     if (!parametersFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qCWarning(APMAirframeComponentControllerLog) << "Unable to open downloaded parameter file" << downloadedParamFile << parametersFile.errorString();
-        QGuiApplication::restoreOverrideCursor();
+        QGC_RESTORE_CURSOR();
         return;
     }
 
@@ -91,13 +98,13 @@ void APMAirframeComponentController::_loadParametersFromDownloadFile(const QStri
             param->setRawValue(QVariant::fromValue(aux.at(1)));
         }
     }
-    QGuiApplication::restoreOverrideCursor();
+    QGC_RESTORE_CURSOR();
     _vehicle->parameterManager()->refreshAllParameters();
 }
 
 void APMAirframeComponentController::loadParameters(const QString &paramFile)
 {
-    QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
+    QGC_SET_WAIT_CURSOR();
 
     QGCFileDownload *const downloader = new QGCFileDownload(this);
     (void) connect(downloader, &QGCFileDownload::finished, downloader, &QObject::deleteLater);
@@ -105,7 +112,7 @@ void APMAirframeComponentController::loadParameters(const QString &paramFile)
     const QString paramFileUrl = QStringLiteral("https://api.github.com/repos/ArduPilot/ardupilot/contents/Tools/Frame_params/%1?ref=master");
     if (!downloader->start(paramFileUrl.arg(paramFile))) {
         QGC::showAppMessage(tr("Param file github json download failed to start: %1").arg(downloader->errorString()));
-        QGuiApplication::restoreOverrideCursor();
+        QGC_RESTORE_CURSOR();
         downloader->deleteLater();
     }
 }
@@ -116,7 +123,7 @@ void APMAirframeComponentController::_githubJsonDownloadComplete(bool success, c
         QFile jsonFile(localFile);
         if (!jsonFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
             qCWarning(APMAirframeComponentControllerLog) << "Unable to open github json file" << localFile << jsonFile.errorString();
-            QGuiApplication::restoreOverrideCursor();
+            QGC_RESTORE_CURSOR();
             return;
         }
         const QByteArray bytes = jsonFile.readAll();
@@ -126,7 +133,7 @@ void APMAirframeComponentController::_githubJsonDownloadComplete(bool success, c
         const QJsonDocument doc = QJsonDocument::fromJson(bytes, &jsonParseError);
         if (jsonParseError.error != QJsonParseError::NoError) {
             qCWarning(APMAirframeComponentControllerLog) <<  "Unable to open json document" << localFile << jsonParseError.errorString();
-            QGuiApplication::restoreOverrideCursor();
+            QGC_RESTORE_CURSOR();
             return;
         }
 
@@ -136,12 +143,12 @@ void APMAirframeComponentController::_githubJsonDownloadComplete(bool success, c
         const QJsonObject json = doc.object();
         if (!downloader->start(json[QLatin1String("download_url")].toString())) {
             QGC::showAppMessage(tr("Param file download failed to start: %1").arg(downloader->errorString()));
-            QGuiApplication::restoreOverrideCursor();
+            QGC_RESTORE_CURSOR();
             downloader->deleteLater();
         }
     } else if (!errorMsg.isEmpty()) {
         QGC::showAppMessage(tr("Param file github json download failed: %1").arg(errorMsg));
-        QGuiApplication::restoreOverrideCursor();
+        QGC_RESTORE_CURSOR();
     }
 }
 
@@ -151,7 +158,7 @@ void APMAirframeComponentController::_paramFileDownloadComplete(bool success, co
         _loadParametersFromDownloadFile(localFile);
     } else if (!errorMsg.isEmpty()) {
         QGC::showAppMessage(tr("Param file download failed: %1").arg(errorMsg));
-        QGuiApplication::restoreOverrideCursor();
+        QGC_RESTORE_CURSOR();
     }
 }
 

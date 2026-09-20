@@ -30,9 +30,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 # ----------------------------------------------------------------------------
 # NTRIP QML Module
 # ----------------------------------------------------------------------------
-qt_add_library(GPSNTRIPModule STATIC)
-
-qt_add_qml_module(GPSNTRIPModule
+qgc_qml_only_library(GPSNTRIPModule
     URI QGroundControl.GPS.NTRIP
     VERSION 1.0
     RESOURCE_PREFIX /qml

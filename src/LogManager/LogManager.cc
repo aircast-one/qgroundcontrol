@@ -8,7 +8,9 @@
 #include <QtCore/QPointer>
 #include <QtCore/QSaveFile>
 #include <QtCore/QThread>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQml/QJSEngine>
+#endif
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -78,6 +80,7 @@ LogManager* LogManager::instance()
     return s_instance.load(std::memory_order_acquire);
 }
 
+#ifndef QGC_HEADLESS_CORE
 LogManager* LogManager::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
 {
     Q_UNUSED(jsEngine);
@@ -86,6 +89,7 @@ LogManager* LogManager::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
     QJSEngine::setObjectOwnership(inst, QJSEngine::CppOwnership);
     return inst;
 }
+#endif
 
 LogManager::LogManager(QObject* parent) : QObject(parent)
 {

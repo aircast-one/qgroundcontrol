@@ -10,17 +10,20 @@
 
 #include "GstVideoReceiver.h"
 
+#ifndef QGC_HEADLESS_CORE
 #include "HwBuffers/common/HwBuffers.h"
+#endif
 
 #include "GStreamerHelpers.h"
 #include "GstSourceFactory.h"
 #include "QGCLoggingCategory.h"
+#ifndef QGC_HEADLESS_CORE
 #include "QGCQVideoSinkController.h"
+#endif
 
 #include <QtCore/QDateTime>
 #include <QtCore/QMutexLocker>
 #include <QtCore/QUrl>
-#include <QtQuick/QQuickItem>
 
 #include <algorithm>
 
@@ -263,7 +266,9 @@ void GstVideoReceiver::start(uint32_t timeout)
             // HwBuffers facade chains every compiled context bridge so they don't clobber each
             // other via gst_bus_set_sync_handler. Must run before GST_STATE_PLAYING — upstream
             // queries context during PAUSED→PLAYING. No-op when no bridge-using GPU path is compiled.
+#ifndef QGC_HEADLESS_CORE
             gst_bus_set_sync_handler(bus, HwBuffers::onBusSyncMessage, nullptr, nullptr);
+#endif
             gst_clear_object(&bus);
         }
 
@@ -437,10 +442,12 @@ void GstVideoReceiver::stop()
 
     qCDebug(GstVideoReceiverLog) << "Stopped" << _uri;
 
+#ifndef QGC_HEADLESS_CORE
     if (const HwBuffers::PathStats hwStats = HwBuffers::formatPathStats(true); hwStats.totalDelivered > 0) {
         qCInfo(GstVideoReceiverLog).noquote()
             << "HW path stats" << _uri << hwStats.line + HwBuffers::takeExtraPathStats();
     }
+#endif
 
     emit onStopComplete(STATUS_OK);
 }
@@ -467,11 +474,13 @@ void GstVideoReceiver::startDecoding(void *sink)
     // Only a sink that renders into a QQuickItem needs one. A native head asks for a sink
     // that draws elsewhere and has no widget by design, and this refused to decode for it —
     // the sink it had just been handed was never looked at.
+#ifndef QGC_HEADLESS_CORE
     if (!_widget && _sinkTakesWidget(GST_ELEMENT(sink))) {
         qCDebug(GstVideoReceiverLog) << "Video Widget is NULL" << _uri;
         emit onStartDecodingComplete(STATUS_FAIL);
         return;
     }
+#endif
 
     if (!_pipeline) {
         gst_clear_object(&_videoSink);
@@ -726,9 +735,11 @@ void GstVideoReceiver::_watchdog()
 
         if (++_statsTickCounter >= 10) {
             _statsTickCounter = 0;
+#ifndef QGC_HEADLESS_CORE
             if (const HwBuffers::PathStats hwStats = HwBuffers::formatPathStats(false); hwStats.totalDelivered > 0) {
                 qCDebug(GstVideoReceiverLog).noquote() << "HW path live" << _uri << hwStats.line;
             }
+#endif
         }
 
         // Drain QoS updates accumulated since the last tick (see GST_MESSAGE_QOS).
@@ -1461,9 +1472,11 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
 
     GstVideoReceiver *pThis = static_cast<GstVideoReceiver*>(data);
 
+#ifndef QGC_HEADLESS_CORE
     if (GST_MESSAGE_TYPE(msg) != GST_MESSAGE_ERROR) {
         HwBuffers::dispatchBusMessage(msg);
     }
+#endif
 
     switch (GST_MESSAGE_TYPE(msg)) {
     case GST_MESSAGE_ERROR: {
@@ -1491,7 +1504,9 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
             break;
         }
 
+#ifndef QGC_HEADLESS_CORE
         HwBuffers::dispatchBusMessage(msg);
+#endif
 
         if (GstElement *pipelineRef = pThis->_acquirePipelineRef()) {
             // Native dump path (no-op without GST_DEBUG_DUMP_DOT_DIR) plus an unconditional
@@ -1586,6 +1601,7 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
             const QSize resolution(w, h);
             // src compared by address only on the GUI thread; never dereferenced (may be gone by then).
             void *src = GST_MESSAGE_SRC(msg);
+#ifndef QGC_HEADLESS_CORE
             QMetaObject::invokeMethod(pThis, [pThis, format, resolution, src]() {
                 for (auto *c : QGCQVideoSinkController::controllersOf(pThis)) {
                     if (static_cast<const void*>(c->element()) == src) {
@@ -1593,6 +1609,11 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
                     }
                 }
             }, Qt::QueuedConnection);
+#else
+            Q_UNUSED(format);
+            Q_UNUSED(resolution);
+            Q_UNUSED(src);
+#endif
             break;
         }
         if (!gst_structure_has_name(structure, "GstBinForwarded")) {
@@ -1653,10 +1674,12 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
         });
         // Re-prime sink-side latency tracking after the pipeline recalculation (e.g. RTSP
         // jitter-buffer reconfigure). Controllers live on the GUI thread; hop there to query.
+#ifndef QGC_HEADLESS_CORE
         QMetaObject::invokeMethod(pThis, [pThis]() {
             for (auto* c : QGCQVideoSinkController::controllersOf(pThis))
                 c->refreshLatency();
         }, Qt::QueuedConnection);
+#endif
         break;
     default:
         break;

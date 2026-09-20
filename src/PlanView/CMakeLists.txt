@@ -3,13 +3,11 @@
 # Mission planning view, editors, and map visuals
 # ============================================================================
 
-qt_add_library(PlanViewModule STATIC)
-
 set_source_files_properties(PlanEditLayers.qml PROPERTIES
     QT_QML_SINGLETON_TYPE TRUE
 )
 
-qt_add_qml_module(PlanViewModule
+qgc_qml_only_library(PlanViewModule
     URI QGroundControl.PlanView
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -69,7 +67,7 @@ set_source_files_properties("${CMAKE_SOURCE_DIR}/resources/gear-black.svg"
 set_source_files_properties("${CMAKE_SOURCE_DIR}/resources/camera.svg"
     PROPERTIES QT_RESOURCE_ALIAS "PlanSimpleItemCamera.svg")
 
-qt_add_resources(PlanViewModule planview_resources
+qgc_qml_resources(PlanViewModule planview_resources
     PREFIX "/res"
     BASE "${CMAKE_SOURCE_DIR}/resources"
     FILES
@@ -86,7 +84,7 @@ qt_add_resources(PlanViewModule planview_resources
         "${CMAKE_SOURCE_DIR}/resources/waypoint.svg"
 )
 
-qt_add_resources(PlanViewModule planview_qmlimages
+qgc_qml_resources(PlanViewModule planview_qmlimages
     PREFIX "/qmlimages"
     BASE "${CMAKE_SOURCE_DIR}/resources"
     FILES

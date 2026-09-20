@@ -1,6 +1,10 @@
 #pragma once
 
+#ifdef QGC_HEADLESS_CORE
+class QQuickItem;
+#else
 #include <QtQuick/QQuickItem>
+#endif
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "FactPanelController.h"
@@ -24,10 +28,14 @@ public:
     };
     Q_ENUM(SideCalState)
 
+#ifndef QGC_HEADLESS_CORE
     Q_PROPERTY(QQuickItem* statusLog MEMBER _statusLog)
     Q_PROPERTY(QQuickItem* progressBar MEMBER _progressBar)
+#endif
 
+#ifndef QGC_HEADLESS_CORE
     Q_PROPERTY(QQuickItem* orientationCalAreaHelpText MEMBER _orientationCalAreaHelpText)
+#endif
 
     Q_PROPERTY(bool calibrationActive READ calibrationActive NOTIFY calibrationActiveChanged)
     Q_PROPERTY(bool magCalInProgress MEMBER _magCalInProgress NOTIFY calibrationActiveChanged)

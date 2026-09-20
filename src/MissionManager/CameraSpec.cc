@@ -1,7 +1,7 @@
 #include "CameraSpec.h"
 #include "JsonParsing.h"
 
-#include <QtQml/QQmlEngine>
+#include "QGCCppOwnership.h"
 
 CameraSpec::CameraSpec(const QString& settingsGroup, QObject* parent)
     : QObject                   (parent)
@@ -16,7 +16,7 @@ CameraSpec::CameraSpec(const QString& settingsGroup, QObject* parent)
     , _fixedOrientationFact     (settingsGroup, _metaDataMap[_fixedOrientationName])
     , _minTriggerIntervalFact   (settingsGroup, _metaDataMap[_minTriggerIntervalName])
 {
-    QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
+    qgcCppOwnership(this);
 }
 
 const CameraSpec& CameraSpec::operator=(const CameraSpec& other)

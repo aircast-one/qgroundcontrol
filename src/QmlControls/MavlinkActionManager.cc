@@ -10,7 +10,7 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QJsonArray>
-#include <QtQml/QQmlEngine>
+#include "QGCCppOwnership.h"
 
 QGC_LOGGING_CATEGORY(MavlinkActionManagerLog, "QMLControls.MavlinkActionManager")
 
@@ -125,7 +125,7 @@ void MavlinkActionManager::_loadActionsFile()
         const auto param7 = actionObj["param7"].toDouble(0.0);
 
         MavlinkAction *const action = new MavlinkAction(label, description, mavCmd, compId, param1, param2, param3, param4, param5, param6, param7, this);
-        QQmlEngine::setObjectOwnership(action, QQmlEngine::CppOwnership);
+        qgcCppOwnership(action);
         (void) _actions->append(action);
     }
 }

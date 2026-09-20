@@ -3,9 +3,7 @@
 # In-flight view, telemetry displays, and vehicle control UI
 # ============================================================================
 
-qt_add_library(FlyViewModule STATIC)
-
-qt_add_qml_module(FlyViewModule
+qgc_qml_only_library(FlyViewModule
     URI QGroundControl.FlyView
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -83,7 +81,7 @@ qt_add_qml_module(FlyViewModule
     NO_PLUGIN
 )
 
-qt_add_resources(FlyViewModule flyview_resources
+qgc_qml_resources(FlyViewModule flyview_resources
     PREFIX "/res"
     BASE "${CMAKE_SOURCE_DIR}/resources"
     FILES
@@ -96,14 +94,14 @@ qt_add_resources(FlyViewModule flyview_resources
         "${CMAKE_SOURCE_DIR}/resources/pause-mission.svg"
 )
 
-qt_add_resources(FlyViewModule flyview_qmlimages
+qgc_qml_resources(FlyViewModule flyview_qmlimages
     PREFIX "/qmlimages"
     BASE "${CMAKE_SOURCE_DIR}/resources"
     FILES
         "${CMAKE_SOURCE_DIR}/resources/check.svg"
 )
 
-qt_add_resources(FlyViewModule flyview_images
+qgc_qml_resources(FlyViewModule flyview_images
     PREFIX "/qmlimages"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/Images"
     FILES

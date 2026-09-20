@@ -3622,11 +3622,13 @@ void Vehicle::_createImageProtocolManager()
 {
     _imageProtocolManager = new ImageProtocolManager(this);
     (void) connect(_imageProtocolManager, &ImageProtocolManager::flowImageIndexChanged, this, &Vehicle::flowImageIndexChanged);
+#ifndef QGC_HEADLESS_CORE
     (void) connect(_imageProtocolManager, &ImageProtocolManager::imageReady, this, [this](const QImage &image) {
         if (QGCImageProvider *const provider = qgcApp()->qgcImageProvider()) {
             provider->setImage(image, _systemID);
         }
     });
+#endif
 }
 
 uint32_t Vehicle::flowImageIndex() const

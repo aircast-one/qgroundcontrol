@@ -5,20 +5,26 @@
 #include "Actuators/Actuators.h"
 #include "Vehicle.h"
 
+#ifndef QGC_HEADLESS_CORE
 #include <QtQml/QQmlApplicationEngine>
+#endif
 
+#ifndef QGC_HEADLESS_CORE
 static bool imageProviderAdded{false};
+#endif
 
 ActuatorComponent::ActuatorComponent(Vehicle* vehicle, AutoPilotPlugin* autopilot, QObject* parent)
     : VehicleComponent(vehicle, autopilot, AutoPilotPlugin::UnknownVehicleComponent, parent)
     , _name(tr("Actuators"))
     , _actuators(*vehicle->actuators())
 {
+#ifndef QGC_HEADLESS_CORE
     if (!imageProviderAdded) {
         // TODO: qmlAppEngine should not be accessed inside app
         qgcApp()->qmlAppEngine()->addImageProvider(QLatin1String("actuators"), GeometryImage::VehicleGeometryImageProvider::instance());
         imageProviderAdded = true;
     }
+#endif
 
     connect(&_actuators, &Actuators::hasUnsetRequiredFunctionsChanged, this, [this]() { _triggerUpdated({}); });
 }

@@ -4,7 +4,7 @@
 #include "CameraMetaData.h"
 #include "PlanMasterController.h"
 
-#include <QtQml/QQmlEngine>
+#include "QGCCppOwnership.h"
 
 CameraCalc::CameraCalc(PlanMasterController* masterController, const QString& settingsGroup, QObject* parent)
     : CameraSpec                    (settingsGroup, parent)
@@ -20,7 +20,7 @@ CameraCalc::CameraCalc(PlanMasterController* masterController, const QString& se
     , _adjustedFootprintSideFact    (settingsGroup, _metaDataMap[adjustedFootprintSideName])
     , _adjustedFootprintFrontalFact (settingsGroup, _metaDataMap[adjustedFootprintFrontalName])
 {
-    QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
+    qgcCppOwnership(this);
 
     connect(&_valueSetIsDistanceFact,       &Fact::valueChanged,                this, &CameraCalc::_setDirty);
     connect(&_distanceToSurfaceFact,        &Fact::valueChanged,                this, &CameraCalc::_setDirty);

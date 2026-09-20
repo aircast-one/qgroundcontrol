@@ -14,9 +14,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 # ----------------------------------------------------------------------------
 # QML Module for Analyze View UI
 # ----------------------------------------------------------------------------
-qt_add_library(AnalyzeViewModule STATIC)
-
-qt_add_qml_module(AnalyzeViewModule
+qgc_qml_only_library(AnalyzeViewModule
     URI QGroundControl.AnalyzeView
     VERSION 1.0
     RESOURCE_PREFIX /qml

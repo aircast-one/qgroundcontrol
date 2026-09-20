@@ -7,15 +7,18 @@
 #include "QGCLoggingCategory.h"
 #include "QGCMAVLink.h"
 #include "LinkManager.h"
+#ifndef QGC_HEADLESS_CORE
 #include "PlatformTheme.h"
+#endif
 
 #ifdef Q_OS_ANDROID
 #include "AndroidInterface.h"
 #endif
 
+#ifndef QGC_HEADLESS_CORE
 #include <QtGui/QGuiApplication>
+#endif
 #include <QtGui/QStyleHints>
-#include <QtQml/QQmlEngine>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QDir>
 #include <QtCore/QSettings>
@@ -64,10 +67,14 @@ AppSettings::LanguageInfo_t AppSettings::_rgLanguageInfo[] = {
 
 DECLARE_SETTINGGROUP(App, "")
 {
+#ifndef QGC_HEADLESS_CORE
     qmlRegisterUncreatableType<AppSettings>("QGroundControl.SettingsManager", 1, 0, "AppSettings", "Reference only");
+#endif
     Q_ASSERT(indoorPalette()->enumValues().contains(QVariant(FollowSystemPalette)));
     _applyPaletteTheme();
+#ifndef QGC_HEADLESS_CORE
     connect(qGuiApp->styleHints(), &QStyleHints::colorSchemeChanged, this, [this]() { _applyPaletteTheme(); });
+#endif
 
     QSettings settings;
 
@@ -353,6 +360,9 @@ void AppSettings::_indoorPaletteChanged(void)
 
 void AppSettings::_applyPaletteTheme()
 {
+#ifdef QGC_HEADLESS_CORE
+    // The native head owns its own appearance; there is no QML palette or window chrome here.
+#else
     const int setting = indoorPalette()->rawValue().toInt();
     const bool dark = (setting == FollowSystemPalette)
         ? (qGuiApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark)
@@ -362,6 +372,7 @@ void AppSettings::_applyPaletteTheme()
     PlatformTheme *platform = PlatformTheme::instance();
     const PlatformTheme::Appearance appearance = dark ? PlatformTheme::DarkAppearance : PlatformTheme::LightAppearance;
     platform->applySystemChrome(appearance, platform->tones(appearance));
+#endif
 }
 
 QString AppSettings::missionSavePath(void)

@@ -61,7 +61,9 @@ private:
     QString _transformLineForRichText(const QString &line) const;
     QString _getText() const;
 
+#ifndef QGC_HEADLESS_CORE
     QGCPalette *_palette = nullptr;
+#endif
     int _cursorHomePos = -1;
     int _cursorY = 0;
     int _cursorX = 0;

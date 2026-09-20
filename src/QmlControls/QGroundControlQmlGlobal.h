@@ -3,7 +3,9 @@
 #include <QtCore/QPointF>
 #include <QtCore/QTimer>
 #include <QtPositioning/QGeoCoordinate>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQml/QJSValue>
+#endif
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "GCSBattery.h"
@@ -38,7 +40,9 @@ Q_MOC_INCLUDE("MissionCommandTree.h")
 Q_MOC_INCLUDE("MultiVehicleManager.h")
 Q_MOC_INCLUDE("QGCCorePlugin.h")
 Q_MOC_INCLUDE("QGCMapEngineManager.h")
+#ifndef QGC_HEADLESS_CORE
 Q_MOC_INCLUDE("QGCPalette.h")
+#endif
 Q_MOC_INCLUDE("PositionManager.h")
 Q_MOC_INCLUDE("SettingsManager.h")
 Q_MOC_INCLUDE("VideoManager.h")
@@ -84,7 +88,9 @@ public:
 #ifndef QGC_NO_SERIAL_LINK
     Q_PROPERTY(FactGroup*           gpsRtk                  READ    gpsRtkFactGroup         CONSTANT)
 #endif
+#ifndef QGC_HEADLESS_CORE
     Q_PROPERTY(QGCPalette*          globalPalette           MEMBER  _globalPalette          CONSTANT)   ///< This palette will always return enabled colors
+#endif
     Q_PROPERTY(QmlUnitsConversion*  unitsConversion         READ    unitsConversion         CONSTANT)
     Q_PROPERTY(bool                 singleFirmwareSupport   READ    singleFirmwareSupport   CONSTANT)
     Q_PROPERTY(bool                 singleVehicleSupport    READ    singleVehicleSupport    CONSTANT)
@@ -148,6 +154,7 @@ public:
     ///   @param buttons        Dialog button flags (e.g. Dialog.Ok, Dialog.Yes | Dialog.No)
     ///   @param acceptFunction Optional callback invoked when the dialog is accepted
     ///   @param closeFunction  Optional callback invoked when the dialog is closed
+#ifndef QGC_HEADLESS_CORE
     Q_INVOKABLE void showMessageDialog(
         QObject* owner,
         const QString& title,
@@ -155,6 +162,7 @@ public:
         int buttons = kDefaultMessageDialogButtons,
         QJSValue acceptFunction = QJSValue(),
         QJSValue closeFunction = QJSValue());
+#endif
 
     // Test audio output
     Q_INVOKABLE void testAudioOutput();
@@ -222,7 +230,9 @@ signals:
     void mavlinkSystemIDChanged         (int id);
     void flightMapPositionChanged       (QGeoCoordinate flightMapPosition);
     void flightMapZoomChanged           (double flightMapZoom);
+#ifndef QGC_HEADLESS_CORE
     void showMessageDialogRequested     (QObject* owner, QString title, QString text, int buttons, QJSValue acceptFunction, QJSValue closeFunction);
+#endif
 
 private:
     QGCMapEngineManager*    _mapEngineManager       = nullptr;
@@ -240,7 +250,9 @@ private:
     MultiVehicleManager*    _multiVehicleManager    = nullptr;
     SettingsManager*        _settingsManager        = nullptr;
     QGCCorePlugin*          _corePlugin             = nullptr;
+#ifndef QGC_HEADLESS_CORE
     QGCPalette*             _globalPalette          = nullptr;
+#endif
 #ifndef QGC_NO_SERIAL_LINK
     FactGroup*              _gpsRtkFactGroup        = nullptr;
 #endif

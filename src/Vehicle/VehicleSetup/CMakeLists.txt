@@ -27,9 +27,7 @@ if(NOT QGC_NO_SERIAL_LINK)
     )
 endif()
 
-qt_add_library(VehicleSetupModule STATIC)
-
-qt_add_qml_module(VehicleSetupModule
+qgc_qml_only_library(VehicleSetupModule
     URI QGroundControl.VehicleSetup
     VERSION 1.0
     RESOURCE_PREFIX /qml

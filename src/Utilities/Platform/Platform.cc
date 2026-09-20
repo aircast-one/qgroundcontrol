@@ -3,8 +3,10 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QProcessEnvironment>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
+#endif
 
 #include <cstdio>
 
@@ -193,7 +195,9 @@ std::optional<int> Platform::initialize(int argc, char* argv[],
     if (qEnvironmentVariable("QSG_RHI_BACKEND").compare(QLatin1String("d3d12"), Qt::CaseInsensitive) == 0) {
         // Qt 6.10 does not reliably select D3D12 from QSG_RHI_BACKEND on Windows. Make the test/diagnostic override
         // explicit before the scene graph is initialized; the default path remains Qt's D3D11 backend.
+#ifndef QGC_HEADLESS_CORE
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D12);
+#endif
     }
     setWindowsErrorModes(args.quietWindowsAsserts);
 #endif
@@ -213,7 +217,9 @@ std::optional<int> Platform::initialize(int argc, char* argv[],
     // --- Qt attributes ---
     if (args.useSwRast) {
         // RHI defaults to D3D11/Metal on Win/macOS; AA_UseSoftwareOpenGL only bites once the scene graph is on GL.
+#ifndef QGC_HEADLESS_CORE
         QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#endif
         QCoreApplication::setAttribute(Qt::AA_UseSoftwareOpenGL);
     }
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID) && \
@@ -222,7 +228,9 @@ std::optional<int> Platform::initialize(int argc, char* argv[],
     // GL RHI; Vulkan import dormant); pin it unless the user set QSG_RHI_BACKEND. No QRhi::probe — needs GuiPrivate (not
     // linked here) and GL is always present on Linux.
     else if (!qEnvironmentVariableIsSet("QSG_RHI_BACKEND")) {
+#ifndef QGC_HEADLESS_CORE
         QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#endif
     }
 #endif
 

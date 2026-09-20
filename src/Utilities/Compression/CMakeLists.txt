@@ -24,7 +24,7 @@ qt_add_library(QGCCompression STATIC
     QGCArchiveFile.h
 )
 
-qt_add_qml_module(QGCCompression
+qgc_qml_module(QGCCompression
     URI QGroundControl.Compression
     VERSION 1.0
     RESOURCE_PREFIX /qml
@@ -328,7 +328,7 @@ message(STATUS "libarchive support enabled")
 target_link_libraries(QGCCompression
     PUBLIC
         Qt6::Core
-        Qt6::Qml
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Qml>
         Qt6::QmlIntegration
         QGCFileSystem
     PRIVATE

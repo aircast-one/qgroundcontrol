@@ -3,7 +3,9 @@
 #include <QtCore/QMutex>
 #include <QtCore/QSettings>
 #include <QtCore/QStringList>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQml/QJSEngine>
+#endif
 
 #include "LoggingCategoryModel.h"
 #include "QGCLoggingCategory.h"
@@ -42,6 +44,7 @@ void QGCLoggingCategoryManager::init()
     }
 }
 
+#ifndef QGC_HEADLESS_CORE
 QGCLoggingCategoryManager* QGCLoggingCategoryManager::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
 {
     Q_UNUSED(qmlEngine);
@@ -50,6 +53,7 @@ QGCLoggingCategoryManager* QGCLoggingCategoryManager::create(QQmlEngine* qmlEngi
     QJSEngine::setObjectOwnership(s_managerInstance, QJSEngine::CppOwnership);
     return s_managerInstance;
 }
+#endif
 
 QGCLoggingCategoryManager::QGCLoggingCategoryManager() : QObject()
 {

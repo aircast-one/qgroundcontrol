@@ -44,7 +44,7 @@ endif()
 target_link_libraries(QGCGeoMath
     PUBLIC
         Qt6::Core
-        Qt6::Gui
+        $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Gui>
         Qt6::Positioning
     PRIVATE
         GeographicLib::GeographicLib

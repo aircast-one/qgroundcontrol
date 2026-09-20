@@ -6,9 +6,7 @@ target_sources(${CMAKE_PROJECT_NAME}
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-qt_add_library(FactControlsModule STATIC)
-
-qt_add_qml_module(FactControlsModule
+qgc_qml_only_library(FactControlsModule
     URI QGroundControl.FactControls
     VERSION 1.0
     RESOURCE_PREFIX /qml

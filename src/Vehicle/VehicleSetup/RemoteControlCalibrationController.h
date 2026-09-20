@@ -2,7 +2,9 @@
 
 #include <QtCore/QElapsedTimer>
 #include <QtQmlIntegration/QtQmlIntegration>
+#ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickItem>
+#endif
 
 #include "FactPanelController.h"
 

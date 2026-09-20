@@ -10,7 +10,6 @@
 #include "QmlObjectListModel.h"
 #include "Vehicle.h"
 
-#include <QtQml/QQmlEngine>
 
 QGC_LOGGING_CATEGORY(MAVLinkInspectorControllerLog, "AnalyzeView.MAVLinkInspectorController")
 
