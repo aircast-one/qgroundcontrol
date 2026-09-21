@@ -252,7 +252,7 @@ jobs:
         uses: ./.github/actions/android-emulator-test
         with:
           apk-path: ${{ runner.temp }}/build/${{ env.PACKAGE }}.apk
-          package: org.mavlink.qgroundcontrol
+          package: org.aircast.qgc
           android-platform: ${{ steps.setup.outputs.android_platform }}
           qt-version: ${{ steps.setup.outputs.qt_version }}
           ndk-version: ${{ steps.setup.outputs.android_ndk_full_version }}
