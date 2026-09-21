@@ -5,6 +5,8 @@
 
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        AircastLinkFactGroupTest.cc
+        AircastLinkFactGroupTest.h
         APMAirframeComponentControllerTest.cc
         APMAirframeComponentControllerTest.h
         APMStartMissionTest.cc
@@ -59,6 +61,7 @@ add_qgc_test(FTPManagerTest LABELS Integration Vehicle)
 add_qgc_test(FirmwareUpgradeControllerTest LABELS Unit Vehicle)
 add_qgc_test(InitialConnectTest LABELS Integration Vehicle)
 add_qgc_test(InitialConnectPeripheralStartupTest LABELS Integration Vehicle)
+add_qgc_test(AircastLinkFactGroupTest LABELS Unit Vehicle)
 add_qgc_test(MAVLinkLogManagerTest LABELS Integration Vehicle)
 add_qgc_test(MavCommandQueueReentrancyTest LABELS Integration Vehicle)
 add_qgc_test(MultiVehicleManagerTest LABELS Integration Vehicle)

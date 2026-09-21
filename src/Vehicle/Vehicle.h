@@ -35,6 +35,7 @@ class BatteryFactGroupListModel;
 class EscStatusFactGroupListModel;
 class GimbalController;
 class RadioStatusFactGroup;
+class AircastLinkFactGroup;
 class TerrainFactGroup;
 class VehicleClockFactGroup;
 class VehicleDistanceSensorFactGroup;
@@ -251,6 +252,7 @@ public:
     Q_PROPERTY(FactGroup*           generator       READ generatorFactGroup         CONSTANT)
     Q_PROPERTY(FactGroup*           efi             READ efiFactGroup               CONSTANT)
     Q_PROPERTY(FactGroup*           radioStatus     READ radioStatusFactGroup       CONSTANT)
+    Q_PROPERTY(FactGroup*           aircastLink     READ aircastLinkFactGroup       CONSTANT)
     Q_PROPERTY(Actuators*           actuators       READ actuators                  CONSTANT)
 
     // Dynamic FactGroupListModel properties
@@ -563,6 +565,7 @@ public:
     FactGroup* generatorFactGroup           ();
     FactGroup* efiFactGroup                 ();
     FactGroup* radioStatusFactGroup         ();
+    FactGroup* aircastLinkFactGroup         ();
     FactGroup* rpmFactGroup                 ();
 
     QmlObjectListModel* batteries           ();
@@ -1087,6 +1090,7 @@ public:
     const QString _efiFactGroupName =                QStringLiteral("efi");
     const QString _rpmFactGroupName =                QStringLiteral("rpm");
     const QString _radioStatusFactGroupName =        QStringLiteral("radioStatus");
+    const QString _aircastLinkFactGroupName =        QStringLiteral("aircastLink");
 
     VehicleFactGroup*               _vehicleFactGroup;
     VehicleGPSFactGroup*                _gpsFactGroup               = nullptr;
@@ -1107,6 +1111,7 @@ public:
     VehicleRPMFactGroup*                _rpmFactGroup               = nullptr;
     TerrainFactGroup*                   _terrainFactGroup           = nullptr;
     RadioStatusFactGroup*               _radioStatusFactGroup       = nullptr;
+    AircastLinkFactGroup*               _aircastLinkFactGroup       = nullptr;
 
     // Live SERVO_OUTPUT_RAW values (microseconds). Indexed 0..15 -> SERVO1..SERVO16.
     QVector<int>                       _servoOutputRawValues = QVector<int>(16, -1);
