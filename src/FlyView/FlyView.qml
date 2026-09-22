@@ -145,14 +145,13 @@ Item {
             visible:            !QGroundControl.videoManager.fullScreen
         }
 
-        // Camera switch button for the full-screen video. Placed here (above the instrument
-        // overlays) so it is not hidden behind them. The small-pip case is handled by PipView.
         CameraSwitchButton {
             id:                         fullVideoCameraSwitchButton
+            objectName:                 "fullVideoCameraSwitchButton"
             z:                          _fullItemZorder + 3
             anchors.top:                parent.top
             anchors.horizontalCenter:   parent.horizontalCenter
-            anchors.topMargin:          ScreenTools.defaultFontPixelHeight
+            anchors.topMargin:          toolbar.height + ScreenTools.defaultFontPixelHeight
             opacity:                    0.75
             visible:                    QGroundControl.videoManager.hasMultipleVideoSources &&
                                         videoControl.pipState.state === videoControl.pipState.fullState
