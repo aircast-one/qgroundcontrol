@@ -14,7 +14,6 @@ QGC_LOGGING_CATEGORY(GStreamerTestLog, "Video.GStreamer.GStreamerTest")
 #include <QtCore/QScopeGuard>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryDir>
-
 #include <atomic>
 #include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
@@ -231,9 +230,7 @@ void GStreamerTest::_testSetCodecPrioritiesDefaultPrefersMatchingD3DDecoder()
     GstRegistry* registry = gst_registry_get();
     QVERIFY(registry != nullptr);
 
-    auto lookup = [registry](const char* featureName) {
-        return gst_registry_lookup_feature(registry, featureName);
-    };
+    auto lookup = [registry](const char* featureName) { return gst_registry_lookup_feature(registry, featureName); };
 
     GstPluginFeature* software = lookup("avdec_h265");
     GstPluginFeature* d3d11 = lookup("d3d11h265dec");
@@ -298,9 +295,8 @@ void GStreamerTest::_testSetCodecPrioritiesSkipsAbsentD3DDecoders()
 
     const QByteArray oldLoggingRules = qgetenv("QT_LOGGING_RULES");
     QLoggingCategory::setFilterRules(QStringLiteral("*.debug=false\nVideo.GStreamer.GStreamerHelpers.debug=true"));
-    const auto restoreLoggingRules = qScopeGuard([oldLoggingRules]() {
-        QLoggingCategory::setFilterRules(QString::fromUtf8(oldLoggingRules));
-    });
+    const auto restoreLoggingRules =
+        qScopeGuard([oldLoggingRules]() { QLoggingCategory::setFilterRules(QString::fromUtf8(oldLoggingRules)); });
 
     LogManager::clearCapturedMessages();
     QVERIFY(!GStreamer::changeFeatureRank(registry, "__qgc_missing_d3d_decoder_for_test__", GST_RANK_NONE));
@@ -308,9 +304,9 @@ void GStreamerTest::_testSetCodecPrioritiesSkipsAbsentD3DDecoders()
     const QList<LogEntry> helperMessages =
         LogManager::capturedMessages(QStringLiteral("Video.GStreamer.GStreamerHelpers"));
     for (const LogEntry& entry : helperMessages) {
-        QVERIFY2(!entry.message.contains(QStringLiteral("Feature does not exist")),
-                 qPrintable(QStringLiteral("Optional D3D decoder factory was logged as a failure: %1")
-                                 .arg(entry.message)));
+        QVERIFY2(
+            !entry.message.contains(QStringLiteral("Feature does not exist")),
+            qPrintable(QStringLiteral("Optional D3D decoder factory was logged as a failure: %1").arg(entry.message)));
     }
 #endif
 }
@@ -758,8 +754,7 @@ void GStreamerTest::_testRecordingSinkFinalizesMidStreamH265Mp4()
     QVERIFY(gst_element_link_many(verifyParser, verifyDecoder, verifySink, nullptr));
 
     DemuxPadContext demuxContext{verifyParser};
-    const gulong padAddedHandler =
-        g_signal_connect(demux, "pad-added", G_CALLBACK(linkH265DemuxPad), &demuxContext);
+    const gulong padAddedHandler = g_signal_connect(demux, "pad-added", G_CALLBACK(linkH265DemuxPad), &demuxContext);
     QVERIFY(padAddedHandler != 0);
     const auto padAddedCleanup = qScopeGuard([&] { g_signal_handler_disconnect(demux, padAddedHandler); });
 
@@ -800,10 +795,11 @@ void GStreamerTest::_testRuntimeVersionCheck()
                                          .arg(minor)
                                          .arg(micro)));
 #else
-    QVERIFY2(minor >= 28, qPrintable(QStringLiteral("GStreamer runtime version %1.%2.%3 is below bundled SDK minimum 1.28.0")
-                                         .arg(major)
-                                         .arg(minor)
-                                         .arg(micro)));
+    QVERIFY2(minor >= 28,
+             qPrintable(QStringLiteral("GStreamer runtime version %1.%2.%3 is below bundled SDK minimum 1.28.0")
+                            .arg(major)
+                            .arg(minor)
+                            .arg(micro)));
 #endif
 
 #ifdef QGC_GST_BUILD_VERSION_MAJOR
@@ -821,9 +817,9 @@ void GStreamerTest::init()
     UnitTest::init();
 }
 
-#define QGC_GST_SKIP_TEST(fn) \
-    void GStreamerTest::fn()  \
-    {                         \
+#define QGC_GST_SKIP_TEST(fn)           \
+    void GStreamerTest::fn()            \
+    {                                   \
         QSKIP("GStreamer not enabled"); \
     }
 
