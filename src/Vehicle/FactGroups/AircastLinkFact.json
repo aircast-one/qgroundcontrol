@@ -1,0 +1,33 @@
+{
+    "version":      1,
+    "fileType":  "FactMetaData",
+    "QGC.MetaData.Facts":
+[
+{
+    "name":             "quality",
+    "shortDesc":        "Signal quality",
+    "type":             "uint8",
+    "units":            "%"
+},
+{
+    "name":             "radioType",
+    "shortDesc":        "Network",
+    "type":             "uint8",
+    "enumStrings":      "none,2G,CDMA,3G,LTE",
+    "enumValues":       "0,1,2,3,4"
+},
+{
+    "name":             "status",
+    "shortDesc":        "Modem",
+    "type":             "uint8",
+    "enumStrings":      "unknown,failed,initializing,locked,disabled,disabling,enabling,enabled,searching,registered,disconnecting,connecting,connected",
+    "enumValues":       "0,1,2,3,4,5,6,7,8,9,10,11,12"
+},
+{
+    "name":             "videoBitrate",
+    "shortDesc":        "Video bitrate",
+    "type":             "uint32",
+    "units":            "kbit/s"
+}
+]
+}

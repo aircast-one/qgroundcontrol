@@ -47,6 +47,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         UnitSystemTest.h
         VehicleStatusSummaryTest.cc
         VehicleStatusSummaryTest.h
+        ColoredSvgImageProviderTest.cc
+        ColoredSvgImageProviderTest.h
         QuickInteractionTestHelpers.h
 )
 
@@ -58,6 +60,7 @@ add_qgc_test(QmlObjectListModelTest LABELS Unit)
 add_qgc_test(QmlObjectTreeModelTest LABELS Unit)
 add_qgc_test(DragToPositionTest LABELS Unit)
 add_qgc_test(PipViewTest LABELS Unit)
+add_qgc_test(ColoredSvgImageProviderTest LABELS Unit)
 add_qgc_test(FlyViewToolBarEditTest LABELS Unit)
 add_qgc_test(OverlayBackdropTest LABELS Unit)
 add_qgc_test(OverlayPaletteTest LABELS Unit)
