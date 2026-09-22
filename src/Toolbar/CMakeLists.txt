@@ -3,6 +3,7 @@ qgc_qml_only_library(ToolbarModule
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
+        AircastLinkIndicator.qml
         ArmedIndicator.qml
         BatteryIndicator.qml
         EscIndicator.qml
@@ -31,6 +32,7 @@ qgc_qml_only_library(ToolbarModule
         RTKGPSIndicator.qml
         SelectViewDropdown.qml
         SignalStrength.qml
+        Sparkline.qml
         TelemetryRSSIIndicator.qml
         VehicleGPSIndicator.qml
         VehicleMessageList.qml

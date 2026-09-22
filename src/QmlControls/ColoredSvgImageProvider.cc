@@ -3,6 +3,7 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QLoggingCategory>
 #include <QtGui/QImage>
+#include <QtGui/QImageReader>
 #include <QtGui/QPainter>
 #include <QtSvg/QSvgRenderer>
 
@@ -70,7 +71,14 @@ QImage ColoredSvgImageProvider::requestImage(const QString &id, QSize *size, con
         return req;
     };
 
-    if (isSvg) {
+    // The name settles nothing: qgcresources.qrc aliases the three QGCLogo*.png
+    // files onto .svg names, and handing those bytes to QSvgRenderer drew no
+    // icon at all. Ask the bytes what they are, and keep the suffix only as the
+    // answer for a file that cannot be read.
+    const QByteArray detected = QImageReader(path).format().toLower();
+    const bool renderAsSvg = detected.isEmpty() ? isSvg : (detected == "svg");
+
+    if (renderAsSvg) {
         QSvgRenderer renderer(path);
         if (!renderer.isValid()) {
             qCWarning(ColoredSvgImageProviderLog) << "QSvgRenderer rejected:" << path;
