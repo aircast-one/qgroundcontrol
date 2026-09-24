@@ -367,8 +367,6 @@ GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config, guint l
     gst_clear_caps(&videoCaps);
     gst_clear_caps(&audioCaps);
 
-    // webrtcbin owns the only jitterbuffer on this path and ships a 200ms default; size it from
-    // the RTP jitter setting, or shrink it in low-latency mode like the plain-RTP path does.
     const guint webrtcLatencyMs = (config.jitterBuffer == JitterBuffer::None) ? kWhepLowLatencyJitterMs : latencyMs;
     GstIterator* it = gst_bin_iterate_elements(GST_BIN(source));
     GValue item = G_VALUE_INIT;

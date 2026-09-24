@@ -132,6 +132,40 @@ void GStreamerTest::_testSourceFactoryRtspExcludesStaticJitterBuffer()
              "rtspsrc owns its internal jitterbuffer; the factory must not add a second one");
 }
 
+void GStreamerTest::_testSourceFactoryWhepLatency()
+{
+    if (!gst_element_factory_find("whepsrc") || !gst_element_factory_find("webrtcbin")) {
+        QSKIP("whepsrc/webrtcbin plugin unavailable");
+    }
+    ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("whepsrc is now deprecated")));
+
+    const auto webrtcbinLatency = [](GStreamer::SourceFactory::JitterBuffer mode, int latencyMs) -> guint {
+        GStreamer::SourceFactory::Config config;
+        config.jitterBuffer = mode;
+        config.latencyMs = latencyMs;
+
+        GstElement* bin = GStreamer::SourceFactory::create(QStringLiteral("whep://127.0.0.1:8889/cam/whep"), config);
+        if (!bin) {
+            return 0;
+        }
+        const auto cleanup = qScopeGuard([&] { gst_object_unref(bin); });
+
+        GstElement* source = findChildByFactoryName(bin, "whepsrc");
+        GstElement* webrtcbin = source ? findChildByFactoryName(source, "webrtcbin") : nullptr;
+        if (!webrtcbin) {
+            return 0;
+        }
+        guint latency = 0;
+        g_object_get(webrtcbin, "latency", &latency, nullptr);
+        return latency;
+    };
+
+    QCOMPARE(webrtcbinLatency(GStreamer::SourceFactory::JitterBuffer::DropOnLatency, 80), 80u);
+    QCOMPARE(webrtcbinLatency(GStreamer::SourceFactory::JitterBuffer::Buffered, 150), 150u);
+    QCOMPARE(webrtcbinLatency(GStreamer::SourceFactory::JitterBuffer::None, 80), 40u);
+}
+
 void GStreamerTest::_testSourceFactoryRejectsBadUri()
 {
     ignoreLogMessage("Video.GStreamer.GstSourceFactory", QtCriticalMsg,

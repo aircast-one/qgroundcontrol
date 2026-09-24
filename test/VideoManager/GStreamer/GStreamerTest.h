@@ -87,6 +87,7 @@ private slots:
     void _testSourceFactoryJitterBufferNone();
     void _testSourceFactoryNoRetransmission();
     void _testSourceFactoryRtspExcludesStaticJitterBuffer();
+    void _testSourceFactoryWhepLatency();
     void _testSourceFactoryRejectsBadUri();
     void _testSourceFactoryTcpMpegTs();
     void _testSourceFactoryRejectsBadTcpUri();
