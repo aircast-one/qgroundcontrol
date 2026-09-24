@@ -333,11 +333,12 @@ GstElement* buildRtspSource(const QString& uri, const QUrl& sourceUrl, const Con
     return source;
 }
 
-GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config)
+GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config, guint latencyMs)
 {
     GstElement* source = gst_element_factory_make("whepsrc", "source");
     if (!source) {
-        qCCritical(GstSourceFactoryLog) << "gst_element_factory_make('whepsrc') failed - GStreamer is missing the webrtchttp/webrtc plugins";
+        qCCritical(GstSourceFactoryLog)
+            << "gst_element_factory_make('whepsrc') failed - GStreamer is missing the webrtchttp/webrtc plugins";
         return nullptr;
     }
 
@@ -366,24 +367,23 @@ GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config)
     gst_clear_caps(&videoCaps);
     gst_clear_caps(&audioCaps);
 
-    if (config.jitterBuffer == JitterBuffer::None) {
-        // webrtcbin ships a 200ms internal jitterbuffer; shrink it the same way the plain-RTP
-        // path drops its rtpjitterbuffer in low-latency mode.
-        GstIterator* it = gst_bin_iterate_elements(GST_BIN(source));
-        GValue item = G_VALUE_INIT;
-        bool webrtcbinFound = false;
-        while (!webrtcbinFound && (gst_iterator_next(it, &item) == GST_ITERATOR_OK)) {
-            GstElement* child = GST_ELEMENT(g_value_get_object(&item));
-            GstElementFactory* childFactory = gst_element_get_factory(child);
-            if (childFactory && g_str_equal(GST_OBJECT_NAME(childFactory), "webrtcbin")) {
-                g_object_set(child, "latency", kWhepLowLatencyJitterMs, nullptr);
-                webrtcbinFound = true;
-            }
-            g_value_reset(&item);
+    // webrtcbin owns the only jitterbuffer on this path and ships a 200ms default; size it from
+    // the RTP jitter setting, or shrink it in low-latency mode like the plain-RTP path does.
+    const guint webrtcLatencyMs = (config.jitterBuffer == JitterBuffer::None) ? kWhepLowLatencyJitterMs : latencyMs;
+    GstIterator* it = gst_bin_iterate_elements(GST_BIN(source));
+    GValue item = G_VALUE_INIT;
+    bool webrtcbinFound = false;
+    while (!webrtcbinFound && (gst_iterator_next(it, &item) == GST_ITERATOR_OK)) {
+        GstElement* child = GST_ELEMENT(g_value_get_object(&item));
+        GstElementFactory* childFactory = gst_element_get_factory(child);
+        if (childFactory && g_str_equal(GST_OBJECT_NAME(childFactory), "webrtcbin")) {
+            g_object_set(child, "latency", webrtcLatencyMs, nullptr);
+            webrtcbinFound = true;
         }
-        g_value_unset(&item);
-        gst_iterator_free(it);
+        g_value_reset(&item);
     }
+    g_value_unset(&item);
+    gst_iterator_free(it);
     return source;
 }
 
@@ -391,7 +391,8 @@ GstElement* buildTcpSource(const QUrl& sourceUrl)
 {
     const int port = sourceUrl.port();
     if (!validPort(port)) {
-        qCCritical(GstSourceFactoryLog) << "Invalid TCP port" << port << "in" << sourceUrl.toDisplayString(QUrl::RemoveUserInfo);
+        qCCritical(GstSourceFactoryLog) << "Invalid TCP port" << port << "in"
+                                        << sourceUrl.toDisplayString(QUrl::RemoveUserInfo);
         return nullptr;
     }
     const QString host = sourceUrl.host();
@@ -608,7 +609,7 @@ GstElement* create(const QString& uri, const Config& config)
         if (isRtsp) {
             source = buildRtspSource(uri, sourceUrl, config, latencyMs);
         } else if (isWhep) {
-            source = buildWhepSource(sourceUrl, config);
+            source = buildWhepSource(sourceUrl, config, latencyMs);
         } else if (isTcpMPEGTS) {
             source = buildTcpSource(sourceUrl);
         } else {  // isUdpH264 || isUdpH265 || isUdpMPEGTS
