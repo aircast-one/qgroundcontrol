@@ -45,6 +45,8 @@ public:
     void disconnect() final;
 
     Q_INVOKABLE void setCommLost(bool commLost) { _commLost = commLost; }
+    void setRelayed(bool relayed) { _relayed = relayed; }
+    bool isRelayed() const final { return _relayed; }
     Q_INVOKABLE void simulateConnectionRemoved();
 
     int vehicleId() const { return _vehicleSystemId; }
@@ -400,6 +402,7 @@ private:
 
     double _vehicleAltitudeAMSL = _defaultVehicleHomeAltitude;
     std::atomic<bool> _commLost = false;
+    bool _relayed = false;
     bool _mavlinkV2Upgraded = false;    ///< True once outgoing traffic has switched from v1 to v2
     bool _signingEnabled = false;
     bool _highLatencyTransmissionEnabled = true;

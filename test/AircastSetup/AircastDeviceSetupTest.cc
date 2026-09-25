@@ -8,6 +8,8 @@
  ****************************************************************************/
 
 #include "AircastDeviceSetupTest.h"
+#include "AircastAccount.h"
+#include "AircastCloudLink.h"
 #include "LinkInterface.h"
 #include "LinkManager.h"
 #include "QGCApplication.h"
@@ -71,11 +73,15 @@ public:
         }
         routes.insert(QStringLiteral("/api/stream/config"),
                       QJsonDocument(QJsonObject{{QStringLiteral("paths"), paths}}).toJson(QJsonDocument::Compact));
-        routes.insert(QStringLiteral("/api/telemetry/config"),
-                      QJsonDocument(QJsonObject{{QStringLiteral("baud"), 115200},
-                                                {QStringLiteral("endpoints"), QJsonArray::fromStringList(telemetryEndpoints)}})
-                          .toJson(QJsonDocument::Compact));
+        QJsonObject telemetry{{QStringLiteral("baud"), 115200},
+                              {QStringLiteral("endpoints"), QJsonArray::fromStringList(telemetryEndpoints)}};
+        if (!cloud.isEmpty()) {
+            telemetry.insert(QStringLiteral("cloud"), cloud);
+        }
+        routes.insert(QStringLiteral("/api/telemetry/config"), QJsonDocument(telemetry).toJson(QJsonDocument::Compact));
     }
+
+    QJsonObject cloud;
 
     QHash<QString, QByteArray> routes;
 
@@ -91,7 +97,7 @@ QList<LinkConfiguration*> _aircastLinkConfigs()
     QmlObjectListModel *configs = LinkManager::instance()->linkConfigurations();
     for (int i = 0; i < configs->count(); i++) {
         LinkConfiguration *config = qobject_cast<LinkConfiguration*>(configs->get(i));
-        if (config && config->name() == kLinkName) {
+        if (config && config->name().startsWith(kLinkName)) {
             found.append(config);
         }
     }
@@ -151,6 +157,48 @@ void AircastDeviceSetupTest::_configuresCamerasAndTelemetryFromDevice()
     const UDPConfiguration *udpConfig = qobject_cast<UDPConfiguration*>(linkConfig);
     QVERIFY(udpConfig);
     QCOMPARE(udpConfig->hostList(), QStringList{QStringLiteral("127.0.0.1:14550")});
+
+    _removeAircastLinkConfigs();
+}
+
+void AircastDeviceSetupTest::_aDeviceWithACloudAccountAlsoGetsTheCloudLink()
+{
+    FakeAircastd device;
+    device.cloud = QJsonObject{{QStringLiteral("api"), QStringLiteral("https://api.dev.aircast.one")},
+                               {QStringLiteral("deviceId"), QStringLiteral("d-42")},
+                               {QStringLiteral("configured"), true}};
+    device.setDevice({QStringLiteral("cam1")}, {QStringLiteral("udps:0.0.0.0:14550")});
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression(QStringLiteral("Aircast cloud link")));
+
+    _applySetupDeepLink(device);
+
+    QTRY_COMPARE_WITH_TIMEOUT(_aircastLinkConfigs().size(), 2, 5000);
+    const QList<LinkConfiguration*> configs = _aircastLinkConfigs();
+    const auto cloudIt = std::find_if(configs.cbegin(), configs.cend(), [](LinkConfiguration *config) {
+        return config->type() == LinkConfiguration::TypeAircastCloud;
+    });
+    QVERIFY(cloudIt != configs.cend());
+    const AircastCloudConfiguration *cloudConfig = qobject_cast<AircastCloudConfiguration*>(*cloudIt);
+    QVERIFY(cloudConfig);
+    QCOMPARE(cloudConfig->name(), QStringLiteral("Aircast 127.0.0.1 (cloud)"));
+    QCOMPARE(cloudConfig->apiBase(), QStringLiteral("https://api.dev.aircast.one"));
+    QCOMPARE(cloudConfig->deviceId(), QStringLiteral("d-42"));
+    QCOMPARE(cloudConfig->relayUrl(), QUrl(QStringLiteral("wss://api.dev.aircast.one/v1/mavlink/web/d-42/ws")));
+    QVERIFY(cloudConfig->isAutoConnect());
+    QCOMPARE(AircastAccount::instance()->apiBase(), QStringLiteral("https://api.dev.aircast.one"));
+
+    _removeAircastLinkConfigs();
+}
+
+void AircastDeviceSetupTest::_aDeviceWithoutACloudAccountGetsNoCloudLink()
+{
+    FakeAircastd device;
+    device.setDevice({QStringLiteral("cam1")}, {QStringLiteral("udps:0.0.0.0:14550")});
+
+    _applySetupDeepLink(device);
+
+    QTRY_COMPARE_WITH_TIMEOUT(_aircastLinkConfigs().size(), 1, 5000);
+    QCOMPARE(_aircastLinkConfigs().first()->type(), LinkConfiguration::TypeUdp);
 
     _removeAircastLinkConfigs();
 }

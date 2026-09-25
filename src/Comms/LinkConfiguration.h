@@ -118,6 +118,7 @@ public:
         TypeMock,
 #endif
         TypeLogReplay,
+        TypeAircastCloud,
         TypeLast
     };
     Q_ENUM(LinkType)

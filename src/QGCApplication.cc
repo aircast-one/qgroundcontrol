@@ -58,6 +58,8 @@
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "VideoSettings.h"
+#include "AircastAccount.h"
+#include "AircastCloudLink.h"
 #include "TCPLink.h"
 #include "UDPLink.h"
 #include "Vehicle.h"
@@ -907,6 +909,44 @@ void QGCApplication::_applyDeviceCameras(const QString &host, const QJsonObject 
     qCDebug(QGCApplicationLog) << "Aircast device setup: configured" << cams.size() << "camera(s) from" << host;
 }
 
+void QGCApplication::_removeLinkConfigurationNamed(const QString &name)
+{
+    LinkManager *linkMgr = LinkManager::instance();
+    QmlObjectListModel *configs = linkMgr->linkConfigurations();
+    for (int i = 0; i < configs->count(); ++i) {
+        LinkConfiguration *existing = qobject_cast<LinkConfiguration*>(configs->get(i));
+        if (existing && existing->name() == name) {
+            linkMgr->removeConfiguration(existing);
+            return;
+        }
+    }
+}
+
+void QGCApplication::_applyDeviceCloud(const QString &host, const QJsonObject &cloud)
+{
+    const QString apiBase = cloud.value(QStringLiteral("api")).toString();
+    const QString deviceId = cloud.value(QStringLiteral("deviceId")).toString();
+    if (apiBase.isEmpty() || deviceId.isEmpty()) {
+        return;
+    }
+
+    AircastAccount::instance()->setApiBase(apiBase);
+
+    const QString linkName = QStringLiteral("Aircast %1 (cloud)").arg(host);
+    _removeLinkConfigurationNamed(linkName);
+    AircastCloudConfiguration *cloudConfig = new AircastCloudConfiguration(linkName);
+    cloudConfig->setApiBase(apiBase);
+    cloudConfig->setDeviceId(deviceId);
+    cloudConfig->setAutoConnect(true);
+
+    LinkManager *linkMgr = LinkManager::instance();
+    SharedLinkConfigurationPtr sharedConfig = linkMgr->addConfiguration(cloudConfig);
+    linkMgr->saveLinkConfigurationList();
+    if (!linkMgr->createConnectedLink(sharedConfig)) {
+        qCWarning(QGCApplicationLog) << "Aircast device setup: cloud link failed to start" << linkName;
+    }
+}
+
 void QGCApplication::_applyDeviceTelemetry(const QString &host, const QJsonObject &config)
 {
     const QJsonArray endpoints = config.value(QStringLiteral("endpoints")).toArray();
@@ -924,16 +964,11 @@ void QGCApplication::_applyDeviceTelemetry(const QString &host, const QJsonObjec
         return 0;
     };
 
+    _applyDeviceCloud(host, config.value(QStringLiteral("cloud")).toObject());
+
     LinkManager *linkMgr = LinkManager::instance();
     const QString linkName = QStringLiteral("Aircast %1").arg(host);
-    QmlObjectListModel *configs = linkMgr->linkConfigurations();
-    for (int i = 0; i < configs->count(); ++i) {
-        LinkConfiguration *existing = qobject_cast<LinkConfiguration*>(configs->get(i));
-        if (existing && existing->name() == linkName) {
-            linkMgr->removeConfiguration(existing);
-            break;
-        }
-    }
+    _removeLinkConfigurationNamed(linkName);
 
     LinkConfiguration *linkConfig = nullptr;
     if (const quint16 udpPort = serverPort(QStringLiteral("udps"))) {

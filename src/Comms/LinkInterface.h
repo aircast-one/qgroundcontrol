@@ -32,6 +32,7 @@ public:
     virtual bool isConnected() const = 0;
     virtual bool isLogReplay() const { return false; }
     virtual bool isSecureConnection() const { return false; }
+    virtual bool isRelayed() const { return false; }
 
     SharedLinkConfigurationPtr linkConfiguration() { return _config; }
     const SharedLinkConfigurationPtr linkConfiguration() const { return _config; }

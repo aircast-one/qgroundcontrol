@@ -10,6 +10,7 @@
 #include "MavlinkSettings.h"
 #include "AutoConnectSettings.h"
 #include "TCPLink.h"
+#include "AircastCloudLink.h"
 #include "CoreLink.h"
 #include "UDPLink.h"
 
@@ -165,6 +166,9 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
         break;
     case LinkConfiguration::TypeLogReplay:
         link = std::make_shared<LogReplayLink>(config);
+        break;
+    case LinkConfiguration::TypeAircastCloud:
+        link = std::make_shared<AircastCloudLink>(config);
         break;
 #ifdef QT_DEBUG
     case LinkConfiguration::TypeMock:
@@ -482,6 +486,9 @@ void LinkManager::loadLinkConfigurationList()
             case LinkConfiguration::TypeLogReplay:
                 link = new LogReplayConfiguration(name);
                 break;
+            case LinkConfiguration::TypeAircastCloud:
+                link = new AircastCloudConfiguration(name);
+                break;
 #ifdef QT_DEBUG
             case LinkConfiguration::TypeMock:
                 link = new MockConfiguration(name);
@@ -638,6 +645,7 @@ const QList<QPair<QString, QString>> &linkTypeTable()
     table += qMakePair(QStringLiteral("mock"), LinkManager::tr("Mock Link"));
 #endif
     table += qMakePair(QStringLiteral("logReplay"), LinkManager::tr("Log Replay"));
+    table += qMakePair(QStringLiteral("aircastCloud"), LinkManager::tr("Aircast Cloud"));
 
     return table;
 }

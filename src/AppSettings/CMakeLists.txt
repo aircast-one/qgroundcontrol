@@ -82,6 +82,7 @@ qgc_qml_only_library(AppSettingsModule
         OfflineMapEditor.qml
         OfflineMapInfo.qml
         OfflineMapSettings.qml
+        AircastCloudSettings.qml
         PacketRadioSettings.qml
         PX4LogControl.qml
         PX4LogFileManager.qml

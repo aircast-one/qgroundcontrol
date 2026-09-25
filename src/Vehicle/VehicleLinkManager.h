@@ -35,6 +35,7 @@ public:
 
     void mavlinkMessageReceived(LinkInterface *link, const mavlink_message_t &message);
     bool containsLink(LinkInterface *link);
+    bool isStandby(const LinkInterface *link) const;
     WeakLinkInterfacePtr primaryLink() const { return _primaryLink; }
     QString primaryLinkName() const;
     QStringList linkNames() const;
@@ -63,6 +64,8 @@ private:
     void _removeLink(LinkInterface *link);
     void _linkDisconnected();
     bool _updatePrimaryLink();
+    bool _directLinkAlive() const;
+    static bool _isCloud(const LinkInterface *link);
     SharedLinkInterfacePtr _bestActivePrimaryLink();
     void _commRegainedOnLink(LinkInterface *link);
 

@@ -173,6 +173,8 @@ private:
     void _setupFromDevice(const QString &host);
     void _applyDeviceCameras(const QString &host, const QJsonObject &config);
     void _applyDeviceTelemetry(const QString &host, const QJsonObject &config);
+    void _applyDeviceCloud(const QString &host, const QJsonObject &cloud);
+    static void _removeLinkConfigurationNamed(const QString &name);
 
     /// Initialize the application for normal application boot. Or in other words we are not going to run unit tests.
     void _initForNormalAppBoot();
