@@ -1,8 +1,12 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 
 #include <QtCore/QtGlobal>
+#include <QtCore/QUrl>
+
+class QObject;
 
 namespace QGCCommandLineParser {
     struct CommandLineParseResult;
@@ -42,6 +46,12 @@ int showMultipleInstanceError(int argc, char *argv[]);
 /// @param allowMultiple If true, skip the check and allow multiple instances
 /// @return true if this instance can run, false if another instance is running
 bool checkSingleInstance(bool allowMultiple);
+
+bool forwardDeepLink(const QUrl &link);
+
+void receiveForwardedDeepLinks(QObject *owner, std::function<void(const QUrl &)> onLink);
 #endif
+
+std::optional<QUrl> deepLinkArg(int argc, char *argv[]);
 
 } // namespace Platform

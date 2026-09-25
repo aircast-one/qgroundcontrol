@@ -3,12 +3,16 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QProcessEnvironment>
+#include <QtNetwork/QLocalServer>
+#include <QtNetwork/QLocalSocket>
 #ifndef QGC_HEADLESS_CORE
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
 #endif
 
+#include <algorithm>
 #include <cstdio>
+#include <span>
 
 #include "QGCCommandLineParser.h"
 
@@ -168,6 +172,10 @@ std::optional<int> Platform::initialize(int argc, char* argv[],
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
     const bool allowMultiple = args.allowMultiple || args.runningUnitTests || args.listTests;
     if (!checkSingleInstance(allowMultiple)) {
+        const std::optional<QUrl> link = deepLinkArg(argc, argv);
+        if (link && forwardDeepLink(*link)) {
+            return 0;
+        }
         return showMultipleInstanceError(argc, argv);
     }
 #else
@@ -303,4 +311,57 @@ bool Platform::checkSingleInstance(bool allowMultiple)
     static RunGuard guard(runguardString);
     return guard.tryToRun();
 }
+
+namespace {
+QString deepLinkServerName()
+{
+    return QStringLiteral("%1 DeepLink").arg(QLatin1String(QGC_APP_NAME));
+}
+}
+
+bool Platform::forwardDeepLink(const QUrl &link)
+{
+    int argc = 0;
+    const QCoreApplication app(argc, nullptr);
+    QLocalSocket socket;
+    socket.connectToServer(deepLinkServerName());
+    if (!socket.waitForConnected(2000)) {
+        return false;
+    }
+    socket.write(link.toEncoded() + '\n');
+    const bool written = socket.waitForBytesWritten(2000);
+    socket.disconnectFromServer();
+    return written;
+}
+
+void Platform::receiveForwardedDeepLinks(QObject *owner, std::function<void(const QUrl &)> onLink)
+{
+    auto *server = new QLocalServer(owner);
+    (void) QLocalServer::removeServer(deepLinkServerName());
+    if (!server->listen(deepLinkServerName())) {
+        qWarning() << "deep link server failed to listen:" << server->errorString();
+        return;
+    }
+    (void) QObject::connect(server, &QLocalServer::newConnection, server, [server, onLink]() {
+        QLocalSocket *socket = server->nextPendingConnection();
+        const auto drain = [socket, onLink]() {
+            if (socket->canReadLine()) {
+                onLink(QUrl::fromEncoded(socket->readLine().trimmed()));
+                socket->disconnectFromServer();
+            }
+        };
+        (void) QObject::connect(socket, &QLocalSocket::readyRead, socket, drain);
+        (void) QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+        drain();
+    });
+}
 #endif
+
+std::optional<QUrl> Platform::deepLinkArg(int argc, char *argv[])
+{
+    const auto args = std::span(argv, static_cast<size_t>(argc)).subspan(argc > 0 ? 1 : 0);
+    const auto it = std::ranges::find_if(args, [](const char *arg) {
+        return QString::fromLocal8Bit(arg).startsWith(QStringLiteral("aircast-qgc://"));
+    });
+    return it == args.end() ? std::nullopt : std::optional<QUrl>(QUrl(QString::fromLocal8Bit(*it)));
+}

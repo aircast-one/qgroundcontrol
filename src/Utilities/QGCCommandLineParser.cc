@@ -3,6 +3,7 @@
 
 #include <QtCore/QCommandLineOption>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QRegularExpression>
 
 #include "QGCLoggingCategory.h"
 
@@ -302,7 +303,7 @@ CommandLineParseResult parseCommandLine()
     }
 
     // --- Validate positional arguments ---
-    out.positional = parser.positionalArguments();
+    out.positional = parser.positionalArguments().filter(QRegularExpression(QStringLiteral("^(?!aircast-qgc://)")));
     if (!out.positional.isEmpty()) {
         out.statusCode = CommandLineParseResult::Status::Error;
         out.errorString = QCoreApplication::translate("main", "Unexpected positional arguments: %1")

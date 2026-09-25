@@ -80,6 +80,7 @@ cleanupOrphanedRegistry:
     SetRegView 64
     DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
     DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\${EXENAME}.exe"
+    DeleteRegKey HKLM "SOFTWARE\Classes\aircast-qgc"
     Goto doInstall
 
 doUninstall:
@@ -115,6 +116,11 @@ doInstall:
         WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayVersion" "${APPVERSION}"
     !endif
 
+    WriteRegStr HKLM "SOFTWARE\Classes\aircast-qgc" "" "URL:Aircast QGroundControl"
+    WriteRegStr HKLM "SOFTWARE\Classes\aircast-qgc" "URL Protocol" ""
+    WriteRegStr HKLM "SOFTWARE\Classes\aircast-qgc\DefaultIcon" "" "$INSTDIR\bin\${EXENAME}.exe,0"
+    WriteRegStr HKLM "SOFTWARE\Classes\aircast-qgc\shell\open\command" "" "$\"$INSTDIR\bin\${EXENAME}.exe$\" $\"%1$\""
+
     ; WER dumps for crash triage
     WriteRegDWORD    HKLM "SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\${EXENAME}.exe" "DumpCount" 5
     WriteRegDWORD    HKLM "SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\${EXENAME}.exe" "DumpType" 1
@@ -143,6 +149,7 @@ Section "Uninstall"
     ; Remove ARP + WER
     DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
     DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\${EXENAME}.exe"
+    DeleteRegKey HKLM "SOFTWARE\Classes\aircast-qgc"
 SectionEnd
 
 Section "Create Start Menu Shortcuts"

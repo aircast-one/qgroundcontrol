@@ -60,13 +60,12 @@ int qgc_start(int argc, char *argv[])
     g_runtime.app = std::make_unique<QGCApplication>(g_runtime.argc, argv, args, g_runtime.hostProvidesUI);
     QGCApplication &app = *g_runtime.app;
 
-    for (int i = 1; i < argc; i++) {
-        const QString arg = QString::fromLocal8Bit(argv[i]);
-        if (arg.startsWith(QStringLiteral("aircast-qgc://"))) {
-            app.handleDeepLink(QUrl(arg));
-            break;
-        }
+    if (const std::optional<QUrl> link = Platform::deepLinkArg(argc, argv)) {
+        app.handleDeepLink(*link);
     }
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+    Platform::receiveForwardedDeepLinks(&app, [&app](const QUrl &link) { app.handleDeepLink(link); });
+#endif
 
 #ifdef Q_OS_ANDROID
     const QString androidDeepLink = AndroidInterface::getLaunchDeepLink();
