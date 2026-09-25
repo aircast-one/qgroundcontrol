@@ -64,7 +64,9 @@ int qgc_start(int argc, char *argv[])
         app.handleDeepLink(*link);
     }
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
-    Platform::receiveForwardedDeepLinks(&app, [&app](const QUrl &link) { app.handleDeepLink(link); });
+    if (!Platform::allowsMultipleInstances(args)) {
+        Platform::receiveForwardedDeepLinks(&app, [&app](const QUrl &link) { app.handleDeepLink(link); });
+    }
 #endif
 
 #ifdef Q_OS_ANDROID

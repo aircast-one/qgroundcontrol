@@ -170,8 +170,7 @@ std::optional<int> Platform::initialize(int argc, char* argv[],
 #endif
 
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
-    const bool allowMultiple = args.allowMultiple || args.runningUnitTests || args.listTests;
-    if (!checkSingleInstance(allowMultiple)) {
+    if (!checkSingleInstance(allowsMultipleInstances(args))) {
         const std::optional<QUrl> link = deepLinkArg(argc, argv);
         if (link && forwardDeepLink(*link)) {
             return 0;
@@ -299,6 +298,11 @@ int Platform::showMultipleInstanceError([[maybe_unused]] int argc, [[maybe_unuse
     showLinuxErrorDialog(message.toLocal8Bit());
 #endif
     return -1;
+}
+
+bool Platform::allowsMultipleInstances(const QGCCommandLineParser::CommandLineParseResult &args)
+{
+    return args.allowMultiple || args.runningUnitTests || args.listTests;
 }
 
 bool Platform::checkSingleInstance(bool allowMultiple)

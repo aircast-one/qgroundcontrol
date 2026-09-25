@@ -47,6 +47,8 @@ int showMultipleInstanceError(int argc, char *argv[]);
 /// @return true if this instance can run, false if another instance is running
 bool checkSingleInstance(bool allowMultiple);
 
+bool allowsMultipleInstances(const QGCCommandLineParser::CommandLineParseResult &args);
+
 bool forwardDeepLink(const QUrl &link);
 
 void receiveForwardedDeepLinks(QObject *owner, std::function<void(const QUrl &)> onLink);

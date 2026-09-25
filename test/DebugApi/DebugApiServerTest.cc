@@ -57,6 +57,28 @@ void DebugApiServerTest::_missingAuthHeaderRejected()
     reply->deleteLater();
 }
 
+void DebugApiServerTest::_foreignHostRejected()
+{
+    DebugApiServer server(0);
+    QVERIFY(server.serverPort() != 0);
+
+    const QList<QPair<QByteArray, QByteArray>> cases = {
+        {"attacker.example:8765", "HTTP/1.1 403 Forbidden"},
+        {"127.0.0.1.attacker.example", "HTTP/1.1 403 Forbidden"},
+        {"localhost", "HTTP/1.1 200 OK"},
+        {"127.0.0.1:8765", "HTTP/1.1 200 OK"},
+    };
+    for (const auto &[host, want] : cases) {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, server.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(socket.state() == QAbstractSocket::ConnectedState, 2000);
+        socket.write("GET /status HTTP/1.1\r\nHost: " + host + "\r\nX-QGC-Debug-Api: 1\r\n\r\n");
+        QByteArray reply;
+        QTRY_VERIFY_WITH_TIMEOUT((reply += socket.readAll()).contains("\r\n"), 5000);
+        QCOMPARE(reply.left(reply.indexOf("\r\n")), want);
+    }
+}
+
 void DebugApiServerTest::_statusEndpoint()
 {
     DebugApiServer server(0);

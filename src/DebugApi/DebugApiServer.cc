@@ -59,6 +59,7 @@
 #include <QtGui/QMouseEvent>
 #include <QtGui/QScreen>
 #endif
+#include <QtCore/QRegularExpression>
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QTcpServer>
 #include <QtNetwork/QTcpSocket>
@@ -147,26 +148,35 @@ QQuickWindow *DebugApiServer::_targetWindow()
 
 void DebugApiServer::startIfConfigured(QObject *parent)
 {
-#ifndef QGC_ENABLE_DEBUG_API
-    Q_UNUSED(parent);
-    return;
-#else
     bool ok = false;
     const uint port = qEnvironmentVariableIntValue("QGC_DEBUG_API_PORT", &ok);
     if (!ok || port == 0 || port > 65535) {
         return;
     }
-    start(static_cast<quint16>(port), parent);
+    (void) start(static_cast<quint16>(port), parent);
+}
+
+bool DebugApiServer::start(quint16 port, QObject *parent)
+{
+#ifndef QGC_ENABLE_DEBUG_API
+    Q_UNUSED(port);
+    Q_UNUSED(parent);
+    return false;
+#else
+    if (_instance) {
+        qCDebug(DebugApiServerLog) << "debug api already running on port" << _instance->serverPort();
+        return true;
+    }
+    _instance = new DebugApiServer(port, parent);
+    return true;
 #endif
 }
 
-void DebugApiServer::start(quint16 port, QObject *parent)
+static bool _loopbackHost(const QByteArray &lowerHeaders)
 {
-    if (_instance) {
-        qCDebug(DebugApiServerLog) << "debug api already running on port" << _instance->serverPort();
-        return;
-    }
-    _instance = new DebugApiServer(port, parent);
+    static const QRegularExpression hostLine(
+        QStringLiteral("\\r\\nhost:[ \\t]*(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?[ \\t]*(\\r\\n|$)"));
+    return hostLine.match(QString::fromLatin1(lowerHeaders)).hasMatch();
 }
 
 DebugApiServer::DebugApiServer(quint16 port, QObject *parent)
@@ -241,6 +251,9 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
             // Browsers cannot attach custom headers without a CORS preflight (which this
             // server never grants), so requiring one kills drive-by requests from web pages.
             body = QByteArrayLiteral("{\"error\":\"missing X-QGC-Debug-Api header\"}");
+            statusLine = QByteArrayLiteral("HTTP/1.1 403 Forbidden");
+        } else if (!_loopbackHost(headers)) {
+            body = QByteArrayLiteral("{\"error\":\"Host must be localhost\"}");
             statusLine = QByteArrayLiteral("HTTP/1.1 403 Forbidden");
         } else if (requestLine.size() >= 2 && requestLine.at(0) == "GET") {
             const QUrl url = QUrl::fromEncoded(requestLine.at(1));

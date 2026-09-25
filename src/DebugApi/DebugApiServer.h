@@ -28,7 +28,7 @@ class DebugApiServer : public QObject
 
 public:
     static void startIfConfigured(QObject *parent);
-    static void start(quint16 port, QObject *parent);
+    static bool start(quint16 port, QObject *parent);
 
     /// Direct construction is for unit tests; production goes through startIfConfigured.
     /// Pass port 0 to listen on an ephemeral port (see serverPort()).

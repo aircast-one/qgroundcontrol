@@ -20,6 +20,7 @@ protected:
 
 private slots:
     void _missingAuthHeaderRejected();
+    void _foreignHostRejected();
     void _statusEndpoint();
     void _unknownPathReturns404();
     void _handlerErrorReturns400();

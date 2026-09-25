@@ -864,11 +864,12 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
     if (!debug.isEmpty()) {
         bool ok = false;
         const uint port = debug.toUInt(&ok);
-        if (ok && port > 0 && port <= 65535) {
-            DebugApiServer::start(static_cast<quint16>(port), this);
+        if (!ok || port == 0 || port > 65535) {
+            qCWarning(QGCApplicationLog) << "aircast-qgc deep link has invalid debug port" << debug;
+        } else if (DebugApiServer::start(static_cast<quint16>(port), this)) {
             qCDebug(QGCApplicationLog) << "Enabled debug API via deep link on port" << port;
         } else {
-            qCWarning(QGCApplicationLog) << "aircast-qgc deep link has invalid debug port" << debug;
+            qCWarning(QGCApplicationLog) << "aircast-qgc deep link asked for the debug API, which this build does not include";
         }
     }
 
