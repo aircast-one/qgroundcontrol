@@ -31,6 +31,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcString
+import one.aircast.android.bridge.settingControl
 
 private const val RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
 
@@ -139,7 +140,7 @@ private fun RcMomentary(control: RcControl) {
 @Composable
 fun RcControlsLayer(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
-    val configured by qgcString(RC_CONTROLS_FACT)
+    val configured by qgcString(settingControl(RC_CONTROLS_FACT))
     val controls = remember(configured) { parseRcControls(configured) }
     val stateJson by qgcPath(FLY_STATE)
     val overriding = remember(stateJson) { flyState(stateJson)?.rcOverride == true }

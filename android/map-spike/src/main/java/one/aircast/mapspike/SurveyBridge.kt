@@ -72,7 +72,7 @@ object SurveyBridge {
 
     fun rotateGrid(itemIndex: Int): Boolean {
         val current = runCatching {
-            JSONObject(QGCBridge.get("$PLAN_ITEMS.$itemIndex.gridAngle")).optDouble("value", Double.NaN)
+            JSONObject(QGCBridge.get("view.control($PLAN_ITEMS.$itemIndex.gridAngle)")).optDouble("value", Double.NaN)
         }.getOrDefault(Double.NaN)
         return setGridAngle(itemIndex, nextGridAngle(current))
     }
@@ -82,12 +82,12 @@ object SurveyBridge {
 
     fun altitude(itemIndex: Int): Double =
         runCatching {
-            JSONObject(QGCBridge.get(altitudePath(itemIndex))).optDouble("value", Double.NaN)
+            JSONObject(QGCBridge.get("view.control(${altitudePath(itemIndex)})")).optDouble("value", Double.NaN)
         }.getOrDefault(Double.NaN)
 
     fun altitudeUnits(itemIndex: Int): String =
         runCatching {
-            JSONObject(QGCBridge.get(altitudePath(itemIndex))).optText("units")
+            JSONObject(QGCBridge.get("view.control(${altitudePath(itemIndex)})")).optText("units")
         }.getOrDefault("")
 
     fun setAltitude(itemIndex: Int, shown: Double): Boolean =

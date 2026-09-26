@@ -13,19 +13,25 @@ how a whole module of reads stayed invisible through two reconciliations.
 
 A path is counted when it is the first argument of a bridge call - qgcPath,
 qgcString, qgcDouble, Qgc.get/set/invoke, setOk, invokeOk - and does not start
-with `view.` and is not an action the core already owns. Field names that merely
+with `view.` and is not a write or invoke the core keeps. Field names that merely
 look like paths are not counted, which is why this reads call sites rather than
 grepping for quoted strings.
 
-The core-owned list is read out of `core-rs/src/actions.rs` at scan time rather
-than copied here. `mission.insert` looks exactly like a Qt path and never reaches
-Qt: `router.invoke` hands it to `actions::run` before the backend sees it. Ten of
-them were being counted as work to do.
+Which writes and invokes the core keeps is asked of the core itself, through the
+ignored `claims_for_qtpaths` test in `core-rs/src/actions.rs`, which answers with the
+same `owns` and `owns_write` the router consults. `mission.insert` looks exactly like
+a Qt path and never reaches Qt, and neither does a write to any fact under
+`settings.` - a claim made by pattern, which a list of names copied out of
+actions.rs could not see, so every such write was counted as work still to do.
+An index the head fills in at run time is asked about as 0; a path whose root is
+itself a run-time value cannot be asked about and stays counted.
 """
 
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(
@@ -37,6 +43,10 @@ BASELINE = ROOT / "android/tools/qtpaths.baseline"
 WRAPPERS = re.compile(r"^(?:internal )?fun (qgc[A-Za-z]+|map[A-Za-z]+)\(\s*(?:group)?[Pp]ath: String", re.M)
 DIRECT = ["setOk", "invokeOk", r"Qgc\.get", r"Qgc\.set", r"Qgc\.invoke", r"Qgc\.invokeResult",
           r"QGCBridge\.get", r"QGCBridge\.getFields", r"QGCBridge\.set", r"QGCBridge\.invoke"]
+WRITES = {"setOk", r"Qgc\.set", r"QGCBridge\.set"}
+INVOKES = {"invokeOk", r"Qgc\.invoke", r"Qgc\.invokeResult", r"QGCBridge\.invoke"}
+
+
 def call_pattern() -> str:
     """Every bridge wrapper, found wherever it is declared. Naming the two files that
     declare them today would stop counting the day a third module grows one."""
@@ -44,24 +54,52 @@ def call_pattern() -> str:
     for source in SOURCES:
         for path in source.rglob("*.kt"):
             declared.update(WRAPPERS.findall(path.read_text()))
-    return "(?:%s)" % "|".join(sorted(declared) + DIRECT)
+    return "({})".format("|".join(sorted(declared) + DIRECT))
+
+
+def kind(call: str) -> str:
+    """What the router does with a call: a write and an invoke can be kept by the core, a read of
+    anything but a view always reaches Qt."""
+    spelled = call.replace(".", r"\.")
+    return "set" if spelled in WRITES else "invoke" if spelled in INVOKES else "read"
 
 
 CALLS = call_pattern()
 LITERAL = re.compile(CALLS + r'\(\s*"([^"$]+)"')
 TEMPLATE = re.compile(CALLS + r'\(\s*"([^"]*\$[^"]*)"')
 CONSTANT = re.compile(CALLS + r"\(\s*([A-Z][A-Z0-9_]{2,})\b")
-PIECE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+# ${row.index} is one piece. Reading only its first name left ".index}" behind as if it were
+# part of the path, which made a shape no core pattern could ever match.
+PIECE = re.compile(r"\$\{([^}]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 DEFINE = re.compile(r'\b(?:const\s+val|val)\s+([A-Z][A-Z0-9_]{2,})\s*(?::\s*String\s*)?=\s*"([^"]+)"')
 
 
-OWNED = re.compile(r'^const [A-Z_]+: &str = "([^"]+)";', re.M)
+def instance(path: str) -> str | None:
+    """A shape the core can be asked about: each run-time index becomes 0. A path whose root is
+    run-time has no shape to ask about."""
+    segments = path.split(".")
+    if segments[0] == "*":
+        return None
+    return ".".join("0" if segment == "*" else segment for segment in segments)
 
 
-def core_owned() -> set[str]:
-    source = (ROOT / "core-rs/src/actions.rs").read_text()
-    listed = source.split("pub const OWNED", 1)[0]
-    return set(OWNED.findall(listed))
+def core_claims(asked_for: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """The (kind, path) pairs the core keeps, answered by the core's own predicates."""
+    queries = sorted({(k, instance(p)) for k, p in asked_for if k != "read" and instance(p)})
+    with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as query:
+        query.write("".join(f"{k}\t{p}\n" for k, p in queries))
+    try:
+        run = subprocess.run(
+            ["cargo", "test", "--locked", "-q", "--lib", "claims_for_qtpaths", "--", "--ignored", "--nocapture"],
+            cwd=ROOT / "core-rs", capture_output=True, text=True, env={**os.environ, "QTPATHS_QUERY": query.name},
+        )
+    finally:
+        os.unlink(query.name)
+    answers = [line.split("\t")[1:] for line in run.stdout.splitlines() if line.startswith("CLAIM\t")]
+    if run.returncode != 0 or len(answers) != len(queries):
+        raise SystemExit(f"the core did not answer for its claims (cargo exited {run.returncode}):\n{run.stderr[-2000:]}")
+    kept = {(k, p) for k, p, claimed in answers if claimed == "true"}
+    return {(k, p) for k, p in asked_for if (k, instance(p)) in kept}
 
 
 OWNS_BODY = 'path.split([\'.\', \'[\']).next() == Some("view")'
@@ -71,7 +109,7 @@ def resolve(template: str, constants: dict[str, str]) -> str:
     """A path built by interpolation is still a path. Known constants are substituted;
     anything else - an index, a camera number - becomes * because the core has to cover
     the shape, not the instance."""
-    return PIECE.sub(lambda hit: constants.get(hit.group(1), "*"), template)
+    return PIECE.sub(lambda hit: constants.get(hit.group(1) or hit.group(2), "*"), template)
 
 
 def core_serves(path: str) -> bool:
@@ -94,7 +132,7 @@ def defined_constants() -> dict[str, str]:
             for name, value in DEFINE.findall(path.read_text()):
                 found.setdefault(name, value)
     for _ in range(8):
-        grown = {name: PIECE.sub(lambda hit: found.get(hit.group(1), hit.group(0)), value) for name, value in found.items()}
+        grown = {name: PIECE.sub(lambda hit: found.get(hit.group(1) or hit.group(2), hit.group(0)), value) for name, value in found.items()}
         if grown == found:
             break
         found = grown
@@ -103,20 +141,21 @@ def defined_constants() -> dict[str, str]:
 
 def asked() -> list[tuple[str, str]]:
     constants = defined_constants()
-    hits: list[tuple[str, str]] = []
+    hits: list[tuple[str, str, str]] = []
     for source in SOURCES:
         for path in sorted(source.rglob("*.kt")):
             text = path.read_text()
             where = str(path.relative_to(ROOT))
-            for value in LITERAL.findall(text):
-                hits.append((value, where))
-            for name in CONSTANT.findall(text):
+            for call, value in LITERAL.findall(text):
+                hits.append((kind(call), value, where))
+            for call, name in CONSTANT.findall(text):
                 if name in constants:
-                    hits.append((constants[name], where))
-            for template in TEMPLATE.findall(text):
-                hits.append((resolve(template, constants), where + " [template]"))
-    owned = core_owned()
-    return [(value, where) for value, where in hits if not core_serves(value) and value not in owned]
+                    hits.append((kind(call), constants[name], where))
+            for call, template in TEMPLATE.findall(text):
+                hits.append((kind(call), resolve(template, constants), where + " [template]"))
+    hits = [hit for hit in hits if not core_serves(hit[1])]
+    kept = core_claims({(k, value) for k, value, _ in hits})
+    return [(value, where) for k, value, where in hits if (k, value) not in kept]
 
 
 def check() -> None:
@@ -138,13 +177,17 @@ def check() -> None:
     assert resolve("$GPS.count", {"GPS": "vehicle.gps"}) == "vehicle.gps.count"
     assert resolve("$A.$index.center", {"A": "plan.fence"}) == "plan.fence.*.center"
     assert resolve("view.$X", {"X": "flyState"}) == "view.flyState"
+    assert resolve("$LINKS.${row.index}.link.disconnect", {"LINKS": "links.linkConfigurations"}) == "links.linkConfigurations.*.link.disconnect"
+    assert instance("plan.fence.*.center") == "plan.fence.0.center" and instance("*.armed") is None
     for wrapper in ("qgcPath", "qgcString", "mapPath", "mapString", "mapInt"):
         assert wrapper in CALLS, "the wrapper sweep missed %s, so a module's reads are invisible" % wrapper
     sample = 'val x by qgcPath("vehicle.armed")\nval y by qgcPath("view.flyState")\nval z = someField("vehicle.nope")'
-    assert LITERAL.findall(sample) == ["vehicle.armed", "view.flyState"], LITERAL.findall(sample)
-    owned = core_owned()
-    assert "mission.insert" in owned, "the core-owned sweep found nothing, so every core action counts as Qt work"
-    assert "vehicle.armed" not in owned, sorted(owned)
+    assert LITERAL.findall(sample) == [("qgcPath", "vehicle.armed"), ("qgcPath", "view.flyState")], LITERAL.findall(sample)
+    assert (kind("Qgc.set"), kind("setOk"), kind("Qgc.invokeResult"), kind("qgcPath")) == ("set", "set", "invoke", "read")
+    probe = {("invoke", "mission.insert"), ("set", "settings.videoSettings.videoSource"), ("set", "vehicle.armed"), ("read", "settings.videoSettings.videoSource")}
+    assert core_claims(probe) == {("invoke", "mission.insert"), ("set", "settings.videoSettings.videoSource")}, (
+        f"the core's claims read wrong, so what counts as Qt work has moved: {core_claims(probe)!r}"
+    )
     assert core_serves("view.flyState") and core_serves("view") and core_serves("view[0].x")
     assert not core_serves("viewfinder.zoom") and not core_serves("vehicle.armed")
     assert router_predicate() == OWNS_BODY, (
