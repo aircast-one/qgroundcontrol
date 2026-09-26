@@ -88,24 +88,18 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
 {
     _msecsElapsedTime.start();
 
-    // Setup for network proxy support
     QGCNetworkHelper::initializeProxySupport();
 
-    bool fClearSettingsOptions = cli.clearSettingsOptions;  // Clear stored settings
-    const bool fClearCache = cli.clearCache;                // Clear parameter/airframe caches
+    bool fClearSettingsOptions = cli.clearSettingsOptions;
+    const bool fClearCache = cli.clearCache;
     const QString loggingOptions = cli.loggingOptions.value_or(QString(""));
 
-    // Set up timer for delayed missing fact display
     _missingParamsDelayedDisplayTimer.setSingleShot(true);
     _missingParamsDelayedDisplayTimer.setInterval(_missingParamsDelayedDisplayTimerTimeout);
     (void) connect(&_missingParamsDelayedDisplayTimer, &QTimer::timeout, this, &QGCApplication::_missingParamsDisplay);
 
-    // Set application information
     QString applicationName;
     if (_runningUnitTests || _simpleBootTest) {
-        // We don't want unit tests to use the same QSettings space as the normal app. So we tweak the app
-        // name. Also we want to run unit tests with clean settings every time.
-        // Include test name or PID to prevent settings file conflicts when tests run in parallel
         if (!cli.unitTests.isEmpty()) {
             applicationName = QStringLiteral("%1_unittest_%2").arg(QGC_APP_NAME, cli.unitTests.first());
         } else {
@@ -114,8 +108,6 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
         }
     } else {
 #ifdef QGC_DAILY_BUILD
-        // This gives daily builds their own separate settings space. Allowing you to use daily and stable builds
-        // side by side without daily screwing up your stable settings.
         applicationName = QStringLiteral("%1 Daily").arg(QGC_APP_NAME);
 #else
         applicationName = QGC_APP_NAME;
@@ -135,7 +127,6 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
 #endif
 #endif
 
-    // Set settings format
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings settings;
     qCDebug(QGCApplicationLog) << "Settings location" << settings.fileName()
@@ -147,25 +138,19 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
         qCWarning(QGCApplicationLog) << "Settings location is not writable";
     }
 
-    // The setting will delete all settings on this boot
     fClearSettingsOptions |= settings.value(AppSettings::clearSettingsNextBootKey, false).toBool();
 
     if (_runningUnitTests || _simpleBootTest) {
-        // Unit tests run with clean settings
         fClearSettingsOptions = true;
     }
 
     if (fClearSettingsOptions) {
-        // User requested settings to be cleared on command line
         settings.clear();
 
-        // Clear parameter cache
         QDir paramDir(ParameterManager::parameterCacheDir());
         paramDir.removeRecursively();
         paramDir.mkpath(paramDir.absolutePath());
     } else {
-        // Determine if upgrade message for settings version bump is required. Check and clear must happen before
-        // toolbox is started since that will write some settings.
         if (settings.contains(_settingsVersionKey)) {
             if (settings.value(_settingsVersionKey).toInt() != QGC_SETTINGS_VERSION) {
                 settings.clear();
@@ -183,27 +168,22 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
         QFile airframe(cachedAirframeMetaDataFile());
         airframe.remove();
 
-        // Clear versioned parameter metadata cache
         const QString metaDataCachePath =
             QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/ParameterMetaData");
         QDir(metaDataCachePath).removeRecursively();
     }
 
-    // Set up our logging filters
     QGCLoggingCategoryManager::init();
     QGCLoggingCategoryManager::instance()->installFilter(loggingOptions);
 
     if (_runningUnitTests) {
-        // Enable the AppMessage category so showAppMessage() debug logs are visible during unit tests.
         QGCLoggingCategoryManager::instance()->setCategoryEnabled(QStringLiteral("API.QGCApplication.AppMessage"),
                                                                   true);
     }
 
-    // We need to set language as early as possible prior to loading on JSON files.
     setLanguage();
 
 #ifndef QGC_HEADLESS_CORE
-    // Force old SVG Tiny 1.2 behavior for compatibility
     QSvgRenderer::setDefaultOptions(QtSvg::Tiny12FeaturesOnly);
 #endif
 
@@ -224,7 +204,6 @@ void QGCApplication::setLanguage()
     if (possibleLocale != QLocale::AnyLanguage) {
         _locale = QLocale(possibleLocale);
     }
-    //-- We have specific fonts for Korean
     if (_locale == QLocale::Korean) {
         qCDebug(QGCApplicationLog) << "Loading Korean fonts" << _locale.name();
 #ifndef QGC_HEADLESS_CORE
@@ -283,8 +262,6 @@ void QGCApplication::init()
 #ifndef QGC_HEADLESS_CORE
     qmlRegisterType<OverlayPhysics>("QGroundControl.Controls", 1, 0, "OverlayPhysics");
 
-    // Although this should really be in _initForNormalAppBoot putting it here allowws us to create unit tests which pop
-    // up more easily
     if (QFontDatabase::addApplicationFont(":/fonts/opensans") < 0) {
         qCWarning(QGCApplicationLog) << "Could not load /fonts/opensans font";
     }
@@ -295,8 +272,6 @@ void QGCApplication::init()
 #endif
 
     if (_simpleBootTest) {
-        // Since GStream builds are so problematic we initialize video during the simple boot test
-        // to make sure it works and verfies plugin availability.
         const bool videoInitialized = _initVideo();
 #ifdef QGC_HEADLESS_CORE
         QGCCorePlugin::instance()->init();
@@ -320,7 +295,7 @@ bool QGCApplication::_initVideo()
     qCDebug(QGCApplicationLog) << "Using default graphics API for appsink → VideoOutput video path";
 #endif
 
-    QGCCorePlugin::instance();  // CorePlugin must be initialized before VideoManager for Video Cleanup
+    QGCCorePlugin::instance();
     VideoManager* videoManager = VideoManager::instance();
     videoManager->startVideoBackendInit();
     const bool initSucceeded = !_simpleBootTest || videoManager->waitForVideoBackendReady();
@@ -344,15 +319,11 @@ bool QGCApplication::_initQmlRootWindow()
     QObject::connect(_qmlAppEngine, &QQmlApplicationEngine::objectCreationFailed, this, QCoreApplication::quit,
                      Qt::QueuedConnection);
 
-    // Must register before createRootWindow — root QML references QGCColoredImage which resolves image://coloredsvg/...
-    // at load time.
     _qmlAppEngine->addImageProvider(_qgcImageProviderId, new QGCImageProvider());
     _qmlAppEngine->addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
 
     QGCCorePlugin::instance()->createRootWindow(_qmlAppEngine);
 
-    // The root QQuickWindow exists now (load() is synchronous) but its scene graph has not been
-    // initialized yet -- the only safe point to apply RHI graphics config / forced device.
     GraphicsSetup::configureMainWindow(mainRootWindow());
 
     return mainRootWindow() != nullptr;
@@ -390,32 +361,26 @@ void QGCApplication::_initForNormalAppBoot()
 #endif
     DebugApiServer::startIfConfigured(this);
 
-    // Settings and video are up: apply any aircast-qgc:// deep link that arrived
-    // during launch (stored before this point), and allow later ones to apply live.
     _settingsReady = true;
     if (_pendingDeepLink.isValid()) {
         _applyDeepLink(_pendingDeepLink);
         _pendingDeepLink.clear();
     }
 
-    // Set the window icon now that custom plugin has a chance to override it
 #if defined(Q_OS_LINUX) && !defined(QGC_HEADLESS_CORE)
     if (_qmlAppEngine) {
         QUrl windowIcon = QUrl("qrc:/res/qgroundcontrol.ico");
         windowIcon = _qmlAppEngine->interceptUrl(windowIcon, QQmlAbstractUrlInterceptor::UrlString);
-        // The interceptor needs "qrc:/path" but QIcon expects ":/path"
         setWindowIcon(QIcon(":" + windowIcon.path()));
     }
 #endif
 
-    // Safe to show popup error messages now that main window is created
     _showErrorsInToolbar = true;
 
 #ifdef Q_OS_LINUX
 #ifndef Q_OS_ANDROID
 #ifndef QGC_NO_SERIAL_LINK
     if (!_runningUnitTests) {
-        // Determine if we have the correct permissions to access USB serial devices
         QFile permFile("/etc/group");
         if (permFile.open(QIODevice::ReadOnly)) {
             while (!permFile.atEnd()) {
@@ -438,16 +403,13 @@ void QGCApplication::_initForNormalAppBoot()
 #endif
 #endif
 
-    // Now that main window is up check for lost log files
     MAVLinkProtocol::instance()->checkForLostLogFiles();
 
-    // Load known link configurations
     LinkManager::instance()->loadLinkConfigurationList();
     if (SkydroidH16Links::isThisRemote()) {
         SkydroidH16Links::ensure(LinkManager::instance(), SettingsManager::instance()->autoConnectSettings(), SettingsManager::instance()->videoSettings());
     }
 
-    // Probe for joysticks
     JoystickManager::instance()->init();
 
     if (_settingsUpgraded) {
@@ -456,7 +418,6 @@ void QGCApplication::_initForNormalAppBoot()
                            .arg(applicationName()));
     }
 
-    // Connect links with flag AutoconnectLink
     LinkManager::instance()->startAutoConnectedLinks();
 }
 
@@ -505,7 +466,6 @@ QObject* QGCApplication::_rootQmlObject()
 
 void QGCApplication::showCriticalVehicleMessage(const QString& message)
 {
-    // PreArm messages are handled by Vehicle and shown in Map
     if (message.startsWith(QStringLiteral("PreArm")) ||
         message.startsWith(QStringLiteral("preflight"), Qt::CaseInsensitive)) {
         return;
@@ -520,7 +480,6 @@ void QGCApplication::showCriticalVehicleMessage(const QString& message)
         QMetaObject::invokeMethod(rootQmlObject, "showCriticalVehicleMessage", Q_RETURN_ARG(QVariant, varReturn),
                                   Q_ARG(QVariant, varMessage));
     } else if (runningUnitTests() || !_showErrorsInToolbar) {
-        // Unit tests can run without UI
         qCDebug(QGCApplicationLog) << "QGCApplication::showCriticalVehicleMessage unittest" << message;
     } else {
         qCWarning(QGCApplicationLog) << "Internal error";
@@ -533,16 +492,10 @@ void QGCApplication::showAppMessage(const QString& message, const QString& title
     QGCHostNotices::instance()->post(QGCHostNotices::Message, dialogTitle, message);
 
     if (runningUnitTests()) {
-        // Logged under QGCAppMessageLog so tests can assert expected dialogs via
-        // expectAppMessage() without matching against the general QGCApplication category.
         qCDebug(QGCAppMessageLog) << "showAppMessage:" << dialogTitle << "-" << message;
         if (!_uiTestMode) {
-            // Headless test: there is no QML root to host the dialog and the delayed-message
-            // timer would retry forever, so the log is the only record.
             return;
         }
-        // UI tests fall through: the message dialog is a non-blocking QML popup, so show it
-        // for real and let the test handle it the same way a user would.
     }
 
     QObject* const rootQmlObject = _rootQmlObject();
@@ -552,9 +505,6 @@ void QGCApplication::showAppMessage(const QString& message, const QString& title
         QMetaObject::invokeMethod(rootQmlObject, "_showMessageDialog", Q_RETURN_ARG(QVariant, varReturn),
                                   Q_ARG(QVariant, dialogTitle), Q_ARG(QVariant, varMessage));
     } else {
-        // UI isn't ready yet. An embedded host has no QML root and never will, and the
-        // notice above has already delivered this message, so queueing here would grow a
-        // list nothing drains behind a 200ms timer that never stops re-arming.
         if (!_embeddedHost) {
             _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, message));
             QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
@@ -589,7 +539,6 @@ void QGCApplication::showRebootVehicleMessage(const QString& message, const QStr
     const QString dialogTitle = title.isEmpty() ? applicationName() : title;
 
     if (runningUnitTests()) {
-        // Same log format as showAppMessage() so tests assert this via expectAppMessage()
         qCDebug(QGCAppMessageLog) << "showAppMessage:" << dialogTitle << "-" << message;
         if (!_uiTestMode) {
             return;
@@ -603,7 +552,6 @@ void QGCApplication::showRebootVehicleMessage(const QString& message, const QStr
         QMetaObject::invokeMethod(rootQmlObject, "_showRebootVehicleDialog", Q_RETURN_ARG(QVariant, varReturn),
                                   Q_ARG(QVariant, dialogTitle), Q_ARG(QVariant, varMessage));
     } else {
-        // UI isn't ready yet: fall back to the plain app message queue
         _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, message));
         QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
     }
@@ -800,7 +748,6 @@ bool QGCApplication::compressEvent(QEvent* event, QObject* receiver, QPostEventL
         return QGC_APPLICATION_BASE::compressEvent(event, receiver, postedEvents);
     }
 
-    // QMetaCallEvent::id() was removed in 6.11; its protected Data is reachable from a derived helper.
     struct MetaCallHelper : public QMetaCallEvent {
         int id() const { return d.method_offset_ + d.method_relative_; }
     };
@@ -817,16 +764,11 @@ bool QGCApplication::compressEvent(QEvent* event, QObject* receiver, QPostEventL
             continue;
         }
 
-        /* Keep The Newest Call */
-        // We can't merely qSwap the existing posted event with the new one, since QEvent
-        // keeps track of whether it has been posted. Deletion of a formerly posted event
-        // takes the posted event list mutex and does a useless search of the posted event
-        // list upon deletion. We thus clear the QEvent::posted flag before deletion.
         struct EventHelper : private QEvent
         {
             static void clearPostedFlag(QEvent* ev)
             {
-                (&static_cast<EventHelper*>(ev)->t)[1] &= ~0x8001;  // Hack to clear QEvent::posted
+                (&static_cast<EventHelper*>(ev)->t)[1] &= ~0x8001;
             }
         };
 
@@ -906,8 +848,6 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
 
 void QGCApplication::_setupFromDevice(const QString &host)
 {
-    // The web API may sit on a non-standard port (host:port), but cameras and
-    // telemetry always live on the device's standard ports, so they use the bare host.
     const QString bareHost = host.section(QLatin1Char(':'), 0, 0);
     if (!_deviceSetupNetworkManager) {
         _deviceSetupNetworkManager = new QNetworkAccessManager(this);
@@ -919,7 +859,6 @@ void QGCApplication::_setupFromDevice(const QString &host)
         connect(reply, &QNetworkReply::finished, this, [this, reply, host, bareHost, path, apply, generation]() {
             reply->deleteLater();
             if (generation != _deviceSetupGeneration) {
-                // A newer _setupFromDevice() call has superseded this one; a late reply must not clobber it.
                 return;
             }
             if (reply->error() != QNetworkReply::NoError) {
@@ -1038,7 +977,6 @@ bool QGCApplication::event(QEvent* e)
 {
 #ifndef QGC_HEADLESS_CORE
     if (e->type() == QEvent::FileOpen) {
-        // macOS delivers custom-scheme URLs (aircast-qgc://) as a file-open event.
         handleDeepLink(static_cast<QFileOpenEvent*>(e)->url());
         return true;
     }
@@ -1053,18 +991,9 @@ bool QGCApplication::event(QEvent* e)
             closeVehicleConnections();
             return QGC_APPLICATION_BASE::event(e);
         }
-        // On OSX if the user selects Quit from the menu (or Command-Q) the ApplicationWindow does not signal closing.
-        // Instead you get a Quit event here only. This in turn causes the standard QGC shutdown sequence to not run. So
-        // in this case we close the window ourselves such that the signal is sent and the normal shutdown sequence
-        // runs.
         const bool forceClose = _mainRootWindow->property("_forceClose").toBool();
         qCDebug(QGCApplicationLog) << "Quit event" << forceClose;
-        // forceClose
-        //  true:   Standard QGC shutdown sequence is complete. Let the app quit normally by falling through to the base
-        //  class processing. false:  QGC shutdown sequence has not been run yet. Don't let this event close the app
-        //  yet. Close the main window to kick off the normal shutdown.
         if (!forceClose) {
-            //
             _mainRootWindow->close();
             e->ignore();
             return true;
@@ -1094,8 +1023,6 @@ void QGCApplication::shutdown()
         VideoManager::instance()->cleanup();
     }
 
-    // Engines from createQmlApplicationEngine must die through the destroy hook so the plugin
-    // can release per-engine state; parent-based teardown in ~QGCApplication would bypass it.
 #ifndef QGC_HEADLESS_CORE
     if (_qmlAppEngine) {
         QGCCorePlugin::instance()->destroyQmlApplicationEngine(_qmlAppEngine);
@@ -1116,7 +1043,6 @@ void QGCApplication::shutdown()
             }
         }
 
-        // Remove the app-specific settings directory (parent of ParamCache)
         QDir settingsAppDir(ParameterManager::parameterCacheDir());
         settingsAppDir.cdUp();
         if (settingsAppDir.exists()) {
@@ -1140,7 +1066,6 @@ void QGCApplication::shutdown()
     }
 
 #ifndef QGC_HEADLESS_CORE
-    // This is bad, but currently qobject inheritances are incorrect and cause crashes on exit without
     delete _qmlAppEngine;
 #endif
 }

@@ -56,4 +56,4 @@ void receiveForwardedDeepLinks(QObject *owner, std::function<void(const QUrl &)>
 
 std::optional<QUrl> deepLinkArg(int argc, char *argv[]);
 
-} // namespace Platform
+}

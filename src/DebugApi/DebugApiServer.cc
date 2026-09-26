@@ -42,7 +42,6 @@
 #include <QtCore/QUrl>
 #include <QtCore/QUrlQuery>
 
-
 #include "QGCBridgeC.h"
 #ifdef Q_OS_MACOS
 #include "QGCNativeDebugC.h"
@@ -84,13 +83,10 @@ QByteArray bridgeText(char *owned)
     return copy;
 }
 
-} // namespace
+}
 
 QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.debugapi.debugapiserver")
 
-// Leading marker byte on a handler error body. It cannot occur in JSON text output, so
-// _handleConnection maps a marked body to HTTP 400 unambiguously (rather than sniffing the
-// JSON shape) and strips the byte before writing the response.
 static constexpr char kErrorMarker = '\x01';
 
 #ifndef QGC_HEADLESS_CORE
@@ -187,13 +183,9 @@ DebugApiServer::DebugApiServer(quint16 port, QObject *parent)
         qCWarning(DebugApiServerLog) << "listen failed on port" << port << _server->errorString();
         return;
     }
-    // Deliberately the default category rather than DebugApiServerLog: this is an unauthenticated
-    // control surface for the aircraft, and the one line announcing it is open must not be
-    // something the usual per-category filtering can switch off.
     qWarning("DEBUG API ENABLED - unauthenticated localhost control surface listening on 127.0.0.1:%u", port);
 
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, [this](Vehicle *vehicle) {
-        // Re-activating a vehicle must not stack duplicate connections.
         QObject::disconnect(_messageConnection);
         QObject::disconnect(_rcConnection);
         if (!vehicle) {
@@ -226,8 +218,6 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
 {
     (void) connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
     (void) connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
-        // A streaming response owns the socket for the rest of its life; anything arriving after
-        // it started is not a second request to answer.
         if (socket->property("streaming").toBool()) {
             (void) socket->readAll();
             return;
@@ -248,8 +238,6 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
         QByteArray statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
         const QByteArray headers = request.left(request.indexOf("\r\n\r\n")).toLower();
         if (!headers.contains("\r\nx-qgc-debug-api:")) {
-            // Browsers cannot attach custom headers without a CORS preflight (which this
-            // server never grants), so requiring one kills drive-by requests from web pages.
             body = QByteArrayLiteral("{\"error\":\"missing X-QGC-Debug-Api header\"}");
             statusLine = QByteArrayLiteral("HTTP/1.1 403 Forbidden");
         } else if (!_loopbackHost(headers)) {
@@ -485,8 +473,6 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     return QByteArray();
 }
 
-// Walks the visual (childItems) hierarchy: QML reparenting (pip swaps, Repeater delegates)
-// detaches the QObject parent chain, so findChildren() misses items the user can see.
 #ifndef QGC_HEADLESS_CORE
 static QQuickItem *_findVisibleItem(QQuickWindow *window, const QString &objectName)
 {
@@ -520,9 +506,6 @@ QByteArray DebugApiServer::_uiTreeJson(const QUrlQuery &query)
     }
 
     const QString filter = query.queryItemValue(QStringLiteral("name"));
-    // Without this only objectName'd items are reachable, and anything the author did not think
-    // to name is invisible to tooling - which is exactly when you need to find it, because you
-    // are looking for something you cannot address.
     const bool includeUnnamed = query.queryItemValue(QStringLiteral("all")) == QStringLiteral("1");
     const bool visibleOnly    = query.queryItemValue(QStringLiteral("visible")) == QStringLiteral("1");
     const int kMaxItems = includeUnnamed ? 2000 : 300;
@@ -583,7 +566,6 @@ QByteArray DebugApiServer::_uiTreeJson(const QUrlQuery &query)
     return QJsonDocument(QJsonObject{{"items", items}, {"truncated", items.size() >= kMaxItems}}).toJson(QJsonDocument::Compact);
 }
 
-// Resolves `<prefix>name` (visible item center) or `<prefix>x`/`<prefix>y` to scene coordinates.
 static bool _resolvePoint(QQuickWindow *window, const QUrlQuery &query, const QString &prefix, QPointF &scenePos, QByteArray &error)
 {
     const QString nameKey = prefix.isEmpty() ? QStringLiteral("name") : (prefix + QStringLiteral("Name"));
@@ -612,8 +594,6 @@ static bool _resolvePoint(QQuickWindow *window, const QUrlQuery &query, const QS
     return false;
 }
 
-// Injection goes through the QPA layer (what QTest uses) so Quick's pointer delivery treats
-// it exactly like real input; directly posted QMouseEvents are ignored by it.
 static void _mouse(QQuickWindow *window, const QPointF &scenePos, Qt::MouseButtons buttons, Qt::MouseButton button, QEvent::Type type)
 {
     QWindowSystemInterface::handleMouseEvent(window, scenePos, window->mapToGlobal(scenePos), buttons, button, type);
@@ -804,7 +784,6 @@ QByteArray DebugApiServer::_linkConnectJson(const QUrlQuery &query)
         name = QStringLiteral("debug-api %1:%2").arg(host).arg(port);
     }
 
-
     LinkManager *linkManager = LinkManager::instance();
     LinkConfiguration *config = _findLinkConfiguration(name);
     if (!config) {
@@ -854,8 +833,6 @@ QByteArray DebugApiServer::_videoSettingJson(const QUrlQuery &query)
     const QString factName = query.queryItemValue(QStringLiteral("fact"));
 
     if (factName.isEmpty()) {
-        // SettingsGroup facts are lazily-created Q_PROPERTYs (DEFINE_SETTINGFACT) with no
-        // enumeration API, so the meta-object is the only way to dump them generically.
         QJsonObject facts;
         const QMetaObject *meta = videoSettings->metaObject();
         for (int i = 0; i < meta->propertyCount(); ++i) {
@@ -926,10 +903,6 @@ QByteArray DebugApiServer::_uiPropJson(const QUrlQuery &query)
         return _errorJson(QStringLiteral("item not found: %1").arg(name));
     }
 
-    // Comma-separated properties are read in one pass, so a caller sampling an animation gets
-    // values from a single instant. Read one at a time over separate requests they drift apart
-    // by however long the round trip took, which on a fast easing curve is enough to make two
-    // properties that move together look like they disagree.
     const QStringList names = property.split(QLatin1Char(','), Qt::SkipEmptyParts);
     QJsonObject values;
     for (const QString &entry : names) {
@@ -952,7 +925,6 @@ QByteArray DebugApiServer::_uiPropJson(const QUrlQuery &query)
         {"t", QDateTime::currentMSecsSinceEpoch()},
         {"values", values},
     };
-    // Single-property callers keep the original shape.
     if (values.size() == 1) {
         result.insert(QStringLiteral("property"), values.begin().key());
         result.insert(QStringLiteral("value"), values.begin().value());
@@ -997,14 +969,6 @@ bool DebugApiServer::_startWatch(QTcpSocket *socket, const QUrlQuery &query)
     const int askedInterval = query.queryItemValue(QStringLiteral("interval")).toInt(&okInterval);
     const int interval = qBound(1, okInterval ? askedInterval : 8, 1000);
 
-    // A timer on the GUI thread rather than a render-loop signal: afterAnimating only arrives
-    // while the scene graph is actually drawing, so a window the compositor has decided not to
-    // repaint produces no samples at all - which is silence that looks exactly like a property
-    // that never changed. The timer samples whatever the property holds, drawn or not.
-    // Counted, not sampled on. Delivery stays on the timer so a window the compositor has parked
-    // still produces samples; the frame number rides along so a caller can tell two values read
-    // in the same frame from two read either side of one. If rendering stops, this stops
-    // advancing - which is a visible fact in the data rather than silence.
     const auto frame = std::make_shared<qint64>(0);
     (void) connect(window, &QQuickWindow::afterAnimating, socket, [frame]() { ++(*frame); });
 
@@ -1037,9 +1001,6 @@ bool DebugApiServer::_startWatch(QTcpSocket *socket, const QUrlQuery &query)
     return true;
 }
 
-// Everything under a scene point, outermost first. A synthetic click that "does nothing" is
-// otherwise indistinguishable from a broken control: this says whether anything is there at all,
-// whether it is visible and enabled, and which item would actually receive the press.
 QByteArray DebugApiServer::_uiAtJson(const QUrlQuery &query)
 {
     QQuickWindow *window = _targetWindow();
@@ -1092,9 +1053,6 @@ QByteArray DebugApiServer::_uiAtJson(const QUrlQuery &query)
     }).toJson(QJsonDocument::Compact);
 }
 
-// Writing a property is how a test reaches a state that would otherwise take a scripted sequence
-// of gestures to arrive at. The value is coerced to whatever type the property already holds, so
-// a caller passing "true" or "1.5" does not have to know Qt's type names.
 QByteArray DebugApiServer::_uiPropSetJson(const QUrlQuery &query)
 {
     QQuickWindow *window = _targetWindow();
@@ -1353,7 +1311,6 @@ QByteArray DebugApiServer::_screenshotJson()
         return QJsonDocument(QJsonObject{{"error", "no main window"}}).toJson(QJsonDocument::Compact);
     }
     QImage image = window->grabWindow();
-    // Full retina grabs are multi-megabyte; tooling consumers only need enough to read the UI.
     constexpr int kMaxWidth = 1280;
     if (image.width() > kMaxWidth) {
         image = image.scaledToWidth(kMaxWidth, Qt::SmoothTransformation);
@@ -1638,8 +1595,6 @@ QByteArray DebugApiServer::_missionJson(const QUrlQuery &query, bool upload)
     _pendingMissionDownload = connect(plan, &PlanMasterController::syncInProgressChanged, this, [this, plan, file]() {
         if (!plan->syncInProgress()) {
             QObject::disconnect(_pendingMissionDownload);
-            // A failed or empty download must not produce a file: clients poll for the
-            // file's existence as the success signal.
             if (plan->containsItems()) {
                 plan->saveToFile(file);
             } else {
@@ -1706,9 +1661,6 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
     if (!native) {
         return _errorJson(QStringLiteral("this build has no native UI installed"));
     }
-    // Every hook below answers on the host's main thread, which may itself be waiting on a
-    // bridge read that only this thread can serve. Running the hook on a helper and spinning
-    // Qt's loop meanwhile keeps that read answered instead of deadlocking the pair.
     const auto take = [](std::function<char *()> call) {
         char *owned = nullptr;
         QEventLoop waiting;
@@ -1733,8 +1685,6 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
         return take([&]() { return native->bridge_stats(); });
     }
     if (path == QStringLiteral("/native/menu/invoke")) {
-        // FullyDecoded for the same reason /native/probe below says: PrettyDecoded leaves %2F
-        // encoded, and a menu path is separated by slashes, so an encoded one matched no menu.
         const QString item = query.queryItemValue(QStringLiteral("path"), QUrl::FullyDecoded);
         if (item.isEmpty()) {
             return _errorJson(QStringLiteral("path is required, e.g. path=Window/Native Telemetry"));
@@ -1744,8 +1694,6 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
     }
     if (path == QStringLiteral("/native/probe")) {
         QJsonObject args;
-        // PrettyDecoded leaves %2F encoded, so a probe argument holding a path arrived
-        // as %2Ftmp%2F... and the app wrote a file by that literal name.
         const auto items = query.queryItems(QUrl::FullyDecoded);
         for (const auto &item : items) {
             if ((item.first != QStringLiteral("id")) && (item.first != QStringLiteral("action"))) {
@@ -1786,10 +1734,6 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
 
 QByteArray DebugApiServer::_bridgeJson(const QString &path, const QUrlQuery &query)
 {
-    // A view argument is written view.settings(Connections), and an encoder that escapes the
-    // parentheses is not wrong - PrettyDecoded left them as %28/%29, which matched no view and
-    // returned null. The same request written two correct ways gave two answers. /bridge/set
-    // already reads its value FullyDecoded; this is the same fix in the sibling handler.
     const QString target = query.queryItemValue(QStringLiteral("path"), QUrl::FullyDecoded);
     if (target.isEmpty()) {
         return _errorJson(QStringLiteral("path is required, e.g. path=settings.appSettings"));

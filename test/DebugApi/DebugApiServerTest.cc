@@ -37,7 +37,7 @@ QNetworkReply *_get(QNetworkAccessManager &network, quint16 port, const QString 
     return network.get(request);
 }
 
-} // namespace
+}
 
 void DebugApiServerTest::init()
 {
@@ -109,7 +109,6 @@ void DebugApiServerTest::_handlerErrorReturns400()
 {
     DebugApiServer server(0);
 
-    // No vehicle is connected in the unit test environment, so the handler fails.
     QNetworkAccessManager network;
     QNetworkReply *reply = _get(network, server.serverPort(), QStringLiteral("/vehicle/params"), true);
     QTRY_VERIFY_WITH_TIMEOUT(reply->isFinished(), 5000);
@@ -122,11 +121,6 @@ void DebugApiServerTest::_handlerErrorReturns400()
 
 void DebugApiServerTest::_anEncodedPathReachesTheSameViewAsARawOne()
 {
-    // queryItemValue defaults to PrettyDecoded, which leaves %28 and %2F as escapes. An encoder
-    // that percent-escapes them is not wrong, so the same request written two correct ways
-    // returned two answers - one the view, one null. /native/probe already carries a comment
-    // about this exact fault from when a %2F path made the app write a file by that literal name;
-    // the fix had never been applied to its two siblings.
     DebugApiServer server(0);
     QNetworkAccessManager network;
 
@@ -166,8 +160,6 @@ void DebugApiServerTest::_uiClickAcceptsLeftAndRightButton()
     DebugApiServer server(0);
     QNetworkAccessManager network;
 
-    // No main window exists in the unit test environment, so a valid button gets past
-    // validation and fails on the window lookup instead.
     for (const QString &button : {QStringLiteral("left"), QStringLiteral("right"), QString()}) {
         const QString path = button.isEmpty() ? QStringLiteral("/ui/click?x=1&y=1")
                                               : QStringLiteral("/ui/click?x=1&y=1&button=%1").arg(button);
@@ -195,8 +187,6 @@ void DebugApiServerTest::_motorTestRefusedWithoutActuatorGate()
     reply->deleteLater();
 }
 
-// The parameter-validation paths for the endpoints added for animation work. A main window is not
-// available here, so these pin routing and argument handling rather than values read off live QML.
 void DebugApiServerTest::_uiPropRequiresNameAndProperty()
 {
     DebugApiServer server(0);
@@ -234,9 +224,6 @@ void DebugApiServerTest::_uiAtRequiresCoordinates()
     reply->deleteLater();
 }
 
-// /ui/watch keeps the socket and writes its own response, bypassing the normal routing, so its
-// failure path is worth pinning separately: a bad request there must still answer and hang up
-// rather than leave the caller waiting on a stream that will never arrive.
 void DebugApiServerTest::_uiWatchRejectsMissingArguments()
 {
     DebugApiServer server(0);
@@ -251,8 +238,6 @@ void DebugApiServerTest::_uiWatchRejectsMissingArguments()
 
 namespace {
 
-// Everything below drives the endpoints against a real scene. Without a window they can only be
-// tested on their failure paths, which leaves the part that actually reads QML uncovered.
 class ProbeScene
 {
 public:
@@ -285,7 +270,7 @@ QJsonObject _getJson(quint16 port, const QString &path, int *statusOut = nullptr
     return object;
 }
 
-} // namespace
+}
 
 void DebugApiServerTest::_uiPropReadsSeveralPropertiesInOneSample()
 {
@@ -296,15 +281,12 @@ void DebugApiServerTest::_uiPropReadsSeveralPropertiesInOneSample()
     const QJsonObject result = _getJson(server.serverPort(),
         QStringLiteral("/ui/prop?name=probeTarget&property=width,height,caption"));
 
-    // One sample, one timestamp: the point of the batch form is that the values cannot drift
-    // apart the way they do when each is fetched over its own request.
     QVERIFY(result.contains(QStringLiteral("t")));
     const QJsonObject values = result.value(QStringLiteral("values")).toObject();
     QCOMPARE(values.value(QStringLiteral("width")).toDouble(), 120.0);
     QCOMPARE(values.value(QStringLiteral("height")).toDouble(), 80.0);
     QCOMPARE(values.value(QStringLiteral("caption")).toString(), QStringLiteral("hello"));
 
-    // A single property keeps the original shape so existing callers are unaffected.
     const QJsonObject single = _getJson(server.serverPort(),
         QStringLiteral("/ui/prop?name=probeTarget&property=width"));
     QCOMPARE(single.value(QStringLiteral("property")).toString(), QStringLiteral("width"));
@@ -321,7 +303,6 @@ void DebugApiServerTest::_uiSetPropWritesAndCoerces()
         QStringLiteral("/ui/setprop?name=probeTarget&property=caption&value=written"))
             .value(QStringLiteral("value")).toString(), QStringLiteral("written"));
 
-    // The string off the query is coerced to whatever the property already holds.
     QCOMPARE(_getJson(server.serverPort(),
         QStringLiteral("/ui/setprop?name=probeTarget&property=flagged&value=true"))
             .value(QStringLiteral("value")).toBool(), true);
@@ -341,7 +322,6 @@ void DebugApiServerTest::_uiAtReportsTheStackUnderAPoint()
     QVERIFY(scene.ready());
     DebugApiServer server(0);
 
-    // probeTarget covers 40,50 -> 160,130; the unnamed rectangle sits inside it at 60,70.
     const QJsonArray hits = _getJson(server.serverPort(), QStringLiteral("/ui/at?x=70&y=80"))
                                 .value(QStringLiteral("hits")).toArray();
     QStringList names;
@@ -350,7 +330,6 @@ void DebugApiServerTest::_uiAtReportsTheStackUnderAPoint()
     }
     QVERIFY(names.contains(QStringLiteral("probeTarget")));
 
-    // A point outside every child still reports the root, and never the hidden item.
     const QJsonArray corner = _getJson(server.serverPort(), QStringLiteral("/ui/at?x=390&y=290"))
                                   .value(QStringLiteral("hits")).toArray();
     for (const QJsonValue &hit : corner) {
@@ -370,8 +349,6 @@ void DebugApiServerTest::_uiTreeFindsUnnamedItemsOnlyWithAll()
         QVERIFY(!item.toObject().value(QStringLiteral("objectName")).toString().isEmpty());
     }
 
-    // all=1 is the mode that finds something nobody thought to name - which is exactly the item
-    // you are hunting for when a click lands on nothing.
     const QJsonArray all = _getJson(server.serverPort(), QStringLiteral("/ui/tree?all=1"))
                                .value(QStringLiteral("items")).toArray();
     QVERIFY(all.size() > named.size());
@@ -391,7 +368,6 @@ void DebugApiServerTest::_uiWatchStreamsSamplesWhileAValueChanges()
     QVERIFY(scene.ready());
     DebugApiServer server(0);
 
-    // A raw socket, because the response is an open NDJSON stream rather than a finished body.
     QTcpSocket socket;
     socket.connectToHost(QHostAddress::LocalHost, server.serverPort());
     QVERIFY(socket.waitForConnected(5000));
@@ -420,7 +396,6 @@ void DebugApiServerTest::_uiWatchStreamsSamplesWhileAValueChanges()
     }
     QVERIFY(samples.size() >= 5);
 
-    // Every sample is stamped by the app and carries both properties from the same instant.
     QSet<int> counters;
     for (const QJsonObject &sample : samples) {
         QVERIFY(sample.contains(QStringLiteral("t")));
@@ -428,17 +403,12 @@ void DebugApiServerTest::_uiWatchStreamsSamplesWhileAValueChanges()
         QVERIFY(values.contains(QStringLiteral("counter")));
         const int counter = values.value(QStringLiteral("counter")).toInt();
         const double reading = values.value(QStringLiteral("reading")).toDouble();
-        // reading is derived from counter by the scene, so a sample that mixed two instants
-        // would show them disagreeing.
         QVERIFY(qFuzzyCompare(reading + 1.0, (counter / 10.0) + 1.0));
         counters.insert(counter);
     }
     QVERIFY(counters.size() > 1);
 }
 
-// A watch holds its socket open for its whole life, which the single-request guard around normal
-// routing does not cover. Two streams plus an ordinary request have to coexist: if a held socket
-// blocked the server, everything after the first watch would hang.
 void DebugApiServerTest::_uiWatchSurvivesConcurrentStreamsAndRequests()
 {
     ProbeScene scene;
@@ -458,7 +428,6 @@ void DebugApiServerTest::_uiWatchSurvivesConcurrentStreamsAndRequests()
     openWatch(first, "counter");
     openWatch(second, "reading");
 
-    // An ordinary request must still be answered while both streams are running.
     int status = 0;
     const QJsonObject plain = _getJson(server.serverPort(),
         QStringLiteral("/ui/prop?name=probeTarget&property=width"), &status);

@@ -33,7 +33,7 @@ struct Runtime
 };
 
 Runtime g_runtime;
-} // namespace
+}
 
 int qgc_start(int argc, char *argv[])
 {
