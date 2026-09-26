@@ -64,7 +64,10 @@ impl<B: Backend> Core<B> {
         }
         match view::owns(path) {
             true => refusal(path),
-            false => self.backend.set(path, value),
+            false => match crate::renamed::write_path(path) {
+                Some(renamed) => self.backend.set(&renamed, value),
+                None => self.backend.set(path, value),
+            },
         }
     }
 

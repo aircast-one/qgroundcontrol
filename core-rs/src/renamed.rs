@@ -13,37 +13,50 @@ fn pattern_names(items: Option<&Value>) -> Value {
     Value::Array(names)
 }
 
-fn renamed_value(controller: &Value, old: &str) -> Option<Value> {
-    match old {
-        "complexMissionItemNames" => Some(pattern_names(controller.get("complexMissionItems"))),
-        "globalAltitudeMode" => controller.get("globalAltitudeFrame").cloned(),
-        _ => None,
+const ITEMS: &str = "plan.missionController.visualItems.";
+
+fn renames(object_path: &str) -> &'static [(&'static str, &'static str)] {
+    let item = object_path.strip_prefix(ITEMS).is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()));
+    match () {
+        _ if object_path == MISSION => &[("complexMissionItemNames", "complexMissionItems"), ("globalAltitudeMode", "globalAltitudeFrame")],
+        _ if item => &[("altitudeMode", "altitudeFrame")],
+        _ => &[],
     }
 }
 
-const OLD_NAMES: &[(&str, &str)] = &[("complexMissionItemNames", "complexMissionItems"), ("globalAltitudeMode", "globalAltitudeFrame")];
+fn renamed_value(controller: &Value, old: &str, new: &str) -> Option<Value> {
+    match old {
+        "complexMissionItemNames" => Some(pattern_names(controller.get(new))),
+        _ => controller.get(new).cloned(),
+    }
+}
+
+fn split(path: &str) -> Option<(&str, &str)> {
+    path.rsplit_once('.')
+}
 
 pub fn read(backend: &dyn Backend, path: &str) -> Option<String> {
-    let old = path.strip_prefix(MISSION)?.strip_prefix('.')?;
-    let (_, new) = OLD_NAMES.iter().find(|(name, _)| *name == old)?;
-    let controller = object(&backend.get_fields(MISSION, new));
+    let (object_path, old) = split(path)?;
+    let (_, new) = renames(object_path).iter().find(|(name, _)| *name == old)?;
+    let controller = object(&backend.get_fields(object_path, new));
     if controller.get("kind").and_then(Value::as_str) != Some("object") {
         return Some(json!({ "kind": "null" }).to_string());
     }
-    Some(json!({ "kind": "value", "value": renamed_value(&controller, old).unwrap_or(Value::Null) }).to_string())
+    Some(json!({ "kind": "value", "value": renamed_value(&controller, old, new).unwrap_or(Value::Null) }).to_string())
 }
 
 pub fn patch(path: &str, raw: String) -> String {
-    if path != MISSION {
+    let table = renames(path);
+    if table.is_empty() {
         return raw;
     }
     let mut controller = object(&raw);
     if controller.get("kind").and_then(Value::as_str) != Some("object") {
         return raw;
     }
-    OLD_NAMES.iter().for_each(|(old, _)| {
+    table.iter().for_each(|(old, new)| {
         if controller.get(*old).is_none() {
-            if let Some(value) = renamed_value(&controller, old) {
+            if let Some(value) = renamed_value(&controller, old, new) {
                 controller[*old] = value;
             }
         }
@@ -52,18 +65,21 @@ pub fn patch(path: &str, raw: String) -> String {
 }
 
 pub fn fields(path: &str, fields: &str) -> Option<String> {
-    if path != MISSION {
-        return None;
-    }
+    let table = renames(path);
     let asked: Vec<&str> = fields.split(',').map(str::trim).collect();
-    if !asked.iter().any(|f| OLD_NAMES.iter().any(|(old, _)| old == f)) {
+    if !asked.iter().any(|f| table.iter().any(|(old, _)| old == f)) {
         return None;
     }
-    let mut widened: Vec<&str> = asked.iter().map(|f| OLD_NAMES.iter().find(|(old, _)| old == f).map_or(*f, |(_, new)| *new)).collect();
-    asked.iter().filter(|f| !OLD_NAMES.iter().any(|(old, _)| old == *f)).for_each(|f| widened.push(f));
+    let mut widened: Vec<&str> = asked.iter().map(|f| table.iter().find(|(old, _)| old == f).map_or(*f, |(_, new)| *new)).collect();
     widened.sort_unstable();
     widened.dedup();
     Some(widened.join(","))
+}
+
+pub fn write_path(path: &str) -> Option<String> {
+    let (object_path, old) = split(path)?;
+    let (_, new) = renames(object_path).iter().find(|(name, _)| *name == old)?;
+    (old != "complexMissionItemNames").then(|| format!("{object_path}.{new}"))
 }
 
 #[cfg(test)]
@@ -112,5 +128,26 @@ mod tests {
         assert_eq!(object(&core.get("plan.missionController.complexMissionItemNames"))["value"], json!(["Survey", "Corridor Scan"]), "PlanFiles.kt reads the full path");
         assert_eq!(object(&core.get(MISSION))["complexMissionItemNames"], json!(["Survey", "Corridor Scan"]), "Mission.swift reads the whole controller");
         assert_eq!(object(&core.get_fields(MISSION, "globalAltitudeMode"))["globalAltitudeMode"], 1);
+    }
+
+    #[test]
+    fn a_mission_item_read_or_written_by_its_pre_merge_altitude_name_reaches_altitude_frame() {
+        struct Item;
+        impl Backend for Item {
+            fn get(&self, _p: &str) -> String { self.get_fields("", "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "altitudeFrame": 2, "sequenceNumber": 3 }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let path = "plan.missionController.visualItems.4";
+        assert_eq!(object(&patch(path, Item.get(path)))["altitudeMode"], 2, "SimpleMissionItem has no altitudeMode since the upstream merge; the property is altitudeFrame, and Mission.swift reads the old name off the item object");
+        assert_eq!(object(&read(&Item, "plan.missionController.visualItems.4.altitudeMode").unwrap())["value"], 2);
+        assert_eq!(write_path("plan.missionController.visualItems.4.altitudeMode").as_deref(), Some("plan.missionController.visualItems.4.altitudeFrame"), "and writes the old name, which reached nothing");
+        assert_eq!(write_path("plan.missionController.globalAltitudeMode").as_deref(), Some("plan.missionController.globalAltitudeFrame"));
+        assert_eq!(write_path("plan.missionController.visualItems.x.altitudeMode"), None, "only an item by position is an item");
+        assert_eq!(write_path("plan.missionController.visualItems.4.altitude"), None);
+        assert_eq!(write_path("plan.missionController.complexMissionItemNames"), None, "a list of names has no write to rename");
+        assert_eq!(patch("plan.missionController.visualItems", r#"{"kind":"object"}"#.to_string()), r#"{"kind":"object"}"#);
     }
 }
