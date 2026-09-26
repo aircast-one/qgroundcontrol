@@ -132,6 +132,7 @@ pub mod router;
 pub mod rtcm;
 pub mod vibration;
 pub mod vehicles;
+pub mod vehicleselect;
 pub mod video;
 pub mod videosource;
 pub mod videostate;
