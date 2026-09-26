@@ -153,6 +153,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "sync": sync_json(offline, syncing),
         "status": status_text(name, dirty, offline, contains_items),
         "file": name,
+        // The whole path, so saving back to the file that was opened needs no raw currentPlanFile.
+        "filePath": (!file.is_empty()).then_some(file),
         "dirty": dirty,
         // PlanTab.kt and the map spike read plan.containsItems and plan.offline raw beside this view,
         // two reads that could land either side of a change the view had already answered for.
@@ -465,6 +467,7 @@ mod tests {
         assert_eq!(view["actions"]["exportKml"], true);
         assert_eq!(view["actions"]["open"], true);
         assert_eq!(view["file"], "ridge.plan", "the name is the last segment, so a head does not have to split a path it was given whole");
+        assert_eq!(view["filePath"], "/plans/ridge.plan", "saving back needs the whole path, which a head had been reading raw");
 
         let syncing = fake(
             json!({ "kind": "object", "syncInProgress": true, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/plans/ridge.plan" }),
@@ -675,6 +678,7 @@ mod tests {
         let view = plan_view(&Controller(true), &[]);
         assert_eq!(view["available"], true);
         assert_eq!((&view["containsItems"], &view["offline"], &view["sync"]["state"]), (&json!(true), &json!(true), &json!("offline")), "both come from the same plan read as sync and status");
+        assert_eq!(view["filePath"], Value::Null, "no file is null rather than an empty path to save over");
         assert_eq!(view["globalAltitudeFrame"], 1, "the head read globalAltitudeMode, which upstream renamed, so its read had been null since the merge");
         assert_eq!(
             view["patterns"],
