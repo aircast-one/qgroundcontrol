@@ -99,6 +99,7 @@ const UNIT_SYSTEM: &str = "settings.unitsSettings.setUnitSystem";
 const CONSOLE_COMMAND: &str = "mavlinkConsole.sendCommand";
 const BREACH_ALTITUDE: &str = "plan.geoFenceController.breachReturnAltitude";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
+const CURRENT_CAMERA: &str = "vehicle.cameraManager.currentCamera";
 const COMMAND_CATEGORIES: &str = "missionCommandTree.categoriesForVehicle";
 const CATEGORY_COMMANDS: &str = "missionCommandTree.getCommandsForCategory";
 const PARAMETER_NAMES: &str = "vehicle.parameterManager.parameterNames";
@@ -121,7 +122,7 @@ pub fn owns(path: &str) -> bool {
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
-pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
+pub const OWNED_WRITES: &[&str] = &[ZOOM, CURRENT_CAMERA, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
 
 pub fn owns_write(path: &str) -> bool {
     OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path)
@@ -130,6 +131,7 @@ pub fn owns_write(path: &str) -> bool {
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     match path {
         ZOOM => zoom(backend, value),
+        CURRENT_CAMERA => crate::cameratrack::select_camera(backend, path, value),
         TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
         BREACH_ALTITUDE => crate::factwrite::write(backend, path, value),
         INSPECTOR_SELECTED => crate::inspector::write_selected(backend, value),

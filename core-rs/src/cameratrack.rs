@@ -135,6 +135,29 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     })
 }
 
+// QGCCameraManager::setCurrentCamera ignores an index outside its list and keeps the camera it had,
+// while the bridge answered the property write ok - so a switcher tapped on a list that had shrunk
+// under it said the camera changed and it had not. The index is checked against the labels the
+// switcher was drawn from, and read back.
+pub fn select_camera(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    let Some(index) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()).filter(|v| v.fract() == 0.0).map(|v| v as i64) else {
+        return refused("malformed", "A camera is chosen by its position in the list.".to_string());
+    };
+    let manager = object(&backend.get_fields("vehicle.cameraManager", "cameraLabels,currentCamera"));
+    let count = manager.get("cameraLabels").and_then(Value::as_array).map_or(0, Vec::len) as i64;
+    if count == 0 {
+        return refused("noCamera", "This vehicle reports no camera to switch to.".to_string());
+    }
+    if !(0..count).contains(&index) {
+        return refused("noSuchCamera", format!("The cameras are numbered 0 to {}.", count - 1));
+    }
+    let answered = flag(&object(&backend.set(path, &json!({ "value": index }).to_string())), "ok");
+    let held = crate::read::integer(&object(&backend.get_fields("vehicle.cameraManager", "currentCamera")), "currentCamera");
+    let took = answered && held == Some(index);
+    json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The camera manager kept the camera it had.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +229,32 @@ mod tests {
         assert_eq!(stop(&plain, "vehicle.cameraManager.currentCameraInstance.stopTracking")["refusal"], "unsupported", "stopTracking sends MAV_CMD_CAMERA_STOP_TRACKING to a camera that never tracked");
         assert_eq!(plain.1.borrow().len(), 1);
         assert_eq!(stop(&Cam(json!({ "kind": "null" }), RefCell::new(Vec::new())), "x")["refusal"], "noCamera");
+    }
+
+    #[test]
+    fn a_camera_is_switched_only_to_one_the_list_has() {
+        use std::cell::RefCell;
+        struct Manager(RefCell<i64>, bool);
+        impl Backend for Manager {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "cameraLabels": ["Sony ILCE-7", "Thermal"], "currentCamera": *self.0.borrow() }).to_string()
+            }
+            fn set(&self, _p: &str, v: &str) -> String {
+                if self.1 {
+                    *self.0.borrow_mut() = object(v)["value"].as_i64().unwrap();
+                }
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let path = "vehicle.cameraManager.currentCamera";
+        assert!(crate::actions::owns_write(path));
+        let manager = Manager(RefCell::new(0), true);
+        assert_eq!(select_camera(&manager, path, r#"{"value":1}"#)["ok"], true);
+        assert_eq!(select_camera(&manager, path, r#"{"value":2}"#)["refusal"], "noSuchCamera", "setCurrentCamera keeps the camera it had while the bridge answers ok");
+        assert_eq!(select_camera(&manager, path, r#"{"value":0.5}"#)["refusal"], "malformed");
+        assert_eq!(select_camera(&Manager(RefCell::new(0), false), path, r#"{"value":1}"#)["ok"], false, "the index is read back");
     }
 }
