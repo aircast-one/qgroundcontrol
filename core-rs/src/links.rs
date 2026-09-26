@@ -138,7 +138,7 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
-fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
+pub(crate) fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
     object(&backend.get_fields("links", "serialBaudRates")).get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).collect()).unwrap_or_default()
 }
 
@@ -167,16 +167,40 @@ pub fn support_host_view(_backend: &dyn Backend, args: &[String]) -> Value {
     json!({ "kind": "object", "class": "SupportHost", "valid": error.is_none(), "error": error.unwrap_or("") })
 }
 
+pub(crate) fn link_type_ids(backend: &dyn Backend) -> Vec<String> {
+    object(&backend.get_fields("links", "linkTypeIds"))
+        .get("linkTypeIds")
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+pub(crate) fn form_error(kind: &str, host: &str, ok: Option<i64>, known: &[String]) -> Option<(&'static str, &'static str)> {
+    let unknown_type = !known.is_empty() && !known.iter().any(|k| k == kind);
+    match (ok, kind == "serial", kind, host.trim().is_empty()) {
+        _ if unknown_type => Some(("type", "Choose one of the link types this build offers.")),
+        (None, true, _, _) => Some(("port", "Choose one of the rates the radio offers.")),
+        (None, false, _, _) => Some(("port", "Port must be a number between 1 and 65535.")),
+        (Some(_), true, _, true) => Some(("host", "A serial link needs the device to open.")),
+        (Some(_), _, "tcp", true) => Some(("host", "A TCP link needs the address of the device to call.")),
+        _ => None,
+    }
+}
+
+pub(crate) fn port_ok(kind: &str, port: Option<i64>, rates: &[i64]) -> Option<i64> {
+    match kind == "serial" {
+        true => port.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))),
+        false => port.filter(|p| (1..=65535).contains(p)),
+    }
+}
+
 pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
     let (kind, host, port) = (arg(0).to_lowercase(), arg(1), arg(2));
     let serial = kind == "serial";
     let rates = serial_baud_rates(backend);
     let number = port.parse::<i64>().ok();
-    let ok = match serial {
-        true => number.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))),
-        false => number.filter(|p| (1..=65535).contains(p)),
-    };
+    let ok = port_ok(&kind, number, &rates);
     // One flag for two fields left a head no way to tell which one it was about, so a field gated
     // on valid refuses whichever field the operator happens to be editing: an empty TCP host made
     // every port entry fail with a sentence about the host, and an absent port made the host
@@ -190,20 +214,7 @@ pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     // from, so the form cannot accept a type the manager could not construct. An empty list
     // refuses nothing - a bridge that cannot answer must not become a validator rejecting every
     // type.
-    let known: Vec<String> = object(&backend.get_fields("links", "linkTypeIds"))
-        .get("linkTypeIds")
-        .and_then(Value::as_array)
-        .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_string).collect())
-        .unwrap_or_default();
-    let unknown_type = !known.is_empty() && !known.contains(&kind);
-    let error: Option<(&str, &str)> = match (ok, serial, kind.as_str(), host.trim().is_empty()) {
-        _ if unknown_type => Some(("type", "Choose one of the link types this build offers.")),
-        (None, true, _, _) => Some(("port", "Choose one of the rates the radio offers.")),
-        (None, false, _, _) => Some(("port", "Port must be a number between 1 and 65535.")),
-        (Some(_), true, _, true) => Some(("host", "A serial link needs the device to open.")),
-        (Some(_), _, "tcp", true) => Some(("host", "A TCP link needs the address of the device to call.")),
-        _ => None,
-    };
+    let error = form_error(&kind, &host, ok, &link_type_ids(backend));
     let name = match (serial, host.trim().is_empty()) {
         (true, _) => format!("{} {}", host.trim(), port).trim().to_string(),
         (false, true) => format!("{} {port}", kind.to_uppercase()),

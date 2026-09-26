@@ -84,6 +84,49 @@ pub fn support_forwarding(backend: &dyn Backend, action: Forwarding, path: &str)
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Create {
+    AndConnect,
+    Serial,
+}
+
+fn names(links: Option<&[Value]>) -> Vec<String> {
+    links.unwrap_or_default().iter().filter_map(|e| e.get("name")?.as_str().map(str::to_string)).collect()
+}
+
+fn create_refusal(name: &str, taken: &[String], form: Option<(&'static str, &'static str)>) -> Option<(&'static str, String)> {
+    match () {
+        _ if name.trim().is_empty() => Some(("name", "A link needs a name.".to_string())),
+        _ if taken.iter().any(|t| t == name) => Some(("name", format!("A link called {name} already exists."))),
+        _ => form.map(|(field, sentence)| (field, sentence.to_string())),
+    }
+}
+
+pub fn create(backend: &dyn Backend, how: Create, path: &str, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let text = |i: usize| given.get(i).and_then(Value::as_str).unwrap_or("").to_string();
+    let whole = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.fract() == 0.0).map(|v| v as i64);
+    let (kind, name, host, port, forwarded) = match how {
+        Create::AndConnect => (text(0).to_lowercase(), text(1), text(2), whole(3), json!([text(0), text(1), text(2), whole(3)])),
+        Create::Serial => ("serial".to_string(), text(0), text(1), whole(2), json!([text(0), text(1), whole(2)])),
+    };
+    let rates = crate::links::serial_baud_rates(backend);
+    let form = crate::links::form_error(&kind, &host, crate::links::port_ok(&kind, port, &rates), &crate::links::link_type_ids(backend));
+    if let Some((field, reason)) = create_refusal(&name, &names(configurations(backend).as_deref()), form) {
+        return json!({ "ok": false, "result": false, "refusal": "invalid", "errorField": field, "reason": reason });
+    }
+    let answered = object(&backend.invoke(path, &forwarded.to_string()));
+    let made = flag(&answered, "ok") && flag(&answered, "result");
+    json!({
+        "ok": made,
+        "result": made,
+        "refusal": Value::Null,
+        "errorField": Value::Null,
+        "name": name,
+        "reason": match made { true => Value::Null, false => json!("The link manager did not create the link.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,5 +168,36 @@ mod tests {
         assert_eq!(*manager.1.borrow(), 1);
         assert_eq!(connect(&manager, path, r#"["@links.linkConfigurations.7"]"#)["refusal"], "noSuchLink", "a stale position reaches Qt as a null config");
         assert_eq!(connect(&manager, path, "[]")["refusal"], "malformed");
+    }
+
+    #[test]
+    fn a_new_link_is_refused_with_the_field_to_fix_before_the_manager_says_false() {
+        let taken = vec!["SITL".to_string()];
+        assert_eq!(create_refusal("Radio", &taken, None), None);
+        assert_eq!(create_refusal("SITL", &taken, None).map(|r| r.0), Some("name"), "createAndConnectLink and createSerialConfiguration answer a name in use with false and a log line, so the form could not say which field to change");
+        assert_eq!(create_refusal("  ", &taken, None).map(|r| r.0), Some("name"));
+        assert_eq!(create_refusal("Radio", &taken, Some(("port", "Port must be a number between 1 and 65535."))).map(|r| r.0), Some("port"));
+
+        use std::cell::RefCell;
+        struct Manager(RefCell<Vec<String>>);
+        impl Backend for Manager {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "object", "elements": [{ "name": "SITL" }] }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "linkTypeIds": ["udp", "tcp", "serial"], "serialBaudRates": ["57600", "115200"] }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, a: &str) -> String {
+                self.0.borrow_mut().push(a.to_string());
+                json!({ "ok": true, "result": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let manager = Manager(RefCell::new(Vec::new()));
+        let tcp = create(&manager, Create::AndConnect, "links.createAndConnectLink", r#"["TCP", "Bench", "", 5760]"#);
+        assert_eq!((&tcp["refusal"], &tcp["errorField"]), (&json!("invalid"), &json!("host")), "a TCP link with no address is the form's own rule, answered before the manager is asked");
+        assert_eq!(create(&manager, Create::AndConnect, "links.createAndConnectLink", r#"["UDP", "Bench", "", 70000]"#)["errorField"], "port");
+        assert_eq!(create(&manager, Create::Serial, "links.createSerialConfiguration", r#"["Radio", "ttyUSB0", 9600]"#)["errorField"], "port", "a rate the radio does not offer");
+        assert!(manager.0.borrow().is_empty());
+        let made = create(&manager, Create::Serial, "links.createSerialConfiguration", r#"["Radio", "ttyUSB0", 57600]"#);
+        assert_eq!((&made["ok"], &made["result"]), (&json!(true), &json!(true)), "the head reads result, so the claimed path keeps it");
+        assert_eq!(manager.0.borrow().as_slice(), &[r#"["Radio","ttyUSB0",57600]"#.to_string()]);
     }
 }
