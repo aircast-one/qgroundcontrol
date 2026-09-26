@@ -129,6 +129,29 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+fn reboot_refusal(state: &str) -> Option<(&'static str, &'static str)> {
+    match state {
+        "disarmed" => None,
+        "notConnected" => Some(("noVehicle", "No vehicle is connected.")),
+        "contactLost" => Some(("contactLost", "The vehicle has stopped answering, so it is not known to be on the ground. Restore the link before rebooting.")),
+        "flying" | "landing" => Some(("flying", "The vehicle is in the air. Land and disarm before rebooting.")),
+        _ => Some(("armed", "The vehicle is armed. Disarm it before rebooting.")),
+    }
+}
+
+pub fn reboot(backend: &dyn Backend, path: &str) -> Value {
+    let view = fly_state_view(backend, &[]);
+    if let Some((token, reason)) = reboot_refusal(view["state"].as_str().unwrap_or("notConnected")) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not asked to reboot.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,5 +311,16 @@ mod tests {
         assert_eq!(unwatched["contactLost"], Value::Null, "_commLostCheck returns early when the watch is disabled, so communicationLost never updates and false means nobody is looking - this view served it raw and called an unmonitored link healthy, in five places on one head");
         assert_eq!(unwatched["state"].as_str(), Some("disarmed"), "and unknown is not evidence of a loss, so the state it drives is the one the vehicle actually reports");
         assert_eq!(unwatched["staleNotice"], "", "nor does an unknown link earn a stale notice");
+    }
+
+    #[test]
+    fn a_reboot_goes_only_to_a_vehicle_known_to_be_disarmed_on_the_ground() {
+        assert_eq!(reboot_refusal("disarmed"), None);
+        STATES.iter().filter(|s| **s != State::Disarmed).for_each(|state| {
+            assert!(reboot_refusal(state.token()).is_some(), "rebootVehicle sends MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN with no check, and {} is a state where that drops an aircraft or reaches nobody", state.token());
+        });
+        assert_eq!(reboot_refusal("contactLost").map(|(t, _)| t), Some("contactLost"), "a vehicle that stopped answering is not known to be on the ground");
+        assert_eq!(reboot_refusal("landing").map(|(t, _)| t), Some("flying"));
+        assert_eq!(reboot_refusal("somethingNew").map(|(t, _)| t), Some("armed"), "a state this list has not met is refused, not waved through");
     }
 }
