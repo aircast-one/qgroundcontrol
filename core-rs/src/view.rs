@@ -437,6 +437,7 @@ mod deps_cover_reads {
             ("modeslots", include_str!("modeslots.rs")),
             ("obstacle", include_str!("obstacle.rs")),
             ("operatorcontrol", include_str!("operatorcontrol.rs")),
+            ("operatorrequest", include_str!("operatorrequest.rs")),
             ("orbit", include_str!("orbit.rs")),
             ("packetradio", include_str!("packetradio.rs")),
             ("params", include_str!("params.rs")),
