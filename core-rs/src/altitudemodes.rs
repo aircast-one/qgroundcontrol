@@ -89,18 +89,22 @@ pub fn modes(inputs: &Inputs) -> Vec<Value> {
         .collect()
 }
 
-pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
+pub(crate) fn read_inputs(backend: &dyn Backend, mission_context: bool, current: i64) -> Inputs {
     let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
     let vehicle = object(&backend.get_fields("vehicle.supports", "terrainFrame"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
     let options = object(&backend.get_fields("corePlugin.options", "showMissionAbsoluteAltitude"));
-    let inputs = Inputs {
-        mission: args.first().map(|a| a != "item").unwrap_or(true),
-        current: args.get(1).and_then(|a| a.trim().parse().ok()).unwrap_or(-1),
+    Inputs {
+        mission: mission_context,
+        current,
         holds_altitude_above_terrain: flag(&vehicles, "activeVehicleAvailable") && flag(&vehicle, "terrainFrame"),
         has_items: flag(&mission, "containsItems"),
         show_absolute: options.get("showMissionAbsoluteAltitude").and_then(Value::as_bool).unwrap_or(true),
-    };
+    }
+}
+
+pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
+    let inputs = read_inputs(backend, args.first().map(|a| a != "item").unwrap_or(true), args.get(1).and_then(|a| a.trim().parse().ok()).unwrap_or(-1));
     json!({
         "kind": "object",
         "class": "AltitudeModes",

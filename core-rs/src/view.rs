@@ -366,6 +366,7 @@ mod deps_cover_reads {
             ("actions", include_str!("actions.rs")),
             ("adsb", include_str!("adsb.rs")),
             ("altitude", include_str!("altitude.rs")),
+            ("altitudeedit", include_str!("altitudeedit.rs")),
             ("altitudemodes", include_str!("altitudemodes.rs")),
             ("apmmeta", include_str!("apmmeta.rs")),
             ("autoconnect", include_str!("autoconnect.rs")),

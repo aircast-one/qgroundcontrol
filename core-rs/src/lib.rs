@@ -4,6 +4,7 @@ mod abi;
 pub mod actions;
 pub mod adsb;
 pub mod altitude;
+pub mod altitudeedit;
 pub mod altitudemodes;
 pub mod autoconnect;
 pub mod apmmeta;
