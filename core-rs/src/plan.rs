@@ -186,6 +186,71 @@ fn status_text(name: Option<&str>, dirty: bool, offline: bool, has_items: bool) 
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlanAction {
+    Send,
+    Download,
+    SaveCurrent,
+    SaveFile,
+    SaveKml,
+}
+
+fn folder_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
+    let Some(path) = path.filter(|p| !p.trim().is_empty()) else {
+        return Some(("noFile", "Choose a file to save to.".to_string()));
+    };
+    match std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty()) {
+        Some(folder) if !folder.is_dir() => Some(("folderMissing", format!("{} is not a folder that exists.", folder.display()))),
+        _ => None,
+    }
+}
+
+fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<(&'static str, String)> {
+    let text = |v: &Value| v.as_str().unwrap_or("").to_string();
+    let allowed = |name: &str| view["actions"][name].as_bool() == Some(true);
+    let sync_refusal = || (view["sync"]["state"] != "ready").then(|| (if view["sync"]["state"] == "offline" { "offline" } else { "busy" }, text(&view["sync"]["refusal"])));
+    let not_ready = || (view["readiness"]["ready"] != true).then(|| ("notReady", text(&view["readiness"]["reason"])));
+    match action {
+        PlanAction::Download => sync_refusal(),
+        PlanAction::Send => sync_refusal().or_else(not_ready).or_else(|| match view["upload"]["state"].as_i64() {
+            Some(0 | 2 | 3) => None,
+            _ => Some(("cannotUpload", text(&view["upload"]["refusal"]))),
+        }),
+        PlanAction::SaveCurrent | PlanAction::SaveFile => not_ready()
+            .or_else(|| (!allowed("save")).then(|| ("nothingToSave", "There is nothing in this plan to save, or a sync is running.".to_string())))
+            .or_else(|| match action {
+                PlanAction::SaveCurrent => view["file"].is_null().then(|| ("noFile", "This plan has not been saved to a file yet.".to_string())),
+                _ => folder_refusal(path),
+            }),
+        PlanAction::SaveKml => (!allowed("exportKml"))
+            .then(|| ("nothingToExport", "There are no mission items to export, or a sync is running.".to_string()))
+            .or_else(|| folder_refusal(path)),
+    }
+}
+
+pub fn plan_action(backend: &dyn Backend, action: PlanAction, path: &str, args: &str) -> Value {
+    let file = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string));
+    let returns = matches!(action, PlanAction::SaveCurrent | PlanAction::SaveFile);
+    if let Some((token, reason)) = plan_refusal(action, &plan_view(backend, &[]), file.as_deref()) {
+        return json!({ "ok": false, "result": returns.then_some(false), "refusal": token, "reason": reason });
+    }
+    let forwarded = match (action, &file) {
+        (PlanAction::SaveFile | PlanAction::SaveKml, Some(file)) => json!([file]).to_string(),
+        _ => "[]".to_string(),
+    };
+    let answer = object(&backend.invoke(path, &forwarded));
+    let done = match returns {
+        true => flag(&answer, "result"),
+        false => flag(&answer, "ok"),
+    };
+    json!({
+        "ok": done,
+        "result": returns.then_some(done),
+        "refusal": Value::Null,
+        "reason": match done { true => Value::Null, false => json!("The plan controller did not carry it out.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -479,5 +544,36 @@ mod tests {
 
         let unchecked = upload_json(None);
         assert_eq!(unchecked["heading"], "This plan cannot be uploaded", "an unknown state is a refusal, not a green light");
+    }
+
+    #[test]
+    fn a_plan_is_not_sent_or_saved_while_the_view_says_it_cannot_be() {
+        let view = |sync: &str, ready: bool, upload: i64, file: Value| json!({
+            "sync": { "state": sync, "refusal": if sync == "ready" { Value::Null } else { json!("No vehicle is connected.") } },
+            "readiness": { "ready": ready, "reason": if ready { Value::Null } else { json!("Waiting for terrain heights before the plan can be saved or sent.") } },
+            "upload": { "state": upload, "refusal": if upload == 0 { Value::Null } else { json!("No vehicle is connected, so there is nowhere to send this plan.") } },
+            "actions": { "save": true, "exportKml": true },
+            "file": file,
+        });
+        let token = |action, v: &Value, path: Option<&str>| plan_refusal(action, v, path).map(|(t, _)| t);
+        let good = view("ready", true, 0, json!("ridge.plan"));
+        assert_eq!(token(PlanAction::Send, &good, None), None);
+        assert_eq!(
+            plan_refusal(PlanAction::Send, &view("ready", false, 0, Value::Null), None),
+            Some(("notReady", "Waiting for terrain heights before the plan can be saved or sent.".to_string())),
+            "PlanMasterController::sendToVehicle checks offline and syncing only, so a plan with its terrain heights still pending went up"
+        );
+        assert_eq!(token(PlanAction::Send, &view("ready", true, 2, Value::Null), None), None, "a firmware mismatch is a warning the head has already put to the operator before it sends");
+        assert_eq!(token(PlanAction::Send, &view("ready", true, 3, Value::Null), None), None, "and the head pauses first for a mission in flight, after which the pre-check can still read 3 for a moment");
+        assert_eq!(token(PlanAction::Send, &view("ready", true, 1, Value::Null), None), Some("cannotUpload"));
+        assert_eq!(token(PlanAction::Send, &view("busy", true, 0, Value::Null), None), Some("busy"));
+        assert_eq!(token(PlanAction::Download, &view("offline", true, 0, Value::Null), None), Some("offline"));
+        assert_eq!(token(PlanAction::SaveCurrent, &view("ready", true, 0, Value::Null), None), Some("noFile"));
+        assert_eq!(token(PlanAction::SaveCurrent, &good, None), None);
+        assert_eq!(token(PlanAction::SaveFile, &good, Some("/no/such/folder/ridge.plan")), Some("folderMissing"));
+        let here = std::env::temp_dir().join("ridge.plan");
+        assert_eq!(token(PlanAction::SaveFile, &good, here.to_str()), None);
+        assert_eq!(token(PlanAction::SaveKml, &good, Some("")), Some("noFile"));
+        assert_eq!(token(PlanAction::SaveFile, &view("ready", false, 0, Value::Null), here.to_str()), Some("notReady"));
     }
 }
