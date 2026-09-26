@@ -55,6 +55,61 @@ pub fn commands(backend: &dyn Backend, path: &str, args: &str) -> Value {
     listed(backend, path, json!([format!("@{PLAN_VEHICLE}"), category, fly_through]), "commands")
 }
 
+// SimpleMissionItem::setCommand takes any integer, so a command written to an item was stored whether
+// or not the vehicle it is planned for flies it - and one it does not fly is dropped by the autopilot
+// on upload, or rejected there, far from the edit that caused it. The core accepts only a command the
+// plan's own command tree lists, the list the picker was drawn from, and only on an item that has a
+// command to change (the planned home and the complex items have none).
+const ITEM_COMMANDS: &str = "plan.missionController.visualItems.";
+
+pub fn command_target(path: &str) -> Option<usize> {
+    path.strip_prefix(ITEM_COMMANDS)?.strip_suffix(".command")?.parse().ok()
+}
+
+fn offered_commands(backend: &dyn Backend) -> Option<Vec<i64>> {
+    let at = json!([format!("@{PLAN_VEHICLE}")]).to_string();
+    let categories = object(&backend.invoke("missionCommandTree.categoriesForVehicle", &at)).get("result")?.as_array()?.iter().filter_map(|c| c.as_str().map(str::to_string)).collect::<Vec<_>>();
+    let mut commands: Vec<i64> = categories
+        .iter()
+        .filter_map(|category| {
+            let asked = json!([format!("@{PLAN_VEHICLE}"), category, true]).to_string();
+            object(&backend.invoke("missionCommandTree.getCommandsForCategory", &asked)).get("result").and_then(Value::as_array).cloned()
+        })
+        .flatten()
+        .filter_map(|c| c.get("command").and_then(Value::as_i64))
+        .collect();
+    commands.sort_unstable();
+    commands.dedup();
+    (!commands.is_empty()).then_some(commands)
+}
+
+pub fn write_command(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    let Some(index) = command_target(path) else {
+        return refused("malformed", "Name the item as plan.missionController.visualItems.<index>.command.".to_string());
+    };
+    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+        return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
+    }
+    let item = object(&backend.get_fields(&format!("{ITEM_COMMANDS}{index}"), "command"));
+    if item.get("command").and_then(Value::as_i64).is_none() {
+        return refused("noCommand", format!("Item {index} has no command to change."));
+    }
+    let Some(asked) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64()) else {
+        return refused("malformed", "A command is its MAV_CMD number.".to_string());
+    };
+    if !plan_vehicle_ready(backend) {
+        return refused("noPlan", "There is no plan to change a command in.".to_string());
+    }
+    match offered_commands(backend) {
+        None => return refused("unanswered", "The command tree did not list this vehicle's commands.".to_string()),
+        Some(offered) if !offered.contains(&asked) => return refused("notOffered", format!("Command {asked} is not one this vehicle flies in a mission.")),
+        Some(_) => {}
+    }
+    let answered = flag(&object(&backend.set(path, &json!({ "value": asked }).to_string())), "ok");
+    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The item did not take the command.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +157,46 @@ mod tests {
         let none = Tree { plan: false, calls: RefCell::new(Vec::new()) };
         assert_eq!(categories(&none, "missionCommandTree.categoriesForVehicle")["refusal"], "noPlan");
         assert!(none.calls.borrow().is_empty(), "nothing reaches a command tree that would dereference a vehicle it was not given");
+    }
+
+    struct Plan(RefCell<Vec<String>>);
+    impl Backend for Plan {
+        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            match p {
+                "plan" => json!({ "kind": "object", "syncInProgress": false }),
+                "plan.controllerVehicle" => json!({ "kind": "object", "firmwareTypeString": "PX4 Pro" }),
+                "plan.missionController.visualItems.0" => json!({ "kind": "object" }),
+                "plan.missionController.visualItems.2" => json!({ "kind": "object", "command": 16 }),
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
+        fn set(&self, p: &str, _v: &str) -> String {
+            self.0.borrow_mut().push(p.to_string());
+            json!({ "ok": true }).to_string()
+        }
+        fn invoke(&self, p: &str, a: &str) -> String {
+            match p {
+                "missionCommandTree.categoriesForVehicle" => json!({ "ok": true, "result": ["Basic", "Loiter"] }),
+                _ if a.contains("Basic") => json!({ "ok": true, "result": [{ "command": 16 }, { "command": 21 }] }),
+                _ => json!({ "ok": true, "result": [{ "command": 19 }] }),
+            }
+            .to_string()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn an_item_takes_only_a_command_its_vehicle_flies() {
+        let plan = Plan(RefCell::new(Vec::new()));
+        let path = "plan.missionController.visualItems.2.command";
+        assert!(crate::actions::owns_write(path));
+        assert_eq!(command_target(path), Some(2));
+        assert_eq!(write_command(&plan, path, r#"{"value":19}"#)["ok"], true, "loiter time is listed under a second category");
+        assert_eq!(write_command(&plan, path, r#"{"value":31000}"#)["refusal"], "notOffered", "SimpleMissionItem::setCommand stores any integer");
+        assert_eq!(write_command(&plan, "plan.missionController.visualItems.0.command", r#"{"value":16}"#)["refusal"], "noCommand", "the planned home has no command");
+        assert_eq!(write_command(&plan, path, r#"{"value":"16"}"#)["refusal"], "malformed");
+        assert_eq!(plan.0.borrow().as_slice(), &[path.to_string()]);
     }
 }
