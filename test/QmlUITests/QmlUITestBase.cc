@@ -137,9 +137,6 @@ void QmlUITestBase::startUI()
     _window->resize(1600, 1000);
     QVERIFY(QTest::qWaitForWindowExposed(_window));
 
-    _viewDelay = (qApp->platformName() != QLatin1String("offscreen")) ? 700 : 0;
-    _pageDelay = (qApp->platformName() != QLatin1String("offscreen")) ? 400 : 0;
-
     _rootItem = _window->contentItem();
 }
 

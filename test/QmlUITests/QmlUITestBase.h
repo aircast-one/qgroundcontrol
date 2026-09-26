@@ -212,8 +212,6 @@ protected:
     QQmlApplicationEngine *_engine   = nullptr;
     QQuickWindow          *_window   = nullptr;
     QQuickItem            *_rootItem = nullptr;
-    int _viewDelay = 0;  ///< ms to pause between view switches when onscreen
-    int _pageDelay = 0;  ///< ms to pause between page switches when onscreen
 
 private:
     /// Shared implementation for the verify* helpers: find the visible item,
