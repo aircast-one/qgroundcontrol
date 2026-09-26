@@ -60,9 +60,14 @@ const PLAN_OPEN: &str = "plan.loadFromFile";
 const PLAN_CLEAR: &str = "plan.removeAll";
 const RALLY_ADD: &str = "plan.rallyPointController.addPoint";
 const RALLY_REMOVE: &str = "plan.rallyPointController.removePoint";
+const FENCE_ADD_POLYGON: &str = "plan.geoFenceController.addInclusionPolygon";
+const FENCE_ADD_CIRCLE: &str = "plan.geoFenceController.addInclusionCircle";
+const FENCE_DELETE_POLYGON: &str = "plan.geoFenceController.deletePolygon";
+const FENCE_DELETE_CIRCLE: &str = "plan.geoFenceController.deleteCircle";
+const BREACH_RETURN: &str = "plan.geoFenceController.breachReturnPoint";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -71,7 +76,7 @@ pub fn owns(path: &str) -> bool {
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
-pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE];
+pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN];
 
 pub fn owns_write(path: &str) -> bool {
     OWNED_WRITES.contains(&path)
@@ -81,6 +86,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     match path {
         ZOOM => zoom(backend, value),
         TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
+        BREACH_RETURN => crate::fenceedit::write_breach_return(backend, path, value),
         GEOTAG_LOG => crate::geotagjob::write(backend, crate::geotagjob::Field::LogFile, path, value),
         GEOTAG_IMAGES => crate::geotagjob::write(backend, crate::geotagjob::Field::ImageDirectory, path, value),
         GEOTAG_SAVE => crate::geotagjob::write(backend, crate::geotagjob::Field::SaveDirectory, path, value),
@@ -143,6 +149,10 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
+        FENCE_ADD_POLYGON => crate::fenceedit::add(backend, crate::fenceedit::Shape::Polygon, path, args),
+        FENCE_ADD_CIRCLE => crate::fenceedit::add(backend, crate::fenceedit::Shape::Circle, path, args),
+        FENCE_DELETE_POLYGON => crate::fenceedit::delete(backend, crate::fenceedit::Shape::Polygon, path, args),
+        FENCE_DELETE_CIRCLE => crate::fenceedit::delete(backend, crate::fenceedit::Shape::Circle, path, args),
         RALLY_ADD => crate::rallyedit::add_point(backend, path, args),
         RALLY_REMOVE => crate::rallyedit::remove_point(backend, path, args),
         PLAN_OPEN => crate::plan::plan_action(backend, crate::plan::PlanAction::Open, path, args),
