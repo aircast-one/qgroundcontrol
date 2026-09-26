@@ -90,6 +90,39 @@ pub enum Create {
     Serial,
 }
 
+// LinkManager::saveLinkConfigurationList rewrites the stored list from whatever is in memory and
+// returns void, so a commit reported ok whatever it wrote. A nameless link or two links sharing a
+// name persist fine and come back after a restart as rows nobody can tell apart; those are refused
+// here, before anything is written, and the answer says how many links were stored.
+fn commit_refusal(stored: &[String]) -> Option<(&'static str, String)> {
+    if stored.iter().any(|n| n.trim().is_empty()) {
+        return Some(("unnamed", "A saved link has no name; name it before saving.".to_string()));
+    }
+    let twice = stored.iter().enumerate().find(|(i, n)| stored[..*i].contains(n)).map(|(_, n)| n.clone());
+    twice.map(|n| ("duplicateName", format!("Two saved links are called {n}; rename one before saving.")))
+}
+
+pub fn commit(backend: &dyn Backend, path: &str) -> Value {
+    let Some(links) = configurations(backend) else {
+        return json!({ "ok": false, "refusal": "unavailable", "reason": "The link list is not available." });
+    };
+    let stored: Vec<String> = links
+        .iter()
+        .filter(|e| e.get("dynamic").and_then(Value::as_bool) != Some(true))
+        .map(|e| e.get("name").and_then(Value::as_str).unwrap_or_default().to_string())
+        .collect();
+    if let Some((token, reason)) = commit_refusal(&stored) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "saved": if dispatched { json!(stored.len()) } else { Value::Null },
+        "reason": match dispatched { true => Value::Null, false => json!("The link list was not saved.") },
+    })
+}
+
 fn names(links: Option<&[Value]>) -> Vec<String> {
     links.unwrap_or_default().iter().filter_map(|e| e.get("name")?.as_str().map(str::to_string)).collect()
 }
@@ -336,5 +369,35 @@ mod tests {
         assert_eq!(disconnect_refusal(None, &[]).map(|r| r.0), Some("noSuchLink"));
         assert_eq!(disconnect_target("links.linkConfigurations.3.link.disconnect"), Some(3));
         assert_eq!(disconnect_target("links.linkConfigurations.3.port"), None);
+    }
+
+    #[test]
+    fn a_commit_that_would_store_links_nobody_can_tell_apart_is_refused() {
+        use std::cell::RefCell;
+        let named = |list: &[&str]| list.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        assert_eq!(commit_refusal(&named(&["UDP 14550", "Serial ttyUSB0"])), None);
+        assert_eq!(commit_refusal(&named(&["UDP 14550", " "])).map(|r| r.0), Some("unnamed"));
+        assert_eq!(commit_refusal(&named(&["Radio", "UDP", "Radio"])).map(|r| r.1), Some("Two saved links are called Radio; rename one before saving.".to_string()));
+        assert_eq!(commit_refusal(&[]), None, "an empty list is a valid thing to store");
+
+        struct Links(Value, RefCell<usize>);
+        impl Backend for Links {
+            fn get(&self, _p: &str) -> String { self.0.to_string() }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                *self.1.borrow_mut() += 1;
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let links = Links(json!({ "kind": "object", "elements": [
+            { "name": "Radio", "dynamic": false },
+            { "name": "Radio", "dynamic": true },
+            { "name": "UDP", "dynamic": false },
+        ] }), RefCell::new(0));
+        let saved = commit(&links, "links.commitLinkConfigurations");
+        assert_eq!((&saved["ok"], &saved["saved"]), (&json!(true), &json!(2)), "a dynamic link is never stored, so it cannot clash with a stored one");
+        assert_eq!(commit(&Links(json!({ "kind": "null" }), RefCell::new(0)), "links.commitLinkConfigurations")["refusal"], "unavailable");
     }
 }
