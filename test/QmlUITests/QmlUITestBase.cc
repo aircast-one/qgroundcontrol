@@ -109,6 +109,8 @@ void QmlUITestBase::startUI()
                      QRegularExpression(QStringLiteral("QRhiGles2")));
     ignoreLogMessage("default", QtInfoMsg,
                      QRegularExpression(QStringLiteral("Object or context destroyed during incubation")));
+    ignoreLogMessage("default", QtInfoMsg,
+                     QRegularExpression(QStringLiteral("QML Component: Cannot create delegate")));
     ignoreLogMessage("default", QtWarningMsg,
                      QRegularExpression(QStringLiteral("in the process of being created at engine destruction")));
 
