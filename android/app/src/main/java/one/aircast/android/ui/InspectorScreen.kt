@@ -94,10 +94,18 @@ internal fun inspectorMessages(view: JSONObject?): List<InspectorMessage> {
     }.sortedBy { it.name }
 }
 
-internal fun parseInspectorFields(model: JSONObject?): List<InspectorField> {
-    val elements = model?.optJSONArray("elements") ?: return emptyList()
-    return (0 until elements.length()).mapNotNull { index ->
-        elements.optJSONObject(index)?.let { field ->
+// view.inspector serves the SELECTED message's fields. Selecting is a write this screen has just
+// made, so until the view names the message on screen as selected its fields describe the one before;
+// those are refused rather than drawn under the wrong name.
+internal fun parseInspectorFields(view: JSONObject?, messagePath: String): List<InspectorField> {
+    val messages = view?.optJSONArray("messages") ?: return emptyList()
+    val shown = (0 until messages.length()).any { index ->
+        messages.optJSONObject(index)?.let { it.optBoolean("selected") && it.optText("path") == messagePath } == true
+    }
+    if (!shown) return emptyList()
+    val fields = view.optJSONArray("fields") ?: return emptyList()
+    return (0 until fields.length()).mapNotNull { index ->
+        fields.optJSONObject(index)?.let { field ->
             InspectorField(
                 name = field.optText("name"),
                 type = field.optText("type"),
@@ -167,8 +175,8 @@ private fun InspectorNotice(text: String, modifier: Modifier = Modifier) {
 private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
     LaunchedEffect(messagePath) { selectMessage(messagePath) }
 
-    val fields by qgcPath("$messagePath.fields")
-    val rows = parseInspectorFields(fields)
+    val inspectorJson by qgcPath(INSPECTOR_VIEW)
+    val rows = parseInspectorFields(inspectorJson, messagePath)
 
     if (rows.isEmpty()) {
         InspectorNotice("Waiting for this message to arrive again.", modifier)
