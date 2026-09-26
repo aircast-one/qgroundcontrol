@@ -38,4 +38,8 @@ GstElement* create(const QString& uri, const Config& config);
 /// WHEP endpoints are plain http(s) URLs; whep(s):// is accepted as an explicit alias.
 bool isWhepUri(const QString& uri);
 
+/// Next WHEP jitter-buffer latency: grow on loss or late packets (to at least one retransmission
+/// round trip once the RTT is known), shrink toward the configured floor after a clean stretch.
+guint adaptJitterLatencyMs(guint currentMs, guint floorMs, bool degraded, gint64 cleanForMs, guint rttMs);
+
 }  // namespace GStreamer::SourceFactory

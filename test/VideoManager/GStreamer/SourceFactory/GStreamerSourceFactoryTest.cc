@@ -166,6 +166,49 @@ void GStreamerTest::_testSourceFactoryWhepLatency()
     QCOMPARE(webrtcbinLatency(GStreamer::SourceFactory::JitterBuffer::None, 80), 40u);
 }
 
+void GStreamerTest::_testSourceFactoryWhepRequestsRetransmission()
+{
+    if (!gst_element_factory_find("whepsrc") || !gst_element_factory_find("webrtcbin")) {
+        QSKIP("whepsrc/webrtcbin plugin unavailable");
+    }
+    ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("whepsrc is now deprecated")));
+
+    GStreamer::SourceFactory::Config config;
+    GstElement* bin = GStreamer::SourceFactory::create(QStringLiteral("whep://127.0.0.1:1/cam/whep"), config);
+    QVERIFY(bin);
+    const auto cleanup = qScopeGuard([&] {
+        (void) gst_element_set_state(bin, GST_STATE_NULL);
+        gst_object_unref(bin);
+    });
+    GstElement* source = findChildByFactoryName(bin, "whepsrc");
+    GstElement* webrtcbin = source ? findChildByFactoryName(source, "webrtcbin") : nullptr;
+    QVERIFY(webrtcbin);
+
+    GObject* transceiver = nullptr;
+    g_signal_emit_by_name(webrtcbin, "add-transceiver", 3, nullptr, &transceiver);
+    QVERIFY(transceiver);
+    gboolean doNack = FALSE;
+    g_object_get(transceiver, "do-nack", &doNack, nullptr);
+    g_object_unref(transceiver);
+    QVERIFY2(doNack, "WHEP must ask the device to resend lost packets, as a browser does");
+}
+
+void GStreamerTest::_testSourceFactoryAdaptJitterLatency()
+{
+    using GStreamer::SourceFactory::adaptJitterLatencyMs;
+
+    QCOMPARE(adaptJitterLatencyMs(80, 80, false, 0, 0), 80u);
+    QCOMPARE(adaptJitterLatencyMs(80, 80, true, 0, 0), 120u);
+    QCOMPARE(adaptJitterLatencyMs(80, 80, true, 0, 170), 220u);
+    QCOMPARE(adaptJitterLatencyMs(480, 80, true, 0, 170), 500u);
+    QCOMPARE(adaptJitterLatencyMs(220, 80, false, 9999, 170), 220u);
+    QCOMPARE(adaptJitterLatencyMs(220, 80, false, 10000, 170), 200u);
+    QCOMPARE(adaptJitterLatencyMs(90, 80, false, 10000, 0), 80u);
+    QCOMPARE(adaptJitterLatencyMs(80, 80, false, 60000, 0), 80u);
+    QCOMPARE(adaptJitterLatencyMs(40, 40, true, 0, 0), 80u);
+}
+
 void GStreamerTest::_testSourceFactoryRejectsBadUri()
 {
     ignoreLogMessage("Video.GStreamer.GstSourceFactory", QtCriticalMsg,
@@ -256,7 +299,13 @@ void GStreamerTest::_testSourceFactoryUdp265UsesExplicitDepayAndParser()
     QVERIFY(bin);
     const auto cleanup = qScopeGuard([&] { gst_object_unref(bin); });
 
-    QVERIFY2(findChildByFactoryName(bin, "rtph265depay"), "udp265:// must depayload H265 RTP explicitly");
+    GstElement* depay = findChildByFactoryName(bin, "rtph265depay");
+    QVERIFY2(depay, "udp265:// must depayload H265 RTP explicitly");
+    gboolean waitForKeyframe = FALSE;
+    gboolean requestKeyframe = FALSE;
+    g_object_get(depay, "wait-for-keyframe", &waitForKeyframe, "request-keyframe", &requestKeyframe, nullptr);
+    QVERIFY2(waitForKeyframe, "a lost packet must freeze the picture until the next keyframe, not smear it");
+    QVERIFY2(requestKeyframe, "a lost packet must ask the sender for a keyframe instead of waiting for the next GOP");
 
     GstElement* parser = findChildByFactoryName(bin, "h265parse");
     QVERIFY2(parser, "udp265:// must parse H265 explicitly");

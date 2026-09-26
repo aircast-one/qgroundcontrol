@@ -1,5 +1,7 @@
 #include "GstSourceFactory.h"
 
+#include <algorithm>
+
 #include <QtCore/QFile>
 #include <QtCore/QUrl>
 #include <gst/gst.h>
@@ -17,6 +19,29 @@ constexpr int kRtspRetry = 3;
 constexpr int kUdpBufferSizeBytes = 8 * 1024 * 1024;
 constexpr guint kWhepRequestTimeoutSec = 8;
 constexpr guint kWhepLowLatencyJitterMs = 40;
+constexpr gint64 kJitterAdaptIntervalUs = G_USEC_PER_SEC;
+constexpr guint kJitterStepUpMs = 40;
+constexpr guint kJitterStepDownMs = 20;
+constexpr guint kJitterRtxMarginMs = 50;
+constexpr guint kJitterCapMs = 500;
+constexpr gint64 kJitterCleanWindowMs = 10000;
+
+bool isH26xDepayloader(GstElement* element)
+{
+    GstElementFactory* factory = gst_element_get_factory(element);
+    if (!factory) {
+        return false;
+    }
+    const char* factoryName = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory));
+    return (g_strcmp0(factoryName, "rtph264depay") == 0) || (g_strcmp0(factoryName, "rtph265depay") == 0);
+}
+
+void configureH26xDepayloader(GstElement* element)
+{
+    if (isH26xDepayloader(element)) {
+        g_object_set(element, "wait-for-keyframe", TRUE, "request-keyframe", TRUE, nullptr);
+    }
+}
 
 void configureH26xParser(GstElement* element)
 {
@@ -38,6 +63,7 @@ void configureAutopluggedParser([[maybe_unused]] GstBin* bin, [[maybe_unused]] G
                                 [[maybe_unused]] gpointer data)
 {
     configureH26xParser(element);
+    configureH26xDepayloader(element);
 }
 
 // Older Linux/system GStreamer needs an autoplug-query caps filter to keep parsebin on byte-stream output.
@@ -333,6 +359,100 @@ GstElement* buildRtspSource(const QString& uri, const QUrl& sourceUrl, const Con
     return source;
 }
 
+struct JitterAdapter
+{
+    GstElement* jitterBuffer;
+    guint floorMs;
+    guint currentMs;
+    guint64 lost;
+    guint64 late;
+    gint64 lastCheckUs;
+    gint64 cleanSinceUs;
+};
+
+GstPadProbeReturn adaptJitterLatency([[maybe_unused]] GstPad* pad, [[maybe_unused]] GstPadProbeInfo* info, gpointer data)
+{
+    auto* adapter = static_cast<JitterAdapter*>(data);
+    const gint64 now = g_get_monotonic_time();
+    if ((now - adapter->lastCheckUs) < kJitterAdaptIntervalUs) {
+        return GST_PAD_PROBE_OK;
+    }
+    adapter->lastCheckUs = now;
+
+    GstStructure* stats = nullptr;
+    g_object_get(adapter->jitterBuffer, "stats", &stats, nullptr);
+    if (!stats) {
+        return GST_PAD_PROBE_OK;
+    }
+    guint64 lost = 0;
+    guint64 late = 0;
+    guint64 rttNs = 0;
+    (void) gst_structure_get_uint64(stats, "num-lost", &lost);
+    (void) gst_structure_get_uint64(stats, "num-late", &late);
+    (void) gst_structure_get_uint64(stats, "rtx-rtt", &rttNs);
+    gst_structure_free(stats);
+
+    const bool degraded = (lost > adapter->lost) || (late > adapter->late);
+    adapter->lost = lost;
+    adapter->late = late;
+    if (degraded) {
+        adapter->cleanSinceUs = now;
+    }
+
+    const guint next = adaptJitterLatencyMs(adapter->currentMs, adapter->floorMs, degraded,
+                                            (now - adapter->cleanSinceUs) / 1000,
+                                            static_cast<guint>(rttNs / GST_MSECOND));
+    if (next != adapter->currentMs) {
+        g_object_set(adapter->jitterBuffer, "latency", next, nullptr);
+        qCDebug(GstSourceFactoryLog) << "WHEP jitter buffer" << adapter->currentMs << "->" << next << "ms, lost" << lost
+                                     << "late" << late << "rtt" << (rttNs / GST_MSECOND) << "ms";
+        adapter->currentMs = next;
+        adapter->cleanSinceUs = now;
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+void adaptNewJitterBuffer([[maybe_unused]] GstElement* rtpbin, GstElement* jitterBuffer, [[maybe_unused]] guint session,
+                          [[maybe_unused]] guint ssrc, gpointer data)
+{
+    guint currentMs = 0;
+    g_object_get(jitterBuffer, "latency", &currentMs, nullptr);
+    const gint64 now = g_get_monotonic_time();
+    auto* adapter = new JitterAdapter{jitterBuffer, GPOINTER_TO_UINT(data), currentMs, 0, 0, now, now};
+    g_object_set_data_full(G_OBJECT(jitterBuffer), "qgc-jitter-adapter", adapter,
+                           [](gpointer p) { delete static_cast<JitterAdapter*>(p); });
+
+    GstPad* src = gst_element_get_static_pad(jitterBuffer, "src");
+    if (!src) {
+        return;
+    }
+    (void) gst_pad_add_probe(src, GST_PAD_PROBE_TYPE_BUFFER, adaptJitterLatency, adapter, nullptr);
+    gst_object_unref(src);
+}
+
+void requestRetransmission([[maybe_unused]] GstElement* webrtcbin, GObject* transceiver, [[maybe_unused]] gpointer data)
+{
+    g_object_set(transceiver, "do-nack", TRUE, nullptr);
+}
+
+GstElement* findChildByFactory(GstElement* bin, const char* factoryName)
+{
+    GstIterator* it = gst_bin_iterate_elements(GST_BIN(bin));
+    GValue item = G_VALUE_INIT;
+    GstElement* found = nullptr;
+    while (!found && (gst_iterator_next(it, &item) == GST_ITERATOR_OK)) {
+        GstElement* child = GST_ELEMENT(g_value_get_object(&item));
+        GstElementFactory* childFactory = gst_element_get_factory(child);
+        if (childFactory && g_str_equal(GST_OBJECT_NAME(childFactory), factoryName)) {
+            found = child;
+        }
+        g_value_reset(&item);
+    }
+    g_value_unset(&item);
+    gst_iterator_free(it);
+    return found;
+}
+
 GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config, guint latencyMs)
 {
     GstElement* source = gst_element_factory_make("whepsrc", "source");
@@ -368,20 +488,16 @@ GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config, guint l
     gst_clear_caps(&audioCaps);
 
     const guint webrtcLatencyMs = (config.jitterBuffer == JitterBuffer::None) ? kWhepLowLatencyJitterMs : latencyMs;
-    GstIterator* it = gst_bin_iterate_elements(GST_BIN(source));
-    GValue item = G_VALUE_INIT;
-    bool webrtcbinFound = false;
-    while (!webrtcbinFound && (gst_iterator_next(it, &item) == GST_ITERATOR_OK)) {
-        GstElement* child = GST_ELEMENT(g_value_get_object(&item));
-        GstElementFactory* childFactory = gst_element_get_factory(child);
-        if (childFactory && g_str_equal(GST_OBJECT_NAME(childFactory), "webrtcbin")) {
-            g_object_set(child, "latency", webrtcLatencyMs, nullptr);
-            webrtcbinFound = true;
-        }
-        g_value_reset(&item);
+    GstElement* webrtcbin = findChildByFactory(source, "webrtcbin");
+    if (!webrtcbin) {
+        return source;
     }
-    g_value_unset(&item);
-    gst_iterator_free(it);
+    g_object_set(webrtcbin, "latency", webrtcLatencyMs, nullptr);
+    (void) g_signal_connect(webrtcbin, "on-new-transceiver", G_CALLBACK(requestRetransmission), nullptr);
+    if (GstElement* rtpbin = findChildByFactory(webrtcbin, "rtpbin")) {
+        (void) g_signal_connect(rtpbin, "new-jitterbuffer", G_CALLBACK(adaptNewJitterBuffer),
+                                GUINT_TO_POINTER(webrtcLatencyMs));
+    }
     return source;
 }
 
@@ -641,6 +757,7 @@ GstElement* create(const QString& uri, const Config& config)
                 qCCritical(GstSourceFactoryLog) << "gst_element_factory_make('rtph265depay') failed";
                 break;
             }
+            configureH26xDepayloader(rtpDepay);
             configureH26xParser(parser);
         } else {
             // parsebin creates the codec parser only after it sees the stream caps. Configure that
@@ -727,6 +844,18 @@ GstElement* create(const QString& uri, const Config& config)
     gst_clear_object(&source);
 
     return srcbin;
+}
+
+guint adaptJitterLatencyMs(guint currentMs, guint floorMs, bool degraded, gint64 cleanForMs, guint rttMs)
+{
+    if (degraded) {
+        const guint rtxTarget = (rttMs > 0) ? (rttMs + kJitterRtxMarginMs) : 0;
+        return std::min(kJitterCapMs, std::max({currentMs + kJitterStepUpMs, rtxTarget, floorMs}));
+    }
+    if (cleanForMs >= kJitterCleanWindowMs && currentMs > floorMs) {
+        return std::max(floorMs, (currentMs > kJitterStepDownMs) ? (currentMs - kJitterStepDownMs) : 0u);
+    }
+    return currentMs;
 }
 
 }  // namespace GStreamer::SourceFactory
