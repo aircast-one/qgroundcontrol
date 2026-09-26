@@ -137,6 +137,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         _ if crate::itemposition::owns(path) => crate::itemposition::write(backend, path, value),
         _ if crate::commandtree::command_target(path).is_some() => crate::commandtree::write_command(backend, path, value),
         _ if crate::itemposition::speed_target(path).is_some() => crate::itemposition::write_specify_speed(backend, path, value),
+        _ if crate::altitudeedit::distance_mode_target(path).is_some() => crate::altitudeedit::write_distance_mode(backend, path, value),
         _ if crate::factwrite::owns(path) => crate::factwrite::write(backend, path, value),
         _ if crate::linkconnect::edit_target(path).is_some() => crate::linkconnect::edit(backend, path, value),
         _ if crate::fenceedit::owns_member_write(path) => crate::fenceedit::member_write(backend, path, value),

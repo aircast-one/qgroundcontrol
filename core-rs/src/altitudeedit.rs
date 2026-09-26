@@ -38,6 +38,37 @@ pub fn write_global(backend: &dyn Backend, value: &str) -> Value {
     })
 }
 
+// A survey, corridor or structure scan measures its camera distance in its own frame,
+// CameraCalc::distanceMode, written as an AltitudeFrame integer. setDistanceMode stores any value,
+// including frames view.altitudeModes(item,...) omits - terrain on a vehicle that cannot hold an
+// altitude above terrain - and the mixed frame, which is only a plan-wide setting. The same check the
+// plan's own frame gets applies here, in the item context, with the item's current mode.
+const ITEM_FRAMES: &str = "plan.missionController.visualItems.";
+
+pub fn distance_mode_target(path: &str) -> Option<usize> {
+    path.strip_prefix(ITEM_FRAMES)?.strip_suffix(".cameraCalc.distanceMode")?.parse().ok()
+}
+
+pub fn write_distance_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    let Some(index) = distance_mode_target(path) else {
+        return refused("malformed", "Name the item as plan.missionController.visualItems.<index>.cameraCalc.".to_string());
+    };
+    let calc_path = format!("{ITEM_FRAMES}{index}.cameraCalc");
+    let calc = object(&backend.get_fields(&calc_path, "distanceMode"));
+    let Some(current) = integer(&calc, "distanceMode") else {
+        return refused("noSuchItem", format!("Item {index} has no camera distance to measure."));
+    };
+    let raw = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()).filter(|v| v.fract() == 0.0).map(|v| v as i64);
+    if let Some((token, reason)) = frame_refusal(raw, &read_inputs(backend, false, current)) {
+        return refused(token, reason);
+    }
+    let raw = raw.unwrap_or_default();
+    let answered = flag(&object(&backend.set(path, &json!({ "value": raw }).to_string())), "ok");
+    let took = answered && integer(&object(&backend.get_fields(&calc_path, "distanceMode")), "distanceMode") == Some(raw);
+    json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The item did not keep that altitude mode.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +119,39 @@ mod tests {
             "MissionController has no globalAltitudeMode since the upstream merge; the property is globalAltitudeFrame with the same five values, so the head's write reached nothing"
         );
         assert_eq!(*plan.0.borrow(), ABSOLUTE);
+    }
+
+    #[test]
+    fn an_item_distance_mode_is_one_the_item_picker_offers() {
+        struct Survey { terrain: bool, mode: RefCell<i64> }
+        impl Backend for Survey {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "plan.missionController.visualItems.1.cameraCalc" => json!({ "kind": "object", "distanceMode": *self.mode.borrow() }),
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    "vehicle.supports" => json!({ "kind": "object", "terrainFrame": self.terrain }),
+                    "plan.missionController" => json!({ "kind": "object", "containsItems": true }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, v: &str) -> String {
+                *self.mode.borrow_mut() = object(v)["value"].as_i64().unwrap();
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let path = "plan.missionController.visualItems.1.cameraCalc.distanceMode";
+        assert!(crate::actions::owns_write(path));
+        let survey = Survey { terrain: false, mode: RefCell::new(RELATIVE) };
+        assert_eq!(write_distance_mode(&survey, path, &json!({ "value": ABSOLUTE }).to_string())["ok"], true);
+        assert_eq!(*survey.mode.borrow(), ABSOLUTE);
+        assert_eq!(write_distance_mode(&survey, path, &json!({ "value": TERRAIN_FRAME }).to_string())["refusal"], "notOffered", "setDistanceMode stored a frame the vehicle cannot fly");
+        assert!(write_distance_mode(&survey, path, &json!({ "value": MIXED }).to_string())["ok"] == false, "mixed is a plan-wide frame, not an item's");
+        assert_eq!(write_distance_mode(&survey, "plan.missionController.visualItems.4.cameraCalc.distanceMode", r#"{"value":1}"#)["refusal"], "noSuchItem");
+        let terrain = Survey { terrain: true, mode: RefCell::new(RELATIVE) };
+        assert_eq!(write_distance_mode(&terrain, path, &json!({ "value": TERRAIN_FRAME }).to_string())["ok"], true);
     }
 }
