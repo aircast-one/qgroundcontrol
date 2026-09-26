@@ -39,6 +39,7 @@ via composite actions and reusable workflows. Python helpers in `scripts/` are i
 | --- | --- |
 | `linux.yml`, `macos.yml`, `windows.yml` | Desktop build + test |
 | `android.yml`, `ios.yml` | Mobile builds |
+| `core-rs.yml` | `cargo test` for the Rust core on any `core-rs/` change |
 | `_detect-changes.yml` | Reusable: skip builds on unrelated PRs |
 | `build-results.yml` | Aggregate PR comment (`workflow_run` trigger) |
 | `build-gstreamer.yml` | GStreamer SDK builds |
