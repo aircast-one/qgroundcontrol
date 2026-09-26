@@ -22,9 +22,17 @@ const RADIO_NEXT: &str = "radioCal.nextButtonClicked";
 const RADIO_CANCEL: &str = "radioCal.cancelButtonClicked";
 const RADIO_SKIP: &str = "radioCal.skipButtonClicked";
 const TRANSMITTER_MODE: &str = "radioCal.transmitterMode";
+const SENSOR_NEXT: &str = "sensorsCal.nextClicked";
+const SENSOR_CANCEL: &str = "sensorsCal.cancelCalibration";
+const CAL_ACCEL: &str = "sensorsCal.calibrateAccel";
+const CAL_COMPASS: &str = "sensorsCal.calibrateCompass";
+const CAL_LEVEL: &str = "sensorsCal.levelHorizon";
+const CAL_GYRO: &str = "sensorsCal.calibrateGyro";
+const CAL_PRESSURE: &str = "sensorsCal.calibratePressure";
+const CAL_MOTOR: &str = "sensorsCal.calibrateMotorInterference";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -101,6 +109,12 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_NEXT => crate::radio::act(backend, crate::radio::Action::Next, path),
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
+        SENSOR_NEXT => crate::calibration::act(backend, crate::calibration::Action::Next, path, args),
+        SENSOR_CANCEL => crate::calibration::act(backend, crate::calibration::Action::Cancel, path, args),
+        CAL_ACCEL | CAL_COMPASS | CAL_LEVEL | CAL_GYRO | CAL_PRESSURE | CAL_MOTOR => match crate::calibration::METHODS.iter().find(|m| path.ends_with(&format!(".{m}"))) {
+            Some(method) => crate::calibration::act(backend, crate::calibration::Action::Start(method), path, args),
+            None => json!({ "ok": false, "reason": format!("{path} is not a calibration the core knows") }),
+        },
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
 }

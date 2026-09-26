@@ -129,6 +129,79 @@ pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Start(&'static str),
+    Next,
+    Cancel,
+}
+
+pub const METHODS: &[&str] = &["calibrateAccel", "calibrateCompass", "levelHorizon", "calibrateGyro", "calibratePressure", "calibrateMotorInterference"];
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Session {
+    connected: bool,
+    busy: bool,
+    accel_needed: bool,
+    next_enabled: bool,
+    cancel_enabled: bool,
+}
+
+fn refusal(action: Action, state: Session, classes: Option<&Classes>) -> Option<(&'static str, &'static str)> {
+    if !state.connected {
+        return Some(("noVehicle", "No vehicle is connected."));
+    }
+    match action {
+        Action::Next if !state.next_enabled => Some(("waiting", "The calibration is not waiting for Next.")),
+        Action::Cancel if !state.cancel_enabled => Some(("notCancellable", "This calibration cannot be cancelled now.")),
+        Action::Next | Action::Cancel => None,
+        Action::Start(method) => {
+            let routine = ROUTINES.iter().find(|r| r.method == method)?;
+            match () {
+                _ if state.busy => Some(("busy", "Another calibration is still running.")),
+                _ if classes.is_some_and(|c| !(routine.visible)(c)) => Some(("notForThisVehicle", "This calibration does not apply to this vehicle.")),
+                _ if routine.needs_accel_first && state.accel_needed => Some(("accelFirst", ACCEL_FIRST)),
+                _ => None,
+            }
+        }
+    }
+}
+
+pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Value {
+    let cal = object(&backend.get("sensorsCal"));
+    let vehicle = object(&backend.get_fields("vehicle", "multiRotor,rover,sub,fixedWing"));
+    let classes = vehicle.get("multiRotor").map(|_| Classes {
+        multi_rotor: flag(&vehicle, "multiRotor"),
+        rover: flag(&vehicle, "rover"),
+        sub: flag(&vehicle, "sub"),
+        fixed_wing: flag(&vehicle, "fixedWing"),
+    });
+    let state = Session {
+        connected: cal.get("kind").and_then(Value::as_str) == Some("object"),
+        busy: flag(&cal, "calibrationInProgress") || flag(&cal, "waitingForCancel"),
+        accel_needed: flag(&cal, "accelSetupNeeded"),
+        next_enabled: flag(&cal, "nextEnabled"),
+        cancel_enabled: flag(&cal, "cancelEnabled"),
+    };
+    if let Some((token, reason)) = refusal(action, state, classes.as_ref()) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let args = match action {
+        Action::Start(method) => {
+            let given = serde_json::from_str::<Value>(args).ok().filter(|a| a.as_array().is_some_and(|a| !a.is_empty()));
+            let defaults = ROUTINES.iter().find(|r| r.method == method).map_or(json!([]), |r| json!(r.arguments));
+            given.unwrap_or(defaults).to_string()
+        }
+        _ => "[]".to_string(),
+    };
+    let dispatched = flag(&object(&backend.invoke(path, &args)), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The sensor calibration did not take the request.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,5 +312,53 @@ mod tests {
         assert_eq!(view["visibleSides"][1]["stage"], "inProgress");
         assert_eq!(view["visibleSides"][1]["rotate"], true);
         assert!(view["routines"].as_array().unwrap().iter().all(|r| r["enabled"] == false));
+    }
+
+    #[test]
+    fn a_calibration_that_would_start_on_top_of_another_is_refused() {
+        let idle = Session { connected: true, busy: false, accel_needed: false, next_enabled: false, cancel_enabled: false };
+        let copter = Classes { multi_rotor: true, rover: false, sub: false, fixed_wing: false };
+        let plane = Classes { multi_rotor: false, rover: false, sub: false, fixed_wing: true };
+        let token = |action, state, classes| refusal(action, state, classes).map(|(t, _)| t);
+        assert_eq!(METHODS, ROUTINES.iter().map(|r| r.method).collect::<Vec<_>>().as_slice(), "a routine the view offers and the core does not claim reaches Qt ungated, and a claimed one the view does not list starts with no table entry to gate it");
+        METHODS.iter().for_each(|m| assert_eq!(token(Action::Start(m), idle, Some(&copter)), None, "{m}"));
+        assert_eq!(
+            token(Action::Start("calibrateMotorInterference"), Session { busy: true, ..idle }, Some(&copter)),
+            Some("busy"),
+            "calibrateMotorInterference overwrites _calTypeInProgress without asking, so a second start mid-run spins the props under a calibration the firmware is still running"
+        );
+        assert_eq!(token(Action::Start("calibrateCompass"), Session { accel_needed: true, ..idle }, Some(&copter)), Some("accelFirst"));
+        assert_eq!(token(Action::Start("calibrateGyro"), idle, Some(&plane)), Some("notForThisVehicle"));
+        assert_eq!(token(Action::Start("calibrateGyro"), idle, None), None, "a vehicle whose class has not been read yet is not refused on a guess");
+        assert_eq!(token(Action::Next, idle, None), Some("waiting"), "nextClicked sends a COMMAND_ACK whether or not a step is waiting for one");
+        assert_eq!(token(Action::Next, Session { next_enabled: true, ..idle }, None), None);
+        assert_eq!(token(Action::Cancel, idle, None), Some("notCancellable"));
+        assert_eq!(token(Action::Cancel, Session { busy: true, cancel_enabled: true, ..idle }, None), None, "cancel is the one action a running calibration must not refuse as busy");
+        assert_eq!(token(Action::Start("calibrateAccel"), Session { connected: false, ..idle }, None), Some("noVehicle"));
+    }
+
+    #[test]
+    fn a_started_routine_carries_the_arguments_the_view_offered() {
+        use std::cell::RefCell;
+        struct Recording(RefCell<Vec<(String, String)>>);
+        impl Backend for Recording {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "object" }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "multiRotor": true }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, p: &str, a: &str) -> String {
+                self.0.borrow_mut().push((p.to_string(), a.to_string()));
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let backend = Recording(RefCell::new(Vec::new()));
+        assert_eq!(act(&backend, Action::Start("calibrateAccel"), "sensorsCal.calibrateAccel", "[]")["ok"], true);
+        assert_eq!(act(&backend, Action::Start("calibrateAccel"), "sensorsCal.calibrateAccel", "[true]")["ok"], true);
+        assert_eq!(act(&backend, Action::Next, "sensorsCal.nextClicked", "[]")["refusal"], "waiting");
+        assert_eq!(
+            backend.0.borrow().as_slice(),
+            &[("sensorsCal.calibrateAccel".to_string(), "[false]".to_string()), ("sensorsCal.calibrateAccel".to_string(), "[true]".to_string())],
+            "calibrateAccel(bool) has no default, so a head that sends nothing gets the full six-sided calibration the view describes rather than a failed invoke"
+        );
     }
 }
