@@ -29,7 +29,9 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcFacts
+import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.optText
+import org.json.JSONObject
 
 private const val UNITS_PATH = "settings.unitsSettings"
 
@@ -44,6 +46,21 @@ internal val PRESET_UNIT_FACTS = listOf(
     "speedUnits",
     "temperatureUnits",
 )
+
+private const val GENERAL_SETTINGS = "view.settings(General)"
+
+// view.settings(General) carries the units group already decoded - visibility applied, each fact a
+// control - so the rows come from there rather than from the raw settings.unitsSettings group.
+internal fun unitFacts(page: JSONObject?): List<Fact> {
+    val sections = page?.optJSONArray("sections") ?: return emptyList()
+    val units = (0 until sections.length()).mapNotNull { sections.optJSONObject(it) }
+        .firstOrNull { it.optText("group") == "unitsSettings" } ?: return emptyList()
+    val subsections = units.optJSONArray("subsections") ?: return emptyList()
+    return (0 until subsections.length()).flatMap { index ->
+        val controls = subsections.optJSONObject(index)?.optJSONArray("controls")
+        (0 until (controls?.length() ?: 0)).mapNotNull { controls!!.optJSONObject(it)?.let(::factFromControl) }
+    }
+}
 
 internal fun unitRowsFor(system: Int, facts: List<Fact>): List<Fact> {
     val custom = unitSystemLabel(system) == UNIT_SYSTEM_LABELS[UNIT_SYSTEM_CUSTOM]
@@ -110,7 +127,8 @@ private fun UnitSystemRow(system: Int, onPick: (Int) -> Unit) {
 
 @Composable
 fun UnitsSection(modifier: Modifier = Modifier) {
-    val facts by qgcFacts(UNITS_PATH)
+    val page by qgcPath(GENERAL_SETTINGS)
+    val facts = remember(page) { unitFacts(page) }
     val system by qgcDouble(settingControl("$UNITS_PATH.unitSystem"), 0.0)
     val chosen = system.toInt()
 

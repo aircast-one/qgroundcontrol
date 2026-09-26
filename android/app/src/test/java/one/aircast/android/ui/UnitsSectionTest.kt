@@ -64,4 +64,21 @@ class UnitsSectionTest {
             )
         }
     }
+
+    @Test
+    fun `unit rows come from the units group of the general settings page`() {
+        val page = org.json.JSONObject(
+            """{"sections":[
+                 {"group":"appSettings","subsections":[{"title":"","controls":[{"name":"audioMuted","label":"Mute","control":"toggle"}]}]},
+                 {"group":"unitsSettings","subsections":[
+                   {"title":"","controls":[{"name":"horizontalDistanceUnits","label":"Distance","control":"choice","options":[{"label":"Feet","raw":"0"},{"label":"Meters","raw":"1"}],"display":"Meters"}]},
+                   {"title":"Other","controls":[{"name":"temperatureUnits","label":"Temperature","control":"choice","options":[],"display":""}]}
+                 ]}]}""",
+        )
+        val facts = unitFacts(page)
+        assertEquals(listOf("horizontalDistanceUnits", "temperatureUnits"), facts.map { it.name })
+        assertEquals(1, facts[0].enumIndex)
+        assertEquals(emptyList<String>(), unitFacts(null).map { it.name })
+    }
 }
+
