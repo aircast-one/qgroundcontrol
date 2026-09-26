@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["links.mavlinkSupportForwardingEnabled", "links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses"];
+pub const DEPS: &[&str] = &["links.mavlinkSupportForwardingEnabled", "links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses", "links.serialPorts", "links.serialPortStrings"];
 
 pub(crate) fn kind(settings_url: &str) -> &'static str {
     match settings_url {
@@ -119,9 +119,27 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
     })
 }
 
+// LinkManager serves the ports and their display strings as two parallel lists. LinksScreen.kt
+// dropped blank ports BEFORE pairing them with labels by position, so one blank entry shifted every
+// label after it onto the wrong port. They are paired first here, and a blank label falls back to
+// the port itself.
+pub(crate) fn serial_ports(ports: Option<&Value>, labels: Option<&Value>) -> Vec<Value> {
+    let texts = |list: Option<&Value>| list.and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>()).unwrap_or_default();
+    let labels = texts(labels);
+    texts(ports)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, port)| !port.trim().is_empty())
+        .map(|(i, port)| {
+            let label = labels.get(i).filter(|l| !l.trim().is_empty()).cloned().unwrap_or_else(|| port.clone());
+            json!({ "port": port, "label": label })
+        })
+        .collect()
+}
+
 pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get("links.linkConfigurations"));
-    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled"));
+    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled,serialPorts,serialPortStrings"));
     let quiet = quiet_links(backend);
     let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json_with(i, el, &quiet)).collect()).unwrap_or_default();
     let configured: Vec<Value> = links.iter().filter(|l| l["dynamic"] == false).cloned().collect();
@@ -134,6 +152,7 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "linkTypes": root.get("linkTypeStrings").cloned().unwrap_or(json!([])),
         "supportForwarding": crate::read::flag(&root, "mavlinkSupportForwardingEnabled"),
         "linkTypeIds": root.get("linkTypeIds").cloned().unwrap_or(json!([])),
+        "serialPorts": serial_ports(root.get("serialPorts"), root.get("serialPortStrings")),
         "baudRates": root.get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).collect::<Vec<_>>()).unwrap_or_default(),
     })
 }
@@ -500,4 +519,16 @@ mod tests {
         assert_eq!(links_view(&Forwarding(false), &[])["supportForwarding"], json!(false));
     }
 
+
+    #[test]
+    fn a_serial_port_keeps_its_own_label_when_a_blank_port_is_dropped() {
+        let ports = json!(["", "/dev/ttyUSB0", "/dev/ttyACM0"]);
+        let labels = json!(["ghost", "FTDI UART", ""]);
+        assert_eq!(
+            serial_ports(Some(&ports), Some(&labels)),
+            vec![json!({ "port": "/dev/ttyUSB0", "label": "FTDI UART" }), json!({ "port": "/dev/ttyACM0", "label": "/dev/ttyACM0" })],
+            "filtering before pairing gave /dev/ttyUSB0 the blank port's label and /dev/ttyACM0 the FTDI one"
+        );
+        assert!(serial_ports(None, None).is_empty());
+    }
 }

@@ -2963,6 +2963,11 @@
         "view.links.baudRates.22",
         "view.links.baudRates.23",
         "view.links.baudRates.24",
+        "view.links.baudRates.25",
+        "view.links.baudRates.26",
+        "view.links.baudRates.27",
+        "view.links.baudRates.28",
+        "view.links.baudRates.29",
         "view.links.baudRates.3",
         "view.links.baudRates.4",
         "view.links.baudRates.5",
@@ -2986,6 +2991,9 @@
         "view.links.linkTypes.3",
         "view.links.linkTypes.4",
         "view.links.linkTypes.5",
+        "view.links.serialPorts.#",
+        "view.links.serialPorts.0.label",
+        "view.links.serialPorts.0.port",
         "view.links.supportForwarding",
         "view.logs.anyDownloaded",
         "view.logs.busy",
@@ -6736,6 +6744,9 @@
         "view.links.links[].summary",
         "view.links.links[].type",
         "view.links.links[].typeLabel",
+        "view.links.serialPorts.#",
+        "view.links.serialPorts[].label",
+        "view.links.serialPorts[].port",
         "view.links.supportForwarding",
         "view.logs.anyDownloaded",
         "view.logs.busy",
@@ -9389,6 +9400,12 @@
                 "summary": "string",
                 "type": "string",
                 "typeLabel": "string"
+            }
+        ],
+        "serialPorts": [
+            {
+                "label": "string",
+                "port": "string"
             }
         ],
         "supportForwarding": "bool"
