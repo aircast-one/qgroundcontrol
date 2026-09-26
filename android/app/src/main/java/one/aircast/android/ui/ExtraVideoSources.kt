@@ -101,6 +101,14 @@ internal fun extraSourceSummary(entry: ExtraVideoSource): String = when {
 
 internal data class VideoKind(val raw: String, val label: String)
 
+// view.control(videoSource) serves the kinds as options, each a raw value and its label, with the
+// synthesised unknown entry already left out.
+internal fun videoKinds(control: org.json.JSONObject?): List<VideoKind> {
+    val options = control?.optJSONArray("options") ?: return emptyList()
+    val listed = (0 until options.length()).mapNotNull { options.optJSONObject(it) }
+    return videoKinds(listed.map { it.optText("raw") }, listed.map { it.optText("label") })
+}
+
 internal fun videoKinds(enumValues: List<String>, enumStrings: List<String>): List<VideoKind> =
     enumValues.indices
         .map { VideoKind(enumValues[it], enumStrings.getOrElse(it) { enumValues[it] }) }
