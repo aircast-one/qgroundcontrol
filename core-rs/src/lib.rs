@@ -49,6 +49,7 @@ pub mod guided;
 pub mod guidedcmd;
 pub mod guidedexec;
 pub mod hostnotice;
+pub mod hostnoticeview;
 pub mod hub;
 pub mod inspector;
 pub mod itemshape;

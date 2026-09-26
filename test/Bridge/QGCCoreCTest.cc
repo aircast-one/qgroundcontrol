@@ -1378,7 +1378,7 @@ const char *const kViewPaths[] = {
     "view.cameraProtocol", "view.joystickMapping",
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
     "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
-    "view.gps", "view.terrainDownload", "view.firmware",
+    "view.gps", "view.terrainDownload", "view.firmware", "view.hostNotices", "view.hostNotices(0)",
 };
 
 QList<QByteArray> viewPathsWithFixtures()
@@ -1741,6 +1741,10 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.adsbTraffic")).value(QStringLiteral("ownPositionKnown")).toBool(false), 10000);
+    // view.hostNotices is empty until something posts, and an empty list pins no element shape and
+    // records destination and latestId as always null.
+    QVERIFY(take(qgc_bridge_invoke("host.postNotice", "[\"message\", \"Recorder\", \"A message notice\"]")).value(QStringLiteral("ok")).toBool(false));
+    QVERIFY(take(qgc_bridge_invoke("host.postNotice", "[\"navigation\", \"plan\", \"\"]")).value(QStringLiteral("ok")).toBool(false));
     // view.inspector serves the selected message's fields; waiting for them keeps a recording that
     // ran before the first message from pinning an empty list the element shape is absent from.
     QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.inspector")).value(QStringLiteral("fields")).toArray().isEmpty(), 5000);

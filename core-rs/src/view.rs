@@ -52,6 +52,7 @@ use crate::messages;
 use crate::missionkinds;
 use crate::plan;
 use crate::hub;
+use crate::hostnoticeview;
 use crate::linkhost;
 use crate::mission;
 use crate::planfile;
@@ -128,6 +129,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.coreMission", "<vehicle id>"),
     ("view.coreRemoteId", "<vehicle id>"),
     ("view.coreCalibration", "<vehicle id>"),
+    ("view.hostNotices", "[<acknowledged through id>]"),
 ];
 
 pub const VIEWS: &[View] = &[
@@ -217,6 +219,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.gps", deps: gpsview::DEPS, compute: gpsview::gps_view },
     View { path: "view.terrainDownload", deps: terraindownload::DEPS, compute: terraindownload::terrain_download_view },
     View { path: "view.firmware", deps: firmwareinfo::DEPS, compute: firmwareinfo::firmware_view },
+    View { path: "view.hostNotices", deps: hostnoticeview::DEPS, compute: hostnoticeview::host_notices_view },
     View { path: "view.dependencies", deps: &[], compute: dependencies_view },
 ];
 
@@ -417,6 +420,7 @@ mod deps_cover_reads {
             ("guidedcmd", include_str!("guidedcmd.rs")),
             ("guidedexec", include_str!("guidedexec.rs")),
             ("hostnotice", include_str!("hostnotice.rs")),
+            ("hostnoticeview", include_str!("hostnoticeview.rs")),
             ("hub", include_str!("hub.rs")),
             ("inspector", include_str!("inspector.rs")),
             ("itemshape", include_str!("itemshape.rs")),
