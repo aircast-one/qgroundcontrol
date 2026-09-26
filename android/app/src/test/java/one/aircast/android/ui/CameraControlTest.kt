@@ -75,6 +75,8 @@ class CameraControlTest {
 
     @Test
     fun `no camera present is no controls`() {
+        assertEquals(1, camera("""{"present":true,"labels":["Sony","Thermal"],"selected":1}""")?.selected)
+        assertNull(camera("""{"present":true,"labels":[],"selected":null}""")?.selected)
         assertNull(cameraReading(null))
         assertNull(cameraReading(JSONObject("""{"present":false}""")))
     }

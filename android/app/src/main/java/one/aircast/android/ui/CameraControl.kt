@@ -46,6 +46,7 @@ internal data class CameraReading(
     val batteryText: String,
     val hasZoom: Boolean,
     val zoomLevel: Double,
+    val selected: Int? = null,
 )
 
 internal fun cameraReading(view: JSONObject?): CameraReading? {
@@ -76,6 +77,7 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         batteryText = view.optText("batteryText"),
         hasZoom = view.optBoolean("hasZoom"),
         zoomLevel = view.optDouble("zoomLevel", ZOOM_LOWEST).takeIf { it.isFinite() } ?: ZOOM_LOWEST,
+        selected = if (view.isNull("selected")) null else view.optInt("selected"),
     )
 }
 
