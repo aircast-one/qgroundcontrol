@@ -108,7 +108,7 @@ const COMMIT_LINKS: &str = "links.commitLinkConfigurations";
 pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, CREATE_AND_CONNECT, CREATE_SERIAL, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM, REMOVE_ITEM, UNIT_SYSTEM, CONSOLE_COMMAND, COMMAND_CATEGORIES, CATEGORY_COMMANDS, PARAMETER_NAMES, DESELECT_ALL, COMMIT_LINKS];
 
 pub fn owns(path: &str) -> bool {
-    OWNED.contains(&path) || crate::linkconnect::disconnect_target(path).is_some() || crate::fenceedit::owns_member_action(path)
+    OWNED.contains(&path) || crate::linkconnect::disconnect_target(path).is_some() || crate::fenceedit::owns_member_action(path) || crate::factwrite::owns_validate(path)
 }
 
 // A write had no route to the core at all: router.set refused view paths and passed everything
@@ -192,6 +192,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         UNDO | REDO => step(backend, path),
         _ if crate::linkconnect::disconnect_target(path).is_some() => crate::linkconnect::disconnect(backend, path),
         _ if crate::fenceedit::owns_member_action(path) => crate::fenceedit::member_action(backend, path, args),
+        _ if crate::factwrite::owns_validate(path) => crate::factwrite::validate(backend, path, args),
         LOG_REFRESH => crate::logs::act(backend, crate::logs::Action::Refresh, path, args),
         LOG_DOWNLOAD => crate::logs::act(backend, crate::logs::Action::Download, path, args),
         LOG_CANCEL => crate::logs::act(backend, crate::logs::Action::Cancel, path, args),

@@ -80,7 +80,77 @@ fn unchanged(fact: &Value, asked: &Value) -> bool {
     }
 }
 
+const ENUM_INDEX: &str = ".enumIndex";
+const VALIDATE: &str = ".validate";
+
+pub fn owns_validate(path: &str) -> bool {
+    path.strip_suffix(VALIDATE).is_some_and(owns)
+}
+
+fn is_fact(fact: &Value) -> bool {
+    fact.get("kind").and_then(Value::as_str) == Some("fact")
+}
+
+// SettingsScreen.kt asked Fact::validate before writing and the core's own metadata check after, so
+// a value could pass the first and be refused by the second in different words. This answers
+// validate with the check the write will apply, in Qt's shape: the result is the reason, or empty.
+// convertOnly asks only whether the text is the right kind of value, as Fact::validate does.
+pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let fact_path = path.strip_suffix(VALIDATE).unwrap_or(path);
+    let fact = object(&backend.get(fact_path));
+    if !is_fact(&fact) {
+        return object(&backend.invoke(path, args));
+    }
+    let entered = given.get(0).and_then(Value::as_str).unwrap_or_default();
+    let convert_only = given.get(1).and_then(Value::as_bool).unwrap_or(false);
+    let asked = match fact.get("typeIsString").and_then(Value::as_bool) {
+        Some(true) => json!(entered),
+        _ => serde_json::from_str::<Value>(entered.trim()).ok().filter(|v| !v.is_string()).unwrap_or_else(|| json!(entered)),
+    };
+    let found = refusal(&decode(&fact, fact_path), &fact, &asked)
+        .filter(|_| !unchanged(&fact, &asked))
+        .filter(|(token, _)| !convert_only || matches!(*token, "notANumber" | "notText" | "notAToggle" | "notWhole"));
+    json!({
+        "ok": true,
+        "result": found.as_ref().map_or(String::new(), |(_, reason)| reason.clone()),
+        "refusal": found.map(|(token, _)| token),
+    })
+}
+
+// QGC writes enumIndex straight into the fact, so an index past the list, or the synthesised
+// "Unknown: N" entry that is a reading and never a choice, was stored as asked.
+fn enum_index_refusal(fact: &Value, index: Option<i64>) -> Option<String> {
+    let strings = fact.get("enumStrings").and_then(Value::as_array).cloned().unwrap_or_default();
+    let unknown = fact.get("unknownEnumLabel").and_then(Value::as_str).filter(|l| !l.is_empty());
+    let chosen = index.and_then(|i| usize::try_from(i).ok()).and_then(|i| strings.get(i));
+    match chosen {
+        None => Some(format!("Choose one of the {} options.", strings.iter().filter(|s| s.as_str() != unknown).count())),
+        Some(label) if label.as_str() == unknown => Some("That entry is the current unknown reading, not a choice.".to_string()),
+        Some(_) => None,
+    }
+}
+
+fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let fact = object(&backend.get(path.strip_suffix(ENUM_INDEX).unwrap_or(path)));
+    if !is_fact(&fact) {
+        return object(&backend.set(path, value));
+    }
+    if fact.get("readOnly").and_then(Value::as_bool) == Some(true) {
+        return json!({ "ok": false, "result": false, "refusal": "readOnly", "reason": "This setting cannot be changed." });
+    }
+    let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64());
+    if let Some(reason) = enum_index_refusal(&fact, index) {
+        return json!({ "ok": false, "result": false, "refusal": "notAnOption", "reason": reason });
+    }
+    let answered = flag(&object(&backend.set(path, value)), "ok");
+    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The setting was not written.") } })
+}
+
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    if path.ends_with(ENUM_INDEX) {
+        return write_enum_index(backend, path, value);
+    }
     let renamed = crate::renamed::write_path(path);
     let path = renamed.as_deref().unwrap_or(path);
     let fact = object(&backend.get(path));
@@ -227,5 +297,58 @@ mod tests {
         assert_eq!(write(&survey, interval, r#"{"value":0.05}"#)["refusal"], "outOfRange", "a new value below the minimum is still refused");
         assert_eq!(write(&survey, "plan.missionController.visualItems.1.amslAltAboveTerrain", r#"{"value":null}"#)["ok"], true, "an unmeasured height is NaN and reads as null");
         assert_eq!(survey.0.borrow().len(), 2);
+    }
+
+    struct Units(RefCell<Vec<String>>);
+    impl Backend for Units {
+        fn get(&self, p: &str) -> String {
+            match p {
+                "settings.unitsSettings.verticalDistanceUnits" => json!({ "kind": "fact", "name": "verticalDistanceUnits", "enumStrings": ["Feet", "Meters", "Unknown: 7"], "enumValues": [0, 1, 7], "enumIndex": 2, "value": 7, "unknownEnumLabel": "Unknown: 7", "readOnly": false }),
+                "settings.appSettings.defaultMissionItemAltitude" => json!({ "kind": "fact", "name": "defaultMissionItemAltitude", "value": 50.0, "typeIsInteger": false, "min": 1.0, "max": 1000.0, "minIsDefaultForType": false, "maxIsDefaultForType": false, "minString": "1", "maxString": "1000", "readOnly": false }),
+                "settings.appSettings.indoorPaletteName" => json!({ "kind": "fact", "name": "indoorPaletteName", "value": "Dark", "typeIsString": true, "readOnly": false }),
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+        fn set(&self, p: &str, _v: &str) -> String {
+            self.0.borrow_mut().push(p.to_string());
+            json!({ "ok": true }).to_string()
+        }
+        fn invoke(&self, p: &str, _a: &str) -> String {
+            self.0.borrow_mut().push(p.to_string());
+            json!({ "ok": true, "result": "" }).to_string()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn an_enum_index_is_written_only_for_a_real_choice() {
+        let units = Units(RefCell::new(Vec::new()));
+        let path = "settings.unitsSettings.verticalDistanceUnits.enumIndex";
+        assert!(crate::actions::owns_write(path), "the enumIndex write reaches the core through the fact roots");
+        assert_eq!(write(&units, path, r#"{"value":1}"#)["ok"], true);
+        assert_eq!(write(&units, path, r#"{"value":2}"#)["refusal"], "notAnOption", "the synthesised Unknown: 7 is a reading, never a choice");
+        assert_eq!(write(&units, path, r#"{"value":9}"#)["reason"], "Choose one of the 2 options.");
+        assert_eq!(write(&units, path, r#"{"value":-1}"#)["refusal"], "notAnOption");
+        assert_eq!(units.0.borrow().as_slice(), &[path.to_string()], "only the real choice was written");
+    }
+
+    #[test]
+    fn validate_answers_with_the_check_the_write_will_apply() {
+        let units = Units(RefCell::new(Vec::new()));
+        let altitude = "settings.appSettings.defaultMissionItemAltitude.validate";
+        assert!(owns_validate(altitude) && !owns_validate("vehicle.armed.validate"));
+        let asked = |text: &str, convert_only: bool| validate(&units, altitude, &json!([text, convert_only]).to_string());
+        assert_eq!((&asked("60", false)["ok"], &asked("60", false)["result"]), (&json!(true), &json!("")), "Qt's shape: an empty result is a valid entry");
+        assert_eq!(asked("5000", false)["refusal"], "outOfRange");
+        assert_eq!(asked("5000", false)["result"], "This setting runs from 1 to 1000.", "the same sentence the write gives");
+        assert_eq!(asked("5000", true)["result"], "", "convertOnly asks only whether the text is a number");
+        assert_eq!(asked("tall", true)["refusal"], "notANumber");
+        let palette = validate(&units, "settings.appSettings.indoorPaletteName.validate", r#"["1.5",false]"#);
+        assert_eq!(palette["result"], "", "a text setting takes digits as text");
+        assert!(units.0.borrow().is_empty(), "a fact is validated by the core without asking Qt");
+        let _ = validate(&units, "settings.appSettings.notAFact.validate", r#"["1",false]"#);
+        assert_eq!(units.0.borrow().as_slice(), &["settings.appSettings.notAFact.validate".to_string()], "a path that is not a fact is Qt's to answer");
     }
 }
