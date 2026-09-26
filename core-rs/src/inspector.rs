@@ -94,6 +94,41 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+fn selected_message(model: &Value) -> Option<&Value> {
+    model.get("elements")?.as_array()?.iter().find(|m| m.get("selected").and_then(Value::as_bool) == Some(true))
+}
+
+fn rate_refusal(rate: Option<i64>, available: bool, selected: Option<&Value>) -> Option<(&'static str, &'static str)> {
+    let component = selected.and_then(|m| m.get("compId")?.as_i64()).unwrap_or(0);
+    match () {
+        _ if rate.is_none_or(|r| !RATE_CHOICES.contains(&r)) => Some(("unknownRate", "Choose one of the offered rates.")),
+        _ if !available => Some(("noVehicle", "No vehicle is being inspected.")),
+        _ if selected.is_none() => Some(("noSelection", "Select a message first; the rate applies to the selected one.")),
+        _ if component == 0 => Some(("noComponent", "The selected message has no component to ask.")),
+        _ => None,
+    }
+}
+
+pub fn set_message_interval(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let rate = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_i64());
+    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
+    let available = model.get("kind").and_then(Value::as_str) == Some("object");
+    let selected = selected_message(&model);
+    if let Some((token, reason)) = rate_refusal(rate, available, selected) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = crate::read::flag(&object(&backend.invoke(path, &json!([rate]).to_string())), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "rate": rate,
+        "rateTitle": rate.map(rate_title),
+        "message": selected.and_then(|m| m.get("name")).cloned().unwrap_or(Value::Null),
+        "messageId": selected.and_then(|m| m.get("id")).cloned().unwrap_or(Value::Null),
+        "reason": match dispatched { true => Value::Null, false => json!("The inspector did not take the rate.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +239,39 @@ mod tests {
         assert!(DEPS.iter().all(|dep| !dep.contains("systems.0")), "systems.0 is whichever vehicle connected first; setMessageInterval acts on activeSystem, and with two vehicles those are different aircraft");
         assert!(DEPS.iter().any(|dep| dep.contains("activeSystem")));
         assert!(DEPS.iter().any(|dep| dep.contains("messages")), "the messages the view lists come from that same system");
+    }
+
+    #[test]
+    fn a_rate_names_the_message_it_went_to_and_refuses_when_there_is_none() {
+        use std::cell::RefCell;
+        struct Inspector(Value, RefCell<Vec<String>>);
+        impl Backend for Inspector {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { self.0.to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, a: &str) -> String {
+                self.1.borrow_mut().push(a.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let listing = |selected: bool, comp: i64| json!({ "kind": "object", "elements": [
+            { "name": "HEARTBEAT", "id": 0, "compId": 1, "selected": false },
+            { "name": "ATTITUDE", "id": 30, "compId": comp, "selected": selected },
+        ] });
+        let path = "mavlinkInspector.setMessageInterval";
+
+        let chosen = Inspector(listing(true, 1), RefCell::new(Vec::new()));
+        let taken = set_message_interval(&chosen, path, "[25]");
+        assert_eq!((&taken["ok"], &taken["message"], &taken["rateTitle"]), (&json!(true), &json!("ATTITUDE"), &json!("25 Hz")), "the rate goes to whichever message is selected, which the call itself never names");
+        assert_eq!(set_message_interval(&chosen, path, "[13]")["refusal"], "unknownRate", "setMessageRate passes any int to the vehicle, and 13 is not a rate either head offers");
+        assert_eq!(set_message_interval(&chosen, path, "[]")["refusal"], "unknownRate");
+        assert_eq!(chosen.1.borrow().as_slice(), &["[25]".to_string()]);
+
+        let none = Inspector(listing(false, 1), RefCell::new(Vec::new()));
+        assert_eq!(set_message_interval(&none, path, "[5]")["refusal"], "noSelection", "setMessageInterval returns with no selected message and nothing says so");
+        assert_eq!(set_message_interval(&Inspector(listing(true, 0), RefCell::new(Vec::new())), path, "[5]")["refusal"], "noComponent");
+        assert_eq!(set_message_interval(&Inspector(json!({ "kind": "null" }), RefCell::new(Vec::new())), path, "[5]")["refusal"], "noVehicle");
+        assert!(none.1.borrow().is_empty());
     }
 }
