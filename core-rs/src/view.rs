@@ -407,6 +407,7 @@ mod deps_cover_reads {
             ("guided", include_str!("guided.rs")),
             ("guidedcmd", include_str!("guidedcmd.rs")),
             ("guidedexec", include_str!("guidedexec.rs")),
+            ("hostnotice", include_str!("hostnotice.rs")),
             ("hub", include_str!("hub.rs")),
             ("inspector", include_str!("inspector.rs")),
             ("instrumentgroups", include_str!("instrumentgroups.rs")),

@@ -45,6 +45,7 @@ pub mod gpsrtk;
 pub mod guided;
 pub mod guidedcmd;
 pub mod guidedexec;
+pub mod hostnotice;
 pub mod hub;
 pub mod inspector;
 pub mod itemcamera;
