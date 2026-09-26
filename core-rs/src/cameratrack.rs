@@ -63,6 +63,78 @@ pub fn start(backend: &dyn Backend, args: &str) -> Value {
     })
 }
 
+const THERMAL_MODES: std::ops::RangeInclusive<i64> = 0..=3;
+
+fn camera(backend: &dyn Backend) -> Value {
+    object(&backend.get_fields(CAMERA, "hasTracking,trackingEnabled,thermalStreamInstance"))
+}
+
+fn present(camera: &Value) -> bool {
+    camera.get("kind").and_then(Value::as_str) == Some("object")
+}
+
+fn thermal(camera: &Value) -> bool {
+    camera.get("thermalStreamInstance").and_then(|s| s.get("kind")).and_then(Value::as_str) == Some("object")
+}
+
+pub fn stop(backend: &dyn Backend, path: &str) -> Value {
+    let camera = camera(backend);
+    let refusal = match () {
+        _ if !present(&camera) => Some(("noCamera", "No camera is connected.")),
+        _ if !flag(&camera, "hasTracking") => Some(("unsupported", "This camera does not track.")),
+        _ => None,
+    };
+    if let Some((token, reason)) = refusal {
+        return json!({ "ok": false, "result": Value::Null, "refusal": token, "reason": reason });
+    }
+    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
+    json!({ "ok": dispatched, "result": Value::Null, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The camera was not asked to stop tracking.") } })
+}
+
+fn written(backend: &dyn Backend, path: &str, value: Value) -> bool {
+    flag(&object(&backend.set(path, &json!({ "value": value }).to_string())), "ok")
+}
+
+fn refused(token: &str, reason: &str) -> Value {
+    json!({ "ok": false, "result": false, "refusal": token, "reason": reason })
+}
+
+pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let camera = camera(backend);
+    if !present(&camera) {
+        return refused("noCamera", "No camera is connected.");
+    }
+    let property = path.rsplit('.').next().unwrap_or("");
+    let (sent, clamped) = match property {
+        "thermalMode" => match asked.as_i64().filter(|m| THERMAL_MODES.contains(m)) {
+            None => return refused("unknownMode", "A thermal view is 0 off, 1 blended, 2 full or 3 picture in picture."),
+            Some(_) if !thermal(&camera) => return refused("noThermal", "This camera has no thermal stream."),
+            Some(mode) => (json!(mode), false),
+        },
+        "thermalOpacity" => match asked.as_f64().filter(|v| v.is_finite()) {
+            None => return refused("malformed", "Thermal opacity is a percentage."),
+            Some(_) if !thermal(&camera) => return refused("noThermal", "This camera has no thermal stream."),
+            Some(opacity) => (json!(opacity.clamp(0.0, 100.0)), !(0.0..=100.0).contains(&opacity)),
+        },
+        "trackingEnabled" => match asked.as_bool() {
+            None => return refused("malformed", "Tracking is turned on with true and off with false."),
+            Some(true) if !flag(&camera, "hasTracking") => return refused("unsupported", "This camera does not track."),
+            Some(on) => (json!(on), false),
+        },
+        _ => return refused("malformed", "That is not a camera setting the core writes."),
+    };
+    let answered = written(backend, path, sent.clone());
+    json!({
+        "ok": answered,
+        "result": answered,
+        "refusal": Value::Null,
+        "value": sent,
+        "clamped": clamped,
+        "reason": match answered { true => Value::Null, false => json!("The camera did not take the setting.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +172,39 @@ mod tests {
             vec!["startTrackingRect", "startTrackingPoint"],
             "the camera interface has had no startTracking since the upstream merge, so every tap on the Android tracking overlay reached a method that does not exist"
         );
+    }
+
+    #[test]
+    fn a_camera_setting_outside_what_the_camera_can_hold_is_refused_or_reported_clamped() {
+        struct Cam(Value, RefCell<Vec<(String, String)>>);
+        impl Backend for Cam {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { self.0.to_string() }
+            fn set(&self, p: &str, v: &str) -> String {
+                self.1.borrow_mut().push((p.to_string(), v.to_string()));
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, p: &str, _a: &str) -> String {
+                self.1.borrow_mut().push((p.to_string(), String::new()));
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let full = Cam(json!({ "kind": "object", "hasTracking": true, "thermalStreamInstance": { "kind": "object" } }), RefCell::new(Vec::new()));
+        let mode = |b: &Cam, v: Value| write(b, "vehicle.cameraManager.currentCameraInstance.thermalMode", &json!({ "value": v }).to_string());
+        assert_eq!(mode(&full, json!(2))["ok"], true);
+        assert_eq!(mode(&full, json!(7))["refusal"], "unknownMode", "setThermalMode stores any number into QSettings, and view.camera then serves a mode no head can draw");
+        let opacity = write(&full, "vehicle.cameraManager.currentCameraInstance.thermalOpacity", r#"{"value":140}"#);
+        assert_eq!((&opacity["value"], &opacity["clamped"]), (&json!(100.0), &json!(true)), "setThermalOpacity clamps to 100 without a word, and the answer now says so");
+        assert_eq!(write(&full, "vehicle.cameraManager.currentCameraInstance.trackingEnabled", r#"{"value":true}"#)["ok"], true);
+        assert_eq!(stop(&full, "vehicle.cameraManager.currentCameraInstance.stopTracking")["ok"], true);
+
+        let plain = Cam(json!({ "kind": "object", "hasTracking": false }), RefCell::new(Vec::new()));
+        assert_eq!(mode(&plain, json!(1))["refusal"], "noThermal");
+        assert_eq!(write(&plain, "vehicle.cameraManager.currentCameraInstance.trackingEnabled", r#"{"value":true}"#)["refusal"], "unsupported");
+        assert_eq!(write(&plain, "vehicle.cameraManager.currentCameraInstance.trackingEnabled", r#"{"value":false}"#)["ok"], true, "turning tracking off is always allowed");
+        assert_eq!(stop(&plain, "vehicle.cameraManager.currentCameraInstance.stopTracking")["refusal"], "unsupported", "stopTracking sends MAV_CMD_CAMERA_STOP_TRACKING to a camera that never tracked");
+        assert_eq!(plain.1.borrow().len(), 1);
+        assert_eq!(stop(&Cam(json!({ "kind": "null" }), RefCell::new(Vec::new())), "x")["refusal"], "noCamera");
     }
 }

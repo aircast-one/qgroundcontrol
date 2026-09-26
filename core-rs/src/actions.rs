@@ -76,9 +76,13 @@ const GLOBAL_ALTITUDE_MODE: &str = "plan.missionController.globalAltitudeMode";
 const START_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.startTracking";
 const INSERT_PATTERN: &str = "plan.missionController.insertComplexMissionItem";
 const INSERT_PATTERN_FILE: &str = "plan.missionController.insertComplexMissionItemFromKMLOrSHP";
+const STOP_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.stopTracking";
+const THERMAL_MODE: &str = "vehicle.cameraManager.currentCameraInstance.thermalMode";
+const THERMAL_OPACITY: &str = "vehicle.cameraManager.currentCameraInstance.thermalOpacity";
+const TRACKING_ENABLED: &str = "vehicle.cameraManager.currentCameraInstance.trackingEnabled";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -87,7 +91,7 @@ pub fn owns(path: &str) -> bool {
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
-pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE];
+pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED];
 
 pub fn owns_write(path: &str) -> bool {
     OWNED_WRITES.contains(&path)
@@ -97,6 +101,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     match path {
         ZOOM => zoom(backend, value),
         TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
+        THERMAL_MODE | THERMAL_OPACITY | TRACKING_ENABLED => crate::cameratrack::write(backend, path, value),
         GLOBAL_ALTITUDE_MODE => crate::altitudeedit::write_global(backend, value),
         FLIGHT_MODE => crate::flightmodes::write_mode(backend, path, value),
         VTOL_FORWARD => crate::guided::write_vtol(backend, path, value),
@@ -165,6 +170,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
         INSERT_PATTERN => insert_pattern(backend, path, args, false),
         INSERT_PATTERN_FILE => insert_pattern(backend, path, args, true),
+        STOP_TRACKING => crate::cameratrack::stop(backend, path),
         START_TRACKING => crate::cameratrack::start(backend, args),
         CONNECT_LINK => crate::linkconnect::connect(backend, path, args),
         START_SUPPORT => crate::linkconnect::support_forwarding(backend, crate::linkconnect::Forwarding::Start, path),
