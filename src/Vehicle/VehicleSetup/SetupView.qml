@@ -137,7 +137,7 @@ ToolDrawerPage {
         const buttons = [setupRepeater, tuningRepeater]
             .map(repeater => Array.from({ length: repeater.count }, (_, i) => repeater.itemAt(i)))
             .reduce((all, some) => all.concat(some), [])
-        const button = buttons.find(b => b && b.text === name)
+        const button = buttons.find(b => b && b.visible && b.text === name)
         if (button) {
             button.checked = true
         }
@@ -304,6 +304,7 @@ ToolDrawerPage {
     Component {
         id: messagePanelComponent
         EmptyPanel {
+            objectName:      "setupMessagePanel"
             headline:        _prerequisiteName === "" ? "" : qsTr("%1 first").arg(_prerequisiteName)
             text:            _messagePanelText
             actionText:      _prerequisiteName === "" ? "" : qsTr("Set Up %1").arg(_prerequisiteName)
@@ -374,6 +375,7 @@ ToolDrawerPage {
 
     QGCFlickable {
         id:                 buttonScroll
+        objectName:         "setupSidebar"
         anchors.top:        searchField.bottom
         anchors.bottom:     sidebar.bottom
         anchors.left:       sidebar.left
@@ -468,7 +470,7 @@ ToolDrawerPage {
                 icon.source:        "/InstrumentValueIcons/dial-pad.svg"
                 tileColor:          "#8e8e93"
                 badgeVisible:       _activeJoystick ? !(_activeJoystick.calibrated || _buttonsOnly) : false
-                visible:            _fullParameterVehicleAvailable && joystickManager.joysticks.length !== 0 && matchesSearch(text)
+                visible:            _fullParameterVehicleAvailable && joystickManager.joystickCount !== 0 && matchesSearch(text)
                 text:               _forcedToButtonsOnly ? qsTr("Buttons") : qsTr("Joystick")
                 onClicked:          showPanel(this, "qrc:/qml/QGroundControl/VehicleSetup/JoystickConfig.qml")
 
@@ -493,6 +495,7 @@ ToolDrawerPage {
 
     Loader {
         id:                     panelLoader
+        objectName:             "setupPanelLoader"
         anchors.leftMargin:     _defaultTextWidth * 3
         anchors.rightMargin:    _inset
         anchors.topMargin:      _inset
