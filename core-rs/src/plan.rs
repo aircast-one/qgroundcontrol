@@ -154,6 +154,10 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "status": status_text(name, dirty, offline, contains_items),
         "file": name,
         "dirty": dirty,
+        // PlanTab.kt and the map spike read plan.containsItems and plan.offline raw beside this view,
+        // two reads that could land either side of a change the view had already answered for.
+        "containsItems": contains_items,
+        "offline": offline,
         "canUndo": flag(&plan, "canUndo"),
         "canRedo": flag(&plan, "canRedo"),
     })
@@ -659,6 +663,7 @@ mod tests {
                             { "canonicalName": "", "translatedName": "nameless" },
                         ],
                     }),
+                    ("plan", true) => json!({ "kind": "object", "containsItems": true, "offline": true, "dirty": false, "syncInProgress": false }),
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -669,6 +674,7 @@ mod tests {
         }
         let view = plan_view(&Controller(true), &[]);
         assert_eq!(view["available"], true);
+        assert_eq!((&view["containsItems"], &view["offline"], &view["sync"]["state"]), (&json!(true), &json!(true), &json!("offline")), "both come from the same plan read as sync and status");
         assert_eq!(view["globalAltitudeFrame"], 1, "the head read globalAltitudeMode, which upstream renamed, so its read had been null since the merge");
         assert_eq!(
             view["patterns"],

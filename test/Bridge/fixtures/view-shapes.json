@@ -7243,6 +7243,7 @@
         "view.plan.canRedo",
         "view.plan.canUndo",
         "view.plan.class",
+        "view.plan.containsItems",
         "view.plan.defaults.altitude.applicationRestartRequired",
         "view.plan.defaults.altitude.bits.#",
         "view.plan.defaults.altitude.changedFromDefault",
@@ -7333,6 +7334,7 @@
         "view.plan.file",
         "view.plan.globalAltitudeFrame",
         "view.plan.kind",
+        "view.plan.offline",
         "view.plan.patterns.#",
         "view.plan.patterns[].name",
         "view.plan.patterns[].title",
@@ -10037,6 +10039,7 @@
         "canRedo": "bool",
         "canUndo": "bool",
         "class": "string",
+        "containsItems": "bool",
         "defaults": {
             "altitude": {
                 "applicationRestartRequired": "bool",
@@ -10153,6 +10156,7 @@
         "file": "null",
         "globalAltitudeFrame": "number",
         "kind": "string",
+        "offline": "bool",
         "patterns": [
             {
                 "name": "string",
