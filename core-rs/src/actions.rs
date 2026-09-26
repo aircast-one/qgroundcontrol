@@ -74,9 +74,11 @@ const START_SUPPORT: &str = "links.createMavlinkForwardingSupportLink";
 const END_SUPPORT: &str = "links.endMavlinkForwardingSupportLink";
 const GLOBAL_ALTITUDE_MODE: &str = "plan.missionController.globalAltitudeMode";
 const START_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.startTracking";
+const INSERT_PATTERN: &str = "plan.missionController.insertComplexMissionItem";
+const INSERT_PATTERN_FILE: &str = "plan.missionController.insertComplexMissionItemFromKMLOrSHP";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -161,6 +163,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
+        INSERT_PATTERN => insert_pattern(backend, path, args, false),
+        INSERT_PATTERN_FILE => insert_pattern(backend, path, args, true),
         START_TRACKING => crate::cameratrack::start(backend, args),
         CONNECT_LINK => crate::linkconnect::connect(backend, path, args),
         START_SUPPORT => crate::linkconnect::support_forwarding(backend, crate::linkconnect::Forwarding::Start, path),
@@ -514,6 +518,75 @@ fn insert_direct(backend: &dyn Backend, kind_id: &str, path: &str, args: &str) -
     })
 }
 
+fn offered_patterns(backend: &dyn Backend) -> Option<Vec<String>> {
+    let controller = object(&backend.get_fields("plan.missionController", "complexMissionItems"));
+    controller.get("complexMissionItems")?.as_array().map(|items| items.iter().filter_map(|item| item.as_str().or_else(|| item.get("canonicalName")?.as_str())).map(str::to_string).collect())
+}
+
+fn pattern_refusal(name: Option<&str>, offered: Option<&[String]>) -> Option<(&'static str, String)> {
+    let Some(name) = name.filter(|n| !n.is_empty()) else {
+        return Some(("malformed", "A pattern is inserted by its name.".to_string()));
+    };
+    match offered {
+        Some(offered) if !offered.iter().any(|o| o == name) => Some(("unknownPattern", format!("{name} is not a pattern this plan offers."))),
+        _ => None,
+    }
+}
+
+fn shape_refusal(pattern: &str, file: &str) -> Option<(&'static str, String)> {
+    let wants_line = lookup(pattern).and_then(|kind| kind.geometry).is_some_and(|(geometry, _)| geometry == "line");
+    let lower = file.to_lowercase();
+    let found = match () {
+        _ if lower.ends_with(".kml") => match std::fs::read_to_string(file) {
+            Err(_) => return Some(("unreadable", format!("{file} could not be read."))),
+            Ok(text) => crate::kml::parse(&text).map(|shape| matches!(shape, crate::kml::Shape::Polyline(_))),
+        },
+        _ if lower.ends_with(".shp") => crate::shp::parse(file).map(|(kind, _, _)| kind == "polyline"),
+        _ => return Some(("notAShape", "A pattern is drawn from a .kml or .shp file.".to_string())),
+    };
+    match found {
+        Err(reason) => Some(("noShape", reason)),
+        Ok(line) if line != wants_line => Some(("wrongShape", format!("{pattern} needs {} and this file holds {}.", if wants_line { "a line" } else { "an area" }, if line { "a line" } else { "an area" }))),
+        Ok(_) => None,
+    }
+}
+
+fn insert_pattern(backend: &dyn Backend, path: &str, args: &str, from_file: bool) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let name = given.get(0).and_then(Value::as_str);
+    let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
+    let Some(held) = item_count(backend).filter(|count| *count > 0) else {
+        return json!({ "ok": false, "refusal": "unavailable", "reason": "The plan did not say how many items it holds." });
+    };
+    let placed = match from_file {
+        true => given.get(1).and_then(Value::as_str).filter(|f| !f.trim().is_empty()).map(|f| json!(f)),
+        false => given.get(1).and_then(|at| {
+            let latitude = at.get("latitude")?.as_f64().filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))?;
+            let longitude = at.get("longitude")?.as_f64().filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))?;
+            Some(json!({ "latitude": latitude, "longitude": longitude }))
+        }),
+    };
+    let refusal = pattern_refusal(name, offered_patterns(backend).as_deref())
+        .or_else(|| placed.is_none().then(|| if from_file { ("noFile", "Choose a .kml or .shp file.".to_string()) } else { ("badCoordinate", "A pattern needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string()) }))
+        .or_else(|| (index != -1 && !(1..=held).contains(&index)).then(|| ("noSuchPlace", format!("This plan has no place {index} to put an item."))))
+        .or_else(|| match (from_file, name, placed.as_ref().and_then(Value::as_str)) {
+            (true, Some(name), Some(file)) => shape_refusal(name, file),
+            _ => None,
+        });
+    if let Some((token, reason)) = refusal {
+        return json!({ "ok": false, "result": Value::Null, "refusal": token, "reason": reason });
+    }
+    let make_current = given.get(3).and_then(Value::as_bool).unwrap_or(false);
+    let answered = object(&backend.invoke(path, &json!([name, placed, index, make_current]).to_string()));
+    let grew = crate::read::flag(&answered, "ok") && item_count(backend) == Some(held + 1);
+    json!({
+        "ok": grew,
+        "result": answered.get("result").cloned().unwrap_or(Value::Null),
+        "refusal": Value::Null,
+        "reason": match grew { true => Value::Null, false => json!("The plan did not grow, so nothing was added.") },
+    })
+}
+
 fn item_count(backend: &dyn Backend) -> Option<i64> {
     serde_json::from_str::<Value>(&backend.get("plan.missionController.visualItems.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64))
 }
@@ -688,6 +761,32 @@ mod tests {
         assert_eq!(plan.calls.borrow().len(), 1);
         let refusing = Plan { items: RefCell::new(3), grows: false, land_valid: true, calls: RefCell::new(Vec::new()) };
         assert_eq!(run(&refusing, INSERT_TAKEOFF, r#"[{"latitude":47.4,"longitude":8.5}, -1, false]"#)["ok"], false, "insertTakeoffItem answers a null item when it declines, and the bridge calls that a successful invoke");
+    }
+
+    #[test]
+    fn a_pattern_goes_in_only_by_a_name_the_plan_offers_and_from_a_file_holding_its_shape() {
+        let offered = vec!["Survey".to_string(), "Corridor Scan".to_string()];
+        assert_eq!(pattern_refusal(Some("Survey"), Some(&offered)), None);
+        assert_eq!(pattern_refusal(Some("Orbit"), Some(&offered)).map(|r| r.0), Some("unknownPattern"), "createComplexMissionItem answers null for a name it does not know and insertComplexMissionItem passes that back in silence");
+        assert_eq!(pattern_refusal(Some("Orbit"), None), None, "a plan that has not said what it offers is not refused on a guess");
+        assert_eq!(pattern_refusal(None, Some(&offered)).map(|r| r.0), Some("malformed"));
+
+        let folder = std::env::temp_dir().join(format!("qgc-pattern-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let write = |name: &str, body: &str| {
+            let file = folder.join(name);
+            std::fs::write(&file, body).unwrap();
+            file.to_string_lossy().into_owned()
+        };
+        let area = write("area.kml", "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8.5,47.3 8.6,47.3 8.6,47.4 8.5,47.3</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>");
+        let line = write("line.kml", "<kml><Placemark><LineString><coordinates>8.5,47.3 8.6,47.4</coordinates></LineString></Placemark></kml>");
+        let empty = write("empty.kml", "<kml><Placemark><name>nothing</name></Placemark></kml>");
+        assert_eq!(shape_refusal("Survey", &area), None);
+        assert_eq!(shape_refusal("Corridor Scan", &line), None);
+        assert_eq!(shape_refusal("Corridor Scan", &area).map(|r| r.0), Some("wrongShape"), "a corridor built from an area file comes out with no corridor, which both heads were left to notice by counting items and measuring distances");
+        assert_eq!(shape_refusal("Survey", &empty).map(|r| r.0), Some("noShape"));
+        assert_eq!(shape_refusal("Survey", "/no/such/file.kml").map(|r| r.0), Some("unreadable"));
+        assert_eq!(shape_refusal("Survey", &write("area.gpx", "")).map(|r| r.0), Some("notAShape"));
     }
 
     #[test]
