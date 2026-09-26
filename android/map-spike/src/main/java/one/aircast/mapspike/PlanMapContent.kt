@@ -228,8 +228,6 @@ internal fun MapSpikeScreen(
         }
     }
 
-    val latitude by mapDouble("vehicle.latitude")
-    val longitude by mapDouble("vehicle.longitude")
     val planStatus by mapPath("view.plan")
     val planHasItems = remember(planStatus) { planStatus?.optBoolean("containsItems") == true }
     val planOffline = remember(planStatus) { planStatus?.optBoolean("offline") == true }
@@ -241,6 +239,9 @@ internal fun MapSpikeScreen(
     val support = planSupport(planStatus)
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     val vehiclesJson by mapPath(VEHICLES_VIEW)
+    val flown = remember(vehiclesJson) { vehicleChoices(vehiclesJson).active }
+    val latitude = flown?.latitude ?: Double.NaN
+    val longitude = flown?.longitude ?: Double.NaN
     var patternWanted by remember { mutableStateOf<List<MissionKind>>(emptyList()) }
     val missionSummaryView by mapPath("view.missionSummary")
     val terrainView by mapPath(TERRAIN_VIEW)
