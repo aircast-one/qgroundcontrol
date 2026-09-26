@@ -413,9 +413,101 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Valued {
+    Takeoff,
+    ChangeAltitude,
+    Pause,
+    Gripper,
+    Resume,
+}
+
+const GRIPPER_RELEASE: i64 = 0;
+const GRIPPER_GRAB: i64 = 1;
+
+type Checked = Result<(Vec<Action>, String), (&'static str, String)>;
+
+fn valued_check(kind: Valued, args: &Value, s: &GuidedState, takeoff: Option<(f64, f64)>, altitude: Option<(f64, f64, f64)>) -> Checked {
+    let number = |i: usize| args.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let whole = |i: usize| number(i).filter(|v| v.fract() == 0.0).map(|v| v as i64);
+    let malformed = |what: &str| Err(("malformed", what.to_string()));
+    match kind {
+        Valued::Pause => Ok((vec![Action::Pause], "[]".to_string())),
+        Valued::Takeoff => {
+            let Some(metres) = number(0) else { return malformed("Takeoff needs a height in metres.") };
+            let Some((lo, hi)) = takeoff else { return Err(("noRange", "The takeoff height range is not known yet.".to_string())) };
+            match (lo..=hi).contains(&metres) {
+                true => Ok((vec![Action::Takeoff], json!([metres]).to_string())),
+                false => Err(("outOfRange", format!("A takeoff height has to be between {lo:.1} and {hi:.1} m."))),
+            }
+        }
+        Valued::ChangeAltitude => {
+            let Some(delta) = number(0) else { return malformed("Changing altitude needs a change in metres.") };
+            let pause = args.get(1).and_then(Value::as_bool).unwrap_or(false);
+            let Some((current, lo, hi)) = altitude else { return Err(("noRange", "The altitude range is not known yet.".to_string())) };
+            let offered = if pause { vec![Action::Pause, Action::ChangeAltitude] } else { vec![Action::ChangeAltitude] };
+            match (lo..=hi).contains(&(current + delta)) {
+                true => Ok((offered, json!([delta, pause]).to_string())),
+                false => Err(("outOfRange", format!("The new height has to be between {lo:.1} and {hi:.1} m."))),
+            }
+        }
+        Valued::Gripper => match whole(0) {
+            Some(GRIPPER_GRAB) => Ok((vec![Action::Grab], json!([GRIPPER_GRAB]).to_string())),
+            Some(GRIPPER_RELEASE) => Ok((vec![Action::Release], json!([GRIPPER_RELEASE]).to_string())),
+            _ => malformed("The gripper is sent 1 to grab or 0 to release."),
+        },
+        Valued::Resume => match whole(0) {
+            Some(sequence) if sequence > 0 && sequence == s.resume_from_sequence => Ok((vec![Action::ResumeMission], json!([sequence]).to_string())),
+            Some(_) if s.resume_from_sequence > 0 => Err(("moved", format!("The mission can resume from item {} now.", s.resume_from_sequence))),
+            Some(_) => Ok((vec![Action::ResumeMission], "[]".to_string())),
+            None => malformed("Resuming needs the item to resume from."),
+        },
+    }
+}
+
+pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let state = read_state(backend);
+    let takeoff = matches!(kind, Valued::Takeoff).then(|| crate::takeoff::range_meters(backend)).flatten();
+    let altitude = matches!(kind, Valued::ChangeAltitude).then(|| crate::altitude::range_meters(backend)).flatten().map(|r| (r.current, r.minimum, r.maximum));
+    let checked = valued_check(kind, &given, &state, takeoff, altitude).and_then(|(offered, forwarded)| match invoke_refusal(&offered, &state) {
+        Some(refused) => Err(refused),
+        None => Ok(forwarded),
+    });
+    let forwarded = match checked {
+        Ok(forwarded) => forwarded,
+        Err((token, reason)) => return json!({ "ok": false, "refusal": token, "reason": reason }),
+    };
+    let dispatched = flag(&object(&backend.invoke(path, &forwarded)), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_guided_value_is_checked_against_the_range_its_view_served() {
+        let s = GuidedState { resume_from_sequence: 7, ..GuidedState::default() };
+        let check = |kind, args: Value| valued_check(kind, &args, &s, Some((3.0, 120.0)), Some((40.0, 10.0, 120.0)));
+        assert_eq!(check(Valued::Takeoff, json!([30.0])), Ok((vec![Action::Takeoff], "[30.0]".to_string())));
+        assert_eq!(check(Valued::Takeoff, json!([500.0])).map_err(|e| e.0), Err("outOfRange"), "guidedModeTakeoff sends whatever height it is given, and 500 m is past the operator's own guided maximum");
+        assert_eq!(check(Valued::Takeoff, json!([])).map_err(|e| e.0), Err("malformed"));
+        assert_eq!(valued_check(Valued::Takeoff, &json!([30.0]), &s, None, None).map_err(|e| e.0), Err("noRange"));
+        assert_eq!(check(Valued::ChangeAltitude, json!([20.0])), Ok((vec![Action::ChangeAltitude], "[20.0,false]".to_string())), "guidedModeChangeAltitude(double, bool) has no default for the bool");
+        assert_eq!(check(Valued::ChangeAltitude, json!([-35.0, false])).map_err(|e| e.0), Err("outOfRange"), "a change is a delta, so it is the height it lands at that has to be inside the range");
+        assert_eq!(check(Valued::ChangeAltitude, json!([0.0, true])).map(|c| c.0), Ok(vec![Action::Pause, Action::ChangeAltitude]), "the Pause offer is carried out as a change of altitude that pauses first");
+        assert_eq!(check(Valued::Gripper, json!([1])).map(|c| c.0), Ok(vec![Action::Grab]));
+        assert_eq!(check(Valued::Gripper, json!([0])).map(|c| c.0), Ok(vec![Action::Release]));
+        assert_eq!(check(Valued::Gripper, json!([2])).map_err(|e| e.0), Err("malformed"));
+        assert_eq!(check(Valued::Resume, json!([7])).map(|c| c.1), Ok("[7]".to_string()));
+        assert_eq!(check(Valued::Resume, json!([4])).map_err(|e| e.0), Err("moved"), "a resume from an item the vehicle has since moved past regenerates the mission from the wrong place");
+        assert_eq!(check(Valued::Pause, json!([])).map(|c| c.0), Ok(vec![Action::Pause]));
+    }
 
     #[test]
     fn a_guided_invoke_goes_only_when_the_view_offers_it_ready() {

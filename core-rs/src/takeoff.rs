@@ -40,7 +40,7 @@ pub fn takeoff_view(backend: &dyn Backend, args: &[String]) -> Value {
     }
 }
 
-fn range_meters(backend: &dyn Backend) -> Option<(f64, f64)> {
+pub(crate) fn range_meters(backend: &dyn Backend) -> Option<(f64, f64)> {
     if !flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable") {
         return None;
     }

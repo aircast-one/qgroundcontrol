@@ -12,10 +12,10 @@ pub const DEPS: &[&str] = &[
 
 const SMALLEST_CHANGE_METERS: f64 = 0.01;
 
-struct Range {
-    current: f64,
-    minimum: f64,
-    maximum: f64,
+pub(crate) struct Range {
+    pub(crate) current: f64,
+    pub(crate) minimum: f64,
+    pub(crate) maximum: f64,
 }
 
 pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -73,7 +73,7 @@ pub fn merge(base: Value, extra: Value) -> Value {
     }
 }
 
-fn range_meters(backend: &dyn Backend) -> Option<Range> {
+pub(crate) fn range_meters(backend: &dyn Backend) -> Option<Range> {
     let current = value_number(&backend.get("vehicle.altitudeRelative.rawValue"))?;
     let minimum = value_number(&backend.get("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
     let maximum = value_number(&backend.get("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
