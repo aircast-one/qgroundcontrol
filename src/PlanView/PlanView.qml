@@ -28,25 +28,15 @@ Item {
 
     property bool planControlColapsed: false
 
-    // The elevation profile is a drawer, not a permanent strip. It used to occupy its height
-    // whenever the setting was on, and the map's centre viewport was computed from where it
-    // happened to sit.
     property bool _terrainProfileOpen:            _planViewSettings.showMissionItemStatus.rawValue &&
                                                       _editingLayer === _layerMission &&
                                                       QGroundControl.corePlugin.options.showMissionStatus &&
-                                                      // An empty plan has no profile to draw, and a
-                                                      // sheet of empty axes is a panel asking to be
-                                                      // read for nothing.
                                                       _planMasterController.containsItems
     readonly property real _terrainProfileHeight: ScreenTools.defaultFontPixelHeight * 8.5
 
     readonly property int   _decimalPlaces:             8
     readonly property real  _margin:                    ScreenTools.defaultFontPixelHeight * 0.5
     readonly property real  _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
-    // Derived, not branched. The width used to be an if/else that added 21.667 characters when
-    // UTMSP was on - a number with no relationship to anything on screen.
-    // Everything floats clear of the window edge by the same amount, so the map reads as one
-    // surface with panels resting on it rather than as a set of docked regions butted together.
     readonly property bool  _narrow:                    panel.height > panel.width
     readonly property real  _rightPanelWidth:           _narrow ? panel.width - _panelMargin * 2
                                                                   : Math.min(panel.width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
@@ -54,7 +44,6 @@ Item {
     readonly property real  _panelRadius:               ScreenTools.defaultFontPixelHeight * 1.3
     readonly property Item  _bottomObstacle:            terrainSheet.visible ? terrainSheet : _narrow && rightPanel.visible ? rightPanel : null
 
-    // The surface this view draws on, owned by whoever hosts it.
     property var    map
     property bool   planActive
 
@@ -64,12 +53,7 @@ Item {
     property var    _rallyPointController:              _planMasterController.rallyPointController
     property var    _visualItems:                       _missionController.visualItems
     property bool   _addROIOnClick:                     false
-    // The add-waypoint mode used to live as `checked` on a ToolStripAction, so the map's click
-    // handler reached into the tool strip's model to find out what a click meant. The mode is
-    // the view's state; the dock button only reflects it.
     property bool   _addWaypointMode:                   false
-    // One index over one list. There used to be two tab bars with duplicated buttons and two
-    // parallel expressions selecting between them, so adding a layer meant editing both.
     property int    _layerIndex:                        0
     readonly property var _activeLayers:                _utmspEnabled ? _layersUTMSP : _layers
     property int    _editingLayer:                      _activeLayers[Math.min(_layerIndex, _activeLayers.length - 1)]
@@ -83,7 +67,7 @@ Item {
     property bool   _resetRegisterFlightPlan
 
     readonly property var       _layers:                    [_layerMission, _layerGeoFence, _layerRallyPoints]
-    readonly property var       _layersUTMSP:               [_layerMission, _layerRallyPoints, _layerUTMSP] //Adds additional UTMSP layer
+    readonly property var       _layersUTMSP:               [_layerMission, _layerRallyPoints, _layerUTMSP]
 
     readonly property int       _layerMission:              1
     readonly property int       _layerGeoFence:             2
@@ -93,8 +77,6 @@ Item {
 
     readonly property var       _qgcPal:                    QGroundControl.globalPalette
 
-    // A complex item (survey, corridor, structure scan, landing pattern) carries far more than a
-    // row can hold, so selecting one pushes a detail page instead of expanding in place.
     readonly property var  _currentPlanItem: _missionController.currentPlanViewItem
     readonly property bool _showItemDetail:  _currentPlanItem !== null && _currentPlanItem !== undefined &&
                                                  !_currentPlanItem.isSimpleItem && _currentPlanItem.sequenceNumber !== 0
@@ -371,9 +353,6 @@ Item {
         }
     }
 
-    // The map is the view; the toolbar rests on it. It used to be a solid bar with the map
-    // starting underneath its bottom edge, which cut the one continuous surface this view has
-    // into a strip and a box.
     PlanViewToolBar {
         id:                     planToolBar
         planMasterController:   _planMasterController
@@ -389,9 +368,6 @@ Item {
         anchors.leftMargin:     ScreenTools.safeAreaLeft
         anchors.rightMargin:    ScreenTools.safeAreaRight
 
-        // The plan does not own a map. It used to build a second FlightMap showing the same
-        // ground as the fly view's, which is why the two could drift apart and why glass here
-        // frosted the wrong one. This is the editing layer, drawn onto the shared surface.
         PlanEditMapItems {
             map:                  _root.map
             planActive:           _root.planActive
@@ -405,9 +381,6 @@ Item {
             onItemClicked:        (sequenceNumber) => _missionController.setCurrentPlanViewSeqNum(sequenceNumber, false)
         }
 
-        // While the plan is the active mode it owns what counts as the map's usable middle, so
-        // fit-to-view clears the dock, the inspector and the profile rather than the fly view's
-        // instruments.
         Binding {
             target:   _root.map
             property: "centerViewport"
@@ -505,9 +478,6 @@ Item {
             z:                      QGroundControl.zOrderWidgets
 
             readonly property real  _icon:   Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4)
-            // An icon dock is only legible to someone who already knows it. The fly view's tool
-            // strip captions its buttons; this one now does too, and the cell is as wide as the
-            // longest caption so the column keeps one edge.
             readonly property real  _cell:   Math.max(_icon, captionMetrics.width + ScreenTools.defaultFontPixelWidth * 2)
             readonly property real  _caption: captionMetrics.height
             readonly property real  _radius: ScreenTools.defaultFontPixelHeight * 0.7
@@ -664,10 +634,6 @@ Item {
             }
         }
 
-        //-----------------------------------------------------------
-        // Dock menus. These were drop panels of stacked QGCButtons under collapsible section
-        // headers - a form, opened to pick one thing. A menu is a list of choices with the
-        // destructive one set apart at the end.
         OverlayPopover {
             id: fileMenu
 
@@ -892,7 +858,6 @@ Item {
             }
         }
 
-        // The map's own look, one tap from the map - not three levels into application settings.
         OverlayPopover {
             id: mapTypeMenu
 
@@ -915,12 +880,6 @@ Item {
             }
         }
 
-        //-----------------------------------------------------------
-        // Right inspector.
-        //
-        // One floating panel. This was a full-height slab butted against the window edge with a
-        // tab bar for a header - the map stopped where it began. Inset on every side, the map
-        // runs behind it and the panel reads as resting on the plan rather than framing it.
         Item {
             id:                     rightPanel
             objectName:             "planInspector"
@@ -947,9 +906,6 @@ Item {
                                               : itemDetail.visible        ? itemDetail.wantedHeight
                                               : fenceEditor.visible       ? fenceEditor.contentHeight
                                               : rallyEditor.visible       ? rallyEditor.contentHeight
-                                              // The UTM-SP editor wants the whole panel, and
-                                              // asking it how tall it is would be asking the panel
-                                              // how tall the panel is.
                                                                           : _availableHeight
 
             Rectangle {
@@ -959,16 +915,10 @@ Item {
                 layer.enabled:  true
                 layer.effect:   OverlayShadowEffect { elevated: true }
 
-                // A capsule can be thin because it covers a few words; a full-height panel of
-                // forms cannot - over bright ground the map reads straight through the text.
-                // More tint, same refraction and rim.
                 OverlayGlass {
                     id:            panelGlass
                     anchors.fill:  parent
                     radius:        _panelRadius
-                    // The shared glass tint is 45% opaque, which is right for a pill holding two
-                    // words and far too thin under a panel of forms - over bright imagery the
-                    // map reads straight through the labels. Same material, more of it.
                     material:      OverlayGlass.Panel
                 }
             }
@@ -977,9 +927,6 @@ Item {
                 anchors.fill:   parent
             }
 
-            // One control built from the layer list, so a layer is added in one place. Mission,
-            // Fence and Rally are modes over the same canvas rather than separate pages, which
-            // is a segmented control, not a tab bar.
             OverlayViewSwitch {
                 id:                  layerSelector
                 objectName:          "planLayerSelector"
@@ -1014,11 +961,6 @@ Item {
                 anchors.rightMargin:  rightPanel._padding
                 anchors.bottomMargin: rightPanel._padding
 
-                //-------------------------------------------------------
-                // Mission Start above, the items below. Mission Start used to be the first row of
-                // the item list, so selecting it drew a filled block the height of a form and the
-                // settings inside it needed a box of their own to look like groups - a card in a
-                // card in a card. It is what it always was: a section, not an item.
                 QGCFlickable {
                     id:             missionItemEditor
                     anchors.fill:   parent
@@ -1045,9 +987,6 @@ Item {
                         anchors.right:  parent.right
                         spacing:        ScreenTools.defaultFontPixelHeight * 0.5
 
-                            // No explicit height: the loader takes its implicit height from the
-                            // editor it holds, so the column below it stays put as the editor
-                            // grows and shrinks with the vehicle's options.
                         QGCLabel {
                             text:           qsTr("ITEMS")
                             leftPadding:    ScreenTools.defaultFontPixelHeight / 2
@@ -1060,8 +999,6 @@ Item {
                             id:    itemsCard
                             width: parent.width
 
-                            // Sequence 0 is the mission settings item, shown above as its own
-                            // section rather than as a row of this list, so the list starts at 1.
                             readonly property int _firstItemIndex: 1
 
                             Repeater {
@@ -1116,15 +1053,10 @@ Item {
                             property var  map:                  _root.map
                             property real availableWidth:       missionSettingsLoader.width
                             property var  editorRoot:           missionSettingsLoader
-                            property bool _noMissionItemsAdded: _visualItems.count === 1
                         }
                     }
                 }
 
-                //-------------------------------------------------------
-                // Complex item detail. A survey or scan carries a page of its own settings, which
-                // cannot live inline under a list row - so it pushes a page, with the list as its
-                // root and one way back.
                 Item {
                     id:             itemDetail
                     anchors.fill:   parent
@@ -1202,8 +1134,6 @@ Item {
                                     property var  masterController: _planMasterController
                                     property real availableWidth:   detailLoader.width
                                     property var  editorRoot:       detailLoader
-                                    // Complex editors and the camera sections they load read
-                                    // these from the scope their host used to provide.
                                     property var  missionItem:      null
 
                                     function reload() {
@@ -1245,7 +1175,6 @@ Item {
                     }
                 }
 
-                // GeoFence Editor
                 GeoFenceEditor {
                     id:                     fenceEditor
                     anchors.top:            parent.top
@@ -1269,7 +1198,6 @@ Item {
         }
 
         QGCLabel {
-            // Elevation provider notice on top of terrain plot
             readonly property string _licenseString: QGroundControl.elevationProviderNotice
 
             id:                         licenseLabel
@@ -1281,11 +1209,6 @@ Item {
             text:                       qsTr("Powered by %1").arg(_licenseString)
         }
 
-        //-----------------------------------------------------------
-        // Terrain profile, as a sheet. It used to run edge to edge along the bottom of the
-        // window and under the dock, so the one surface the plan lives on was cut off at the
-        // knees. It sits clear of the dock and the inspector, and the grabber both says it can
-        // be dismissed and does the dismissing.
         Item {
             id:                     terrainSheet
             objectName:             "planTerrainSheet"
@@ -1314,9 +1237,6 @@ Item {
                 OverlayGlass {
                     anchors.fill:  parent
                     radius:        _panelRadius
-                    // The shared glass tint is 45% opaque, which is right for a pill holding two
-                    // words and far too thin under a panel of forms - over bright imagery the
-                    // map reads straight through the labels. Same material, more of it.
                     material:      OverlayGlass.Panel
                 }
             }

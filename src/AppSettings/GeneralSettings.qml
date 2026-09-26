@@ -7,7 +7,6 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -21,12 +20,9 @@ SettingsPage {
     property var    _settingsManager:           QGroundControl.settingsManager
     property var    _appSettings:               _settingsManager.appSettings
     property var    _unitsSettings:             _settingsManager.unitsSettings
-    property var    _brandImageSettings:        _settingsManager.brandImageSettings
     property Fact   _appFontPointSize:          _appSettings.appFontPointSize
-    property Fact   _userBrandImageIndoor:      _brandImageSettings.userBrandImageIndoor
-    property Fact   _userBrandImageOutdoor:     _brandImageSettings.userBrandImageOutdoor
     property Fact   _appSavePath:               _appSettings.savePath
-    property Fact   _androidSaveToSDCard:       _appSettings.androidSaveToSDCard
+    property Fact   _androidDontSaveToSDCard:   _appSettings.androidDontSaveToSDCard
     property bool   _resetPending:              false
 
     readonly property var _scalePercents: [ 80, 90, 100, 110, 125, 150, 175, 200 ]
@@ -102,97 +98,13 @@ SettingsPage {
             visible:        _appFontPointSize.visible
             onActivated:    (index) => { _appFontPointSize.value = _pointSizeForPercent(_scalePercents[index]) }
         }
-
-        RowLayout {
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth * 2
-            visible:            _brandImageSettings.visible && !ScreenTools.isMobile && _userBrandImageIndoor.visible
-
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            0
-
-                QGCLabel {
-                    Layout.fillWidth:   true
-                    text:               qsTr("Indoor Brand Image")
-                }
-                QGCLabel {
-                    Layout.fillWidth:   true
-                    font.pointSize:     ScreenTools.smallFontPointSize
-                    color:              QGroundControl.globalPalette.colorGrey
-                    text:               _userBrandImageIndoor.valueString.replace("file:///", "")
-                    elide:              Text.ElideMiddle
-                    visible:            _userBrandImageIndoor.valueString.length > 0
-                }
-            }
-
-            QGCButton {
-                text:       qsTr("Choose…")
-                onClicked:  userBrandImageIndoorBrowseDialog.openForLoad()
-
-                QGCFileDialog {
-                    id:                 userBrandImageIndoorBrowseDialog
-                    title:              qsTr("Choose custom brand image file")
-                    folder:             _userBrandImageIndoor.rawValue.replace("file:///", "")
-                    selectFolder:       false
-                    onAcceptedForLoad:  (file) => _userBrandImageIndoor.rawValue = "file:///" + file
-                }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth * 2
-            visible:            _brandImageSettings.visible && !ScreenTools.isMobile && _userBrandImageOutdoor.visible
-
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            0
-
-                QGCLabel {
-                    Layout.fillWidth:   true
-                    text:               qsTr("Outdoor Brand Image")
-                }
-                QGCLabel {
-                    Layout.fillWidth:   true
-                    font.pointSize:     ScreenTools.smallFontPointSize
-                    color:              QGroundControl.globalPalette.colorGrey
-                    text:               _userBrandImageOutdoor.valueString.replace("file:///", "")
-                    elide:              Text.ElideMiddle
-                    visible:            _userBrandImageOutdoor.valueString.length > 0
-                }
-            }
-
-            QGCButton {
-                text:       qsTr("Choose…")
-                onClicked:  userBrandImageOutdoorBrowseDialog.openForLoad()
-
-                QGCFileDialog {
-                    id:                 userBrandImageOutdoorBrowseDialog
-                    title:              qsTr("Choose custom brand image file")
-                    folder:             _userBrandImageOutdoor.rawValue.replace("file:///", "")
-                    selectFolder:       false
-                    onAcceptedForLoad:  (file) => _userBrandImageOutdoor.rawValue = "file:///" + file
-                }
-            }
-        }
-
-        LabelledButton {
-            label:      ""
-            buttonText: qsTr("Reset Images…")
-            visible:    _brandImageSettings.visible && !ScreenTools.isMobile
-            onClicked:  {
-                _userBrandImageIndoor.rawValue = ""
-                _userBrandImageOutdoor.rawValue = ""
-            }
-        }
     }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Files")
         description:        qsTr("Missions, telemetry logs and map tiles are written here. Removable storage keeps them off the device.")
-        visible:            (_appSavePath.visible && !ScreenTools.isMobile) || _androidSaveToSDCard.visible
+        visible:            (_appSavePath.visible && !ScreenTools.isMobile) || _androidDontSaveToSDCard.visible
 
         RowLayout {
             Layout.fillWidth:   true
@@ -229,15 +141,17 @@ SettingsPage {
         FactCheckBoxSlider {
             Layout.fillWidth:   true
             text:               qsTr("Save application data to SD Card")
-            fact:               _androidSaveToSDCard
-            visible:            _androidSaveToSDCard.visible
+            fact:               _androidDontSaveToSDCard
+            checkedValue:       false
+            uncheckedValue:     true
+            visible:            _androidDontSaveToSDCard.visible
         }
     }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Units")
-        visible:            _unitsSettings.visible
+        visible:            _unitsSettings.userVisible
 
         LabelledComboBox {
             label:          qsTr("Unit system")

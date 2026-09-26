@@ -15,6 +15,7 @@ Item {
     property var    _masterControler:               masterController
     property var    _missionController:             _masterControler.missionController
     property var    _controllerVehicle:             _masterControler.controllerVehicle
+    property bool   _noMissionItemsAdded:           _missionController.visualItems.count <= 1
     property bool   _vehicleHasHomePosition:        _controllerVehicle.homePosition.isValid
     property bool   _showCruiseSpeed:               !_controllerVehicle.multiRotor
     property bool   _showHoverSpeed:                _controllerVehicle.multiRotor || _controllerVehicle.vtol
@@ -22,8 +23,6 @@ Item {
     property bool   _multipleVehicleTypes:          !QGroundControl.singleVehicleSupport
     property real   _fieldWidth:                    ScreenTools.defaultFontPixelWidth * 12
     property bool   _mobile:                        ScreenTools.isMobile
-    property var    _savePath:                      QGroundControl.settingsManager.appSettings.missionSavePath
-    property var    _fileExtension:                 QGroundControl.settingsManager.appSettings.missionFileExtension
     property var    _appSettings:                   QGroundControl.settingsManager.appSettings
     property bool   _waypointsOnlyMode:             QGroundControl.corePlugin.options.missionWaypointsOnly
     property bool   _showCameraSection:             (_waypointsOnlyMode || QGroundControl.corePlugin.showAdvancedUI) && !_controllerVehicle.apmFirmware

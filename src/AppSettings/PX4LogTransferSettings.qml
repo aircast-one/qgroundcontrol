@@ -310,7 +310,7 @@ SettingsPage {
             verticalAlignment:      Text.AlignVCenter
             text:                   qsTr("No log files")
             color:                  QGroundControl.globalPalette.colorGrey
-            visible:                _mavlinkLogManager.logFiles.count === 0
+            visible:                _mavlinkLogManager && _mavlinkLogManager.logFiles.count === 0
         }
 
         RowLayout {
