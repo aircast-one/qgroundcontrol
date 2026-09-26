@@ -1,60 +1,34 @@
 package one.aircast.android
 
-import one.aircast.android.ui.HostNotice
 import one.aircast.android.ui.REPEAT_QUIET_MS
-import one.aircast.android.ui.bannersToShow
+import one.aircast.android.ui.quietBanners
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
+// Which notices become banner lines is view.hostNotices' rule now (hostnoticeview.rs covers
+// navigation never being one); what this head still owns is the repeat window.
 class BannersToShowTest {
-    private var next = 0L
-
-    private fun notice(kind: String, title: String, text: String) =
-        HostNotice(id = next++, kind = kind, title = title, text = text)
-
-    private fun message(text: String) = notice("message", "Aircast", text)
-
     private val now = 1_000_000L
+    private val missing = "Aircast · Parameters are missing"
+    private val ekf = "Aircast · EKF variance"
 
     @Test
     fun `a message arriving many times in one batch is shown once`() {
-        val queued = listOf(message("Parameters are missing"), message("Parameters are missing"))
-
-        assertEquals(
-            listOf("Aircast · Parameters are missing"),
-            bannersToShow(queued, emptyMap(), now),
-        )
+        assertEquals(listOf(missing), quietBanners(listOf(missing, missing), emptyMap(), now))
     }
 
     @Test
     fun `a message that repeats faster than the quiet window is held back`() {
-        val shown = mapOf("Aircast · Parameters are missing" to now - 1_000L)
-
-        assertEquals(emptyList<String>(), bannersToShow(listOf(message("Parameters are missing")), shown, now))
+        assertEquals(emptyList<String>(), quietBanners(listOf(missing), mapOf(missing to now - 1_000L), now))
     }
 
     @Test
     fun `a condition still recurring after the quiet window is announced again`() {
-        val shown = mapOf("Aircast · EKF variance" to now - REPEAT_QUIET_MS - 1L)
-
-        assertEquals(
-            listOf("Aircast · EKF variance"),
-            bannersToShow(listOf(message("EKF variance")), shown, now),
-        )
+        assertEquals(listOf(ekf), quietBanners(listOf(ekf), mapOf(ekf to now - REPEAT_QUIET_MS - 1L), now))
     }
 
     @Test
     fun `one message being held back does not hold back a different one`() {
-        val shown = mapOf("Aircast · Parameters are missing" to now - 1_000L)
-        val queued = listOf(message("Parameters are missing"), message("EKF variance"))
-
-        assertEquals(listOf("Aircast · EKF variance"), bannersToShow(queued, shown, now))
-    }
-
-    @Test
-    fun `navigation notices are never banners`() {
-        val queued = listOf(notice("navigation", "setup", ""), message("EKF variance"))
-
-        assertEquals(listOf("Aircast · EKF variance"), bannersToShow(queued, emptyMap(), now))
+        assertEquals(listOf(ekf), quietBanners(listOf(missing, ekf), mapOf(missing to now - 1_000L), now))
     }
 }

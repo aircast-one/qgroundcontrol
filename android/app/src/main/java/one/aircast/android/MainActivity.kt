@@ -229,29 +229,28 @@ fun AircastShell(quickView: QtQuickView) {
     val flyTrafficReadout = remember { movableContentOf { TrafficReadout() } }
     val flyRcControlsLayer = remember { movableContentOf { RcControlsLayer() } }
 
-    val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
+    val notices by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.hostNoticesPath(acknowledgedThrough))
     val noticeScope = rememberCoroutineScope()
     var shownAt by remember { mutableStateOf(emptyMap<String, Long>()) }
 
     BackHandler(enabled = tab != Tab.Fly) { tab = Tab.Fly }
 
     LaunchedEffect(notices) {
-        val queued = one.aircast.android.ui.noticesAfter(
-            one.aircast.android.ui.hostNotices(notices),
-            acknowledgedThrough,
-        )
-        if (queued.isEmpty()) return@LaunchedEffect
-        val through = queued.last().id
-        acknowledgedThrough = through
-        one.aircast.android.ui.noticeDestination(queued)?.let { tab = Tab.from(it) }
+        val batch = one.aircast.android.ui.noticeBatch(notices) ?: return@LaunchedEffect
+        if (batch.through <= acknowledgedThrough) return@LaunchedEffect
+        acknowledgedThrough = batch.through
+        batch.unknownKinds.forEach {
+            android.util.Log.w("HostNotices", "unrecognised notice kind '$it' - showing it rather than guessing")
+        }
+        batch.destination?.let { tab = Tab.from(it) }
         val now = System.currentTimeMillis()
-        val banners = one.aircast.android.ui.bannersToShow(queued, shownAt, now)
+        val banners = one.aircast.android.ui.quietBanners(batch.banners, shownAt, now)
         shownAt = shownAt + banners.associateWith { now }
         noticeScope.launch {
             withContext(Dispatchers.Default) {
-                Qgc.invoke("host.acknowledgeThrough", through)
+                Qgc.invoke("host.acknowledgeThrough", batch.through)
             }
             banners.forEach { snackbars.showSnackbar(it) }
         }
