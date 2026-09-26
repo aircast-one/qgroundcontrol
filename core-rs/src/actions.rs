@@ -73,9 +73,10 @@ const CONNECT_LINK: &str = "links.createConnectedLink";
 const START_SUPPORT: &str = "links.createMavlinkForwardingSupportLink";
 const END_SUPPORT: &str = "links.endMavlinkForwardingSupportLink";
 const GLOBAL_ALTITUDE_MODE: &str = "plan.missionController.globalAltitudeMode";
+const START_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.startTracking";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -160,6 +161,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
+        START_TRACKING => crate::cameratrack::start(backend, args),
         CONNECT_LINK => crate::linkconnect::connect(backend, path, args),
         START_SUPPORT => crate::linkconnect::support_forwarding(backend, crate::linkconnect::Forwarding::Start, path),
         END_SUPPORT => crate::linkconnect::support_forwarding(backend, crate::linkconnect::Forwarding::End, path),
@@ -648,7 +650,8 @@ mod tests {
         let shapeless: Vec<&&str> = OWNED_WRITES.iter().filter(|path| answer(path).get("result").is_none()).collect();
         assert!(shapeless.is_empty(), "these shadow a Qt path and dropped its result key, so a head reading one the Qt way sees a failure or an empty list: {shapeless:?}");
 
-        assert!(!OWNED.iter().any(|path| path.contains("cameraManager")), "an invented name is exempt from the result rule only because no Qt path answers to it; a full Qt path in this list would be claiming one and owes the shape");
+        let camera_shapeless: Vec<&&str> = OWNED.iter().filter(|path| path.contains("cameraManager") && answer(path).get("result").is_none()).collect();
+        assert!(camera_shapeless.is_empty(), "an invented name is exempt from the result rule only because no Qt path answers to it; a full camera path in this list is spelled like one a head reads the Qt way, so it owes the result key: {camera_shapeless:?}");
     }
 
     #[test]

@@ -376,6 +376,7 @@ mod deps_cover_reads {
             ("calibration", include_str!("calibration.rs")),
             ("cameracalc", include_str!("cameracalc.rs")),
             ("cameradef", include_str!("cameradef.rs")),
+            ("cameratrack", include_str!("cameratrack.rs")),
             ("cameraproto", include_str!("cameraproto.rs")),
             ("cmdinfo", include_str!("cmdinfo.rs")),
             ("compinfo", include_str!("compinfo.rs")),

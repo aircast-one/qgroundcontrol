@@ -20,6 +20,7 @@ pub mod corridorscan;
 pub mod compmeta;
 pub mod cameracalc;
 pub mod cameradef;
+pub mod cameratrack;
 pub mod cameraproto;
 pub mod cmdinfo;
 pub mod debugapi;
