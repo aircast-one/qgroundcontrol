@@ -94,12 +94,13 @@ const CLEAR_MESSAGES: &str = "vehicle.clearMessages";
 const SELECT_ITEM: &str = "plan.missionController.setCurrentPlanViewSeqNum";
 const UNDO_TRACKING: &str = "plan.undoTracking";
 const INSPECTOR_SELECTED: &str = "mavlinkInspector.activeSystem.selected";
+const REMOVE_ITEM: &str = "plan.missionController.removeVisualItem";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, CREATE_AND_CONNECT, CREATE_SERIAL, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, CREATE_AND_CONNECT, CREATE_SERIAL, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM, REMOVE_ITEM];
 
 pub fn owns(path: &str) -> bool {
-    OWNED.contains(&path) || crate::linkconnect::disconnect_target(path).is_some()
+    OWNED.contains(&path) || crate::linkconnect::disconnect_target(path).is_some() || crate::fenceedit::owns_member_action(path)
 }
 
 // A write had no route to the core at all: router.set refused view paths and passed everything
@@ -108,7 +109,7 @@ pub fn owns(path: &str) -> bool {
 pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED];
 
 pub fn owns_write(path: &str) -> bool {
-    OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some()
+    OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path)
 }
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -119,6 +120,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         _ if crate::logs::selection_index(path).is_some() => crate::logs::write_selected(backend, path, value),
         _ if crate::factwrite::owns(path) => crate::factwrite::write(backend, path, value),
         _ if crate::linkconnect::edit_target(path).is_some() => crate::linkconnect::edit(backend, path, value),
+        _ if crate::fenceedit::owns_member_write(path) => crate::fenceedit::member_write(backend, path, value),
         UNDO_TRACKING => crate::planselect::write_undo_tracking(backend, path, value),
         THERMAL_MODE | THERMAL_OPACITY | TRACKING_ENABLED => crate::cameratrack::write(backend, path, value),
         GLOBAL_ALTITUDE_MODE => crate::altitudeedit::write_global(backend, value),
@@ -180,6 +182,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         UNDO | REDO => step(backend, path),
         _ if crate::linkconnect::disconnect_target(path).is_some() => crate::linkconnect::disconnect(backend, path),
+        _ if crate::fenceedit::owns_member_action(path) => crate::fenceedit::member_action(backend, path, args),
         LOG_REFRESH => crate::logs::act(backend, crate::logs::Action::Refresh, path, args),
         LOG_DOWNLOAD => crate::logs::act(backend, crate::logs::Action::Download, path, args),
         LOG_CANCEL => crate::logs::act(backend, crate::logs::Action::Cancel, path, args),
@@ -190,6 +193,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
         INSERT_PATTERN => insert_pattern(backend, path, args, false),
         INSERT_PATTERN_FILE => insert_pattern(backend, path, args, true),
+        REMOVE_ITEM => remove(backend, args),
         SELECT_ITEM => crate::planselect::select(backend, path, args),
         ACKNOWLEDGE => crate::hostnotice::acknowledge(backend, path, args),
         ACKNOWLEDGE_THROUGH => crate::hostnotice::acknowledge_through(backend, path, args),

@@ -131,6 +131,112 @@ pub fn write_breach_return(backend: &dyn Backend, path: &str, value: &str) -> Va
     })
 }
 
+const RALLY_POINTS: &str = "plan.rallyPointController.points";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Owner {
+    Polygon,
+    Circle,
+    Rally,
+}
+
+pub fn member_target(path: &str) -> Option<(Owner, usize, &str)> {
+    let (owner, rest) = [(Owner::Polygon, "plan.geoFenceController.polygons."), (Owner::Circle, "plan.geoFenceController.circles."), (Owner::Rally, "plan.rallyPointController.points.")]
+        .into_iter()
+        .find_map(|(owner, prefix)| path.strip_prefix(prefix).map(|rest| (owner, rest)))?;
+    let (index, member) = rest.split_once('.')?;
+    let known = match owner {
+        Owner::Polygon => ["adjustVertex", "removeVertex"].contains(&member),
+        Owner::Circle => ["center", "inclusion", "radius"].contains(&member),
+        Owner::Rally => member == "coordinate",
+    };
+    known.then_some(())?;
+    Some((owner, index.parse().ok()?, member))
+}
+
+pub fn owns_member_action(path: &str) -> bool {
+    member_target(path).is_some_and(|(owner, _, _)| owner == Owner::Polygon)
+}
+
+pub fn owns_member_write(path: &str) -> bool {
+    member_target(path).is_some_and(|(owner, _, _)| owner != Owner::Polygon)
+}
+
+fn owner_count(backend: &dyn Backend, owner: Owner) -> usize {
+    match owner {
+        Owner::Polygon => count(backend, Shape::Polygon),
+        Owner::Circle => count(backend, Shape::Circle),
+        Owner::Rally => object(&backend.get(RALLY_POINTS)).get("elements").and_then(Value::as_array).map_or(0, Vec::len),
+    }
+}
+
+fn syncing(backend: &dyn Backend) -> bool {
+    flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress")
+}
+
+pub fn member_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "refusal": token, "reason": reason });
+    let Some((owner, index, member)) = member_target(path) else {
+        return refused("malformed", "That is not a fence edit the core performs.".to_string());
+    };
+    if syncing(backend) {
+        return refused("busy", "Wait for the sync to finish before changing the geofence.".to_string());
+    }
+    if index >= owner_count(backend, owner) {
+        return refused("noSuchShape", format!("There is no fence polygon at position {index}."));
+    }
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let vertices = crate::read::integer(&object(&backend.get_fields(&format!("plan.geoFenceController.polygons.{index}"), "count")), "count").unwrap_or(0);
+    let Some(vertex) = given.get(0).and_then(Value::as_i64).filter(|v| (0..vertices).contains(v)) else {
+        return refused("noSuchVertex", format!("The polygon has vertices 0 to {}.", vertices - 1));
+    };
+    let forwarded = match member {
+        "removeVertex" if vertices <= 3 => return refused("tooFewVertices", "A fence polygon keeps at least three vertices.".to_string()),
+        "removeVertex" => json!([vertex]),
+        _ => match point(given.get(1)) {
+            Some((latitude, longitude)) => json!([vertex, { "latitude": latitude, "longitude": longitude }]),
+            None => return refused("badCoordinate", "A vertex needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string()),
+        },
+    };
+    let dispatched = flag(&object(&backend.invoke(path, &forwarded.to_string())), "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The fence was not changed.") } })
+}
+
+pub fn member_write(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    let Some((owner, index, member)) = member_target(path) else {
+        return refused("malformed", "That is not a fence setting the core writes.".to_string());
+    };
+    if syncing(backend) {
+        return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
+    }
+    if index >= owner_count(backend, owner) {
+        return refused("noSuchShape", format!("There is nothing at position {index} to change."));
+    }
+    if member == "radius" {
+        return crate::factwrite::write(backend, path, value);
+    }
+    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let sent = match member {
+        "inclusion" => match asked.as_bool() {
+            Some(inside) => json!(inside),
+            None => return refused("malformed", "A circle is an inclusion (true) or an exclusion (false).".to_string()),
+        },
+        _ => match point(Some(&asked)) {
+            Some((latitude, longitude)) => {
+                let mut at = json!({ "latitude": latitude, "longitude": longitude });
+                if let Some(altitude) = asked.get("altitude").and_then(Value::as_f64).filter(|a| a.is_finite()) {
+                    at["altitude"] = json!(altitude);
+                }
+                at
+            }
+            None => return refused("badCoordinate", "A position needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string()),
+        },
+    };
+    let answered = flag(&object(&backend.set(path, &json!({ "value": sent }).to_string())), "ok");
+    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The plan did not take that change.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,5 +307,46 @@ mod tests {
         let deaf = Controller { polygons: RefCell::new(1), obeys: false, breach: RefCell::new(Value::Null) };
         assert_eq!(add(&deaf, Shape::Polygon, "plan.geoFenceController.addInclusionPolygon", window)["ok"], false);
         assert_eq!(write_breach_return(&deaf, "plan.geoFenceController.breachReturnPoint", r#"{"value":{"latitude":47.4,"longitude":8.5}}"#)["ok"], false);
+    }
+
+    #[test]
+    fn a_fence_or_rally_member_is_changed_only_where_it_exists_and_a_polygon_stays_an_area() {
+        assert_eq!(member_target("plan.geoFenceController.polygons.1.removeVertex"), Some((Owner::Polygon, 1, "removeVertex")));
+        assert_eq!(member_target("plan.geoFenceController.circles.0.radius"), Some((Owner::Circle, 0, "radius")));
+        assert_eq!(member_target("plan.rallyPointController.points.2.coordinate"), Some((Owner::Rally, 2, "coordinate")));
+        assert_eq!(member_target("plan.geoFenceController.polygons.1.path"), None);
+        assert!(owns_member_action("plan.geoFenceController.polygons.0.adjustVertex") && !owns_member_write("plan.geoFenceController.polygons.0.adjustVertex"));
+        assert!(owns_member_write("plan.geoFenceController.circles.0.center"));
+
+        struct Plan(RefCell<i64>);
+        impl Backend for Plan {
+            fn get(&self, p: &str) -> String {
+                let n = if p.ends_with("polygons") || p.ends_with("points") { 1 } else { 0 };
+                json!({ "kind": "object", "elements": vec![json!({}); n] }).to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "plan.geoFenceController.polygons.0" => json!({ "kind": "object", "count": *self.0.borrow() }),
+                    _ => json!({ "kind": "object", "syncInProgress": false }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { json!({ "ok": true }).to_string() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                *self.0.borrow_mut() -= 1;
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let square = Plan(RefCell::new(4));
+        let remove = "plan.geoFenceController.polygons.0.removeVertex";
+        assert_eq!(member_action(&square, remove, "[3]")["ok"], true);
+        assert_eq!(member_action(&square, remove, "[0]")["refusal"], "tooFewVertices", "QGCMapPolygon::removeVertex returns without a word at three vertices, so the operator's tap did nothing and nothing said why");
+        assert_eq!(member_action(&square, remove, "[7]")["refusal"], "noSuchVertex");
+        assert_eq!(member_action(&square, "plan.geoFenceController.polygons.4.removeVertex", "[0]")["refusal"], "noSuchShape");
+        assert_eq!(member_action(&square, "plan.geoFenceController.polygons.0.adjustVertex", r#"[1, {"latitude": 147, "longitude": 8}]"#)["refusal"], "badCoordinate");
+        assert_eq!(member_write(&square, "plan.rallyPointController.points.0.coordinate", r#"{"value":{"latitude":47.4,"longitude":8.5}}"#)["result"], true);
+        assert_eq!(member_write(&square, "plan.rallyPointController.points.3.coordinate", r#"{"value":{"latitude":47.4,"longitude":8.5}}"#)["refusal"], "noSuchShape");
+        assert_eq!(member_write(&square, "plan.geoFenceController.circles.0.inclusion", r#"{"value":true}"#)["refusal"], "noSuchShape", "this plan has no circles");
     }
 }
