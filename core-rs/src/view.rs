@@ -32,6 +32,7 @@ use crate::joystick;
 use crate::detections;
 use crate::followme;
 use crate::frame;
+use crate::firmwareinfo;
 use crate::console;
 use crate::itemcamera;
 use crate::gcsposition;
@@ -215,6 +216,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.terrainTile", deps: terraintile::DEPS, compute: terraintile::terrain_tile_view },
     View { path: "view.gps", deps: gpsview::DEPS, compute: gpsview::gps_view },
     View { path: "view.terrainDownload", deps: terraindownload::DEPS, compute: terraindownload::terrain_download_view },
+    View { path: "view.firmware", deps: firmwareinfo::DEPS, compute: firmwareinfo::firmware_view },
     View { path: "view.dependencies", deps: &[], compute: dependencies_view },
 ];
 
@@ -401,6 +403,7 @@ mod deps_cover_reads {
             ("flystate", include_str!("flystate.rs")),
             ("followme", include_str!("followme.rs")),
         ("frame", include_str!("frame.rs")),
+            ("firmwareinfo", include_str!("firmwareinfo.rs")),
             ("ftp", include_str!("ftp.rs")),
             ("gcsposition", include_str!("gcsposition.rs")),
             ("geo", include_str!("geo.rs")),

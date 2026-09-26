@@ -2098,6 +2098,9 @@
         "view.fences.fenceSupported",
         "view.fences.kind",
         "view.fences.rallySupported",
+        "view.firmware.class",
+        "view.firmware.kind",
+        "view.firmware.versionType",
         "view.flightModes.class",
         "view.flightModes.kind",
         "view.flyState.class",
@@ -6248,6 +6251,14 @@
         "view.fences.rallyPoints[].longitude",
         "view.fences.rallyPoints[].path",
         "view.fences.rallySupported",
+        "view.firmware.available",
+        "view.firmware.class",
+        "view.firmware.firmwareType",
+        "view.firmware.kind",
+        "view.firmware.summary",
+        "view.firmware.vehicleType",
+        "view.firmware.version",
+        "view.firmware.versionType",
         "view.flightModes.available",
         "view.flightModes.canSet",
         "view.flightModes.class",
@@ -8554,6 +8565,7 @@
             "view.terrainTile",
             "view.gps",
             "view.terrainDownload",
+            "view.firmware",
             "view.dependencies"
         ]
     },
@@ -8744,6 +8756,16 @@
             }
         ],
         "rallySupported": "bool"
+    },
+    "view.firmware": {
+        "available": "bool",
+        "class": "string",
+        "firmwareType": "string",
+        "kind": "string",
+        "summary": "string",
+        "vehicleType": "string",
+        "version": "null|string",
+        "versionType": "string"
     },
     "view.flightModes": {
         "available": "bool",

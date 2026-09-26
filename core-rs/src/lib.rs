@@ -35,6 +35,7 @@ pub mod flightmodes;
 pub mod flystate;
 pub mod followme;
 pub mod frame;
+pub mod firmwareinfo;
 pub mod ftp;
 pub mod gcsposition;
 pub mod geotag;
