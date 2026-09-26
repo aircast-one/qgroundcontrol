@@ -78,6 +78,7 @@ pub mod plantransfer;
 pub mod preflight;
 pub mod px4meta;
 pub mod radio;
+pub mod rallyedit;
 pub mod read;
 pub mod remoteid;
 pub mod remoteidview;

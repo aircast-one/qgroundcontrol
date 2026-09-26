@@ -58,9 +58,11 @@ const PLAN_SAVE_FILE: &str = "plan.saveToFile";
 const PLAN_SAVE_KML: &str = "plan.saveToKml";
 const PLAN_OPEN: &str = "plan.loadFromFile";
 const PLAN_CLEAR: &str = "plan.removeAll";
+const RALLY_ADD: &str = "plan.rallyPointController.addPoint";
+const RALLY_REMOVE: &str = "plan.rallyPointController.removePoint";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -141,6 +143,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
+        RALLY_ADD => crate::rallyedit::add_point(backend, path, args),
+        RALLY_REMOVE => crate::rallyedit::remove_point(backend, path, args),
         PLAN_OPEN => crate::plan::plan_action(backend, crate::plan::PlanAction::Open, path, args),
         PLAN_CLEAR => crate::plan::plan_action(backend, crate::plan::PlanAction::Clear, path, args),
         PLAN_SEND => crate::plan::plan_action(backend, crate::plan::PlanAction::Send, path, args),
