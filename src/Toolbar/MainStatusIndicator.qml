@@ -199,10 +199,11 @@ RowLayout {
         id: overallStatusIndicatorPage
 
         ToolIndicatorPage {
-            showExpand:         _activeVehicle.mainStatusIndicatorContentItem ? true : false
-            waitForParameters:  _activeVehicle.mainStatusIndicatorContentItem ? true : false
-            contentComponent:   mainStatusContentComponent
-            expandedComponent:  mainStatusExpandedComponent
+            showExpand:                         true
+            waitForParameters:                  false
+            expandedComponentWaitForParameters: true
+            contentComponent:                   mainStatusContentComponent
+            expandedComponent:                  mainStatusExpandedComponent
         }
     }
 
@@ -551,7 +552,8 @@ RowLayout {
             property real margins: ScreenTools.defaultFontPixelHeight
 
             Loader {
-                source: _activeVehicle.mainStatusIndicatorContentItem
+                Layout.fillWidth:   true
+                source:             _activeVehicle ? _activeVehicle.expandedToolbarIndicatorSource("MainStatus") : ""
             }
 
             SettingsGroupLayout {

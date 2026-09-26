@@ -4,10 +4,7 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
-import MAVLink
 
-//-------------------------------------------------------------------------
-//-- Battery Indicator
 Item {
     id:             control
     anchors.top:    parent.top
@@ -15,8 +12,6 @@ Item {
     width:          batteryIndicatorRow.width
 
     property bool       showIndicator:      true
-    property bool       waitForParameters:  false   // UI won't show until parameters are ready
-    property Component  expandedPageComponent
 
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property var    _batterySettings:   QGroundControl.settingsManager.batteryIndicatorSettings
@@ -42,7 +37,6 @@ Item {
         return ""
     }
 
-    // Properties to hold the thresholds
     property int threshold1: _batterySettings.threshold1.rawValue
     property int threshold2: _batterySettings.threshold2.rawValue   
 
@@ -77,8 +71,9 @@ Item {
         id: batteryPopup
 
         ToolIndicatorPage {
-            showExpand:         expandedComponent ? true : false
-            waitForParameters:  control.waitForParameters
+            showExpand:                         true
+            waitForParameters:                  false
+            expandedComponentWaitForParameters: true
             contentComponent:   batteryContentComponent
             expandedComponent:  batteryExpandedComponent
         }
@@ -92,17 +87,11 @@ Item {
             anchors.bottom: parent.bottom
             spacing:        ScreenTools.defaultFontPixelWidth * 0.6
 
-            // Neutral until it wants attention, then yellow, then red.
-            //
-            // When the vehicle reports OK, it is OK - show neutral. Colouring an OK pack by the
-            // display thresholds (80/60 by default) meant a healthy battery was yellow or orange
-            // for most of a normal flight, which is the same as having no warning colour at all.
-            // The thresholds still drive the colour when the firmware reports no charge state.
             function getBatteryColor() {
                 switch (battery.chargeState.rawValue) {
-                    case MAVLink.MAV_BATTERY_CHARGE_STATE_OK:
+                    case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_OK:
                         return qgcPal.toolbarText
-                    case MAVLink.MAV_BATTERY_CHARGE_STATE_UNDEFINED:
+                    case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_UNDEFINED:
                         if (!isNaN(battery.percentRemaining.rawValue)) {
                             if (battery.percentRemaining.rawValue > threshold1) {
                                 return qgcPal.toolbarText
@@ -113,12 +102,12 @@ Item {
                             }
                         }
                         return qgcPal.toolbarText
-                    case MAVLink.MAV_BATTERY_CHARGE_STATE_LOW:
+                    case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_LOW:
                         return qgcPal.colorOrange
-                    case MAVLink.MAV_BATTERY_CHARGE_STATE_CRITICAL:
-                    case MAVLink.MAV_BATTERY_CHARGE_STATE_EMERGENCY:
-                    case MAVLink.MAV_BATTERY_CHARGE_STATE_FAILED:
-                    case MAVLink.MAV_BATTERY_CHARGE_STATE_UNHEALTHY:
+                    case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_CRITICAL:
+                    case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_EMERGENCY:
+                    case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_FAILED:
+                    case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_UNHEALTHY:
                         return qgcPal.colorRed
                     default:
                         return qgcPal.toolbarText
@@ -134,7 +123,7 @@ Item {
                     }
                 } else if (!isNaN(battery.voltage.rawValue)) {
                     return battery.voltage.valueString + battery.voltage.units
-                } else if (battery.chargeState.rawValue !== MAVLink.MAV_BATTERY_CHARGE_STATE_UNDEFINED) {
+                } else if (battery.chargeState.rawValue !== MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_UNDEFINED) {
                     return battery.chargeState.enumStringValue
                 }
                 return qsTr("n/a")
@@ -145,7 +134,7 @@ Item {
                     return battery.timeRemainingStr.rawValue
                 } else if (!isNaN(battery.voltage.rawValue)) {
                     return battery.voltage.valueString + battery.voltage.units
-                } else if (battery.chargeState.rawValue !== MAVLink.MAV_BATTERY_CHARGE_STATE_UNDEFINED) {
+                } else if (battery.chargeState.rawValue !== MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_UNDEFINED) {
                     return battery.chargeState.enumStringValue
                 }
                 return qsTr("n/a")
@@ -155,7 +144,6 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text:                   qsTr("B%1").arg(batteryIndex + 1)
                 font.pointSize:         ScreenTools.smallFontPointSize
-                // Secondary: it names the value, it is not the value.
                 color:                  qgcPal.colorGrey
                 visible:                _activeVehicle && _activeVehicle.batteries.count > 1
             }
@@ -205,21 +193,19 @@ Item {
 
             function _severityOf(chargeState) {
                 switch (chargeState) {
-                case MAVLink.MAV_BATTERY_CHARGE_STATE_EMERGENCY:
-                case MAVLink.MAV_BATTERY_CHARGE_STATE_FAILED:
-                case MAVLink.MAV_BATTERY_CHARGE_STATE_UNHEALTHY:
+                case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_EMERGENCY:
+                case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_FAILED:
+                case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_UNHEALTHY:
                     return 3
-                case MAVLink.MAV_BATTERY_CHARGE_STATE_CRITICAL:
+                case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_CRITICAL:
                     return 2
-                case MAVLink.MAV_BATTERY_CHARGE_STATE_LOW:
+                case MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_LOW:
                     return 1
                 default:
                     return 0
                 }
             }
 
-            // The pack in the worst shape decides what the header says: a healthy second
-            // battery must not soften the one that is about to bring the aircraft down.
             readonly property var _worst: {
                 if (_batteryCount === 0) {
                     return null
@@ -270,10 +256,6 @@ Item {
                 return isNaN(fact.rawValue) ? qsTr("\u2014") : fact.valueString + suffix
             }
 
-            // The answer first: what state the aircraft is in and how long it has. The table
-            // below is the evidence for it, not the headline.
-            // Rows are label-left/value-right, so the panel needs a floor to size against or
-            // the two columns collide on short readings.
             Item {
                 Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 32
                 Layout.preferredHeight: 0
@@ -287,8 +269,6 @@ Item {
                 readonly property bool _alarming: _worst ? _severityOf(_worst.chargeState.rawValue) > 0 : false
 
                 QGCLabel {
-                    // Nothing wrong: the charge is the answer. Something wrong: the fault is,
-                    // and the charge steps down to the supporting line.
                     text: {
                         if (!_worst) {
                             return ""
@@ -323,9 +303,6 @@ Item {
                 }
             }
 
-            // A panel that announces an emergency and offers nothing to do about it makes the
-            // pilot go hunting for the control. Only shown when the vehicle can actually
-            // return, and it routes through the normal slide-to-confirm.
             OverlayMenuItem {
                 Layout.fillWidth:   true
                 text:               qsTr("Return")
@@ -339,8 +316,6 @@ Item {
                 }
             }
 
-            // Off the strip and into the popover. A bare "12.0A" with no glyph and no label was
-            // a value nobody asked for taking permanent space next to the ones they did.
             SettingsGroupLayout {
                 popoverStyle: true
                 Layout.fillWidth:   true
@@ -361,7 +336,6 @@ Item {
                     Layout.fillWidth:   true
                     heading:            _batteryCount === 1 ? "" : qsTr("Battery %1").arg(index + 1)
                     contentSpacing:     0
-                    // Apple's grouped list: hairlines between rows, no box drawn around them.
                     showDividers:       true
     
                     property var batteryValuesAvailable: batteryValuesAvailableLoader.item
@@ -392,8 +366,6 @@ Item {
                         label:          qsTr("Voltage")
                         labelText:      _valueOr(object.voltage, qsTr(" V"))
                         labelTextColor: qgcPal.colorGrey
-                        // Guarded like every other row: an unavailable reading is an absent
-                        // row, not a "--.-- v" that reads as a broken instrument.
                         visible:        !isNaN(object.voltage.rawValue)
                     }
 
@@ -427,14 +399,14 @@ Item {
                 id: batteryValuesAvailableComponent
 
                 QtObject {
-                    property bool functionAvailable:         battery.function.rawValue !== MAVLink.MAV_BATTERY_FUNCTION_UNKNOWN
-                    property bool showFunction:              functionAvailable && battery.function.rawValue != MAVLink.MAV_BATTERY_FUNCTION_ALL
+                    property bool functionAvailable:         battery.function.rawValue !== MAVLinkEnums.MAV_BATTERY_FUNCTION_UNKNOWN
+                    property bool showFunction:              functionAvailable && battery.function.rawValue != MAVLinkEnums.MAV_BATTERY_FUNCTION_ALL
                     property bool temperatureAvailable:      !isNaN(battery.temperature.rawValue)
                     property bool currentAvailable:          !isNaN(battery.current.rawValue)
                     property bool mahConsumedAvailable:      !isNaN(battery.mahConsumed.rawValue)
                     property bool timeRemainingAvailable:    !isNaN(battery.timeRemaining.rawValue)
                     property bool percentRemainingAvailable: !isNaN(battery.percentRemaining.rawValue)
-                    property bool chargeStateAvailable:      battery.chargeState.rawValue !== MAVLink.MAV_BATTERY_CHARGE_STATE_UNDEFINED
+                    property bool chargeStateAvailable:      battery.chargeState.rawValue !== MAVLinkEnums.MAV_BATTERY_CHARGE_STATE_UNDEFINED
                 }
             }
         }
@@ -468,7 +440,6 @@ Item {
                     RowLayout {
                         spacing: ScreenTools.defaultFontPixelWidth * 0.05  // Reduced spacing between elements
 
-                        // Battery 100%
                         RowLayout {
                             spacing: ScreenTools.defaultFontPixelWidth * 0.05  // Tighter spacing for icon and label
                             QGCColoredImage {
@@ -481,7 +452,6 @@ Item {
                             QGCLabel { text: qsTr("100%") }
                         }
 
-                        // Threshold 1
                         RowLayout {
                             spacing: ScreenTools.defaultFontPixelWidth * 0.05  // Tighter spacing for icon and field
                             QGCColoredImage {
@@ -498,13 +468,11 @@ Item {
                                 height: ScreenTools.defaultFontPixelHeight * 1.5
                                 enabled: fact.visible
                                 onEditingFinished: {
-                                    // Validate and set the new threshold value
                                     _batterySettings.setThreshold1(parseInt(text));
                                 }
                             }
                         }
 
-                        // Threshold 2
                         RowLayout {
                             spacing: ScreenTools.defaultFontPixelWidth * 0.05  // Tighter spacing for icon and field
                             QGCColoredImage {
@@ -520,13 +488,11 @@ Item {
                                 height: ScreenTools.defaultFontPixelHeight * 1.5
                                 enabled: fact.visible
                                 onEditingFinished: {
-                                    // Validate and set the new threshold value
                                     _batterySettings.setThreshold2(parseInt(text));                                
                                 }
                             }
                         }
 
-                        // Low state
                         RowLayout {
                             spacing: ScreenTools.defaultFontPixelWidth * 0.05  // Tighter spacing for icon and label
                             QGCColoredImage {
@@ -539,7 +505,6 @@ Item {
                             QGCLabel { text: qsTr("Low") }
                         }
 
-                        // Critical state
                         RowLayout {
                             spacing: ScreenTools.defaultFontPixelWidth * 0.05  // Tighter spacing for icon and label
                             QGCColoredImage {
@@ -556,8 +521,8 @@ Item {
             }
 
             Loader {
-                Layout.fillWidth: true
-                sourceComponent: expandedPageComponent
+                Layout.fillWidth:   true
+                source:             _activeVehicle ? _activeVehicle.expandedToolbarIndicatorSource("Battery") : ""
             }
 
             SettingsGroupLayout {

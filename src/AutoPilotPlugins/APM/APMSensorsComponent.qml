@@ -7,7 +7,6 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.FactControls
 import QGroundControl.Controls
-import MAVLink
 
 SetupPage {
     id:             sensorsPage
@@ -23,8 +22,6 @@ SetupPage {
             readonly property string orientationHelpSet:    qsTr("If mounted in the direction of flight, select None.")
             readonly property string orientationHelpCal:    qsTr("Before calibrating make sure rotation settings are correct. ") + orientationHelpSet
             readonly property string compassRotationText:   qsTr("If the compass or GPS module is mounted in flight direction, leave the default value (None)")
-
-
 
             property string _postCalibrationDialogText
             property var    _postCalibrationDialogParams

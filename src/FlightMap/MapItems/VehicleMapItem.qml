@@ -19,19 +19,8 @@ MapQuickItem {
     visible:        coordinate.isValid
 
     property var    _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-    property bool   _adsbVehicle:   vehicle ? false : true
     property var    _map:           map
     property bool   _multiVehicle:  QGroundControl.multiVehicleManager.vehicles.count > 1
-
-    Behavior on coordinate {
-        enabled: _adsbVehicle
-        CoordinateAnimation { duration: 1000 }
-    }
-
-    Behavior on heading {
-        enabled: _adsbVehicle && !isNaN(heading)
-        RotationAnimation { direction: RotationAnimation.Shortest; duration: 1000 }
-    }
 
     sourceItem: Item {
         id:         vehicleItem
@@ -64,7 +53,6 @@ MapQuickItem {
 
                     function paintHeading() {
                         var context = getContext("2d")
-                        // console.log("painting heading " + object.param1Raw + " " + opacity + " " + visible + " " + _index)
                         context.clearRect(0, 0, vehicleIcon.width, vehicleIcon.height);
 
                         var centerX = canvas.width / 2;
@@ -77,7 +65,6 @@ MapQuickItem {
                         var point3 = [centerX + width , centerY + canvas.height * 0.6]
                         var point4 = [centerX, centerY + canvas.height * 0.2]
 
-                        // Draw the arrow
                         context.save();
                         context.globalAlpha = 0.9;
                         context.beginPath();
@@ -120,14 +107,9 @@ MapQuickItem {
             anchors.top:                parent.bottom
             anchors.horizontalCenter:   parent.horizontalCenter
             map:                        _map
-            text:                       vehicleLabelText
-            font.pointSize:             _adsbVehicle ? ScreenTools.defaultFontPointSize : ScreenTools.smallFontPointSize
-            visible:                    _adsbVehicle ? !isNaN(altitude) : _multiVehicle
-            property string vehicleLabelText: visible ?
-                                                  (_adsbVehicle ?
-                                                       QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(altitude).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsVerticalDistanceUnitsString :
-                                                       (_multiVehicle ? qsTr("Vehicle %1").arg(vehicle.id) : "")) :
-                                                  ""
+            text:                       visible && vehicle ? qsTr("Vehicle %1").arg(vehicle.id) : ""
+            font.pointSize:             ScreenTools.smallFontPointSize
+            visible:                    _multiVehicle
         }
     }
 }
