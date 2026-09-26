@@ -25,7 +25,6 @@ import QGroundControl.AppSettings
 import QGroundControl.VehicleSetup
 import QGroundControl.AnalyzeView
 
-
 ApplicationWindow {
     id:             mainWindow
     visible:        true
@@ -210,12 +209,10 @@ ApplicationWindow {
         _showMessageDialogWorker(mainWindow, dialogTitle, dialogText, buttons, acceptFunction, closeFunction)
     }
 
-    // This variant is only meant to be called by QGCApplication
     function _showMessageDialog(dialogTitle, dialogText) {
         _showMessageDialogWorker(mainWindow, dialogTitle, dialogText)
     }
 
-    // This variant is only meant to be called by QGCApplication. Ok reboots the active vehicle.
     function _showRebootVehicleDialog(dialogTitle, dialogText) {
         _showMessageDialogWorker(mainWindow, dialogTitle,
                                  dialogText + " " + qsTr("Click Ok to reboot the vehicle now."),
@@ -275,7 +272,9 @@ ApplicationWindow {
     property string closeDialogTitle: qsTr("Close %1").arg(QGroundControl.appName)
 
     function checkForUnsavedMission() {
-        if (planViewLoader.item && planViewLoader.item._planMasterController.dirty) {
+        const planController = planViewLoader.item ? planViewLoader.item._planMasterController : null
+        if (planController && planController.dirtyForSave &&
+                (planController.dirtyForUpload || !QGroundControl.multiVehicleManager.activeVehicle)) {
             showMessageDialog(closeDialogTitle,
                               qsTr("You have a mission edit in progress which has not been saved/sent. If you close you will lose changes. Are you sure you want to close?"),
                               Dialog.Yes | Dialog.No,
@@ -524,6 +523,7 @@ ApplicationWindow {
 
             QGCMouseArea {
                 id:                     toolDrawerBackArea
+                objectName:             "toolDrawerBack"
                 anchors.left:           parent.left
                 anchors.top:            parent.top
                 anchors.bottom:         parent.bottom
@@ -875,16 +875,8 @@ ApplicationWindow {
         }
     }
 
-    // Analyze page items (both in-panel and popped-out windows) are created with mainWindow as their
-    // QObject parent so their lifetime is not tied to AnalyzeView. This lets a popped-out window
-    // survive AnalyzeView being unloaded from the tool drawer.
-
-    // Tracks the analyze page item currently shown inside AnalyzeView's panel (not popped out).
-    // null when no page is loaded or the item has been handed off to a popup window.
     property var _inPanelAnalyzePage: null
 
-    // Called by AnalyzeView.Component.onDestruction to destroy the in-panel item while
-    // panelContainer is still alive.
     function destroyInPanelAnalyzePage() {
         if (_inPanelAnalyzePage) {
             _inPanelAnalyzePage.destroy()
@@ -892,8 +884,6 @@ ApplicationWindow {
         }
     }
 
-    // Called by AnalyzeView to create an analyze page item owned by mainWindow.
-    // The caller sets the visual parent to panelContainer after creation.
     function createAnalyzePage(source) {
         if (_inPanelAnalyzePage) {
             _inPanelAnalyzePage.destroy()
@@ -908,9 +898,6 @@ ApplicationWindow {
         return _inPanelAnalyzePage
     }
 
-    // Called by AnalyzeView when the in-panel item is handed off to a popup window.
-    // Clears _inPanelAnalyzePage so destroyInPanelAnalyzePage() does not destroy it
-    // when AnalyzeView is torn down.
     function analyzePageMovedToPopup() {
         _inPanelAnalyzePage = null
     }
@@ -970,7 +957,6 @@ ApplicationWindow {
 
             onClosing: {
                 visible = false
-                // Destroy any reparented children (not owned by loader)
                 for (var i = contentRect.children.length - 1; i >= 0; i--) {
                     var child = contentRect.children[i]
                     if (child !== loader) {

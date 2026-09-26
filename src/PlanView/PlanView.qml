@@ -24,7 +24,8 @@ import QGroundControl.FactControls
 import QGroundControl.FlyView
 
 Item {
-    id: _root
+    id:         _root
+    objectName: "planView"
 
     property bool planControlColapsed: false
 

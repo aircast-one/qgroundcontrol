@@ -58,6 +58,7 @@ Item {
         }
         QGCMenuSeparator { }
         QGCMenuItem {
+            objectName:     "parameterEditor_toolLoadFromFile"
             text:           qsTr("Load from file for review...")
             onTriggered: {
                 fileDialog.title =          qsTr("Load Parameters")
@@ -86,7 +87,6 @@ Item {
                                                          function() { _activeVehicle.rebootVehicle() })
         }
     }
-
 
     QGCFileDialog {
         id:             fileDialog
@@ -148,6 +148,7 @@ Item {
         Item { Layout.fillWidth: true }
 
         QGCButton {
+            objectName: "parameterEditor_toolsButton"
             text:       qsTr("Tools")
             onClicked:  toolsMenu.popup()
         }

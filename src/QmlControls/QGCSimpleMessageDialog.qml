@@ -24,6 +24,7 @@ QGCPopupDialog {
     ColumnLayout {
         QGCLabel {
             id:                     label
+            objectName:             "popupDialog_text"
             Layout.preferredWidth:  Math.max(Math.min(mainWindow.width / (ScreenTools.isMobile ? 2 : 4), ScreenTools.defaultFontPixelWidth * 56), headerMinWidth)
             wrapMode:               Text.WordWrap
         }

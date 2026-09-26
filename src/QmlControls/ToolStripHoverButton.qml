@@ -15,6 +15,7 @@ import QGroundControl.Controls
 
 Button {
     id:             control
+    objectName:     toolStripAction ? toolStripAction.objectName : ""
     width:          contentLayoutItem.contentWidth + (contentMargins * 2)
     implicitHeight: iconOnly ? discSize + captionLabel.height + _captionSpacing : width
     height:         implicitHeight

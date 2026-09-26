@@ -168,6 +168,7 @@ Popup {
 
         QGCLabel {
             id:                 titleLabel
+            objectName:         "popupDialog_title"
             Layout.fillWidth:   true
             text:               root.title
             font.pointSize:     ScreenTools.mediumFontPointSize
@@ -215,6 +216,7 @@ Popup {
 
             QGCButton {
                 id:                     rejectButton
+                objectName:             "popupDialog_rejectButton"
                 Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 10
                 visible:                root._defaultRejectText !== ""
                 text:                   root._defaultRejectText
@@ -223,6 +225,7 @@ Popup {
 
             QGCButton {
                 id:                     acceptButton
+                objectName:             "popupDialog_acceptButton"
                 Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 10
                 primary:                true
                 visible:                root._defaultAcceptText !== ""
