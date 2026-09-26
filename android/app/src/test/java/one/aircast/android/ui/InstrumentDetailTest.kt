@@ -84,13 +84,24 @@ class InstrumentDetailTest {
     }
 
     @Test
-    fun `gps detail drops what the receiver has not answered`() {
-        val rows = gpsDetail(count = "11", fix = FixLevel.Good, hdop = "1.4", vdop = "--.--", course = "--.--")
-        assertEquals(listOf("GPS lock", "Satellites", "HDOP"), rows.map { it.label })
-        assertEquals(
-            "165.12°",
-            gpsDetail(count = "", fix = null, hdop = "", vdop = "", course = "165.12").single().value,
+    fun `gps detail is the lock plus the rows the core served`() {
+        val view = JSONObject(
+            """{"kind":"object","available":true,"satellites":11,"lock":3,"lockText":"3D Lock","rows":[""" +
+                """{"label":"Satellites","value":"11"},{"label":"HDOP","value":"1.4"},{"label":"","value":"x"}]}""",
         )
+        val gps = gpsStatus(view)
+        assertEquals(11, gps?.satellites)
+        assertEquals(FixLevel.Good, fixLevel(gps!!.lock))
+        assertEquals(listOf("GPS lock", "Satellites", "HDOP"), gpsDetail(fixLevel(gps.lock), gps).map { it.label })
+    }
+
+    @Test
+    fun `no vehicle and no lock read as nothing rather than a fix`() {
+        assertEquals(null, gpsStatus(JSONObject("""{"kind":"object","available":false,"rows":[]}""")))
+        val unlocked = gpsStatus(JSONObject("""{"kind":"object","available":true,"satellites":null,"lock":null,"rows":[]}"""))
+        assertEquals(null, fixLevel(unlocked!!.lock))
+        assertEquals(null, unlocked.satellites)
+        assertEquals(emptyList<DetailRow>(), gpsDetail(null, unlocked))
     }
 
     @Test
@@ -101,7 +112,7 @@ class InstrumentDetailTest {
         assertEquals(null, lockName(null))
         assertEquals(
             emptyList<String>(),
-            gpsDetail(count = "", fix = null, hdop = "", vdop = "", course = "").map { it.label },
+            gpsDetail(fix = null, gps = null).map { it.label },
         )
     }
 

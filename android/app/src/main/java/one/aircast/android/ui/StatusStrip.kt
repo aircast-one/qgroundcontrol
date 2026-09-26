@@ -21,14 +21,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
 private const val BATTERY = "view.battery"
-private const val GPS = "vehicle.gps"
+private const val GPS_VIEW = "view.gps"
 
 
 
@@ -111,13 +109,10 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val battery = remember(batteryJson) { batteryReading(batteryJson) }
     val linksJson by qgcPath(VEHICLE_LINKS)
     val links = remember(linksJson) { linkCell(vehicleLinks(linksJson)) }
-    val satellites by qgcString("$GPS.count")
-    val lock by qgcDouble("$GPS.lock")
-    val fix = fixLevel(lock)
-
-    val hdop by qgcString("$GPS.hdop")
-    val vdop by qgcString("$GPS.vdop")
-    val course by qgcString("$GPS.courseOverGround")
+    val gpsJson by qgcPath(GPS_VIEW)
+    val gps = remember(gpsJson) { gpsStatus(gpsJson) }
+    val fix = fixLevel(gps?.lock ?: Double.NaN)
+    val satellites = gps?.satellites?.toString() ?: ""
     var detail by remember { mutableStateOf<StripDetail?>(null) }
 
     Row(
@@ -144,7 +139,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     detail?.let { shown ->
         val rows = when (shown) {
             StripDetail.Battery -> batteryDetail(batteryJson)
-            StripDetail.Gps -> gpsDetail(satellites, fix, hdop, vdop, course)
+            StripDetail.Gps -> gpsDetail(fix, gps)
             StripDetail.Telemetry -> telemetryDetail(state?.telemetry)
             StripDetail.Links -> linkDetail(
                 vehicleLinks(linksJson),

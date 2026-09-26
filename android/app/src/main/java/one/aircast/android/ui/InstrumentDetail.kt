@@ -44,14 +44,24 @@ internal fun lockName(fix: FixLevel?): String? = when (fix) {
     FixLevel.Good -> "3D or better"
 }
 
-internal fun gpsDetail(count: String?, fix: FixLevel?, hdop: String?, vdop: String?, course: String?): List<DetailRow> =
-    listOfNotNull(
-        lockName(fix)?.let { DetailRow("GPS lock", it) },
-        count?.takeIf { it.isNotBlank() }?.let { DetailRow("Satellites", it) },
-        hdop?.takeIf { usableDop(it) }?.let { DetailRow("HDOP", it) },
-        vdop?.takeIf { usableDop(it) }?.let { DetailRow("VDOP", it) },
-        course?.takeIf { !notYetComputed(it) }?.let { DetailRow("Course over ground", "$it°") },
+internal data class GpsStatus(val satellites: Int?, val lock: Double, val rows: List<DetailRow>)
+
+// view.gps serves the satellites, the lock and the detail rows - which facts, in which order, and
+// which are not yet reported, including a dilution the receiver sends as 655.35 for "unknown".
+internal fun gpsStatus(view: JSONObject?): GpsStatus? {
+    if (view == null || !view.optBoolean("available")) return null
+    val rows = view.optJSONArray("rows")
+    return GpsStatus(
+        satellites = if (view.isNull("satellites")) null else view.optInt("satellites"),
+        lock = if (view.isNull("lock")) Double.NaN else view.optDouble("lock", Double.NaN),
+        rows = (0 until (rows?.length() ?: 0)).mapNotNull { index ->
+            rows?.optJSONObject(index)?.let { DetailRow(it.optString("label"), it.optString("value")) }
+        }.filter { it.label.isNotBlank() && it.value.isNotBlank() },
     )
+}
+
+internal fun gpsDetail(fix: FixLevel?, gps: GpsStatus?): List<DetailRow> =
+    listOfNotNull(lockName(fix)?.let { DetailRow("GPS lock", it) }) + (gps?.rows ?: emptyList())
 
 internal fun notYetComputed(shown: String): Boolean =
     shown.isBlank() || shown.all { it == '-' || it == ':' || it == '.' || it == ' ' }
