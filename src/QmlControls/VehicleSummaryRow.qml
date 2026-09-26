@@ -22,7 +22,7 @@ RowLayout {
     }
 
     QGCLabel {
-        Layout.maximumWidth:    parent.width * 0.6
+        Layout.maximumWidth:    ScreenTools.defaultFontPixelWidth * 28
         text:                   valueText
         color:                  valueColor !== "" ? valueColor : Qt.alpha(QGroundControl.globalPalette.text, 0.55)
         elide:                  Text.ElideRight

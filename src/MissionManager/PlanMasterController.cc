@@ -65,11 +65,9 @@ void PlanMasterController::_commonInit(void)
     connect(&_geoFenceController,   &GeoFenceController::syncInProgressChanged,     this, &PlanMasterController::syncInProgressChanged);
     connect(&_rallyPointController, &RallyPointController::syncInProgressChanged,   this, &PlanMasterController::syncInProgressChanged);
 
-    // Offline vehicle can change firmware/vehicle type
     connect(_controllerVehicle,     &Vehicle::vehicleTypeChanged,                   this, &PlanMasterController::_updatePlanCreatorsList);
     connect(&_undoTimer,            &QTimer::timeout,                               this, &PlanMasterController::_captureUndoSnapshot);
 }
-
 
 PlanMasterController::~PlanMasterController()
 {
@@ -102,39 +100,33 @@ void PlanMasterController::startStaticActiveVehicle(Vehicle* vehicle, bool delet
 void PlanMasterController::_activeVehicleChanged(Vehicle* activeVehicle)
 {
     if (_managerVehicle == activeVehicle) {
-        // We are already setup for this vehicle
         return;
     }
 
     qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged" << activeVehicle;
 
     if (_managerVehicle) {
-        // Disconnect old vehicle. Be careful of wildcarding disconnect too much since _managerVehicle may equal _controllerVehicle
         disconnect(_managerVehicle,                         &Vehicle::initialPlanRequestCompleteChanged, this, nullptr);
         disconnect(_managerVehicle->missionManager(),       nullptr, this, nullptr);
         disconnect(_managerVehicle->geoFenceManager(),      nullptr, this, nullptr);
         disconnect(_managerVehicle->rallyPointManager(),    nullptr, this, nullptr);
 
-        // Any in-flight transfer chain can never complete against the new vehicle's managers
         _loadSequence = SyncSequence::Idle;
         _sendSequence = SyncSequence::Idle;
     }
 
     bool newOffline = false;
     if (activeVehicle == nullptr) {
-        // Since there is no longer an active vehicle we use the offline controller vehicle as the manager vehicle
         _managerVehicle = _controllerVehicle;
         newOffline = true;
     } else {
         newOffline = false;
         _managerVehicle = activeVehicle;
 
-        // Update controllerVehicle to the currently connected vehicle
         AppSettings* appSettings = SettingsManager::instance()->appSettings();
         appSettings->offlineEditingFirmwareClass()->setRawValue(QGCMAVLink::firmwareClass(_managerVehicle->firmwareType()));
         appSettings->offlineEditingVehicleClass()->setRawValue(QGCMAVLink::vehicleClass(_managerVehicle->vehicleType()));
 
-        // We use these signals to sequence upload and download to the multiple controller/managers
         connect(_managerVehicle,                        &Vehicle::initialPlanRequestCompleteChanged, this, &PlanMasterController::_initialPlanRequestCompleteChanged);
         connect(_managerVehicle->missionManager(),      &MissionManager::newMissionItemsAvailable,  this, &PlanMasterController::_loadMissionComplete);
         connect(_managerVehicle->geoFenceManager(),     &GeoFenceManager::loadComplete,             this, &PlanMasterController::_loadGeoFenceComplete);
@@ -149,54 +141,40 @@ void PlanMasterController::_activeVehicleChanged(Vehicle* activeVehicle)
     emit managerVehicleChanged(_managerVehicle);
 
     if (_flyView) {
-        // We are in the Fly View
         if (newOffline) {
-            // No active vehicle, clear mission
             qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged: Fly View - No active vehicle, clearing stale plan";
             removeAll();
         } else {
-            // Fly view has changed to a new active vehicle, update to show correct mission
             qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged: Fly View - New active vehicle, loading new plan from manager vehicle";
             _showPlanFromManagerVehicle();
         }
     } else {
-        // We are in the Plan view.
         if (containsItems()) {
-            // We have a plan which is from a different vehicle than the new active vehicle. By definition this plan requires and upload.
             _setDirtyForUpload(true);
 
-            // The plan view has a stale plan in it
             if (dirtyForSave()) {
-                // Plan is dirty, the user must decide what to do in all cases
                 qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged: Plan View - Previous dirty plan exists, no new active vehicle, sending promptForPlanUsageOnVehicleChange signal";
                 emit promptForPlanUsageOnVehicleChange();
             } else {
-                // Plan is not dirty
                 if (newOffline) {
-                    // The active vehicle went away with no new active vehicle
                     qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged: Plan View - Previous clean plan exists, no new active vehicle, clear stale plan";
                     removeAll();
                 } else {
-                    // We are transitioning from one active vehicle to another. Show the plan from the new vehicle.
                     qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged: Plan View - Previous clean plan exists, new active vehicle, loading from new manager vehicle";
                     _showPlanFromManagerVehicle();
                 }
             }
         } else {
-            // There is no previous Plan in the view
             _setDirtyStates(false, false);
             if (newOffline) {
-                // Nothing special to do in this case
                 qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged: Plan View - No previous plan, no longer connected to vehicle, nothing to do";
             } else {
-                // Just show the plan from the new vehicle
                 qCDebug(PlanMasterControllerLog) << "_activeVehicleChanged: Plan View - No previous plan, new active vehicle, loading from new manager vehicle";
                 _showPlanFromManagerVehicle();
             }
         }
     }
 
-    // Vehicle changed so we need to signal everything
     emit containsItemsChanged();
     emit syncInProgressChanged();
     emit dirtyForSaveChanged(dirtyForSave());
@@ -214,7 +192,6 @@ void PlanMasterController::loadFromVehicle(void)
             return;
         }
     } else {
-        // Vehicle is shutting down
         return;
     }
 
@@ -230,7 +207,6 @@ void PlanMasterController::loadFromVehicle(void)
         _missionController.loadFromVehicle();
     }
 }
-
 
 void PlanMasterController::_loadMissionComplete(void)
 {
@@ -271,9 +247,6 @@ void PlanMasterController::_loadRallyPointsComplete(void)
     }
     _loadSequence = SyncSequence::Idle;
     qCDebug(PlanMasterControllerLog) << "PlanMasterController::_loadRallyPointsComplete";
-    // A plan just downloaded from the vehicle reflects exactly what is on the vehicle.
-    // The user has made no edits, so it must not be dirty for save or upload. Any previous
-    // file association no longer describes the editor contents.
     _clearCurrentPlanFile();
     _setDirtyStates(false /* dirtyForSave */, false /* dirtyForUpload */);
 }
@@ -330,7 +303,6 @@ void PlanMasterController::sendToVehicle(void)
             return;
         }
     } else {
-        // Vehicle is shutting down
         return;
     }
 
@@ -391,7 +363,6 @@ bool PlanMasterController::_loadPlanJson(const QByteArray& bytes, QString& error
     }
 
     QJsonObject json = jsonDoc.object();
-    //-- Allow plugins to pre process the load
     QGCCorePlugin::instance()->preLoadFromJson(this, json);
 
     int version;
@@ -414,7 +385,6 @@ bool PlanMasterController::_loadPlanJson(const QByteArray& bytes, QString& error
         return false;
     }
 
-    //-- Allow plugins to post process the load
     QGCCorePlugin::instance()->postLoadFromJson(this, json);
     return true;
 }
@@ -517,7 +487,9 @@ bool PlanMasterController::_restoreSnapshot(const QByteArray& snapshot, QString&
         return false;
     }
     _missionController.setCurrentPlanViewSeqNum(seqNum, true);
-    _setDirtyForSave(_editKey(_planSnapshot()) != _editKey(_cleanSnapshot));
+    const bool differsFromClean = _editKey(_planSnapshot()) != _editKey(_cleanSnapshot);
+    setDirty(differsFromClean);
+    _setDirtyForSave(differsFromClean);
     return true;
 }
 
@@ -529,10 +501,8 @@ QJsonDocument PlanMasterController::saveToJson()
     QJsonObject fenceJson;
     QJsonObject rallyJson;
     JsonParsing::saveQGCJsonFileHeader(planJson, kPlanFileType, kPlanFileVersion);
-    //-- Allow plugin to preemptly add its own keys to mission
     QGCCorePlugin::instance()->preSaveToMissionJson(this, missionJson);
     _missionController.save(missionJson);
-    //-- Allow plugin to add its own keys to mission
     QGCCorePlugin::instance()->postSaveToMissionJson(this, missionJson);
     _geoFenceController.save(fenceJson);
     _rallyPointController.save(rallyJson);
@@ -583,6 +553,9 @@ bool PlanMasterController::saveToFile(const QString& filename)
             emit currentPlanFileChanged();
         }
         _setDirtyForSave(false);
+        if (offline()) {
+            setDirty(false);
+        }
     }
 
     return true;
@@ -655,8 +628,6 @@ bool PlanMasterController::containsItems(void) const
 
 void PlanMasterController::_updateShowCreateFromTemplate(void)
 {
-    // When the plan becomes empty, always return to template-selection mode regardless
-    // of how the items were removed.
     if (!containsItems() && _userSelectedManualCreation) {
         _userSelectedManualCreation = false;
         emit userSelectedManualCreationChanged();
@@ -700,7 +671,6 @@ QStringList PlanMasterController::loadNameFilters(void) const
     return filters;
 }
 
-
 QStringList PlanMasterController::saveNameFilters(void) const
 {
     QStringList filters;
@@ -711,7 +681,6 @@ QStringList PlanMasterController::saveNameFilters(void) const
 
 void PlanMasterController::sendPlanToVehicle(Vehicle* vehicle, const QString& filename)
 {
-    // Use a transient PlanMasterController to accomplish this
     PlanMasterController* controller = new PlanMasterController();
     controller->startStaticActiveVehicle(vehicle, true /* deleteWhenSendCompleted */);
     controller->loadFromFile(filename);
@@ -721,20 +690,16 @@ void PlanMasterController::sendPlanToVehicle(Vehicle* vehicle, const QString& fi
 void PlanMasterController::_showPlanFromManagerVehicle(void)
 {
     if (!_managerVehicle->initialPlanRequestComplete()) {
-        // The sub-controllers pick up the editor contents as the initial download arrives
         _loadSequence = SyncSequence::InitialPlanLoad;
         return;
     }
 
-    // The crazy if structure is to handle the load propagating by itself through the system
     if (!_missionController.showPlanFromManagerVehicle()) {
         if (!_geoFenceController.showPlanFromManagerVehicle()) {
             _rallyPointController.showPlanFromManagerVehicle();
         }
     }
 
-    // The editor now shows the vehicle's plan: not dirty, and any previous file
-    // association no longer describes the contents
     _missionController.setDirty(false);
     _geoFenceController.setDirty(false);
     _rallyPointController.setDirty(false);
@@ -749,8 +714,6 @@ void PlanMasterController::_initialPlanRequestCompleteChanged(bool initialPlanRe
     }
     _loadSequence = SyncSequence::Idle;
     qCDebug(PlanMasterControllerLog) << "_initialPlanRequestCompleteChanged: initial download complete";
-    // Import the manager data into the editor (non-empty sub-controllers reject the automatic
-    // manager updates during download) and scrub dirty/file association.
     _showPlanFromManagerVehicle();
 }
 
@@ -840,7 +803,6 @@ void PlanMasterController::_updatePlanCreatorsList(void)
 
     const auto vehicleClass = _managerVehicle->vehicleClass();
 
-    // Only rebuild if the vehicle class actually changed
     if (_planCreators && _planCreatorsVehicleClass == vehicleClass) {
         return;
     }
@@ -853,10 +815,8 @@ void PlanMasterController::_updatePlanCreatorsList(void)
 
     _planCreatorsVehicleClass = vehicleClass;
 
-    // Allow custom builds to provide their own list of plan creators
     const QList<PlanCreator*> creators = QGCCorePlugin::instance()->planCreators(this);
 
-    // Filter by vehicle class and add to the model
     for (PlanCreator* creator : creators) {
         if (creator->supportsVehicleClass(vehicleClass)) {
             _planCreators->append(creator);
@@ -871,11 +831,9 @@ void PlanMasterController::_updatePlanCreatorsList(void)
 void PlanMasterController::showPlanFromManagerVehicle(void)
 {
     if (offline()) {
-        // There is no new vehicle so clear any previous plan
         qCDebug(PlanMasterControllerLog) << "showPlanFromManagerVehicle: Plan View - No new vehicle, clear any previous plan";
         removeAll();
     } else {
-        // We have a new active vehicle, show the plan from that
         qCDebug(PlanMasterControllerLog) << "showPlanFromManagerVehicle: Plan View - New vehicle available, show plan from new manager vehicle";
         _showPlanFromManagerVehicle();
     }
@@ -886,8 +844,6 @@ void PlanMasterController::setUserSelectedManualCreation(bool userSelectedManual
     if (_userSelectedManualCreation != userSelectedManualCreation) {
         _userSelectedManualCreation = userSelectedManualCreation;
         emit userSelectedManualCreationChanged();
-        // Update showCreateFromTemplate directly — do not go through _updateShowCreateFromTemplate,
-        // which would immediately auto-clear the flag if the plan happens to be empty right now.
         const bool show = showCreateFromTemplate();
         if (show != _showCreateFromTemplate) {
             _showCreateFromTemplate = show;

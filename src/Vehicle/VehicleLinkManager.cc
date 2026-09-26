@@ -125,8 +125,11 @@ void VehicleLinkManager::_commLostCheck()
         emit linkStatusesChanged();
     }
 
+    const bool wasRelayed = _isCloud(_primaryLink.lock().get());
     if (_updatePrimaryLink()) {
-        QString msg = tr("%1Switching communication to secondary link.").arg(_vehicle->_vehicleIdSpeech());
+        const bool backToDirect = wasRelayed && !_isCloud(_primaryLink.lock().get());
+        QString msg = backToDirect ? tr("%1Switching communication back to the direct link.").arg(_vehicle->_vehicleIdSpeech())
+                                   : tr("%1Switching communication to secondary link.").arg(_vehicle->_vehicleIdSpeech());
         AudioOutput::instance()->say(msg.toLower());
         QGC::showAppMessage(msg);
     }
@@ -248,6 +251,28 @@ void VehicleLinkManager::_linkDisconnected()
     }
 }
 
+bool VehicleLinkManager::_isCloud(const LinkInterface *link)
+{
+    return link && link->isRelayed();
+}
+
+bool VehicleLinkManager::_directLinkAlive() const
+{
+    return std::any_of(_rgLinkInfo.cbegin(), _rgLinkInfo.cend(), [](const LinkInfo_t &linkInfo) {
+        const SharedLinkConfigurationPtr config = linkInfo.link->linkConfiguration();
+        return !linkInfo.commLost && !_isCloud(linkInfo.link.get()) && config && !config->isHighLatency();
+    });
+}
+
+bool VehicleLinkManager::isStandby(const LinkInterface *link) const
+{
+    const SharedLinkInterfacePtr primaryLink = _primaryLink.lock();
+    if (!primaryLink || (primaryLink.get() == link) || (_rgLinkInfo.size() < 2)) {
+        return false;
+    }
+    return _isCloud(link) || _isCloud(primaryLink.get());
+}
+
 SharedLinkInterfacePtr VehicleLinkManager::_bestActivePrimaryLink()
 {
 #ifndef QGC_NO_SERIAL_LINK
@@ -266,15 +291,17 @@ SharedLinkInterfacePtr VehicleLinkManager::_bestActivePrimaryLink()
 #endif
 
     // Next best is normal latency link
-    for (const LinkInfo_t &linkInfo: _rgLinkInfo) {
-        if (linkInfo.commLost) {
-            continue;
-        }
+    for (const bool cloud : {false, true}) {
+        for (const LinkInfo_t &linkInfo: _rgLinkInfo) {
+            if (linkInfo.commLost || (_isCloud(linkInfo.link.get()) != cloud)) {
+                continue;
+            }
 
-        SharedLinkInterfacePtr candidateLink = linkInfo.link;
-        const SharedLinkConfigurationPtr config = candidateLink->linkConfiguration();
-        if (config && !config->isHighLatency()) {
-            return candidateLink;
+            SharedLinkInterfacePtr candidateLink = linkInfo.link;
+            const SharedLinkConfigurationPtr config = candidateLink->linkConfiguration();
+            if (config && !config->isHighLatency()) {
+                return candidateLink;
+            }
         }
     }
 
@@ -306,7 +333,8 @@ bool VehicleLinkManager::_updatePrimaryLink()
     SharedLinkInterfacePtr primaryLink = _primaryLink.lock();
     const int linkIndex = _containsLinkIndex(primaryLink.get());
 
-    if ((linkIndex != -1) && !_rgLinkInfo[linkIndex].commLost && !primaryLink->linkConfiguration()->isHighLatency()) {
+    if ((linkIndex != -1) && !_rgLinkInfo[linkIndex].commLost && !primaryLink->linkConfiguration()->isHighLatency()
+        && !(_isCloud(primaryLink.get()) && _directLinkAlive())) {
         // Current priority link is still valid
         return false;
     }

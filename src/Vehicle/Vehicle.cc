@@ -532,6 +532,10 @@ void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t mes
     // We give the link manager first whack since it it reponsible for adding new links
     _vehicleLinkManager->mavlinkMessageReceived(link, message);
 
+    if (_vehicleLinkManager->isStandby(link)) {
+        return;
+    }
+
     //-- Check link status
     _messagesReceived++;
     emit messagesReceivedChanged();

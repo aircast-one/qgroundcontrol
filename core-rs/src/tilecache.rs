@@ -129,7 +129,7 @@ impl Cache {
 
     pub fn serve(path: &Path) -> rusqlite::Result<Cache> {
         let connection = Connection::open_with_flags(
-            &format!("file:{}?mode=ro&cache=private", uri_escaped(path)),
+            &format!("file:{}?mode=ro&cache=private&readonly_shm=1", uri_escaped(path)),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
         )?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;

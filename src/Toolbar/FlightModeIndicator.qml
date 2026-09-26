@@ -12,8 +12,6 @@ RowLayout {
     spacing:    0
 
     property bool   showIndicator:          true
-    property var    expandedPageComponent
-    property bool   waitForParameters:      false
 
     property real fontPointSize:    ScreenTools.largeFontPointSize
     property var  activeVehicle:    QGroundControl.multiVehicleManager.activeVehicle
@@ -238,8 +236,9 @@ RowLayout {
         id: drawerComponent
 
         ToolIndicatorPage {
-            showExpand:         true
-            waitForParameters:  control.waitForParameters
+            showExpand:                         true
+            waitForParameters:                  false
+            expandedComponentWaitForParameters: true
 
             contentComponent:    flightModeContentComponent
             expandedComponent:   flightModeExpandedComponent
@@ -404,7 +403,8 @@ RowLayout {
             property real margins:  ScreenTools.defaultFontPixelHeight
 
             Loader {
-                sourceComponent: expandedPageComponent
+                Layout.fillWidth:   true
+                source:             control.activeVehicle ? control.activeVehicle.expandedToolbarIndicatorSource("FlightMode") : ""
             }
 
             SettingsGroupLayout {

@@ -6,9 +6,7 @@ import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
 
-// Camera section for mission item editors
 Column {
-    required property var missionItem
 
     property alias buttonGroup: cameraSectionHeader.buttonGroup
     property alias showSpacer:  cameraSectionHeader.showSpacer

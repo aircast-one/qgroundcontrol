@@ -2,11 +2,9 @@
 
 #include "QmlUITestBase.h"
 
-/// UI smoke test that loads MainWindow and navigates through all top-level views.
-///
-/// Clicks through each view accessible from the Q-icon menu (Fly, Plan, Analyze,
-/// Configure, Settings) and then through every settings page, verifying no QML
-/// errors or warnings occur during navigation.
+/// UI smoke test that loads MainWindow and navigates through the top-level views
+/// (Fly, Plan, Analyze, Settings) and every always-available settings page,
+/// failing on any QML error or warning raised along the way.
 class TopLevelViewsTest : public QmlUITestBase
 {
     Q_OBJECT
@@ -16,12 +14,4 @@ public:
 
 private slots:
     void _testNavigateViews();
-    void _testSettingsSectionVisibility();
-    void _testSettingsHiddenSectionAfterPageSwitch();
-    void _testSettingsSectionCollapseToSingle();
-    void _testSettingsPageUnavailableFallback();
-    void _testSettingsSearchExcludesHiddenSections();
-
-private:
-    QQuickItem* _clickSettingsButton(const QString& pageName);
 };

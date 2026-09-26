@@ -7,7 +7,6 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -41,8 +40,6 @@ SettingsPage {
     Component.onCompleted: {
         if (QGroundControl.loadBoolGlobalSetting("scrollToRcControls", false)) {
             QGroundControl.saveBoolGlobalSetting("scrollToRcControls", false)
-            // The layout hasn't settled yet at onCompleted - rcControlsGroup.y is still wrong
-            // until the ColumnLayout finishes polishing the page below it.
             Qt.callLater(() => scrollToItem(rcControlsGroup))
         }
     }
@@ -492,7 +489,7 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("3D View")
-        visible:            _viewer3DSettings.visible
+        visible:            _viewer3DSettings.userVisible
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true

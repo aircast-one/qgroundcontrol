@@ -7,7 +7,6 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -23,7 +22,7 @@ SettingsPage {
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        visible:            QGroundControl.settingsManager.adsbVehicleManagerSettings.visible
+        visible:            QGroundControl.settingsManager.adsbVehicleManagerSettings.userVisible
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true

@@ -18,13 +18,11 @@ ToolIndicatorPage {
     readonly property bool _watching: autoConnectSettings.autoConnectPixhawk.rawValue
                                    || autoConnectSettings.autoConnectSiKRadio.rawValue
                                    || autoConnectSettings.autoConnectUDP.rawValue
-                                   || autoConnectSettings.autoConnectZeroConf.rawValue
 
     readonly property string _watchedLinks: [
         autoConnectSettings.autoConnectPixhawk.rawValue  ? qsTr("USB")       : "",
         autoConnectSettings.autoConnectSiKRadio.rawValue ? qsTr("SiK radio") : "",
-        autoConnectSettings.autoConnectUDP.rawValue      ? qsTr("Wi‑Fi")     : "",
-        autoConnectSettings.autoConnectZeroConf.rawValue ? qsTr("local network")   : ""
+        autoConnectSettings.autoConnectUDP.rawValue      ? qsTr("Wi‑Fi")     : ""
     ].filter((name) => name !== "").join(", ")
 
     function _markup(name) { return name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }

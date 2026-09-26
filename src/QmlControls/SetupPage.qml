@@ -105,6 +105,7 @@ Item {
 
         Loader {
             id:                 pageLoader
+            objectName:         "setupPage_contentLoader"
             anchors.topMargin:  _margins
             anchors.top:        headingRow.bottom
         }

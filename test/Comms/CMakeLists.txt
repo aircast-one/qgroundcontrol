@@ -5,6 +5,8 @@
 
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        AircastCloudLinkTest.cc
+        AircastCloudLinkTest.h
         LinkConfigurationTest.cc
         LinkConfigurationTest.h
         LinkManagerTest.cc
@@ -46,4 +48,5 @@ add_qgc_test(LinkDuplicateConnectTest LABELS Unit)
 add_qgc_test(LinkStateTest LABELS Unit)
 add_qgc_test(TCPConfigurationTest LABELS Unit)
 add_qgc_test(TCPLinkErrorTest LABELS Unit)
+add_qgc_test(AircastCloudLinkTest LABELS Unit Comms)
 add_qgc_test(UDPConfigurationTest LABELS Unit)

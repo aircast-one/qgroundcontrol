@@ -19,9 +19,9 @@ UT_REGISTER_TEST(AppCloseWarningUITest, TestLabel::Integration, TestLabel::Missi
 
 PlanMasterController *AppCloseWarningUITest::_planViewMasterController()
 {
-    QQuickItem *planView = _window ? _window->findChild<QQuickItem *>(QStringLiteral("mainView_plan")) : nullptr;
+    QQuickItem *planView = _window ? _window->findChild<QQuickItem *>(QStringLiteral("planView")) : nullptr;
     if (!planView) {
-        QTest::qFail("Could not find Plan view item (mainView_plan)", __FILE__, __LINE__);
+        QTest::qFail("Could not find Plan view item (planView)", __FILE__, __LINE__);
         return nullptr;
     }
 
@@ -41,56 +41,33 @@ bool AppCloseWarningUITest::_forcePlanViewMissionDirty()
         return false;
     }
 
-    // Marking the mission controller dirty propagates to the master controller's
-    // dirtyForSave/dirtyForUpload, which is exactly what the unsaved-mission close
-    // check reads. The plan need not contain real items for the check to fire.
     masterController->missionController()->setDirty(true);
     return true;
 }
 
 void AppCloseWarningUITest::_testCloseWarningMatrix_data()
 {
-    // Each row sets up some combination of the three close-warning conditions and
-    // chooses where to reject. The three dialogs always appear in the fixed order
-    // Unsaved Mission -> Pending Parameter Updates -> Active Vehicle Connections.
-    //
-    //   mission       (M): force the Plan view mission dirty-for-save.
-    //   pendingWrites (P): force a vehicle parameter pending-write (requires a
-    //                      connection, since pending writes belong to a vehicle).
-    //   connection    (C): keep a MockLink connected.
-    //   rejectAtStep     : 1-based index into the *shown* dialog list at which to
-    //                      press No (cancel close). 0 means accept every dialog,
-    //                      which must close the app.
-    //
-    // Rows with P set but C clear are impossible (pending writes cannot outlive
-    // their vehicle) and are therefore omitted.
     QTest::addColumn<bool>("mission");
     QTest::addColumn<bool>("pendingWrites");
     QTest::addColumn<bool>("connection");
     QTest::addColumn<int>("rejectAtStep");
 
-    // No conditions: closing must proceed immediately with no warning dialog.
     QTest::newRow("none-acceptAll")            << false << false << false << 0;
 
-    // Connection only.
     QTest::newRow("C-acceptAll")               << false << false << true  << 0;
     QTest::newRow("C-rejectConnection")        << false << false << true  << 1;
 
-    // Pending writes + connection.
     QTest::newRow("PC-acceptAll")              << false << true  << true  << 0;
     QTest::newRow("PC-rejectPending")          << false << true  << true  << 1;
     QTest::newRow("PC-rejectConnection")       << false << true  << true  << 2;
 
-    // Mission only (offline, no connection).
     QTest::newRow("M-acceptAll")               << true  << false << false << 0;
     QTest::newRow("M-rejectMission")           << true  << false << false << 1;
 
-    // Mission + connection.
     QTest::newRow("MC-acceptAll")              << true  << false << true  << 0;
     QTest::newRow("MC-rejectMission")          << true  << false << true  << 1;
     QTest::newRow("MC-rejectConnection")       << true  << false << true  << 2;
 
-    // Mission + pending writes + connection (all three dialogs).
     QTest::newRow("MPC-acceptAll")             << true  << true  << true  << 0;
     QTest::newRow("MPC-rejectMission")         << true  << true  << true  << 1;
     QTest::newRow("MPC-rejectPending")         << true  << true  << true  << 2;
@@ -104,11 +81,8 @@ void AppCloseWarningUITest::_testCloseWarningMatrix()
     QFETCH(bool, connection);
     QFETCH(int, rejectAtStep);
 
-    // Pending writes belong to a vehicle, so they can only exist alongside a
-    // connection. The data set never produces this combination.
     QVERIFY2(!pendingWrites || connection, "Invalid matrix row: pending writes without a connection");
 
-    // Incidental one-time startup message when the map cache DB is upgraded.
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                      QRegularExpression(QStringLiteral("Offline Map Cache database has been upgraded")));
 
@@ -121,10 +95,6 @@ void AppCloseWarningUITest::_testCloseWarningMatrix()
     Vehicle *vehicle = nullptr;
     bool appClosed = false;
 
-    // Teardown: on reject paths the window is still open and any MockLink is still
-    // connected, so disconnect before tearing down (matching runWithMockLink). On
-    // accept-all paths finishCloseProcess() has already shut the links down and
-    // closed the window, so only the engine needs destroying.
     const auto guard = qScopeGuard([&] {
         if (!appClosed) {
             disconnectMockLink(mockLink);
@@ -153,14 +123,13 @@ void AppCloseWarningUITest::_testCloseWarningMatrix()
         vehicle->parameterManager()->setPendingWritesForTest(true);
     }
 
-    QVERIFY2(clickToolSelectDropdownButton(QStringLiteral("toolbar_viewClose")),
-             "Failed to click Close button in tool select dropdown");
+    QVERIFY2(QMetaObject::invokeMethod(_window, "close"),
+             "Failed to close the main window");
 
-    // The dialogs that should appear, in their fixed presentation order.
     QStringList expectedDialogs;
-    if (mission)       expectedDialogs << QStringLiteral("Unsaved Mission");
-    if (pendingWrites) expectedDialogs << QStringLiteral("Pending Parameter Updates");
-    if (connection)    expectedDialogs << QStringLiteral("Active Vehicle Connections");
+    if (mission)       expectedDialogs << QStringLiteral("mission edit in progress");
+    if (pendingWrites) expectedDialogs << QStringLiteral("pending parameter updates");
+    if (connection)    expectedDialogs << QStringLiteral("still active connections");
 
     for (int step = 0; step < expectedDialogs.size(); ++step) {
         const QString &title = expectedDialogs.at(step);
@@ -172,8 +141,6 @@ void AppCloseWarningUITest::_testCloseWarningMatrix()
             QVERIFY2(rejectDialog(),
                      qPrintable(QStringLiteral("Failed to reject dialog: %1").arg(title)));
 
-            // Rejecting cancels the close: the window must stay open and no later
-            // dialog in the sequence may appear.
             QVERIFY2(_window && _window->isVisible(),
                      qPrintable(QStringLiteral("Window closed after rejecting dialog: %1").arg(title)));
             if (step + 1 < expectedDialogs.size()) {
@@ -187,7 +154,6 @@ void AppCloseWarningUITest::_testCloseWarningMatrix()
                  qPrintable(QStringLiteral("Failed to accept dialog: %1").arg(title)));
     }
 
-    // Every shown dialog (if any) was accepted, so the app must finish closing.
     QVERIFY2(QTest::qWaitFor([this] { return _window && !_window->isVisible(); }, 3000),
              "App did not close after accepting all close-warning dialogs");
     appClosed = true;
@@ -195,46 +161,28 @@ void AppCloseWarningUITest::_testCloseWarningMatrix()
 
 void AppCloseWarningUITest::_testNoUnsavedMissionWarningForDownloadedMission()
 {
-    // Incidental one-time startup message when the map cache DB is upgraded.
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                      QRegularExpression(QStringLiteral("Offline Map Cache database has been upgraded")));
 
-    // connectMockLinkAndWaitReady (used by runWithMockLink) waits for the
-    // vehicle's initialConnectComplete signal. The InitialConnectStateMachine
-    // requests the mission as one of its states, so by the time the body runs
-    // the mission has been downloaded from the vehicle and the Plan view's
-    // PlanMasterController has loaded it.
     runWithMockLink(
         [] { return MockLink::startPX4MockLinkWithMission(); },
         [this](QPointer<MockLink> mockLink, Vehicle *vehicle) {
             Q_UNUSED(mockLink);
             Q_UNUSED(vehicle);
 
-            // runWithMockLink waits for initialConnectComplete. The
-            // InitialConnectStateMachine blocks on completion of the mission,
-            // geofence, and rally point loads before that signal fires, so the
-            // plan is fully downloaded by the time this body runs.
-            QVERIFY2(clickToolSelectDropdownButton(QStringLiteral("toolbar_viewClose")),
-                     "Failed to click Close button in tool select dropdown");
+            QVERIFY2(QMetaObject::invokeMethod(_window, "close"),
+                     "Failed to close the main window");
 
-            // The active-connection check runs only after the unsaved-mission check
-            // passes. Waiting for its dialog to appear proves the mission check did
-            // not block — i.e. the downloaded plan was not treated as dirty.
-            QVERIFY2(waitForDialog(QStringLiteral("Active Vehicle Connections")),
+            QVERIFY2(waitForDialog(QStringLiteral("still active connections")),
                      "Active vehicle connection warning dialog was not shown on close");
 
-            // A plan that was just downloaded from the vehicle reflects exactly what is
-            // on the vehicle. The user has made no edits, so the unsaved-mission warning
-            // must NOT appear. Otherwise closing the app would wrongly warn about a
-            // "mission edit in progress" even though nothing was edited.
-            QVERIFY2(!dialogVisible(QStringLiteral("Unsaved Mission")),
+            QVERIFY2(!dialogVisible(QStringLiteral("mission edit in progress")),
                      "Unsaved mission warning shown for a freshly downloaded, unedited plan");
         });
 }
 
 void AppCloseWarningUITest::_testNoUnsavedMissionWarningAfterSuccessfulUpload()
 {
-    // Incidental one-time startup message when the map cache DB is upgraded.
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                      QRegularExpression(QStringLiteral("Offline Map Cache database has been upgraded")));
 
@@ -249,7 +197,6 @@ void AppCloseWarningUITest::_testNoUnsavedMissionWarningAfterSuccessfulUpload()
                 return;
             }
 
-            // Edit the plan, then upload it to the vehicle.
             masterController->missionController()->setDirty(true);
             QVERIFY2(masterController->dirtyForSave() && masterController->dirtyForUpload(),
                      "Dirtying the mission controller did not propagate to the master controller");
@@ -257,28 +204,21 @@ void AppCloseWarningUITest::_testNoUnsavedMissionWarningAfterSuccessfulUpload()
             masterController->sendToVehicle();
             QTRY_VERIFY_WITH_TIMEOUT(!masterController->syncInProgress() && !masterController->dirtyForUpload(), TestTimeout::mediumMs());
 
-            // The plan was never saved to disk, only uploaded.
             QVERIFY(masterController->dirtyForSave());
 
-            QVERIFY2(clickToolSelectDropdownButton(QStringLiteral("toolbar_viewClose")),
-                     "Failed to click Close button in tool select dropdown");
+            QVERIFY2(QMetaObject::invokeMethod(_window, "close"),
+                     "Failed to close the main window");
 
-            // The active-connection check runs only after the unsaved-mission check
-            // passes. Waiting for its dialog to appear proves the mission check did
-            // not block.
-            QVERIFY2(waitForDialog(QStringLiteral("Active Vehicle Connections")),
+            QVERIFY2(waitForDialog(QStringLiteral("still active connections")),
                      "Active vehicle connection warning dialog was not shown on close");
 
-            // The edits are safely on the vehicle, so closing loses nothing and the
-            // unsaved-mission warning must NOT appear (issue #14537).
-            QVERIFY2(!dialogVisible(QStringLiteral("Unsaved Mission")),
+            QVERIFY2(!dialogVisible(QStringLiteral("mission edit in progress")),
                      "Unsaved mission warning shown after a successful mission upload");
         });
 }
 
 void AppCloseWarningUITest::_testNoUnsavedMissionWarningAfterSaveToFile()
 {
-    // Incidental one-time startup message when the map cache DB is upgraded.
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                      QRegularExpression(QStringLiteral("Offline Map Cache database has been upgraded")));
 
@@ -296,29 +236,22 @@ void AppCloseWarningUITest::_testNoUnsavedMissionWarningAfterSaveToFile()
                 return;
             }
 
-            // Edit the plan, then save it to disk without uploading.
             masterController->missionController()->setDirty(true);
             QVERIFY2(masterController->dirtyForSave() && masterController->dirtyForUpload(),
                      "Dirtying the mission controller did not propagate to the master controller");
 
             QVERIFY(masterController->saveToFile(tempDir.filePath(QStringLiteral("close-warning-test"))));
 
-            // Saving clears dirty-for-save but the plan was never uploaded.
             QVERIFY(!masterController->dirtyForSave());
             QVERIFY(masterController->dirtyForUpload());
 
-            QVERIFY2(clickToolSelectDropdownButton(QStringLiteral("toolbar_viewClose")),
-                     "Failed to click Close button in tool select dropdown");
+            QVERIFY2(QMetaObject::invokeMethod(_window, "close"),
+                     "Failed to close the main window");
 
-            // The active-connection check runs only after the unsaved-mission check
-            // passes. Waiting for its dialog to appear proves the mission check did
-            // not block.
-            QVERIFY2(waitForDialog(QStringLiteral("Active Vehicle Connections")),
+            QVERIFY2(waitForDialog(QStringLiteral("still active connections")),
                      "Active vehicle connection warning dialog was not shown on close");
 
-            // The edits are safely on disk, so closing loses nothing and the
-            // unsaved-mission warning must NOT appear.
-            QVERIFY2(!dialogVisible(QStringLiteral("Unsaved Mission")),
+            QVERIFY2(!dialogVisible(QStringLiteral("mission edit in progress")),
                      "Unsaved mission warning shown after saving the plan to disk");
         });
 }

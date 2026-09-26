@@ -46,7 +46,6 @@ void LinkManagerTest::_testSuppressedLinkNotReconnected()
     QVERIFY(config);
     QVERIFY(config->link());
 
-    // Manual disconnect sets suppressAutoReconnect so the timer leaves it alone.
     linkManager()->disconnectLink(config->link());
     QTRY_VERIFY_WITH_TIMEOUT(config->link() == nullptr, TestTimeout::mediumMs());
     QVERIFY(config->suppressAutoReconnect());
@@ -68,8 +67,6 @@ void LinkManagerTest::_testDynamicLinkNotReconnected()
 
     _reconnect();
     QVERIFY(config->link() == nullptr);
-
-    linkManager()->removeConfiguration(config.get());
 }
 
 void LinkManagerTest::_testNonAutoConnectLinkNotReconnected()

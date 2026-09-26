@@ -17,6 +17,8 @@ class AircastDeviceSetupTest : public UnitTest
 
 private slots:
     void _configuresCamerasAndTelemetryFromDevice();
+    void _aDeviceWithACloudAccountAlsoGetsTheCloudLink();
+    void _aDeviceWithoutACloudAccountGetsNoCloudLink();
     void _reapplyReplacesExistingLink();
     void _clientOnlyTelemetryEndpointCreatesNoLink();
     void _staleReplyFromSupersededSetupIsIgnored();

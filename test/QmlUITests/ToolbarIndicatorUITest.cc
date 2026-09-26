@@ -4,15 +4,15 @@
 #include <QtQuick/QQuickWindow>
 #include <QtTest/QTest>
 
+#include "Fact.h"
 #include "MockLink.h"
+#include "RemoteIDSettings.h"
+#include "SettingsManager.h"
 
 #include <QtCore/QPointer>
+#include <QtCore/QScopeGuard>
 
 UT_REGISTER_TEST(ToolbarIndicatorUITest, TestLabel::Integration)
-
-// ---------------------------------------------------------------------------
-// _exerciseIndicator
-// ---------------------------------------------------------------------------
 
 bool ToolbarIndicatorUITest::_exerciseIndicator(QQuickItem *indicatorItem, const QString &indicatorName, bool expectExpand)
 {
@@ -20,30 +20,25 @@ bool ToolbarIndicatorUITest::_exerciseIndicator(QQuickItem *indicatorItem, const
         return false;
     }
 
-    // 1. Click the indicator — verify the drawer opens
-    const QPointF indicatorCenter = indicatorItem->mapToScene(
-        QPointF(indicatorItem->width() / 2.0, indicatorItem->height() / 2.0));
-    QTest::mouseClick(_window, Qt::LeftButton, Qt::NoModifier, indicatorCenter.toPoint());
-
-    if (!findVisibleItem(_rootItem, QStringLiteral("indicatorDrawerLoader"), 2000)) {
+    if (!waitForCondition([indicatorItem] { return indicatorItem->width() > 0; }, TestTimeout::mediumMs(),
+                          QStringLiteral("%1 has a size").arg(indicatorName))
+        || !_clickItemAt(indicatorItem, 0.5, 0.5, indicatorName)) {
+        return false;
+    }
+    if (!findVisibleItem(_rootItem, QStringLiteral("drawerLoader"), 2000)) {
         qWarning() << indicatorName << ": drawer did not open after clicking indicator";
         return false;
     }
 
-    QTest::qWait(_pageDelay);
-
-    // 2. Expand — verify the expand button is present when expected, and that
-    //    expanded content appears after clicking it
     if (expectExpand) {
-        QQuickItem *expandBtn = findVisibleItem(_rootItem, QStringLiteral("indicatorDrawerExpandButton"), 500);
+        QQuickItem *expandBtn = findVisibleItem(_rootItem, QStringLiteral("drawerDetailsRow"), 500);
         if (!expandBtn) {
             qWarning() << indicatorName << ": expand button not found but was expected";
             return false;
         }
-        const QPointF expandCenter = expandBtn->mapToScene(
-            QPointF(expandBtn->width() / 2.0, expandBtn->height() / 2.0));
-        QTest::mouseClick(_window, Qt::LeftButton, Qt::NoModifier, expandCenter.toPoint());
-        QTest::qWait(_pageDelay);
+        if (!_clickItemAt(expandBtn, 0.5, 0.5, indicatorName)) {
+            return false;
+        }
 
         if (!findVisibleItem(_rootItem, QStringLiteral("indicatorExpandedLoader"), 2000)) {
             qWarning() << indicatorName << ": expanded content did not appear after clicking expand button";
@@ -51,13 +46,12 @@ bool ToolbarIndicatorUITest::_exerciseIndicator(QQuickItem *indicatorItem, const
         }
     }
 
-    // 3. Close the drawer with Escape — verify it closes
     QTest::keyClick(_window, Qt::Key_Escape);
 
     const bool drawerClosed = waitForCondition(
-        [&] { return findVisibleItem(_rootItem, QStringLiteral("indicatorDrawerLoader"), 0) == nullptr; },
+        [&] { return findVisibleItem(_rootItem, QStringLiteral("drawerLoader"), 0) == nullptr; },
         2000,
-        QStringLiteral("indicatorDrawerLoader hidden"));
+        QStringLiteral("drawerLoader hidden"));
     if (!drawerClosed) {
         qWarning() << indicatorName << ": drawer did not close after pressing Escape";
         return false;
@@ -66,34 +60,28 @@ bool ToolbarIndicatorUITest::_exerciseIndicator(QQuickItem *indicatorItem, const
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// _runIndicatorTest
-// ---------------------------------------------------------------------------
-
 void ToolbarIndicatorUITest::_runIndicatorTest(
     const std::function<MockLink *()> &factory,
     const QString &vehicleName)
 {
     runWithMockLink(factory, [&](QPointer<MockLink> /*mockLink*/, Vehicle * /*vehicle*/) {
-    // -------------------------------------------------------------------------
-    // Ensure we are on the Fly view (default after vehicle connects)
-    // -------------------------------------------------------------------------
-    QVERIFY2(findVisibleItem(_rootItem, QStringLiteral("mainView_fly"), 3000),
-             qPrintable(QStringLiteral("%1: Fly view not visible").arg(vehicleName)));
+    Fact *const sendBasicID = SettingsManager::instance()->remoteIDSettings()->sendBasicID();
+    const QVariant savedSendBasicID = sendBasicID->rawValue();
+    const auto restoreSendBasicID = qScopeGuard([sendBasicID, savedSendBasicID] { sendBasicID->setRawValue(savedSendBasicID); });
+    sendBasicID->setRawValue(true);
+    QVERIFY2(_window->property("flyViewActive").toBool(),
+             qPrintable(QStringLiteral("%1: Fly view not active").arg(vehicleName)));
 
-    // -------------------------------------------------------------------------
-    // Table of indicators to exercise: { objectName, displayName, expectExpand }
-    // -------------------------------------------------------------------------
     struct IndicatorSpec {
         const char *objectName;
         const char *displayName;
         bool        expectExpand;
     };
     static const IndicatorSpec kIndicators[] = {
-        { "toolbar_mainStatusIndicator",    "MainStatus",   true  },
-        { "toolbar_flightModeIndicator",    "FlightMode",   true  },
+        { "mainStatusPill",                 "MainStatus",   true  },
+        { "flightModeIndicator",            "FlightMode",   true  },
         { "toolbar_gpsIndicator",           "GPS",          true  },
-        { "toolbar_batteryIndicator",       "Battery",      true  },
+        { "indicatorSlotBatteryIndicator",  "Battery",      true  },
         { "toolbar_remoteIDIndicator",      "RemoteID",     true  },
         { "toolbar_gimbalIndicator",        "Gimbal",       true  },
         { "toolbar_escIndicator",           "ESC",          false },
@@ -112,10 +100,6 @@ void ToolbarIndicatorUITest::_runIndicatorTest(
     }
     });
 }
-
-// ---------------------------------------------------------------------------
-// Per-vehicle-type test slots
-// ---------------------------------------------------------------------------
 
 void ToolbarIndicatorUITest::_testPX4Indicators()
 {

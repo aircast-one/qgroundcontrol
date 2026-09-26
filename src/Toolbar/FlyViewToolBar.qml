@@ -152,28 +152,17 @@ Rectangle {
             rig:                    overlayRig
             swallowsTaps:           true
             editKey:                "FlightModeIndicator"
-            available:              flightModeIndicatorLoader.status === Loader.Ready && flightModeIndicatorLoader.item.showIndicator &&
-                                        _root._fitsBesideStatus(flightModeIndicatorLoader.width)
+            available:              flightModeIndicator.showIndicator && _root._fitsBesideStatus(flightModeIndicator.width)
             Layout.alignment:       Qt.AlignVCenter
-            Layout.preferredWidth:  flightModeIndicatorLoader.width
-            Layout.preferredHeight: flightModeIndicatorLoader.height
+            Layout.preferredWidth:  flightModeIndicator.width
+            Layout.preferredHeight: flightModeIndicator.height
             Layout.minimumWidth:    Layout.preferredWidth
 
-            Loader {
-                id:         flightModeIndicatorLoader
-                objectName: "flightModeIndicator"
-                source:     _flightModeIndicatorUrl
-
-                onLoaded: item.fontPointSize = ScreenTools.defaultFontPointSize
-
-                readonly property url _flightModeIndicatorUrl: {
-                    if (!_activeVehicle) {
-                        return ""
-                    }
-                    const match = _activeVehicle.toolIndicators
-                                      .find((url) => url.toString().indexOf("FlightModeIndicator") >= 0)
-                    return match ? match : ""
-                }
+            FlightModeIndicator {
+                id:             flightModeIndicator
+                objectName:     "flightModeIndicator"
+                fontPointSize:  ScreenTools.defaultFontPointSize
+                showIndicator:  !!_activeVehicle
             }
         }
 

@@ -27,8 +27,7 @@ Row {
     readonly property var _available: {
         const app   = QGroundControl.corePlugin.toolBarIndicators
         const tools = _activeVehicle ? _activeVehicle.toolIndicators : []
-        const modes = _activeVehicle ? _activeVehicle.modeIndicators : []
-        return [...app, ...tools, ...modes]
+        return [...app, ...tools]
                    .map((source) => source.toString())
                    .filter((source) => source.indexOf("FlightModeIndicator") < 0)
     }
@@ -108,10 +107,12 @@ Row {
             }
 
             QGCMouseArea {
-                anchors.fill:   parent
-                enabled:        !indicatorRow._editMode
-                visible:        enabled
-                onPressAndHold: if (indicatorRow._overlayRig) indicatorRow._overlayRig.hold(slot)
+                anchors.fill:               parent
+                enabled:                    !indicatorRow._editMode
+                visible:                    enabled
+                propagateComposedEvents:    true
+                onClicked:                  (mouse) => mouse.accepted = false
+                onPressAndHold:             if (indicatorRow._overlayRig) indicatorRow._overlayRig.hold(slot)
             }
 
             DragHandler {

@@ -6,6 +6,7 @@
 #include "UDPLink.h"
 #include "TCPLink.h"
 #include "LogReplayLink.h"
+#include "AircastCloudLink.h"
 #include "BluetoothLink.h"
 #ifdef QT_DEBUG
 #include "MockLink.h"
@@ -71,6 +72,9 @@ LinkConfiguration *LinkConfiguration::createSettings(int type, const QString &na
     case TypeLogReplay:
         config = new LogReplayConfiguration(name);
         break;
+    case TypeAircastCloud:
+        config = new AircastCloudConfiguration(name);
+        break;
 #ifdef QT_DEBUG
     case TypeMock:
         config = new MockConfiguration(name);
@@ -105,6 +109,9 @@ LinkConfiguration *LinkConfiguration::duplicateSettings(const LinkConfiguration 
         break;
     case TypeLogReplay:
         dupe = new LogReplayConfiguration(qobject_cast<const LogReplayConfiguration*>(source));
+        break;
+    case TypeAircastCloud:
+        dupe = new AircastCloudConfiguration(qobject_cast<const AircastCloudConfiguration*>(source));
         break;
 #ifdef QT_DEBUG
     case TypeMock:

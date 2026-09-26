@@ -7,7 +7,6 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -25,7 +24,7 @@ SettingsPage {
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
     property string _notConnectedStr:           qsTr("Not Connected")
     property bool   _isAPM:                     _activeVehicle ? _activeVehicle.apmFirmware : true
-    property bool   _showAPMStreamRates:        QGroundControl.apmFirmwareSupported && _settingsManager.apmMavlinkStreamRateSettings.visible && _isAPM
+    property bool   _showAPMStreamRates:        QGroundControl.apmFirmwareSupported && _settingsManager.apmMavlinkStreamRateSettings.userVisible && _isAPM
     property var    _apmStartMavlinkStreams:    _mavlinkSettings.apmStartMavlinkStreams
 
     SettingsGroupLayout {
@@ -45,48 +44,7 @@ SettingsPage {
         }
     }
 
-    SettingsGroupLayout {
-        id:                 mavlink2SigningGroup
-        Layout.fillWidth:   true
-        heading:            qsTr("MAVLink 2 Signing")
-        description:        qsTr("Signing keys should only be sent to the vehicle over secure links.")
-        visible:            _mavlink2SigningKey.visible
-
-        property Fact _mavlink2SigningKey: _mavlinkSettings.mavlink2SigningKey
-
-        Connections {
-            target:             mavlink2SigningGroup._mavlink2SigningKey
-            onRawValueChanged:  sendToVehiclePrompt.visible = true
-        }
-
-        RowLayout {
-            spacing: ScreenTools.defaultFontPixelWidth
-
-            LabelledFactTextField {
-                Layout.fillWidth:           true
-                textFieldPreferredWidth:    ScreenTools.defaultFontPixelWidth * 32
-                label:                      qsTr("Key")
-                fact:                       mavlink2SigningGroup._mavlink2SigningKey
-            }
-
-            QGCButton {
-                text:       qsTr("Send to Vehicle")
-                enabled:    _activeVehicle
-
-                onClicked: {
-                    sendToVehiclePrompt.visible = false
-                    _activeVehicle.sendSetupSigning()
-                }
-            }
-        }
-
-        QGCLabel {
-            id:                 sendToVehiclePrompt
-            Layout.fillWidth:   true
-            text:               qsTr("Signing key has changed. Don't forget to send to Vehicle(s) if needed.")
-            visible:            false
-        }
-    }
+    SigningKeyManager { }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true

@@ -208,6 +208,48 @@ void VehicleLinkManagerTest::_multiLinkSingleVehicleTest()
     multiSpy.clearAllSignals();
 }
 
+void VehicleLinkManagerTest::_relayedLinkStandsByForTheDirectLinkTest()
+{
+    SharedLinkConfigurationPtr mockConfig1;
+    SharedLinkInterfacePtr mockLink1;
+    SharedLinkConfigurationPtr mockConfig2;
+    SharedLinkInterfacePtr mockLink2;
+    _startMockLink(1, false /*highLatency*/, false /*incrementVehicleId*/, mockConfig1, mockLink1);
+    _startMockLink(2, false /*highLatency*/, false /*incrementVehicleId*/, mockConfig2, mockLink2);
+
+    Vehicle* const vehicle = waitForVehicleConnect(TestTimeout::shortMs());
+    QVERIFY(vehicle);
+    VehicleLinkManager* const vehicleLinkManager = vehicle->vehicleLinkManager();
+    QVERIFY(vehicleLinkManager);
+    QSignalSpy spyVehicleInitialConnectComplete(vehicle, &Vehicle::initialConnectComplete);
+    QVERIFY_TRUE_WAIT(spyVehicleInitialConnectComplete.count() > 0 || vehicle->isInitialConnectComplete(),
+                      TestTimeout::mediumMs());
+    QVERIFY_TRUE_WAIT(vehicleLinkManager->linkNames().count() == 2, TestTimeout::mediumMs());
+
+    const SharedLinkInterfacePtr directLink = vehicleLinkManager->primaryLink().lock();
+    const SharedLinkInterfacePtr relayedLink = (directLink == mockLink1) ? mockLink2 : mockLink1;
+    MockLink* const direct = qobject_cast<MockLink*>(directLink.get());
+    MockLink* const relayed = qobject_cast<MockLink*>(relayedLink.get());
+    QVERIFY(direct);
+    QVERIFY(relayed);
+    relayed->setRelayed(true);
+
+    QVERIFY(vehicleLinkManager->isStandby(relayed));
+    QVERIFY(!vehicleLinkManager->isStandby(direct));
+
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression("Switching communication"));
+    direct->setCommLost(true);
+    QVERIFY_TRUE_WAIT(vehicleLinkManager->primaryLink().lock() == relayedLink,
+                      VehicleLinkManager::kTestCommLostDetectionTimeoutMs * 2);
+    QVERIFY(vehicleLinkManager->isStandby(direct));
+    QVERIFY(!vehicleLinkManager->isStandby(relayed));
+
+    direct->setCommLost(false);
+    QVERIFY_TRUE_WAIT(vehicleLinkManager->primaryLink().lock() == directLink,
+                      VehicleLinkManager::kTestCommLostDetectionTimeoutMs * 2);
+    QVERIFY(vehicleLinkManager->isStandby(relayed));
+}
+
 void VehicleLinkManagerTest::_multiLinkTotalCommLossRecoveryTest()
 {
     // Comm loss with pending vehicle commands causes MavCommandQueue to give up.

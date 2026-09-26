@@ -123,6 +123,7 @@ if(QGC_HEADLESS_CORE)
             Qt6::QmlIntegration
             Qt6::Sql
             Qt6::StateMachine
+            Qt6::WebSockets
             Qt6::Xml
     )
 else()
@@ -139,6 +140,7 @@ else()
             Qt6::Network
             Qt6::StateMachine
             Qt6::Svg
+            Qt6::WebSockets
             Qt6::Xml
 
             # Qt6 QML/Quick

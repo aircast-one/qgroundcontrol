@@ -24,6 +24,10 @@ target_sources(${CMAKE_PROJECT_NAME}
         MAVLinkProtocol.h
         TCPLink.cc
         TCPLink.h
+        AircastAccount.cc
+        AircastAccount.h
+        AircastCloudLink.cc
+        AircastCloudLink.h
         CoreLink.cc
         CoreLink.h
         UdpIODevice.cc

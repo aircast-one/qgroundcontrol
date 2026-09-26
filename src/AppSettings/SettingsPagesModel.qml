@@ -97,7 +97,7 @@ ListModel {
         iconUrl: "qrc:/InstrumentValueIcons/camera.svg"
         tileColor: "#ff375f"
         newSection: false
-        pageVisible: function() { return QGroundControl.settingsManager.videoSettings.visible }
+        pageVisible: function() { return QGroundControl.settingsManager.videoSettings.userVisible }
     }
 
     ListElement {
@@ -125,7 +125,7 @@ ListModel {
         iconUrl: "qrc:/InstrumentValueIcons/radio.svg"
         tileColor: "#ff9f0a"
         newSection: false
-        pageVisible: function() { return QGroundControl.settingsManager.packetRadioSettings.visible }
+        pageVisible: function() { return QGroundControl.settingsManager.packetRadioSettings.userVisible }
     }
 
     ListElement {

@@ -41,13 +41,10 @@ ApplicationWindow {
                 QGCLabel { text: modelData.commandName; color: "black" }
 
                 Loader {
-                    id: editorLoader
-                    Component.onCompleted: {
-                        editorLoader.setSource(modelData.editorQml, {
-                            missionItem:    modelData,
-                            availableWidth: editorWidth
-                        })
-                    }
+                    source: modelData.editorQml
+
+                    property var  missionItem:    modelData
+                    property real availableWidth: editorWidth
                 }
             }
         }

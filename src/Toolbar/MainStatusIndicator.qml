@@ -199,10 +199,11 @@ RowLayout {
         id: overallStatusIndicatorPage
 
         ToolIndicatorPage {
-            showExpand:         _activeVehicle.mainStatusIndicatorContentItem ? true : false
-            waitForParameters:  _activeVehicle.mainStatusIndicatorContentItem ? true : false
-            contentComponent:   mainStatusContentComponent
-            expandedComponent:  mainStatusExpandedComponent
+            showExpand:                         true
+            waitForParameters:                  false
+            expandedComponentWaitForParameters: true
+            contentComponent:                   mainStatusContentComponent
+            expandedComponent:                  mainStatusExpandedComponent
         }
     }
 
@@ -382,12 +383,12 @@ RowLayout {
                         Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.9
                         radius:                 ScreenTools.defaultFontPixelHeight / 3
                         color:                  sensorMouseArea.containsMouse ? Qt.alpha(qgcPal.text, 0.08) : "transparent"
-                        visible:                mainLayout._showAllSensors || !control._sensorHealthy[index]
+                        visible:                mainLayout._showAllSensors || control._sensorHealthy[index] === false
 
                         required property int    index
                         required property string modelData
 
-                        readonly property bool _fault: control._sensorEnabled[index] && !control._sensorHealthy[index]
+                        readonly property bool _fault: control._sensorEnabled[index] === true && control._sensorHealthy[index] === false
 
                         RowLayout {
                             id:                     sensorRow
@@ -405,7 +406,7 @@ RowLayout {
                             }
 
                             QGCLabel {
-                                text:   control._sensorStatus[index]
+                                text:   control._sensorStatus[index] ?? ""
                                 color:  _fault ? qgcPal.colorRed : Qt.alpha(qgcPal.text, 0.5)
                             }
 
@@ -551,7 +552,8 @@ RowLayout {
             property real margins: ScreenTools.defaultFontPixelHeight
 
             Loader {
-                source: _activeVehicle.mainStatusIndicatorContentItem
+                Layout.fillWidth:   true
+                source:             _activeVehicle ? _activeVehicle.expandedToolbarIndicatorSource("MainStatus") : ""
             }
 
             SettingsGroupLayout {

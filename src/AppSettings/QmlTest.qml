@@ -13,7 +13,7 @@ Rectangle {
 
     QGCPalette { id: qgcPal }
 
-    property var palette:           QGCPalette { colorGroupEnabled: true }
+    property var qgcPalette:           QGCPalette { colorGroupEnabled: true }
     property var enabledPalette:    QGCPalette { colorGroupEnabled: true }
     property var disabledPalette:   QGCPalette { colorGroupEnabled: false }
 
@@ -39,14 +39,14 @@ Rectangle {
 
         qgcPal.globalTheme = QGCPalette.Light
         qgcPal.colorGroupEnabled = true
-        themeObj.light["enabled"] = exportPaletteColors(palette);
+        themeObj.light["enabled"] = exportPaletteColors(qgcPalette);
         qgcPal.colorGroupEnabled = false
-        themeObj.light["disabled"] = exportPaletteColors(palette);
+        themeObj.light["disabled"] = exportPaletteColors(qgcPalette);
         qgcPal.globalTheme = QGCPalette.Dark
         qgcPal.colorGroupEnabled = true
-        themeObj.dark["enabled"] = exportPaletteColors(palette);
+        themeObj.dark["enabled"] = exportPaletteColors(qgcPalette);
         qgcPal.colorGroupEnabled = false
-        themeObj.dark["disabled"] = exportPaletteColors(palette);
+        themeObj.dark["disabled"] = exportPaletteColors(qgcPalette);
 
         qgcPal.globalTheme = oldTheme;
         qgcPal.colorGroupEnabled = true;
@@ -61,7 +61,7 @@ Rectangle {
         for(var i = 0; i < qgcPal.colors.length; i++) {
             var cs = qgcPal.colors[i]
             var csc = cs + 'Colors'
-            palToExport += 'DECLARE_QGC_COLOR(' + cs + ', \"' + palette[csc][1] + '\", \"' + palette[csc][0] + '\", \"' + palette[csc][3] + '\", \"' + palette[csc][2] + '\")\n'
+            palToExport += 'DECLARE_QGC_COLOR(' + cs + ', \"' + qgcPalette[csc][1] + '\", \"' + qgcPalette[csc][0] + '\", \"' + qgcPalette[csc][3] + '\", \"' + qgcPalette[csc][2] + '\")\n'
         }
         themeImportExportEdit.text = palToExport
     }
@@ -76,10 +76,10 @@ Rectangle {
             }
             palToExport +=
             'if (colorName == QStringLiteral(\"' + cs + '\")) {\n' +
-            '    colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupEnabled]   = QColor(\"' + palette[csc][2] + '\");\n' +
-            '    colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupDisabled]  = QColor(\"' + palette[csc][3] + '\");\n' +
-            '    colorInfo[QGCPalette::Light][QGCPalette::ColorGroupEnabled]  = QColor(\"' + palette[csc][0] + '\");\n' +
-            '    colorInfo[QGCPalette::Light][QGCPalette::ColorGroupDisabled] = QColor(\"' + palette[csc][1] + '\");\n' +
+            '    colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupEnabled]   = QColor(\"' + qgcPalette[csc][2] + '\");\n' +
+            '    colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupDisabled]  = QColor(\"' + qgcPalette[csc][3] + '\");\n' +
+            '    colorInfo[QGCPalette::Light][QGCPalette::ColorGroupEnabled]  = QColor(\"' + qgcPalette[csc][0] + '\");\n' +
+            '    colorInfo[QGCPalette::Light][QGCPalette::ColorGroupDisabled] = QColor(\"' + qgcPalette[csc][1] + '\");\n' +
             '}'
         }
         themeImportExportEdit.text = palToExport
@@ -92,14 +92,14 @@ Rectangle {
 
         qgcPal.globalTheme = QGCPalette.Light
         qgcPal.colorGroupEnabled = true
-        fillPalette(palette, jsonObj.light.enabled)
+        fillPalette(qgcPalette, jsonObj.light.enabled)
         qgcPal.colorGroupEnabled = false
-        fillPalette(palette, jsonObj.light.disabled);
+        fillPalette(qgcPalette, jsonObj.light.disabled);
         qgcPal.globalTheme = QGCPalette.Dark
         qgcPal.colorGroupEnabled = true
-        fillPalette(palette, jsonObj.dark.enabled);
+        fillPalette(qgcPalette, jsonObj.dark.enabled);
         qgcPal.colorGroupEnabled = false
-        fillPalette(palette, jsonObj.dark.disabled);
+        fillPalette(qgcPalette, jsonObj.dark.disabled);
 
         qgcPal.globalTheme = oldTheme;
         qgcPal.colorGroupEnabled = true;
@@ -296,8 +296,8 @@ Rectangle {
                         }
                     }
                     Component.onCompleted: {
-                        for(var colorNameStr in palette) {
-                            if(palette[colorNameStr].r !== undefined) {
+                        for(var colorNameStr in qgcPalette) {
+                            if(qgcPalette[colorNameStr].r !== undefined) {
                                 paletteColorList.append({ colorName: colorNameStr });
                             }
                         }
@@ -346,7 +346,7 @@ Rectangle {
                         }
                     }
                 }
-                } // GroupBox { title: "Preview and edit theme"
+                }
                 GroupBox { title: "Controls preview"
                 Column {
                     id: ctlPrevColumn
@@ -435,25 +435,6 @@ Rectangle {
                             height: ctlPrevColumn._height
                             text:   qsTr("Button")
                             primary: true
-                            enabled: false
-                        }
-                        Loader {
-                            sourceComponent: ctlRowHeader
-                            property string text: "ToolStripHoverButton"
-                        }
-                        ToolStripHoverButton {
-                            width:  ctlPrevColumn._colWidth
-                            height: ctlPrevColumn._height * 2
-                            text:   qsTr("Hover Button")
-                            radius: ScreenTools.defaultFontPointSize
-                            imageSource: "/qmlimages/Gears.svg"
-                        }
-                        ToolStripHoverButton {
-                            width:  ctlPrevColumn._colWidth
-                            height: ctlPrevColumn._height * 2
-                            text:   qsTr("Hover Button")
-                            radius: ScreenTools.defaultFontPointSize
-                            imageSource: "/qmlimages/Gears.svg"
                             enabled: false
                         }
                         Loader {
@@ -596,7 +577,7 @@ Rectangle {
                         }
                     }
                 }
-                } // GroupBox { title: "Controls preview"
+                }
             }
 
             Item{
