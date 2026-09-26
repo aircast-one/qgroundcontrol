@@ -146,7 +146,7 @@ pub fn member_target(path: &str) -> Option<(Owner, usize, &str)> {
         .find_map(|(owner, prefix)| path.strip_prefix(prefix).map(|rest| (owner, rest)))?;
     let (index, member) = rest.split_once('.')?;
     let known = match owner {
-        Owner::Polygon => ["adjustVertex", "removeVertex"].contains(&member),
+        Owner::Polygon => ["adjustVertex", "removeVertex", "inclusion"].contains(&member),
         Owner::Circle => ["center", "inclusion", "radius"].contains(&member),
         Owner::Rally => member == "coordinate",
     };
@@ -154,12 +154,16 @@ pub fn member_target(path: &str) -> Option<(Owner, usize, &str)> {
     Some((owner, index.parse().ok()?, member))
 }
 
+const VERTEX_EDITS: [&str; 2] = ["adjustVertex", "removeVertex"];
+
 pub fn owns_member_action(path: &str) -> bool {
-    member_target(path).is_some_and(|(owner, _, _)| owner == Owner::Polygon)
+    member_target(path).is_some_and(|(owner, _, member)| owner == Owner::Polygon && VERTEX_EDITS.contains(&member))
 }
 
+// A fence polygon's inclusion is a plain bool property, like a circle's; the bridge converted
+// anything to it through QVariant::toBool, so a string such as "no" was stored as true.
 pub fn owns_member_write(path: &str) -> bool {
-    member_target(path).is_some_and(|(owner, _, _)| owner != Owner::Polygon)
+    member_target(path).is_some_and(|(_, _, member)| !VERTEX_EDITS.contains(&member))
 }
 
 fn owner_count(backend: &dyn Backend, owner: Owner) -> usize {
@@ -348,5 +352,10 @@ mod tests {
         assert_eq!(member_write(&square, "plan.rallyPointController.points.0.coordinate", r#"{"value":{"latitude":47.4,"longitude":8.5}}"#)["result"], true);
         assert_eq!(member_write(&square, "plan.rallyPointController.points.3.coordinate", r#"{"value":{"latitude":47.4,"longitude":8.5}}"#)["refusal"], "noSuchShape");
         assert_eq!(member_write(&square, "plan.geoFenceController.circles.0.inclusion", r#"{"value":true}"#)["refusal"], "noSuchShape", "this plan has no circles");
+        let inclusion = "plan.geoFenceController.polygons.0.inclusion";
+        assert!(crate::actions::owns_write(inclusion) && !owns_member_action(inclusion), "a polygon's inclusion is a property write, not a vertex edit");
+        assert_eq!(member_write(&square, inclusion, r#"{"value":false}"#)["result"], true);
+        assert_eq!(member_write(&square, inclusion, r#"{"value":"no"}"#)["refusal"], "malformed", "QVariant::toBool would have stored the string as true");
+        assert_eq!(member_write(&square, "plan.geoFenceController.polygons.2.inclusion", r#"{"value":true}"#)["refusal"], "noSuchShape");
     }
 }
