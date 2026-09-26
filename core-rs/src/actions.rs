@@ -736,6 +736,24 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    // android/tools/qtpaths.py asks here which of the Android head's writes and invokes the core
+    // keeps. Most claims are patterns - a fact under settings., a link's field, a fence member - so
+    // a list of names read out of this file counted every one of them as Qt work still to do.
+    #[test]
+    #[ignore = "run by android/tools/qtpaths.py with QTPATHS_QUERY naming a file of kind<TAB>path lines"]
+    fn claims_for_qtpaths() {
+        let Ok(query) = std::env::var("QTPATHS_QUERY") else { return };
+        for line in std::fs::read_to_string(query).expect("QTPATHS_QUERY names a readable file").lines() {
+            let Some((kind, path)) = line.split_once('\t') else { continue };
+            let claimed = match kind {
+                "set" => owns_write(path),
+                "invoke" => owns(path),
+                _ => false,
+            };
+            println!("CLAIM\t{kind}\t{path}\t{claimed}");
+        }
+    }
+
     struct Plan {
         mission: Value,
         calls: Mutex<Vec<(String, String)>>,
