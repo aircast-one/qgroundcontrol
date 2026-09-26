@@ -2,7 +2,10 @@ name: "QGroundControl CodeQL Config"
 
 paths:
   - src
-  - android/src
+  - android/app/src
+  - android/map-spike/src
+  - android/tools
+  - deploy/android/src
   - tools
   - .github
 
@@ -14,9 +17,8 @@ paths-ignore:
   - '**/libs/**'
   - '**/3rdparty/**'
   - '**/build/**'
-  # Vendored Android Java sources — upstream libsdl/freedesktop, not ours to fix.
-  - 'android/src/org/libsdl/**'
-  - 'android/src/org/freedesktop/**'
+  # Vendored Android Java sources — upstream libsdl, not ours to fix.
+  - 'deploy/android/src/org/libsdl/**'
 
 queries:
   - uses: security-extended
