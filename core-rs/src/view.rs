@@ -390,6 +390,7 @@ mod deps_cover_reads {
             ("debugapi", include_str!("debugapi.rs")),
             ("detections", include_str!("detections.rs")),
             ("factmeta", include_str!("factmeta.rs")),
+            ("factwrite", include_str!("factwrite.rs")),
             ("fenceedit", include_str!("fenceedit.rs")),
             ("fences", include_str!("fences.rs")),
             ("flightmodes", include_str!("flightmodes.rs")),

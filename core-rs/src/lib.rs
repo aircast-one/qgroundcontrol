@@ -28,6 +28,7 @@ pub mod detections;
 pub mod contract;
 pub mod factmeta;
 pub mod control;
+pub mod factwrite;
 pub mod fenceedit;
 pub mod fences;
 pub mod flightmodes;

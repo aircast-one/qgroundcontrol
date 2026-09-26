@@ -108,7 +108,7 @@ pub fn owns(path: &str) -> bool {
 pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED];
 
 pub fn owns_write(path: &str) -> bool {
-    OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some()
+    OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path)
 }
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -117,6 +117,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
         INSPECTOR_SELECTED => crate::inspector::write_selected(backend, value),
         _ if crate::logs::selection_index(path).is_some() => crate::logs::write_selected(backend, path, value),
+        _ if crate::factwrite::owns(path) => crate::factwrite::write(backend, path, value),
         UNDO_TRACKING => crate::planselect::write_undo_tracking(backend, path, value),
         THERMAL_MODE | THERMAL_OPACITY | TRACKING_ENABLED => crate::cameratrack::write(backend, path, value),
         GLOBAL_ALTITUDE_MODE => crate::altitudeedit::write_global(backend, value),
