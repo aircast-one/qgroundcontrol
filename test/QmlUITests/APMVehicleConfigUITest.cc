@@ -19,38 +19,20 @@ void APMVehicleConfigUITest::init()
     VehicleConfigUITestBase::init();
 }
 
-// ---------------------------------------------------------------------------
-// Shared implementation
-// ---------------------------------------------------------------------------
-
 void APMVehicleConfigUITest::_runNavigateVehicleConfig(
     const std::function<MockLink *()> &factory, const QString &vehicleName)
 {
     runWithMockLink(factory, [&](QPointer<MockLink> /*mockLink*/, Vehicle *vehicle) {
-    // -------------------------------------------------------------------------
-    // Navigate to the Configure view
-    // -------------------------------------------------------------------------
     navigateToConfigureView();
     if (QTest::currentTestFailed()) return;
 
-    // -------------------------------------------------------------------------
-    // Click Summary
-    // -------------------------------------------------------------------------
-    QVERIFY2(clickButton(QStringLiteral("vehicleConfig_summary")),
+    QVERIFY2(clickButton(QStringLiteral("setupSummaryButton")),
              qPrintable(QStringLiteral("%1: Failed to click Summary button").arg(vehicleName)));
-    QTest::qWait(_viewDelay);
 
-    // -------------------------------------------------------------------------
-    // Click through each vehicle component, in English and Chinese
-    // -------------------------------------------------------------------------
     clickThroughAllComponentsAllLocales(vehicle, vehicleName);
 
     });
 }
-
-// ---------------------------------------------------------------------------
-// Per-vehicle-type test slots
-// ---------------------------------------------------------------------------
 
 void APMVehicleConfigUITest::_testArduCopter()
 {
@@ -68,8 +50,6 @@ void APMVehicleConfigUITest::_testArduPlane()
 
 void APMVehicleConfigUITest::_testArduSub()
 {
-    // TODO: APMTuningComponentSub.qml references parameters that don't exist in
-    // the Sub MockLink, causing null-fact TypeErrors. Needs investigation.
     QSKIP("ArduSub Tuning page has parameter mismatches with MockLink – skipping pending fix");
 }
 

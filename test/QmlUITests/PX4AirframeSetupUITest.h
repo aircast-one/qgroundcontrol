@@ -25,10 +25,7 @@ private:
     /// and verify the airframe-selection page is shown.
     void _navigateToAirframePanel();
 
-    /// Click the given component button in the config sidebar and verify whether
-    /// the Airframe prerequisite-setup message panel is shown. Expandable
-    /// components must expand even when the prerequisite is not met. When
-    /// checkedSectionObjectName is non-empty, that first child section must be
-    /// selected after the click.
-    void _verifyAirframePrereq(const QString &compObjectName, bool expectPrereqShown, const QString &checkedSectionObjectName);
+    /// Click the given component button in the setup sidebar and verify whether
+    /// the Airframe prerequisite-setup message panel is shown.
+    void _verifyAirframePrereq(const QString &compObjectName, bool expectPrereqShown);
 };
