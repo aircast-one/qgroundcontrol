@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.model", "vehicle.id"];
+pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.selectedCount", "logDownload.model", "vehicle.id"];
 
 pub fn human_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["bytes", "KB", "MB", "GB"];
@@ -142,6 +142,62 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Refresh,
+    Download,
+    Cancel,
+    EraseAll,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Controller {
+    connected: bool,
+    busy: bool,
+    entries: usize,
+    selected: usize,
+    save_path: bool,
+}
+
+fn refusal(action: Action, state: Controller) -> Option<(&'static str, &'static str)> {
+    match action {
+        Action::Cancel if !state.busy => Some(("idle", "Nothing is being listed or downloaded.")),
+        Action::Cancel => None,
+        _ if !state.connected => Some(("noVehicle", "No vehicle is connected.")),
+        _ if state.busy => Some(("busy", "Wait for the current list or download to finish, or cancel it.")),
+        Action::Download if state.selected == 0 => Some(("nothingSelected", "Select at least one log to download.")),
+        Action::Download if !state.save_path => Some(("noSavePath", "Choose a folder to save logs in.")),
+        Action::EraseAll if state.entries == 0 => Some(("noLogs", "The vehicle has no logs listed to erase.")),
+        _ => None,
+    }
+}
+
+pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Value {
+    let chosen = serde_json::from_str::<Value>(args).ok().and_then(|a| a.as_array()?.first()?.as_str().map(str::to_string)).filter(|p| !p.trim().is_empty());
+    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,selectedCount"));
+    let saving = object(&backend.get_fields("settings.appSettings", "logSavePath"));
+    let state = Controller {
+        connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
+        busy: flag(&root, "requestingList") || flag(&root, "downloadingLogs"),
+        entries: object(&backend.get("logDownload.model")).get("elements").and_then(Value::as_array).map_or(0, Vec::len),
+        selected: root.get("selectedCount").and_then(Value::as_u64).unwrap_or(0) as usize,
+        save_path: chosen.is_some() || saving.get("logSavePath").and_then(Value::as_str).is_some_and(|p| !p.is_empty()),
+    };
+    if let Some((token, reason)) = refusal(action, state) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let args = match (action, chosen) {
+        (Action::Download, Some(folder)) => json!([folder]).to_string(),
+        _ => "[]".to_string(),
+    };
+    let dispatched = flag(&object(&backend.invoke(path, &args)), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The log controller did not take the request.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +311,58 @@ mod tests {
         assert_eq!(dropped["canDownload"], false, "and the same window offers a download whose every byte would have to come from the vehicle that is gone");
         assert_eq!(dropped["canCancel"], false);
     }
+    #[test]
+    fn every_log_action_says_why_it_would_have_done_nothing() {
+        let ready = Controller { connected: true, busy: false, entries: 3, selected: 1, save_path: true };
+        let token = |action, state| refusal(action, state).map(|(t, _)| t);
+        [Action::Refresh, Action::Download, Action::EraseAll].iter().for_each(|a| assert_eq!(token(*a, ready), None, "{a:?}"));
+        assert_eq!(token(Action::Refresh, Controller { connected: false, ..ready }), Some("noVehicle"));
+        assert_eq!(token(Action::EraseAll, Controller { connected: false, ..ready }), Some("noVehicle"), "eraseAll returns on a null vehicle after a log line, so the operator confirmed a destructive action and heard nothing");
+        assert_eq!(token(Action::Refresh, Controller { busy: true, ..ready }), Some("busy"), "refresh() returns without a word while a transfer holds pointers into the model");
+        assert_eq!(token(Action::Download, Controller { selected: 0, ..ready }), Some("nothingSelected"), "download() with nothing selected is a no-op");
+        assert_eq!(token(Action::Download, Controller { save_path: false, ..ready }), Some("noSavePath"), "_downloadToDirectory returns on an empty path after clearing the download state");
+        assert_eq!(token(Action::EraseAll, Controller { entries: 0, ..ready }), Some("noLogs"));
+        assert_eq!(token(Action::Cancel, ready), Some("idle"));
+        assert_eq!(token(Action::Cancel, Controller { connected: false, busy: true, ..ready }), None, "a cancel has to reach a transfer whose vehicle has already gone");
+    }
+
+    #[test]
+    fn a_refused_log_action_never_reaches_qt_and_an_accepted_one_carries_its_folder() {
+        use std::cell::RefCell;
+        struct Recording { selected: u64, save: &'static str, calls: RefCell<Vec<(String, String)>> }
+        impl Backend for Recording {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "object", "elements": [{ "id": 1 }] }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    "settings.appSettings" => json!({ "kind": "object", "logSavePath": self.save }),
+                    _ => json!({ "kind": "object", "requestingList": false, "downloadingLogs": false, "selectedCount": self.selected }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, p: &str, a: &str) -> String {
+                self.calls.borrow_mut().push((p.to_string(), a.to_string()));
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let empty = Recording { selected: 0, save: "/Users/p/Logs", calls: RefCell::new(Vec::new()) };
+        let refused = act(&empty, Action::Download, "logDownload.download", "[]");
+        assert_eq!((&refused["ok"], &refused["refusal"]), (&json!(false), &json!("nothingSelected")));
+        assert!(empty.calls.borrow().is_empty());
+
+        let unsaved = Recording { selected: 2, save: "", calls: RefCell::new(Vec::new()) };
+        assert_eq!(act(&unsaved, Action::Download, "logDownload.download", "[]")["refusal"], "noSavePath");
+        let taken = act(&unsaved, Action::Download, "logDownload.download", r#"["/Volumes/Card"]"#);
+        assert_eq!((&taken["ok"], &taken["reason"]), (&json!(true), &Value::Null), "a folder passed with the call stands in for an unset setting, which is what download(path) does");
+        assert_eq!(unsaved.calls.borrow().as_slice(), &[("logDownload.download".to_string(), r#"["/Volumes/Card"]"#.to_string())]);
+
+        let erase = Recording { selected: 0, save: "", calls: RefCell::new(Vec::new()) };
+        assert_eq!(act(&erase, Action::EraseAll, "logDownload.eraseAll", "[]")["ok"], true);
+        assert_eq!(erase.calls.borrow()[0], ("logDownload.eraseAll".to_string(), "[]".to_string()));
+    }
+
     #[test]
     fn an_unusable_save_path_says_which_kind_of_unusable_it_is() {
         struct Saving(&'static str, &'static str);

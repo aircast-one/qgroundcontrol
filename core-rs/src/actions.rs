@@ -14,9 +14,13 @@ const MODE: &str = "camera.setMode";
 const STOP_PHOTO: &str = "camera.stopPhoto";
 const UNDO: &str = "plan.undo";
 const REDO: &str = "plan.redo";
+const LOG_REFRESH: &str = "logDownload.refresh";
+const LOG_DOWNLOAD: &str = "logDownload.download";
+const LOG_CANCEL: &str = "logDownload.cancel";
+const LOG_ERASE_ALL: &str = "logDownload.eraseAll";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -85,6 +89,10 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         ACTIVATE => activate(backend, args),
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         UNDO | REDO => step(backend, path),
+        LOG_REFRESH => crate::logs::act(backend, crate::logs::Action::Refresh, path, args),
+        LOG_DOWNLOAD => crate::logs::act(backend, crate::logs::Action::Download, path, args),
+        LOG_CANCEL => crate::logs::act(backend, crate::logs::Action::Cancel, path, args),
+        LOG_ERASE_ALL => crate::logs::act(backend, crate::logs::Action::EraseAll, path, args),
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
 }
