@@ -45,11 +45,14 @@ class DiscardConfirmTest {
     @Test
     fun `dirty and syncing come off the plan view the tab already reads`() {
         val idle = JSONObject("""{"kind":"object","class":"PlanStatus","dirty":false,"sync":{"state":"ready"}}""")
-        val busy = JSONObject("""{"kind":"object","class":"PlanStatus","dirty":true,"sync":{"state":"syncing"}}""")
+        val busy = JSONObject("""{"kind":"object","class":"PlanStatus","dirty":true,"sync":{"state":"busy"}}""")
         assertFalse(planIsDirty(idle))
         assertTrue(planIsDirty(busy))
         assertFalse(planIsSyncing(idle))
-        assertTrue(planIsSyncing(busy))
+        assertTrue("plan.rs serves busy for a sync in flight; the head compared against a syncing it never sends", planIsSyncing(busy))
+        assertFalse(planIsSyncing(JSONObject("""{"kind":"object","sync":{"state":"offline"}}""")))
+        assertTrue(planContainsItems(JSONObject("""{"kind":"object","containsItems":true}""")))
+        assertFalse(planContainsItems(null))
     }
 
     @Test

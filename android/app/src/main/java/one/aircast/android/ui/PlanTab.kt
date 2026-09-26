@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import one.aircast.android.bridge.qgcBool
 import androidx.compose.runtime.DisposableEffect
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -46,8 +45,8 @@ fun PlanTab(modifier: Modifier = Modifier) {
     var pending by remember { mutableStateOf<PlanConfirm?>(null) }
     val files = rememberPlanFileActions { notice = it }
 
-    val containsItems by qgcBool("plan.containsItems")
     val planStatus by qgcPath("view.plan")
+    val containsItems = remember(planStatus) { planContainsItems(planStatus) }
     val dirty = remember(planStatus) { planIsDirty(planStatus) }
     val syncing = remember(planStatus) { planIsSyncing(planStatus) }
     var showDefaults by remember { mutableStateOf(false) }
