@@ -127,6 +127,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         BREACH_ALTITUDE => crate::factwrite::write(backend, path, value),
         INSPECTOR_SELECTED => crate::inspector::write_selected(backend, value),
         _ if crate::logs::selection_index(path).is_some() => crate::logs::write_selected(backend, path, value),
+        _ if crate::itemposition::owns(path) => crate::itemposition::write(backend, path, value),
         _ if crate::factwrite::owns(path) => crate::factwrite::write(backend, path, value),
         _ if crate::linkconnect::edit_target(path).is_some() => crate::linkconnect::edit(backend, path, value),
         _ if crate::fenceedit::owns_member_write(path) => crate::fenceedit::member_write(backend, path, value),

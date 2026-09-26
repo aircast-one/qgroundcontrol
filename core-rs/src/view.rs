@@ -420,6 +420,7 @@ mod deps_cover_reads {
             ("hub", include_str!("hub.rs")),
             ("inspector", include_str!("inspector.rs")),
             ("itemshape", include_str!("itemshape.rs")),
+            ("itemposition", include_str!("itemposition.rs")),
             ("instrumentgroups", include_str!("instrumentgroups.rs")),
             ("instruments", include_str!("instruments.rs")),
         ("itemcamera", include_str!("itemcamera.rs")),
