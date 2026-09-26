@@ -34,6 +34,7 @@ pub mod frame;
 pub mod ftp;
 pub mod gcsposition;
 pub mod geotag;
+pub mod geotagjob;
 pub mod gimbal;
 pub mod geo;
 pub mod gpsfacts;

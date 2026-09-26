@@ -30,9 +30,14 @@ const CAL_LEVEL: &str = "sensorsCal.levelHorizon";
 const CAL_GYRO: &str = "sensorsCal.calibrateGyro";
 const CAL_PRESSURE: &str = "sensorsCal.calibratePressure";
 const CAL_MOTOR: &str = "sensorsCal.calibrateMotorInterference";
+const GEOTAG_START: &str = "geoTag.startTagging";
+const GEOTAG_CANCEL: &str = "geoTag.cancelTagging";
+const GEOTAG_LOG: &str = "geoTag.logFile";
+const GEOTAG_IMAGES: &str = "geoTag.imageDirectory";
+const GEOTAG_SAVE: &str = "geoTag.saveDirectory";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -41,7 +46,7 @@ pub fn owns(path: &str) -> bool {
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
-pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE];
+pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE];
 
 pub fn owns_write(path: &str) -> bool {
     OWNED_WRITES.contains(&path)
@@ -51,6 +56,9 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     match path {
         ZOOM => zoom(backend, value),
         TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
+        GEOTAG_LOG => crate::geotagjob::write(backend, crate::geotagjob::Field::LogFile, path, value),
+        GEOTAG_IMAGES => crate::geotagjob::write(backend, crate::geotagjob::Field::ImageDirectory, path, value),
+        GEOTAG_SAVE => crate::geotagjob::write(backend, crate::geotagjob::Field::SaveDirectory, path, value),
         _ => json!({ "ok": false, "reason": format!("{path} is not a write the core performs") }),
     }
 }
@@ -109,6 +117,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_NEXT => crate::radio::act(backend, crate::radio::Action::Next, path),
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
+        GEOTAG_START => crate::geotagjob::act(backend, crate::geotagjob::Action::Start, path),
+        GEOTAG_CANCEL => crate::geotagjob::act(backend, crate::geotagjob::Action::Cancel, path),
         SENSOR_NEXT => crate::calibration::act(backend, crate::calibration::Action::Next, path, args),
         SENSOR_CANCEL => crate::calibration::act(backend, crate::calibration::Action::Cancel, path, args),
         CAL_ACCEL | CAL_COMPASS | CAL_LEVEL | CAL_GYRO | CAL_PRESSURE | CAL_MOTOR => match crate::calibration::METHODS.iter().find(|m| path.ends_with(&format!(".{m}"))) {
