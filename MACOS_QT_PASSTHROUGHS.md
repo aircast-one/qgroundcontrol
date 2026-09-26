@@ -7,24 +7,23 @@ head: /Users/pavliha/Code/aircast/qgroundcontrol/macos/Sources
 predicate: a quoted literal whose text is one of 23 bridge roots followed by a dot; interpolation detected as \( or ${ or $name; literals in a systemName:/systemImage: argument or a symbol/glyph/icon/mark declaration are SwiftUI icons, not paths, and are excluded; a leading $NAME or a bare NAME argument is expanded when a const val NAME names a root path
 
   served (view.*)        65   distinct, the migration's numerator
-  claimed actions        63   distinct, of 95 the core owns -- these reach Qt through the core, so they are the destination and not the debt
-    camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
-  literal Qt paths       21   distinct, mechanical to move
+  claimed actions        66   distinct, of 98 the core owns -- these reach Qt through the core, so they are the destination and not the debt
+    camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, missionCommandTree.categoriesForVehicle, missionCommandTree.getCommandsForCategory, plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.parameterManager.parameterNames, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
+  literal Qt paths       18   distinct, mechanical to move
   interpolated Qt        26   distinct TEMPLATES, each expanding to an unknown number of runtime paths -- needs a parameterised view, not a substitution
-  raw Qt total           47   distinct, literal + templates
+  raw Qt total           44   distinct, literal + templates
   call sites            221   occurrences, not distinct: effort rather than surface
 
   reads                  16   group/get/watch/qgc* -- a served view retires these
-  actions                 7   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
+  actions                 4   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
   writes                 20   set/write -- a core `owns_write` claim retires these, as of 1fa63637d; router.set consults it first, then refuses view paths, then passes to Qt. One path claimed so far, so this column is still almost entirely Qt
   unclassified           12   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
   used more than one way   5   a path both read and written is counted under EACH use above, so those four exceed the raw total
 
   plan                     23  (18 interpolated)
-  vehicle                   9  (4 interpolated)
+  vehicle                   8  (4 interpolated)
   settings                  5  (1 interpolated)
   mavlinkInspector          2  (1 interpolated)
-  missionCommandTree        2
   video                     2
   geoTag                    1  (1 interpolated)
   links                     1
@@ -57,8 +56,6 @@ but what each path BECAME is the deliverable.**
 | `logDownload.model.\(entry.index).selected` | write | passthrough |
 | `mavlinkInspector.activeSystem` | read | passthrough |
 | `mavlinkInspector.activeSystem.messages.\(current.index).fields` | read | passthrough |
-| `missionCommandTree.categoriesForVehicle` | action | passthrough |
-| `missionCommandTree.getCommandsForCategory` | action | passthrough |
 | `plan.\(MissionStore.nextClient())` | unclassified | passthrough |
 | `plan.geoFenceController` | read | passthrough |
 | `plan.geoFenceController.\(circle ? ` | action | passthrough |
@@ -94,7 +91,6 @@ but what each path BECAME is the deliverable.**
 | `vehicle.gps` | read | passthrough |
 | `vehicle.parameterManager` | read | passthrough |
 | `vehicle.parameterManager.getParameter(\(componentId),\(name))` | unclassified | passthrough |
-| `vehicle.parameterManager.parameterNames` | action | passthrough |
 | `vehicle.terrain` | read | passthrough |
 | `vehicles.activeVehicleAvailable` | read | passthrough |
 | `video.initNative` | action | passthrough |
