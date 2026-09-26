@@ -4,8 +4,10 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
+const FACT_ROOTS: &[&str] = &["settings.", "vehicle.parameterManager.getParameter(", "plan.missionController.visualItems."];
+
 pub fn owns(path: &str) -> bool {
-    path.starts_with("settings.") && !path.ends_with(".rawValue")
+    FACT_ROOTS.iter().any(|root| path.starts_with(root)) && !path.ends_with(".rawValue")
 }
 
 fn number(value: &Value) -> Option<f64> {
@@ -67,6 +69,8 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
 }
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let renamed = crate::renamed::write_path(path);
+    let path = renamed.as_deref().unwrap_or(path);
     let fact = object(&backend.get(path));
     if fact.get("kind").and_then(Value::as_str) != Some("fact") {
         return object(&backend.set(path, value));
@@ -143,5 +147,40 @@ mod tests {
         assert_eq!(write(&settings, "settings.videoSettings", r#"{"value":1}"#)["ok"], true, "a path that is not a fact is the bridge's to answer");
         assert_eq!(settings.0.borrow().as_slice(), &["settings.appSettings.defaultMissionItemAltitude".to_string(), "settings.videoSettings".to_string()]);
         assert!(owns("settings.appSettings.savePath") && !owns("settings.appSettings.savePath.rawValue") && !owns("vehicle.armed"));
+        assert!(owns("vehicle.parameterManager.getParameter(1,RTL_ALT)"), "a parameter is a Fact the vehicle keeps, so a value outside its metadata goes to the autopilot");
+        assert!(owns("plan.missionController.visualItems.3.altitude"));
+        assert!(!owns("plan.missionController.globalAltitudeFrame"));
+    }
+
+    #[test]
+    fn a_parameter_or_item_fact_is_checked_and_a_renamed_item_field_still_lands() {
+        struct Vehicle(RefCell<Vec<String>>);
+        impl Backend for Vehicle {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "vehicle.parameterManager.getParameter(1,SERVO_RATE)" => json!({ "kind": "fact", "name": "SERVO_RATE", "typeIsInteger": true, "min": 25, "max": 400, "minIsDefaultForType": false, "maxIsDefaultForType": false, "readOnly": false }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, p: &str, _v: &str) -> String {
+                self.0.borrow_mut().push(p.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let vehicle = Vehicle(RefCell::new(Vec::new()));
+        let path = "vehicle.parameterManager.getParameter(1,SERVO_RATE)";
+        assert_eq!(write(&vehicle, path, r#"{"value":50.5}"#)["refusal"], "notWhole", "NATIVE_MACOS_REWRITE's open item: an integer parameter accepted a fractional entry and the vehicle was sent the truncation");
+        assert_eq!(write(&vehicle, path, r#"{"value":900}"#)["refusal"], "outOfRange");
+        assert_eq!(write(&vehicle, path, r#"{"value":50}"#)["result"], true);
+        assert_eq!(write(&vehicle, "plan.missionController.visualItems.2.altitudeMode", r#"{"value":1}"#)["ok"], true);
+        assert_eq!(
+            vehicle.0.borrow().as_slice(),
+            &[path.to_string(), "plan.missionController.visualItems.2.altitudeFrame".to_string()],
+            "an item's renamed field is still rewritten when the fact check takes the write before the router's own rename does"
+        );
     }
 }
