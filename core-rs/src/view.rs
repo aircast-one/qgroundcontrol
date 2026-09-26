@@ -417,6 +417,7 @@ mod deps_cover_reads {
             ("linkconfig", include_str!("linkconfig.rs")),
             ("linkhost", include_str!("linkhost.rs")),
             ("links", include_str!("links.rs")),
+            ("linkconnect", include_str!("linkconnect.rs")),
             ("linkremove", include_str!("linkremove.rs")),
             ("logs", include_str!("logs.rs")),
             ("mappolygon", include_str!("mappolygon.rs")),

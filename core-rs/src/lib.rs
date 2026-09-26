@@ -53,6 +53,7 @@ pub mod kml;
 pub mod landing;
 pub mod label;
 pub mod links;
+pub mod linkconnect;
 pub mod linkremove;
 pub mod linkconfig;
 pub mod linkhost;
