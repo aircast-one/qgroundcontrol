@@ -50,6 +50,55 @@ pub fn adjust_vertex(backend: &dyn Backend, path: &str, args: &str) -> Value {
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The shape was not changed.") } })
 }
 
+// Tapping a segment's midpoint on the map splits it through the invokable view.polygon names:
+// splitPolygonSegment on a QGCMapPolygon, splitSegment on a QGCMapPolyline. Neither bounds-checks
+// the index before indexing its path - QGCMapPolygon reads _polygonPath[vertexIndex] for any index,
+// and QGCMapPolyline stops only an index past the end - so a segment index gone stale because the
+// shape changed under the tap is an out-of-range QList read in the app process, not a refusal.
+const SPLITS: [(&str, bool); 2] = [(".splitPolygonSegment", true), (".splitSegment", false)];
+const SPLIT_ROOTS: [&str; 2] = ["plan.geoFenceController.polygons.", "plan.missionController.visualItems."];
+
+pub fn split_target(path: &str) -> Option<(&str, bool)> {
+    let (shape, ring) = SPLITS.iter().find_map(|(suffix, ring)| path.strip_suffix(suffix).map(|shape| (shape, *ring)))?;
+    SPLIT_ROOTS.iter().any(|root| shape.starts_with(root)).then_some((shape, ring))
+}
+
+pub fn owns_split(path: &str) -> bool {
+    split_target(path).is_some()
+}
+
+fn split_refusal(vertices: i64, ring: bool, segment: Option<i64>) -> Option<(&'static str, String)> {
+    let segments = match ring {
+        true if vertices >= 3 => vertices,
+        false if vertices >= 2 => vertices - 1,
+        _ => return Some(("tooFewVertices", "The shape has no segment to split yet.".to_string())),
+    };
+    match segment {
+        Some(s) if (0..segments).contains(&s) => None,
+        _ => Some(("noSuchSegment", format!("The shape has segments 0 to {}.", segments - 1))),
+    }
+}
+
+pub fn split(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "refusal": token, "reason": reason });
+    let Some((shape_path, ring)) = split_target(path) else {
+        return refused("malformed", "That is not a shape the core splits.".to_string());
+    };
+    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+        return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
+    }
+    let shape = object(&backend.get_fields(shape_path, "count"));
+    if shape.get("kind").and_then(Value::as_str) != Some("object") {
+        return refused("noSuchShape", format!("There is no shape at {shape_path}."));
+    }
+    let segment = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_i64());
+    if let Some((token, reason)) = split_refusal(integer(&shape, "count").unwrap_or(0), ring, segment) {
+        return refused(token, reason);
+    }
+    let dispatched = flag(&object(&backend.invoke(path, &json!([segment]).to_string())), "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The shape was not split.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +142,24 @@ mod tests {
         assert_eq!(survey.calls.borrow().as_slice(), &[r#"[2,{"latitude":47.4,"longitude":8.5}]"#.to_string()], "only the valid move reached Qt, stripped to what adjustVertex takes");
         let busy = Survey { syncing: true, calls: RefCell::new(Vec::new()) };
         assert_eq!(adjust_vertex(&busy, PATH, r#"[2, {"latitude": 47.4, "longitude": 8.5}]"#)["refusal"], "busy");
+    }
+
+    #[test]
+    fn a_split_names_a_segment_the_shape_still_has() {
+        assert_eq!(split_target("plan.geoFenceController.polygons.0.splitPolygonSegment"), Some(("plan.geoFenceController.polygons.0", true)));
+        assert_eq!(split_target("plan.missionController.visualItems.2.corridorPolyline.splitSegment"), Some(("plan.missionController.visualItems.2.corridorPolyline", false)));
+        assert!(!owns_split("vehicle.splitSegment"));
+        assert_eq!(split_refusal(4, true, Some(3)), None, "a polygon's last segment closes back to vertex 0");
+        assert_eq!(split_refusal(4, true, Some(4)).map(|r| r.0), Some("noSuchSegment"), "QGCMapPolygon reads _polygonPath[4] of four");
+        assert_eq!(split_refusal(4, true, Some(-1)).map(|r| r.0), Some("noSuchSegment"));
+        assert_eq!(split_refusal(3, false, Some(2)).map(|r| r.0), Some("noSuchSegment"), "a polyline of three has two segments");
+        assert_eq!(split_refusal(3, false, Some(1)), None);
+        assert_eq!(split_refusal(1, false, Some(0)).map(|r| r.0), Some("tooFewVertices"));
+        assert_eq!(split_refusal(4, true, None).map(|r| r.0), Some("noSuchSegment"));
+
+        let survey = Survey { syncing: false, calls: RefCell::new(Vec::new()) };
+        assert_eq!(split(&survey, "plan.missionController.visualItems.1.surveyAreaPolygon.splitPolygonSegment", "[3]")["ok"], true);
+        assert_eq!(split(&survey, "plan.missionController.visualItems.1.surveyAreaPolygon.splitPolygonSegment", "[7]")["refusal"], "noSuchSegment");
+        assert_eq!(survey.calls.borrow().as_slice(), &["[3]".to_string()]);
     }
 }
