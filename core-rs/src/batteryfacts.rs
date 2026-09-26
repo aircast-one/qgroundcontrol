@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn the_sample_log_reports_a_battery() {
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let bytes = crate::samplelog::bytes();
         let mut batteries = Batteries::default();
         crate::tlog::for_each(&bytes, |_, _, message| {
             batteries.apply(message);

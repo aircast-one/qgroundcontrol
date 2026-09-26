@@ -70,6 +70,15 @@ QJsonObject take(char *owned)
     return object;
 }
 
+// The qgc_qt_* entry points answer from QGCBridgeCore without the core's claims in front of it, and
+// their strings are Qt's to free.
+QJsonObject takeQt(char *owned)
+{
+    const QJsonObject object = QJsonDocument::fromJson(QByteArray(owned)).object();
+    qgc_qt_free(owned);
+    return object;
+}
+
 void onEvent(const char *path, const char *json)
 {
     paths.append(QString::fromUtf8(path));
@@ -429,6 +438,12 @@ void QGCCoreCTest::_inspectorListsMessages()
     const QJsonObject first = view.value(QStringLiteral("messages")).toArray().first().toObject();
     QVERIFY(!first.value(QStringLiteral("name")).toString().isEmpty());
     QVERIFY(first.value(QStringLiteral("path")).toString().startsWith(QStringLiteral("mavlinkInspector.activeSystem.messages.")));
+    // QGCMAVLinkSystem selects the first message it hears, so the fields arrive without a selection.
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("view.inspector")).value(QStringLiteral("fields")).toArray().isEmpty(), 5000);
+    const QJsonObject field = take(qgc_bridge_get("view.inspector")).value(QStringLiteral("fields")).toArray().first().toObject();
+    QVERIFY(!field.value(QStringLiteral("name")).toString().isEmpty());
+    QVERIFY(field.value(QStringLiteral("type")).isString());
+    QVERIFY(field.value(QStringLiteral("value")).isString());
 }
 
 void QGCCoreCTest::_flightModesFollowTheVehicle()
@@ -1334,6 +1349,7 @@ const char *const kViewPaths[] = {
     "view.cameraProtocol", "view.joystickMapping",
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
     "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
+    "view.gps", "view.terrainDownload", "view.firmware", "view.hostNotices", "view.hostNotices(0)",
 };
 
 QList<QByteArray> viewPathsWithFixtures()
@@ -1649,6 +1665,13 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.adsbTraffic")).value(QStringLiteral("ownPositionKnown")).toBool(false), 10000);
+    // view.hostNotices is empty until something posts, and an empty list pins no element shape and
+    // records destination and latestId as always null.
+    QVERIFY(take(qgc_bridge_invoke("host.postNotice", "[\"message\", \"Recorder\", \"A message notice\"]")).value(QStringLiteral("ok")).toBool(false));
+    QVERIFY(take(qgc_bridge_invoke("host.postNotice", "[\"navigation\", \"plan\", \"\"]")).value(QStringLiteral("ok")).toBool(false));
+    // view.inspector serves the selected message's fields; waiting for them keeps a recording that
+    // ran before the first message from pinning an empty list the element shape is absent from.
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.inspector")).value(QStringLiteral("fields")).toArray().isEmpty(), 5000);
     const auto preflightSettled = []() {
         const QJsonObject once = take(qgc_core_get("view.preflight"));
         QTest::qWait(500);
@@ -1882,9 +1905,15 @@ QString roundedCoordinates(const QJsonArray &points)
 void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 {
     ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("createSerialConfiguration: bad name")));
+    // The core claims the path and refuses a nameless link itself, with the field and a reason, where
+    // LinkManager only logged "bad name" and answered a dispatched call with a false result.
     const QJsonObject refusedName = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
-    QVERIFY2(refusedName.value(QStringLiteral("ok")).toBool(false), qPrintable(refusedName.value(QStringLiteral("reason")).toString()));
+    QCOMPARE(refusedName.value(QStringLiteral("ok")).toBool(true), false);
+    QVERIFY(!refusedName.value(QStringLiteral("reason")).toString().isEmpty());
     QCOMPARE(refusedName.value(QStringLiteral("result")).toBool(true), false);
+    const QJsonObject qtRefusedName = takeQt(qgc_qt_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
+    QVERIFY2(qtRefusedName.value(QStringLiteral("ok")).toBool(false), "the Qt method the claim stands in front of has to stay reachable, or the claim forwards to nothing");
+    QCOMPARE(qtRefusedName.value(QStringLiteral("result")).toBool(true), false);
 
     const QJsonObject refusedBaud = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"Serial Test\",\"/dev/nonexistent\",0]"));
     QCOMPARE(refusedBaud.value(QStringLiteral("result")).toBool(true), false);
@@ -2673,9 +2702,12 @@ void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
     const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
     const QString item = QStringLiteral("plan.missionController.visualItems.1");
 
+    // The negative distances fly inside the structure, and DistanceToSurface declares a minimum of 0.1,
+    // so the core refuses them as QGC's own field would. This oracle pins the geometry QGC computes
+    // either side of the structure, so it writes to the Fact directly.
     const auto setFact = [&](const QString &path, const QJsonValue &value) {
         const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("value"), value } }).toJson(QJsonDocument::Compact);
-        QVERIFY2(take(qgc_bridge_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
+        QVERIFY2(takeQt(qgc_qt_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
         const QJsonValue back = take(qgc_bridge_get((path + QStringLiteral(".rawValue")).toUtf8().constData())).value(QStringLiteral("value"));
         QVERIFY2(qFuzzyCompare(back.toDouble() + 1.0, value.toDouble() + 1.0), qPrintable(QStringLiteral("%1 was set to %2 and reads back %3, so this case is not the case it is named after").arg(path).arg(value.toDouble()).arg(back.toDouble())));
     };
@@ -3123,6 +3155,9 @@ void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
     const QList<Sent> uploaded = spell(vehicle->missionManager()->missionItems());
     QVERIFY2(uploaded.count() > 200, qPrintable(QStringLiteral("this survey is meant to be larger than a vehicle's usual mission and it came to %1 items").arg(uploaded.count())));
 
+    // The mission lands before the fence and rally sends behind it, and the core refuses to clear a
+    // plan mid-sync, so the clear waits for the whole upload rather than the mission's part of it.
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("plan.syncInProgress")).value(QStringLiteral("value")).toBool(true), 30000);
     restore();
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("plan.missionController.visualItems.count")).value(QStringLiteral("value")).toInt(-1) <= 1, 5000);
 

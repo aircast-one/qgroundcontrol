@@ -12,6 +12,8 @@ pub const DEPS: &[&str] = &[
     "plan.canUndo",
     "plan.canRedo",
     "plan.missionController.containsItems",
+    "plan.missionController.complexMissionItems",
+    "plan.missionController.globalAltitudeFrame",
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
     "vehicle.flightMode",
@@ -83,9 +85,25 @@ fn defaults_json(backend: &dyn Backend) -> Value {
     json!({ "altitude": altitude, "cruise": cruise, "hover": hover, "speedUnits": speed_units })
 }
 
+fn patterns(mission: &Value) -> Vec<Value> {
+    mission
+        .get("complexMissionItems")
+        .and_then(Value::as_array)
+        .map(|offered| {
+            offered
+                .iter()
+                .filter_map(|p| {
+                    let name = p.get("canonicalName").and_then(Value::as_str).filter(|n| !n.is_empty())?;
+                    Some(json!({ "name": name, "title": p.get("translatedName").and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or(name) }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo"));
-    let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
+    let mission = object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame"));
     let syncing = flag(&plan, "syncInProgress");
     let offline = flag(&plan, "offline");
     let dirty = flag(&plan, "dirty");
@@ -105,6 +123,12 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // object itself. Empty strings mean the controller has not resolved one, which is not the
         // same as a plan for no vehicle.
         "planningFor": planning_for(backend),
+        // Both heads checked that plan.missionController answered as an object and then read its
+        // pattern list and altitude frame off the raw controller - by the names those had before
+        // upstream renamed them, so both reads had been answering null since the merge.
+        "available": mission.get("kind").and_then(Value::as_str) == Some("object"),
+        "patterns": patterns(&mission),
+        "globalAltitudeFrame": mission.get("globalAltitudeFrame").and_then(Value::as_i64),
         "defaults": defaults_json(backend),
         "readiness": readiness_json(readiness),
         "upload": upload_json(upload),
@@ -129,7 +153,13 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "sync": sync_json(offline, syncing),
         "status": status_text(name, dirty, offline, contains_items),
         "file": name,
+        // The whole path, so saving back to the file that was opened needs no raw currentPlanFile.
+        "filePath": (!file.is_empty()).then_some(file),
         "dirty": dirty,
+        // PlanTab.kt and the map spike read plan.containsItems and plan.offline raw beside this view,
+        // two reads that could land either side of a change the view had already answered for.
+        "containsItems": contains_items,
+        "offline": offline,
         "canUndo": flag(&plan, "canUndo"),
         "canRedo": flag(&plan, "canRedo"),
     })
@@ -184,6 +214,92 @@ fn status_text(name: Option<&str>, dirty: bool, offline: bool, has_items: bool) 
         (Some(n), true, true, _) => format!("{n} \u{b7} unsaved changes"),
         (Some(n), true, false, _) => format!("{n} \u{b7} not uploaded"),
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlanAction {
+    Send,
+    Download,
+    SaveCurrent,
+    SaveFile,
+    SaveKml,
+    Open,
+    Clear,
+}
+
+fn folder_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
+    let Some(path) = path.filter(|p| !p.trim().is_empty()) else {
+        return Some(("noFile", "Choose a file to save to.".to_string()));
+    };
+    match std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty()) {
+        Some(folder) if !folder.is_dir() => Some(("folderMissing", format!("{} is not a folder that exists.", folder.display()))),
+        _ => None,
+    }
+}
+
+fn open_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
+    let Some(path) = path.filter(|p| !p.trim().is_empty()) else {
+        return Some(("noFile", "Choose a plan file to open.".to_string()));
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return Some(("unreadable", format!("{path} could not be read.")));
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let suffix = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
+    match suffix {
+        "waypoints" | "txt" if !matches!(text.lines().next(), Some("QGC WPL 110" | "QGC WPL 120")) => Some(("notAPlan", "A waypoints file starts with QGC WPL 110 or 120, and this one does not.".to_string())),
+        "waypoints" | "txt" => None,
+        _ if serde_json::from_str::<Value>(&text).is_err() => Some(("notAPlan", "This file is not a plan: it is not JSON.".to_string())),
+        _ => None,
+    }
+}
+
+fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<(&'static str, String)> {
+    let text = |v: &Value| v.as_str().unwrap_or("").to_string();
+    let allowed = |name: &str| view["actions"][name].as_bool() == Some(true);
+    let sync_refusal = || (view["sync"]["state"] != "ready").then(|| (if view["sync"]["state"] == "offline" { "offline" } else { "busy" }, text(&view["sync"]["refusal"])));
+    let not_ready = || (view["readiness"]["ready"] != true).then(|| ("notReady", text(&view["readiness"]["reason"])));
+    match action {
+        PlanAction::Download => sync_refusal(),
+        PlanAction::Send => sync_refusal().or_else(not_ready).or_else(|| match view["upload"]["state"].as_i64() {
+            Some(0 | 2 | 3) => None,
+            _ => Some(("cannotUpload", text(&view["upload"]["refusal"]))),
+        }),
+        PlanAction::SaveCurrent | PlanAction::SaveFile => not_ready()
+            .or_else(|| (!allowed("save")).then(|| ("nothingToSave", "There is nothing in this plan to save, or a sync is running.".to_string())))
+            .or_else(|| match action {
+                PlanAction::SaveCurrent => view["file"].is_null().then(|| ("noFile", "This plan has not been saved to a file yet.".to_string())),
+                _ => folder_refusal(path),
+            }),
+        PlanAction::Open => (!allowed("open")).then(|| ("busy", "Wait for the sync to finish before opening a plan.".to_string())).or_else(|| open_refusal(path)),
+        PlanAction::Clear => (!allowed("newPlan")).then(|| ("busy", "Wait for the sync to finish before clearing the plan.".to_string())),
+        PlanAction::SaveKml => (!allowed("exportKml"))
+            .then(|| ("nothingToExport", "There are no mission items to export, or a sync is running.".to_string()))
+            .or_else(|| folder_refusal(path)),
+    }
+}
+
+pub fn plan_action(backend: &dyn Backend, action: PlanAction, path: &str, args: &str) -> Value {
+    let file = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string));
+    let returns = matches!(action, PlanAction::SaveCurrent | PlanAction::SaveFile | PlanAction::Open);
+    if let Some((token, reason)) = plan_refusal(action, &plan_view(backend, &[]), file.as_deref()) {
+        return json!({ "ok": false, "result": returns.then_some(false), "refusal": token, "reason": reason });
+    }
+    let forwarded = match (action, &file) {
+        (PlanAction::SaveFile | PlanAction::SaveKml | PlanAction::Open, Some(file)) => json!([file]).to_string(),
+        _ => "[]".to_string(),
+    };
+    let answer = object(&backend.invoke(path, &forwarded));
+    let done = match returns {
+        true => flag(&answer, "result"),
+        false => flag(&answer, "ok"),
+    };
+    json!({
+        "ok": done,
+        "result": returns.then_some(done),
+        "refusal": Value::Null,
+        "reason": match done { true => Value::Null, false => json!("The plan controller did not carry it out.") },
+    })
 }
 
 #[cfg(test)]
@@ -351,6 +467,7 @@ mod tests {
         assert_eq!(view["actions"]["exportKml"], true);
         assert_eq!(view["actions"]["open"], true);
         assert_eq!(view["file"], "ridge.plan", "the name is the last segment, so a head does not have to split a path it was given whole");
+        assert_eq!(view["filePath"], "/plans/ridge.plan", "saving back needs the whole path, which a head had been reading raw");
 
         let syncing = fake(
             json!({ "kind": "object", "syncInProgress": true, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/plans/ridge.plan" }),
@@ -480,4 +597,96 @@ mod tests {
         let unchecked = upload_json(None);
         assert_eq!(unchecked["heading"], "This plan cannot be uploaded", "an unknown state is a refusal, not a green light");
     }
+
+    #[test]
+    fn a_plan_is_not_sent_or_saved_while_the_view_says_it_cannot_be() {
+        let view = |sync: &str, ready: bool, upload: i64, file: Value| json!({
+            "sync": { "state": sync, "refusal": if sync == "ready" { Value::Null } else { json!("No vehicle is connected.") } },
+            "readiness": { "ready": ready, "reason": if ready { Value::Null } else { json!("Waiting for terrain heights before the plan can be saved or sent.") } },
+            "upload": { "state": upload, "refusal": if upload == 0 { Value::Null } else { json!("No vehicle is connected, so there is nowhere to send this plan.") } },
+            "actions": { "save": true, "exportKml": true, "open": true, "newPlan": true },
+            "file": file,
+        });
+        let token = |action, v: &Value, path: Option<&str>| plan_refusal(action, v, path).map(|(t, _)| t);
+        let good = view("ready", true, 0, json!("ridge.plan"));
+        assert_eq!(token(PlanAction::Send, &good, None), None);
+        assert_eq!(
+            plan_refusal(PlanAction::Send, &view("ready", false, 0, Value::Null), None),
+            Some(("notReady", "Waiting for terrain heights before the plan can be saved or sent.".to_string())),
+            "PlanMasterController::sendToVehicle checks offline and syncing only, so a plan with its terrain heights still pending went up"
+        );
+        assert_eq!(token(PlanAction::Send, &view("ready", true, 2, Value::Null), None), None, "a firmware mismatch is a warning the head has already put to the operator before it sends");
+        assert_eq!(token(PlanAction::Send, &view("ready", true, 3, Value::Null), None), None, "and the head pauses first for a mission in flight, after which the pre-check can still read 3 for a moment");
+        assert_eq!(token(PlanAction::Send, &view("ready", true, 1, Value::Null), None), Some("cannotUpload"));
+        assert_eq!(token(PlanAction::Send, &view("busy", true, 0, Value::Null), None), Some("busy"));
+        assert_eq!(token(PlanAction::Download, &view("offline", true, 0, Value::Null), None), Some("offline"));
+        assert_eq!(token(PlanAction::SaveCurrent, &view("ready", true, 0, Value::Null), None), Some("noFile"));
+        assert_eq!(token(PlanAction::SaveCurrent, &good, None), None);
+        assert_eq!(token(PlanAction::SaveFile, &good, Some("/no/such/folder/ridge.plan")), Some("folderMissing"));
+        let here = std::env::temp_dir().join("ridge.plan");
+        assert_eq!(token(PlanAction::SaveFile, &good, here.to_str()), None);
+        assert_eq!(token(PlanAction::SaveKml, &good, Some("")), Some("noFile"));
+        assert_eq!(token(PlanAction::SaveFile, &view("ready", false, 0, Value::Null), here.to_str()), Some("notReady"));
+
+        let folder = std::env::temp_dir().join(format!("qgc-plan-open-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let write = |name: &str, body: &str| {
+            let file = folder.join(name);
+            std::fs::write(&file, body).unwrap();
+            file.to_string_lossy().into_owned()
+        };
+        let (plan, waypoints, junk, headerless) = (write("a.plan", r#"{"fileType":"Plan"}"#), write("b.waypoints", "QGC WPL 110\n"), write("c.plan", "not json"), write("d.txt", "0\t1\t0\n"));
+        assert_eq!(token(PlanAction::Open, &good, Some(&plan)), None);
+        assert_eq!(token(PlanAction::Open, &good, Some(&waypoints)), None);
+        assert_eq!(token(PlanAction::Open, &good, Some(&junk)), Some("notAPlan"), "loadFromFile reports a bad file through showAppMessage, which no native head receives, and clears the current plan file on the way out");
+        assert_eq!(token(PlanAction::Open, &good, Some(&headerless)), Some("notAPlan"));
+        assert_eq!(token(PlanAction::Open, &good, Some(&write("e.waypoints", "QGC WPL 130\r\n"))), Some("notAPlan"), "_loadTextMissionFile knows only versions 110 and 120");
+        assert_eq!(token(PlanAction::Open, &good, Some(&write("f.waypoints", "QGC WPL 120\r\n0\t1\n"))), None, "a CRLF file reads the same as QTextStream::readLine sees it");
+        assert_eq!(token(PlanAction::Open, &good, Some("/no/such/file.plan")), Some("unreadable"));
+        let syncing = json!({ "actions": { "open": false, "newPlan": false } });
+        assert_eq!(token(PlanAction::Open, &syncing, Some(&plan)), Some("busy"));
+        assert_eq!(token(PlanAction::Clear, &syncing, None), Some("busy"), "removeAll in the middle of a sync pulls the items out from under the transfer");
+        assert_eq!(token(PlanAction::Clear, &json!({ "actions": { "newPlan": true } }), None), None);
+    }
+
+    #[test]
+    fn the_plan_view_carries_the_mission_controller_fields_by_their_current_names() {
+        struct Controller(bool);
+        impl Backend for Controller {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match (p, self.0) {
+                    ("plan.missionController", true) => json!({
+                        "kind": "object",
+                        "containsItems": true,
+                        "globalAltitudeFrame": 1,
+                        "complexMissionItems": [
+                            { "canonicalName": "Survey", "translatedName": "Survey" },
+                            { "canonicalName": "Corridor Scan", "translatedName": "Korridor-Scan" },
+                            { "canonicalName": "", "translatedName": "nameless" },
+                        ],
+                    }),
+                    ("plan", true) => json!({ "kind": "object", "containsItems": true, "offline": true, "dirty": false, "syncInProgress": false }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": false }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = plan_view(&Controller(true), &[]);
+        assert_eq!(view["available"], true);
+        assert_eq!((&view["containsItems"], &view["offline"], &view["sync"]["state"]), (&json!(true), &json!(true), &json!("offline")), "both come from the same plan read as sync and status");
+        assert_eq!(view["filePath"], Value::Null, "no file is null rather than an empty path to save over");
+        assert_eq!(view["globalAltitudeFrame"], 1, "the head read globalAltitudeMode, which upstream renamed, so its read had been null since the merge");
+        assert_eq!(
+            view["patterns"],
+            json!([{ "name": "Survey", "title": "Survey" }, { "name": "Corridor Scan", "title": "Korridor-Scan" }]),
+            "the canonical name is the insert key and the translated one is what is shown; a pattern without a key cannot be inserted"
+        );
+        let gone = plan_view(&Controller(false), &[]);
+        assert_eq!((&gone["available"], &gone["patterns"], &gone["globalAltitudeFrame"]), (&json!(false), &json!([]), &Value::Null));
+    }
 }
+

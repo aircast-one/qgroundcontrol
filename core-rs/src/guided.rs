@@ -356,9 +356,233 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
 }
 
+const LONGEST_CLIMB_OUT_M: f64 = 1000.0;
+
+pub(crate) fn offer_refusal(backend: &dyn Backend, offered: &[Action]) -> Option<(&'static str, String)> {
+    invoke_refusal(offered, &read_state(backend))
+}
+
+fn invoke_refusal(offered: &[Action], s: &GuidedState) -> Option<(&'static str, String)> {
+    if offered == [Action::EmergencyStop] {
+        return match (s.connected, s.armed) {
+            (false, _) => Some(("noVehicle", "No vehicle is connected.".to_string())),
+            (true, false) => Some(("notOffered", "The motors are not armed, so there is nothing to stop.".to_string())),
+            (true, true) => None,
+        };
+    }
+    let offers: Vec<Offer> = offered.iter().map(|a| a.offer(s)).collect();
+    if offers.iter().any(|o| o.offer == "ready") {
+        return None;
+    }
+    match offers.iter().find(|o| o.offer == "blocked") {
+        Some(blocked) => Some(("blocked", blocked.reason.to_string())),
+        None if !s.connected => Some(("noVehicle", "No vehicle is connected.".to_string())),
+        None => Some(("notOffered", format!("{} is not available right now.", offers.first().map_or("That action", |o| o.title)))),
+    }
+}
+
+fn invoke_args(offered: &[Action], args: &str) -> Result<String, &'static str> {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    match offered {
+        [Action::Rtl] => Ok(json!([given.get(0).and_then(Value::as_bool).unwrap_or(false)]).to_string()),
+        [Action::LandAbort] => match given.get(0).and_then(Value::as_f64).filter(|m| m.is_finite() && *m > 0.0 && *m <= LONGEST_CLIMB_OUT_M) {
+            Some(metres) => Ok(json!([metres]).to_string()),
+            None => Err("Abort Landing needs a climb-out height above zero and at most 1000 m."),
+        },
+        _ => Ok("[]".to_string()),
+    }
+}
+
+pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, args: &str) -> Value {
+    let args = match invoke_args(offered, args) {
+        Ok(args) => args,
+        Err(reason) => return json!({ "ok": false, "refusal": "malformed", "reason": reason }),
+    };
+    let state = match offered {
+        [Action::EmergencyStop] => GuidedState {
+            connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
+            armed: flag(&object(&backend.get_fields("vehicle", "armed")), "armed"),
+            ..GuidedState::default()
+        },
+        _ => read_state(backend),
+    };
+    if let Some((token, reason)) = invoke_refusal(offered, &state) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = flag(&object(&backend.invoke(path, &args)), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") },
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Valued {
+    Takeoff,
+    ChangeAltitude,
+    Pause,
+    Gripper,
+    Resume,
+}
+
+const GRIPPER_RELEASE: i64 = 0;
+const GRIPPER_GRAB: i64 = 1;
+
+type Checked = Result<(Vec<Action>, String), (&'static str, String)>;
+
+fn valued_check(kind: Valued, args: &Value, s: &GuidedState, takeoff: Option<(f64, f64)>, altitude: Option<(f64, f64, f64)>) -> Checked {
+    let number = |i: usize| args.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let whole = |i: usize| number(i).filter(|v| v.fract() == 0.0).map(|v| v as i64);
+    let malformed = |what: &str| Err(("malformed", what.to_string()));
+    match kind {
+        Valued::Pause => Ok((vec![Action::Pause], "[]".to_string())),
+        Valued::Takeoff => {
+            let Some(metres) = number(0) else { return malformed("Takeoff needs a height in metres.") };
+            let Some((lo, hi)) = takeoff else { return Err(("noRange", "The takeoff height range is not known yet.".to_string())) };
+            match (lo..=hi).contains(&metres) {
+                true => Ok((vec![Action::Takeoff], json!([metres]).to_string())),
+                false => Err(("outOfRange", format!("A takeoff height has to be between {lo:.1} and {hi:.1} m."))),
+            }
+        }
+        Valued::ChangeAltitude => {
+            let Some(delta) = number(0) else { return malformed("Changing altitude needs a change in metres.") };
+            let pause = args.get(1).and_then(Value::as_bool).unwrap_or(false);
+            let Some((current, lo, hi)) = altitude else { return Err(("noRange", "The altitude range is not known yet.".to_string())) };
+            let offered = if pause { vec![Action::Pause, Action::ChangeAltitude] } else { vec![Action::ChangeAltitude] };
+            match (lo..=hi).contains(&(current + delta)) {
+                true => Ok((offered, json!([delta, pause]).to_string())),
+                false => Err(("outOfRange", format!("The new height has to be between {lo:.1} and {hi:.1} m."))),
+            }
+        }
+        Valued::Gripper => match whole(0) {
+            Some(GRIPPER_GRAB) => Ok((vec![Action::Grab], json!([GRIPPER_GRAB]).to_string())),
+            Some(GRIPPER_RELEASE) => Ok((vec![Action::Release], json!([GRIPPER_RELEASE]).to_string())),
+            _ => malformed("The gripper is sent 1 to grab or 0 to release."),
+        },
+        Valued::Resume => match whole(0) {
+            Some(sequence) if sequence > 0 && sequence == s.resume_from_sequence => Ok((vec![Action::ResumeMission], json!([sequence]).to_string())),
+            Some(_) if s.resume_from_sequence > 0 => Err(("moved", format!("The mission can resume from item {} now.", s.resume_from_sequence))),
+            Some(_) => Ok((vec![Action::ResumeMission], "[]".to_string())),
+            None => malformed("Resuming needs the item to resume from."),
+        },
+    }
+}
+
+pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let state = read_state(backend);
+    let takeoff = matches!(kind, Valued::Takeoff).then(|| crate::takeoff::range_meters(backend)).flatten();
+    let altitude = matches!(kind, Valued::ChangeAltitude).then(|| crate::altitude::range_meters(backend)).flatten().map(|r| (r.current, r.minimum, r.maximum));
+    let checked = valued_check(kind, &given, &state, takeoff, altitude).and_then(|(offered, forwarded)| match invoke_refusal(&offered, &state) {
+        Some(refused) => Err(refused),
+        None => Ok(forwarded),
+    });
+    let forwarded = match checked {
+        Ok(forwarded) => forwarded,
+        Err((token, reason)) => return json!({ "ok": false, "refusal": token, "reason": reason }),
+    };
+    let dispatched = flag(&object(&backend.invoke(path, &forwarded)), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") },
+    })
+}
+
+pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let Some(forward) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
+        return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "A VTOL transition is true for fixed-wing flight or false for multi-rotor flight." });
+    };
+    let offered = if forward { [Action::VtolTransitionToFixedWing] } else { [Action::VtolTransitionToMultiRotor] };
+    if let Some((token, reason)) = invoke_refusal(&offered, &read_state(backend)) {
+        return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    }
+    let answered = flag(&object(&backend.set(path, &json!({ "value": forward }).to_string())), "ok");
+    json!({
+        "ok": answered,
+        "result": answered,
+        "refusal": Value::Null,
+        "reason": match answered { true => Value::Null, false => json!("The vehicle was not asked to transition.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vtol_transition_goes_only_the_way_the_view_offers() {
+        let hover = GuidedState { connected: true, armed: true, flying: true, vtol: true, vtol_in_fwd_flight: false, ..GuidedState::default() };
+        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &hover), None);
+        assert_eq!(
+            invoke_refusal(&[Action::VtolTransitionToMultiRotor], &hover).map(|r| r.0),
+            Some("notOffered"),
+            "setVtolInFwdFlight sends MAV_CMD_DO_VTOL_TRANSITION whenever the stored flag differs, so a stale flag sends a transition the aircraft is already in"
+        );
+        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &GuidedState { flying: false, ..hover.clone() }).map(|r| r.0), Some("notOffered"), "and on the ground there is no transition to make");
+        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &GuidedState { vtol: false, ..hover.clone() }).map(|r| r.0), Some("notOffered"));
+    }
+
+    #[test]
+    fn a_guided_value_is_checked_against_the_range_its_view_served() {
+        let s = GuidedState { resume_from_sequence: 7, ..GuidedState::default() };
+        let check = |kind, args: Value| valued_check(kind, &args, &s, Some((3.0, 120.0)), Some((40.0, 10.0, 120.0)));
+        assert_eq!(check(Valued::Takeoff, json!([30.0])), Ok((vec![Action::Takeoff], "[30.0]".to_string())));
+        assert_eq!(check(Valued::Takeoff, json!([500.0])).map_err(|e| e.0), Err("outOfRange"), "guidedModeTakeoff sends whatever height it is given, and 500 m is past the operator's own guided maximum");
+        assert_eq!(check(Valued::Takeoff, json!([])).map_err(|e| e.0), Err("malformed"));
+        assert_eq!(valued_check(Valued::Takeoff, &json!([30.0]), &s, None, None).map_err(|e| e.0), Err("noRange"));
+        assert_eq!(check(Valued::ChangeAltitude, json!([20.0])), Ok((vec![Action::ChangeAltitude], "[20.0,false]".to_string())), "guidedModeChangeAltitude(double, bool) has no default for the bool");
+        assert_eq!(check(Valued::ChangeAltitude, json!([-35.0, false])).map_err(|e| e.0), Err("outOfRange"), "a change is a delta, so it is the height it lands at that has to be inside the range");
+        assert_eq!(check(Valued::ChangeAltitude, json!([0.0, true])).map(|c| c.0), Ok(vec![Action::Pause, Action::ChangeAltitude]), "the Pause offer is carried out as a change of altitude that pauses first");
+        assert_eq!(check(Valued::Gripper, json!([1])).map(|c| c.0), Ok(vec![Action::Grab]));
+        assert_eq!(check(Valued::Gripper, json!([0])).map(|c| c.0), Ok(vec![Action::Release]));
+        assert_eq!(check(Valued::Gripper, json!([2])).map_err(|e| e.0), Err("malformed"));
+        assert_eq!(check(Valued::Resume, json!([7])).map(|c| c.1), Ok("[7]".to_string()));
+        assert_eq!(check(Valued::Resume, json!([4])).map_err(|e| e.0), Err("moved"), "a resume from an item the vehicle has since moved past regenerates the mission from the wrong place");
+        assert_eq!(check(Valued::Pause, json!([])).map(|c| c.0), Ok(vec![Action::Pause]));
+    }
+
+    #[test]
+    fn a_guided_invoke_goes_only_when_the_view_offers_it_ready() {
+        let flying = GuidedState { connected: true, armed: true, flying: true, guided_supported: true, ..GuidedState::default() };
+        let ground = GuidedState { connected: true, ..GuidedState::default() };
+        let token = |offered: &[Action], s: &GuidedState| invoke_refusal(offered, s).map(|(t, _)| t);
+        assert_eq!(token(&[Action::Rtl], &flying), None);
+        assert_eq!(token(&[Action::Rtl], &ground), Some("notOffered"), "guidedModeRTL on a vehicle sitting disarmed on the ground is a mode change the view never offered");
+        assert_eq!(token(&[Action::Land], &GuidedState::default()), Some("noVehicle"));
+        assert_eq!(token(&[Action::StartMission, Action::ContinueMission], &GuidedState { mission_available: true, can_start_mission: true, ..ground.clone() }), None, "both heads send startMission for Start and for Continue, so either offer being ready lets it through");
+        let refusing = GuidedState { mission_available: true, can_start_mission: false, checklist_passed: false, ..ground.clone() };
+        assert_eq!(
+            invoke_refusal(&[Action::StartMission, Action::ContinueMission], &refusing),
+            Some(("blocked", "The pre-flight checklist has not been completed.".to_string())),
+            "a blocked offer's own reason travels, rather than a second sentence for the same fact"
+        );
+        assert_eq!(token(&[Action::ForceArm], &GuidedState { armed: true, ..ground.clone() }), Some("notOffered"));
+        assert_eq!(token(&[Action::EmergencyStop], &GuidedState { armed: true, flying: false, ..ground.clone() }), None, "the view offers it only armed AND flying, and refusing a real emergency stop because the flying flag lagged is the one failure this must never have");
+        assert_eq!(token(&[Action::EmergencyStop], &ground), Some("notOffered"));
+
+        assert_eq!(invoke_args(&[Action::Rtl], "[]"), Ok("[false]".to_string()), "guidedModeRTL(bool) has no default");
+        assert_eq!(invoke_args(&[Action::LandAbort], "[50]"), Ok("[50.0]".to_string()));
+        assert!(invoke_args(&[Action::LandAbort], "[]").is_err());
+        assert!(invoke_args(&[Action::LandAbort], "[-5]").is_err(), "a negative climb-out asks the vehicle to descend while breaking off a landing");
+
+        use std::cell::RefCell;
+        struct Counting(RefCell<usize>);
+        impl Backend for Counting {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                *self.0.borrow_mut() += 1;
+                json!({ "kind": "object", "activeVehicleAvailable": true, "armed": true }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let reads = Counting(RefCell::new(0));
+        assert_eq!(invoke_offered(&reads, &[Action::EmergencyStop], "vehicle.emergencyStop", "[]")["ok"], true);
+        assert_eq!(*reads.0.borrow(), 2, "an emergency stop waits on two reads of Qt's thread, not the whole guided state with its parameter lookups");
+    }
 
     fn offer_of(state: &GuidedState, action: Action) -> &'static str {
         action.offer(state).offer

@@ -29,7 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcString
 
 private const val RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
@@ -141,7 +141,8 @@ fun RcControlsLayer(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
     val configured by qgcString(RC_CONTROLS_FACT)
     val controls = remember(configured) { parseRcControls(configured) }
-    val overriding by qgcBool("vehicle.rcChannelOverrideActive")
+    val stateJson by qgcPath(FLY_STATE)
+    val overriding = remember(stateJson) { flyState(stateJson)?.rcOverride == true }
 
     DisposableEffect(Unit) { onDispose { releaseOverrides() } }
 

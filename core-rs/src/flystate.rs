@@ -89,7 +89,7 @@ fn telemetry(radio: &Value) -> Value {
 }
 
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio,rcChannelOverrideActive"));
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive"));
     let radio = object(&backend.get_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     // _commLostCheck returns early when the watch is disabled, so communicationLost never updates
@@ -115,7 +115,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
-        "rcSupported": flag(&vehicle, "supportsRadio"),
+        "rcSupported": flag(&object(&backend.get_fields("vehicle.supports", "radio")), "radio"),
         "rcSignal": rc_signal(&vehicle),
         "rcSignalText": rc_signal(&vehicle).map(|percent| match percent {
             0 => "No signal".to_string(),
@@ -126,6 +126,29 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // whether a head may draw "manual control is not being overridden" or must draw nothing.
         "rcOverride": connected.then(|| flag(&vehicle, "rcChannelOverrideActive")),
         "telemetry": telemetry(&radio),
+    })
+}
+
+fn reboot_refusal(state: &str) -> Option<(&'static str, &'static str)> {
+    match state {
+        "disarmed" => None,
+        "notConnected" => Some(("noVehicle", "No vehicle is connected.")),
+        "contactLost" => Some(("contactLost", "The vehicle has stopped answering, so it is not known to be on the ground. Restore the link before rebooting.")),
+        "flying" | "landing" => Some(("flying", "The vehicle is in the air. Land and disarm before rebooting.")),
+        _ => Some(("armed", "The vehicle is armed. Disarm it before rebooting.")),
+    }
+}
+
+pub fn reboot(backend: &dyn Backend, path: &str) -> Value {
+    let view = fly_state_view(backend, &[]);
+    if let Some((token, reason)) = reboot_refusal(view["state"].as_str().unwrap_or("notConnected")) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not asked to reboot.") },
     })
 }
 
@@ -147,6 +170,7 @@ mod tests {
             match path {
                 "vehicle" => self.vehicle.to_string(),
                 "vehicle.radioStatus" => self.vehicle.get("radioStatus").cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
+                "vehicle.supports" => self.vehicle.get("supports").cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": self.flying_to }).to_string(),
                 "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost, "communicationLostEnabled": true }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
@@ -166,10 +190,11 @@ mod tests {
         let at = |rssi: i64| {
             let mut vehicle = aloft(true, true, false);
             vehicle["rcRSSI"] = json!(rssi);
-            vehicle["supportsRadio"] = json!(true);
+            vehicle["supports"] = json!({ "kind": "object", "radio": true });
             fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])
         };
         assert_eq!(at(72)["rcSignal"], 72);
+        assert_eq!(at(72)["rcSupported"], true, "radio support is vehicle.supports.radio; the view read vehicle.supportsRadio, which Vehicle has never had as a property, so rcSupported was false for every vehicle in the running app");
         assert_eq!(at(72)["rcSignalText"], "72%");
         assert_eq!(at(0)["rcSignalText"], "No signal", "a transmitter that is switched off is not a transmitter at zero per cent - an operator reading 0% concludes the link is alive and terrible rather than absent");
         assert_eq!(at(0)["rcSignal"], 0, "zero is a READING and the worst one - the transmitter is gone. QGC's own indicator hides at zero, so a total RC loss looks exactly like an aircraft with no transmitter fitted");
@@ -288,5 +313,16 @@ mod tests {
         assert_eq!(unwatched["contactLost"], Value::Null, "_commLostCheck returns early when the watch is disabled, so communicationLost never updates and false means nobody is looking - this view served it raw and called an unmonitored link healthy, in five places on one head");
         assert_eq!(unwatched["state"].as_str(), Some("disarmed"), "and unknown is not evidence of a loss, so the state it drives is the one the vehicle actually reports");
         assert_eq!(unwatched["staleNotice"], "", "nor does an unknown link earn a stale notice");
+    }
+
+    #[test]
+    fn a_reboot_goes_only_to_a_vehicle_known_to_be_disarmed_on_the_ground() {
+        assert_eq!(reboot_refusal("disarmed"), None);
+        STATES.iter().filter(|s| **s != State::Disarmed).for_each(|state| {
+            assert!(reboot_refusal(state.token()).is_some(), "rebootVehicle sends MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN with no check, and {} is a state where that drops an aircraft or reaches nobody", state.token());
+        });
+        assert_eq!(reboot_refusal("contactLost").map(|(t, _)| t), Some("contactLost"), "a vehicle that stopped answering is not known to be on the ground");
+        assert_eq!(reboot_refusal("landing").map(|(t, _)| t), Some("flying"));
+        assert_eq!(reboot_refusal("somethingNew").map(|(t, _)| t), Some("armed"), "a state this list has not met is refused, not waved through");
     }
 }

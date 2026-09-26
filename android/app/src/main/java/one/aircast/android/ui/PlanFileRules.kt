@@ -47,8 +47,12 @@ internal fun planHistory(view: org.json.JSONObject?): PlanHistory = PlanHistory(
 
 internal fun planIsDirty(view: JSONObject?): Boolean = view?.optBoolean("dirty") == true
 
+// view.plan's sync state is offline, busy or ready - plan.rs sync_json - and this compared against
+// "syncing", which it never is, so a sync in flight read as idle.
 internal fun planIsSyncing(view: JSONObject?): Boolean =
-    view?.optJSONObject("sync")?.optText("state") == "syncing"
+    view?.optJSONObject("sync")?.optText("state") == "busy"
+
+internal fun planContainsItems(view: JSONObject?): Boolean = view?.optBoolean("containsItems") == true
 
 internal fun discardNeedsConfirming(dirty: Boolean, containsItems: Boolean): Boolean =
     dirty && containsItems

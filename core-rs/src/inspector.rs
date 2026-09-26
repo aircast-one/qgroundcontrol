@@ -83,6 +83,7 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .unwrap_or_default();
     let available = model.get("kind").and_then(Value::as_str) == Some("object");
+    let fields = messages.iter().find(|m| m["selected"] == true).map_or_else(Vec::new, |m| selected_fields(backend, m["index"].as_u64().unwrap_or(0)));
     json!({
         "kind": "object",
         "class": "MavlinkInspector",
@@ -90,8 +91,85 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "emptyText": empty_text(available, !messages.is_empty()),
         "systemId": system,
         "messages": messages,
+        "fields": fields,
         "rateChoices": RATE_CHOICES.iter().map(|r| json!({ "rate": r, "title": rate_title(*r) })).collect::<Vec<_>>(),
     })
+}
+
+// The macOS head read the selected message's field list as a second raw path, built from an index
+// it took out of this view a line earlier. Serving the list here keeps the two from ever describing
+// different messages, and drops elements without a name as the head did.
+fn selected_fields(backend: &dyn Backend, index: u64) -> Vec<Value> {
+    object(&backend.get_fields(&format!("mavlinkInspector.activeSystem.messages.{index}.fields"), "name,type,value"))
+        .get("elements")
+        .and_then(Value::as_array)
+        .map(|elements| {
+            elements
+                .iter()
+                .filter_map(|f| {
+                    let name = f.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())?;
+                    let spelled = |key: &str| f.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+                    Some(json!({ "name": name, "type": spelled("type"), "value": spelled("value") }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn selected_message(model: &Value) -> Option<&Value> {
+    model.get("elements")?.as_array()?.iter().find(|m| m.get("selected").and_then(Value::as_bool) == Some(true))
+}
+
+fn rate_refusal(rate: Option<i64>, available: bool, selected: Option<&Value>) -> Option<(&'static str, &'static str)> {
+    let component = selected.and_then(|m| m.get("compId")?.as_i64()).unwrap_or(0);
+    match () {
+        _ if rate.is_none_or(|r| !RATE_CHOICES.contains(&r)) => Some(("unknownRate", "Choose one of the offered rates.")),
+        _ if !available => Some(("noVehicle", "No vehicle is being inspected.")),
+        _ if selected.is_none() => Some(("noSelection", "Select a message first; the rate applies to the selected one.")),
+        _ if component == 0 => Some(("noComponent", "The selected message has no component to ask.")),
+        _ => None,
+    }
+}
+
+pub fn set_message_interval(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let rate = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_i64());
+    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
+    let available = model.get("kind").and_then(Value::as_str) == Some("object");
+    let selected = selected_message(&model);
+    if let Some((token, reason)) = rate_refusal(rate, available, selected) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = crate::read::flag(&object(&backend.invoke(path, &json!([rate]).to_string())), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "rate": rate,
+        "rateTitle": rate.map(rate_title),
+        "message": selected.and_then(|m| m.get("name")).cloned().unwrap_or(Value::Null),
+        "messageId": selected.and_then(|m| m.get("id")).cloned().unwrap_or(Value::Null),
+        "reason": match dispatched { true => Value::Null, false => json!("The inspector did not take the rate.") },
+    })
+}
+
+pub const SELECTED: &str = "mavlinkInspector.activeSystem.selected";
+
+pub fn write_selected(backend: &dyn Backend, value: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    let Some(index) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64()) else {
+        return refused("malformed", "A message is selected by its position in the list.".to_string());
+    };
+    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
+    let count = model.get("elements").and_then(Value::as_array).map_or(0, Vec::len) as i64;
+    if model.get("kind").and_then(Value::as_str) != Some("object") {
+        return refused("noVehicle", "No vehicle is being inspected.".to_string());
+    }
+    if !(0..count).contains(&index) {
+        return refused("noSuchMessage", format!("There is no message at position {index}."));
+    }
+    let answered = crate::read::flag(&object(&backend.set(SELECTED, &json!({ "value": index }).to_string())), "ok");
+    let held = crate::read::integer(&object(&backend.get_fields("mavlinkInspector.activeSystem", "selected")), "selected");
+    let took = answered && held == Some(index);
+    json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The inspector did not select that message.") } })
 }
 
 #[cfg(test)]
@@ -204,5 +282,97 @@ mod tests {
         assert!(DEPS.iter().all(|dep| !dep.contains("systems.0")), "systems.0 is whichever vehicle connected first; setMessageInterval acts on activeSystem, and with two vehicles those are different aircraft");
         assert!(DEPS.iter().any(|dep| dep.contains("activeSystem")));
         assert!(DEPS.iter().any(|dep| dep.contains("messages")), "the messages the view lists come from that same system");
+    }
+
+    #[test]
+    fn a_rate_names_the_message_it_went_to_and_refuses_when_there_is_none() {
+        use std::cell::RefCell;
+        struct Inspector(Value, RefCell<Vec<String>>);
+        impl Backend for Inspector {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { self.0.to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, a: &str) -> String {
+                self.1.borrow_mut().push(a.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let listing = |selected: bool, comp: i64| json!({ "kind": "object", "elements": [
+            { "name": "HEARTBEAT", "id": 0, "compId": 1, "selected": false },
+            { "name": "ATTITUDE", "id": 30, "compId": comp, "selected": selected },
+        ] });
+        let path = "mavlinkInspector.setMessageInterval";
+
+        let chosen = Inspector(listing(true, 1), RefCell::new(Vec::new()));
+        let taken = set_message_interval(&chosen, path, "[25]");
+        assert_eq!((&taken["ok"], &taken["message"], &taken["rateTitle"]), (&json!(true), &json!("ATTITUDE"), &json!("25 Hz")), "the rate goes to whichever message is selected, which the call itself never names");
+        assert_eq!(set_message_interval(&chosen, path, "[13]")["refusal"], "unknownRate", "setMessageRate passes any int to the vehicle, and 13 is not a rate either head offers");
+        assert_eq!(set_message_interval(&chosen, path, "[]")["refusal"], "unknownRate");
+        assert_eq!(chosen.1.borrow().as_slice(), &["[25]".to_string()]);
+
+        let none = Inspector(listing(false, 1), RefCell::new(Vec::new()));
+        assert_eq!(set_message_interval(&none, path, "[5]")["refusal"], "noSelection", "setMessageInterval returns with no selected message and nothing says so");
+        assert_eq!(set_message_interval(&Inspector(listing(true, 0), RefCell::new(Vec::new())), path, "[5]")["refusal"], "noComponent");
+        assert_eq!(set_message_interval(&Inspector(json!({ "kind": "null" }), RefCell::new(Vec::new())), path, "[5]")["refusal"], "noVehicle");
+        assert!(none.1.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_message_is_selected_only_by_a_position_the_list_has() {
+        use std::cell::Cell;
+        struct System(Cell<i64>);
+        impl Backend for System {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "mavlinkInspector.activeSystem" => json!({ "kind": "object", "selected": self.0.get() }),
+                    _ => json!({ "kind": "object", "elements": [{ "name": "HEARTBEAT" }, { "name": "ATTITUDE" }] }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, v: &str) -> String {
+                self.0.set(object(v)["value"].as_i64().unwrap());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let system = System(Cell::new(0));
+        assert_eq!(write_selected(&system, r#"{"value":1}"#)["result"], true);
+        assert_eq!(write_selected(&system, r#"{"value":5}"#)["refusal"], "noSuchMessage", "QGCMAVLinkSystem::setSelected returns in silence for a position past the list");
+        assert_eq!(system.0.get(), 1);
+    }
+
+    #[test]
+    fn the_selected_messages_fields_come_with_the_list_that_selected_it() {
+        struct Inspector;
+        impl Backend for Inspector {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "mavlinkInspector.activeSystem.messages" => json!({ "kind": "object", "elements": [
+                        { "id": 0, "compId": 1, "name": "HEARTBEAT", "selected": false },
+                        { "id": 24, "compId": 1, "name": "GPS_RAW_INT", "selected": true },
+                    ] }),
+                    "mavlinkInspector.activeSystem.messages.1.fields" => json!({ "kind": "object", "elements": [
+                        { "name": "fix_type", "type": "uint8_t", "value": "3" },
+                        { "name": "", "type": "uint8_t", "value": "9" },
+                        { "name": "satellites_visible", "type": "uint8_t" },
+                    ] }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = inspector_view(&Inspector, &[]);
+        assert_eq!(
+            view["fields"],
+            json!([{ "name": "fix_type", "type": "uint8_t", "value": "3" }, { "name": "satellites_visible", "type": "uint8_t", "value": "" }]),
+            "the fields are those of the message this same answer marks selected, and a nameless element is dropped as the head dropped it"
+        );
     }
 }

@@ -25,12 +25,14 @@ use crate::debugapi;
 use crate::packetradio;
 use crate::geotag;
 use crate::gpsrtk;
+use crate::gpsview;
 use crate::videostate;
 use crate::cameraproto;
 use crate::joystick;
 use crate::detections;
 use crate::followme;
 use crate::frame;
+use crate::firmwareinfo;
 use crate::console;
 use crate::itemcamera;
 use crate::gcsposition;
@@ -50,6 +52,7 @@ use crate::messages;
 use crate::missionkinds;
 use crate::plan;
 use crate::hub;
+use crate::hostnoticeview;
 use crate::linkhost;
 use crate::mission;
 use crate::planfile;
@@ -65,6 +68,7 @@ use crate::survey;
 use crate::takeoff;
 use crate::terrain;
 use crate::terraintile;
+use crate::terraindownload;
 use crate::track;
 use crate::tlog;
 use crate::vibration;
@@ -125,6 +129,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.coreMission", "<vehicle id>"),
     ("view.coreRemoteId", "<vehicle id>"),
     ("view.coreCalibration", "<vehicle id>"),
+    ("view.hostNotices", "[<acknowledged through id>]"),
 ];
 
 pub const VIEWS: &[View] = &[
@@ -211,6 +216,10 @@ pub const VIEWS: &[View] = &[
     View { path: "view.geoToUtm", deps: geo::DEPS, compute: geo::geo_to_utm_view },
     View { path: "view.utmToGeo", deps: geo::DEPS, compute: geo::utm_to_geo_view },
     View { path: "view.terrainTile", deps: terraintile::DEPS, compute: terraintile::terrain_tile_view },
+    View { path: "view.gps", deps: gpsview::DEPS, compute: gpsview::gps_view },
+    View { path: "view.terrainDownload", deps: terraindownload::DEPS, compute: terraindownload::terrain_download_view },
+    View { path: "view.firmware", deps: firmwareinfo::DEPS, compute: firmwareinfo::firmware_view },
+    View { path: "view.hostNotices", deps: hostnoticeview::DEPS, compute: hostnoticeview::host_notices_view },
     View { path: "view.dependencies", deps: &[], compute: dependencies_view },
 ];
 
@@ -366,6 +375,7 @@ mod deps_cover_reads {
             ("actions", include_str!("actions.rs")),
             ("adsb", include_str!("adsb.rs")),
             ("altitude", include_str!("altitude.rs")),
+            ("altitudeedit", include_str!("altitudeedit.rs")),
             ("altitudemodes", include_str!("altitudemodes.rs")),
             ("apmmeta", include_str!("apmmeta.rs")),
             ("autoconnect", include_str!("autoconnect.rs")),
@@ -375,6 +385,7 @@ mod deps_cover_reads {
             ("calibration", include_str!("calibration.rs")),
             ("cameracalc", include_str!("cameracalc.rs")),
             ("cameradef", include_str!("cameradef.rs")),
+            ("cameratrack", include_str!("cameratrack.rs")),
             ("cameraproto", include_str!("cameraproto.rs")),
             ("cmdinfo", include_str!("cmdinfo.rs")),
             ("compinfo", include_str!("compinfo.rs")),
@@ -388,23 +399,32 @@ mod deps_cover_reads {
             ("debugapi", include_str!("debugapi.rs")),
             ("detections", include_str!("detections.rs")),
             ("factmeta", include_str!("factmeta.rs")),
+            ("factwrite", include_str!("factwrite.rs")),
+            ("fenceedit", include_str!("fenceedit.rs")),
             ("fences", include_str!("fences.rs")),
             ("flightmodes", include_str!("flightmodes.rs")),
             ("flystate", include_str!("flystate.rs")),
             ("followme", include_str!("followme.rs")),
         ("frame", include_str!("frame.rs")),
+            ("firmwareinfo", include_str!("firmwareinfo.rs")),
             ("ftp", include_str!("ftp.rs")),
             ("gcsposition", include_str!("gcsposition.rs")),
             ("geo", include_str!("geo.rs")),
             ("geotag", include_str!("geotag.rs")),
+            ("geotagjob", include_str!("geotagjob.rs")),
             ("gimbal", include_str!("gimbal.rs")),
             ("gpsfacts", include_str!("gpsfacts.rs")),
             ("gpsrtk", include_str!("gpsrtk.rs")),
+            ("gpsview", include_str!("gpsview.rs")),
             ("guided", include_str!("guided.rs")),
             ("guidedcmd", include_str!("guidedcmd.rs")),
             ("guidedexec", include_str!("guidedexec.rs")),
+            ("hostnotice", include_str!("hostnotice.rs")),
+            ("hostnoticeview", include_str!("hostnoticeview.rs")),
             ("hub", include_str!("hub.rs")),
             ("inspector", include_str!("inspector.rs")),
+            ("itemshape", include_str!("itemshape.rs")),
+            ("itemposition", include_str!("itemposition.rs")),
             ("instrumentgroups", include_str!("instrumentgroups.rs")),
             ("instruments", include_str!("instruments.rs")),
         ("itemcamera", include_str!("itemcamera.rs")),
@@ -415,6 +435,11 @@ mod deps_cover_reads {
             ("linkconfig", include_str!("linkconfig.rs")),
             ("linkhost", include_str!("linkhost.rs")),
             ("links", include_str!("links.rs")),
+            ("linkconnect", include_str!("linkconnect.rs")),
+            ("linkremove", include_str!("linkremove.rs")),
+            ("mapclick", include_str!("mapclick.rs")),
+            ("commandtree", include_str!("commandtree.rs")),
+            ("paramnames", include_str!("paramnames.rs")),
             ("logs", include_str!("logs.rs")),
             ("mappolygon", include_str!("mappolygon.rs")),
             ("mappolyline", include_str!("mappolyline.rs")),
@@ -431,18 +456,23 @@ mod deps_cover_reads {
             ("modeslots", include_str!("modeslots.rs")),
             ("obstacle", include_str!("obstacle.rs")),
             ("operatorcontrol", include_str!("operatorcontrol.rs")),
+            ("operatorrequest", include_str!("operatorrequest.rs")),
             ("orbit", include_str!("orbit.rs")),
             ("packetradio", include_str!("packetradio.rs")),
             ("params", include_str!("params.rs")),
             ("plan", include_str!("plan.rs")),
             ("planfile", include_str!("planfile.rs")),
+            ("planselect", include_str!("planselect.rs")),
             ("plantransfer", include_str!("plantransfer.rs")),
             ("preflight", include_str!("preflight.rs")),
             ("px4meta", include_str!("px4meta.rs")),
             ("radio", include_str!("radio.rs")),
+            ("rallyedit", include_str!("rallyedit.rs")),
+            ("rcoverride", include_str!("rcoverride.rs")),
             ("read", include_str!("read.rs")),
             ("remoteid", include_str!("remoteid.rs")),
             ("remoteidview", include_str!("remoteidview.rs")),
+            ("renamed", include_str!("renamed.rs")),
             ("replay", include_str!("replay.rs")),
             ("router", include_str!("router.rs")),
             ("rtcm", include_str!("rtcm.rs")),
@@ -467,6 +497,7 @@ mod deps_cover_reads {
             ("takeoff", include_str!("takeoff.rs")),
             ("tcplink", include_str!("tcplink.rs")),
             ("terrain", include_str!("terrain.rs")),
+            ("terraindownload", include_str!("terraindownload.rs")),
             ("terraintile", include_str!("terraintile.rs")),
             ("tilecache", include_str!("tilecache.rs")),
             ("tlog", include_str!("tlog.rs")),
@@ -477,8 +508,10 @@ mod deps_cover_reads {
             ("vehiclefacts", include_str!("vehiclefacts.rs")),
             ("vehiclelinks", include_str!("vehiclelinks.rs")),
             ("vehicles", include_str!("vehicles.rs")),
+            ("vehicleselect", include_str!("vehicleselect.rs")),
             ("vibration", include_str!("vibration.rs")),
             ("video", include_str!("video.rs")),
+            ("videosource", include_str!("videosource.rs")),
             ("videostate", include_str!("videostate.rs")),
             ("view", include_str!("view.rs")),
             ("warnings", include_str!("warnings.rs")),
@@ -494,7 +527,7 @@ mod deps_cover_reads {
         "links.linkTypeStrings",
     "vehicle.supports.roiMode",
     "vehicle.supports.orbitMode",
-    "vehicle.supportsRadio",
+    "vehicle.supports.radio",
     "links.linkTypeIds",
         "links.serialBaudRates",
         "radioCal.channelCount",

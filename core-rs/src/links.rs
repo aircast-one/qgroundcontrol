@@ -3,9 +3,9 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["links.mavlinkSupportForwardingEnabled", "links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses"];
+pub const DEPS: &[&str] = &["links.mavlinkSupportForwardingEnabled", "links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses", "links.serialPorts", "links.serialPortStrings"];
 
-fn kind(settings_url: &str) -> &'static str {
+pub(crate) fn kind(settings_url: &str) -> &'static str {
     match settings_url {
         "TcpSettings.qml" => "tcp",
         "UdpSettings.qml" => "udp",
@@ -119,9 +119,27 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
     })
 }
 
+// LinkManager serves the ports and their display strings as two parallel lists. LinksScreen.kt
+// dropped blank ports BEFORE pairing them with labels by position, so one blank entry shifted every
+// label after it onto the wrong port. They are paired first here, and a blank label falls back to
+// the port itself.
+pub(crate) fn serial_ports(ports: Option<&Value>, labels: Option<&Value>) -> Vec<Value> {
+    let texts = |list: Option<&Value>| list.and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>()).unwrap_or_default();
+    let labels = texts(labels);
+    texts(ports)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, port)| !port.trim().is_empty())
+        .map(|(i, port)| {
+            let label = labels.get(i).filter(|l| !l.trim().is_empty()).cloned().unwrap_or_else(|| port.clone());
+            json!({ "port": port, "label": label })
+        })
+        .collect()
+}
+
 pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get("links.linkConfigurations"));
-    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled"));
+    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled,serialPorts,serialPortStrings"));
     let quiet = quiet_links(backend);
     let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json_with(i, el, &quiet)).collect()).unwrap_or_default();
     let configured: Vec<Value> = links.iter().filter(|l| l["dynamic"] == false).cloned().collect();
@@ -134,11 +152,12 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "linkTypes": root.get("linkTypeStrings").cloned().unwrap_or(json!([])),
         "supportForwarding": crate::read::flag(&root, "mavlinkSupportForwardingEnabled"),
         "linkTypeIds": root.get("linkTypeIds").cloned().unwrap_or(json!([])),
+        "serialPorts": serial_ports(root.get("serialPorts"), root.get("serialPortStrings")),
         "baudRates": root.get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).collect::<Vec<_>>()).unwrap_or_default(),
     })
 }
 
-fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
+pub(crate) fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
     object(&backend.get_fields("links", "serialBaudRates")).get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).collect()).unwrap_or_default()
 }
 
@@ -167,16 +186,40 @@ pub fn support_host_view(_backend: &dyn Backend, args: &[String]) -> Value {
     json!({ "kind": "object", "class": "SupportHost", "valid": error.is_none(), "error": error.unwrap_or("") })
 }
 
+pub(crate) fn link_type_ids(backend: &dyn Backend) -> Vec<String> {
+    object(&backend.get_fields("links", "linkTypeIds"))
+        .get("linkTypeIds")
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+pub(crate) fn form_error(kind: &str, host: &str, ok: Option<i64>, known: &[String]) -> Option<(&'static str, &'static str)> {
+    let unknown_type = !known.is_empty() && !known.iter().any(|k| k == kind);
+    match (ok, kind == "serial", kind, host.trim().is_empty()) {
+        _ if unknown_type => Some(("type", "Choose one of the link types this build offers.")),
+        (None, true, _, _) => Some(("port", "Choose one of the rates the radio offers.")),
+        (None, false, _, _) => Some(("port", "Port must be a number between 1 and 65535.")),
+        (Some(_), true, _, true) => Some(("host", "A serial link needs the device to open.")),
+        (Some(_), _, "tcp", true) => Some(("host", "A TCP link needs the address of the device to call.")),
+        _ => None,
+    }
+}
+
+pub(crate) fn port_ok(kind: &str, port: Option<i64>, rates: &[i64]) -> Option<i64> {
+    match kind == "serial" {
+        true => port.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))),
+        false => port.filter(|p| (1..=65535).contains(p)),
+    }
+}
+
 pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
     let (kind, host, port) = (arg(0).to_lowercase(), arg(1), arg(2));
     let serial = kind == "serial";
     let rates = serial_baud_rates(backend);
     let number = port.parse::<i64>().ok();
-    let ok = match serial {
-        true => number.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))),
-        false => number.filter(|p| (1..=65535).contains(p)),
-    };
+    let ok = port_ok(&kind, number, &rates);
     // One flag for two fields left a head no way to tell which one it was about, so a field gated
     // on valid refuses whichever field the operator happens to be editing: an empty TCP host made
     // every port entry fail with a sentence about the host, and an absent port made the host
@@ -190,20 +233,7 @@ pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     // from, so the form cannot accept a type the manager could not construct. An empty list
     // refuses nothing - a bridge that cannot answer must not become a validator rejecting every
     // type.
-    let known: Vec<String> = object(&backend.get_fields("links", "linkTypeIds"))
-        .get("linkTypeIds")
-        .and_then(Value::as_array)
-        .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_string).collect())
-        .unwrap_or_default();
-    let unknown_type = !known.is_empty() && !known.contains(&kind);
-    let error: Option<(&str, &str)> = match (ok, serial, kind.as_str(), host.trim().is_empty()) {
-        _ if unknown_type => Some(("type", "Choose one of the link types this build offers.")),
-        (None, true, _, _) => Some(("port", "Choose one of the rates the radio offers.")),
-        (None, false, _, _) => Some(("port", "Port must be a number between 1 and 65535.")),
-        (Some(_), true, _, true) => Some(("host", "A serial link needs the device to open.")),
-        (Some(_), _, "tcp", true) => Some(("host", "A TCP link needs the address of the device to call.")),
-        _ => None,
-    };
+    let error = form_error(&kind, &host, ok, &link_type_ids(backend));
     let name = match (serial, host.trim().is_empty()) {
         (true, _) => format!("{} {}", host.trim(), port).trim().to_string(),
         (false, true) => format!("{} {port}", kind.to_uppercase()),
@@ -489,4 +519,16 @@ mod tests {
         assert_eq!(links_view(&Forwarding(false), &[])["supportForwarding"], json!(false));
     }
 
+
+    #[test]
+    fn a_serial_port_keeps_its_own_label_when_a_blank_port_is_dropped() {
+        let ports = json!(["", "/dev/ttyUSB0", "/dev/ttyACM0"]);
+        let labels = json!(["ghost", "FTDI UART", ""]);
+        assert_eq!(
+            serial_ports(Some(&ports), Some(&labels)),
+            vec![json!({ "port": "/dev/ttyUSB0", "label": "FTDI UART" }), json!({ "port": "/dev/ttyACM0", "label": "/dev/ttyACM0" })],
+            "filtering before pairing gave /dev/ttyUSB0 the blank port's label and /dev/ttyACM0 the FTDI one"
+        );
+        assert!(serial_ports(None, None).is_empty());
+    }
 }

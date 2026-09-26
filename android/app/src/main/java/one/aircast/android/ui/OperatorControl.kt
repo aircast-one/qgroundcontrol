@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.bridge.settingControl
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.mapspike.optText
@@ -57,8 +58,8 @@ internal fun requestTimeoutSeconds(station: ControlStation, setting: Int): Int =
     if (station.takeoverAllowed == true) 0 else setting
 
 internal const val REQUEST_CONTROL = "vehicle.requestOperatorControl"
-internal const val ALLOW_TAKEOVER_SETTING = "settings.flyViewSettings.requestControlAllowTakeover.rawValue"
-internal const val REQUEST_TIMEOUT_SETTING = "settings.flyViewSettings.requestControlTimeout.rawValue"
+internal val ALLOW_TAKEOVER_SETTING = settingControl("settings.flyViewSettings.requestControlAllowTakeover")
+internal val REQUEST_TIMEOUT_SETTING = settingControl("settings.flyViewSettings.requestControlTimeout")
 
 internal fun askForControl(station: ControlStation): String? {
     val allowTakeover = Qgc.get(ALLOW_TAKEOVER_SETTING).let { read ->

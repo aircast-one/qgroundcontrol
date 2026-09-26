@@ -3,61 +3,33 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
-internal const val NOTICE_MESSAGE = "message"
-internal const val NOTICE_VEHICLE_ERROR = "vehicleError"
-internal const val NOTICE_NAVIGATION = "navigation"
-internal val NOTICE_KINDS = setOf(NOTICE_MESSAGE, NOTICE_VEHICLE_ERROR, NOTICE_NAVIGATION)
+// view.hostNotices applies the notice rules - which notices come after the id this head has
+// acknowledged, where the last navigation notice sends the operator, and one banner per distinct
+// title and text for every kind but navigation. What stays here is the repeat window, because it is
+// about what this head last drew.
+internal fun hostNoticesPath(acknowledgedThrough: Long): String = "view.hostNotices($acknowledgedThrough)"
 
-internal data class HostNotice(
-    val id: Long,
-    val kind: String,
-    val title: String,
-    val text: String,
+internal data class NoticeBatch(
+    val through: Long,
+    val destination: String?,
+    val banners: List<String>,
+    val unknownKinds: List<String>,
 )
 
-internal fun hostNotices(view: JSONObject?): List<HostNotice> {
-    val items = view?.optJSONArray("notices") ?: return emptyList()
-    return (0 until items.length()).mapNotNull { index ->
-        items.optJSONObject(index)?.let {
-            HostNotice(
-                id = it.optLong("id", -1L),
-                kind = it.optText("kind"),
-                title = it.optText("title"),
-                text = it.optText("text"),
-            )
-        }
-    }.filter { it.id >= 0 }.onEach {
-        if (it.kind !in NOTICE_KINDS) {
-            android.util.Log.w("HostNotices", "unrecognised notice kind '" + it.kind + "' - showing it rather than guessing")
-        }
-    }
+internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
+    val unseen = view?.optJSONArray("unseen") ?: return null
+    val notices = (0 until unseen.length()).mapNotNull { unseen.optJSONObject(it) }.filter { it.optLong("id", -1L) >= 0 }
+    if (notices.isEmpty()) return null
+    val banners = view.optJSONArray("banners")
+    return NoticeBatch(
+        through = notices.maxOf { it.optLong("id") },
+        destination = view.optText("destination").ifBlank { null },
+        banners = (0 until (banners?.length() ?: 0)).mapNotNull { banners?.optString(it)?.ifBlank { null } },
+        unknownKinds = notices.filter { !it.optBoolean("known", true) }.map { it.optText("kind") },
+    )
 }
-
-internal fun noticeDestination(notices: List<HostNotice>): String? =
-    notices.lastOrNull { it.kind == NOTICE_NAVIGATION }?.title?.ifBlank { null }
-
-internal fun noticesAfter(notices: List<HostNotice>, acknowledgedThrough: Long): List<HostNotice> =
-    notices.filter { it.id > acknowledgedThrough }
-
-internal fun noticesToShow(notices: List<HostNotice>): List<HostNotice> =
-    notices.filter { it.kind != NOTICE_NAVIGATION }
-
-internal fun noticeBanner(notice: HostNotice): String =
-    listOf(notice.title, notice.text).filter { it.isNotBlank() }.joinToString(" · ")
 
 const val REPEAT_QUIET_MS = 30_000L
 
-internal fun bannersToShow(
-    notices: List<HostNotice>,
-    shownAt: Map<String, Long>,
-    now: Long,
-): List<String> =
-    noticesToShow(notices)
-        .map { noticeBanner(it) }
-        .fold(emptyList<String>()) { kept, banner ->
-            val quiet = shownAt[banner]?.let { now - it < REPEAT_QUIET_MS } == true
-            when {
-                kept.contains(banner) || quiet -> kept
-                else -> kept + banner
-            }
-        }
+internal fun quietBanners(banners: List<String>, shownAt: Map<String, Long>, now: Long): List<String> =
+    banners.distinct().filter { banner -> shownAt[banner]?.let { now - it < REPEAT_QUIET_MS } != true }

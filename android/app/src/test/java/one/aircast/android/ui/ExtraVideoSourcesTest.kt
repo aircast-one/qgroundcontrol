@@ -145,4 +145,14 @@ class ExtraSourcesReadingTest {
         assertNull(extraSourcesReading(null))
         assertNull(extraSourcesReading(JSONObject("""{"kind":"object"}""")))
     }
+
+    @Test
+    fun `the kinds come from the control's options`() {
+        val control = org.json.JSONObject(
+            """{"options":[{"raw":"Video Stream Disabled","label":"Disabled"},{"raw":"RTSP Video Stream","label":"RTSP"},{"raw":"UDP h.264 Video Stream","label":""}]}""",
+        )
+        assertEquals(listOf("RTSP Video Stream", "UDP h.264 Video Stream"), videoKinds(control).map { it.raw })
+        assertEquals(emptyList<VideoKind>(), videoKinds(null))
+    }
 }
+

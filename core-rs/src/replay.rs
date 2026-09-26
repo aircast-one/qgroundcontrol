@@ -156,7 +156,7 @@ mod tests {
         assert_eq!(crate::tlog::parse_timestamp(recorded[..8].try_into().unwrap(), 1_800_000_000_000_000), 1_700_000_000_000_000);
         let little = 1_700_000_000_000_000u64.to_le_bytes();
         assert_eq!(crate::tlog::parse_timestamp(little, 1_800_000_000_000_000), 1_700_000_000_000_000);
-        let sample = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let sample = crate::samplelog::bytes();
         let replay = Replay::from_tlog(&sample, u64::MAX);
         assert!(replay.duration_s() > 0 && replay.entries.len() > 1000);
         assert_eq!(replay.entries.len(), crate::tlog::parse(&sample).frames);

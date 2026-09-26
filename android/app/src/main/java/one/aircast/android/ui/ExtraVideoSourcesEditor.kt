@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.settingControl
 
 private const val SOURCE_UNDO_WINDOW_MS = 6000L
 
@@ -56,8 +57,7 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         kinds = withContext(Dispatchers.Default) {
-            val fact = Qgc.factAt(VIDEO_SOURCE_FACT, Qgc.get(VIDEO_SOURCE_FACT))
-            videoKinds(fact.enumValues, fact.enumStrings)
+            videoKinds(Qgc.get(settingControl(VIDEO_SOURCE_FACT)))
         }
     }
 

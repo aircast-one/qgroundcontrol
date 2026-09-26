@@ -9,22 +9,30 @@ import org.junit.Test
 class InspectorScreenTest {
 
 
+    private val path = "mavlinkInspector.activeSystem.messages.3"
+
+    private fun view(selectedPath: String) = JSONObject(
+        """
+        {"messages":[{"path":"$selectedPath","selected":true}],
+         "fields":[
+           {"name":"roll","type":"float","value":"0.001"},
+           {"name":"pitch","type":"float","value":"0.002"}
+         ]}
+        """.trimIndent(),
+    )
+
     @Test
     fun `fields keep their declared order`() {
-        val model = JSONObject(
-            """
-            {"elements":[
-              {"name":"roll","type":"float","value":"0.001"},
-              {"name":"pitch","type":"float","value":"0.002"}
-            ]}
-            """.trimIndent(),
-        )
-        val fields = parseInspectorFields(model)
+        val fields = parseInspectorFields(view(path), path)
         assertEquals(listOf("roll", "pitch"), fields.map { it.name })
         assertEquals(InspectorField("roll", "float", "0.001"), fields[0])
     }
 
-
+    @Test
+    fun `fields of the previous selection are not drawn under the new message`() {
+        assertTrue(parseInspectorFields(view("mavlinkInspector.activeSystem.messages.1"), path).isEmpty())
+        assertTrue(parseInspectorFields(null, path).isEmpty())
+    }
 }
 
 class InspectorOpenMessageTest {

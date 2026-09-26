@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import one.aircast.mapspike.freshPlanView
 import one.aircast.mapspike.optText
@@ -24,6 +25,7 @@ private const val OPEN_CACHE = "opened.plan"
 private const val SAVE_CACHE = "saving.plan"
 private const val KML_CACHE = "export.kml"
 private const val MISSION_ROOT = "plan.missionController"
+private const val PLAN_VIEW = "view.plan"
 private const val MISSION_ITEMS_VIEW = "view.missionItems"
 
 internal const val PLAN_MIME = "*/*"
@@ -61,7 +63,7 @@ internal fun planSave(path: String): String? {
     if (Qgc.invokeResult("$PLAN_ROOT.saveToFile", path) != true) {
         return null
     }
-    return (Qgc.get("$PLAN_ROOT.currentPlanFile").opt("value") as? String)?.takeIf { it.isNotBlank() }
+    return currentPlanPath(Qgc.get(PLAN_VIEW))
 }
 
 private fun copyIn(context: Context, uri: Uri, into: File): Boolean = runCatching {
@@ -78,11 +80,17 @@ private fun copyOut(context: Context, from: File, uri: Uri): Boolean = runCatchi
     true
 }.getOrDefault(false)
 
-private fun patternNames(): List<String> {
-    val value = Qgc.get("$MISSION_ROOT.complexMissionItemNames").opt("value")
-    val array = value as? JSONArray ?: return emptyList()
-    return (0 until array.length()).map { array.optText(it) }.filter { it.isNotBlank() }
+// view.plan serves the patterns by their canonical names, the insert keys. The raw
+// complexMissionItemNames was renamed upstream to complexMissionItems and answered only through the
+// core's rename shim.
+internal fun patternNames(view: JSONObject?): List<String> {
+    val patterns = view?.optJSONArray("patterns") ?: return emptyList()
+    return (0 until patterns.length()).mapNotNull { patterns.optJSONObject(it)?.optText("name")?.ifBlank { null } }
 }
+
+private fun patternNames(): List<String> = patternNames(Qgc.get(PLAN_VIEW))
+
+internal fun currentPlanPath(view: JSONObject?): String? = view?.optText("filePath")?.ifBlank { null }
 
 internal fun visualItems(): JSONArray =
     Qgc.get(MISSION_ITEMS_VIEW).optJSONArray("items") ?: JSONArray()

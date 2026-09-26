@@ -55,6 +55,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import one.aircast.android.bridge.Fact
 import kotlin.math.roundToInt
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
@@ -236,7 +237,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var altitudePauses by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showChecklist by remember { mutableStateOf(false) }
-    val enforceChecklist by qgcBool("settings.appSettings.enforceChecklist")
+    val enforceChecklist by qgcBool(settingControl("settings.appSettings.enforceChecklist"))
     var popupShownFor by remember { mutableStateOf<Int?>(null) }
     var checklistTicked by rememberSaveable { mutableStateOf(setOf<String>()) }
     val preflightJson by qgcPath(PREFLIGHT)

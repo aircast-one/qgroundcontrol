@@ -1546,7 +1546,7 @@ mod tests {
         assert!(refused["reason"].as_str().is_some_and(|r| r.contains("telemetry log")), "a view that cannot use its arguments says what it wanted");
         let missing = geotag_view(&Nothing, &["/no/such/log.tlog".to_string()]);
         assert_eq!((&missing["readable"], missing["class"].as_str()), (&json!(false), Some("GeoTag")));
-        let sample = geotag_view(&Nothing, &[concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog").to_string(), "3".to_string(), "-".to_string()]);
+        let sample = geotag_view(&Nothing, &[crate::samplelog::path(), "3".to_string(), "-".to_string()]);
         assert_eq!(sample["readable"], json!(true));
         assert_eq!(sample["toleranceSeconds"], json!(3.0));
         assert_eq!(sample["imageCount"], json!(1));
@@ -1559,7 +1559,7 @@ mod tests {
 
     #[test]
     fn the_view_is_the_sessions_own_state_so_a_head_can_render_a_running_batch() {
-        let sample = geotag_view(&Nothing, &[concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog").to_string(), "3".to_string(), "-".to_string()]);
+        let sample = geotag_view(&Nothing, &[crate::samplelog::path(), "3".to_string(), "-".to_string()]);
         ["stage", "percent", "busy", "cancelled", "completed", "refusal", "tagged", "failed", "skipped", "pending", "clockSkewSeconds", "undecodableFrames"]
             .iter()
             .for_each(|field| {

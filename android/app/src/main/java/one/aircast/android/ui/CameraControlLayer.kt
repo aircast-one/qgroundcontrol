@@ -32,7 +32,6 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import androidx.compose.runtime.remember
-import one.aircast.android.bridge.qgcDouble
 
 private const val REFUSAL_MS = 4000L
 private const val ZOOM_TICK = 10.0
@@ -44,7 +43,6 @@ private val SHUTTER_RING = Color(0xFFF5F5F5)
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
-    val current by qgcDouble("$MANAGER.currentCamera", 0.0)
     val cameraJson by qgcPath(CAMERA_VIEW)
     val camera = remember(cameraJson) { cameraReading(cameraJson) }
     var refused by remember { mutableStateOf<String?>(null) }
@@ -96,7 +94,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 selected = false,
                 onClick = { details = true },
                 label = {
-                    Text(camera.labels.getOrElse(current.toInt()) { camera.title.ifBlank { "Camera" } })
+                    Text(camera.labels.getOrElse(camera.selected ?: 0) { camera.title.ifBlank { "Camera" } })
                 },
             )
 
@@ -158,7 +156,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 thermal = remember(cameraJson) { thermalReading(cameraJson) },
                 tracking = remember(cameraJson) { trackingReading(cameraJson) },
                 destructive = remember(cameraJson) { destructiveActions(cameraJson) },
-                current = current.toInt(),
+                current = camera.selected ?: 0,
                 onSelect = { index ->
                     offMainDetached { Qgc.set("$MANAGER.currentCamera", index) }
                     details = false

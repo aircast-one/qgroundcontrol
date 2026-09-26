@@ -97,7 +97,7 @@ fun vehicleFeatures(
         FeatureCollection.fromFeatures(emptyList())
     }
 
-fun fleetFeatures(fleet: List<VehicleChoice>, activeHeading: Double): FeatureCollection =
+fun fleetFeatures(fleet: List<VehicleChoice>): FeatureCollection =
     FeatureCollection.fromFeatures(
         fleet
             .filter { isPlottable(it.latitude, it.longitude) }
@@ -105,7 +105,7 @@ fun fleetFeatures(fleet: List<VehicleChoice>, activeHeading: Double): FeatureCol
                 vehicleFeature(
                     latitude = flown.latitude,
                     longitude = flown.longitude,
-                    heading = if (flown.active) activeHeading else Double.NaN,
+                    heading = flown.heading,
                     stale = flown.contactLost,
                     active = flown.active,
                 )
@@ -158,13 +158,16 @@ fun VehicleMap(
     centreRequest: Int = 0,
     centreOn: TrackPoint? = null,
 ) {
-    val latitude by mapDouble("vehicle.latitude")
-    val longitude by mapDouble("vehicle.longitude")
-    val heading by mapDouble("vehicle.heading")
-    val home by mapCoordinate("vehicle.homePosition")
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
     val fleetJson by mapPath(VEHICLES_VIEW)
     val fleet = remember(fleetJson) { vehicleChoices(fleetJson).choices }
+    // The raw vehicle.* reads answered for the active vehicle only; view.vehicles carries the same
+    // position, heading and home for every aircraft, and the active one is read from it here.
+    val flown = fleet.firstOrNull { it.active }
+    val latitude = flown?.latitude ?: Double.NaN
+    val longitude = flown?.longitude ?: Double.NaN
+    val heading = flown?.heading ?: Double.NaN
+    val home = flown?.home
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -264,7 +267,7 @@ fun VehicleMap(
             ?.setGeoJson(
                 when {
                     fleet.isEmpty() -> vehicleFeatures(latitude, longitude, heading, linkLost)
-                    else -> fleetFeatures(fleet, heading)
+                    else -> fleetFeatures(fleet)
                 },
             )
 

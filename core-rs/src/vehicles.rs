@@ -6,9 +6,16 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicles.selectedVehicles.count", "vehicle.id"];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate";
-const WATCHED_PER_VEHICLE: [&str; 4] = ["armed", "flying", "flightMode", "coordinate"];
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate,homePosition";
+const WATCHED_PER_VEHICLE: [&str; 6] = ["armed", "flying", "flightMode", "coordinate", "homePosition", "heading"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
+
+// Heading is a Fact whose raw unit is degrees; the raw value is served so a unit setting cannot turn
+// it into something else, and a NaN (no attitude yet) is null rather than north.
+fn heading(backend: &dyn Backend, index: i64) -> Option<f64> {
+    let fact = object(&backend.get(&format!("vehicles.vehicles.{index}.heading")));
+    fact.get("rawValue").or_else(|| fact.get("value")).and_then(Value::as_f64).filter(|h| h.is_finite()).map(|h| h.rem_euclid(360.0))
+}
 
 pub fn deps() -> Vec<String> {
     DEPS.iter().map(|d| d.to_string()).chain(per_vehicle_paths()).collect()
@@ -92,6 +99,10 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "link": text(&link, "primaryLinkName"),
                 "contactLost": flag(&link, "communicationLostEnabled").then(|| flag(&link, "communicationLost")),
                 "coordinate": nested_coordinate(&read).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+                // The map spike read vehicle.heading and vehicle.homePosition raw, which answer for
+                // the ACTIVE vehicle only, so every other aircraft drew without either.
+                "heading": heading(backend, index),
+                "home": crate::read::nested_coordinate_at(&read, "homePosition").map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
                 "active": id.is_some() && id == active,
                 "armed": flag(&read, "armed"),
                 "flying": flag(&read, "flying"),
@@ -146,7 +157,10 @@ mod tests {
             match path {
                 "vehicles.vehicles.count" => json!({ "kind": "value", "value": self.0.len() }).to_string(),
                 "vehicles.selectedVehicles.count" => json!({ "kind": "value", "value": self.chosen().len() }).to_string(),
-                _ => String::new(),
+                _ => match path.strip_prefix("vehicles.vehicles.").and_then(|rest| rest.strip_suffix(".heading")).and_then(|i| i.parse::<usize>().ok()) {
+                    Some(index) => self.0.get(index).and_then(|v| v.get("headingFact")).map(Value::to_string).unwrap_or_default(),
+                    None => String::new(),
+                },
             }
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
@@ -345,5 +359,22 @@ mod tests {
         let fleet: Vec<Value> = (1..=17).map(|id| aircraft(id, "Multi-Rotor", "SITL")).collect();
         vehicles_view(&Fleet(fleet, Some(1)), &[]);
         assert!(deps().contains(&"vehicles.vehicles.16.armed".to_string()), "a cap on how many vehicles are watched stops at a number nothing reports, so the vehicles past it are stale with no tell - the count QGC gives is already bounded by what has connected");
+    }
+
+    #[test]
+    fn every_vehicle_carries_its_own_heading_and_home() {
+        let _guard = fleet_guard();
+        let mut lead = aircraft(1, "Quadrotor", "Radio");
+        lead["headingFact"] = json!({ "kind": "fact", "name": "heading", "value": 1200.0, "rawValue": -90.0 });
+        lead["homePosition"] = json!({ "latitude": 47.397, "longitude": 8.545, "altitude": 488.0, "valid": true });
+        let mut wing = aircraft(2, "Quadrotor", "Radio");
+        wing["headingFact"] = json!({ "kind": "fact", "name": "heading", "value": null, "rawValue": null });
+        wing["homePosition"] = json!({ "latitude": 0.0, "longitude": 0.0, "valid": false });
+        let view = vehicles_view(&Fleet(vec![lead, wing], Some(1)), &[]);
+        let listed = view["vehicles"].as_array().unwrap();
+        assert_eq!(listed[0]["heading"], json!(270.0), "the raw degrees are served and wrapped into 0..360, whatever the cooked value says");
+        assert_eq!(listed[0]["home"], json!({ "latitude": 47.397, "longitude": 8.545 }));
+        assert_eq!((&listed[1]["heading"], &listed[1]["home"]), (&Value::Null, &Value::Null), "no attitude yet is no heading rather than north, and an invalid home is no home");
+        assert!(deps().iter().any(|d| d == "vehicles.vehicles.1.heading") && deps().iter().any(|d| d == "vehicles.vehicles.1.homePosition"));
     }
 }

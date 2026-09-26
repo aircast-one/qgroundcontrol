@@ -1523,7 +1523,7 @@ mod tests {
 
     #[test]
     fn the_sample_log_builds_one_vehicle_with_its_facts_and_counts() {
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let bytes = crate::samplelog::bytes();
         let mut hub = Hub::default();
         let summary = crate::tlog::parse(&bytes);
         crate::tlog::for_each(&bytes, |ts, header, message| {

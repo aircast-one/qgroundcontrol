@@ -15,7 +15,7 @@ pub const DEPS: &[&str] = &[
     "plan.controllerVehicle.rover",
 ];
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -146,7 +146,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "cameraShots": number(read, "cameraShots").map(|shots| shots as i64).filter(|shots| *shots > 0),
         "patternDistance": number(read, "complexDistance").filter(|metres| *metres > 0.0),
         "simple": read.get("isSimpleItem").and_then(Value::as_bool),
-        "altitudeMode": number(read, "altitudeMode").map(|mode| mode as i64),
+        "altitudeMode": frame(read).map(|mode| mode as i64),
         "altitudeAmsl": number(read, "amslEntryAlt"),
         "extraSeconds": number(read, "additionalTimeDelay"),
         "speedChange": number(read, "specifiedFlightSpeed"),
@@ -232,12 +232,16 @@ fn altitude_frame(read: &Value, vertical: &Unit) -> Option<&'static str> {
         return Some("amsl");
     }
     height(read)?;
-    match number(read, "altitudeMode")? {
+    match frame(read)? {
         MODE_RELATIVE => Some("launch"),
         MODE_ABSOLUTE => Some("amsl"),
         MODE_CALC_ABOVE_TERRAIN | MODE_TERRAIN_FRAME => Some("terrain"),
         _ => None,
     }
+}
+
+fn frame(read: &Value) -> Option<f64> {
+    number(read, "altitudeFrame").or_else(|| number(read, "altitudeMode"))
 }
 
 fn altitude_source(read: &Value, vertical: &Unit) -> Option<&'static str> {
@@ -851,6 +855,13 @@ mod reported {
             "facts": [ { "property": "altitude", "value": metres } ] });
 
         assert_eq!(listed(simple(1, 75.0))["altitudeFrame"], "launch", "a relative altitude is measured from the launch point");
+        let current = json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true, "specifiesCoordinate": true, "altitudeFrame": 2,
+            "facts": [ { "property": "altitude", "value": 75.0 } ] });
+        assert_eq!(
+            (&listed(current.clone())["altitudeFrame"], &listed(current)["altitudeMode"]),
+            (&json!("amsl"), &json!(2)),
+            "SimpleMissionItem serves altitudeFrame since the upstream merge, and a view asking only for altitudeMode answered null for both fields on every item in a running app while every fixture here still carried the old name"
+        );
         assert_eq!(listed(simple(1, 75.0))["altitudeFrameText"], "", "launch-relative is the default and carries no suffix, so a head draws the number alone rather than inventing a word for the ordinary case");
         assert_eq!(frame_word("launch"), Some(""), "an empty word is an answer - this frame is spelled with nothing after the number");
         assert_eq!(frame_word("seabed"), None, "and a token the core has not named is no answer at all: mapping it to the empty word would spell an unrecognised frame as the default one, which is the order these two fields arrived in tonight - the token was served for weeks before anything named it");

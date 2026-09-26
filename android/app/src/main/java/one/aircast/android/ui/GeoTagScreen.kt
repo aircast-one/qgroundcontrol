@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.qgcString
 import java.io.File
 
@@ -38,7 +39,7 @@ internal fun noTelemetryLogsText(): String =
 
 @Composable
 fun GeoTagScreen(modifier: Modifier = Modifier) {
-    val savePath by qgcString("settings.appSettings.savePath")
+    val savePath by qgcString(settingControl("settings.appSettings.savePath"))
     var logs by remember { mutableStateOf<List<TelemetryLog>>(emptyList()) }
     var readings by remember { mutableStateOf<Map<String, GeoTagReading>>(emptyMap()) }
 

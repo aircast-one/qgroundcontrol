@@ -103,18 +103,23 @@ class LinksScreenTest {
 }
 
 class SerialLinkFormTest {
+    private fun ports(vararg pairs: Pair<String, String>) = org.json.JSONObject(
+        """{"kind":"object","serialPorts":[""" +
+            pairs.joinToString(",") { (port, label) -> """{"port":"$port","label":"$label"}""" } + "]}",
+    )
+
     @Test
-    fun `a port with no friendly name falls back to the device path`() {
-        val choices = serialPortChoices(listOf("/dev/ttyUSB0", "/dev/ttyACM0"), listOf("FTDI UART"))
-        assertEquals("FTDI UART", choices[0].label)
-        assertEquals("/dev/ttyACM0", choices[1].label)
+    fun `each port keeps the label the core paired it with`() {
+        val choices = serialPortChoices(ports("/dev/ttyUSB0" to "FTDI UART", "/dev/ttyACM0" to "/dev/ttyACM0"))
+        assertEquals(listOf("FTDI UART", "/dev/ttyACM0"), choices.map { it.label })
         assertEquals("/dev/ttyUSB0", choices[0].port)
     }
 
     @Test
-    fun `a blank friendly name does not blank the row`() {
-        val choices = serialPortChoices(listOf("/dev/ttyUSB0"), listOf(""))
-        assertEquals("/dev/ttyUSB0", choices[0].label)
+    fun `a blank label or port does not blank the row`() {
+        val choices = serialPortChoices(ports("/dev/ttyUSB0" to "", "" to "ghost"))
+        assertEquals(listOf(SerialPortChoice("/dev/ttyUSB0", "/dev/ttyUSB0")), choices)
+        assertEquals(emptyList<SerialPortChoice>(), serialPortChoices(null))
     }
 
     @Test
