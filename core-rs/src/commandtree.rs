@@ -110,6 +110,30 @@ pub fn write_command(backend: &dyn Backend, path: &str, value: &str) -> Value {
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The item did not take the command.") } })
 }
 
+// SimpleMissionItem copies this hint into param5 and param6 when a command without a coordinate is
+// changed to one with, so a point off the globe became the item's position on the next command
+// change, unchecked. It is refused here, and only an item with a command takes a hint.
+pub fn hint_target(path: &str) -> Option<usize> {
+    path.strip_prefix(ITEM_COMMANDS)?.strip_suffix(".setMapCenterHintForCommandChange")?.parse().ok()
+}
+
+pub fn hint(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "refusal": token, "reason": reason });
+    let Some(index) = hint_target(path) else {
+        return refused("malformed", "Name the item as plan.missionController.visualItems.<index>.".to_string());
+    };
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let Some((latitude, longitude)) = crate::fenceedit::point(given.get(0)) else {
+        return refused("badCoordinate", "The map centre needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string());
+    };
+    let item = object(&backend.get_fields(&format!("{ITEM_COMMANDS}{index}"), "command"));
+    if item.get("command").and_then(Value::as_i64).is_none() {
+        return refused("noCommand", format!("Item {index} has no command to change."));
+    }
+    let dispatched = flag(&object(&backend.invoke(path, &json!([{ "latitude": latitude, "longitude": longitude }]).to_string())), "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The item did not take the hint.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,5 +222,16 @@ mod tests {
         assert_eq!(write_command(&plan, "plan.missionController.visualItems.0.command", r#"{"value":16}"#)["refusal"], "noCommand", "the planned home has no command");
         assert_eq!(write_command(&plan, path, r#"{"value":"16"}"#)["refusal"], "malformed");
         assert_eq!(plan.0.borrow().as_slice(), &[path.to_string()]);
+    }
+
+    #[test]
+    fn a_map_centre_hint_is_a_real_place_given_to_an_item_with_a_command() {
+        let plan = Plan(RefCell::new(Vec::new()));
+        let path = "plan.missionController.visualItems.2.setMapCenterHintForCommandChange";
+        assert_eq!(hint_target(path), Some(2));
+        assert!(crate::actions::owns(path));
+        assert_eq!(hint(&plan, path, r#"[{"latitude":47.39,"longitude":8.54}]"#)["ok"], true);
+        assert_eq!(hint(&plan, path, r#"[{"latitude":147.39,"longitude":8.54}]"#)["refusal"], "badCoordinate", "the hint becomes param5 and param6 on the next command change");
+        assert_eq!(hint(&plan, "plan.missionController.visualItems.0.setMapCenterHintForCommandChange", r#"[{"latitude":47.39,"longitude":8.54}]"#)["refusal"], "noCommand");
     }
 }
