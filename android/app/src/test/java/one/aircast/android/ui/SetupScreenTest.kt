@@ -15,6 +15,14 @@ class SetupScreenTest {
     }
 
     @Test
+    fun `parameters read ready only on a connected vehicle that says so`() {
+        assertEquals(true, parametersReady(JSONObject("""{"connected":true,"parametersReady":true}""")))
+        assertEquals(false, parametersReady(JSONObject("""{"connected":false,"parametersReady":true}""")))
+        assertEquals(false, parametersReady(JSONObject("""{"connected":true,"parametersReady":false}""")))
+        assertEquals(false, parametersReady(null))
+    }
+
+    @Test
     fun `no vehicle reads as empty rather than stray separators`() {
         assertEquals(FirmwareLine("", ""), firmwareLine(null))
         assertEquals(FirmwareLine("", ""), firmwareLine(JSONObject("""{"kind":"object","available":false,"summary":"","vehicleType":""}""")))

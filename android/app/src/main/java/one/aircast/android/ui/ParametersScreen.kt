@@ -24,7 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
 import org.json.JSONArray
 import one.aircast.mapspike.optText
 
@@ -35,7 +35,8 @@ internal fun parameterPath(name: String) = "$PARAMETER_MANAGER.getParameter($DEF
 
 @Composable
 fun ParametersScreen(modifier: Modifier = Modifier) {
-    val ready by qgcBool("$PARAMETER_MANAGER.parametersReady")
+    val setupJson by qgcPath(SETUP)
+    val ready = remember(setupJson) { parametersReady(setupJson) }
     var search by remember { mutableStateOf("") }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
     var descriptions by remember { mutableStateOf<Map<String, String>>(emptyMap()) }

@@ -6,6 +6,11 @@ import one.aircast.mapspike.optText
 internal const val SETUP = "view.setup"
 internal const val FIRMWARE = "view.firmware"
 
+// view.setup composes connected and the parameter load state from one read, so a disconnect cannot
+// land between them the way two raw reads allowed.
+internal fun parametersReady(view: JSONObject?): Boolean =
+    view?.optBoolean("connected") == true && view.optBoolean("parametersReady")
+
 internal data class SetupPage(
     val name: String,
     val parameterSections: Boolean,
