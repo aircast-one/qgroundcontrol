@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcFacts
@@ -110,7 +111,7 @@ private fun UnitSystemRow(system: Int, onPick: (Int) -> Unit) {
 @Composable
 fun UnitsSection(modifier: Modifier = Modifier) {
     val facts by qgcFacts(UNITS_PATH)
-    val system by qgcDouble("$UNITS_PATH.unitSystem", 0.0)
+    val system by qgcDouble(settingControl("$UNITS_PATH.unitSystem"), 0.0)
     val chosen = system.toInt()
 
     Column(modifier) {

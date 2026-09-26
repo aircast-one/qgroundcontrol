@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
@@ -50,14 +51,14 @@ private data class Draft(val index: Int, val label: String, val channel: String,
 
 @Composable
 private fun reservedChannels(): Map<Int, String> = CAMERA_CHANNEL_SETTINGS.associate { (name, owner) ->
-    val channel by qgcDouble("settings.flyViewSettings.$name", 0.0)
+    val channel by qgcDouble(settingControl("settings.flyViewSettings.$name"), 0.0)
     channel.toInt() to owner
 }.filterKeys { it > 0 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RcControlsEditor(modifier: Modifier = Modifier) {
-    val json by qgcString(RC_CONTROLS)
+    val json by qgcString(settingControl(RC_CONTROLS))
     val controls = remember(json) { parseRcControls(json) }
     val reserved = reservedChannels()
     var draft by remember { mutableStateOf<Draft?>(null) }

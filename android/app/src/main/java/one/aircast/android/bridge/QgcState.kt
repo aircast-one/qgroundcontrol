@@ -10,6 +10,10 @@ import androidx.compose.runtime.remember
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
+// A setting read through view.control carries the same value key as the raw fact, decoded by the
+// core that also checks writes to it, so qgcValue and the typed readers below take either.
+fun settingControl(factPath: String): String = "view.control($factPath)"
+
 @Composable
 fun qgcPath(path: String): State<JSONObject?> {
     DisposableEffect(path) {
