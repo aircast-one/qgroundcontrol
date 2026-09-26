@@ -449,6 +449,7 @@ mod deps_cover_reads {
             ("read", include_str!("read.rs")),
             ("remoteid", include_str!("remoteid.rs")),
             ("remoteidview", include_str!("remoteidview.rs")),
+            ("renamed", include_str!("renamed.rs")),
             ("replay", include_str!("replay.rs")),
             ("router", include_str!("router.rs")),
             ("rtcm", include_str!("rtcm.rs")),

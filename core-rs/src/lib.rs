@@ -85,6 +85,7 @@ pub mod rallyedit;
 pub mod read;
 pub mod remoteid;
 pub mod remoteidview;
+pub mod renamed;
 pub mod replay;
 #[cfg(test)]
 mod samplelog;

@@ -40,7 +40,10 @@ impl<B: Backend> Core<B> {
         match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render(&self.backend, path),
             (true, None) => view::unknown(path).to_string(),
-            (false, _) => self.backend.get(path),
+            (false, _) => match crate::renamed::read(&self.backend, path) {
+                Some(served) => served,
+                None => crate::renamed::patch(path, self.backend.get(path)),
+            },
         }
     }
 
@@ -48,7 +51,10 @@ impl<B: Backend> Core<B> {
         match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render_fields(&self.backend, path, fields),
             (true, None) => view::unknown(path).to_string(),
-            (false, _) => self.backend.get_fields(path, fields),
+            (false, _) => match crate::renamed::fields(path, fields) {
+                Some(widened) => crate::renamed::patch(path, self.backend.get_fields(path, &widened)),
+                None => self.backend.get_fields(path, fields),
+            },
         }
     }
 
