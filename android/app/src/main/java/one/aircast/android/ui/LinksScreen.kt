@@ -48,7 +48,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.android.bridge.qgcStrings
 import one.aircast.mapspike.optText
 
 private const val LINKS_VIEW = "view.links"
@@ -126,11 +125,16 @@ internal const val DEFAULT_BAUD = 57600
 
 internal data class SerialPortChoice(val port: String, val label: String)
 
-internal fun serialPortChoices(ports: List<String>, labels: List<String>): List<SerialPortChoice> =
-    ports.filter { it.isNotBlank() }
-        .mapIndexed { index, port ->
-            SerialPortChoice(port, labels.getOrNull(index)?.ifBlank { null } ?: port)
-        }
+// view.links pairs each port with its label before dropping blank ports; pairing after the filter
+// shifted every label after a blank entry onto the wrong port.
+internal fun serialPortChoices(view: JSONObject?): List<SerialPortChoice> {
+    val ports = view?.optJSONArray("serialPorts") ?: return emptyList()
+    return (0 until ports.length()).mapNotNull { index ->
+        val entry = ports.optJSONObject(index) ?: return@mapNotNull null
+        val port = entry.optText("port").ifBlank { return@mapNotNull null }
+        SerialPortChoice(port, entry.optText("label").ifBlank { port })
+    }
+}
 
 internal fun serialBauds(view: JSONObject?): List<Int> {
     val rates = view?.optJSONArray("baudRates") ?: return emptyList()
@@ -353,9 +357,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var portsOpen by remember { mutableStateOf(false) }
     var baudsOpen by remember { mutableStateOf(false) }
     val linksJson by qgcPath(LINKS_VIEW)
-    val portPaths by qgcStrings("links.serialPorts")
-    val portLabels by qgcStrings("links.serialPortStrings")
-    val ports = remember(portPaths, portLabels) { serialPortChoices(portPaths, portLabels) }
+    val ports = remember(linksJson) { serialPortChoices(linksJson) }
     val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
     val taken = remember(linksJson) { linkRows(linksJson).map { it.name } }
     val offered = remember(linksJson) { addableLinkTypes(linksJson) }
