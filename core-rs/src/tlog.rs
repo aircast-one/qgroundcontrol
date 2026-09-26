@@ -30,6 +30,12 @@ pub fn frame_length(bytes: &[u8]) -> Option<(MavlinkVersion, usize)> {
     }
 }
 
+pub fn decode_frame(frame: &[u8], version: MavlinkVersion) -> Option<(mavlink::MavHeader, MavMessage)> {
+    let mut reader = PeekReader::new(frame);
+    let decoded = read_versioned_msg::<MavMessage, _>(&mut reader, ReadVersion::Single(version)).ok()?;
+    reader.peek_exact(1).is_err().then_some(decoded)
+}
+
 pub fn record(timestamp_us: u64, frame: &[u8]) -> Vec<u8> {
     timestamp_us.to_be_bytes().iter().copied().chain(frame.iter().copied()).collect()
 }
@@ -50,7 +56,7 @@ pub fn entries(bytes: &[u8], now_us: u64) -> Vec<(u64, Vec<u8>)> {
         };
         let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
         let (version, _) = frame_length(frame).unwrap();
-        if read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(frame), ReadVersion::Single(version)).is_err() {
+        if decode_frame(frame, version).is_none() {
             at += 1;
             continue;
         }
@@ -71,12 +77,12 @@ pub fn for_each(bytes: &[u8], mut visit: impl FnMut(u64, &mavlink::MavHeader, &M
         };
         let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
         let timestamp = u64::from_be_bytes(bytes[at..frame_start].try_into().unwrap());
-        match read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(frame), ReadVersion::Single(version)) {
-            Ok((header, message)) => {
+        match decode_frame(frame, version) {
+            Some((header, message)) => {
                 visit(timestamp, &header, &message);
                 at = frame_start + length;
             }
-            Err(_) => {
+            None => {
                 undecodable += 1;
                 at += 1;
             }
@@ -148,7 +154,7 @@ mod tests {
     use super::*;
 
     fn sample() -> Vec<u8> {
-        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).expect("the sample tlog at the repo root")
+        crate::samplelog::bytes().to_vec()
     }
 
     fn independent_frame_count(bytes: &[u8]) -> usize {

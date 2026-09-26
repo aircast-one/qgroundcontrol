@@ -1,11 +1,10 @@
 use mavlink::MavlinkVersion;
 use mavlink::dialects::ardupilotmega::MavMessage;
-use mavlink::peek_reader::PeekReader;
-use mavlink::{MavHeader, ReadVersion, read_versioned_msg};
+use mavlink::MavHeader;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-use crate::tlog::frame_length;
+use crate::tlog::{decode_frame, frame_length};
 
 pub type LinkId = u32;
 const MAX_BUFFER: usize = 64 * 1024;
@@ -73,13 +72,13 @@ fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId, replay: bool) ->
             break;
         }
         let raw = &buffer[at..at + length];
-        match read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(raw), ReadVersion::Single(version)) {
-            Ok((header, message)) => {
+        match decode_frame(raw, version) {
+            Some((header, message)) => {
                 stats.frames_in += 1;
                 frames.push(Frame { link, replay, v2: version == MavlinkVersion::V2, header, message, raw: raw.to_vec() });
                 at += length;
             }
-            Err(_) => {
+            None => {
                 stats.dropped += 1;
                 at += length;
             }
@@ -183,7 +182,7 @@ mod tests {
     use super::*;
 
     fn frames_of_sample() -> Vec<Vec<u8>> {
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let bytes = crate::samplelog::bytes();
         crate::tlog::entries(&bytes, u64::MAX).into_iter().map(|(_, f)| f).collect()
     }
 
@@ -219,6 +218,23 @@ mod tests {
         let q = quiet.open(Owner::Host, "usb", "partial");
         assert!(quiet.bytes_in(q, &frames[0][..1]).is_empty());
         assert_eq!(quiet.bytes_in(q, &frames[0][1..]).len(), 1);
+    }
+
+    #[test]
+    fn noise_shaped_like_a_frame_never_decodes_as_the_frame_hiding_inside_it() {
+        let mut heartbeat = Vec::new();
+        let header = MavHeader { system_id: 255, component_id: 190, sequence: 0 };
+        mavlink::write_v1_msg(&mut heartbeat, header, &MavMessage::HEARTBEAT(Default::default())).unwrap();
+        let mut noisy = vec![0xFEu8, 0xFF, 1, 2, 3];
+        (0..30).for_each(|_| noisy.extend_from_slice(&heartbeat));
+        let mut registry = Registry::default();
+        let id = registry.open(Owner::Host, "usb", "v1 radio");
+        let frames = registry.bytes_in(id, &noisy);
+        assert!(frames.iter().all(|f| f.raw == heartbeat), "a claimed length that fails its checksum is noise, not a container for whichever frame the decoder finds by scanning past it");
+        let stats = &registry.entry(id).unwrap().stats;
+        assert_eq!(stats.dropped, 1);
+        assert_eq!(stats.frames_in, frames.len() as u64);
+        assert!(frames.len() >= 14, "recovered {}", frames.len());
     }
 
     #[test]
