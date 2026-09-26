@@ -447,6 +447,7 @@ mod deps_cover_reads {
             ("px4meta", include_str!("px4meta.rs")),
             ("radio", include_str!("radio.rs")),
             ("rallyedit", include_str!("rallyedit.rs")),
+            ("rcoverride", include_str!("rcoverride.rs")),
             ("read", include_str!("read.rs")),
             ("remoteid", include_str!("remoteid.rs")),
             ("remoteidview", include_str!("remoteidview.rs")),

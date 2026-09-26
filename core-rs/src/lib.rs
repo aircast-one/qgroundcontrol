@@ -83,6 +83,7 @@ pub mod preflight;
 pub mod px4meta;
 pub mod radio;
 pub mod rallyedit;
+pub mod rcoverride;
 pub mod read;
 pub mod remoteid;
 pub mod remoteidview;
