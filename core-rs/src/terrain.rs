@@ -7,7 +7,7 @@ pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.mi
     "settings.unitsSettings.verticalDistanceUnits",
 ];
 
-const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,altitudeMode,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
+const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,altitudeFrame,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Point {
@@ -58,7 +58,7 @@ fn drawable(item: &Value) -> bool {
     if !flag("specifiesAltitudeOnly") {
         return false;
     }
-    let terrain_framed = item.get("altitudeMode").and_then(Value::as_i64) == Some(TERRAIN_FRAME);
+    let terrain_framed = item.get("altitudeFrame").or_else(|| item.get("altitudeMode")).and_then(Value::as_i64) == Some(TERRAIN_FRAME);
     let ground_known = item.get("terrainAltitude").and_then(Value::as_f64).is_some_and(f64::is_finite);
     !terrain_framed || ground_known
 }
@@ -281,7 +281,7 @@ mod tests {
 
         let terrain_framed = json!({ "elements": [
             { "specifiesCoordinate": true, "sequenceNumber": 0, "distanceFromStart": 0.0, "amslEntryAlt": 585.0, "terrainAltitude": 585.0 },
-            { "specifiesCoordinate": false, "specifiesAltitudeOnly": true, "altitudeMode": 4, "sequenceNumber": 1, "distanceFromStart": 0.0, "amslEntryAlt": 50.0 },
+            { "specifiesCoordinate": false, "specifiesAltitudeOnly": true, "altitudeFrame": 4, "sequenceNumber": 1, "distanceFromStart": 0.0, "amslEntryAlt": 50.0 },
             { "specifiesCoordinate": true, "sequenceNumber": 2, "distanceFromStart": 500.0, "amslEntryAlt": 660.0, "terrainAltitude": 640.0 },
         ] });
         let drawn = points(&terrain_framed);

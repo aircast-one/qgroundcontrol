@@ -89,7 +89,7 @@ fn telemetry(radio: &Value) -> Value {
 }
 
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio,rcChannelOverrideActive"));
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive"));
     let radio = object(&backend.get_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     // _commLostCheck returns early when the watch is disabled, so communicationLost never updates
@@ -115,7 +115,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
-        "rcSupported": flag(&vehicle, "supportsRadio"),
+        "rcSupported": flag(&object(&backend.get_fields("vehicle.supports", "radio")), "radio"),
         "rcSignal": rc_signal(&vehicle),
         "rcSignalText": rc_signal(&vehicle).map(|percent| match percent {
             0 => "No signal".to_string(),
@@ -170,6 +170,7 @@ mod tests {
             match path {
                 "vehicle" => self.vehicle.to_string(),
                 "vehicle.radioStatus" => self.vehicle.get("radioStatus").cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
+                "vehicle.supports" => self.vehicle.get("supports").cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": self.flying_to }).to_string(),
                 "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost, "communicationLostEnabled": true }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
@@ -189,10 +190,11 @@ mod tests {
         let at = |rssi: i64| {
             let mut vehicle = aloft(true, true, false);
             vehicle["rcRSSI"] = json!(rssi);
-            vehicle["supportsRadio"] = json!(true);
+            vehicle["supports"] = json!({ "kind": "object", "radio": true });
             fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])
         };
         assert_eq!(at(72)["rcSignal"], 72);
+        assert_eq!(at(72)["rcSupported"], true, "radio support is vehicle.supports.radio; the view read vehicle.supportsRadio, which Vehicle has never had as a property, so rcSupported was false for every vehicle in the running app");
         assert_eq!(at(72)["rcSignalText"], "72%");
         assert_eq!(at(0)["rcSignalText"], "No signal", "a transmitter that is switched off is not a transmitter at zero per cent - an operator reading 0% concludes the link is alive and terrible rather than absent");
         assert_eq!(at(0)["rcSignal"], 0, "zero is a READING and the worst one - the transmitter is gone. QGC's own indicator hides at zero, so a total RC loss looks exactly like an aircraft with no transmitter fitted");

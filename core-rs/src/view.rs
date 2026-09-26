@@ -502,7 +502,7 @@ mod deps_cover_reads {
         "links.linkTypeStrings",
     "vehicle.supports.roiMode",
     "vehicle.supports.orbitMode",
-    "vehicle.supportsRadio",
+    "vehicle.supports.radio",
     "links.linkTypeIds",
         "links.serialBaudRates",
         "radioCal.channelCount",

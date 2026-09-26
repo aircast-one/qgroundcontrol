@@ -6,7 +6,7 @@ use crate::router::Backend;
 pub const VIDEO_DEPS: &[&str] = &[
     "video.isStreamSource",
     "video.hasMultipleVideoSources","settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,trackingStatus";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
@@ -180,8 +180,6 @@ pub fn camera_present(camera: &Value) -> bool {
 }
 
 const THERMAL_BLEND: i64 = 1;
-const TRACKING_RECTANGLE: i64 = 4;
-const TRACKING_POINT: i64 = 8;
 
 fn thermal_token(mode: Option<i64>) -> Option<&'static str> {
     match mode? {
@@ -193,10 +191,10 @@ fn thermal_token(mode: Option<i64>) -> Option<&'static str> {
     }
 }
 
-fn tracking_shapes(status: i64) -> Vec<&'static str> {
-    [(TRACKING_RECTANGLE, "rectangle"), (TRACKING_POINT, "point")]
+fn tracking_shapes(camera: &Value) -> Vec<&'static str> {
+    [("supportsTrackingRect", "rectangle"), ("supportsTrackingPoint", "point")]
         .iter()
-        .filter(|(bit, _)| status & bit != 0)
+        .filter(|(property, _)| flag(camera, property))
         .map(|(_, name)| *name)
         .collect()
 }
@@ -303,7 +301,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "supported": flag(&camera, "hasTracking"),
             "requested": flag(&camera, "trackingEnabled"),
             "reported": flag(&camera, "trackingImageIsActive"),
-            "shapes": tracking_shapes(integer(&camera, "trackingStatus").unwrap_or(0)),
+            "shapes": tracking_shapes(&camera),
             "rect": flag(&camera, "trackingImageIsActive").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
         })),
         "hasZoom": flag(&camera, "hasZoom"),
@@ -402,8 +400,9 @@ mod tests {
         assert_eq!(cam(json!({ "thermalStreamInstance": { "kind": "object" }, "thermalMode": 9 }))["thermalMode"], Value::Null, "an enumerator the core does not know is not silently the first one");
     }
 
-    const CONSTANT_OR_COVERED: [&str; 16] = [
-        "trackingStatus",
+    const CONSTANT_OR_COVERED: [&str; 17] = [
+        "supportsTrackingRect",
+        "supportsTrackingPoint",
         "hasTracking",
         "modelName",
         "vendor",
@@ -508,20 +507,20 @@ mod tests {
         };
         let rect = json!({ "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 });
 
-        let idle = cam(json!({ "hasTracking": true, "trackingStatus": 5, "trackingEnabled": false, "trackingImageIsActive": false, "trackingImageRect": rect }));
+        let idle = cam(json!({ "hasTracking": true, "supportsTrackingRect": true, "supportsTrackingPoint": false, "trackingEnabled": false, "trackingImageIsActive": false, "trackingImageRect": rect }));
         assert_eq!(
             (idle["tracking"]["supported"].clone(), idle["tracking"]["requested"].clone(), idle["tracking"]["reported"].clone()),
             (json!(true), json!(false), json!(false)),
             "requested is QGC's record that it asked for the track and reported is the camera saying it is tracking; they were enabled and active, two near-synonyms for opposite sides of one question, and a reader given only the artifact could not tell which was which"
         );
-        assert_eq!(idle["tracking"]["shapes"], json!(["rectangle"]), "TrackingStatus is a bitmask and the two shape bits say which gestures the camera accepts, so a head offering a drag on a point-only camera is offering a command it will refuse");
+        assert_eq!(idle["tracking"]["shapes"], json!(["rectangle"]), "the camera says which gestures it accepts, so a head offering a drag on a point-only camera is offering a command it will refuse. These were bits of a trackingStatus property the camera interface has not had since the upstream merge, so in the running app shapes was empty for every camera and no head offered tracking at all");
         assert_eq!(
             idle["tracking"]["rect"],
             Value::Null,
             "the rectangle is whatever was last tracked, and trackingImageStatus is the only thing saying it is current - drawing a stale box over live video is a claim about where the target is now"
         );
 
-        let live = cam(json!({ "hasTracking": true, "trackingStatus": 14, "trackingEnabled": true, "trackingImageIsActive": true, "trackingImageRect": rect }));
+        let live = cam(json!({ "hasTracking": true, "supportsTrackingRect": true, "supportsTrackingPoint": true, "trackingEnabled": true, "trackingImageIsActive": true, "trackingImageRect": rect }));
         assert_eq!(live["tracking"]["rect"], rect, "and a QRectF only reaches a head at all because variantJson gained a case for it");
         assert_eq!(live["tracking"]["shapes"], json!(["rectangle", "point"]));
 
