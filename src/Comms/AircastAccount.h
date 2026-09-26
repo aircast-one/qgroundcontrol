@@ -28,7 +28,9 @@ class AircastAccount : public QObject
 
 public:
     static AircastAccount* instance();
+#ifndef QGC_HEADLESS_CORE
     static AircastAccount* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
+#endif
 
     QString apiBase() const { return _apiBase; }
 

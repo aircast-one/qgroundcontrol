@@ -10,11 +10,11 @@
 #include "QGCLoggingCategory.h"
 #ifndef QGC_HEADLESS_CORE
 #include <QtGui/QDesktopServices>
+#include <QtQml/QJSEngine>
 #endif
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkReply>
 #include <QtNetwork/QNetworkRequest>
-#include <QtQml/QJSEngine>
 
 QGC_LOGGING_CATEGORY(AircastAccountLog, "Comms.AircastAccount")
 
@@ -50,6 +50,7 @@ AircastAccount* AircastAccount::instance()
     return account;
 }
 
+#ifndef QGC_HEADLESS_CORE
 AircastAccount* AircastAccount::create(QQmlEngine* qmlEngine, QJSEngine* jsEngine)
 {
     Q_UNUSED(qmlEngine);
@@ -58,6 +59,7 @@ AircastAccount* AircastAccount::create(QQmlEngine* qmlEngine, QJSEngine* jsEngin
     QJSEngine::setObjectOwnership(account, QJSEngine::CppOwnership);
     return account;
 }
+#endif
 
 QString AircastAccount::_settingsKey(const QString& apiBase)
 {
