@@ -157,7 +157,7 @@ private:
     /// If all new connections should be suspended a message is displayed to the user and true is returned;
     bool _connectionsSuspendedMsg() const;
     void _updateAutoConnectLinks();
-    void _removeConfiguration(const LinkConfiguration *config);
+    bool _removeConfiguration(const LinkConfiguration *config);
     void _addUDPAutoConnectLink();
     void _addMAVLinkForwardingLink();
     void _reconnectAutoConnectLinks();
@@ -187,7 +187,6 @@ private:
     static constexpr int _autoconnectUpdateTimerMSecs = 1000;
     int _connectingStallMSecs = 10000;
 #ifdef Q_OS_WIN
-    // Have to manually let the bootloader go by on Windows to get a working connect
     static constexpr int _autoconnectConnectDelayMSecs = 6000;
 #else
     static constexpr int _autoconnectConnectDelayMSecs = 1000;
@@ -226,6 +225,5 @@ private:
     QSerialPort *_nmeaPort = nullptr;
 #endif // QGC_NO_SERIAL_LINK
 
-    // NMEA UDP is network-only; available regardless of QGC_NO_SERIAL_LINK.
     UdpIODevice *_nmeaSocket = nullptr;
 };

@@ -53,7 +53,6 @@ LinkManager::LinkManager(QObject *parent)
 
     qCDebug(LinkManagerLog) << this;
 
-
     (void) qRegisterMetaType<QAbstractSocket::SocketError>("QAbstractSocket::SocketError");
     (void) qRegisterMetaType<LinkInterface*>("LinkInterface*");
 #ifndef QGC_NO_SERIAL_LINK
@@ -76,14 +75,13 @@ void LinkManager::init()
     _autoConnectSettings = SettingsManager::instance()->autoConnectSettings();
 
 #if defined(Q_OS_ANDROID) && !defined(QGC_NO_SERIAL_LINK)
-    // The serial backend is fixed at startup. Changing the setting requires an app restart.
     AndroidSerial::setUsePosixSerial(
         SettingsManager::instance()->appSettings()->androidUsePosixSerial()->rawValue().toBool());
 #endif
 
     if (!QGC::runningUnitTests()) {
         (void) connect(_portListTimer, &QTimer::timeout, this, &LinkManager::_updateAutoConnectLinks);
-        _portListTimer->start(_autoconnectUpdateTimerMSecs); // timeout must be long enough to get past bootloader on second pass
+        _portListTimer->start(_autoconnectUpdateTimerMSecs);
     }
 }
 
@@ -138,18 +136,12 @@ void LinkManager::disconnectLinkConfiguration(LinkConfiguration *config)
 
 bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
 {
-    // A configuration owns at most one link. Without this, connecting an already
-    // connected configuration builds a second LinkInterface for it, and a single
-    // disconnect then leaves the other alive: the vehicle stays up while the UI has
-    // already reported the link closed, and config->link() keeps returning a live
-    // link forever.
     if (config->link()) {
         qCDebug(LinkManagerLog) << Q_FUNC_INFO << config->name() << "is already connected";
         return true;
     }
 
     config->setSuppressAutoReconnect(false);
-
 
     SharedLinkInterfacePtr link = nullptr;
     if (CoreLink::enabled() && CoreLink::handles(config->type())) {
@@ -193,7 +185,6 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
         return false;
     }
 
-    // Set up signal connections before adding to list, so link is fully initialized
     (void) connect(link.get(), &LinkInterface::communicationError, this, &LinkManager::_communicationError);
     (void) connect(link.get(), &LinkInterface::bytesReceived, MAVLinkProtocol::instance(), &MAVLinkProtocol::receiveBytes);
     (void) connect(link.get(), &LinkInterface::bytesSent, MAVLinkProtocol::instance(), &MAVLinkProtocol::logSentBytes);
@@ -202,7 +193,6 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
 
     MAVLinkProtocol::instance()->resetMetadataForLink(link.get());
 
-    // Try to connect before adding to active links list
     if (!link->_connect()) {
         (void) disconnect(link.get(), &LinkInterface::communicationError, this, &LinkManager::_communicationError);
         (void) disconnect(link.get(), &LinkInterface::bytesReceived, MAVLinkProtocol::instance(), &MAVLinkProtocol::receiveBytes);
@@ -242,7 +232,6 @@ void LinkManager::_communicationError(const QString &title, const QString &error
     const LinkInterface *const link = qobject_cast<LinkInterface*>(sender());
     const SharedLinkConfigurationPtr config = link ? link->linkConfiguration() : nullptr;
 
-    // Auto-connect links retry on a timer; a popup per failed attempt is just noise. Log only.
     if (config && config->isAutoConnect() && !config->suppressAutoReconnect()) {
         qCDebug(LinkManagerLog) << "Auto-connect link error (will retry):" << title << error;
         return;
@@ -388,7 +377,7 @@ void LinkManager::_linkDisconnected()
         _setConnectingStalled(false);
     }
     if (config && config->isDynamic()) {
-        _removeConfiguration(config.get());
+        (void) _removeConfiguration(config.get());
     }
 }
 
@@ -402,8 +391,6 @@ SharedLinkInterfacePtr LinkManager::sharedLinkInterfacePointerForLink(const Link
         }
     }
 
-    // Link not found - this is normal during disconnect when queued signals are still processing.
-    // Callers should check for nullptr return value.
     qCDebug(LinkManagerLog) << "link not in list (likely disconnected)";
     return SharedLinkInterfacePtr(nullptr);
 }
@@ -450,9 +437,7 @@ void LinkManager::saveLinkConfigurationList()
 void LinkManager::loadLinkConfigurationList()
 {
     QSettings settings;
-    // Is the group even there?
     if (settings.contains(LinkConfiguration::settingsRoot() + "/count")) {
-        // Find out how many configurations we have
         const int count = settings.value(LinkConfiguration::settingsRoot() + "/count").toInt();
         for (int i = 0; i < count; i++) {
             const QString root = LinkConfiguration::settingsRoot() + QStringLiteral("/Link%1").arg(i);
@@ -518,7 +503,6 @@ void LinkManager::loadLinkConfigurationList()
         }
     }
 
-    // Enable automatic Serial PX4/3DR Radio hunting
     _configurationsLoaded = true;
 }
 
@@ -557,7 +541,6 @@ void LinkManager::_addMAVLinkForwardingLink()
         for (const SharedLinkInterfacePtr &link : _rgLinks) {
             const SharedLinkConfigurationPtr linkConfig = link->linkConfiguration();
             if (linkConfig && (linkConfig->type() == LinkConfiguration::TypeUdp) && (linkConfig->name() == _mavlinkForwardingLinkName)) {
-                // TODO: should we check if the host/port matches the mavlinkForwardHostName setting and update if it does not match?
                 return;
             }
         }
@@ -574,13 +557,10 @@ void LinkManager::_reconnectAutoConnectLinks()
             continue;
         }
 
-        // Only re-establish links started this session (boot or manual connect); a freshly
-        // added auto-connect config waits for next app start rather than connecting now.
         if (config->link() || config->suppressAutoReconnect() || !config->autoConnectStarted()) {
             continue;
         }
 
-        // Exponential backoff between attempts so a dead host isn't hammered every tick.
         if (!config->reconnectReady()) {
             continue;
         }
@@ -613,14 +593,11 @@ void LinkManager::_updateAutoConnectLinks()
         _nmeaSocket->close();
 
         if (nmeaSource == AutoConnectSettings::NmeaSourceDisabled) {
-            // Revert QGCPositionManager to the integrated GPS if it was using an NMEA source.
-            // Reset before deleting the port so the NMEA source never holds a dangling device.
             QGCPositionManager::instance()->resetNmeaSourceDevice();
         }
     }
 
 #ifndef QGC_NO_SERIAL_LINK
-    // Serial NMEA ports are set up by _addSerialAutoConnectLink() below
     if ((nmeaSource != AutoConnectSettings::NmeaSourceSerial) && _nmeaPort) {
         _nmeaPort->close();
         delete _nmeaPort;
@@ -637,7 +614,6 @@ void LinkManager::shutdown()
     setConnectionsSuspended(tr("Shutdown"));
     disconnectAll();
 
-    // Wait for all the vehicles to go away to ensure an orderly shutdown and deletion of all objects
     while (MultiVehicleManager::instance()->vehicles()->count()) {
         QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     }
@@ -645,8 +621,6 @@ void LinkManager::shutdown()
 
 namespace {
 
-// One list, two readings: the id is what code compares against and the label is what an
-// operator reads. Keeping them as separate lists is how they drift apart.
 const QList<QPair<QString, QString>> &linkTypeTable()
 {
     static QList<QPair<QString, QString>> table;
@@ -668,11 +642,10 @@ const QList<QPair<QString, QString>> &linkTypeTable()
     return table;
 }
 
-} // namespace
+}
 
 QStringList LinkManager::linkTypeStrings() const
 {
-    //-- Must follow same order as enum LinkType in LinkConfiguration.h
     QStringList list;
     for (const auto &entry: linkTypeTable()) {
         list += entry.second;
@@ -705,7 +678,6 @@ void LinkManager::endConfigurationEditing(LinkConfiguration *config, LinkConfigu
     config->copyFrom(editedConfig);
     saveLinkConfigurationList();
     emit config->nameChanged(config->name());
-    // Discard temporary duplicate
     delete editedConfig;
 }
 
@@ -759,7 +731,9 @@ void LinkManager::removeConfiguration(LinkConfiguration *config)
         link->disconnect();
     }
 
-    _removeConfiguration(config);
+    if (!_removeConfiguration(config)) {
+        qCWarning(LinkManagerLog) << "called with unknown config";
+    }
     saveLinkConfigurationList();
 }
 
@@ -848,21 +822,16 @@ void LinkManager::endMavlinkForwardingSupportLink()
     }
 }
 
-void LinkManager::_removeConfiguration(const LinkConfiguration *config)
+bool LinkManager::_removeConfiguration(const LinkConfiguration *config)
 {
     if (config == _failedLink) {
         _setFailedLink(nullptr);
     }
     (void) _qmlConfigurations->removeOne(config);
 
-    for (auto it = _rgLinkConfigs.begin(); it != _rgLinkConfigs.end(); ++it) {
-        if (it->get() == config) {
-            (void) _rgLinkConfigs.erase(it);
-            return;
-        }
-    }
-
-    qCWarning(LinkManagerLog) << "called with unknown config";
+    return _rgLinkConfigs.removeIf([config](const SharedLinkConfigurationPtr &candidate) {
+        return candidate.get() == config;
+    }) > 0;
 }
 
 bool LinkManager::isBluetoothAvailable()
@@ -994,8 +963,6 @@ void LinkManager::_filterCompositePorts(QList<QGCSerialPortInfo> &portList)
         if (portInfo.hasVendorIdentifier() && portInfo.hasProductIdentifier() && !portInfo.serialNumber().isEmpty() && portInfo.serialNumber() != "0") {
             VidPidPair_t vidPid(portInfo.vendorIdentifier(), portInfo.productIdentifier());
             if (seenSerialNumbers.contains(vidPid) && seenSerialNumbers[vidPid].contains(portInfo.serialNumber())) {
-                // Some boards are a composite USB device, with the first port being mavlink and the second something else. We only expose to first mavlink port.
-                // However internal NMEA devices can present like this, so dont skip anything with NMEA in description
                 if(!portInfo.description().contains("NMEA")) {
                     qCDebug(LinkManagerVerboseLog) << QStringLiteral("Removing secondary port on same device - port:%1 vid:%2 pid%3 sn:%4").arg(portInfo.portName()).arg(portInfo.vendorIdentifier()).arg(portInfo.productIdentifier()).arg(portInfo.serialNumber());
                     it = portList.erase(it);
@@ -1012,10 +979,6 @@ void LinkManager::_addSerialAutoConnectLink()
 {
     QList<QGCSerialPortInfo> portList;
 #ifdef Q_OS_ANDROID
-    // With the Java USB serial backend only a single serial connection is supported. Repeatedly calling
-    // availablePorts after that one serial port is connected leaks file handles due to a bug somewhere in the
-    // android serial code. In order to work around that bug after we connect the first serial port we stop
-    // probing for additional ports. The POSIX backend does not have this problem.
     if (AndroidSerial::usePosixSerial() || !_isSerialPortConnected()) {
         portList = QGCSerialPortInfo::availablePorts();
     }
@@ -1041,7 +1004,6 @@ void LinkManager::_addSerialAutoConnectLink()
         QGCSerialPortInfo::BoardType_t boardType;
         QString boardName;
 
-        // check to see if nmea gps is configured for current Serial port, if so, set it up to connect
         if ((_autoConnectSettings->nmeaSource()->rawValue().toInt() == AutoConnectSettings::NmeaSourceSerial) &&
                 (portInfo.systemLocation().trimmed() == _autoConnectSettings->autoConnectNmeaPort()->cookedValueString())) {
             if (portInfo.systemLocation().trimmed() != _nmeaDeviceName) {
@@ -1051,7 +1013,6 @@ void LinkManager::_addSerialAutoConnectLink()
                 _nmeaBaud = _autoConnectSettings->autoConnectNmeaBaud()->cookedValue().toUInt();
                 newPort->setBaudRate(static_cast<qint32>(_nmeaBaud));
                 qCDebug(LinkManagerLog) << "Configuring nmea baudrate" << _nmeaBaud;
-                // This will stop polling old device if previously set
                 QGCPositionManager::instance()->setNmeaSourceDevice(newPort);
                 if (_nmeaPort) {
                     delete _nmeaPort;
@@ -1063,22 +1024,17 @@ void LinkManager::_addSerialAutoConnectLink()
                 qCDebug(LinkManagerLog) << "Configuring nmea baudrate" << _nmeaBaud;
             }
         } else if (portInfo.getBoardInfo(boardType, boardName)) {
-            // Should we be auto-connecting to this board type?
             if (!_allowAutoConnectToBoard(boardType)) {
                 continue;
             }
 
             if (portInfo.isBootloader()) {
-                // Don't connect to bootloader
                 qCDebug(LinkManagerLog) << "Waiting for bootloader to finish" << portInfo.systemLocation();
                 continue;
             }
             if (_portAlreadyConnected(portInfo.systemLocation()) || (_autoConnectRTKPort == portInfo.systemLocation())) {
                 qCDebug(LinkManagerVerboseLog) << "Skipping existing autoconnect" << portInfo.systemLocation();
             } else if (!_autoconnectPortWaitList.contains(portInfo.systemLocation())) {
-                // We don't connect to the port the first time we see it. The ability to correctly detect whether we
-                // are in the bootloader is flaky from a cross-platform standpoint. So by putting it on a wait list
-                // and only connect on the second pass we leave enough time for the board to boot up.
                 qCDebug(LinkManagerLog) << "Waiting for next autoconnect pass" << portInfo.systemLocation() << boardName;
                 _autoconnectPortWaitList[portInfo.systemLocation()] = 1;
             } else if ((++_autoconnectPortWaitList[portInfo.systemLocation()] * _autoconnectUpdateTimerMSecs) > _autoconnectConnectDelayMSecs) {
@@ -1119,7 +1075,6 @@ void LinkManager::_addSerialAutoConnectLink()
         }
     }
 
-    // Check for RTK GPS connection gone
     if (!_autoConnectRTKPort.isEmpty() && !currentPorts.contains(_autoConnectRTKPort)) {
         qCDebug(LinkManagerLog) << "RTK GPS disconnected" << _autoConnectRTKPort;
         GPSManager::instance()->gpsRtk()->disconnectGPS();
