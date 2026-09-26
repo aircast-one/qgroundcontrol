@@ -129,6 +129,27 @@ pub fn set_message_interval(backend: &dyn Backend, path: &str, args: &str) -> Va
     })
 }
 
+pub const SELECTED: &str = "mavlinkInspector.activeSystem.selected";
+
+pub fn write_selected(backend: &dyn Backend, value: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    let Some(index) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64()) else {
+        return refused("malformed", "A message is selected by its position in the list.".to_string());
+    };
+    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
+    let count = model.get("elements").and_then(Value::as_array).map_or(0, Vec::len) as i64;
+    if model.get("kind").and_then(Value::as_str) != Some("object") {
+        return refused("noVehicle", "No vehicle is being inspected.".to_string());
+    }
+    if !(0..count).contains(&index) {
+        return refused("noSuchMessage", format!("There is no message at position {index}."));
+    }
+    let answered = crate::read::flag(&object(&backend.set(SELECTED, &json!({ "value": index }).to_string())), "ok");
+    let held = crate::read::integer(&object(&backend.get_fields("mavlinkInspector.activeSystem", "selected")), "selected");
+    let took = answered && held == Some(index);
+    json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The inspector did not select that message.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +294,31 @@ mod tests {
         assert_eq!(set_message_interval(&Inspector(listing(true, 0), RefCell::new(Vec::new())), path, "[5]")["refusal"], "noComponent");
         assert_eq!(set_message_interval(&Inspector(json!({ "kind": "null" }), RefCell::new(Vec::new())), path, "[5]")["refusal"], "noVehicle");
         assert!(none.1.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_message_is_selected_only_by_a_position_the_list_has() {
+        use std::cell::Cell;
+        struct System(Cell<i64>);
+        impl Backend for System {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "mavlinkInspector.activeSystem" => json!({ "kind": "object", "selected": self.0.get() }),
+                    _ => json!({ "kind": "object", "elements": [{ "name": "HEARTBEAT" }, { "name": "ATTITUDE" }] }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, v: &str) -> String {
+                self.0.set(object(v)["value"].as_i64().unwrap());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let system = System(Cell::new(0));
+        assert_eq!(write_selected(&system, r#"{"value":1}"#)["result"], true);
+        assert_eq!(write_selected(&system, r#"{"value":5}"#)["refusal"], "noSuchMessage", "QGCMAVLinkSystem::setSelected returns in silence for a position past the list");
+        assert_eq!(system.0.get(), 1);
     }
 }

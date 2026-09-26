@@ -198,6 +198,30 @@ pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Val
     })
 }
 
+pub fn selection_index(path: &str) -> Option<usize> {
+    path.strip_prefix("logDownload.model.")?.strip_suffix(".selected")?.parse().ok()
+}
+
+pub fn write_selected(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    let (Some(index), Some(on)) = (selection_index(path), serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool())) else {
+        return refused("malformed", "A log is selected with true and cleared with false.".to_string());
+    };
+    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs"));
+    if flag(&root, "downloadingLogs") || flag(&root, "requestingList") {
+        return refused("busy", "Wait for the current list or download to finish before changing the selection.".to_string());
+    }
+    let count = |model: &Value| model.get("elements").and_then(Value::as_array).map_or(0, Vec::len);
+    let model = object(&backend.get("logDownload.model"));
+    if index >= count(&model) {
+        return refused("noSuchLog", format!("There is no log at position {index}."));
+    }
+    let answered = flag(&object(&backend.set(path, &json!({ "value": on }).to_string())), "ok");
+    let held = object(&backend.get("logDownload.model")).get("elements").and_then(|e| e.get(index)).map(|e| flag(e, "selected"));
+    let took = answered && held == Some(on);
+    json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The log list did not keep that selection.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,4 +413,27 @@ mod tests {
         assert_eq!(logs_view(&Saving("", "/Volumes/Card/QGC"), &[])["savePathReason"], "missing", "the setting still names a directory, so it was chosen and has since disappeared");
     }
 
+
+    #[test]
+    fn a_log_is_selected_only_where_there_is_one_and_not_mid_transfer() {
+        use std::cell::RefCell;
+        struct Model(RefCell<Vec<bool>>, bool);
+        impl Backend for Model {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "object", "elements": self.0.borrow().iter().map(|s| json!({ "selected": s })).collect::<Vec<_>>() }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "downloadingLogs": self.1, "requestingList": false }).to_string() }
+            fn set(&self, p: &str, v: &str) -> String {
+                let index = selection_index(p).unwrap();
+                self.0.borrow_mut()[index] = object(v)["value"].as_bool().unwrap();
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let idle = Model(RefCell::new(vec![false, false]), false);
+        assert_eq!(write_selected(&idle, "logDownload.model.1.selected", r#"{"value":true}"#)["result"], true);
+        assert_eq!(write_selected(&idle, "logDownload.model.4.selected", r#"{"value":true}"#)["refusal"], "noSuchLog", "a stale row index reaches a model entry that is not there");
+        assert_eq!(write_selected(&Model(RefCell::new(vec![false]), true), "logDownload.model.0.selected", r#"{"value":true}"#)["refusal"], "busy", "the selection is what download() works through, so changing it mid-transfer changes the transfer");
+        assert_eq!(selection_index("logDownload.model.x.selected"), None);
+        assert_eq!(selection_index("logDownload.model.3.status"), None);
+    }
 }
