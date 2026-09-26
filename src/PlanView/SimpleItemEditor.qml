@@ -220,15 +220,11 @@ Item {
         }
 
         CameraSection {
-            missionItem:        missionItem
             Layout.fillWidth:   true
             checked:            missionItem.cameraSection.settingsSpecified
             visible:            missionItem.cameraSection.available && !missionItem.wizardMode
         }
 
-        // What the command does, read as a footnote under the group it explains - the place
-        // every other explanatory line in this panel sits. Above the fields it was a paragraph
-        // wedged between the selected row and its own form.
         QGCLabel {
             Layout.fillWidth:   true
             wrapMode:           Text.WordWrap

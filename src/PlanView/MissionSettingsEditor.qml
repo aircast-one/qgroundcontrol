@@ -147,7 +147,6 @@ Item {
 
             CameraSection {
                 id:                 cameraSection
-                missionItem:                missionItem
                 Layout.fillWidth:   true
                 checked:            !_waypointsOnlyMode && missionItem !== null && missionItem.cameraSection.settingsSpecified
                 visible:            _showCameraSection && missionItem !== null
