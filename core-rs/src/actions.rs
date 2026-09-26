@@ -67,9 +67,11 @@ const FENCE_DELETE_CIRCLE: &str = "plan.geoFenceController.deleteCircle";
 const BREACH_RETURN: &str = "plan.geoFenceController.breachReturnPoint";
 const FLIGHT_MODE: &str = "vehicle.flightMode";
 const VTOL_FORWARD: &str = "vehicle.vtolInFwdFlight";
+const INSERT_TAKEOFF: &str = "plan.missionController.insertTakeoffItem";
+const INSERT_LAND: &str = "plan.missionController.insertLandItem";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -153,6 +155,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
+        INSERT_TAKEOFF => insert_direct(backend, "takeoff", path, args),
+        INSERT_LAND => insert_direct(backend, "land", path, args),
         FENCE_ADD_POLYGON => crate::fenceedit::add(backend, crate::fenceedit::Shape::Polygon, path, args),
         FENCE_ADD_CIRCLE => crate::fenceedit::add(backend, crate::fenceedit::Shape::Circle, path, args),
         FENCE_DELETE_POLYGON => crate::fenceedit::delete(backend, crate::fenceedit::Shape::Polygon, path, args),
@@ -465,6 +469,41 @@ fn activate(backend: &dyn Backend, args: &str) -> Value {
     }
 }
 
+fn insert_direct(backend: &dyn Backend, kind_id: &str, path: &str, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let at = given.get(0).and_then(|point| {
+        let latitude = point.get("latitude")?.as_f64().filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))?;
+        let longitude = point.get("longitude")?.as_f64().filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))?;
+        Some((latitude, longitude))
+    });
+    let Some((latitude, longitude)) = at else {
+        return json!({ "ok": false, "refusal": "badCoordinate", "reason": "An item needs a latitude from -90 to 90 and a longitude from -180 to 180." });
+    };
+    let index = given.get(1).and_then(Value::as_i64).unwrap_or(-1);
+    let make_current = given.get(2).and_then(Value::as_bool).unwrap_or(false);
+    let Some(held) = item_count(backend).filter(|count| *count > 0) else {
+        return json!({ "ok": false, "refusal": "unavailable", "reason": "The plan did not say how many items it holds." });
+    };
+    if index != -1 && !(1..=held).contains(&index) {
+        return json!({ "ok": false, "refusal": "noSuchPlace", "reason": format!("This plan has no place {index} to put an item.") });
+    }
+    let kind = lookup(kind_id);
+    if let (true, Some(kind)) = (index != -1, kind) {
+        if let Some(reason) = refusal(kind, &insertable(backend)) {
+            return json!({ "ok": false, "refusal": "notHere", "reason": reason });
+        }
+    }
+    let point = json!({ "latitude": latitude, "longitude": longitude });
+    let answered = object(&backend.invoke(path, &json!([point, index, make_current]).to_string()));
+    let grew = crate::read::flag(&answered, "ok") && item_count(backend) == Some(held + 1);
+    json!({
+        "ok": grew,
+        "result": answered.get("result").cloned().unwrap_or(Value::Null),
+        "refusal": Value::Null,
+        "reason": match grew { true => Value::Null, false => json!("The plan did not grow, so nothing was added.") },
+    })
+}
+
 fn item_count(backend: &dyn Backend) -> Option<i64> {
     serde_json::from_str::<Value>(&backend.get("plan.missionController.visualItems.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64))
 }
@@ -602,6 +641,42 @@ mod tests {
         assert!(shapeless.is_empty(), "these shadow a Qt path and dropped its result key, so a head reading one the Qt way sees a failure or an empty list: {shapeless:?}");
 
         assert!(!OWNED.iter().any(|path| path.contains("cameraManager")), "an invented name is exempt from the result rule only because no Qt path answers to it; a full Qt path in this list would be claiming one and owes the shape");
+    }
+
+    #[test]
+    fn a_direct_takeoff_or_land_insert_is_confirmed_by_the_plan_growing() {
+        use std::cell::RefCell;
+        struct Plan { items: RefCell<i64>, grows: bool, land_valid: bool, calls: RefCell<Vec<String>> }
+        impl Backend for Plan {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": *self.items.borrow() }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "homePositionSet": true, "onlyInsertTakeoffValid": false, "isInsertTakeoffValid": true, "isInsertLandValid": self.land_valid, "flyThroughCommandsAllowed": true, "complexMissionItems": [] }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, p: &str, a: &str) -> String {
+                self.calls.borrow_mut().push(format!("{p} {a}"));
+                if self.grows {
+                    *self.items.borrow_mut() += 1;
+                }
+                json!({ "ok": true, "result": { "kind": "object" } }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let plan = Plan { items: RefCell::new(3), grows: true, land_valid: false, calls: RefCell::new(Vec::new()) };
+        let appended = run(&plan, INSERT_LAND, r#"[{"latitude":47.4,"longitude":8.5}, -1, false]"#);
+        assert_eq!(appended["ok"], true, "isInsertLandValid describes the selected position, so an append to the end is not refused on it");
+        assert_eq!(run(&plan, INSERT_LAND, r#"[{"latitude":47.4,"longitude":8.5}, 2, false]"#)["refusal"], "notHere", "an insert at a named place is held to the rule for that place");
+        assert_eq!(run(&plan, INSERT_TAKEOFF, r#"[{"latitude":147.4,"longitude":8.5}, -1, false]"#)["refusal"], "badCoordinate");
+        assert_eq!(run(&plan, INSERT_TAKEOFF, r#"[{"latitude":47.4,"longitude":8.5}, 9, false]"#)["refusal"], "noSuchPlace");
+        assert_eq!(plan.calls.borrow().len(), 1);
+        let refusing = Plan { items: RefCell::new(3), grows: false, land_valid: true, calls: RefCell::new(Vec::new()) };
+        assert_eq!(run(&refusing, INSERT_TAKEOFF, r#"[{"latitude":47.4,"longitude":8.5}, -1, false]"#)["ok"], false, "insertTakeoffItem answers a null item when it declines, and the bridge calls that a successful invoke");
     }
 
     #[test]
