@@ -7710,6 +7710,10 @@
         "view.vehicles.vehicles[].firmware",
         "view.vehicles.vehicles[].flightMode",
         "view.vehicles.vehicles[].flying",
+        "view.vehicles.vehicles[].heading",
+        "view.vehicles.vehicles[].home",
+        "view.vehicles.vehicles[].home.latitude",
+        "view.vehicles.vehicles[].home.longitude",
         "view.vehicles.vehicles[].id",
         "view.vehicles.vehicles[].link",
         "view.vehicles.vehicles[].missionFlightMode",
@@ -10671,6 +10675,11 @@
                 "firmware": "string",
                 "flightMode": "string",
                 "flying": "bool",
+                "heading": "number",
+                "home": {
+                    "latitude": "number",
+                    "longitude": "number"
+                },
                 "id": "number",
                 "link": "string",
                 "missionFlightMode": "string",
