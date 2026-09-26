@@ -356,9 +356,107 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
 }
 
+const LONGEST_CLIMB_OUT_M: f64 = 1000.0;
+
+fn invoke_refusal(offered: &[Action], s: &GuidedState) -> Option<(&'static str, String)> {
+    if offered == [Action::EmergencyStop] {
+        return match (s.connected, s.armed) {
+            (false, _) => Some(("noVehicle", "No vehicle is connected.".to_string())),
+            (true, false) => Some(("notOffered", "The motors are not armed, so there is nothing to stop.".to_string())),
+            (true, true) => None,
+        };
+    }
+    let offers: Vec<Offer> = offered.iter().map(|a| a.offer(s)).collect();
+    if offers.iter().any(|o| o.offer == "ready") {
+        return None;
+    }
+    match offers.iter().find(|o| o.offer == "blocked") {
+        Some(blocked) => Some(("blocked", blocked.reason.to_string())),
+        None if !s.connected => Some(("noVehicle", "No vehicle is connected.".to_string())),
+        None => Some(("notOffered", format!("{} is not available right now.", offers.first().map_or("That action", |o| o.title)))),
+    }
+}
+
+fn invoke_args(offered: &[Action], args: &str) -> Result<String, &'static str> {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    match offered {
+        [Action::Rtl] => Ok(json!([given.get(0).and_then(Value::as_bool).unwrap_or(false)]).to_string()),
+        [Action::LandAbort] => match given.get(0).and_then(Value::as_f64).filter(|m| m.is_finite() && *m > 0.0 && *m <= LONGEST_CLIMB_OUT_M) {
+            Some(metres) => Ok(json!([metres]).to_string()),
+            None => Err("Abort Landing needs a climb-out height above zero and at most 1000 m."),
+        },
+        _ => Ok("[]".to_string()),
+    }
+}
+
+pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, args: &str) -> Value {
+    let args = match invoke_args(offered, args) {
+        Ok(args) => args,
+        Err(reason) => return json!({ "ok": false, "refusal": "malformed", "reason": reason }),
+    };
+    let state = match offered {
+        [Action::EmergencyStop] => GuidedState {
+            connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
+            armed: flag(&object(&backend.get_fields("vehicle", "armed")), "armed"),
+            ..GuidedState::default()
+        },
+        _ => read_state(backend),
+    };
+    if let Some((token, reason)) = invoke_refusal(offered, &state) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = flag(&object(&backend.invoke(path, &args)), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_guided_invoke_goes_only_when_the_view_offers_it_ready() {
+        let flying = GuidedState { connected: true, armed: true, flying: true, guided_supported: true, ..GuidedState::default() };
+        let ground = GuidedState { connected: true, ..GuidedState::default() };
+        let token = |offered: &[Action], s: &GuidedState| invoke_refusal(offered, s).map(|(t, _)| t);
+        assert_eq!(token(&[Action::Rtl], &flying), None);
+        assert_eq!(token(&[Action::Rtl], &ground), Some("notOffered"), "guidedModeRTL on a vehicle sitting disarmed on the ground is a mode change the view never offered");
+        assert_eq!(token(&[Action::Land], &GuidedState::default()), Some("noVehicle"));
+        assert_eq!(token(&[Action::StartMission, Action::ContinueMission], &GuidedState { mission_available: true, can_start_mission: true, ..ground.clone() }), None, "both heads send startMission for Start and for Continue, so either offer being ready lets it through");
+        let refusing = GuidedState { mission_available: true, can_start_mission: false, checklist_passed: false, ..ground.clone() };
+        assert_eq!(
+            invoke_refusal(&[Action::StartMission, Action::ContinueMission], &refusing),
+            Some(("blocked", "The pre-flight checklist has not been completed.".to_string())),
+            "a blocked offer's own reason travels, rather than a second sentence for the same fact"
+        );
+        assert_eq!(token(&[Action::ForceArm], &GuidedState { armed: true, ..ground.clone() }), Some("notOffered"));
+        assert_eq!(token(&[Action::EmergencyStop], &GuidedState { armed: true, flying: false, ..ground.clone() }), None, "the view offers it only armed AND flying, and refusing a real emergency stop because the flying flag lagged is the one failure this must never have");
+        assert_eq!(token(&[Action::EmergencyStop], &ground), Some("notOffered"));
+
+        assert_eq!(invoke_args(&[Action::Rtl], "[]"), Ok("[false]".to_string()), "guidedModeRTL(bool) has no default");
+        assert_eq!(invoke_args(&[Action::LandAbort], "[50]"), Ok("[50.0]".to_string()));
+        assert!(invoke_args(&[Action::LandAbort], "[]").is_err());
+        assert!(invoke_args(&[Action::LandAbort], "[-5]").is_err(), "a negative climb-out asks the vehicle to descend while breaking off a landing");
+
+        use std::cell::RefCell;
+        struct Counting(RefCell<usize>);
+        impl Backend for Counting {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                *self.0.borrow_mut() += 1;
+                json!({ "kind": "object", "activeVehicleAvailable": true, "armed": true }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let reads = Counting(RefCell::new(0));
+        assert_eq!(invoke_offered(&reads, &[Action::EmergencyStop], "vehicle.emergencyStop", "[]")["ok"], true);
+        assert_eq!(*reads.0.borrow(), 2, "an emergency stop waits on two reads of Qt's thread, not the whole guided state with its parameter lookups");
+    }
 
     fn offer_of(state: &GuidedState, action: Action) -> &'static str {
         action.offer(state).offer

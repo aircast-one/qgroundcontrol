@@ -39,9 +39,16 @@ const MOTOR_TEST: &str = "vehicle.motorTest";
 const MESSAGE_INTERVAL: &str = "mavlinkInspector.setMessageInterval";
 const REMOVE_LINK: &str = "links.removeConfiguration";
 const REBOOT: &str = "vehicle.rebootVehicle";
+const EMERGENCY_STOP: &str = "vehicle.emergencyStop";
+const ABORT_LANDING: &str = "vehicle.abortLanding";
+const GUIDED_LAND: &str = "vehicle.guidedModeLand";
+const GUIDED_RTL: &str = "vehicle.guidedModeRTL";
+const START_MISSION: &str = "vehicle.startMission";
+const STOP_ROI: &str = "vehicle.stopGuidedModeROI";
+const FORCE_ARM: &str = "vehicle.forceArm";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -122,6 +129,13 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
+        EMERGENCY_STOP => crate::guided::invoke_offered(backend, &[crate::guided::Action::EmergencyStop], path, args),
+        ABORT_LANDING => crate::guided::invoke_offered(backend, &[crate::guided::Action::LandAbort], path, args),
+        GUIDED_LAND => crate::guided::invoke_offered(backend, &[crate::guided::Action::Land], path, args),
+        GUIDED_RTL => crate::guided::invoke_offered(backend, &[crate::guided::Action::Rtl], path, args),
+        START_MISSION => crate::guided::invoke_offered(backend, &[crate::guided::Action::StartMission, crate::guided::Action::ContinueMission], path, args),
+        STOP_ROI => crate::guided::invoke_offered(backend, &[crate::guided::Action::CancelRoi], path, args),
+        FORCE_ARM => crate::guided::invoke_offered(backend, &[crate::guided::Action::ForceArm], path, args),
         REBOOT => crate::flystate::reboot(backend, path),
         REMOVE_LINK => crate::linkremove::remove_configuration(backend, path, args),
         MOTOR_TEST => crate::frame::motor_test(backend, path, args),
