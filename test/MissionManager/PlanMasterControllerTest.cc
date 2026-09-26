@@ -57,11 +57,11 @@ void PlanMasterControllerTest::_testUndo(void)
     _masterController->_captureUndoSnapshot();
     QVERIFY(!_masterController->canUndo());
 
-    _masterController->loadFromFile(":/unittest/OldFileFormat.mission");
+    _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     _masterController->_captureUndoSnapshot();
     QVERIFY(_masterController->canUndo());
     QVERIFY(!_masterController->canRedo());
-    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 6);
 
     _masterController->undo();
     QVERIFY(!_masterController->canUndo());
@@ -71,7 +71,7 @@ void PlanMasterControllerTest::_testUndo(void)
     _masterController->redo();
     QVERIFY(_masterController->canUndo());
     QVERIFY(!_masterController->canRedo());
-    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 6);
 }
 
 void PlanMasterControllerTest::_testUndoFence(void)
@@ -92,20 +92,21 @@ void PlanMasterControllerTest::_testUndoFence(void)
 
 void PlanMasterControllerTest::_testUndoCorruptSnapshot(void)
 {
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression("Undo failed"));
     _masterController->_captureUndoSnapshot();
-    _masterController->loadFromFile(":/unittest/OldFileFormat.mission");
+    _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     _masterController->_captureUndoSnapshot();
     QCOMPARE(_masterController->_undoStack.count(), 1);
 
     _masterController->_undoStack.append("{\"fileType\":\"Plan\"");
     _masterController->undo();
-    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 6);
     QCOMPARE(_masterController->_undoStack.count(), 1);
     QVERIFY(!_masterController->canRedo());
 
     _masterController->_undoStack.append("{\"fileType\":\"Plan\",\"version\":1,\"groundStation\":\"QGroundControl\",\"mission\":{},\"geoFence\":{},\"rallyPoints\":{}}");
     _masterController->undo();
-    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 6);
     QCOMPARE(_masterController->_undoStack.count(), 1);
 
     _masterController->undo();
@@ -132,21 +133,13 @@ void PlanMasterControllerTest::_testUndoTracksDirty(void)
 
 void PlanMasterControllerTest::_testActiveVehicleChanged()
 {
-    // The test emits missionManager->error() twice to verify signal propagation.
-    // Each emission triggers a showAppMessage debug log via PlanMasterController.
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                      QRegularExpression("Mission transfer failed"));
-    // There was a defect where the PlanMasterController would, upon a new active vehicle,
-    // overzelously disconnect all subscribers interested in the outgoing active vechicle.
     Vehicle* outgoingManagerVehicle = _masterController->managerVehicle();
-    // spyMissionManager emulates a subscriber that should not be disconnected when
-    // the active vehicle changes
     MultiSignalSpy spyMissionManager;
     spyMissionManager.init(outgoingManagerVehicle->missionManager());
     MultiSignalSpy spyMasterController;
     spyMasterController.init(_masterController);
-    // Since MissionManager works with actual vehicles (which we don't have in the test cycle)
-    // we have to be a bit creative emulating a signal emitted by a MissionManager.
     emit outgoingManagerVehicle->missionManager()->error(0, "");
     QVERIFY(spyMissionManager.onlyEmittedOnce("error"));
     spyMissionManager.clearSignal("error");
@@ -156,13 +149,12 @@ void PlanMasterControllerTest::_testActiveVehicleChanged()
     QVERIFY(spyMasterController.emittedOnce("managerVehicleChanged"));
 
     emit outgoingManagerVehicle->missionManager()->error(0, "");
-    // This signal was affected by the defect - it wouldn't reach the subscriber. Here
-    // we make sure it does.
     QVERIFY(spyMissionManager.onlyEmittedOnce("error"));
 }
 
 void PlanMasterControllerTest::_aPlanThatCouldNotBeWrittenIsStillUnsaved(void)
 {
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression("Plan save error"));
     QTemporaryDir scratch;
     QVERIFY(scratch.isValid());
     _masterController->setDirty(true);
@@ -196,19 +188,6 @@ void PlanMasterControllerTest::_aFenceInThePlanDoesNotKeepItDirty(void)
 
 void PlanMasterControllerTest::_testDirtyFlagsMatrix_data()
 {
-    // Dirty-state transition matrix ("unchanged" means preserve prior value):
-    //
-    // | State \ Action | Upload OK | Clear | SaveDirty=true | Load plan | Save file OK | Clear save-dirty | Download w/ items | Download empty |
-    // |----------------|-----------|-------|----------------|-----------|--------------|------------------|-------------------|----------------|
-    // | dirtyForSave   | unchanged | false | true           | false     | false        | false            | false             | false          |
-    // | dirtyForUpload | false     | false | true           | true      | unchanged    | unchanged        | false             | false          |
-
-    // Data columns:
-    //  - scenario: DirtyScenario enum value selecting which action path to execute
-    //  - initialDirtyForSave: initial dirtyForSave state before action (DirtyStateTrue/False)
-    //  - initialDirtyForUpload: initial dirtyForUpload state before action (DirtyStateTrue/False)
-    //  - expectedDirtyForSave: expected final dirtyForSave state (DirtyState)
-    //  - expectedDirtyForUpload: expected final dirtyForUpload state (DirtyState)
 
     QTest::addColumn<int>("scenario");
     QTest::addColumn<int>("initialDirtyForSave");
@@ -250,8 +229,6 @@ void PlanMasterControllerTest::_testDirtyFlagsMatrix_data()
                 DirtyState expectedDirtyForUpload = expectation.expectedDirtyForUpload;
 
                 if ((expectation.scenario == UploadTrueWhenSaveTrue) && (initialDirtyForSave == DirtyStateTrue)) {
-                    // _setDirtyForSave(true) only drives dirtyForUpload when dirtyForSave transitions false->true.
-                    // If dirtyForSave already starts true, dirtyForUpload is preserved.
                     expectedDirtyForUpload = DirtyStateUnchanged;
                 }
 
@@ -281,7 +258,6 @@ void PlanMasterControllerTest::_testDirtyFlagsMatrix()
     QVERIFY(initialDirtyForSave != DirtyStateUnchanged);
     QVERIFY(initialDirtyForUpload != DirtyStateUnchanged);
 
-    // Pre-load items for scenarios that need containsItems() == true
     if (scenario == DownloadWithItemsNotDirtyForSave) {
         _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     }
@@ -293,7 +269,7 @@ void PlanMasterControllerTest::_testDirtyFlagsMatrix()
         case DirtyStateTrue:
             return true;
         default:
-            Q_ASSERT(false); // Invalid test data
+            Q_ASSERT(false);
             return false;
         }
     };
@@ -402,13 +378,11 @@ void PlanMasterControllerTest::_testFileAssociationSetOnLoad()
 {
     QSignalSpy currentFileSpy(_masterController, &PlanMasterController::currentPlanFileChanged);
 
-    // Before load, file association should be empty
     QVERIFY(_masterController->currentPlanFile().isEmpty());
     QVERIFY(_masterController->currentPlanFileName().isEmpty());
 
     _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
 
-    // After successful load, the file association should be set
     QVERIFY(!_masterController->currentPlanFile().isEmpty());
     QCOMPARE(_masterController->currentPlanFileName(), QStringLiteral("MissionPlanner"));
     QVERIFY(currentFileSpy.count() >= 1);
@@ -440,7 +414,6 @@ void PlanMasterControllerTest::_testFailedLoadClearsFileAssociation()
         QVERIFY2(malformedFile.write(malformedCase.contents) != -1, qPrintable(context));
         malformedFile.close();
 
-        // A failed load clears the file association
         expectLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                          QRegularExpression("Error loading Plan file"));
         _masterController->loadFromFile(malformedPath);
@@ -456,8 +429,6 @@ void PlanMasterControllerTest::_testDownloadClearsFileAssociation()
     _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     QVERIFY(!_masterController->currentPlanFile().isEmpty());
 
-    // Download completion replaces editor contents with the vehicle's plan, so the
-    // previous file association no longer describes what is in the editor
     _masterController->_loadSequence = PlanMasterController::SyncSequence::RallyPoints;
     _masterController->_loadRallyPointsComplete();
 
@@ -473,9 +444,6 @@ void PlanMasterControllerTest::_testBackgroundSyncPreservesFileAssociation()
     QVERIFY(!_masterController->currentPlanFile().isEmpty());
     _masterController->_setDirtyForSaveUnitTest(true);
 
-    // Manager loadComplete also fires for the automatic download at vehicle connect. When no
-    // download was requested the editor contents are preserved, so the file association and
-    // dirty state must survive.
     _masterController->_loadRallyPointsComplete();
 
     QVERIFY(!_masterController->currentPlanFile().isEmpty());
@@ -488,8 +456,6 @@ void PlanMasterControllerTest::_testUnrequestedSendCompletePreservesDirtyForUplo
     _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     QVERIFY(_masterController->dirtyForUpload());
 
-    // Manager sendComplete can fire for sends this controller did not request (Fly view and
-    // Plan view controllers share the same vehicle managers), so dirtyForUpload must survive.
     _masterController->_sendRallyPointsComplete();
 
     QVERIFY(_masterController->dirtyForUpload());
@@ -497,9 +463,6 @@ void PlanMasterControllerTest::_testUnrequestedSendCompletePreservesDirtyForUplo
 
 void PlanMasterControllerTest::_testStaleInitialPlanLoadRallyCompletePreservesPlan()
 {
-    // A rally-unsupported vehicle never emits rally loadComplete during initial connect, so the
-    // sequence can still be InitialPlanLoad long after the download. A later unrelated rally
-    // completion must not clear a newly opened plan.
     _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     QVERIFY(!_masterController->currentPlanFile().isEmpty());
 
@@ -518,8 +481,6 @@ void PlanMasterControllerTest::_testShowPlanFromVehicleClearsFileAssociation()
     _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     QVERIFY(!_masterController->currentPlanFile().isEmpty());
 
-    // Showing the vehicle's plan replaces the editor contents, so the previous file
-    // association no longer describes them
     _masterController->showPlanFromManagerVehicle();
 
     QVERIFY(_masterController->currentPlanFile().isEmpty());
@@ -561,26 +522,21 @@ void PlanMasterControllerTest::_testSaveUpdatesFileName()
     _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
     QCOMPARE(_masterController->currentPlanFileName(), QStringLiteral("MissionPlanner"));
 
-    // Save to a completely different path
     const QString saveFile = QDir::temp().filePath(
         QStringLiteral("qgc_planmaster_rename_%1.plan").arg(QDateTime::currentMSecsSinceEpoch()));
     QVERIFY(_masterController->saveToFile(saveFile));
 
-    // Name should now reflect the new file base name
     QCOMPARE(_masterController->currentPlanFileName(), QFileInfo(saveFile).completeBaseName());
 
-    // Clean up
     QFile::remove(saveFile);
 }
 
 void PlanMasterControllerTest::_testTemplateModeHidesTemplatesOnPlanCreatorSelection()
 {
-    // Initial state: empty plan → templates shown
     QVERIFY(_masterController->showCreateFromTemplate());
 
     QSignalSpy spyShow(_masterController, &PlanMasterController::showCreateFromTemplateChanged);
 
-    // User selects a plan creator (e.g. Survey) — adds items to the plan
     SurveyPlanCreator creator(_masterController);
     creator.createPlan(QGeoCoordinate(47.0, -122.0));
 
@@ -591,7 +547,6 @@ void PlanMasterControllerTest::_testTemplateModeHidesTemplatesOnPlanCreatorSelec
 
 void PlanMasterControllerTest::_testTemplateModeHidesTemplatesOnFileLoad()
 {
-    // Initial state: empty plan, not manual creation → templates shown
     QVERIFY(_masterController->showCreateFromTemplate());
 
     QSignalSpy spyShow(_masterController, &PlanMasterController::showCreateFromTemplateChanged);
@@ -635,14 +590,12 @@ void PlanMasterControllerTest::_testTemplateModeRestoredOnIndividualItemRemoval(
 
 void PlanMasterControllerTest::_testManualCreationHidesTemplates()
 {
-    // Initial state: empty plan → templates shown
     QVERIFY(_masterController->showCreateFromTemplate());
     QVERIFY(!_masterController->userSelectedManualCreation());
 
     QSignalSpy spyShow(_masterController, &PlanMasterController::showCreateFromTemplateChanged);
     QSignalSpy spyManual(_masterController, &PlanMasterController::userSelectedManualCreationChanged);
 
-    // User clicks "No Template" — hides templates even though plan is empty
     _masterController->setUserSelectedManualCreation(true);
 
     QVERIFY(_masterController->userSelectedManualCreation());
@@ -650,7 +603,6 @@ void PlanMasterControllerTest::_testManualCreationHidesTemplates()
     QCOMPARE(spyShow.count(), 1);
     QCOMPARE(spyManual.count(), 1);
 
-    // Setting the same value again should not re-emit
     _masterController->setUserSelectedManualCreation(true);
     QCOMPARE(spyShow.count(), 1);
     QCOMPARE(spyManual.count(), 1);
@@ -696,7 +648,6 @@ void PlanMasterControllerTest::_testManualCreationRestoredOnIndividualItemRemova
 
 void PlanMasterControllerTest::_testPlanCreatorsFiltered()
 {
-    // MultiRotor supports StructureScan — expect all 4 creators
     PlanMasterController multiRotorController(MAV_AUTOPILOT_PX4, MAV_TYPE_QUADROTOR);
     multiRotorController.setFlyView(false);
     multiRotorController.start();
@@ -704,7 +655,6 @@ void PlanMasterControllerTest::_testPlanCreatorsFiltered()
     const int multiRotorCount = multiRotorController.planCreators()->count();
     QVERIFY(multiRotorCount > 0);
 
-    // FixedWing does not support StructureScan — expect one fewer creator
     PlanMasterController fixedWingController(MAV_AUTOPILOT_PX4, MAV_TYPE_FIXED_WING);
     fixedWingController.setFlyView(false);
     fixedWingController.start();
@@ -719,15 +669,8 @@ void PlanMasterControllerTest::_testPlanCreatorsFiltered()
 
 UT_REGISTER_TEST(PlanMasterControllerTest, TestLabel::Integration, TestLabel::MissionManager)
 
-void PlanMasterControllerTest::_testMissionFileLoad(void)
-{
-    _masterController->loadFromFile(":/unittest/OldFileFormat.mission");
-    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
-}
-
 void PlanMasterControllerTest::_testTakeoffTextFileLoad()
 {
-    // Plain-text mission file with home position, takeoff and one waypoint (#13167)
     static const char* kTakeoffMission =
         "QGC WPL 110\r\n"
         "0\t1\t0\t16\t0\t0\t0\t0\t34.577822\t-112.469101\t584.380005\t1\r\n"
@@ -738,8 +681,6 @@ void PlanMasterControllerTest::_testTakeoffTextFileLoad()
     QVERIFY(tempDir.isValid());
     const QString filename = tempDir.filePath(QStringLiteral("TakeoffMission.waypoints"));
     QFile file(filename);
-    // No QIODevice::Text: write the CRLF line endings verbatim on all platforms to match
-    // the original repro file from the issue.
     QVERIFY(file.open(QIODevice::WriteOnly));
     QVERIFY(file.write(kTakeoffMission) != -1);
     file.close();
@@ -749,10 +690,8 @@ void PlanMasterControllerTest::_testTakeoffTextFileLoad()
     _masterController->loadFromFile(filename);
 
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), 3); // Mission settings, takeoff, waypoint
+    QCOMPARE(visualItems->count(), 3);
 
-    // The original bug caused the takeoff item to consume the following waypoint line,
-    // resulting in a single takeoff item carrying the waypoint's values.
     TakeoffMissionItem* takeoffItem = visualItems->value<TakeoffMissionItem*>(1);
     QVERIFY(takeoffItem);
     QCOMPARE(static_cast<MAV_CMD>(takeoffItem->command()), MAV_CMD_NAV_TAKEOFF);

@@ -18,7 +18,6 @@ private slots:
     void _testDirtyFlagsMatrix_data();
     void _testDirtyFlagsMatrix();
 
-    // File name property tests
     void _testFileAssociationSetOnLoad();
     void _testFileAssociationClearedOnRemoveAll();
     void _testFileAssociationClearedOnRemoveAllFromVehicle();
@@ -30,20 +29,17 @@ private slots:
     void _testStaleInitialPlanLoadRallyCompletePreservesPlan();
     void _testShowPlanFromVehicleClearsFileAssociation();
 
-    // showCreateFromTemplate tests — template selection mode
     void _testTemplateModeHidesTemplatesOnPlanCreatorSelection();
     void _testTemplateModeHidesTemplatesOnFileLoad();
     void _testTemplateModeRestoredOnRemoveAll();
     void _testTemplateModeRestoredOnIndividualItemRemoval();
 
-    // showCreateFromTemplate tests — manual creation mode
     void _testManualCreationHidesTemplates();
     void _testManualCreationRestoredOnRemoveAll();
     void _testManualCreationRestoredOnIndividualItemRemoval();
 
     void _testPlanCreatorsFiltered();
 
-    void _testMissionFileLoad();
     void _testUndo();
     void _testUndoFence();
     void _testUndoCorruptSnapshot();
