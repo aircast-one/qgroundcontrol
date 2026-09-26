@@ -963,6 +963,7 @@ void QGCApplication::_applyDeviceCloud(const QString &host, const QJsonObject &c
     }
 
     AircastAccount::instance()->setApiBase(apiBase);
+    VideoManager::instance()->setCloudDevice(host, cloud.value(QStringLiteral("sfu")).toString(), deviceId);
 
     const QString linkName = QStringLiteral("Aircast %1 (cloud)").arg(host);
     _removeLinkConfigurationNamed(linkName);

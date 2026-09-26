@@ -16,6 +16,8 @@
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "UDPLink.h"
+#include "VideoCloudFailover.h"
+#include "VideoManager.h"
 #include "VideoSettings.h"
 
 #include <QtCore/QJsonArray>
@@ -189,6 +191,7 @@ void AircastDeviceSetupTest::_aDeviceWithACloudAccountAlsoGetsTheCloudLink()
     FakeAircastd device;
     device.cloud = QJsonObject{{QStringLiteral("api"), QStringLiteral("https://api.dev.aircast.one")},
                                {QStringLiteral("deviceId"), QStringLiteral("d-42")},
+                               {QStringLiteral("sfu"), QStringLiteral("https://sfu.dev.aircast.one")},
                                {QStringLiteral("configured"), true}};
     device.setDevice({QStringLiteral("cam1")}, {QStringLiteral("udps:0.0.0.0:14550")});
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression(QStringLiteral("Aircast cloud link")));
@@ -209,6 +212,9 @@ void AircastDeviceSetupTest::_aDeviceWithACloudAccountAlsoGetsTheCloudLink()
     QCOMPARE(cloudConfig->relayUrl(), QUrl(QStringLiteral("wss://api.dev.aircast.one/v1/mavlink/web/d-42/ws")));
     QVERIFY(cloudConfig->isAutoConnect());
     QCOMPARE(AircastAccount::instance()->apiBase(), QStringLiteral("https://api.dev.aircast.one"));
+    QCOMPARE(VideoCloudFailover::cloudUrlFor(VideoManager::instance()->cloudFailover()->device(),
+                                             QStringLiteral("rtsp://127.0.0.1:8554/cam1")),
+             QStringLiteral("https://sfu.dev.aircast.one/api/v1/whep/d-42/cam1"));
 
     _removeAircastLinkConfigs();
 }

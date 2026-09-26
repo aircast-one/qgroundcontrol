@@ -1,5 +1,9 @@
 #pragma once
 
+#include <functional>
+
+#include <QtCore/QDateTime>
+#include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QString>
@@ -48,6 +52,9 @@ public:
 
     QString token(const QString& apiBase) const;
 
+    using ViewTokenCallback = std::function<void(const QString& token)>;
+    void viewToken(const QString& deviceId, QObject* context, ViewTokenCallback done);
+
     Q_INVOKABLE void signIn();
     Q_INVOKABLE void cancelSignIn();
     Q_INVOKABLE void signOut();
@@ -68,6 +75,14 @@ private:
     void _setStatus(const QString& status);
     void _finish(const QString& status);
     static QString _settingsKey(const QString& apiBase);
+    void _exchangeForViewToken(const QString& deviceId, const QString& firstPartyToken, QObject* context,
+                               ViewTokenCallback done);
+
+    struct CachedToken
+    {
+        QString token;
+        QDateTime expiresAt;
+    };
 
     QNetworkAccessManager* _network = nullptr;
     QTimer* _pollTimer = nullptr;
@@ -76,4 +91,5 @@ private:
     QString _userCode;
     QString _verificationUrl;
     QString _status;
+    QHash<QString, CachedToken> _viewTokens;
 };

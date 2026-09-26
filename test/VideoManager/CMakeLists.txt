@@ -10,7 +10,10 @@ target_sources(${CMAKE_PROJECT_NAME}
         VideoManagerInitTest.h
         VideoCameraSwitchTest.cc
         VideoCameraSwitchTest.h
+        VideoCloudFailoverTest.cc
+        VideoCloudFailoverTest.h
 )
 
 add_qgc_test(VideoManagerInitTest LABELS Unit)
 add_qgc_test(VideoCameraSwitchTest LABELS Unit)
+add_qgc_test(VideoCloudFailoverTest LABELS Unit)

@@ -9,9 +9,11 @@
 #include "QGCLoggingCategory.h"
 #include "QGCVideoStreamInfo.h"
 #include "SettingsManager.h"
+#include "AircastAccount.h"
 #include "SubtitleWriter.h"
 #include "Vehicle.h"
 #include "VehicleLinkManager.h"
+#include "VideoCloudFailover.h"
 #include "VideoReceiver.h"
 #include "VideoSettings.h"
 #ifndef QGC_HEADLESS_CORE
@@ -32,6 +34,8 @@
 #include <QtCore/QRunnable>
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
 #ifndef QGC_HEADLESS_CORE
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
@@ -63,6 +67,30 @@ VideoManager::VideoManager(QObject *parent)
     qCDebug(VideoManagerLog) << this;
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
+
+    _probeNetwork = new QNetworkAccessManager(this);
+    _cloudFailover = new VideoCloudFailover(
+        [](const QString &deviceId, QObject *context, VideoCloudFailover::TokenCallback done) {
+            AircastAccount::instance()->viewToken(deviceId, context, std::move(done));
+        },
+        [this](const QString &host, QObject *context, std::function<void(bool)> done) {
+            QNetworkRequest request(QUrl(QStringLiteral("http://%1/healthz").arg(host)));
+            request.setTransferTimeout(3000);
+            QNetworkReply *reply = _probeNetwork->get(request);
+            (void) connect(reply, &QNetworkReply::finished, context, [reply, done]() {
+                reply->deleteLater();
+                done(reply->error() == QNetworkReply::NoError);
+            });
+        },
+        [this](VideoReceiver *receiver) { _restartVideo(receiver); },
+        VideoCloudFailover::Timing{}, this);
+    (void) connect(_cloudFailover, &VideoCloudFailover::switched, this, [](const QString &receiverName, bool toCloud) {
+        if (receiverName != QLatin1String(kMainReceiverName)) {
+            return;
+        }
+        QGC::showAppMessage(toCloud ? tr("Video can't reach the device directly - playing the cloud copy.")
+                                    : tr("Video is back on the direct stream from the device."));
+    });
 
     if (VideoBackend::needsAsyncInit()) {
         _backendDisabledForTests = VideoBackend::disabledForUnitTests();
@@ -362,6 +390,11 @@ void VideoManager::_createVideoReceivers()
     }
 
     _rebindWidgets();
+}
+
+void VideoManager::setCloudDevice(const QString &host, const QString &sfu, const QString &deviceId)
+{
+    _cloudFailover->setDevice(VideoCloudFailover::Device{host, sfu, deviceId});
 }
 
 void VideoManager::cleanup()
@@ -1354,6 +1387,9 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver)
 
     // Register before any setup so re-entry is blocked at every point below; error paths remove it.
     _videoReceivers.append(receiver);
+    if (!receiver->isThermal()) {
+        _cloudFailover->watch(receiver);
+    }
 #else
 void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window)
 {
@@ -1364,6 +1400,9 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     // Register before any setup so re-entry is blocked at every point below; error paths remove it.
     _videoReceivers.append(receiver);
+    if (!receiver->isThermal()) {
+        _cloudFailover->watch(receiver);
+    }
 
     // The thermal stream keeps its fixed widget; all camera receivers get their widget
     // assigned by role (main view vs tile) in _rebindWidgets().

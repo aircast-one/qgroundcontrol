@@ -31,6 +31,7 @@ public:
 #endif
     QString name() const { return _name; }
     QString uri() const { return _uri; }
+    QString authToken() const { return _authToken; }
     bool started() const { return _started; }
     bool lowLatency() const { return _lowLatency; }
     int rtpJitterLatencyMs() const { return _rtpJitterLatencyMs; }
@@ -47,6 +48,7 @@ public:
 #endif
     void setName(const QString &name) { if (name != _name) { _name = name; emit nameChanged(_name); } }
     void setUri(const QString &uri) { if (uri != _uri) { _uri = uri; emit uriChanged(_uri); } }
+    void setAuthToken(const QString &token) { _authToken = token; }
     void setStarted(bool started) { if (started != _started) { _started = started; emit startedChanged(_started); } }
     void setLowLatency(bool lowLatency) { if (lowLatency != _lowLatency) { _lowLatency = lowLatency; emit lowLatencyChanged(_lowLatency); } }
     void setRtpJitterLatencyMs(int ms) { if (ms != _rtpJitterLatencyMs) { _rtpJitterLatencyMs = ms; emit rtpJitterLatencyMsChanged(_rtpJitterLatencyMs); } }
@@ -126,6 +128,7 @@ protected:
     QGCVideoStreamInfo *_videoStreamInfo = nullptr;
     QString _name;
     QString _uri;
+    QString _authToken;
     bool _started = false;
     // Flipped on streaming threads, read cross-thread (e.g. tee probe logging).
     std::atomic<bool> _decoding = false;

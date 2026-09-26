@@ -24,7 +24,9 @@
 
 class QQuickWindow;
 class QQuickItem;
+class QNetworkAccessManager;
 class SubtitleWriter;
+class VideoCloudFailover;
 class Vehicle;
 class VideoReceiver;
 class VideoSettings;
@@ -109,6 +111,8 @@ public:
     void startVideoBackendInit();
     bool waitForVideoBackendReady(std::chrono::milliseconds timeout = std::chrono::minutes(1));
     void cleanup();
+    void setCloudDevice(const QString &host, const QString &sfu, const QString &deviceId);
+    VideoCloudFailover *cloudFailover() const { return _cloudFailover; }
     bool autoStreamConfigured() const;
     bool decoding() const { return _decoding; }
     bool fullScreen() const { return _fullScreen; }
@@ -221,6 +225,8 @@ private:
 #endif
     QHash<QString, ReceiverState> _receiverState;
     SubtitleWriter *_subtitleWriter = nullptr;
+    QNetworkAccessManager *_probeNetwork = nullptr;
+    VideoCloudFailover *_cloudFailover = nullptr;
     VideoSettings *_videoSettings = nullptr;
 #ifndef QGC_HEADLESS_CORE
     QQuickWindow *_mainWindow = nullptr;
