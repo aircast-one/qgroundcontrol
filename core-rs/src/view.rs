@@ -419,6 +419,7 @@ mod deps_cover_reads {
             ("hostnotice", include_str!("hostnotice.rs")),
             ("hub", include_str!("hub.rs")),
             ("inspector", include_str!("inspector.rs")),
+            ("itemshape", include_str!("itemshape.rs")),
             ("instrumentgroups", include_str!("instrumentgroups.rs")),
             ("instruments", include_str!("instruments.rs")),
         ("itemcamera", include_str!("itemcamera.rs")),

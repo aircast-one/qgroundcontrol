@@ -44,7 +44,7 @@ fn count(backend: &dyn Backend, shape: Shape) -> usize {
     object(&backend.get(shape.list())).get("elements").and_then(Value::as_array).map_or(0, Vec::len)
 }
 
-fn point(value: Option<&Value>) -> Option<(f64, f64)> {
+pub(crate) fn point(value: Option<&Value>) -> Option<(f64, f64)> {
     let value = value?;
     let latitude = value.get("latitude")?.as_f64().filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))?;
     let longitude = value.get("longitude")?.as_f64().filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))?;

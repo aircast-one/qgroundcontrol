@@ -51,6 +51,7 @@ pub mod guidedexec;
 pub mod hostnotice;
 pub mod hub;
 pub mod inspector;
+pub mod itemshape;
 pub mod itemcamera;
 pub mod joystick;
 pub mod instrumentgroups;
