@@ -11,6 +11,14 @@ fn configured_names(backend: &dyn Backend) -> Option<Vec<String>> {
     Some(elements.iter().map(|e| e.get("name").and_then(Value::as_str).unwrap_or("").to_string()).collect())
 }
 
+pub(crate) fn armed_vehicle_links(backend: &dyn Backend) -> Vec<String> {
+    let vehicle = object(&backend.get_fields("vehicle", "armed"));
+    match crate::read::flag(&vehicle, "armed") {
+        true => object(&backend.get_fields("vehicle.vehicleLinkManager", "linkNames")).get("linkNames").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
+        false => Vec::new(),
+    }
+}
+
 fn removal_refusal(index: Option<usize>, expected: Option<&str>, names: Option<&[String]>, armed_on: &[String]) -> Option<(&'static str, String)> {
     let Some(index) = index else {
         return Some(("malformed", format!("Name the link as @{CONFIGURATIONS}.<index>.")));
@@ -33,11 +41,7 @@ pub fn remove_configuration(backend: &dyn Backend, path: &str, args: &str) -> Va
     let index = parsed.get(0).and_then(Value::as_str).and_then(|r| r.strip_prefix('@')?.strip_prefix(CONFIGURATIONS)?.strip_prefix('.')?.parse::<usize>().ok());
     let expected = parsed.get(1).and_then(Value::as_str);
     let names = configured_names(backend);
-    let vehicle = object(&backend.get_fields("vehicle", "armed"));
-    let armed_on: Vec<String> = match crate::read::flag(&vehicle, "armed") {
-        true => object(&backend.get_fields("vehicle.vehicleLinkManager", "linkNames")).get("linkNames").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
-        false => Vec::new(),
-    };
+    let armed_on = armed_vehicle_links(backend);
     if let Some((token, reason)) = removal_refusal(index, expected, names.as_deref(), &armed_on) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }

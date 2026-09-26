@@ -183,6 +183,34 @@ pub fn edit(backend: &dyn Backend, path: &str, value: &str) -> Value {
     json!({ "ok": took, "result": took, "refusal": Value::Null, "errorField": Value::Null, "reason": match took { true => Value::Null, false => json!("The link did not keep that setting.") } })
 }
 
+pub fn disconnect_target(path: &str) -> Option<usize> {
+    path.strip_prefix(LINKS)?.strip_prefix('.')?.strip_suffix(".link.disconnect")?.parse().ok()
+}
+
+fn disconnect_refusal(element: Option<&Value>, armed_on: &[String]) -> Option<(&'static str, String)> {
+    let Some(element) = element else {
+        return Some(("noSuchLink", "There is no link at that position.".to_string()));
+    };
+    let name = element.get("name").and_then(Value::as_str).unwrap_or("");
+    match () {
+        _ if !connected(element) => Some(("notConnected", format!("{name} is not connected."))),
+        _ if armed_on.iter().any(|n| n == name) => Some(("carriesArmedVehicle", format!("{name} is carrying an armed vehicle. Disarm before disconnecting it."))),
+        _ => None,
+    }
+}
+
+pub fn disconnect(backend: &dyn Backend, path: &str) -> Value {
+    let Some(index) = disconnect_target(path) else {
+        return json!({ "ok": false, "refusal": "malformed", "reason": "That is not a link to disconnect." });
+    };
+    let links = configurations(backend).unwrap_or_default();
+    if let Some((token, reason)) = disconnect_refusal(links.get(index), &crate::linkremove::armed_vehicle_links(backend)) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The link was not asked to disconnect.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,5 +321,20 @@ mod tests {
         assert_eq!(written["result"], true);
         assert_eq!(manager.0.borrow()[1]["host"], "10.0.0.5");
         assert_eq!(edit(&manager, "links.linkConfigurations.5.port", r#"{"value":5760}"#)["refusal"], "noSuchLink");
+    }
+
+    #[test]
+    fn a_link_is_not_disconnected_from_under_an_armed_vehicle() {
+        let live = json!({ "name": "Radio", "children": ["link"] });
+        assert_eq!(disconnect_refusal(Some(&live), &[]), None);
+        assert_eq!(
+            disconnect_refusal(Some(&live), &["Radio".to_string()]).map(|r| r.0),
+            Some("carriesArmedVehicle"),
+            "the same hazard removeConfiguration has, one step earlier: the vehicle loses the ground station it is armed under"
+        );
+        assert_eq!(disconnect_refusal(Some(&json!({ "name": "Radio", "children": [] })), &[]).map(|r| r.0), Some("notConnected"));
+        assert_eq!(disconnect_refusal(None, &[]).map(|r| r.0), Some("noSuchLink"));
+        assert_eq!(disconnect_target("links.linkConfigurations.3.link.disconnect"), Some(3));
+        assert_eq!(disconnect_target("links.linkConfigurations.3.port"), None);
     }
 }
