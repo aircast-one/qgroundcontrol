@@ -193,6 +193,8 @@ pub enum PlanAction {
     SaveCurrent,
     SaveFile,
     SaveKml,
+    Open,
+    Clear,
 }
 
 fn folder_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
@@ -201,6 +203,23 @@ fn folder_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
     };
     match std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty()) {
         Some(folder) if !folder.is_dir() => Some(("folderMissing", format!("{} is not a folder that exists.", folder.display()))),
+        _ => None,
+    }
+}
+
+fn open_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
+    let Some(path) = path.filter(|p| !p.trim().is_empty()) else {
+        return Some(("noFile", "Choose a plan file to open.".to_string()));
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return Some(("unreadable", format!("{path} could not be read.")));
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let suffix = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
+    match suffix {
+        "waypoints" | "txt" if !matches!(text.lines().next(), Some("QGC WPL 110" | "QGC WPL 120")) => Some(("notAPlan", "A waypoints file starts with QGC WPL 110 or 120, and this one does not.".to_string())),
+        "waypoints" | "txt" => None,
+        _ if serde_json::from_str::<Value>(&text).is_err() => Some(("notAPlan", "This file is not a plan: it is not JSON.".to_string())),
         _ => None,
     }
 }
@@ -222,6 +241,8 @@ fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<
                 PlanAction::SaveCurrent => view["file"].is_null().then(|| ("noFile", "This plan has not been saved to a file yet.".to_string())),
                 _ => folder_refusal(path),
             }),
+        PlanAction::Open => (!allowed("open")).then(|| ("busy", "Wait for the sync to finish before opening a plan.".to_string())).or_else(|| open_refusal(path)),
+        PlanAction::Clear => (!allowed("newPlan")).then(|| ("busy", "Wait for the sync to finish before clearing the plan.".to_string())),
         PlanAction::SaveKml => (!allowed("exportKml"))
             .then(|| ("nothingToExport", "There are no mission items to export, or a sync is running.".to_string()))
             .or_else(|| folder_refusal(path)),
@@ -230,12 +251,12 @@ fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<
 
 pub fn plan_action(backend: &dyn Backend, action: PlanAction, path: &str, args: &str) -> Value {
     let file = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string));
-    let returns = matches!(action, PlanAction::SaveCurrent | PlanAction::SaveFile);
+    let returns = matches!(action, PlanAction::SaveCurrent | PlanAction::SaveFile | PlanAction::Open);
     if let Some((token, reason)) = plan_refusal(action, &plan_view(backend, &[]), file.as_deref()) {
         return json!({ "ok": false, "result": returns.then_some(false), "refusal": token, "reason": reason });
     }
     let forwarded = match (action, &file) {
-        (PlanAction::SaveFile | PlanAction::SaveKml, Some(file)) => json!([file]).to_string(),
+        (PlanAction::SaveFile | PlanAction::SaveKml | PlanAction::Open, Some(file)) => json!([file]).to_string(),
         _ => "[]".to_string(),
     };
     let answer = object(&backend.invoke(path, &forwarded));
@@ -552,7 +573,7 @@ mod tests {
             "sync": { "state": sync, "refusal": if sync == "ready" { Value::Null } else { json!("No vehicle is connected.") } },
             "readiness": { "ready": ready, "reason": if ready { Value::Null } else { json!("Waiting for terrain heights before the plan can be saved or sent.") } },
             "upload": { "state": upload, "refusal": if upload == 0 { Value::Null } else { json!("No vehicle is connected, so there is nowhere to send this plan.") } },
-            "actions": { "save": true, "exportKml": true },
+            "actions": { "save": true, "exportKml": true, "open": true, "newPlan": true },
             "file": file,
         });
         let token = |action, v: &Value, path: Option<&str>| plan_refusal(action, v, path).map(|(t, _)| t);
@@ -575,5 +596,25 @@ mod tests {
         assert_eq!(token(PlanAction::SaveFile, &good, here.to_str()), None);
         assert_eq!(token(PlanAction::SaveKml, &good, Some("")), Some("noFile"));
         assert_eq!(token(PlanAction::SaveFile, &view("ready", false, 0, Value::Null), here.to_str()), Some("notReady"));
+
+        let folder = std::env::temp_dir().join(format!("qgc-plan-open-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let write = |name: &str, body: &str| {
+            let file = folder.join(name);
+            std::fs::write(&file, body).unwrap();
+            file.to_string_lossy().into_owned()
+        };
+        let (plan, waypoints, junk, headerless) = (write("a.plan", r#"{"fileType":"Plan"}"#), write("b.waypoints", "QGC WPL 110\n"), write("c.plan", "not json"), write("d.txt", "0\t1\t0\n"));
+        assert_eq!(token(PlanAction::Open, &good, Some(&plan)), None);
+        assert_eq!(token(PlanAction::Open, &good, Some(&waypoints)), None);
+        assert_eq!(token(PlanAction::Open, &good, Some(&junk)), Some("notAPlan"), "loadFromFile reports a bad file through showAppMessage, which no native head receives, and clears the current plan file on the way out");
+        assert_eq!(token(PlanAction::Open, &good, Some(&headerless)), Some("notAPlan"));
+        assert_eq!(token(PlanAction::Open, &good, Some(&write("e.waypoints", "QGC WPL 130\r\n"))), Some("notAPlan"), "_loadTextMissionFile knows only versions 110 and 120");
+        assert_eq!(token(PlanAction::Open, &good, Some(&write("f.waypoints", "QGC WPL 120\r\n0\t1\n"))), None, "a CRLF file reads the same as QTextStream::readLine sees it");
+        assert_eq!(token(PlanAction::Open, &good, Some("/no/such/file.plan")), Some("unreadable"));
+        let syncing = json!({ "actions": { "open": false, "newPlan": false } });
+        assert_eq!(token(PlanAction::Open, &syncing, Some(&plan)), Some("busy"));
+        assert_eq!(token(PlanAction::Clear, &syncing, None), Some("busy"), "removeAll in the middle of a sync pulls the items out from under the transfer");
+        assert_eq!(token(PlanAction::Clear, &json!({ "actions": { "newPlan": true } }), None), None);
     }
 }
