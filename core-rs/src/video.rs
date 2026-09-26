@@ -51,7 +51,7 @@ const VIDEO_MODE: i64 = 1;
 const SURVEY_MODE: i64 = 2;
 const IDLE_CLOCK: &str = "00:00:00";
 
-fn slot_flag(backend: &dyn Backend, path: &str, slot: usize) -> bool {
+pub(crate) fn slot_flag(backend: &dyn Backend, path: &str, slot: usize) -> bool {
     crate::read::result_flag(&backend.invoke(path, &json!([slot]).to_string()))
 }
 

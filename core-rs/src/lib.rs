@@ -125,6 +125,7 @@ pub mod rtcm;
 pub mod vibration;
 pub mod vehicles;
 pub mod video;
+pub mod videosource;
 pub mod videostate;
 pub mod vehiclefacts;
 pub mod operatorcontrol;

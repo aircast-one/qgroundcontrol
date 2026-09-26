@@ -489,6 +489,7 @@ mod deps_cover_reads {
             ("vehicles", include_str!("vehicles.rs")),
             ("vibration", include_str!("vibration.rs")),
             ("video", include_str!("video.rs")),
+            ("videosource", include_str!("videosource.rs")),
             ("videostate", include_str!("videostate.rs")),
             ("view", include_str!("view.rs")),
             ("warnings", include_str!("warnings.rs")),
