@@ -57,6 +57,13 @@ fn shown(reading: &Reading) -> Option<String> {
     })
 }
 
+// A receiver that has not computed a dilution sends UINT16_MAX, which GPS_RAW_INT's scale makes
+// 655.35, and some send 0; neither is a precision anyone can act on. The Android head dropped a DOP
+// outside (0, 100) on its own, which the macOS head never did.
+fn dop_usable(name: &str, reading: &Reading) -> bool {
+    !matches!(name, "hdop" | "vdop") || reading.number.is_some_and(|d| d > 0.0 && d < 100.0)
+}
+
 fn rows(fact: &dyn Fn(&str) -> Option<Reading>) -> Vec<Value> {
     let position = match (fact("lat"), fact("lon")) {
         (Some(lat), Some(lon)) if !lat.unset && !lon.unset => vec![json!({ "label": "Position", "value": format!("{}, {}", lat.spelled, lon.spelled) })],
@@ -64,7 +71,11 @@ fn rows(fact: &dyn Fn(&str) -> Option<Reading>) -> Vec<Value> {
     };
     position
         .into_iter()
-        .chain(DETAIL.iter().filter_map(|(name, label)| Some(json!({ "label": label, "value": shown(&fact(name)?)? }))))
+        .chain(DETAIL.iter().filter_map(|(name, label)| {
+            let reading = fact(name)?;
+            dop_usable(name, &reading).then_some(())?;
+            Some(json!({ "label": label, "value": shown(&reading)? }))
+        }))
         .collect()
 }
 
@@ -129,6 +140,10 @@ mod tests {
         let labels: Vec<&str> = view["rows"].as_array().unwrap().iter().map(|r| r["label"].as_str().unwrap()).collect();
         assert_eq!(labels, ["Position", "Satellites", "HDOP", "VDOP", "MGRS"], "a course the vehicle has not reported is left out rather than drawn as –.– deg, the en-dash spelling the old --.-- list missed");
         assert_eq!(view["rows"][0]["value"], "47.3977420, 8.5456075");
+        let unknown_dop = Reading { spelled: "655.35".into(), units: String::new(), number: Some(655.35), unset: false };
+        assert!(!dop_usable("hdop", &unknown_dop), "UINT16_MAX scaled by GPS_RAW_INT is the receiver saying it has no dilution");
+        assert!(!dop_usable("vdop", &Reading { number: Some(0.0), ..unknown_dop.clone() }));
+        assert!(dop_usable("hdop", &Reading { number: Some(1.4), ..unknown_dop.clone() }) && dop_usable("count", &unknown_dop));
 
         let none = gps_view(&Gps(Vec::new()), &[]);
         assert_eq!((&none["available"], &none["satellites"], &none["rows"]), (&json!(false), &Value::Null, &json!([])));
