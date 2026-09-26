@@ -26,8 +26,6 @@ import one.aircast.android.bridge.Qgc
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
-import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcString
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -37,21 +35,12 @@ import androidx.compose.ui.Alignment
 import one.aircast.mapspike.optText
 
 
-internal fun firmwareSummary(
-    firmwareType: String,
-    major: Int,
-    minor: Int,
-    patch: Int,
-    versionType: String,
-): String {
-    val version = if (major < 0) "" else "$major.$minor.$patch"
-    val suffix = versionType.takeIf { it.isNotBlank() }
-    return listOfNotNull(
-        firmwareType.takeIf { it.isNotBlank() },
-        version.takeIf { it.isNotEmpty() },
-        suffix,
-    ).joinToString(" ")
-}
+internal data class FirmwareLine(val summary: String, val vehicleType: String)
+
+// view.firmware spells the line - "PX4 1.15.0 beta" - and knows that a major version of -1 is
+// Vehicle's versionNotSetValue rather than a version.
+internal fun firmwareLine(view: JSONObject?): FirmwareLine =
+    FirmwareLine(view?.optText("summary").orEmpty(), view?.optText("vehicleType").orEmpty())
 
 internal data class SetupComponent(
     val index: Int,
@@ -117,12 +106,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val setup = remember(setupJson) { setupReadiness(setupJson) }
     val hasVehicle = setup?.connected == true
     val isPx4 = isPx4(setup)
-    val major by qgcDouble("vehicle.firmwareMajorVersion", -1.0)
-    val minor by qgcDouble("vehicle.firmwareMinorVersion", 0.0)
-    val patch by qgcDouble("vehicle.firmwarePatchVersion", 0.0)
-    val versionType by qgcString("vehicle.firmwareVersionTypeString")
-    val vehicleType by qgcString("vehicle.vehicleTypeString")
-    val firmwareType by qgcString("vehicle.firmwareTypeString")
+    val firmwareJson by qgcPath(FIRMWARE)
+    val line = remember(firmwareJson) { firmwareLine(firmwareJson) }
+    val vehicleType = line.vehicleType
     var openComponent by remember { mutableStateOf<SetupComponent?>(null) }
     var parametersOpen by remember { mutableStateOf(false) }
 
@@ -209,13 +195,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    val firmware = firmwareSummary(
-        firmwareType,
-        major.toInt(),
-        minor.toInt(),
-        patch.toInt(),
-        versionType,
-    )
+    val firmware = line.summary
     val needSetup = components.filter { it.needsAttention }
 
     LazyColumn(modifier.fillMaxSize()) {

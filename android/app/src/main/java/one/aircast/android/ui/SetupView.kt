@@ -4,6 +4,7 @@ import org.json.JSONObject
 import one.aircast.mapspike.optText
 
 internal const val SETUP = "view.setup"
+internal const val FIRMWARE = "view.firmware"
 
 internal data class SetupPage(
     val name: String,

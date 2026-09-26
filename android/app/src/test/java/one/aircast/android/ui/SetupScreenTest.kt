@@ -7,37 +7,17 @@ import org.junit.Test
 
 class SetupScreenTest {
     @Test
-    fun `a released firmware reads as type and version`() {
-        assertEquals(
-            "QGCMAVLink.cc:362 maps FIRMWARE_VERSION_TYPE_OFFICIAL, and the default, to the EMPTY " +
-                "string - never the word Official. The head carried a case for that word, which " +
-                "nothing could reach, kept alive by this test asserting a value the producer " +
-                "cannot send",
-            "ArduPilot 4.5.7",
-            firmwareSummary("ArduPilot", 4, 5, 7, ""),
+    fun `the firmware line is the one the core spelled`() {
+        val line = firmwareLine(
+            JSONObject("""{"kind":"object","available":true,"summary":"PX4 Pro 1.15.0 beta","vehicleType":"Quadrotor"}"""),
         )
+        assertEquals(FirmwareLine("PX4 Pro 1.15.0 beta", "Quadrotor"), line)
     }
 
     @Test
-    fun `every version type the producer can send`() {
-        assertEquals("PX4 1.15.0 dev", firmwareSummary("PX4", 1, 15, 0, "dev"))
-        assertEquals("PX4 1.15.0 alpha", firmwareSummary("PX4", 1, 15, 0, "alpha"))
-        assertEquals("PX4 1.15.0 rc", firmwareSummary("PX4", 1, 15, 0, "rc"))
-    }
-
-    @Test
-    fun `a prerelease keeps its version type`() {
-        assertEquals("PX4 1.15.0 beta", firmwareSummary("PX4", 1, 15, 0, "beta"))
-    }
-
-    @Test
-    fun `an unknown version falls back to the firmware name`() {
-        assertEquals("ArduPilot", firmwareSummary("ArduPilot", -1, 0, 0, ""))
-    }
-
-    @Test
-    fun `nothing known reads as empty rather than stray separators`() {
-        assertEquals("", firmwareSummary("", -1, 0, 0, ""))
+    fun `no vehicle reads as empty rather than stray separators`() {
+        assertEquals(FirmwareLine("", ""), firmwareLine(null))
+        assertEquals(FirmwareLine("", ""), firmwareLine(JSONObject("""{"kind":"object","available":false,"summary":"","vehicleType":""}""")))
     }
 
     @Test
