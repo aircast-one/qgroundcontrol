@@ -11,15 +11,21 @@ Item {
     id: _root
 
     readonly property bool _isMac:      Qt.platform.os === "osx"
+    readonly property bool _hasWindow:  Qt.platform.pluginName !== "offscreen"
     readonly property bool _fullScreen: mainWindow.visibility === Window.FullScreen
     readonly property real leftInset:   _isMac && !_fullScreen ? macButtonArea.width : 0
     readonly property real rightInset:  !_isMac && !_fullScreen ? systemButtonRow.width : 0
 
     function excludeFromDrag(item) {
-        windowAgent.setHitTestVisible(item, true)
+        if (_hasWindow) {
+            windowAgent.setHitTestVisible(item, true)
+        }
     }
 
     Component.onCompleted: {
+        if (!_hasWindow) {
+            return
+        }
         windowAgent.setup(mainWindow)
         windowAgent.setTitleBar(dragArea)
         if (_isMac) {
