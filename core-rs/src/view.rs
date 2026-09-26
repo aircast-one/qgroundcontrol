@@ -433,6 +433,7 @@ mod deps_cover_reads {
             ("links", include_str!("links.rs")),
             ("linkconnect", include_str!("linkconnect.rs")),
             ("linkremove", include_str!("linkremove.rs")),
+            ("mapclick", include_str!("mapclick.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("paramnames", include_str!("paramnames.rs")),
             ("logs", include_str!("logs.rs")),
