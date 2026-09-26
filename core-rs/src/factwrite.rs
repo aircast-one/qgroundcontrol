@@ -73,7 +73,11 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let path = renamed.as_deref().unwrap_or(path);
     let fact = object(&backend.get(path));
     if fact.get("kind").and_then(Value::as_str) != Some("fact") {
-        return object(&backend.set(path, value));
+        let mut answered = object(&backend.set(path, value));
+        if !flag(&answered, "ok") && answered.get("reason").and_then(Value::as_str).is_none_or(str::is_empty) {
+            answered = json!({ "ok": false, "result": false, "reason": format!("{path} did not take the write.") });
+        }
+        return answered;
     }
     let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
     let control = decode(&fact, path);

@@ -95,9 +95,12 @@ const SELECT_ITEM: &str = "plan.missionController.setCurrentPlanViewSeqNum";
 const UNDO_TRACKING: &str = "plan.undoTracking";
 const INSPECTOR_SELECTED: &str = "mavlinkInspector.activeSystem.selected";
 const REMOVE_ITEM: &str = "plan.missionController.removeVisualItem";
+const UNIT_SYSTEM: &str = "settings.unitsSettings.setUnitSystem";
+const CONSOLE_COMMAND: &str = "mavlinkConsole.sendCommand";
+const BREACH_ALTITUDE: &str = "plan.geoFenceController.breachReturnAltitude";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, CREATE_AND_CONNECT, CREATE_SERIAL, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM, REMOVE_ITEM];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, CREATE_AND_CONNECT, CREATE_SERIAL, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM, REMOVE_ITEM, UNIT_SYSTEM, CONSOLE_COMMAND];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path) || crate::linkconnect::disconnect_target(path).is_some() || crate::fenceedit::owns_member_action(path)
@@ -106,7 +109,7 @@ pub fn owns(path: &str) -> bool {
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
-pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED];
+pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
 
 pub fn owns_write(path: &str) -> bool {
     OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path)
@@ -116,6 +119,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     match path {
         ZOOM => zoom(backend, value),
         TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
+        BREACH_ALTITUDE => crate::factwrite::write(backend, path, value),
         INSPECTOR_SELECTED => crate::inspector::write_selected(backend, value),
         _ if crate::logs::selection_index(path).is_some() => crate::logs::write_selected(backend, path, value),
         _ if crate::factwrite::owns(path) => crate::factwrite::write(backend, path, value),
@@ -193,6 +197,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         MESSAGE_INTERVAL => crate::inspector::set_message_interval(backend, path, args),
         INSERT_PATTERN => insert_pattern(backend, path, args, false),
         INSERT_PATTERN_FILE => insert_pattern(backend, path, args, true),
+        UNIT_SYSTEM => set_unit_system(backend, path, args),
+        CONSOLE_COMMAND => send_console(backend, path, args),
         REMOVE_ITEM => remove(backend, args),
         SELECT_ITEM => crate::planselect::select(backend, path, args),
         ACKNOWLEDGE => crate::hostnotice::acknowledge(backend, path, args),
@@ -629,6 +635,27 @@ fn insert_pattern(backend: &dyn Backend, path: &str, args: &str, from_file: bool
     })
 }
 
+const UNIT_SYSTEMS: std::ops::RangeInclusive<i64> = 0..=2;
+
+fn set_unit_system(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let Some(system) = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_i64()).filter(|s| UNIT_SYSTEMS.contains(s)) else {
+        return json!({ "ok": false, "refusal": "unknownSystem", "reason": "A unit system is 0 metric, 1 imperial or 2 custom." });
+    };
+    let dispatched = crate::read::flag(&object(&backend.invoke(path, &json!([system]).to_string())), "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The unit system was not changed.") } })
+}
+
+fn send_console(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let Some(command) = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)) else {
+        return json!({ "ok": false, "refusal": "malformed", "reason": "A console command is text." });
+    };
+    if !crate::read::flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable") {
+        return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected, so nothing will read the command." });
+    }
+    let dispatched = crate::read::flag(&object(&backend.invoke(path, &json!([command]).to_string())), "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The command was not sent.") } })
+}
+
 fn item_count(backend: &dyn Backend) -> Option<i64> {
     serde_json::from_str::<Value>(&backend.get("plan.missionController.visualItems.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64))
 }
@@ -829,6 +856,30 @@ mod tests {
         assert_eq!(shape_refusal("Survey", &empty).map(|r| r.0), Some("noShape"));
         assert_eq!(shape_refusal("Survey", "/no/such/file.kml").map(|r| r.0), Some("unreadable"));
         assert_eq!(shape_refusal("Survey", &write("area.gpx", "")).map(|r| r.0), Some("notAShape"));
+    }
+
+    #[test]
+    fn a_unit_system_outside_the_three_is_refused_before_it_switches_custom_units_off() {
+        struct Settings(std::cell::RefCell<Vec<String>>);
+        impl Backend for Settings {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "activeVehicleAvailable": false }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, a: &str) -> String {
+                self.0.borrow_mut().push(a.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let settings = Settings(std::cell::RefCell::new(Vec::new()));
+        assert_eq!(
+            run(&settings, UNIT_SYSTEM, "[5]")["refusal"],
+            "unknownSystem",
+            "UnitsSettings::setUnitSystem sets customUnits from the argument before it range-checks it, so 5 switched custom units off and then returned, leaving a unit mode nobody chose"
+        );
+        assert!(settings.0.borrow().is_empty());
+        assert_eq!(run(&settings, UNIT_SYSTEM, "[1]")["ok"], true);
+        assert_eq!(run(&settings, CONSOLE_COMMAND, r#"["ver all"]"#)["refusal"], "noVehicle");
     }
 
     #[test]
