@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.bridge.settingControl
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,8 +74,10 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
     val linksJson by qgcPath("view.links")
     val forwarding = linksJson?.optBoolean("supportForwarding") == true
     var confirming by remember { mutableStateOf(false) }
-    val json by qgcPath(HOST_FACT)
-    val host: Fact? = json?.let { Qgc.factAt(HOST_FACT, it) }
+    // view.control decodes the setting - its bounds, whether it is read-only - with the same rules
+    // the core applies when the row writes it back.
+    val json by qgcPath(settingControl(HOST_FACT))
+    val host: Fact? = remember(json) { json?.takeIf { it.optText("kind") == "object" }?.let(::factFromControl) }
     var verdict by remember { mutableStateOf<SupportHostVerdict?>(null) }
     val typed = host?.valueString.orEmpty()
 
