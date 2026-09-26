@@ -88,6 +88,76 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Next,
+    Cancel,
+    Skip,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Calibration {
+    connected: bool,
+    calibrating: bool,
+    next_enabled: bool,
+    cancel_enabled: bool,
+    channels: i64,
+    minimum: i64,
+}
+
+fn calibration(cal: &Value) -> Calibration {
+    Calibration {
+        connected: cal.get("kind").and_then(Value::as_str) == Some("object"),
+        calibrating: truthy(cal, "calibrating") || truthy(cal, "cancelEnabled"),
+        next_enabled: truthy(cal, "nextEnabled"),
+        cancel_enabled: truthy(cal, "cancelEnabled"),
+        channels: integer(cal, "channelCount").unwrap_or(0),
+        minimum: integer(cal, "minChannelCount").unwrap_or(0),
+    }
+}
+
+fn refusal(action: Action, state: Calibration) -> Option<(&'static str, String)> {
+    match action {
+        Action::Skip => Some(("unsupported", "This calibration has no step that can be skipped.".to_string())),
+        _ if !state.connected => Some(("noVehicle", "No vehicle is connected.".to_string())),
+        Action::Cancel if !state.cancel_enabled => Some(("idle", "No radio calibration is running.".to_string())),
+        Action::Cancel => None,
+        Action::Next if !state.calibrating && state.channels < state.minimum => Some(("tooFewChannels", format!("Detected {} channels. To operate the vehicle you need at least {}.", state.channels, state.minimum))),
+        Action::Next if !state.next_enabled => Some(("waiting", "Follow the instruction on screen before continuing.".to_string())),
+        Action::Next => None,
+    }
+}
+
+pub fn act(backend: &dyn Backend, action: Action, path: &str) -> Value {
+    if let Some((token, reason)) = refusal(action, calibration(&object(&backend.get("radioCal")))) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let dispatched = crate::read::flag(&object(&backend.invoke(path, "[]")), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "reason": match dispatched { true => Value::Null, false => json!("The radio calibration did not take the request.") },
+    })
+}
+
+pub fn write_transmitter_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64());
+    let Some(mode) = asked.filter(|m| m.fract() == 0.0 && (1.0..=4.0).contains(m)).map(|m| m as i64) else {
+        return json!({ "ok": false, "result": false, "refusal": "outOfRange", "reason": "A transmitter mode is 1, 2, 3 or 4." });
+    };
+    if calibration(&object(&backend.get("radioCal"))).calibrating {
+        return json!({ "ok": false, "result": false, "refusal": "calibrating", "reason": "Finish or cancel the calibration before changing the transmitter mode." });
+    }
+    let answered = crate::read::flag(&object(&backend.set(path, &json!({ "value": mode }).to_string())), "ok");
+    json!({
+        "ok": answered,
+        "result": answered,
+        "refusal": Value::Null,
+        "mode": mode,
+        "reason": match answered { true => Value::Null, false => json!("The radio calibration did not take the transmitter mode.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +229,49 @@ mod tests {
         assert_eq!(none["connected"], false);
         assert_eq!(none["summary"], "No vehicle is connected.");
         assert_eq!(none["sticks"].as_array().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn a_radio_button_that_would_do_nothing_says_why() {
+        let ready = Calibration { connected: true, calibrating: false, next_enabled: true, cancel_enabled: false, channels: 8, minimum: 5 };
+        let token = |action, state| refusal(action, state).map(|(t, _)| t);
+        assert_eq!(token(Action::Next, ready), None);
+        assert_eq!(token(Action::Next, Calibration { channels: 4, ..ready }), Some("tooFewChannels"), "nextButtonClicked reports this through showAppMessage, which no native head receives");
+        assert!(refusal(Action::Next, Calibration { channels: 4, ..ready }).unwrap().1.contains("at least 5"));
+        assert_eq!(token(Action::Next, Calibration { calibrating: true, channels: 4, next_enabled: true, ..ready }), None, "the channel count gates only the start, as _currentStep == -1 does");
+        assert_eq!(token(Action::Next, Calibration { calibrating: true, next_enabled: false, ..ready }), Some("waiting"), "a step with no nextButtonFn ignores the click");
+        assert_eq!(token(Action::Cancel, ready), Some("idle"));
+        assert_eq!(token(Action::Cancel, Calibration { calibrating: true, cancel_enabled: true, ..ready }), None);
+        assert_eq!(token(Action::Next, Calibration { connected: false, ..ready }), Some("noVehicle"));
+        assert_eq!(token(Action::Skip, Calibration { calibrating: true, cancel_enabled: true, ..ready }), Some("unsupported"), "RemoteControlCalibrationController has no skipButtonClicked since the upstream merge, so a head invoking it reaches a method that does not exist");
+    }
+
+    #[test]
+    fn a_transmitter_mode_outside_one_to_four_is_refused_rather_than_turned_into_two() {
+        use std::cell::RefCell;
+        struct Recording(Value, RefCell<Vec<String>>);
+        impl Backend for Recording {
+            fn get(&self, _p: &str) -> String { self.0.to_string() }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, v: &str) -> String {
+                self.1.borrow_mut().push(v.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let idle = Recording(json!({ "kind": "object", "cancelEnabled": false }), RefCell::new(Vec::new()));
+        [json!({ "value": 5 }), json!({ "value": 0 }), json!({ "value": 2.5 }), json!({ "value": "2" })].iter().for_each(|v| {
+            assert_eq!(write_transmitter_mode(&idle, "radioCal.transmitterMode", &v.to_string())["refusal"], "outOfRange", "setTransmitterMode logs a warning and stores 2 for {v}, so the head's stick diagram changes to a mode nobody chose");
+        });
+        assert!(idle.1.borrow().is_empty());
+        let taken = write_transmitter_mode(&idle, "radioCal.transmitterMode", r#"{"value":1}"#);
+        assert_eq!((&taken["ok"], &taken["result"], &taken["mode"]), (&json!(true), &json!(true), &json!(1)));
+        assert_eq!(idle.1.borrow().as_slice(), &[r#"{"value":1}"#.to_string()]);
+
+        let running = Recording(json!({ "kind": "object", "cancelEnabled": true }), RefCell::new(Vec::new()));
+        assert_eq!(write_transmitter_mode(&running, "radioCal.transmitterMode", r#"{"value":3}"#)["refusal"], "calibrating");
+        assert!(running.1.borrow().is_empty());
+        assert_eq!(act(&running, Action::Cancel, "radioCal.cancelButtonClicked")["ok"], true);
     }
 }

@@ -18,9 +18,13 @@ const LOG_REFRESH: &str = "logDownload.refresh";
 const LOG_DOWNLOAD: &str = "logDownload.download";
 const LOG_CANCEL: &str = "logDownload.cancel";
 const LOG_ERASE_ALL: &str = "logDownload.eraseAll";
+const RADIO_NEXT: &str = "radioCal.nextButtonClicked";
+const RADIO_CANCEL: &str = "radioCal.cancelButtonClicked";
+const RADIO_SKIP: &str = "radioCal.skipButtonClicked";
+const TRANSMITTER_MODE: &str = "radioCal.transmitterMode";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -29,7 +33,7 @@ pub fn owns(path: &str) -> bool {
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
-pub const OWNED_WRITES: &[&str] = &[ZOOM];
+pub const OWNED_WRITES: &[&str] = &[ZOOM, TRANSMITTER_MODE];
 
 pub fn owns_write(path: &str) -> bool {
     OWNED_WRITES.contains(&path)
@@ -38,6 +42,7 @@ pub fn owns_write(path: &str) -> bool {
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     match path {
         ZOOM => zoom(backend, value),
+        TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
         _ => json!({ "ok": false, "reason": format!("{path} is not a write the core performs") }),
     }
 }
@@ -93,6 +98,9 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         LOG_DOWNLOAD => crate::logs::act(backend, crate::logs::Action::Download, path, args),
         LOG_CANCEL => crate::logs::act(backend, crate::logs::Action::Cancel, path, args),
         LOG_ERASE_ALL => crate::logs::act(backend, crate::logs::Action::EraseAll, path, args),
+        RADIO_NEXT => crate::radio::act(backend, crate::radio::Action::Next, path),
+        RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
+        RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
 }
