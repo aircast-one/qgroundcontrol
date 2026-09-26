@@ -25,6 +25,7 @@ use crate::debugapi;
 use crate::packetradio;
 use crate::geotag;
 use crate::gpsrtk;
+use crate::gpsview;
 use crate::videostate;
 use crate::cameraproto;
 use crate::joystick;
@@ -65,6 +66,7 @@ use crate::survey;
 use crate::takeoff;
 use crate::terrain;
 use crate::terraintile;
+use crate::terraindownload;
 use crate::track;
 use crate::tlog;
 use crate::vibration;
@@ -211,6 +213,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.geoToUtm", deps: geo::DEPS, compute: geo::geo_to_utm_view },
     View { path: "view.utmToGeo", deps: geo::DEPS, compute: geo::utm_to_geo_view },
     View { path: "view.terrainTile", deps: terraintile::DEPS, compute: terraintile::terrain_tile_view },
+    View { path: "view.gps", deps: gpsview::DEPS, compute: gpsview::gps_view },
+    View { path: "view.terrainDownload", deps: terraindownload::DEPS, compute: terraindownload::terrain_download_view },
     View { path: "view.dependencies", deps: &[], compute: dependencies_view },
 ];
 
@@ -405,6 +409,7 @@ mod deps_cover_reads {
             ("gimbal", include_str!("gimbal.rs")),
             ("gpsfacts", include_str!("gpsfacts.rs")),
             ("gpsrtk", include_str!("gpsrtk.rs")),
+            ("gpsview", include_str!("gpsview.rs")),
             ("guided", include_str!("guided.rs")),
             ("guidedcmd", include_str!("guidedcmd.rs")),
             ("guidedexec", include_str!("guidedexec.rs")),
@@ -423,6 +428,8 @@ mod deps_cover_reads {
             ("links", include_str!("links.rs")),
             ("linkconnect", include_str!("linkconnect.rs")),
             ("linkremove", include_str!("linkremove.rs")),
+            ("commandtree", include_str!("commandtree.rs")),
+            ("paramnames", include_str!("paramnames.rs")),
             ("logs", include_str!("logs.rs")),
             ("mappolygon", include_str!("mappolygon.rs")),
             ("mappolyline", include_str!("mappolyline.rs")),
@@ -480,6 +487,7 @@ mod deps_cover_reads {
             ("takeoff", include_str!("takeoff.rs")),
             ("tcplink", include_str!("tcplink.rs")),
             ("terrain", include_str!("terrain.rs")),
+            ("terraindownload", include_str!("terraindownload.rs")),
             ("terraintile", include_str!("terraintile.rs")),
             ("tilecache", include_str!("tilecache.rs")),
             ("tlog", include_str!("tlog.rs")),

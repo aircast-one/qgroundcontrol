@@ -83,6 +83,7 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .unwrap_or_default();
     let available = model.get("kind").and_then(Value::as_str) == Some("object");
+    let fields = messages.iter().find(|m| m["selected"] == true).map_or_else(Vec::new, |m| selected_fields(backend, m["index"].as_u64().unwrap_or(0)));
     json!({
         "kind": "object",
         "class": "MavlinkInspector",
@@ -90,8 +91,29 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "emptyText": empty_text(available, !messages.is_empty()),
         "systemId": system,
         "messages": messages,
+        "fields": fields,
         "rateChoices": RATE_CHOICES.iter().map(|r| json!({ "rate": r, "title": rate_title(*r) })).collect::<Vec<_>>(),
     })
+}
+
+// The macOS head read the selected message's field list as a second raw path, built from an index
+// it took out of this view a line earlier. Serving the list here keeps the two from ever describing
+// different messages, and drops elements without a name as the head did.
+fn selected_fields(backend: &dyn Backend, index: u64) -> Vec<Value> {
+    object(&backend.get_fields(&format!("mavlinkInspector.activeSystem.messages.{index}.fields"), "name,type,value"))
+        .get("elements")
+        .and_then(Value::as_array)
+        .map(|elements| {
+            elements
+                .iter()
+                .filter_map(|f| {
+                    let name = f.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())?;
+                    let spelled = |key: &str| f.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+                    Some(json!({ "name": name, "type": spelled("type"), "value": spelled("value") }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn selected_message(model: &Value) -> Option<&Value> {
@@ -320,5 +342,37 @@ mod tests {
         assert_eq!(write_selected(&system, r#"{"value":1}"#)["result"], true);
         assert_eq!(write_selected(&system, r#"{"value":5}"#)["refusal"], "noSuchMessage", "QGCMAVLinkSystem::setSelected returns in silence for a position past the list");
         assert_eq!(system.0.get(), 1);
+    }
+
+    #[test]
+    fn the_selected_messages_fields_come_with_the_list_that_selected_it() {
+        struct Inspector;
+        impl Backend for Inspector {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "mavlinkInspector.activeSystem.messages" => json!({ "kind": "object", "elements": [
+                        { "id": 0, "compId": 1, "name": "HEARTBEAT", "selected": false },
+                        { "id": 24, "compId": 1, "name": "GPS_RAW_INT", "selected": true },
+                    ] }),
+                    "mavlinkInspector.activeSystem.messages.1.fields" => json!({ "kind": "object", "elements": [
+                        { "name": "fix_type", "type": "uint8_t", "value": "3" },
+                        { "name": "", "type": "uint8_t", "value": "9" },
+                        { "name": "satellites_visible", "type": "uint8_t" },
+                    ] }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = inspector_view(&Inspector, &[]);
+        assert_eq!(
+            view["fields"],
+            json!([{ "name": "fix_type", "type": "uint8_t", "value": "3" }, { "name": "satellites_visible", "type": "uint8_t", "value": "" }]),
+            "the fields are those of the message this same answer marks selected, and a nameless element is dropped as the head dropped it"
+        );
     }
 }

@@ -162,9 +162,13 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
             }))
         })
         .collect();
+    let controller = object(&backend.get_fields("plan.geoFenceController", "supported"));
     json!({
         "kind": "object",
         "class": "Fences",
+        // FenceRally.swift gated its whole reload on plan.geoFenceController answering as an
+        // object, a raw read made only to learn whether there is a plan to show.
+        "available": controller.get("kind").and_then(Value::as_str) == Some("object"),
         "polygons": polygons,
         "circles": circles,
         "rallyPoints": rally,
@@ -324,6 +328,8 @@ mod tests {
         assert_eq!(asked(false, true), Value::Null, "a head that reaches for the capability on the fences view rather than the plan view must meet the same three states, or the view it happened to pick decides whether an unanswered vehicle reads as a refusing one");
         assert_eq!(fences_view(&Vehicle(false, true), &[])["rallySupported"], Value::Null);
         assert_eq!(crate::plan::capability(&Vehicle(false, true), "geoFenceController"), None, "both views call one function, so they cannot drift apart the day one of them changes its mind");
+        assert_eq!(fences_view(&Vehicle(true, false), &[])["available"], true, "a controller that refuses fences is still a plan to show");
+        assert_eq!(fences_view(&Fake, &[])["available"], false);
     }
 
     #[test]

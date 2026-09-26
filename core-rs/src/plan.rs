@@ -12,6 +12,8 @@ pub const DEPS: &[&str] = &[
     "plan.canUndo",
     "plan.canRedo",
     "plan.missionController.containsItems",
+    "plan.missionController.complexMissionItems",
+    "plan.missionController.globalAltitudeFrame",
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
     "vehicle.flightMode",
@@ -83,9 +85,25 @@ fn defaults_json(backend: &dyn Backend) -> Value {
     json!({ "altitude": altitude, "cruise": cruise, "hover": hover, "speedUnits": speed_units })
 }
 
+fn patterns(mission: &Value) -> Vec<Value> {
+    mission
+        .get("complexMissionItems")
+        .and_then(Value::as_array)
+        .map(|offered| {
+            offered
+                .iter()
+                .filter_map(|p| {
+                    let name = p.get("canonicalName").and_then(Value::as_str).filter(|n| !n.is_empty())?;
+                    Some(json!({ "name": name, "title": p.get("translatedName").and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or(name) }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo"));
-    let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
+    let mission = object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame"));
     let syncing = flag(&plan, "syncInProgress");
     let offline = flag(&plan, "offline");
     let dirty = flag(&plan, "dirty");
@@ -105,6 +123,12 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // object itself. Empty strings mean the controller has not resolved one, which is not the
         // same as a plan for no vehicle.
         "planningFor": planning_for(backend),
+        // Both heads checked that plan.missionController answered as an object and then read its
+        // pattern list and altitude frame off the raw controller - by the names those had before
+        // upstream renamed them, so both reads had been answering null since the merge.
+        "available": mission.get("kind").and_then(Value::as_str) == Some("object"),
+        "patterns": patterns(&mission),
+        "globalAltitudeFrame": mission.get("globalAltitudeFrame").and_then(Value::as_i64),
         "defaults": defaults_json(backend),
         "readiness": readiness_json(readiness),
         "upload": upload_json(upload),
@@ -617,4 +641,42 @@ mod tests {
         assert_eq!(token(PlanAction::Clear, &syncing, None), Some("busy"), "removeAll in the middle of a sync pulls the items out from under the transfer");
         assert_eq!(token(PlanAction::Clear, &json!({ "actions": { "newPlan": true } }), None), None);
     }
+
+    #[test]
+    fn the_plan_view_carries_the_mission_controller_fields_by_their_current_names() {
+        struct Controller(bool);
+        impl Backend for Controller {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match (p, self.0) {
+                    ("plan.missionController", true) => json!({
+                        "kind": "object",
+                        "containsItems": true,
+                        "globalAltitudeFrame": 1,
+                        "complexMissionItems": [
+                            { "canonicalName": "Survey", "translatedName": "Survey" },
+                            { "canonicalName": "Corridor Scan", "translatedName": "Korridor-Scan" },
+                            { "canonicalName": "", "translatedName": "nameless" },
+                        ],
+                    }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": false }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = plan_view(&Controller(true), &[]);
+        assert_eq!(view["available"], true);
+        assert_eq!(view["globalAltitudeFrame"], 1, "the head read globalAltitudeMode, which upstream renamed, so its read had been null since the merge");
+        assert_eq!(
+            view["patterns"],
+            json!([{ "name": "Survey", "title": "Survey" }, { "name": "Corridor Scan", "title": "Korridor-Scan" }]),
+            "the canonical name is the insert key and the translated one is what is shown; a pattern without a key cannot be inserted"
+        );
+        let gone = plan_view(&Controller(false), &[]);
+        assert_eq!((&gone["available"], &gone["patterns"], &gone["globalAltitudeFrame"]), (&json!(false), &json!([]), &Value::Null));
+    }
 }
+

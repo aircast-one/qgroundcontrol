@@ -2093,6 +2093,7 @@
         "view.detections.kind",
         "view.detections.stale",
         "view.detections.track",
+        "view.fences.available",
         "view.fences.class",
         "view.fences.fenceSupported",
         "view.fences.kind",
@@ -2106,7 +2107,6 @@
         "view.flyState.landing",
         "view.flyState.rcSignal",
         "view.flyState.rcSignalText",
-        "view.flyState.rcSupported",
         "view.flyState.staleNotice",
         "view.flyState.telemetry",
         "view.followMe.allowedFixAgeMs",
@@ -2204,6 +2204,8 @@
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
         "view.gimbal.ready",
+        "view.gps.class",
+        "view.gps.kind",
         "view.gpsRtkBase(trimble).baud",
         "view.gpsRtkBase(trimble).class",
         "view.gpsRtkBase(trimble).driver",
@@ -3410,6 +3412,7 @@
         "view.plan.actions.addRally",
         "view.plan.actions.newPlan",
         "view.plan.actions.open",
+        "view.plan.available",
         "view.plan.canRedo",
         "view.plan.canUndo",
         "view.plan.class",
@@ -3500,7 +3503,15 @@
         "view.plan.defaults.speedUnits",
         "view.plan.fenceSupported",
         "view.plan.file",
+        "view.plan.globalAltitudeFrame",
         "view.plan.kind",
+        "view.plan.patterns.#",
+        "view.plan.patterns.0.name",
+        "view.plan.patterns.0.title",
+        "view.plan.patterns.1.name",
+        "view.plan.patterns.1.title",
+        "view.plan.patterns.2.name",
+        "view.plan.patterns.2.title",
         "view.plan.planningFor.apmFirmware",
         "view.plan.planningFor.firmware",
         "view.plan.planningFor.home",
@@ -5613,6 +5624,16 @@
         "view.surveyStats(4).minimumInterval",
         "view.surveyStats(4).tooFast",
         "view.surveyStats(4).warning",
+        "view.terrainDownload.busy",
+        "view.terrainDownload.class",
+        "view.terrainDownload.fraction",
+        "view.terrainDownload.kind",
+        "view.terrainDownload.loaded",
+        "view.terrainDownload.pending",
+        "view.terrainDownload.percentText",
+        "view.terrainDownload.started",
+        "view.terrainDownload.text",
+        "view.terrainDownload.total",
         "view.terrainProfile.class",
         "view.terrainProfile.hasCollision",
         "view.terrainProfile.kind",
@@ -6173,6 +6194,7 @@
         "view.detections.kind",
         "view.detections.stale",
         "view.detections.track",
+        "view.fences.available",
         "view.fences.circles.#",
         "view.fences.circles[].centre.latitude",
         "view.fences.circles[].centre.longitude",
@@ -6368,6 +6390,15 @@
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
         "view.gimbal.ready",
+        "view.gps.available",
+        "view.gps.class",
+        "view.gps.kind",
+        "view.gps.lock",
+        "view.gps.lockText",
+        "view.gps.rows.#",
+        "view.gps.rows[].label",
+        "view.gps.rows[].value",
+        "view.gps.satellites",
         "view.gpsRtkBase(trimble).baud",
         "view.gpsRtkBase(trimble).class",
         "view.gpsRtkBase(trimble).driver",
@@ -6472,6 +6503,10 @@
         "view.inspector.available",
         "view.inspector.class",
         "view.inspector.emptyText",
+        "view.inspector.fields.#",
+        "view.inspector.fields[].name",
+        "view.inspector.fields[].type",
+        "view.inspector.fields[].value",
         "view.inspector.kind",
         "view.inspector.messages.#",
         "view.inspector.messages[].compId",
@@ -7182,6 +7217,7 @@
         "view.plan.actions.newPlan",
         "view.plan.actions.open",
         "view.plan.actions.save",
+        "view.plan.available",
         "view.plan.canRedo",
         "view.plan.canUndo",
         "view.plan.class",
@@ -7273,7 +7309,11 @@
         "view.plan.dirty",
         "view.plan.fenceSupported",
         "view.plan.file",
+        "view.plan.globalAltitudeFrame",
         "view.plan.kind",
+        "view.plan.patterns.#",
+        "view.plan.patterns[].name",
+        "view.plan.patterns[].title",
         "view.plan.planningFor.apmFirmware",
         "view.plan.planningFor.firmware",
         "view.plan.planningFor.home",
@@ -7563,6 +7603,16 @@
         "view.surveyStats(4).surfaceDistanceText",
         "view.surveyStats(4).tooFast",
         "view.surveyStats(4).warning",
+        "view.terrainDownload.busy",
+        "view.terrainDownload.class",
+        "view.terrainDownload.fraction",
+        "view.terrainDownload.kind",
+        "view.terrainDownload.loaded",
+        "view.terrainDownload.pending",
+        "view.terrainDownload.percentText",
+        "view.terrainDownload.started",
+        "view.terrainDownload.text",
+        "view.terrainDownload.total",
         "view.terrainProfile.bandText",
         "view.terrainProfile.class",
         "view.terrainProfile.clearanceComplete",
@@ -8502,6 +8552,8 @@
             "view.geoToUtm",
             "view.utmToGeo",
             "view.terrainTile",
+            "view.gps",
+            "view.terrainDownload",
             "view.dependencies"
         ]
     },
@@ -8615,6 +8667,7 @@
         "track": "null"
     },
     "view.fences": {
+        "available": "bool",
         "circles": [
             {
                 "centre": {
@@ -8871,6 +8924,20 @@
         "rateUnits": "string",
         "ready": "bool"
     },
+    "view.gps": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string",
+        "lock": "null|number",
+        "lockText": "string",
+        "rows": [
+            {
+                "label": "string",
+                "value": "string"
+            }
+        ],
+        "satellites": "null|number"
+    },
     "view.gpsRtkBase(trimble)": {
         "baud": "number",
         "class": "string",
@@ -8995,6 +9062,13 @@
         "available": "bool",
         "class": "string",
         "emptyText": "string",
+        "fields": [
+            {
+                "name": "string",
+                "type": "string",
+                "value": "string"
+            }
+        ],
         "kind": "string",
         "messages": [
             {
@@ -9395,10 +9469,10 @@
                 "altitudeChange": "null|number",
                 "altitudeChangeText": "null|string",
                 "altitudeEditUnits": "null|string",
-                "altitudeFrame": "null|string",
-                "altitudeFrameText": "null|string",
+                "altitudeFrame": "string",
+                "altitudeFrameText": "string",
                 "altitudeMetres": "null|number",
-                "altitudeMode": "null",
+                "altitudeMode": "null|number",
                 "altitudeOnly": "bool",
                 "altitudeSource": "string",
                 "altitudeText": "null|string",
@@ -9482,10 +9556,10 @@
                 "altitudeChange": "null|number",
                 "altitudeChangeText": "null|string",
                 "altitudeEditUnits": "null|string",
-                "altitudeFrame": "null|string",
-                "altitudeFrameText": "null|string",
+                "altitudeFrame": "string",
+                "altitudeFrameText": "string",
                 "altitudeMetres": "null|number",
-                "altitudeMode": "null",
+                "altitudeMode": "null|number",
                 "altitudeOnly": "bool",
                 "altitudeSource": "string",
                 "altitudeText": "null|string",
@@ -9916,6 +9990,7 @@
             "open": "bool",
             "save": "bool"
         },
+        "available": "bool",
         "canRedo": "bool",
         "canUndo": "bool",
         "class": "string",
@@ -10033,7 +10108,14 @@
         "dirty": "bool",
         "fenceSupported": "bool",
         "file": "null",
+        "globalAltitudeFrame": "number",
         "kind": "string",
+        "patterns": [
+            {
+                "name": "string",
+                "title": "string"
+            }
+        ],
         "planningFor": {
             "apmFirmware": "bool",
             "firmware": "string",
@@ -10438,6 +10520,18 @@
         "surfaceDistanceText": "null|string",
         "tooFast": "bool",
         "warning": "string"
+    },
+    "view.terrainDownload": {
+        "busy": "bool",
+        "class": "string",
+        "fraction": "number",
+        "kind": "string",
+        "loaded": "number",
+        "pending": "number",
+        "percentText": "string",
+        "started": "bool",
+        "text": "string",
+        "total": "number"
     },
     "view.terrainProfile": {
         "bandText": "string",

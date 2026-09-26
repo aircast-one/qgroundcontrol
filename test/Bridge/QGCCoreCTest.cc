@@ -437,6 +437,12 @@ void QGCCoreCTest::_inspectorListsMessages()
     const QJsonObject first = view.value(QStringLiteral("messages")).toArray().first().toObject();
     QVERIFY(!first.value(QStringLiteral("name")).toString().isEmpty());
     QVERIFY(first.value(QStringLiteral("path")).toString().startsWith(QStringLiteral("mavlinkInspector.activeSystem.messages.")));
+    // QGCMAVLinkSystem selects the first message it hears, so the fields arrive without a selection.
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("view.inspector")).value(QStringLiteral("fields")).toArray().isEmpty(), 5000);
+    const QJsonObject field = take(qgc_bridge_get("view.inspector")).value(QStringLiteral("fields")).toArray().first().toObject();
+    QVERIFY(!field.value(QStringLiteral("name")).toString().isEmpty());
+    QVERIFY(field.value(QStringLiteral("type")).isString());
+    QVERIFY(field.value(QStringLiteral("value")).isString());
 }
 
 void QGCCoreCTest::_flightModesFollowTheVehicle()
@@ -1372,6 +1378,7 @@ const char *const kViewPaths[] = {
     "view.cameraProtocol", "view.joystickMapping",
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
     "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
+    "view.gps", "view.terrainDownload",
 };
 
 QList<QByteArray> viewPathsWithFixtures()
@@ -1734,6 +1741,9 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.adsbTraffic")).value(QStringLiteral("ownPositionKnown")).toBool(false), 10000);
+    // view.inspector serves the selected message's fields; waiting for them keeps a recording that
+    // ran before the first message from pinning an empty list the element shape is absent from.
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.inspector")).value(QStringLiteral("fields")).toArray().isEmpty(), 5000);
     const auto preflightSettled = []() {
         const QJsonObject once = take(qgc_core_get("view.preflight"));
         QTest::qWait(500);
