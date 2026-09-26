@@ -358,6 +358,10 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
 
 const LONGEST_CLIMB_OUT_M: f64 = 1000.0;
 
+pub(crate) fn offer_refusal(backend: &dyn Backend, offered: &[Action]) -> Option<(&'static str, String)> {
+    invoke_refusal(offered, &read_state(backend))
+}
+
 fn invoke_refusal(offered: &[Action], s: &GuidedState) -> Option<(&'static str, String)> {
     if offered == [Action::EmergencyStop] {
         return match (s.connected, s.armed) {
