@@ -69,6 +69,15 @@ QJsonObject take(char *owned)
     return object;
 }
 
+// The qgc_qt_* entry points answer from QGCBridgeCore without the core's claims in front of it, and
+// their strings are Qt's to free.
+QJsonObject takeQt(char *owned)
+{
+    const QJsonObject object = QJsonDocument::fromJson(QByteArray(owned)).object();
+    qgc_qt_free(owned);
+    return object;
+}
+
 void onEvent(const char *path, const char *json)
 {
     paths.append(QString::fromUtf8(path));
@@ -1980,9 +1989,15 @@ QString roundedCoordinates(const QJsonArray &points)
 void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 {
     ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("createSerialConfiguration: bad name")));
+    // The core claims the path and refuses a nameless link itself, with the field and a reason, where
+    // LinkManager only logged "bad name" and answered a dispatched call with a false result.
     const QJsonObject refusedName = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
-    QVERIFY2(refusedName.value(QStringLiteral("ok")).toBool(false), qPrintable(refusedName.value(QStringLiteral("reason")).toString()));
+    QCOMPARE(refusedName.value(QStringLiteral("ok")).toBool(true), false);
+    QVERIFY(!refusedName.value(QStringLiteral("reason")).toString().isEmpty());
     QCOMPARE(refusedName.value(QStringLiteral("result")).toBool(true), false);
+    const QJsonObject qtRefusedName = takeQt(qgc_qt_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
+    QVERIFY2(qtRefusedName.value(QStringLiteral("ok")).toBool(false), "the Qt method the claim stands in front of has to stay reachable, or the claim forwards to nothing");
+    QCOMPARE(qtRefusedName.value(QStringLiteral("result")).toBool(true), false);
 
     const QJsonObject refusedBaud = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"Serial Test\",\"/dev/nonexistent\",0]"));
     QCOMPARE(refusedBaud.value(QStringLiteral("result")).toBool(true), false);
@@ -2771,9 +2786,12 @@ void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
     const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
     const QString item = QStringLiteral("plan.missionController.visualItems.1");
 
+    // The negative distances fly inside the structure, and DistanceToSurface declares a minimum of 0.1,
+    // so the core refuses them as QGC's own field would. This oracle pins the geometry QGC computes
+    // either side of the structure, so it writes to the Fact directly.
     const auto setFact = [&](const QString &path, const QJsonValue &value) {
         const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("value"), value } }).toJson(QJsonDocument::Compact);
-        QVERIFY2(take(qgc_bridge_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
+        QVERIFY2(takeQt(qgc_qt_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
         const QJsonValue back = take(qgc_bridge_get((path + QStringLiteral(".rawValue")).toUtf8().constData())).value(QStringLiteral("value"));
         QVERIFY2(qFuzzyCompare(back.toDouble() + 1.0, value.toDouble() + 1.0), qPrintable(QStringLiteral("%1 was set to %2 and reads back %3, so this case is not the case it is named after").arg(path).arg(value.toDouble()).arg(back.toDouble())));
     };
@@ -3221,6 +3239,9 @@ void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
     const QList<Sent> uploaded = spell(vehicle->missionManager()->missionItems());
     QVERIFY2(uploaded.count() > 200, qPrintable(QStringLiteral("this survey is meant to be larger than a vehicle's usual mission and it came to %1 items").arg(uploaded.count())));
 
+    // The mission lands before the fence and rally sends behind it, and the core refuses to clear a
+    // plan mid-sync, so the clear waits for the whole upload rather than the mission's part of it.
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("plan.syncInProgress")).value(QStringLiteral("value")).toBool(true), 30000);
     restore();
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("plan.missionController.visualItems.count")).value(QStringLiteral("value")).toInt(-1) <= 1, 5000);
 

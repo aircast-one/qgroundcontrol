@@ -68,6 +68,18 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
     }
 }
 
+// A value the fact already holds is written back as it is. Some hold one their own metadata would
+// refuse - a survey's minTriggerInterval of 0 under a declared minimum of 0.1, an unmeasured
+// amslAltAboveTerrain that is NaN and serialises as null - and a head writing a field back untouched
+// must not be told its own reading is out of range.
+fn unchanged(fact: &Value, asked: &Value) -> bool {
+    let held = fact.get("value").unwrap_or(&Value::Null);
+    match (number(held), number(asked)) {
+        (Some(h), Some(a)) => h == a,
+        _ => held == asked,
+    }
+}
+
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let renamed = crate::renamed::write_path(path);
     let path = renamed.as_deref().unwrap_or(path);
@@ -81,7 +93,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     }
     let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
     let control = decode(&fact, path);
-    if let Some((token, reason)) = refusal(&control, &fact, &asked) {
+    if let Some((token, reason)) = refusal(&control, &fact, &asked).filter(|_| !unchanged(&fact, &asked)) {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": path });
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
@@ -181,10 +193,39 @@ mod tests {
         assert_eq!(write(&vehicle, path, r#"{"value":900}"#)["refusal"], "outOfRange");
         assert_eq!(write(&vehicle, path, r#"{"value":50}"#)["result"], true);
         assert_eq!(write(&vehicle, "plan.missionController.visualItems.2.altitudeMode", r#"{"value":1}"#)["ok"], true);
+        assert!(unchanged(&json!({ "value": 0.0 }), &json!(0)) && unchanged(&json!({ "value": null }), &Value::Null));
+        assert!(!unchanged(&json!({ "value": 0.0 }), &json!(0.05)) && !unchanged(&json!({ "value": null }), &json!(3)));
         assert_eq!(
             vehicle.0.borrow().as_slice(),
             &[path.to_string(), "plan.missionController.visualItems.2.altitudeFrame".to_string()],
             "an item's renamed field is still rewritten when the fact check takes the write before the router's own rename does"
         );
+    }
+
+    #[test]
+    fn a_value_the_fact_already_holds_is_written_back_even_where_its_metadata_would_refuse_it() {
+        struct Survey(RefCell<Vec<String>>);
+        impl Backend for Survey {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "plan.missionController.visualItems.3.cameraCalc.minTriggerInterval" => json!({ "kind": "fact", "name": "MinTriggerInterval", "value": 0.0, "min": 0.1, "max": 100.0, "minIsDefaultForType": false, "maxIsDefaultForType": false, "readOnly": false }),
+                    _ => json!({ "kind": "fact", "name": "Alt above terrain", "value": null, "readOnly": false }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, p: &str, _v: &str) -> String {
+                self.0.borrow_mut().push(p.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let survey = Survey(RefCell::new(Vec::new()));
+        let interval = "plan.missionController.visualItems.3.cameraCalc.minTriggerInterval";
+        assert_eq!(write(&survey, interval, r#"{"value":0}"#)["ok"], true, "QGC holds 0 under a declared minimum of 0.1, and writing a field back untouched is not an entry out of range");
+        assert_eq!(write(&survey, interval, r#"{"value":0.05}"#)["refusal"], "outOfRange", "a new value below the minimum is still refused");
+        assert_eq!(write(&survey, "plan.missionController.visualItems.1.amslAltAboveTerrain", r#"{"value":null}"#)["ok"], true, "an unmeasured height is NaN and reads as null");
+        assert_eq!(survey.0.borrow().len(), 2);
     }
 }
