@@ -444,6 +444,7 @@ mod deps_cover_reads {
             ("params", include_str!("params.rs")),
             ("plan", include_str!("plan.rs")),
             ("planfile", include_str!("planfile.rs")),
+            ("planselect", include_str!("planselect.rs")),
             ("plantransfer", include_str!("plantransfer.rs")),
             ("preflight", include_str!("preflight.rs")),
             ("px4meta", include_str!("px4meta.rs")),

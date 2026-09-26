@@ -79,6 +79,7 @@ pub mod plan;
 pub mod packetradio;
 pub mod params;
 pub mod planfile;
+pub mod planselect;
 pub mod plantransfer;
 pub mod preflight;
 pub mod px4meta;
