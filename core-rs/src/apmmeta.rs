@@ -194,16 +194,19 @@ mod tests {
 
     fn copter() -> Definitions {
         let cache = concat!(env!("CARGO_MANIFEST_DIR"), "/../.cache/CPM/ardupilotparams");
-        let xml = std::fs::read_dir(cache)
-            .expect("the ArduPilotParams CPM checkout made by configuring the C++ tree")
-            .filter_map(Result::ok)
-            .map(|entry| entry.path().join("Copter-4.6/apm.pdef.xml"))
+        let checkouts = std::env::var_os("QGC_ARDUPILOT_PARAMS")
+            .map(std::path::PathBuf::from)
+            .into_iter()
+            .chain(std::fs::read_dir(cache).into_iter().flatten().filter_map(Result::ok).map(|entry| entry.path()));
+        let xml = checkouts
+            .map(|checkout| checkout.join("Copter-4.6/apm.pdef.xml"))
             .find(|path| path.exists())
-            .expect("Copter-4.6/apm.pdef.xml inside the ArduPilotParams CPM checkout");
+            .expect("Copter-4.6/apm.pdef.xml in QGC_ARDUPILOT_PARAMS or the ArduPilotParams CPM checkout made by configuring the C++ tree");
         parse(&std::fs::read_to_string(xml).unwrap()).unwrap()
     }
 
     #[test]
+    #[ignore = "reads ArduPilot/ParameterRepository at an unpinned main: configure the C++ tree or set QGC_ARDUPILOT_PARAMS, then run with --include-ignored"]
     fn the_copter_definitions_resolve_units_ranges_enums_and_bitmasks() {
         let defs = copter();
         assert!(defs["ArduCopter"].len() > 50 && defs[LIBRARIES].len() > 1000);

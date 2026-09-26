@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn the_sample_log_keeps_the_heading_on_the_compass() {
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let bytes = crate::samplelog::bytes();
         let mut facts = VehicleFacts::for_vehicle(1, 1);
         let mut headings = Vec::new();
         crate::tlog::for_each(&bytes, |_, header, message| {

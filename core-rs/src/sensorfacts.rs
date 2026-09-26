@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn the_sample_log_feeds_at_least_one_sensor_group() {
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let bytes = crate::samplelog::bytes();
         let (mut wind, mut temperature, mut distance, mut local, mut estimator) =
             (WindFacts::default(), TemperatureFacts::default(), DistanceSensorFacts::default(), LocalPositionFacts::default(), EstimatorStatusFacts::default());
         let mut applied = [0usize; 5];

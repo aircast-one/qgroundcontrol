@@ -379,7 +379,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     fn heartbeat() -> Vec<u8> {
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let bytes = crate::samplelog::bytes();
         crate::tlog::entries(&bytes, u64::MAX).into_iter().map(|(_, f)| f).find(|f| f.len() == 21).unwrap()
     }
 

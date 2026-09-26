@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn the_sample_log_leaves_a_plausible_fix() {
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
+        let bytes = crate::samplelog::bytes();
         let mut facts = GpsFacts::default();
         let mut applied = 0usize;
         crate::tlog::for_each(&bytes, |_, _, message| {
