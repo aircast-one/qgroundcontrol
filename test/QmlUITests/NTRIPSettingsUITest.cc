@@ -23,28 +23,7 @@ void NTRIPSettingsUITest::init()
 
 bool NTRIPSettingsUITest::_navigateToNtripPage()
 {
-    if (!clickToolSelectDropdownButton(QStringLiteral("toolbar_viewSettings"))) {
-        return false;
-    }
-
-    QQuickItem *btn = findVisibleItem(_rootItem, QStringLiteral("settingsButton_NTRIP/RTK"));
-    if (!btn) {
-        QTest::qFail("Settings page button not found: settingsButton_NTRIP/RTK", __FILE__, __LINE__);
-        return false;
-    }
-
-    scrollIntoView(btn, QStringLiteral("settings_buttonList"));
-
-    const QPointF center = btn->mapToScene(QPointF(btn->width() / 2, btn->height() / 2));
-    QTest::mouseClick(_window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
-    QTest::qWait(_pageDelay);
-
-    // Page root objectNames are sanitized to [A-Za-z0-9_], so "NTRIP/RTK" becomes "NTRIPRTK"
-    if (!findVisibleItem(_rootItem, QStringLiteral("settingsPage_NTRIPRTK"))) {
-        QTest::qFail("NTRIP settings page wrapper not found: settingsPage_NTRIPRTK", __FILE__, __LINE__);
-        return false;
-    }
-    return true;
+    return openSettingsPage(QStringLiteral("NTRIP / RTK"));
 }
 
 void NTRIPSettingsUITest::_testPageRenders()

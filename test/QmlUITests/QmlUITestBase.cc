@@ -27,9 +27,6 @@
 #include "SettingsManager.h"
 #include "Vehicle.h"
 
-// Bounded real-time window for render/GC/deferred-delete settle drains during UI teardown.
-// These have no observable completion condition in offscreen mode (the render loop never
-// self-pumps), so we drain events for a fixed, minimal interval instead.
 static constexpr int kSettleDrainMs = 100;
 
 static QQuickItem *findVisibleItemImmediate(QQuickItem *root, const QString &objectName)
@@ -43,6 +40,23 @@ static QQuickItem *findVisibleItemImmediate(QQuickItem *root, const QString &obj
     const auto children = root->childItems();
     for (auto *child : children) {
         if (auto *found = findVisibleItemImmediate(child, objectName)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+QQuickItem *QmlUITestBase::findItem(QQuickItem *root, const QString &objectName)
+{
+    if (!root) {
+        return nullptr;
+    }
+    if (root->objectName() == objectName) {
+        return root;
+    }
+    const QList<QQuickItem *> children = root->childItems();
+    for (QQuickItem *child : children) {
+        if (QQuickItem *found = findItem(child, objectName)) {
             return found;
         }
     }
@@ -68,10 +82,6 @@ QQuickItem *QmlUITestBase::findVisibleItem(QQuickItem *root, const QString &obje
 
 void QmlUITestBase::startUI()
 {
-    // Initialise subsystems needed for the full QML UI
-    // setStyle() must only be called once per process; subsequent calls after
-    // any QML engine has loaded produce an "must be called before loading QML"
-    // warning that would trip the strict-mode log check.
     static bool s_styleSet = false;
     if (!s_styleSet) {
         QQuickStyle::setStyle("Basic");
@@ -81,7 +91,6 @@ void QmlUITestBase::startUI()
     MAVLinkProtocol::instance()->init();
     MultiVehicleManager::instance()->init();
 
-    // Suppress first-run prompts so they don't block the UI
     AppSettings *appSettings = SettingsManager::instance()->appSettings();
     const QList<int> promptIds = QGCCorePlugin::instance()->firstRunPromptStdIds();
     for (int id : promptIds) {
@@ -89,35 +98,24 @@ void QmlUITestBase::startUI()
     }
 
     QVERIFY2(QGCCorePlugin::instance(), "Core plugin not available");
-    // Custom builds may default advanced UI off; these tests exercise the full UI.
     QGCCorePlugin::instance()->setProperty("showAdvancedUI", true);
     QVERIFY2(QGCCorePlugin::instance()->showAdvancedUI(), "Test requires Advanced UI mode");
 
-    // Ignore benign Qt platform warnings that cannot be avoided in offscreen mode
     ignoreLogMessage("default", QtWarningMsg,
                      QRegularExpression(QStringLiteral("This plugin does not support propagateSizeHints")));
     ignoreLogMessage("qt.qpa.fonts", QtWarningMsg,
                      QRegularExpression(QStringLiteral("Populating font family aliases")));
     ignoreLogMessage("default", QtWarningMsg,
                      QRegularExpression(QStringLiteral("QRhiGles2")));
-    // Async QML incubation rides QQuickWindow's render-loop controller, which never pumps in
-    // offscreen mode, so a component still incubating at engine teardown logs this.
     ignoreLogMessage("default", QtInfoMsg,
                      QRegularExpression(QStringLiteral("Object or context destroyed during incubation")));
-    // Offscreen incubation can leave an item incubating at teardown; the drain is best-effort.
     ignoreLogMessage("default", QtWarningMsg,
                      QRegularExpression(QStringLiteral("in the process of being created at engine destruction")));
 
-    // Slow headless/software-GL runners can leave async-incubated QML items still
-    // creating when the engine is torn down (destroyUIEngine drains best-effort but
-    // cannot guarantee completion). Benign at shutdown, so ignore it rather than fail
-    // strict mode on a timing artifact.
     ignoreLogMessage("default", QtWarningMsg,
                      QRegularExpression(QStringLiteral("items in the process of being created at engine destruction")));
 
 #ifdef QT_DEBUG
-    // Debug builds on macOS are ad-hoc signed with an unbound Info.plist, so
-    // macOS never shows the camera permission dialog and silently denies access.
     ignoreLogMessage("default", QtWarningMsg,
                      QRegularExpression(QStringLiteral("Access to camera not granted")));
 #endif
@@ -131,13 +129,12 @@ void QmlUITestBase::startUI()
     _engine->load(QUrl(QStringLiteral("qrc:/qml/QGroundControl/MainWindow.qml")));
     QVERIFY(!_engine->rootObjects().isEmpty());
 
-    // Register the engine with the app so showAppMessage() reaches this MainWindow
-    // and app message dialogs are shown for real during UI tests.
     qgcApp()->setQmlAppEngine(_engine);
 
     _window = qobject_cast<QQuickWindow *>(_engine->rootObjects().first());
     QVERIFY(_window);
 
+    _window->resize(1600, 1000);
     QVERIFY(QTest::qWaitForWindowExposed(_window));
 
     _viewDelay = (qApp->platformName() != QLatin1String("offscreen")) ? 700 : 0;
@@ -151,9 +148,6 @@ void QmlUITestBase::closeUIWindow()
     if (_window) {
         _window->close();
         (void) QTest::qWaitFor([this] { return !_window->isVisible(); }, TestTimeout::shortMs());
-        // No observable post-close condition: this is a bounded render/deferred-delete settle
-        // drain (offscreen render loop never self-pumps). Drain real-time so queued
-        // deleteLater()/timer events fire before the engine is torn down.
         QElapsedTimer settle;
         settle.start();
         while (settle.elapsed() < kSettleDrainMs) {
@@ -165,10 +159,6 @@ void QmlUITestBase::closeUIWindow()
 void QmlUITestBase::destroyUIEngine()
 {
     if (_engine) {
-        // Async incubation rides QQuickWindow's render-loop controller, which never
-        // pumps in offscreen mode, so pending incubators stall mid-creation and the
-        // engine warns "items still being created at engine destruction". Pump the
-        // controller directly until it drains so teardown is clean.
         if (QQmlIncubationController *controller = _engine->incubationController()) {
             QElapsedTimer drainTimer;
             drainTimer.start();
@@ -178,10 +168,6 @@ void QmlUITestBase::destroyUIEngine()
             }
         }
 
-        // Give asynchronous QML item creation/destruction a brief drain window
-        // before engine teardown to avoid strict-mode warnings at shutdown.
-        // No observable condition: bounded GC/event settle drain so the engine releases
-        // references to C++ singletons before teardown (see comment above).
         QElapsedTimer gcSettle;
         gcSettle.start();
         while (gcSettle.elapsed() < kSettleDrainMs) {
@@ -189,17 +175,11 @@ void QmlUITestBase::destroyUIEngine()
             QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
         }
 
-        // Force GC and event processing so QML releases references to C++ singletons
-        // (e.g. SettingsFacts) before the engine is destroyed.  Without this,
-        // QQmlData attached to those objects fires stale binding updates during
-        // Q_APPLICATION_STATIC teardown and crashes.
         _engine->collectGarbage();
         QCoreApplication::processEvents();
         _engine->clearComponentCache();
         QCoreApplication::processEvents();
 
-        // Destroy the root window while the engine/context are still alive so a Loader
-        // stuck mid-incubation is cancelled here instead of crashing engine teardown.
         delete _window;
         _window = nullptr;
         QCoreApplication::processEvents();
@@ -221,7 +201,7 @@ void QmlUITestBase::stopUI()
 void QmlUITestBase::_verifyFileDialogTestHookConsumed()
 {
     if (QGCFileDialogController::testHookArmed()) {
-        QGCFileDialogController::takeTestNextFile();  // clear so later tests aren't contaminated
+        QGCFileDialogController::takeTestNextFile();
         QTest::qFail("file dialog test hook was armed but never consumed by a dialog", __FILE__, __LINE__);
     }
 }
@@ -239,13 +219,6 @@ bool QmlUITestBase::_clickItemAt(QQuickItem *item, qreal fractionX, qreal fracti
 {
     const QPointer<QQuickItem> guarded(item);
 
-    // A freshly-visible item can report a stale position: positioners lay out
-    // their children in a polish pass that has not necessarily run yet (e.g. layer
-    // switcher choices fading in inside a RightToLeft Row report the Row origin
-    // until polished). Clicking a stale position silently lands on the wrong item.
-    // Flush pending polish up the ancestor chain, then require the mapped scene
-    // position to be identical across two consecutive event-loop passes so
-    // animated reflows have finished too.
     const auto scenePoint = [&]() -> QPointF {
         for (QQuickItem *ancestor = guarded; ancestor; ancestor = ancestor->parentItem()) {
             ancestor->ensurePolished();
@@ -271,15 +244,9 @@ bool QmlUITestBase::_clickItemAt(QQuickItem *item, qreal fractionX, qreal fracti
         return false;
     }
     if (!settled) {
-        return false; // waitForCondition already logged the timeout
+        return false;
     }
 
-    // QTest::mouseClick warns and drops clicks outside the window (valid range is
-    // 0..width-1 / 0..height-1); a centre exactly on the bottom edge is outside.
-    // Fail loudly here instead of letting the dropped click surface as an
-    // unrelated failure (or silent no-op) later in the test. Validate in
-    // floating-point space and convert by truncation: rounding could push an
-    // in-window position like x=799.6 in an 800px window to the invalid x=800.
     const QPointF scenePos = scenePoint();
     if (scenePos.x() < 0 || scenePos.x() >= _window->width()
         || scenePos.y() < 0 || scenePos.y() >= _window->height()) {
@@ -297,8 +264,6 @@ bool QmlUITestBase::_clickItemAt(QQuickItem *item, qreal fractionX, qreal fracti
 
 bool QmlUITestBase::clickItemFraction(const QString &objectName, qreal fractionX, qreal fractionY)
 {
-    // Fail loudly on nonsense fractions rather than silently clicking outside
-    // the item (which would surface as an unrelated failure later in the test)
     if (!qIsFinite(fractionX) || !qIsFinite(fractionY)
         || (fractionX < 0) || (fractionX > 1) || (fractionY < 0) || (fractionY > 1)) {
         QTest::qFail(qPrintable(QStringLiteral("clickItemFraction: fractions out of [0,1]: (%1, %2)")
@@ -315,7 +280,6 @@ bool QmlUITestBase::clickItemFraction(const QString &objectName, qreal fractionX
 
 QQuickItem *QmlUITestBase::findVisibleItemScrolled(const QString &objectName, const QString &flickableObjectName)
 {
-    // Fast path: delegate already instantiated somewhere in the visual tree
     QQuickItem *item = findVisibleItem(_rootItem, objectName, 500);
     if (item) {
         return scrollIntoView(item, flickableObjectName) ? item : nullptr;
@@ -326,13 +290,10 @@ QQuickItem *QmlUITestBase::findVisibleItemScrolled(const QString &objectName, co
         return nullptr;
     }
 
-    // Virtualized delegates only exist for rows near the viewport. Step the
-    // flickable through its content range to force the target row to instantiate.
     const double viewportHeight = flickable->height();
     if (viewportHeight <= 0) {
-        return nullptr; // not laid out yet: stepping cannot advance
+        return nullptr;
     }
-    // Iteration cap guards against content that grows as delegates instantiate
     constexpr int kMaxScrollSteps = 100;
     double y = 0;
     for (int step = 0; step < kMaxScrollSteps; step++, y += viewportHeight) {
@@ -359,28 +320,100 @@ bool QmlUITestBase::clickButtonScrolled(const QString &objectName, const QString
     return clickButton(objectName);
 }
 
-bool QmlUITestBase::clickToolSelectDropdownButton(const QString &viewObjectName, int timeoutMs)
+static bool _toolPanelAtRest(QQuickItem *panel)
 {
-    if (!clickButton(QStringLiteral("toolbar_qgcLogo"))) {
-        QTest::qFail("Failed to click Q logo button", __FILE__, __LINE__);
-        return false;
-    }
-    if (!findVisibleItem(_rootItem, viewObjectName, timeoutMs)) {
-        QTest::qFail(qPrintable(QStringLiteral("Tool select dropdown button not found: %1").arg(viewObjectName)),
-                     __FILE__, __LINE__);
-        return false;
-    }
-    if (!clickButton(viewObjectName)) {
-        QTest::qFail(qPrintable(QStringLiteral("Failed to click tool select dropdown button: %1").arg(viewObjectName)),
-                     __FILE__, __LINE__);
-        return false;
-    }
-    return true;
+    const QQuickItem *const drawer = panel->parentItem();
+    const bool floating = drawer->property("floating").toBool();
+    const qreal targetWidth = drawer->property(floating ? "_panelWidth" : "_safeWidth").toReal();
+    const qreal targetHeight = drawer->property(floating ? "_panelHeight" : "_safeHeight").toReal();
+    return qFuzzyCompare(panel->width(), targetWidth) && qFuzzyCompare(panel->height(), targetHeight);
 }
 
-// Recursively search the visible item tree for an item with the given
-// objectName whose "text" property contains the given substring. Used to
-// locate a specific dialog by its title label.
+bool QmlUITestBase::_waitForToolPanel()
+{
+    QQuickItem *const panel = findVisibleItem(_rootItem, QStringLiteral("toolPanel"), TestTimeout::shortMs());
+    return panel && waitForCondition([panel] { return _toolPanelAtRest(panel); }, TestTimeout::shortMs(),
+                                     QStringLiteral("tool panel at rest"));
+}
+
+bool QmlUITestBase::openPlanView()
+{
+    if (!clickButton(QStringLiteral("viewSwitchOption1"))) {
+        QTest::qFail("Plan option of the view switch not found", __FILE__, __LINE__);
+        return false;
+    }
+    return waitForCondition([this] { return !_window->property("flyViewActive").toBool(); }, TestTimeout::shortMs(),
+                            QStringLiteral("plan view active"));
+}
+
+bool QmlUITestBase::openSettings()
+{
+    if (!clickButton(QStringLiteral("settingsButton"))) {
+        QTest::qFail("Toolbar settings button not found", __FILE__, __LINE__);
+        return false;
+    }
+    if (!findVisibleItem(_rootItem, QStringLiteral("appSettingsView"), TestTimeout::shortMs())) {
+        QTest::qFail("Settings tool did not open", __FILE__, __LINE__);
+        return false;
+    }
+    return _waitForToolPanel();
+}
+
+bool QmlUITestBase::openSettingsPage(const QString &pageName)
+{
+    if (!findVisibleItem(_rootItem, QStringLiteral("appSettingsView"), 0) && !openSettings()) {
+        return false;
+    }
+    const QString buttonName = QStringLiteral("settingsPage") + QString(pageName).remove(QLatin1Char(' '));
+    if (!clickButtonScrolled(buttonName, QStringLiteral("settingsList"))) {
+        QTest::qFail(qPrintable(QStringLiteral("Settings page entry not found: %1").arg(buttonName)), __FILE__, __LINE__);
+        return false;
+    }
+    QQuickItem *const settingsView = findVisibleItem(_rootItem, QStringLiteral("appSettingsView"));
+    QQuickItem *const loader = findVisibleItem(_rootItem, QStringLiteral("settingsPageLoader"));
+    return settingsView && loader && waitForCondition(
+        [settingsView, loader, pageName] {
+            return (settingsView->property("_pageTitle").toString() == pageName)
+                && (loader->property("status").toInt() == 1)
+                && loader->property("item").value<QObject *>();
+        },
+        TestTimeout::shortMs(), QStringLiteral("settings page %1 loaded").arg(pageName));
+}
+
+bool QmlUITestBase::openAnalyzeTools()
+{
+    if (!clickButton(QStringLiteral("analyzeButton"))) {
+        QTest::qFail("Toolbar analyze button not found", __FILE__, __LINE__);
+        return false;
+    }
+    return _waitForToolPanel();
+}
+
+bool QmlUITestBase::openVehicleSetup()
+{
+    if (findVisibleItem(_rootItem, QStringLiteral("vehicleSetupView"), 0)) {
+        return true;
+    }
+    if (!clickButton(QStringLiteral("mainStatusPill"))) {
+        QTest::qFail("Main status pill not found", __FILE__, __LINE__);
+        return false;
+    }
+    if (!findVisibleItem(_rootItem, QStringLiteral("vehicleSetupItem"), TestTimeout::shortMs())
+        || !clickButton(QStringLiteral("vehicleSetupItem"))) {
+        QTest::qFail("Vehicle Setup entry not found in the main status drop-down", __FILE__, __LINE__);
+        return false;
+    }
+    if (!findVisibleItem(_rootItem, QStringLiteral("vehicleSetupView"), TestTimeout::shortMs())) {
+        QTest::qFail("Vehicle Setup did not open", __FILE__, __LINE__);
+        return false;
+    }
+    QObject *const drawer = _window->findChild<QObject *>(QStringLiteral("indicatorDrawer"));
+    return drawer
+        && waitForCondition([drawer] { return !drawer->property("visible").toBool(); }, TestTimeout::shortMs(),
+                            QStringLiteral("main status drop-down closed"))
+        && _waitForToolPanel();
+}
+
 static QQuickItem *_findVisibleItemWithText(QQuickItem *root, const QString &objectName, const QString &textSubstring)
 {
     if (!root || !root->isVisible()) {
@@ -401,35 +434,38 @@ static QQuickItem *_findVisibleItemWithText(QQuickItem *root, const QString &obj
     return nullptr;
 }
 
-bool QmlUITestBase::dialogVisible(const QString &titleSubstring)
+bool QmlUITestBase::dialogVisible(const QString &textSubstring)
 {
-    return _findVisibleItemWithText(_rootItem, QStringLiteral("popupDialog_title"), titleSubstring) != nullptr;
+    return _findVisibleItemWithText(_rootItem, QStringLiteral("popupDialog_title"), textSubstring)
+        || _findVisibleItemWithText(_rootItem, QStringLiteral("popupDialog_text"), textSubstring);
 }
 
-bool QmlUITestBase::waitForDialog(const QString &titleSubstring, int timeoutMs)
+bool QmlUITestBase::waitForDialog(const QString &textSubstring, int timeoutMs)
 {
-    return waitForCondition([this, &titleSubstring] { return dialogVisible(titleSubstring); },
-                            timeoutMs, QStringLiteral("dialog '%1'").arg(titleSubstring));
+    return waitForCondition([this, &textSubstring] { return dialogVisible(textSubstring); },
+                            timeoutMs, QStringLiteral("dialog '%1'").arg(textSubstring));
+}
+
+bool QmlUITestBase::_clickDialogButton(const QString &buttonName, int timeoutMs)
+{
+    const QPointer<QQuickItem> button = findVisibleItem(_rootItem, buttonName, timeoutMs);
+    if (!button || !_clickItemAt(button, 0.5, 0.5, buttonName)) {
+        return false;
+    }
+    return waitForCondition([button] { return !button || !button->isVisible(); }, TestTimeout::shortMs(),
+                            QStringLiteral("%1 dialog closed").arg(buttonName));
 }
 
 bool QmlUITestBase::acceptDialog(int timeoutMs)
 {
-    if (!findVisibleItem(_rootItem, QStringLiteral("popupDialog_acceptButton"), timeoutMs)) {
-        return false;
-    }
-    return clickButton(QStringLiteral("popupDialog_acceptButton"));
+    return _clickDialogButton(QStringLiteral("popupDialog_acceptButton"), timeoutMs);
 }
 
 bool QmlUITestBase::rejectDialog(int timeoutMs)
 {
-    if (!findVisibleItem(_rootItem, QStringLiteral("popupDialog_rejectButton"), timeoutMs)) {
-        return false;
-    }
-    return clickButton(QStringLiteral("popupDialog_rejectButton"));
+    return _clickDialogButton(QStringLiteral("popupDialog_rejectButton"), timeoutMs);
 }
 
-// Format a property value for failure messages: quote strings, otherwise use
-// QVariant's string form ("true"/"false" for bools).
 static QString _displayValue(const QVariant &value)
 {
     if (value.typeId() == QMetaType::QString) {
@@ -441,9 +477,6 @@ static QString _displayValue(const QVariant &value)
 bool QmlUITestBase::_verifyItemProperty(const QString &objectName, const char *propertyName,
                                         const QVariant &expectedValue, const QString &context)
 {
-    // Item discovery is as asynchronous as state propagation (view transitions,
-    // Loaders); poll for the item with the same ceiling as the state check.
-    // findVisibleItem returns immediately once the item exists.
     QQuickItem *item = findVisibleItem(_rootItem, objectName, 2000);
     if (!item) {
         QTest::qFail(qPrintable(QStringLiteral("%1: item not found: %2").arg(context, objectName)),
@@ -451,8 +484,6 @@ bool QmlUITestBase::_verifyItemProperty(const QString &objectName, const char *p
         return false;
     }
 
-    // An invalid QVariant silently converts to false/"", which would make a
-    // false/empty expected value pass vacuously on an item without the property.
     if (!item->property(propertyName).isValid()) {
         QTest::qFail(qPrintable(QStringLiteral("%1: %2 has no '%3' property")
                                     .arg(context, objectName, QLatin1String(propertyName))),
@@ -460,10 +491,8 @@ bool QmlUITestBase::_verifyItemProperty(const QString &objectName, const char *p
         return false;
     }
 
-    // Guard against the item being destroyed while waiting (e.g. view rebuilds)
     const QPointer<QQuickItem> guardedItem(item);
 
-    // State changes propagate through bindings; allow them to settle
     const bool matched = waitForCondition(
         [guardedItem, propertyName, expectedValue] {
             return guardedItem && (guardedItem->property(propertyName) == expectedValue);
@@ -536,18 +565,6 @@ bool QmlUITestBase::scrollIntoView(QQuickItem *item, const QString &flickableObj
         return false;
     }
 
-    // Scroll until the item's centre sits inside the flickable's clickable region
-    // and stays there. A single scroll is not enough: expand/collapse reflows and
-    // pending polish passes can shift content after contentY is applied (a row that
-    // was centred can end up hanging past the window edge where clicks are dropped).
-    // Each poll flushes polish, re-checks containment, and re-issues the scroll if
-    // the item has drifted out again; success requires the centre to be stable in
-    // the clickable region across two consecutive event-loop passes.
-    //
-    // The clickable region is the viewport clipped to the window, inset by 1px
-    // because QRectF::contains includes edges: a centre exactly on the window's
-    // bottom edge (y == height) maps to a click outside the window's valid
-    // 0..height-1 range.
     const QPointer<QQuickItem> guardedItem(item);
     const QPointer<QQuickItem> guardedFlickable(flickable);
     QPointF lastCenter(qQNaN(), qQNaN());
@@ -572,9 +589,6 @@ bool QmlUITestBase::scrollIntoView(QQuickItem *item, const QString &flickableObj
                 return stable;
             }
 
-            // mapToItem gives a viewport-relative position (already offset by contentY).
-            // Add current contentY to get the absolute content-space position, then
-            // target a contentY that centres the item in the flickable.
             const QPointF itemInFlickable = guardedItem->mapToItem(guardedFlickable, QPointF(0, 0));
             const double currentContentY = guardedFlickable->property("contentY").toDouble();
             const double absoluteY = itemInFlickable.y() + currentContentY;
@@ -587,9 +601,6 @@ bool QmlUITestBase::scrollIntoView(QQuickItem *item, const QString &flickableObj
         TestTimeout::shortMs(),
         QStringLiteral("scrollIntoView settled"));
     if (!settled) {
-        // Record a test failure (as the pre-refactor QTRY_VERIFY_WITH_TIMEOUT did)
-        // rather than letting a click on a still-clipped item surface as a
-        // harder-to-diagnose failure later in the test.
         QTest::qFail(qPrintable(QStringLiteral("scrollIntoView: item never settled inside flickable %1")
                                     .arg(flickableObjectName)),
                      __FILE__, __LINE__);
@@ -648,8 +659,6 @@ QPointer<MockLink> QmlUITestBase::connectMockLinkAndWaitReady(
         return {};
     }
 
-    // Helper: disconnect the MockLink and return {} so callers never receive a
-    // live link they cannot clean up (the caller's qScopeGuard is not yet active).
     const auto failAndDisconnect = [&](const char *msg) -> QPointer<MockLink> {
         QTest::qFail(msg, __FILE__, __LINE__);
         mockLink->disconnect();

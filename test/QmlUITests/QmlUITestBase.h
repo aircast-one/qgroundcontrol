@@ -74,6 +74,9 @@ protected:
     /// 50ms intervals up to timeoutMs. Returns nullptr if not found within the timeout.
     static QQuickItem *findVisibleItem(QQuickItem *root, const QString &objectName, int timeoutMs = 1000);
 
+    /// Finds a QQuickItem by objectName in the visual tree whether or not it is visible.
+    static QQuickItem *findItem(QQuickItem *root, const QString &objectName);
+
     /// Click the visible QQuickItem with \a objectName in the current window.
     /// Waits for the item's scene position to settle before clicking and fails
     /// the test if the click point lies outside the window. Returns false if
@@ -95,28 +98,46 @@ protected:
     /// Convenience: findVisibleItemScrolled() followed by clickButton().
     bool clickButtonScrolled(const QString &objectName, const QString &flickableObjectName);
 
-    /// Open the toolbar Q-logo tool-select dropdown and click the entry with
-    /// objectName \a viewObjectName (e.g. "toolbar_viewPlan", "toolbar_viewClose").
-    /// Clicks the Q logo, waits up to \a timeoutMs for the entry to appear, then
-    /// clicks it. Returns false (after recording a test failure) if any step fails.
-    bool clickToolSelectDropdownButton(const QString &viewObjectName, int timeoutMs = 2000);
+    /// Switch the main window to the Plan view through the toolbar view switch.
+    bool openPlanView();
 
-    /// Wait up to \a timeoutMs for a QGCPopupDialog whose title contains
-    /// \a titleSubstring to become visible. Matches against the dialog title
-    /// label (objectName "popupDialog_title"). Returns true once found.
-    bool waitForDialog(const QString &titleSubstring, int timeoutMs = 3000);
+    /// Open the Settings tool from the toolbar settings button.
+    bool openSettings();
 
-    /// Returns true if a QGCPopupDialog whose title contains \a titleSubstring
-    /// is currently visible. Does not wait — use to assert a dialog is absent.
-    bool dialogVisible(const QString &titleSubstring);
+    /// Show the settings page listed as \a pageName, opening the Settings tool first if needed.
+    bool openSettingsPage(const QString &pageName);
+
+    /// Open the Analyze tool from the toolbar analyze button.
+    bool openAnalyzeTools();
+
+    /// Open Vehicle Setup from the main status drop-down. Needs an active vehicle.
+    bool openVehicleSetup();
+
+    /// Wait for the tool drawer panel to finish animating to its final size.
+    bool _waitForToolPanel();
+
+    /// Wait up to \a timeoutMs for a QGCPopupDialog whose title or message
+    /// contains \a textSubstring to become visible. Matches the labels named
+    /// "popupDialog_title" and "popupDialog_text". Returns true once found.
+    bool waitForDialog(const QString &textSubstring, int timeoutMs = 3000);
+
+    /// Returns true if a QGCPopupDialog whose title or message contains
+    /// \a textSubstring is currently visible. Does not wait — use to assert a
+    /// dialog is absent.
+    bool dialogVisible(const QString &textSubstring);
 
     /// Wait up to \a timeoutMs for the popup dialog accept button to become
-    /// visible, then click it. Returns false if the button never appears.
+    /// visible, click it and wait for the dialog to close. Returns false if the
+    /// button never appears or the dialog stays open.
     bool acceptDialog(int timeoutMs = 3000);
 
     /// Wait up to \a timeoutMs for the popup dialog reject button to become
-    /// visible, then click it. Returns false if the button never appears.
+    /// visible, click it and wait for the dialog to close. Returns false if the
+    /// button never appears or the dialog stays open.
     bool rejectDialog(int timeoutMs = 3000);
+
+    /// Shared implementation for acceptDialog() and rejectDialog().
+    bool _clickDialogButton(const QString &buttonName, int timeoutMs);
 
     /// Verify the enabled state of a visible item found by \a objectName,
     /// waiting up to 2 seconds for bindings to settle. Returns false (after
