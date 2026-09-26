@@ -60,6 +60,36 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The plan did not take that position.") } })
 }
 
+// SpeedSection::setSpecifyFlightSpeed takes the flag on any section, and appendSectionItems then
+// emits a DO_CHANGE_SPEED on upload whether or not the section is available - the flag QGC's own
+// editor hides the switch behind, false for a vehicle that is neither multirotor nor fixed wing and
+// for commands that carry no speed. Turning the speed on is refused where the section is unavailable;
+// turning it off is always allowed.
+pub fn speed_target(path: &str) -> Option<usize> {
+    path.strip_prefix(POSITION_ITEMS)?.strip_suffix(".speedSection.specifyFlightSpeed")?.parse().ok()
+}
+
+pub fn write_specify_speed(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let Some(index) = speed_target(path) else {
+        return refused("malformed", "Name the item as plan.missionController.visualItems.<index>.speedSection.".to_string());
+    };
+    let Some(on) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
+        return refused("malformed", "specifyFlightSpeed is true or false.".to_string());
+    };
+    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+        return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
+    }
+    let section = object(&backend.get_fields(&format!("{POSITION_ITEMS}{index}.speedSection"), "available"));
+    if section.get("kind").and_then(Value::as_str) != Some("object") {
+        return refused("noSuchItem", format!("Item {index} has no speed to set."));
+    }
+    if on && !flag(&section, "available") {
+        return refused("unavailable", "This item cannot carry a speed change.".to_string());
+    }
+    let answered = flag(&object(&backend.set(path, &json!({ "value": on }).to_string())), "ok");
+    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The item did not take the change.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +143,37 @@ mod tests {
         let busy = Plan { syncing: true, written: RefCell::new(Vec::new()) };
         assert_eq!(write(&busy, launch, r#"{"value":{"latitude":47,"longitude":8}}"#)["refusal"], "busy");
         assert!(!owns("plan.missionController.visualItems.1.altitude"), "a fact write stays with the fact check");
+    }
+
+    #[test]
+    fn a_speed_is_switched_on_only_where_the_section_is_available() {
+        struct Sections(RefCell<usize>);
+        impl Backend for Sections {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "plan" => json!({ "kind": "object", "syncInProgress": false }),
+                    "plan.missionController.visualItems.1.speedSection" => json!({ "kind": "object", "available": true }),
+                    "plan.missionController.visualItems.2.speedSection" => json!({ "kind": "object", "available": false }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                *self.0.borrow_mut() += 1;
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let sections = Sections(RefCell::new(0));
+        let at = |i: usize| format!("plan.missionController.visualItems.{i}.speedSection.specifyFlightSpeed");
+        assert!(crate::actions::owns_write(&at(1)));
+        assert_eq!(write_specify_speed(&sections, &at(1), r#"{"value":true}"#)["ok"], true);
+        assert_eq!(write_specify_speed(&sections, &at(2), r#"{"value":true}"#)["refusal"], "unavailable", "appendSectionItems emits DO_CHANGE_SPEED whatever available says");
+        assert_eq!(write_specify_speed(&sections, &at(2), r#"{"value":false}"#)["ok"], true, "switching a stale speed off is always allowed");
+        assert_eq!(write_specify_speed(&sections, &at(3), r#"{"value":false}"#)["refusal"], "noSuchItem");
+        assert_eq!(write_specify_speed(&sections, &at(1), r#"{"value":1}"#)["refusal"], "malformed");
+        assert_eq!(*sections.0.borrow(), 2);
     }
 }
