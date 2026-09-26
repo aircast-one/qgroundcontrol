@@ -114,9 +114,74 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+fn mode_refusal(view: &Value, asked: Option<&str>) -> Option<(&'static str, String)> {
+    let Some(asked) = asked.filter(|m| !m.is_empty()) else {
+        return Some(("malformed", "A flight mode is set by name.".to_string()));
+    };
+    let listed = view["modes"].as_array().is_some_and(|modes| modes.iter().any(|m| m["name"] == asked));
+    match () {
+        _ if view["available"] != true => Some(("noVehicle", "No vehicle with flight modes is connected.".to_string())),
+        _ if view["canSet"] != true => Some(("cannotSet", "This vehicle does not accept a flight mode change from here.".to_string())),
+        _ if !listed => Some(("unknownMode", format!("{asked} is not one of this vehicle's flight modes."))),
+        _ => None,
+    }
+}
+
+pub fn write_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_str().map(str::to_string));
+    let view = flight_modes_view(backend, &[]);
+    if let Some((token, reason)) = mode_refusal(&view, asked.as_deref()) {
+        return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    }
+    let asked = asked.unwrap_or_default();
+    if view["current"] == asked.as_str() {
+        return json!({ "ok": true, "result": true, "refusal": Value::Null, "unchanged": true, "reason": Value::Null });
+    }
+    let answered = flag(&object(&backend.set(path, &json!({ "value": asked }).to_string())), "ok");
+    json!({
+        "ok": answered,
+        "result": answered,
+        "refusal": Value::Null,
+        "unchanged": false,
+        "reason": match answered { true => Value::Null, false => json!("The vehicle was not asked to change mode.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_flight_mode_is_set_only_by_a_name_the_vehicle_lists() {
+        let view = json!({ "available": true, "canSet": true, "current": "Hold", "modes": [{ "name": "Hold" }, { "name": "Position" }, { "name": "Return" }] });
+        assert_eq!(mode_refusal(&view, Some("Position")), None);
+        assert_eq!(mode_refusal(&view, Some("Loiter")).map(|r| r.0), Some("unknownMode"), "setFlightModeCustom fails on a name the firmware plugin does not know and setFlightMode returns with nothing sent and nothing said");
+        assert_eq!(mode_refusal(&view, Some("")).map(|r| r.0), Some("malformed"));
+        assert_eq!(mode_refusal(&view, None).map(|r| r.0), Some("malformed"));
+        assert_eq!(mode_refusal(&json!({ "available": true, "canSet": false, "modes": [{ "name": "Hold" }] }), Some("Hold")).map(|r| r.0), Some("cannotSet"));
+        assert_eq!(mode_refusal(&json!({ "available": false }), Some("Hold")).map(|r| r.0), Some("noVehicle"));
+
+        use std::cell::RefCell;
+        struct Vehicle(RefCell<Vec<String>>);
+        impl Backend for Vehicle {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "flightMode": "Hold", "flightModes": ["Hold", "Position"], "advancedFlightModes": [], "flying": false, "rtlFlightMode": "Return", "landFlightMode": "Land", "flightModeSetAvailable": true }).to_string()
+            }
+            fn set(&self, _p: &str, v: &str) -> String {
+                self.0.borrow_mut().push(v.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let vehicle = Vehicle(RefCell::new(Vec::new()));
+        assert_eq!(write_mode(&vehicle, "vehicle.flightMode", r#"{"value":"Hold"}"#)["unchanged"], true, "asking for the mode it is already in sends nothing");
+        assert!(vehicle.0.borrow().is_empty());
+        let changed = write_mode(&vehicle, "vehicle.flightMode", r#"{"value":"Position"}"#);
+        assert_eq!((&changed["ok"], &changed["result"]), (&json!(true), &json!(true)));
+        assert_eq!(vehicle.0.borrow().as_slice(), &[r#"{"value":"Position"}"#.to_string()]);
+    }
 
     #[test]
     fn descriptions_and_confirmation_follow_the_vehicles_own_names() {

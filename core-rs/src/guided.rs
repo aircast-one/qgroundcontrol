@@ -486,9 +486,39 @@ pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str
     })
 }
 
+pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let Some(forward) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
+        return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "A VTOL transition is true for fixed-wing flight or false for multi-rotor flight." });
+    };
+    let offered = if forward { [Action::VtolTransitionToFixedWing] } else { [Action::VtolTransitionToMultiRotor] };
+    if let Some((token, reason)) = invoke_refusal(&offered, &read_state(backend)) {
+        return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    }
+    let answered = flag(&object(&backend.set(path, &json!({ "value": forward }).to_string())), "ok");
+    json!({
+        "ok": answered,
+        "result": answered,
+        "refusal": Value::Null,
+        "reason": match answered { true => Value::Null, false => json!("The vehicle was not asked to transition.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vtol_transition_goes_only_the_way_the_view_offers() {
+        let hover = GuidedState { connected: true, armed: true, flying: true, vtol: true, vtol_in_fwd_flight: false, ..GuidedState::default() };
+        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &hover), None);
+        assert_eq!(
+            invoke_refusal(&[Action::VtolTransitionToMultiRotor], &hover).map(|r| r.0),
+            Some("notOffered"),
+            "setVtolInFwdFlight sends MAV_CMD_DO_VTOL_TRANSITION whenever the stored flag differs, so a stale flag sends a transition the aircraft is already in"
+        );
+        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &GuidedState { flying: false, ..hover.clone() }).map(|r| r.0), Some("notOffered"), "and on the ground there is no transition to make");
+        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &GuidedState { vtol: false, ..hover.clone() }).map(|r| r.0), Some("notOffered"));
+    }
 
     #[test]
     fn a_guided_value_is_checked_against_the_range_its_view_served() {
