@@ -48,6 +48,7 @@
 #include <QtCore/QJsonObject>
 #include <QtNetwork/QNetworkDatagram>
 #include <QtNetwork/QUdpSocket>
+#include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 
 #include <QtPositioning/QGeoCoordinate>
@@ -86,7 +87,7 @@ int latestViewCount()
     return index < 0 ? -1 : QJsonDocument::fromJson(payloads.at(index).toUtf8()).object().value(QStringLiteral("count")).toInt(-1);
 }
 
-} // namespace
+}
 
 void QGCCoreCTest::init()
 {
@@ -444,20 +445,12 @@ void QGCCoreCTest::_flightModesFollowTheVehicle()
 
 void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
 {
-    // HIDDEN and DESKTOP_ONLY match a BARE fact name, not group plus name, so a second group
-    // introducing a name already on either list silently loses that control on a page nobody is
-    // looking at. deviceName is on HIDDEN because the Packet Radio block draws it as a picker;
-    // today it exists in one group, and nothing but this says so.
     QMap<QString, QStringList> owners;
     for (const QJsonValue &page : take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray()) {
         const QString title = page.toObject().value(QStringLiteral("title")).toString();
         const QJsonObject drawn = take(qgc_bridge_get(QStringLiteral("view.settings(%1)").arg(title).toUtf8().constData()));
         for (const QJsonValue &section : drawn.value(QStringLiteral("sections")).toArray()) {
             const QString group = section.toObject().value(QStringLiteral("group")).toString();
-            // A section carries subsections of controls; it has never carried a "facts" key. This
-            // loop read one for as long as it existed, so owners stayed empty, shared stayed empty
-            // and the check passed without examining a single control - while the hazard it names
-            // went live: enabled is declared in both PacketRadio and Viewer3D.
             for (const QJsonValue &subsection : section.toObject().value(QStringLiteral("subsections")).toArray()) {
                 for (const QJsonValue &control : subsection.toObject().value(QStringLiteral("controls")).toArray()) {
                     owners[control.toObject().value(QStringLiteral("name")).toString()].append(group);
@@ -474,9 +467,6 @@ void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
             shared.append(QStringLiteral("%1 in %2").arg(it.key(), groups.join(QStringLiteral(", "))));
         }
     }
-    // enabled is genuinely declared in two groups and neither bare-name list names it, so it is a
-    // hazard rather than a defect. Naming it here rather than allowing any collision keeps this
-    // check able to report the next one.
     shared.removeAll(QStringLiteral("enabled in packetRadioSettings, viewer3DSettings"));
     shared.removeAll(QStringLiteral("enabled in viewer3DSettings, packetRadioSettings"));
     shared.removeAll(QStringLiteral("mapProvider in flightMapSettings, viewer3DSettings"));
@@ -486,12 +476,6 @@ void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
 
 void QGCCoreCTest::_theFourSensorListsStayTheSameLength()
 {
-    // sensors.rs answers an empty list when sensorNames, sensorEnabled and sensorHealthy disagree
-    // in length, and a head draws that as "No vehicle is reporting sensor status" for a vehicle
-    // that is reporting it. That branch is unreachable only because all four accessors here walk
-    // one _orderedSensors() - SysStatusSensorInfo.cc:80-118 - so the guarantee lives in THIS file
-    // and nothing in core-rs protects it. Build the lists separately and the core starts refusing
-    // a healthy vehicle with nothing anywhere saying why.
     SysStatusSensorInfo info;
     mavlink_sys_status_t sysStatus{};
     sysStatus.onboard_control_sensors_present = MAV_SYS_STATUS_SENSOR_3D_GYRO | MAV_SYS_STATUS_SENSOR_3D_ACCEL | MAV_SYS_STATUS_SENSOR_GPS;
@@ -508,13 +492,6 @@ void QGCCoreCTest::_theFourSensorListsStayTheSameLength()
 
 void QGCCoreCTest::_aCameraActionIsRoutedByTheCoreAndNotThePassthrough()
 {
-    // qgc_core_guided is declared, defined and called by nothing, which no unit test could show:
-    // reachability is a property of the entry point, not of the module. actions::owns is the only
-    // thing that makes these three paths reach the core at all, and a path it does not claim falls
-    // through to the bridge and invokes a Qt method whose refusals are silent - which is the exact
-    // behaviour these actions exist to replace. The rig has no camera, so the answer here is the
-    // no-camera refusal; that it is the CORE's sentence and not an empty passthrough result is the
-    // whole assertion.
     for (const char *path : { "camera.takePhoto", "camera.toggleRecording", "camera.stopPhoto" }) {
         const QJsonObject answer = take(qgc_core_invoke(path, "[]"));
         QVERIFY2(answer.contains(QStringLiteral("reason")), qPrintable(QStringLiteral("%1 returned no reason, so owns() does not claim it and it fell through to the bridge").arg(path)));
@@ -1339,12 +1316,6 @@ const char *const kViewPaths[] = {
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
     "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.vehicles", "view.label(altitudeRelative)", "view.instruments", "view.instrumentGroups", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.control(settings.appSettings.qLocaleLanguage)", "view.links", "view.linkForm(udp,,14550)",
-    // A parameterised view is recorded from the tuples listed here and no others, so one listed
-    // only in its happy case produces a type asserting the unhappy arm cannot occur - a standing
-    // check on the wrong side of the branch, and the only kind that reads as reassuring. These
-    // second tuples are the refused and the receiving cases: without them errorField typed null
-    // and seventeen packetRadio fields sat in _alwaysNull, so every decision a head made about
-    // their nullability was uncorroborated by a contract that read green.
     "view.linkForm(tcp,,5760)",
     "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0)",
     "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0)",
@@ -1387,7 +1358,7 @@ QList<QByteArray> viewPathsWithFixtures()
     return paths;
 }
 
-} // namespace
+}
 
 static void _collectJsonDifferences(const QJsonValue &expected, const QJsonValue &actual, const QString &path, QStringList &found)
 {
@@ -1471,11 +1442,6 @@ static QString _shapeDifference(const QJsonObject &was, const QJsonObject &now)
 
 void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
 {
-    // kViewPaths is hand written and nothing tied it to the registry, so a view added to VIEWS was
-    // simply absent from the contract - its shape pinned by nothing, and indistinguishable from the
-    // eighteen absent on purpose. view.instrumentGroups was added and recorded nothing until this
-    // guard was written. Each excuse below is a decision; a view that stops matching its reason
-    // should be recorded rather than left here.
     static const QMap<QString, QString> kNotRecorded = {
         { QStringLiteral("view.geoTag"), QStringLiteral("takes a telemetry log path plus one timestamp per image") },
         { QStringLiteral("view.terrainTile"), QStringLiteral("takes a file path plus a latitude and longitude") },
@@ -1519,20 +1485,6 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
 
 void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
 {
-    // kFactProperties is a hand-maintained allowlist and a Q_PROPERTY missing from it arrives
-    // nowhere - the core reading that key takes its None branch, falls back, and the feature looks
-    // implemented while doing nothing. rawValue had been declared since forever and was still
-    // absent; defaultValue was found by a survey rather than by anyone reading Fact.h.
-    //
-    // Enumerated from the metaobject rather than from the header text on purpose. A grep taking the
-    // last token of a Q_PROPERTY line takes the READ accessor - Q_PROPERTY(QVariant max READ
-    // cookedMax CONSTANT) yields cookedMax, which looks exactly like a property somebody forgot to
-    // serve. The metaobject knows only property names, so that mistake cannot be made here. And the
-    // comparison is against what the bridge ACTUALLY serialises rather than against the list, so it
-    // cannot pass on a list that is right while the serialisation is not.
-    //
-    // A property stays out until a head names a use for it. Adding one because it is absent is the
-    // inverse of the mistake this suite keeps finding: batteriesRequired was served and dead.
     static const QMap<QString, QString> kNotServed = {
         { QStringLiteral("category"), QStringLiteral("groups facts in the Qt parameter editor's tree; no head draws that tree") },
         { QStringLiteral("componentId"), QStringLiteral("view.coreParameters carries the component beside the parameter already") },
@@ -1552,19 +1504,9 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
         { QStringLiteral("invalidValueString"), QStringLiteral("nothing asks yet; validation sentences come from view.control") },
     };
 
-    // A settings fact rather than a vehicle one: cleanup() disconnects the mock link and waits for
-    // activeVehicleAvailable to go false after EVERY test, so vehicle.altitudeRelative is null here
-    // and the sweep would have run against an empty object. DEFINE_SETTINGFACT facts exist with no
-    // vehicle attached, and a Fact is a Fact - factJson does not vary by which one it is handed.
     const QJsonObject fact = take(qgc_bridge_get("settings.appSettings.audioMuted"));
     QCOMPARE(fact.value(QStringLiteral("kind")).toString(), QStringLiteral("fact"));
 
-    // Fact::staticMetaObject alone walked the BASE class, so every property a subclass adds sat
-    // outside this check and it stayed green about them. SettingsFact::visible was unserved that
-    // whole time - QGC hides Application save directory on Android with it, and because the flag
-    // never reached a head the row was drawn, accepted a write, and had it silently overwritten by
-    // the runtime path on the next launch. A guard that enumerates a base class is the same
-    // mistake as a grep window that excludes the line: the sweep ran and the subject was outside it.
     QStringList declared;
     for (const QMetaObject *meta : { &Fact::staticMetaObject, &SettingsFact::staticMetaObject }) {
         for (int property = meta->propertyOffset(); property < meta->propertyCount(); ++property) {
@@ -1573,12 +1515,6 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
     }
     QVERIFY2(declared.count() > 30, "the metaobjects answered, so an empty sweep below would mean nothing");
     QVERIFY2(declared.contains(QStringLiteral("visible")), "SettingsFact's own properties have to be in the sweep, or a subclass can add one and nothing here notices");
-    // Being on the allowlist is not the same as arriving. variantJson handles the metatypes it
-    // names and falls through to QJsonValue::fromVariant for the rest, which answers null for a
-    // type it cannot convert - so a served property with a perfectly good Qt value reaches a head
-    // as "this field has no value", with nothing anywhere saying otherwise. Five fields hit that
-    // this week, the last being QRectF. The check above asks whether a property is served; this
-    // asks whether serving it produces anything.
     Fact *const audioMuted = SettingsManager::instance()->appSettings()->audioMuted();
     QVERIFY(audioMuted);
     QStringList emptied;
@@ -1607,12 +1543,6 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
     QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("declared on Fact and serialised nowhere, so core code reading them silently falls back and the feature looks implemented: %1. Add them to kFactProperties in QGCBridgeCore.cc, or name them above with the reason nothing asks").arg(missing.join(QStringLiteral(", ")))));
     QVERIFY2(stale.isEmpty(), qPrintable(QStringLiteral("served AND excused, so the reason carried here is no longer true: %1").arg(stale.join(QStringLiteral(", ")))));
 
-    // The loop above reaches an excuse only through a DECLARED name, so an entry naming something
-    // Fact no longer declares - or never could - is not wrongly excused, it is never examined.
-    // That is a different failure from a stale reason: a stale one is a judgement someone can
-    // review, an unexaminable one is not in the process at all, and it sits there looking like a
-    // decision while covering nothing. A findings-side check cannot see it by construction,
-    // because it produces no finding to validate.
     QStringList unreachable;
     for (const QString &excused : kNotServed.keys()) {
         if (!declared.contains(excused)) {
@@ -1659,12 +1589,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         recorded.insert(key, mergeShapes(offline.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
 
-    // Three states all had one disarmed grounded vehicle that nobody had selected, so sixteen of
-    // the nineteen guided offers and every multi-vehicle offer were pinned at a single value: the
-    // fixture could not have caught a regression that left any of them hidden or refusing forever.
-    // Selecting and arming moves both sets. Each step is verified to have taken before the snapshot
-    // - an unverified fourth state that silently matched the third would widen nothing while
-    // looking like coverage.
     const int vehicleId = take(qgc_bridge_get("view.vehicles")).value(QStringLiteral("activeId")).toInt();
     QVERIFY2(vehicleId > 0, "no active vehicle id, so selecting one below would be a no-op that still records a state");
     (void) take(qgc_bridge_invoke("vehicles.selectVehicle", QJsonDocument(QJsonArray { vehicleId }).toJson(QJsonDocument::Compact).constData()));
@@ -1731,11 +1655,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         return once == take(qgc_core_get("view.preflight"));
     };
     QTRY_VERIFY_WITH_TIMEOUT(preflightSettled(), 15000);
-    // Terrain arrives from a tile cache or the network and has resolved in two of the last four
-    // recordings, which is why clearanceText has been flipping between "null|string" and "null"
-    // and taking its type with it. This waits rather than asserts: a machine that cannot reach
-    // terrain should still be able to record, and the guard that refuses a narrowed type is what
-    // stops such a run being committed.
     const auto terrainResolved = []() {
         return !take(qgc_core_get("view.terrainProfile")).value(QStringLiteral("minClearanceMetres")).isNull();
     };
@@ -1798,12 +1717,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         }
         recorded.insert(QStringLiteral("_neverVaried"), QJsonArray::fromStringList(paths));
     }
-    // 86% of this list was one entry per array INDEX, so a run whose terrain profile resolved a
-    // different number of points moved ~1400 lines while nothing about the contract had changed -
-    // which is the condition under which a real change hides in a diff nobody can read. The
-    // indices carry nothing the shape does not: every element of an array has the same fields.
-    // Only this list is collapsed. _neverVaried and _alwaysNull ask whether EVERY index behaved,
-    // which is a different question from whether any index was seen, and they do not churn.
     static const QRegularExpression subscript(QStringLiteral("\\.\\d+(?=\\.|$)"));
     QStringList observed;
     for (const QJsonObject &state : states) {
@@ -1828,10 +1741,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         QFile out(fixture);
         QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
         out.write(current);
-        // A bare return here reported PASS while comparing nothing, and every guard below it - the
-        // never-varies check, _alwaysNull, the bare-refusal check, kArgumentsNotRecorded - sat
-        // after it. A recording run must SAY it recorded; the five oracle tests already QSKIP and
-        // this one did not, so a green from a recording read exactly like a green from a check.
         QSKIP("recorded the view contract");
     }
 
@@ -1863,13 +1772,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
             neverAnswered.append(field.toString());
         }
     }
-    // The acceptance path for this guard is a re-record, which is its weakness: a field that
-    // lands here is silenced by the next recording, with no reviewer and no reason written
-    // down. So _alwaysNull holds three kinds of entry that look identical - a field with no
-    // vehicle behind it, a field whose PRECONDITION the recorder cannot create (an ROI that
-    // nothing activates), and a field read under a name its producer does not use. Only the
-    // third is a defect, and nothing here tells them apart. Before accepting a new entry by
-    // re-recording, say which of the three it is.
     QVERIFY2(neverAnswered.isEmpty(),
              qPrintable(QStringLiteral("these answered null with no vehicle, with one connected and with a plan on it. A field that is never anything "
                                        "is usually a field read under a name its producer does not use, which is how two of this week's defects got in. "
@@ -1975,7 +1877,7 @@ QString roundedCoordinates(const QJsonArray &points)
     return text.join(QStringLiteral(" "));
 }
 
-} // namespace
+}
 
 void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 {
@@ -3521,17 +3423,14 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
         drawn[index] = char(index % 251);
     }
     QGCCacheTile *const tile = new QGCCacheTile(hash, drawn, QStringLiteral("png"), type);
-    QVERIFY2(QGCMapEngine::instance()->addTask(new QGCSaveTileTask(tile)), "the map engine would not take the tile");
+    QGCSaveTileTask *const save = new QGCSaveTileTask(tile);
+    QSignalSpy saved(save, &QObject::destroyed);
+    QVERIFY2(QGCMapEngine::instance()->addTask(save), "the map engine would not take the tile");
+    QVERIFY2(saved.wait(20000), "the map engine never finished writing the tile");
 
     const QJsonObject opened = take(qgc_core_tile_open(databasePath.toUtf8().constData()));
     QVERIFY2(opened.value(QStringLiteral("ok")).toBool(false), qPrintable(QStringLiteral("the Rust cache could not open the database the map engine is using: %1").arg(opened.value(QStringLiteral("reason")).toString())));
 
-    QElapsedTimer waitingForTheTile;
-    waitingForTheTile.start();
-    while (qgc_core_tile_size(hash.toUtf8().constData()) != drawn.size() && waitingForTheTile.elapsed() < 20000) {
-        QTest::qWait(100);
-        (void) take(qgc_core_tile_open(databasePath.toUtf8().constData()));
-    }
     const qint64 served = qgc_core_tile_size(hash.toUtf8().constData());
     QString stored;
     if (served != drawn.size()) {
