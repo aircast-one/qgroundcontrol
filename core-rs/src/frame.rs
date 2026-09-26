@@ -67,6 +67,55 @@ pub fn frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+const UNKNOWN_MOTOR_COUNT: i64 = 8;
+const LONGEST_TEST_SECONDS: i64 = 10;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct MotorAsk {
+    motor: i64,
+    percent: i64,
+    seconds: i64,
+}
+
+fn motor_ask(args: &str) -> Option<MotorAsk> {
+    let args = serde_json::from_str::<Value>(args).ok()?;
+    let whole = |i: usize| args.get(i)?.as_f64().filter(|v| v.fract() == 0.0).map(|v| v as i64);
+    let percent = args.get(1)?.as_f64().filter(|v| v.is_finite())?.round() as i64;
+    Some(MotorAsk { motor: whole(0)?, percent, seconds: whole(2)? })
+}
+
+fn motor_refusal(ask: MotorAsk, frame: &Value) -> Option<(&'static str, String)> {
+    let connected = flag(frame, "connected");
+    let count = frame.get("motorCount").and_then(Value::as_i64).unwrap_or(UNKNOWN_MOTOR_COUNT);
+    match () {
+        _ if !connected => Some(("noVehicle", "No vehicle is connected, so nothing will answer a motor test.".to_string())),
+        _ if !(0..=100).contains(&ask.percent) => Some(("throttleOutOfRange", "A motor test throttle is 0 to 100 percent.".to_string())),
+        _ if ask.motor < 1 || ask.motor > count => Some(("noSuchMotor", format!("This airframe has motors 1 to {count}."))),
+        _ if ask.percent == 0 => None,
+        _ if flag(frame, "armed") => Some(("armed", "The vehicle is armed. Disarm it before testing a motor.".to_string())),
+        _ if frame.get("contactLost").and_then(Value::as_bool) == Some(true) => Some(("contactLost", "The vehicle has stopped answering. Check the link before testing a motor.".to_string())),
+        _ if !(1..=LONGEST_TEST_SECONDS).contains(&ask.seconds) => Some(("timeoutOutOfRange", format!("A spinning motor needs a timeout of 1 to {LONGEST_TEST_SECONDS} seconds."))),
+        _ => None,
+    }
+}
+
+pub fn motor_test(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let Some(ask) = motor_ask(args) else {
+        return json!({ "ok": false, "refusal": "malformed", "reason": "A motor test takes a motor number, a throttle percent and a timeout in seconds." });
+    };
+    if let Some((token, reason)) = motor_refusal(ask, &frame_view(backend, &[])) {
+        return json!({ "ok": false, "refusal": token, "reason": reason });
+    }
+    let seconds = if ask.percent == 0 { 0 } else { ask.seconds };
+    let dispatched = flag(&object(&backend.invoke(path, &json!([ask.motor, ask.percent, seconds, true]).to_string())), "ok");
+    json!({
+        "ok": dispatched,
+        "refusal": Value::Null,
+        "stopping": ask.percent == 0,
+        "reason": match dispatched { true => Value::Null, false => json!("The vehicle did not take the motor test.") },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +210,29 @@ mod tests {
         assert_eq!(frame_view(&Link { watching: true, lost: true }, &[])["contactLost"], true);
         assert_eq!(frame_view(&Link { watching: true, lost: false }, &[])["contactLost"], false);
         assert_eq!(frame_view(&Link { watching: false, lost: false }, &[])["contactLost"], Value::Null, "with the watch off the flag stays false however long the vehicle has been silent, so serving it raw would call an unmonitored link healthy on the page that decides whether a motor may spin");
+    }
+
+    #[test]
+    fn a_motor_spins_only_disarmed_in_contact_and_in_range_while_a_stop_always_goes() {
+        let frame = |armed: bool, lost: Option<bool>, count: Option<i64>| json!({ "connected": true, "armed": armed, "contactLost": lost, "motorCount": count });
+        let spin = |motor, percent, seconds| MotorAsk { motor, percent, seconds };
+        let token = |ask, f: &Value| motor_refusal(ask, f).map(|(t, _)| t);
+        let quad = frame(false, Some(false), Some(4));
+        assert_eq!(token(spin(1, 20, 3), &quad), None);
+        assert_eq!(token(spin(5, 20, 3), &quad), Some("noSuchMotor"), "both heads offered eight motors to an airframe whose count they could not read, and nothing below them checked");
+        assert_eq!(token(spin(0, 20, 3), &quad), Some("noSuchMotor"));
+        assert_eq!(token(spin(8, 20, 3), &frame(false, None, None)), None, "an unpublished layout is offered eight, as both heads do");
+        assert_eq!(token(spin(9, 20, 3), &frame(false, None, None)), Some("noSuchMotor"));
+        assert_eq!(token(spin(1, 150, 3), &quad), Some("throttleOutOfRange"));
+        assert_eq!(token(spin(1, 20, 3), &frame(true, Some(false), Some(4))), Some("armed"));
+        assert_eq!(token(spin(1, 20, 3), &frame(false, Some(true), Some(4))), Some("contactLost"));
+        assert_eq!(token(spin(1, 20, 3), &frame(false, None, Some(4))), None, "an unmonitored link is not a lost one");
+        assert_eq!(token(spin(1, 20, 0), &quad), Some("timeoutOutOfRange"), "MAV_CMD_DO_MOTOR_TEST with a throttle and no timeout leaves the motor to the firmware's idea of forever");
+        assert_eq!(token(spin(1, 20, 60), &quad), Some("timeoutOutOfRange"));
+        assert_eq!(token(spin(1, 0, 0), &frame(true, Some(true), Some(4))), None, "a stop must reach a vehicle that is armed or answering badly, which is exactly when an operator needs it");
+        assert_eq!(token(spin(1, 20, 3), &json!({ "connected": false })), Some("noVehicle"));
+        assert_eq!(motor_ask("[1, 37.6, 3, true]"), Some(spin(1, 38, 3)), "the macOS slider sends its Double unrounded, and Vehicle::motorTest takes an int percent");
+        assert_eq!(motor_ask("[1.5, 20, 3]"), None);
+        assert_eq!(motor_ask("[2, 0, 3]"), Some(spin(2, 0, 3)));
     }
 }

@@ -35,9 +35,10 @@ const GEOTAG_CANCEL: &str = "geoTag.cancelTagging";
 const GEOTAG_LOG: &str = "geoTag.logFile";
 const GEOTAG_IMAGES: &str = "geoTag.imageDirectory";
 const GEOTAG_SAVE: &str = "geoTag.saveDirectory";
+const MOTOR_TEST: &str = "vehicle.motorTest";
 const ZOOM: &str = "vehicle.cameraManager.currentCameraInstance.zoomLevel";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path)
@@ -117,6 +118,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RADIO_NEXT => crate::radio::act(backend, crate::radio::Action::Next, path),
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
+        MOTOR_TEST => crate::frame::motor_test(backend, path, args),
         GEOTAG_START => crate::geotagjob::act(backend, crate::geotagjob::Action::Start, path),
         GEOTAG_CANCEL => crate::geotagjob::act(backend, crate::geotagjob::Action::Cancel, path),
         SENSOR_NEXT => crate::calibration::act(backend, crate::calibration::Action::Next, path, args),
