@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["links.mavlinkSupportForwardingEnabled", "links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses"];
 
-fn kind(settings_url: &str) -> &'static str {
+pub(crate) fn kind(settings_url: &str) -> &'static str {
     match settings_url {
         "TcpSettings.qml" => "tcp",
         "UdpSettings.qml" => "udp",

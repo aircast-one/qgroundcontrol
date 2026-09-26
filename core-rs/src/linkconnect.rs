@@ -127,6 +127,62 @@ pub fn create(backend: &dyn Backend, how: Create, path: &str, args: &str) -> Val
     })
 }
 
+const EDITABLE: &[&str] = &["name", "host", "port", "localPort", "portName", "baud"];
+
+pub fn edit_target(path: &str) -> Option<(usize, &str)> {
+    let (index, field) = path.strip_prefix(LINKS)?.strip_prefix('.')?.split_once('.')?;
+    EDITABLE.contains(&field).then_some(())?;
+    Some((index.parse().ok()?, field))
+}
+
+fn edit_refusal(field: &str, asked: &Value, element: &Value, others: &[String], rates: &[i64]) -> Option<String> {
+    let text = asked.as_str().map(str::trim);
+    let whole = asked.as_f64().filter(|v| v.fract() == 0.0).map(|v| v as i64);
+    let tcp = crate::links::kind(element.get("settingsURL").and_then(Value::as_str).unwrap_or("")) == "tcp";
+    match field {
+        "name" => match text {
+            Some("") | None => Some("A link needs a name.".to_string()),
+            Some(name) if others.iter().any(|o| o == name) => Some(format!("A link called {name} already exists.")),
+            Some(_) => None,
+        },
+        "host" => match text {
+            None => Some("An address is text.".to_string()),
+            Some("") if tcp => Some("A TCP link needs the address of the device to call.".to_string()),
+            Some(_) => None,
+        },
+        "port" | "localPort" => whole.filter(|p| (1..=65535).contains(p)).is_none().then(|| "Port must be a number between 1 and 65535.".to_string()),
+        "portName" => text.filter(|t| !t.is_empty()).is_none().then(|| "A serial link needs the device to open.".to_string()),
+        _ => whole.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))).is_none().then(|| "Choose one of the rates the radio offers.".to_string()),
+    }
+}
+
+pub fn edit(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let refused = |token: &str, field: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "errorField": field, "reason": reason });
+    let Some((index, field)) = edit_target(path) else {
+        return refused("malformed", "", "That is not a link setting the core writes.".to_string());
+    };
+    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let links = configurations(backend).unwrap_or_default();
+    let Some(element) = links.get(index) else {
+        return refused("noSuchLink", field, format!("There is no link at position {index}."));
+    };
+    if connected(element) {
+        return refused("connected", field, "Disconnect the link before changing its settings.".to_string());
+    }
+    let others: Vec<String> = links.iter().enumerate().filter(|(i, _)| *i != index).filter_map(|(_, e)| e.get("name")?.as_str().map(str::to_string)).collect();
+    if let Some(reason) = edit_refusal(field, &asked, element, &others, &crate::links::serial_baud_rates(backend)) {
+        return refused("invalid", field, reason);
+    }
+    let sent = match asked.as_str() {
+        Some(t) => json!(t.trim()),
+        None => asked,
+    };
+    let answered = flag(&object(&backend.set(path, &json!({ "value": sent }).to_string())), "ok");
+    let held = configurations(backend).and_then(|l| l.get(index).and_then(|e| e.get(field)).cloned());
+    let took = answered && held.as_ref().is_some_and(|h| h == &sent || h.as_f64().zip(sent.as_f64()).is_some_and(|(a, b)| a == b));
+    json!({ "ok": took, "result": took, "refusal": Value::Null, "errorField": Value::Null, "reason": match took { true => Value::Null, false => json!("The link did not keep that setting.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +255,43 @@ mod tests {
         let made = create(&manager, Create::Serial, "links.createSerialConfiguration", r#"["Radio", "ttyUSB0", 57600]"#);
         assert_eq!((&made["ok"], &made["result"]), (&json!(true), &json!(true)), "the head reads result, so the claimed path keeps it");
         assert_eq!(manager.0.borrow().as_slice(), &[r#"["Radio","ttyUSB0",57600]"#.to_string()]);
+    }
+
+    #[test]
+    fn a_link_setting_is_changed_only_on_a_link_that_is_not_live_and_only_to_a_value_its_field_takes() {
+        let tcp = json!({ "name": "Bench", "settingsURL": "TcpSettings.qml", "children": [] });
+        let others = vec!["SITL".to_string()];
+        let rates = [57600, 115200];
+        let check = |field, asked: Value| edit_refusal(field, &asked, &tcp, &others, &rates);
+        assert_eq!(check("name", json!("Bench 2")), None);
+        assert!(check("name", json!("SITL")).is_some(), "the Android edit form checked a blank name and nothing else, so two links could end up under one name");
+        assert!(check("host", json!("")).is_some());
+        assert!(check("port", json!(70000)).is_some());
+        assert_eq!(check("localPort", json!(14550)), None);
+        assert!(check("baud", json!(9600)).is_some());
+        assert_eq!(check("baud", json!(57600)), None);
+        assert_eq!(edit_target("links.linkConfigurations.2.port"), Some((2, "port")));
+        assert_eq!(edit_target("links.linkConfigurations.2.link.disconnect"), None);
+        assert_eq!(edit_target("links.linkConfigurations.x.port"), None);
+
+        use std::cell::RefCell;
+        struct Manager(RefCell<Vec<Value>>);
+        impl Backend for Manager {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "object", "elements": self.0.borrow().clone() }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object" }).to_string() }
+            fn set(&self, p: &str, v: &str) -> String {
+                let (index, field) = edit_target(p).unwrap();
+                self.0.borrow_mut()[index][field] = object(v)["value"].clone();
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let manager = Manager(RefCell::new(vec![json!({ "name": "Live", "settingsURL": "UdpSettings.qml", "children": ["link"] }), tcp.clone()]));
+        assert_eq!(edit(&manager, "links.linkConfigurations.0.localPort", r#"{"value":14551}"#)["refusal"], "connected", "a port written under a live link changes the configuration and not the connection, which the head was left to guard against by polling");
+        let written = edit(&manager, "links.linkConfigurations.1.host", r#"{"value":" 10.0.0.5 "}"#);
+        assert_eq!(written["result"], true);
+        assert_eq!(manager.0.borrow()[1]["host"], "10.0.0.5");
+        assert_eq!(edit(&manager, "links.linkConfigurations.5.port", r#"{"value":5760}"#)["refusal"], "noSuchLink");
     }
 }
