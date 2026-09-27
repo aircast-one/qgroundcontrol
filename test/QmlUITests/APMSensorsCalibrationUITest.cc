@@ -97,6 +97,12 @@ void APMSensorsCalibrationUITest::_testCompassCalibrationCancel()
 
     verifyAPMCalIndicators(/*compassGreen=*/false, /*accelGreen=*/true, "after compass cal cancel");
 
+    // Cancelling writes the calibration parameters back; let those land before the link goes, or
+    // the writes and their read-backs find no link.
+    QVERIFY2(QTest::qWaitFor([mgr] { return !mgr->pendingWrites(); }, 10000),
+             "parameter writes still pending after compass cal cancel");
+    waitForParamRefreshQuiet(vehicle);
+
     });
 }
 
