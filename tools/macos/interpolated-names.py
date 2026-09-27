@@ -79,21 +79,15 @@ def check(what, names, headers, needs_write):
 
 lists = swift_names("macos/Sources/ItemFactModel.swift", "static let lists")
 labels = swift_names("macos/Sources/GeoTag.swift", "static let labels")
-survey = swift_names("macos/Sources/SurveyStatsModel.swift", "static let properties")
 sensors = swift_names("macos/Sources/VehicleComponentModel.swift", "static let sensorClasses")
 
-if not lists or not labels or not survey or not sensors:
+if not lists or not labels or not sensors:
     print("found no names to check, which is a broken reader rather than a clean result",
           file=sys.stderr)
     sys.exit(1)
 
 ok = check("ItemFact.lists", lists, ["src/MissionManager/SimpleMissionItem.h"], False)
 ok &= check("GeoTagStore.labels", labels, ["src/AnalyzeView/GeoTag/GeoTagController.h"], True)
-# A survey's shot count lives on the transect base class and its flown distance on the complex
-# base above it, so this one spans two headers.
-ok &= check("SurveyWatch.properties", survey,
-            ["src/MissionManager/TransectStyleComplexItem.h",
-             "src/MissionManager/ComplexMissionItem.h"], False)
 
 # Class names rather than properties: the head recognises the sensors component by class because
 # its name is translated, and a hand-written list of C++ class names rots exactly as silently as a
@@ -103,5 +97,5 @@ ok &= check_classes("VehicleComponentInfo.sensorClasses", sensors,
                      "src/AutoPilotPlugins/APM/APMSensorsComponent.h"])
 
 if ok:
-    print(f"interpolated names pinned: {', '.join(lists + labels + survey + sensors)}")
+    print(f"interpolated names pinned: {', '.join(lists + labels + sensors)}")
 sys.exit(0 if ok else 1)

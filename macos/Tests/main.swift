@@ -6132,7 +6132,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2299
+let assertionFloor = 2298
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -8882,23 +8882,15 @@ func checkCollisionRuns() {
 }
 
 func checkSurveyWatch() {
-    expect(SurveyWatch.signals(2).joined(separator: ","),
-           "plan.missionController.visualItems.2.cameraShots,"
-           + "plan.missionController.visualItems.2.complexDistance",
-           "a survey answers its area and shot interval as soon as it has a polygon, and its shot "
-           + "COUNT and flown DISTANCE only once the transects are computed -- after the read that "
-           + "drew the panel. Measured: an em-dash for both while the core answered 1043 shots "
-           + "over 7047 m, and it stayed that way until something forced a reload")
+    expect(SurveyWatch.signals(2).joined(separator: ","), "view.surveyStats(2)",
+           "a survey answers its shot COUNT and flown DISTANCE only once the transects are "
+           + "computed -- after the read that drew the panel. view.surveyStats(N) watches those "
+           + "properties itself, so the panel watches the view it reads")
     expect(SurveyWatch.signals(survey: nil).isEmpty,
            "and nothing is watched while no survey is selected, because the panel has no survey "
            + "to be stale about")
     expect(SurveyWatch.signals(survey: 2) == SurveyWatch.signals(2),
            "a selected survey asks for exactly what that index asks for")
-    expect(SurveyWatch.properties.joined(separator: ","), "cameraShots,complexDistance",
-           "these two names are interpolated into bridge paths, where a misspelling is a signal "
-           + "that never arrives rather than an error. interpolated-names.py pins them, and they "
-           + "span two headers -- the shot count is on the transect class, the distance on the "
-           + "complex class above it")
 }
 
 func checkRemoveOutcome() {
