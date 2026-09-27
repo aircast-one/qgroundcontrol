@@ -5,6 +5,14 @@
 #if !canImport(Combine)
 protocol ObservableObject: AnyObject {}
 
+struct ObservableObjectPublisher {
+    func send() {}
+}
+
+extension ObservableObject {
+    var objectWillChange: ObservableObjectPublisher { ObservableObjectPublisher() }
+}
+
 @propertyWrapper
 struct Published<Value> {
     var wrappedValue: Value
