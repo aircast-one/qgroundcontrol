@@ -34,8 +34,10 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
         let rates = MessageRateChoice.list(view["rateChoices"])
         if !rates.isEmpty, rates != rateChoices { rateChoices = rates }
 
-        let system = Bridge.group("mavlinkInspector.activeSystem")
-        guard system["kind"] as? String == "object" else {
+        // available is the active system's message list answering, which is what reading
+        // mavlinkInspector.activeSystem raw asked; the view serves its id and the selected
+        // message's fields beside it, so the three can no longer describe different systems.
+        guard (view["available"] as? NSNumber)?.boolValue == true else {
             if listening { listening = false }
             if !messages.isEmpty { messages = [] }
             if !fields.isEmpty { fields = [] }
@@ -43,18 +45,17 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
         }
 
         if !listening { listening = true }
-        let id = (system["id"] as? NSNumber)?.intValue ?? 0
+        let id = (view["systemId"] as? NSNumber)?.intValue ?? 0
         if id != systemId { systemId = id }
 
         let listed = MavlinkMessage.list(view["messages"])
         if listed != messages { messages = listed }
 
-        guard let current = listed.first(where: \.selected) else {
+        guard listed.contains(where: \.selected) else {
             if !fields.isEmpty { fields = [] }
             return
         }
-        let read = MavlinkField.from(
-            (Bridge.group("mavlinkInspector.activeSystem.messages.\(current.index).fields")["elements"] as? [Any]) ?? [])
+        let read = MavlinkField.from((view["fields"] as? [Any]) ?? [])
         if read != fields { fields = read }
     }
 

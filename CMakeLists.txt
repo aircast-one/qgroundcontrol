@@ -388,6 +388,13 @@ qgc_qml_module(${CMAKE_PROJECT_NAME}
 )
 
 if(NOT ANDROID AND NOT IOS AND NOT QGC_HEADLESS_CORE)
+    # qwindowkit builds qmsetup, a host-side CMake package, inside the build tree and then
+    # finds it there. A cross toolchain that roots package lookups in the sysroot
+    # (cmake/platform/Linux-aarch64-toolchain.cmake) re-roots that path and cannot find it.
+    if(CMAKE_CROSSCOMPILING)
+        set(_qgc_package_root_mode "${CMAKE_FIND_ROOT_PATH_MODE_PACKAGE}")
+        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
+    endif()
     CPMAddPackage(
         NAME qwindowkit
         GITHUB_REPOSITORY stdware/qwindowkit
@@ -399,6 +406,9 @@ if(NOT ANDROID AND NOT IOS AND NOT QGC_HEADLESS_CORE)
             "QWINDOWKIT_BUILD_EXAMPLES OFF"
             "QWINDOWKIT_INSTALL OFF"
     )
+    if(CMAKE_CROSSCOMPILING)
+        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE "${_qgc_package_root_mode}")
+    endif()
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE QWindowKit::Quick)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_QWINDOWKIT)
 endif()

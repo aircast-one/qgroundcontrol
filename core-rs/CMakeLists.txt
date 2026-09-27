@@ -129,6 +129,34 @@ else()
             COMMENT "cargo build qgc-core (${CMAKE_OSX_ARCHITECTURES}, ${QGC_RUST_PROFILE})"
             VERBATIM
         )
+    elseif(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # A cross build (the aarch64 Docker variant) links the target's library, not the
+        # host's: cargo builds for the target triple, links with the cross compiler, and
+        # libudev-sys (serialport) finds libudev through the toolchain's pkg-config sysroot.
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+            set(QGC_RUST_TRIPLE aarch64-unknown-linux-gnu)
+        else()
+            message(FATAL_ERROR "core-rs/: no Rust target is mapped to the Linux cross target ${CMAKE_SYSTEM_PROCESSOR}. Add one to core-rs/CMakeLists.txt.")
+        endif()
+        qgc_rust_require_target(${QGC_RUST_TRIPLE})
+        string(TOUPPER "${QGC_RUST_TRIPLE}" QGC_RUST_TRIPLE_ENV)
+        string(REPLACE "-" "_" QGC_RUST_TRIPLE_ENV "${QGC_RUST_TRIPLE_ENV}")
+        set(QGC_RUST_LIB ${QGC_RUST_TARGET_DIR}/${QGC_RUST_TRIPLE}/${QGC_RUST_PROFILE}/libqgc_core.a)
+        add_custom_command(
+            OUTPUT ${QGC_RUST_LIB}
+            COMMAND ${CMAKE_COMMAND} -E env
+                CARGO_TARGET_${QGC_RUST_TRIPLE_ENV}_LINKER=${CMAKE_C_COMPILER}
+                PKG_CONFIG_ALLOW_CROSS=1
+                "PKG_CONFIG_SYSROOT_DIR=$ENV{PKG_CONFIG_SYSROOT_DIR}"
+                "PKG_CONFIG_LIBDIR=$ENV{PKG_CONFIG_LIBDIR}"
+                ${QGC_CARGO} build ${QGC_RUST_PROFILE_FLAG} --target ${QGC_RUST_TRIPLE}
+                --manifest-path ${QGC_RUST_MANIFEST}
+                --target-dir ${QGC_RUST_TARGET_DIR}
+            DEPENDS ${QGC_RUST_SOURCES}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            COMMENT "cargo build qgc-core (${QGC_RUST_TRIPLE}, ${QGC_RUST_PROFILE})"
+            VERBATIM
+        )
     else()
         if(MSVC)
             set(QGC_RUST_LIB ${QGC_RUST_TARGET_DIR}/${QGC_RUST_PROFILE}/qgc_core.lib)

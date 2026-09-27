@@ -166,18 +166,19 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func reload() {
-        let controller = Bridge.group("plan.missionController")
-        guard controller["kind"] as? String == "object" else {
+        // view.plan answers whether the mission controller is there, its pattern list and its
+        // altitude frame, the three things reading plan.missionController raw was for.
+        let planView = Bridge.group("view.plan")
+        guard (planView["available"] as? NSNumber)?.boolValue == true else {
             status = MissionSummary.planStatus(controller: false, reason: "")
             items = []
             patterns = []
             return
         }
 
-        let planView = Bridge.group("view.plan")
         readPlanVerdicts(planView)
 
-        let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
+        let offered = ((planView["patterns"] as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String }
         if offered != patterns { patterns = offered }
 
         let listed = readItems()
@@ -193,7 +194,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if profile != terrain { terrain = profile }
         let catalogue = MissionKinds(Bridge.group("view.missionKinds"))
         if !catalogue.all.isEmpty, catalogue != kinds { kinds = catalogue }
-        let mode = AltitudeMode.read(controller["globalAltitudeMode"])
+        let mode = AltitudeMode.read(planView["globalAltitudeFrame"])
         if mode != globalAltitudeMode { globalAltitudeMode = mode }
         let missionOffers = AltitudeMode.offers(
             Bridge.group("view.altitudeModes(\(AltitudeMode.missionContext),\(mode))"))
@@ -430,15 +431,15 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {
         guard let property = kinds.areaProperty(of: item)
         else { return [] }
-        let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
-        return ((polygon["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+        let polygon = Bridge.group("view.polygon(plan.missionController.visualItems.\(item.index).\(property))")
+        return ((polygon["vertices"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
     private func corridorPath(of item: MissionItem) -> [GeoPoint] {
         guard let property = kinds.lineProperty(of: item)
         else { return [] }
-        let line = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
-        return ((line["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+        let line = Bridge.group("view.polygon(plan.missionController.visualItems.\(item.index).\(property),line)")
+        return ((line["vertices"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
     var corridorPaths: [[GeoPoint]] { PatternGeometry.lines(patternGeometries) }
@@ -512,24 +513,19 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             if surveyStats != .none { surveyStats = .none }
             return
         }
-        let speed = ItemSpeed(json: Bridge.group(
-            "plan.missionController.visualItems.\(item.index).speedSection"))
+        // view.itemFacts reads the item, its fact lists, its speed section and its camera in the
+        // core and makes the choice this head used to make: the lists when the item has any, else
+        // a complex item's own facts, plus the camera block for a complex item.
+        let served = Bridge.group("view.itemFacts(\(item.index))")
+        let speed = ItemSpeed(served: (served["speedSection"] as? [String: Any]) ?? [:])
         if speed != selectedSpeed { selectedSpeed = speed }
 
-        let listed = ItemFact.lists.flatMap { list in
-            ItemFact.from(
-                (Bridge.group("plan.missionController.visualItems.\(item.index).\(list)")["elements"] as? [Any]) ?? [],
-                list: list, label: Labels.humanise)
-        }
-
-        let calc = item.isSimpleItem
-            ? [:]
-            : Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")
-        camera = CameraChoice(json: calc)
+        let calc = (served["camera"] as? [String: Any]) ?? [:]
+        camera = CameraChoice(served: calc)
         loadSurveyStats(for: item)
         distanceMode = AltitudeMode.read(calc["distanceMode"])
         itemAltitudeMode = item.specifiesAltitude
-            ? AltitudeMode.read(Bridge.group("plan.missionController.visualItems.\(item.index)")["altitudeMode"])
+            ? AltitudeMode.read(served["altitudeMode"])
             : AltitudeMode.none
         let context = AltitudeMode.itemContext
         let itemOffers = AltitudeMode.offers(
@@ -547,14 +543,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             Bridge.group("view.altitudeModes(\(context),\(distanceMode))"))
         if distanceOffers != distanceModes { distanceModes = distanceOffers }
 
-        let cameraFacts = item.isSimpleItem ? [] : ItemFact.camera(
-            (calc["facts"] as? [Any]) ?? [], custom: CameraChoice(json: calc).isCustom,
-            label: Labels.humanise)
-
-        selectedFacts = cameraFacts + (listed.isEmpty && !item.isSimpleItem
-            ? ItemFact.owned((Bridge.group("plan.missionController.visualItems.\(item.index)")["facts"] as? [Any]) ?? [],
-                          label: Labels.humanise)
-            : listed)
+        selectedFacts = ItemFact.served(calc["facts"]) + ItemFact.served(served["fields"])
     }
 
     func setCamera(brand: String? = nil, model: String? = nil) {

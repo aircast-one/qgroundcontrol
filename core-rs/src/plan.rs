@@ -225,6 +225,7 @@ pub enum PlanAction {
     SaveKml,
     Open,
     Clear,
+    ClearVehicle,
 }
 
 fn folder_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
@@ -260,7 +261,9 @@ fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<
     let sync_refusal = || (view["sync"]["state"] != "ready").then(|| (if view["sync"]["state"] == "offline" { "offline" } else { "busy" }, text(&view["sync"]["refusal"])));
     let not_ready = || (view["readiness"]["ready"] != true).then(|| ("notReady", text(&view["readiness"]["reason"])));
     match action {
-        PlanAction::Download => sync_refusal(),
+        // removeAllFromVehicle offline or mid-sync only logs a critical and returns, so the head
+        // was told the clear went through while the vehicle still held its mission.
+        PlanAction::Download | PlanAction::ClearVehicle => sync_refusal(),
         PlanAction::Send => sync_refusal().or_else(not_ready).or_else(|| match view["upload"]["state"].as_i64() {
             Some(0 | 2 | 3) => None,
             _ => Some(("cannotUpload", text(&view["upload"]["refusal"]))),
@@ -620,6 +623,9 @@ mod tests {
         assert_eq!(token(PlanAction::Send, &view("ready", true, 1, Value::Null), None), Some("cannotUpload"));
         assert_eq!(token(PlanAction::Send, &view("busy", true, 0, Value::Null), None), Some("busy"));
         assert_eq!(token(PlanAction::Download, &view("offline", true, 0, Value::Null), None), Some("offline"));
+        assert_eq!(token(PlanAction::ClearVehicle, &view("offline", true, 0, Value::Null), None), Some("offline"), "an offline clear logs and returns, and the vehicle keeps its mission");
+        assert_eq!(token(PlanAction::ClearVehicle, &view("busy", true, 0, Value::Null), None), Some("busy"));
+        assert_eq!(token(PlanAction::ClearVehicle, &good, None), None);
         assert_eq!(token(PlanAction::SaveCurrent, &view("ready", true, 0, Value::Null), None), Some("noFile"));
         assert_eq!(token(PlanAction::SaveCurrent, &good, None), None);
         assert_eq!(token(PlanAction::SaveFile, &good, Some("/no/such/folder/ridge.plan")), Some("folderMissing"));

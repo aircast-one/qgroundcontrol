@@ -56,8 +56,10 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func reload() {
         reloads += 1
-        let read = Bridge.group("plan.geoFenceController")
-        guard read["kind"] as? String == "object" else {
+        // view.fences answers whether there is a plan to show and the breach return point, the two
+        // things reading plan.geoFenceController raw was for.
+        let fences = Bridge.group("view.fences")
+        guard (fences["available"] as? NSNumber)?.boolValue == true else {
             set(\.status, "The plan is not available.")
             set(\.shapes, [])
             set(\.rallyPoints, [])
@@ -67,7 +69,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         }
         set(\.status, "")
 
-        let fences = Bridge.group("view.fences")
         let planView = Bridge.group("view.plan")
         set(\.unsupportedReason, (planView["unsupportedReason"] as? String) ?? "")
         // view.flyState composes connected from the same read -- it takes `vehicle` as an object
@@ -83,7 +84,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.firmwareFence, FirmwareFence(fences["firmwareFence"]))
         set(\.rallyPoints, FenceRallyStore.readRally())
 
-        set(\.breachReturn, (read["breachReturnPoint"] as? [String: Any])
+        set(\.breachReturn, (fences["breachReturnPoint"] as? [String: Any])
             .map { RallyPointRow(coordinate: $0) })
         let breachFact = Bridge.group("view.control(plan.geoFenceController.breachReturnAltitude)")
         set(\.breachAltitude, BreachReturn.shownAltitude(breachFact))

@@ -46,11 +46,10 @@ enum SurveyWatch {
     // COUNT and flown DISTANCE only once the transects are computed -- which happens after the
     // read that drew the panel. Measured: the panel showed an em-dash for both while the core
     // answered 1043 shots over 7047 m, and it stayed that way until something forced a reload.
-    // Those are the two numbers an operator sizes a battery and a card by.
-    static let properties = ["cameraShots", "complexDistance"]
-
+    // Those are the two numbers an operator sizes a battery and a card by. view.surveyStats(N)
+    // now watches the survey's own properties itself, so the head watches the view.
     static func signals(_ index: Int) -> [String] {
-        properties.map { "plan.missionController.visualItems.\(index).\($0)" }
+        ["view.surveyStats(\(index))"]
     }
 
     static func signals(survey index: Int?) -> [String] {

@@ -25,7 +25,7 @@ final class PacketRadioStore: ObservableObject, Probeable, WriteReporting {
     func refresh() {
         let read = PacketRadio(Bridge.group("view.packetRadio"))
         if read != radio { radio = read }
-        let configured = (Bridge.group(Self.deviceNamePath)["value"] as? String) ?? ""
+        let configured = (Bridge.group("view.control(\(Self.deviceNamePath))")["value"] as? String) ?? ""
         if configured != deviceName { deviceName = configured }
     }
 

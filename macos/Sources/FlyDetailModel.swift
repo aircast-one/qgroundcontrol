@@ -64,6 +64,15 @@ enum FlyDetail {
                      ("timeRemainingStr", "Time left"), ("temperature", "Temperature")])
     }
 
+    // view.gps serves the rows this built from the raw group, in the same order, with an
+    // unreported reading and an unusable DOP already left out.
+    static func gps(view: [String: Any]) -> [DetailRow] {
+        ((view["rows"] as? [[String: Any]]) ?? []).compactMap { row in
+            guard let label = row["label"] as? String, let value = row["value"] as? String else { return nil }
+            return DetailRow(label: label, value: value)
+        }
+    }
+
     static func gps(_ facts: [FactReading]) -> [DetailRow] {
         let position = ["lat", "lon"].compactMap { name in
             facts.first { $0.name == name }?.value

@@ -555,6 +555,7 @@ private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
                     text = { Text(option) },
                     onClick = {
                         expanded = false
+                        // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
                         write { Qgc.set("${fact.path}.enumIndex", index) }
                     },
                 )
@@ -617,6 +618,7 @@ internal fun validationMessage(result: Any?): String? =
 
 private suspend fun rejectionFor(fact: Fact, text: String): String? =
     truncationRefusal(fact, text) ?: withContext(Dispatchers.Default) {
+        // qtpaths: settings.appSettings.indoorPalette.validate, vehicle.parameterManager.getParameter(-1,RTL_ALT).validate
         validationMessage(Qgc.invokeResult("${fact.path}.validate", text, false))
     }
 

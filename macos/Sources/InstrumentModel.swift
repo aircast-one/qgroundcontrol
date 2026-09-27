@@ -130,6 +130,19 @@ struct InstrumentGroup: Identifiable, Equatable {
         }
     }
 
+    // view.instrumentGroups serves the vehicle's own readings apart from its child groups, as
+    // vehicleFacts with bare selections; this head files them under its own "" group.
+    static func own(_ json: Any?) -> [InstrumentGroup] {
+        let listed = ((json as? [Any]) ?? []).compactMap { entry -> InstrumentFact? in
+            guard let fact = entry as? [String: Any],
+                  let name = fact["name"] as? String, !name.isEmpty,
+                  let label = fact["label"] as? String else { return nil }
+            return InstrumentFact(name: name, label: label)
+        }
+        guard !listed.isEmpty else { return [] }
+        return [InstrumentGroup(group: InstrumentSelection.vehicleGroup, title: vehicleTitle, facts: listed)]
+    }
+
     static let vehicleAlias = "vehicle"
 
     static func assemble(_ read: [(group: String, json: [String: Any])],

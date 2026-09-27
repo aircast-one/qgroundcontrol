@@ -95,17 +95,17 @@ class InstrumentChoiceTest {
     fun `the readings the screen starts with are in the catalogue and match what is chosen`() {
         val own = vehicleOwnGroup(
             JSONObject(
-                """{"kind":"object","facts":[
-                     {"property":"altitudeRelative","shortDescription":"Alt (Rel)"},
-                     {"property":"groundSpeed","shortDescription":"Ground Speed"},
-                     {"property":"distanceToHome","shortDescription":"Distance to Home"},
-                     {"property":"heading","shortDescription":"Heading"},
-                     {"property":"rangeFinderDist","shortDescription":""}]}""",
+                """{"kind":"object","available":true,"groups":[],"vehicleFacts":[
+                     {"name":"altitudeRelative","label":"Alt (Rel)","selection":"altitudeRelative"},
+                     {"name":"groundSpeed","label":"Ground Speed","selection":"groundSpeed"},
+                     {"name":"distanceToHome","label":"Distance to Home","selection":"distanceToHome"},
+                     {"name":"heading","label":"Heading","selection":"heading"},
+                     {"name":"rangeFinderDist","label":"Range Finder Dist","selection":"rangeFinderDist"}]}""",
             ),
         )!!
         assertEquals("Vehicle", own.title)
         assertTrue(
-            "view.instrumentGroups enumerates the vehicle's CHILD groups and skips its own, so " +
+            "view.instrumentGroups serves the vehicle's own readings apart from its child groups, so " +
                 "without this the four defaults are absent from the sheet and cannot be unchecked",
             DEFAULT_INSTRUMENTS.all { name -> own.facts.any { it.path == name } },
         )
@@ -115,16 +115,16 @@ class InstrumentChoiceTest {
             own.facts.first().path,
         )
         assertEquals(
-            "five of the twenty-eight carry no description, and a blank row cannot be chosen from",
-            "rangeFinderDist",
+            "five of the twenty-eight carry no description; view.instrumentGroups humanises those",
+            "Range Finder Dist",
             own.facts.last().label,
         )
     }
 
     @Test
     fun `no vehicle contributes no group rather than an empty one`() {
-        assertNull(vehicleOwnGroup(JSONObject("""{"kind":"null"}""")))
-        assertNull(vehicleOwnGroup(JSONObject("""{"kind":"object","facts":[]}""")))
+        assertNull(vehicleOwnGroup(JSONObject("""{"kind":"object","available":false,"vehicleFacts":[]}""")))
+        assertNull(vehicleOwnGroup(JSONObject("""{"kind":"object","available":true,"vehicleFacts":[]}""")))
         assertNull(vehicleOwnGroup(null))
     }
 

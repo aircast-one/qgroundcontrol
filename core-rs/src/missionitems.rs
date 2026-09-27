@@ -184,10 +184,32 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
     if current <= 0 {
         return Value::Null;
     }
-    match fields_of(backend, current) {
-        Value::Null => Value::Null,
-        fields => json!({ "index": current, "fields": fields }),
+    match (fields_of(backend, current), speed_section(backend, current)) {
+        (Value::Null, Value::Null) => Value::Null,
+        (fields, speed) => json!({ "index": current, "fields": fields, "speedSection": speed }),
     }
+}
+
+// The macOS head read an item's speedSection raw for three things: whether the item can carry a
+// speed change at all, whether it does, and the speed with its units. The value is read off the
+// flightSpeed Fact the head writes, so what it shows and what it writes are one path.
+pub(crate) fn speed_section(backend: &dyn Backend, index: i64) -> Value {
+    let path = format!("plan.missionController.visualItems.{index}.speedSection");
+    let section = object(&backend.get_fields(&path, "available,specifyFlightSpeed"));
+    if section.get("kind").and_then(Value::as_str) != Some("object") {
+        return Value::Null;
+    }
+    let value_path = format!("{path}.flightSpeed");
+    let speed = object(&backend.get(&value_path));
+    let is_fact = speed.get("kind").and_then(Value::as_str) == Some("fact");
+    json!({
+        "available": flag(&section, "available"),
+        "specified": flag(&section, "specifyFlightSpeed"),
+        "value": is_fact.then(|| speed.get("value").and_then(Value::as_f64).filter(|v| v.is_finite())).flatten(),
+        "units": is_fact.then(|| speed.get("units").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string)).flatten(),
+        "path": value_path,
+        "specifyPath": format!("{path}.specifyFlightSpeed"),
+    })
 }
 
 const LEG_FIGURES: [&str; 6] = ["distance", "distanceText", "distanceFromStart", "azimuth", "azimuthText", "altitudeChangeText"];
@@ -240,7 +262,7 @@ fn altitude_frame(read: &Value, vertical: &Unit) -> Option<&'static str> {
     }
 }
 
-fn frame(read: &Value) -> Option<f64> {
+pub(crate) fn frame(read: &Value) -> Option<f64> {
     number(read, "altitudeFrame").or_else(|| number(read, "altitudeMode"))
 }
 
@@ -1306,4 +1328,37 @@ mod reported {
         );
     }
 
+
+    #[test]
+    fn the_speed_section_says_whether_an_item_can_change_speed_and_to_what() {
+        struct Section(Option<(bool, bool)>, Value);
+        impl Backend for Section {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "plan.missionController.visualItems.2.speedSection.flightSpeed" => self.1.clone(),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match (p, self.0) {
+                    ("plan.missionController.visualItems.2.speedSection", Some((available, specified))) => json!({ "kind": "object", "available": available, "specifyFlightSpeed": specified }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let speed = json!({ "kind": "fact", "name": "FlightSpeed", "value": 12.5, "units": "m/s" });
+        let section = speed_section(&Section(Some((true, true)), speed.clone()), 2);
+        assert_eq!((&section["available"], &section["specified"], &section["value"], &section["units"]), (&json!(true), &json!(true), &json!(12.5), &json!("m/s")));
+        assert_eq!(section["path"], "plan.missionController.visualItems.2.speedSection.flightSpeed", "the head writes the value it reads, through the same fact path");
+        assert_eq!(section["specifyPath"], "plan.missionController.visualItems.2.speedSection.specifyFlightSpeed");
+        assert!(crate::factwrite::owns(section["path"].as_str().unwrap()), "and the core validates that write");
+        assert_eq!(speed_section(&Section(Some((false, false)), speed), 2)["available"], false, "a DO_ command carries no speed section it can set");
+        assert_eq!(speed_section(&Section(Some((true, false)), json!({ "kind": "null" })), 2)["value"], Value::Null);
+        assert_eq!(speed_section(&Section(None, json!({ "kind": "null" })), 2), Value::Null, "an item with no speedSection object has nothing to show");
+    }
 }

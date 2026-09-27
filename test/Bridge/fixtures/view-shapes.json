@@ -143,6 +143,7 @@
         "view.detections.error",
         "view.detections.host",
         "view.detections.track",
+        "view.fences.breachReturnPoint",
         "view.flyState.rcSignal",
         "view.flyState.rcSignalText",
         "view.flyState.telemetry",
@@ -177,6 +178,9 @@
         "view.guidedActions.roi",
         "view.itemCamera(1).gimbalPitch",
         "view.itemCamera(1).gimbalYaw",
+        "view.itemFacts(1).camera",
+        "view.itemFacts(4).altitudeMode",
+        "view.itemFacts(4).speedSection",
         "view.joystickMapping.functions.0.extensionBit",
         "view.joystickMapping.functions.0.rcChannel",
         "view.joystickMapping.functions.1.extensionBit",
@@ -2095,6 +2099,7 @@
         "view.detections.stale",
         "view.detections.track",
         "view.fences.available",
+        "view.fences.breachReturnPoint",
         "view.fences.class",
         "view.fences.fenceSupported",
         "view.fences.kind",
@@ -2564,6 +2569,17 @@
         "view.itemCamera(1).gimbalYaw",
         "view.itemCamera(1).index",
         "view.itemCamera(1).kind",
+        "view.itemFacts(1).camera",
+        "view.itemFacts(1).class",
+        "view.itemFacts(1).fields.#",
+        "view.itemFacts(1).index",
+        "view.itemFacts(1).kind",
+        "view.itemFacts(4).altitudeMode",
+        "view.itemFacts(4).class",
+        "view.itemFacts(4).index",
+        "view.itemFacts(4).kind",
+        "view.itemFacts(4).simple",
+        "view.itemFacts(4).speedSection",
         "view.joystickMapping.actions.#",
         "view.joystickMapping.actions.0.action",
         "view.joystickMapping.actions.0.down",
@@ -6324,6 +6340,7 @@
         "view.detections.stale",
         "view.detections.track",
         "view.fences.available",
+        "view.fences.breachReturnPoint",
         "view.fences.circles.#",
         "view.fences.circles[].centre.latitude",
         "view.fences.circles[].centre.longitude",
@@ -6718,7 +6735,18 @@
         "view.instrumentGroups.groups[].group",
         "view.instrumentGroups.groups[].title",
         "view.instrumentGroups.kind",
+        "view.instrumentGroups.packGroups.#",
+        "view.instrumentGroups.packGroups[].facts.#",
+        "view.instrumentGroups.packGroups[].facts[].label",
+        "view.instrumentGroups.packGroups[].facts[].name",
+        "view.instrumentGroups.packGroups[].facts[].selection",
+        "view.instrumentGroups.packGroups[].group",
+        "view.instrumentGroups.packGroups[].title",
         "view.instrumentGroups.packs",
+        "view.instrumentGroups.vehicleFacts.#",
+        "view.instrumentGroups.vehicleFacts[].label",
+        "view.instrumentGroups.vehicleFacts[].name",
+        "view.instrumentGroups.vehicleFacts[].selection",
         "view.instruments(vehicle/altitudeRelative).available",
         "view.instruments(vehicle/altitudeRelative).class",
         "view.instruments(vehicle/altitudeRelative).items.#",
@@ -6758,6 +6786,102 @@
         "view.itemCamera(1).index",
         "view.itemCamera(1).kind",
         "view.itemCamera(1).reason",
+        "view.itemFacts(1).altitudeMode",
+        "view.itemFacts(1).available",
+        "view.itemFacts(1).camera",
+        "view.itemFacts(1).class",
+        "view.itemFacts(1).fields.#",
+        "view.itemFacts(1).index",
+        "view.itemFacts(1).kind",
+        "view.itemFacts(1).simple",
+        "view.itemFacts(1).speedSection",
+        "view.itemFacts(1).speedSection.available",
+        "view.itemFacts(1).speedSection.path",
+        "view.itemFacts(1).speedSection.specified",
+        "view.itemFacts(1).speedSection.specifyPath",
+        "view.itemFacts(1).speedSection.units",
+        "view.itemFacts(1).speedSection.value",
+        "view.itemFacts(4).altitudeMode",
+        "view.itemFacts(4).available",
+        "view.itemFacts(4).camera",
+        "view.itemFacts(4).camera.brand",
+        "view.itemFacts(4).camera.brandPath",
+        "view.itemFacts(4).camera.brands.#",
+        "view.itemFacts(4).camera.brands[]",
+        "view.itemFacts(4).camera.custom",
+        "view.itemFacts(4).camera.customName",
+        "view.itemFacts(4).camera.distanceMode",
+        "view.itemFacts(4).camera.facts.#",
+        "view.itemFacts(4).camera.facts[].applicationRestartRequired",
+        "view.itemFacts(4).camera.facts[].bits.#",
+        "view.itemFacts(4).camera.facts[].changedFromDefault",
+        "view.itemFacts(4).camera.facts[].class",
+        "view.itemFacts(4).camera.facts[].control",
+        "view.itemFacts(4).camera.facts[].decimalPlaces",
+        "view.itemFacts(4).camera.facts[].defaultText",
+        "view.itemFacts(4).camera.facts[].defaultValue",
+        "view.itemFacts(4).camera.facts[].display",
+        "view.itemFacts(4).camera.facts[].group",
+        "view.itemFacts(4).camera.facts[].kind",
+        "view.itemFacts(4).camera.facts[].label",
+        "view.itemFacts(4).camera.facts[].longDescription",
+        "view.itemFacts(4).camera.facts[].maximum",
+        "view.itemFacts(4).camera.facts[].maximumText",
+        "view.itemFacts(4).camera.facts[].minimum",
+        "view.itemFacts(4).camera.facts[].minimumText",
+        "view.itemFacts(4).camera.facts[].name",
+        "view.itemFacts(4).camera.facts[].options.#",
+        "view.itemFacts(4).camera.facts[].path",
+        "view.itemFacts(4).camera.facts[].pathSuffix",
+        "view.itemFacts(4).camera.facts[].readOnly",
+        "view.itemFacts(4).camera.facts[].rebootRequired",
+        "view.itemFacts(4).camera.facts[].restartNotices.#",
+        "view.itemFacts(4).camera.facts[].units",
+        "view.itemFacts(4).camera.facts[].value",
+        "view.itemFacts(4).camera.facts[].valueMeters",
+        "view.itemFacts(4).camera.facts[].valueString",
+        "view.itemFacts(4).camera.facts[].vehicleRebootRequired",
+        "view.itemFacts(4).camera.facts[].wholeNumbersOnly",
+        "view.itemFacts(4).camera.manualName",
+        "view.itemFacts(4).camera.model",
+        "view.itemFacts(4).camera.modelPath",
+        "view.itemFacts(4).camera.models.#",
+        "view.itemFacts(4).class",
+        "view.itemFacts(4).fields.#",
+        "view.itemFacts(4).fields[].applicationRestartRequired",
+        "view.itemFacts(4).fields[].bits.#",
+        "view.itemFacts(4).fields[].changedFromDefault",
+        "view.itemFacts(4).fields[].class",
+        "view.itemFacts(4).fields[].control",
+        "view.itemFacts(4).fields[].decimalPlaces",
+        "view.itemFacts(4).fields[].defaultText",
+        "view.itemFacts(4).fields[].defaultValue",
+        "view.itemFacts(4).fields[].display",
+        "view.itemFacts(4).fields[].group",
+        "view.itemFacts(4).fields[].kind",
+        "view.itemFacts(4).fields[].label",
+        "view.itemFacts(4).fields[].longDescription",
+        "view.itemFacts(4).fields[].maximum",
+        "view.itemFacts(4).fields[].maximumText",
+        "view.itemFacts(4).fields[].minimum",
+        "view.itemFacts(4).fields[].minimumText",
+        "view.itemFacts(4).fields[].name",
+        "view.itemFacts(4).fields[].options.#",
+        "view.itemFacts(4).fields[].path",
+        "view.itemFacts(4).fields[].pathSuffix",
+        "view.itemFacts(4).fields[].readOnly",
+        "view.itemFacts(4).fields[].rebootRequired",
+        "view.itemFacts(4).fields[].restartNotices.#",
+        "view.itemFacts(4).fields[].units",
+        "view.itemFacts(4).fields[].value",
+        "view.itemFacts(4).fields[].valueMeters",
+        "view.itemFacts(4).fields[].valueString",
+        "view.itemFacts(4).fields[].vehicleRebootRequired",
+        "view.itemFacts(4).fields[].wholeNumbersOnly",
+        "view.itemFacts(4).index",
+        "view.itemFacts(4).kind",
+        "view.itemFacts(4).simple",
+        "view.itemFacts(4).speedSection",
         "view.joystickMapping.actions.#",
         "view.joystickMapping.actions[].action",
         "view.joystickMapping.actions[].down",
@@ -6973,6 +7097,7 @@
         "view.missionItems(geometry).editing.fields[].units",
         "view.missionItems(geometry).editing.fields[].value",
         "view.missionItems(geometry).editing.index",
+        "view.missionItems(geometry).editing.speedSection",
         "view.missionItems(geometry).items.#",
         "view.missionItems(geometry).items[].abbreviation",
         "view.missionItems(geometry).items[].altitude",
@@ -7065,6 +7190,7 @@
         "view.missionItems.editing.fields[].units",
         "view.missionItems.editing.fields[].value",
         "view.missionItems.editing.index",
+        "view.missionItems.editing.speedSection",
         "view.missionItems.items.#",
         "view.missionItems.items[].abbreviation",
         "view.missionItems.items[].altitude",
@@ -8736,6 +8862,7 @@
             "view.packetRadio",
             "view.mavlinkConsole",
             "view.itemCamera",
+            "view.itemFacts",
             "view.gpsRtkBase",
             "view.videoSource",
             "view.kmlFile",
@@ -8863,6 +8990,7 @@
     },
     "view.fences": {
         "available": "bool",
+        "breachReturnPoint": "null",
         "circles": [
             {
                 "centre": {
@@ -9380,7 +9508,27 @@
             }
         ],
         "kind": "string",
-        "packs": "number"
+        "packGroups": [
+            {
+                "facts": [
+                    {
+                        "label": "string",
+                        "name": "string",
+                        "selection": "string"
+                    }
+                ],
+                "group": "string",
+                "title": "string"
+            }
+        ],
+        "packs": "number",
+        "vehicleFacts": [
+            {
+                "label": "string",
+                "name": "string",
+                "selection": "string"
+            }
+        ]
     },
     "view.instruments": {
         "available": "bool",
@@ -9434,6 +9582,131 @@
         "index": "number",
         "kind": "string",
         "reason": "null|string"
+    },
+    "view.itemFacts(1)": {
+        "altitudeMode": "null|number",
+        "available": "bool",
+        "camera": "null",
+        "class": "string",
+        "fields": [
+            "empty"
+        ],
+        "index": "number",
+        "kind": "string",
+        "simple": "bool",
+        "speedSection": {
+            "available": "bool",
+            "path": "string",
+            "specified": "bool",
+            "specifyPath": "string",
+            "units": "string",
+            "value": "number"
+        }
+    },
+    "view.itemFacts(4)": {
+        "altitudeMode": "null",
+        "available": "bool",
+        "camera": {
+            "brand": "string",
+            "brandPath": "string",
+            "brands": [
+                "string"
+            ],
+            "custom": "bool",
+            "customName": "string",
+            "distanceMode": "number",
+            "facts": [
+                {
+                    "applicationRestartRequired": "bool",
+                    "bits": [
+                        "empty"
+                    ],
+                    "changedFromDefault": "bool",
+                    "class": "string",
+                    "control": "string",
+                    "decimalPlaces": "number",
+                    "defaultText": "string",
+                    "defaultValue": "number",
+                    "display": "string",
+                    "group": "string",
+                    "kind": "string",
+                    "label": "string",
+                    "longDescription": "null",
+                    "maximum": "null|number",
+                    "maximumText": "null|string",
+                    "minimum": "number",
+                    "minimumText": "string",
+                    "name": "string",
+                    "options": [
+                        "empty"
+                    ],
+                    "path": "string",
+                    "pathSuffix": "string",
+                    "readOnly": "bool",
+                    "rebootRequired": "bool",
+                    "restartNotices": [
+                        "empty"
+                    ],
+                    "units": "string",
+                    "value": "number",
+                    "valueMeters": "null|number",
+                    "valueString": "string",
+                    "vehicleRebootRequired": "bool",
+                    "wholeNumbersOnly": "bool"
+                }
+            ],
+            "manualName": "string",
+            "model": "string",
+            "modelPath": "string",
+            "models": [
+                "empty"
+            ]
+        },
+        "class": "string",
+        "fields": [
+            {
+                "applicationRestartRequired": "bool",
+                "bits": [
+                    "empty"
+                ],
+                "changedFromDefault": "bool",
+                "class": "string",
+                "control": "string",
+                "decimalPlaces": "number",
+                "defaultText": "string",
+                "defaultValue": "bool|number",
+                "display": "string",
+                "group": "string",
+                "kind": "string",
+                "label": "string",
+                "longDescription": "null",
+                "maximum": "null|number",
+                "maximumText": "null|string",
+                "minimum": "null|number",
+                "minimumText": "null|string",
+                "name": "string",
+                "options": [
+                    "empty"
+                ],
+                "path": "string",
+                "pathSuffix": "string",
+                "readOnly": "bool",
+                "rebootRequired": "bool",
+                "restartNotices": [
+                    "empty"
+                ],
+                "units": "string",
+                "value": "bool|number",
+                "valueMeters": "null|number",
+                "valueString": "string",
+                "vehicleRebootRequired": "bool",
+                "wholeNumbersOnly": "bool"
+            }
+        ],
+        "index": "number",
+        "kind": "string",
+        "simple": "bool",
+        "speedSection": "null"
     },
     "view.joystickMapping": {
         "actions": [
@@ -9731,7 +10004,8 @@
                     "value": "bool|number"
                 }
             ],
-            "index": "number"
+            "index": "number",
+            "speedSection": "null"
         },
         "items": [
             {
@@ -9818,7 +10092,8 @@
                     "value": "bool|number"
                 }
             ],
-            "index": "number"
+            "index": "number",
+            "speedSection": "null"
         },
         "items": [
             {

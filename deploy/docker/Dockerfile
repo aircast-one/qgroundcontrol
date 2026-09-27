@@ -47,6 +47,14 @@ COPY tools/pyproject.toml tools/uv.lock /tmp/qgc-tools/
 RUN PIP_CMAKE="${PIP_CMAKE}" sh /usr/local/lib/qgc/setup-venv.sh && \
     rm -rf /tmp/qgc-tools /usr/local/bin/uv
 
+# Rust for core-rs, which every variant links (core-rs/CMakeLists.txt refuses to
+# configure without cargo). The channel is the one core-rs/rust-toolchain.toml pins;
+# variants add their cross targets below.
+COPY core-rs/rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' /tmp/rust-toolchain.toml) && \
+    sh /usr/local/lib/qgc/install-rust.sh "${channel}" && \
+    rm -f /tmp/rust-toolchain.toml
+
 # Version config only (read_config + _bootstrap import need a dir named "tools").
 # Copied before the slow Qt layer so editing package lists doesn't bust Qt cache.
 COPY .github/build-config.json /tmp/tools/setup/
@@ -98,6 +106,7 @@ RUN SYSROOT=/opt/sysroot bash /tmp/install-sysroot-aarch64.sh && \
     rm -f /tmp/install-sysroot-aarch64.sh && \
     rm -rf /var/lib/apt/lists/*
 ENV SYSROOT=/opt/sysroot
+RUN sh /usr/local/lib/qgc/install-rust.sh --targets aarch64-unknown-linux-gnu
 # Qt host (linux/linux_gcc_64) + target (linux_arm64/linux_gcc_arm64). aqt serves
 # arm64 desktop under host_os=linux_arm64, not linux; versions from build-config.json.
 RUN sh /usr/local/lib/qgc/install-qt.sh linux desktop linux_gcc_64 && \
@@ -120,6 +129,14 @@ RUN python3 /tmp/tools/setup/install_dependencies --platform debian && \
     apt-get update && \
     apt-get install -y --no-install-recommends openjdk-${ANDROID_JAVA_VERSION}-jdk && \
     rm -rf /var/lib/apt/lists/*
+
+# The arm64 Rust target and cargo-ndk, at the version build-config.json pins, for the
+# Android build of core-rs. After install_dependencies: building cargo-ndk needs a C toolchain.
+RUN sh /usr/local/lib/qgc/install-rust.sh --targets aarch64-linux-android && \
+    . /etc/profile.d/rust.sh && \
+    cargo install cargo-ndk --locked --version "$(python3 /tmp/tools/setup/read_config.py --get rust.cargo_ndk_version)" && \
+    rm -rf "${CARGO_HOME}/registry" && \
+    chmod -R a+rwX /opt/rust
 
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
 ENV ANDROID_HOME=$ANDROID_SDK_ROOT

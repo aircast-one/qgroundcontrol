@@ -1271,6 +1271,9 @@ checkObstacleSilenceIsNotClearAir()
 checkTheControlRowIsSilentUntilTheVehicleSpeaks()
 checkTheBreachReturnSaysWhichHalfIsMissing()
 checkAVertexHandleSaysWhichKindItIs()
+checkTheFlyViewReadsGpsAndTerrainFromTheCore()
+checkThePickerTakesEveryGroupFromTheCore()
+checkTheItemEditorReadsWhatTheCoreChose()
 checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
@@ -6129,7 +6132,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2283
+let assertionFloor = 2298
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -8879,23 +8882,15 @@ func checkCollisionRuns() {
 }
 
 func checkSurveyWatch() {
-    expect(SurveyWatch.signals(2).joined(separator: ","),
-           "plan.missionController.visualItems.2.cameraShots,"
-           + "plan.missionController.visualItems.2.complexDistance",
-           "a survey answers its area and shot interval as soon as it has a polygon, and its shot "
-           + "COUNT and flown DISTANCE only once the transects are computed -- after the read that "
-           + "drew the panel. Measured: an em-dash for both while the core answered 1043 shots "
-           + "over 7047 m, and it stayed that way until something forced a reload")
+    expect(SurveyWatch.signals(2).joined(separator: ","), "view.surveyStats(2)",
+           "a survey answers its shot COUNT and flown DISTANCE only once the transects are "
+           + "computed -- after the read that drew the panel. view.surveyStats(N) watches those "
+           + "properties itself, so the panel watches the view it reads")
     expect(SurveyWatch.signals(survey: nil).isEmpty,
            "and nothing is watched while no survey is selected, because the panel has no survey "
            + "to be stale about")
     expect(SurveyWatch.signals(survey: 2) == SurveyWatch.signals(2),
            "a selected survey asks for exactly what that index asks for")
-    expect(SurveyWatch.properties.joined(separator: ","), "cameraShots,complexDistance",
-           "these two names are interpolated into bridge paths, where a misspelling is a signal "
-           + "that never arrives rather than an error. interpolated-names.py pins them, and they "
-           + "span two headers -- the shot count is on the transect class, the distance on the "
-           + "complex class above it")
 }
 
 func checkRemoveOutcome() {
@@ -9995,4 +9990,62 @@ func checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder() {
            "a plist without the key draws Qt's UI")
     expect(LaunchMode.bundleDeclaresNativeUI(nil) == false,
            "and so does a process with no bundle at all, which is how a bare binary runs")
+}
+
+func checkTheFlyViewReadsGpsAndTerrainFromTheCore() {
+    let rows = FlyDetail.gps(view: ["rows": [["label": "Position", "value": "47.3977420, 8.5456075"],
+                                             ["label": "Satellites", "value": "10"],
+                                             ["label": "broken"]]])
+    expect(rows.map(\.label) == ["Position", "Satellites"],
+           "view.gps rows are drawn in the order served, and a row without a value is skipped")
+    expect(FlyDetail.gps(view: [:]).isEmpty, "no vehicle serves no rows, and none are invented")
+
+    let busy = TerrainDownload.read(view: ["loaded": 3 as NSNumber, "pending": 1 as NSNumber])
+    expect(busy.busy && busy.text == "Loading terrain 3 of 4",
+           "view.terrainDownload's counts give the same progress the raw facts did")
+    expect(TerrainDownload.read(view: [:]) == .none, "a view with no counts is a download that never started")
+}
+
+func checkThePickerTakesEveryGroupFromTheCore() {
+    let own = InstrumentGroup.own([["name": "altitudeRelative", "label": "Rel. Alt.", "selection": "altitudeRelative"],
+                                   ["name": "", "label": "blank"]])
+    expect(own.map(\.group) == [InstrumentSelection.vehicleGroup] && own.first?.title == InstrumentGroup.vehicleTitle,
+           "vehicleFacts become the head's own \"\" group, titled Vehicle, where the defaults live")
+    expect(own.first?.facts.map(\.name) == ["altitudeRelative"], "a fact with no name is not offered")
+    expect(InstrumentGroup.own(nil).isEmpty, "no vehicle offers no Vehicle group rather than an empty one")
+    let packs = InstrumentGroup.served([["group": "batteries.0", "title": "Battery 1",
+                                         "facts": [["name": "voltage", "label": "Voltage", "selection": "batteries.0/voltage"]]]])
+    expect(packs.map(\.group) == ["batteries.0"] && packs.first?.title == "Battery 1",
+           "packGroups share the groups shape, so the same decoder reads them")
+}
+
+func checkTheItemEditorReadsWhatTheCoreChose() {
+    let fields = ItemFact.served([
+        ["class": "Control", "name": "Hold", "label": "Hold", "control": "number", "valueString": "5",
+         "display": "5", "units": "s", "readOnly": false as NSNumber, "options": [] as [Any],
+         "minimum": 0 as NSNumber, "minimumText": "0", "maximum": 600 as NSNumber, "maximumText": "600",
+         "pathSuffix": "textFieldFacts.0", "group": "Settings"],
+        ["class": "Control", "name": "Mode", "label": "Mode", "control": "choice", "valueString": "1",
+         "display": "Relative", "options": [["label": "Relative", "raw": "1"]], "pathSuffix": "comboboxFacts.0"],
+        ["name": "no path"],
+    ])
+    expect(fields.map(\.pathSuffix) == ["textFieldFacts.0", "comboboxFacts.0"],
+           "each served field keeps the path suffix the head writes, and one without a path is dropped")
+    expect(fields.first?.refusal("700") != nil && fields.first?.refusal("5") == nil,
+           "the range comes from the control's served bounds")
+    expect(fields.last?.options.map(\.raw) == ["1"] && fields.last?.display == "Relative",
+           "a choice carries its options and the label it currently shows")
+    expect(fields.last?.group == ItemFact.itemGroup, "a field with no group is an item setting")
+
+    let speed = ItemSpeed(served: ["available": true as NSNumber, "specified": true as NSNumber,
+                                   "value": 12.5 as NSNumber, "units": "m/s"])
+    expect(speed.available && speed.specified && speed.value == 12.5, "the speed section reads as served")
+    expect(ItemSpeed(served: [:]) == .unavailable, "an item with no speed section is unavailable")
+
+    let camera = CameraChoice(served: ["brand": "Sony", "model": "RX100", "brands": ["Manual", "Sony"],
+                                       "models": ["RX100"], "manualName": "Manual (no camera specs)",
+                                       "customName": "Custom Camera", "custom": false as NSNumber])
+    expect(camera.brand == "Sony" && camera.brands == ["Manual", "Sony"] && !camera.isCustom,
+           "the camera block's shorter names map onto the same choice")
+    expect(CameraChoice(served: [:]) == .empty, "a simple item's null camera is the empty choice")
 }

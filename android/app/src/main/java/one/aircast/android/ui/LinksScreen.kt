@@ -332,6 +332,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                             withContext(Dispatchers.Default) {
                                 editWrites(row.editing, name, host, parsed, portName, baud)
                                     .forEach { (field, value) ->
+                                        // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud
                                         Qgc.set("$LINKS_PATH.${row.index}.$field", value)
                                     }
                                 Qgc.invoke("links.commitLinkConfigurations")

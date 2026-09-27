@@ -28,7 +28,7 @@ final class RemoteSupportStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func refresh() {
-        let host = (Bridge.group(RemoteSupportStore.hostPath)["valueString"] as? String) ?? ""
+        let host = (Bridge.group("view.control(\(RemoteSupportStore.hostPath))")["valueString"] as? String) ?? ""
         let judged = Bridge.group("view.supportHost(\(host))")
         let read = RemoteSupport(
             host: host,

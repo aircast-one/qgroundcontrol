@@ -453,6 +453,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                     val fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target)))
                     val method = fresh?.command
                     if (method != null) {
+                        // qtpaths: vehicle.guidedModeChangeGroundSpeedMetersSecond, vehicle.guidedModeChangeEquivalentAirspeedMetersSecond
                         Qgc.invoke("vehicle.$method", fresh.targetMetersSecond)
                     }
                 }
@@ -781,7 +782,8 @@ private fun InstrumentSheet(
     val connected = hasVehicle()
     LaunchedEffect(connected) {
         groups = withContext(Dispatchers.Default) {
-            listOfNotNull(vehicleOwnGroup(Qgc.get(VEHICLE_FACTS))) + instrumentGroups(Qgc.get(INSTRUMENT_GROUPS))
+            val catalogue = Qgc.get(INSTRUMENT_GROUPS)
+            listOfNotNull(vehicleOwnGroup(catalogue)) + instrumentGroups(catalogue)
         }
     }
 

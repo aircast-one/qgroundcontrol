@@ -11,7 +11,18 @@ use crate::router::Backend;
 const SHAPE_ITEMS: &str = "plan.missionController.visualItems.";
 
 pub fn target(path: &str) -> Option<(usize, &str)> {
-    let rest = path.strip_prefix(SHAPE_ITEMS)?.strip_suffix(".adjustVertex")?;
+    shape_target(path, ".adjustVertex")
+}
+
+// The macOS head seeds a new survey or corridor by appending each vertex view.missionSeed hands it.
+// QGCMapPolygon::appendVertex stores whatever coordinate it is given and regenerates the transects
+// around it, and on a sync the plan is being rewritten under the call, so it gets the same checks.
+pub fn append_target(path: &str) -> Option<(usize, &str)> {
+    shape_target(path, ".appendVertex")
+}
+
+fn shape_target<'a>(path: &'a str, suffix: &str) -> Option<(usize, &'a str)> {
+    let rest = path.strip_prefix(SHAPE_ITEMS)?.strip_suffix(suffix)?;
     let (index, property) = rest.split_once('.')?;
     let simple = !property.is_empty() && property.bytes().all(|b| b.is_ascii_alphanumeric());
     simple.then_some(())?;
@@ -19,21 +30,55 @@ pub fn target(path: &str) -> Option<(usize, &str)> {
 }
 
 pub fn owns(path: &str) -> bool {
-    target(path).is_some()
+    target(path).is_some() || append_target(path).is_some()
 }
 
-pub fn adjust_vertex(backend: &dyn Backend, path: &str, args: &str) -> Value {
-    let refused = |token: &str, reason: String| json!({ "ok": false, "refusal": token, "reason": reason });
-    let Some((index, property)) = target(path) else {
-        return refused("malformed", "That is not a mission item shape the core edits.".to_string());
+fn refused(token: &str, reason: String) -> Value {
+    json!({ "ok": false, "refusal": token, "reason": reason })
+}
+
+fn editable_shape(backend: &dyn Backend, target: Option<(usize, &str)>) -> Result<Value, Value> {
+    let Some((index, property)) = target else {
+        return Err(refused("malformed", "That is not a mission item shape the core edits.".to_string()));
     };
     if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
-        return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
+        return Err(refused("busy", "Wait for the sync to finish before changing the plan.".to_string()));
     }
     let shape = object(&backend.get_fields(&format!("{SHAPE_ITEMS}{index}.{property}"), "count"));
-    if shape.get("kind").and_then(Value::as_str) != Some("object") {
-        return refused("noSuchShape", format!("Item {index} has no {property} to edit."));
+    match shape.get("kind").and_then(Value::as_str) {
+        Some("object") => Ok(shape),
+        _ => Err(refused("noSuchShape", format!("Item {index} has no {property} to edit."))),
     }
+}
+
+fn dispatched(backend: &dyn Backend, path: &str, forwarded: Value) -> Value {
+    let done = flag(&object(&backend.invoke(path, &forwarded.to_string())), "ok");
+    json!({ "ok": done, "refusal": Value::Null, "reason": match done { true => Value::Null, false => json!("The shape was not changed.") } })
+}
+
+pub fn edit(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    match append_target(path) {
+        Some(_) => append_vertex(backend, path, args),
+        None => adjust_vertex(backend, path, args),
+    }
+}
+
+fn append_vertex(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    if let Err(refusal) = editable_shape(backend, append_target(path)) {
+        return refusal;
+    }
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let Some((latitude, longitude)) = crate::fenceedit::point(given.get(0)) else {
+        return refused("badCoordinate", "A vertex needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string());
+    };
+    dispatched(backend, path, json!([{ "latitude": latitude, "longitude": longitude }]))
+}
+
+fn adjust_vertex(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let shape = match editable_shape(backend, target(path)) {
+        Ok(shape) => shape,
+        Err(refusal) => return refusal,
+    };
     let vertices = integer(&shape, "count").unwrap_or(0);
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some(vertex) = given.get(0).and_then(Value::as_i64).filter(|v| (0..vertices).contains(v)) else {
@@ -45,9 +90,7 @@ pub fn adjust_vertex(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let Some((latitude, longitude)) = crate::fenceedit::point(given.get(1)) else {
         return refused("badCoordinate", "A vertex needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string());
     };
-    let forwarded = json!([vertex, { "latitude": latitude, "longitude": longitude }]);
-    let dispatched = flag(&object(&backend.invoke(path, &forwarded.to_string())), "ok");
-    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The shape was not changed.") } })
+    dispatched(backend, path, json!([vertex, { "latitude": latitude, "longitude": longitude }]))
 }
 
 // Tapping a segment's midpoint on the map splits it through the invokable view.polygon names:
@@ -142,6 +185,21 @@ mod tests {
         assert_eq!(survey.calls.borrow().as_slice(), &[r#"[2,{"latitude":47.4,"longitude":8.5}]"#.to_string()], "only the valid move reached Qt, stripped to what adjustVertex takes");
         let busy = Survey { syncing: true, calls: RefCell::new(Vec::new()) };
         assert_eq!(adjust_vertex(&busy, PATH, r#"[2, {"latitude": 47.4, "longitude": 8.5}]"#)["refusal"], "busy");
+    }
+
+    #[test]
+    fn a_seeded_vertex_is_appended_only_where_it_is_real() {
+        const APPEND: &str = "plan.missionController.visualItems.1.surveyAreaPolygon.appendVertex";
+        assert_eq!(append_target(APPEND), Some((1, "surveyAreaPolygon")));
+        assert!(owns(APPEND) && owns("plan.missionController.visualItems.2.corridorPolyline.appendVertex"));
+        let survey = Survey { syncing: false, calls: RefCell::new(Vec::new()) };
+        assert_eq!(edit(&survey, APPEND, r#"[{"latitude": 47.4, "longitude": 8.5, "altitude": 0}]"#)["ok"], true);
+        assert_eq!(edit(&survey, APPEND, r#"[{"latitude": 47.4, "longitude": 188.5}]"#)["refusal"], "badCoordinate", "appendVertex stores a coordinate off the globe and regenerates the transects around it");
+        assert_eq!(edit(&survey, "plan.missionController.visualItems.3.surveyAreaPolygon.appendVertex", r#"[{"latitude": 47.4, "longitude": 8.5}]"#)["refusal"], "noSuchShape");
+        assert_eq!(survey.calls.borrow().as_slice(), &[r#"[{"latitude":47.4,"longitude":8.5}]"#.to_string()], "only the valid vertex reached Qt, stripped to a coordinate");
+        let busy = Survey { syncing: true, calls: RefCell::new(Vec::new()) };
+        assert_eq!(edit(&busy, APPEND, r#"[{"latitude": 47.4, "longitude": 8.5}]"#)["refusal"], "busy");
+        assert_eq!(edit(&survey, PATH, r#"[2, {"latitude": 47.4, "longitude": 8.5}]"#)["ok"], true, "an adjust still goes to adjust_vertex");
     }
 
     #[test]

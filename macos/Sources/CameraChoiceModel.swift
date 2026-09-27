@@ -29,6 +29,17 @@ struct CameraChoice: Equatable {
         self.shownCustom = shownCustom
     }
 
+    // view.itemFacts serves the camera block under shorter names than cameraCalc's properties.
+    init(served json: [String: Any]) {
+        brand = (json["brand"] as? String) ?? ""
+        model = (json["model"] as? String) ?? ""
+        brands = (json["brands"] as? [String]) ?? []
+        shownManual = (json["manualName"] as? String) ?? ""
+        shownCustom = (json["customName"] as? String) ?? ""
+        models = (json["models"] as? [String]) ?? []
+        isCustom = (json["custom"] as? NSNumber)?.boolValue ?? false
+    }
+
     init(json: [String: Any]) {
         brand = (json["cameraBrand"] as? String) ?? ""
         model = (json["cameraModel"] as? String) ?? ""

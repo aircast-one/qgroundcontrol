@@ -57,8 +57,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     private var terrainIdleSince: Date?
 
     private func readTerrain() {
-        let read = TerrainDownload.read(
-            (Bridge.group("vehicle.terrain")["facts"] as? [[String: Any]]) ?? [])
+        let read = TerrainDownload.read(view: Bridge.group("view.terrainDownload"))
         if read != terrain {
             terrainIdleSince = read.busy ? nil : (read.started ? Date() : nil)
             terrain = read
@@ -131,15 +130,13 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         let facts = FlyStore.facts(vehicle)
         reading.heading = facts["heading"]
 
-        let gpsGroup = Bridge.group("vehicle.gps")
-        let gpsFacts = FactReading.from((gpsGroup["facts"] as? [Any]) ?? [])
-        let readGps = FlyDetail.gps(gpsFacts)
+        let gps = Bridge.group("view.gps")
+        let readGps = FlyDetail.gps(view: gps)
         if readGps != gpsDetail { gpsDetail = readGps }
 
-        let gps = FlyStore.facts(gpsGroup)
-        reading.satellites = gps["count"].map { Int($0) }
-        reading.gpsLock = gps["lock"].map { Int($0) }
-        reading.gpsLockText = gpsFacts.first { $0.name == "lock" }?.value ?? ""
+        reading.satellites = (gps["satellites"] as? NSNumber)?.intValue
+        reading.gpsLock = (gps["lock"] as? NSNumber)?.intValue
+        reading.gpsLockText = (gps["lockText"] as? String) ?? ""
 
         let batteryView = Bridge.group("view.battery")
         let packs = (batteryView["packs"] as? [[String: Any]]) ?? []
