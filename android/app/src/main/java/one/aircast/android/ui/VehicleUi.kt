@@ -453,6 +453,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                     val fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target)))
                     val method = fresh?.command
                     if (method != null) {
+                        // qtpaths: vehicle.guidedModeChangeGroundSpeedMetersSecond, vehicle.guidedModeChangeEquivalentAirspeedMetersSecond
                         Qgc.invoke("vehicle.$method", fresh.targetMetersSecond)
                     }
                 }

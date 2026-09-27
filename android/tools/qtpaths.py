@@ -139,6 +139,28 @@ def defined_constants() -> dict[str, str]:
     return {name: value for name, value in found.items() if "$" not in value}
 
 
+# A path built at run time - `vehicle.$method`, `${fact.path}.validate` - has no shape the core can
+# be asked about. The call site can say what it becomes, on its own line or the one above:
+#     // qtpaths: vehicle.guidedModeChangeGroundSpeedMetersSecond, vehicle.guidedModeChangeEquivalentAirspeedMetersSecond
+# Each named path must fit the template, so a declaration left behind by a changed call is refused
+# rather than counted, and each is asked about as if it were written out.
+DECLARED = re.compile(r"//\s*qtpaths:\s*(.+)$")
+
+
+def declared(lines: list[str], at: int) -> list[str]:
+    for line in (lines[at], lines[at - 1] if at > 0 else ""):
+        hit = DECLARED.search(line)
+        if hit:
+            return [path.strip() for path in hit.group(1).split(",") if path.strip()]
+    return []
+
+
+def fits(example: str, shape: str) -> bool:
+    """A run-time piece may stand for several segments - a fact path is settings.appSettings.x - so *
+    matches any run of characters, but everything the template spells out has to be there."""
+    return re.fullmatch(".+".join(re.escape(piece) for piece in shape.split("*")), example) is not None
+
+
 def asked() -> list[tuple[str, str]]:
     constants = defined_constants()
     hits: list[tuple[str, str, str]] = []
@@ -151,8 +173,17 @@ def asked() -> list[tuple[str, str]]:
             for call, name in CONSTANT.findall(text):
                 if name in constants:
                     hits.append((kind(call), constants[name], where))
-            for call, template in TEMPLATE.findall(text):
-                hits.append((kind(call), resolve(template, constants), where + " [template]"))
+            lines = text.splitlines()
+            for found in TEMPLATE.finditer(text):
+                call, template = found.groups()
+                shape = resolve(template, constants)
+                at = text.count("\n", 0, found.start())
+                examples = declared(lines, at)
+                for example in examples:
+                    if not fits(example, shape):
+                        raise SystemExit(f"{where}:{at + 1}: '// qtpaths: {example}' is not a path {shape} can become")
+                for value in examples or [shape]:
+                    hits.append((kind(call), value, where + ("" if examples else " [template]")))
     hits = [hit for hit in hits if not core_serves(hit[1])]
     kept = core_claims({(k, value) for k, value, _ in hits})
     return [(value, where) for k, value, where in hits if (k, value) not in kept]
@@ -179,6 +210,8 @@ def check() -> None:
     assert resolve("view.$X", {"X": "flyState"}) == "view.flyState"
     assert resolve("$LINKS.${row.index}.link.disconnect", {"LINKS": "links.linkConfigurations"}) == "links.linkConfigurations.*.link.disconnect"
     assert instance("plan.fence.*.center") == "plan.fence.0.center" and instance("*.armed") is None
+    assert fits("settings.appSettings.x.validate", "*.validate") and not fits("settings.x.enumIndex", "*.validate")
+    assert declared(["// qtpaths: a.b, c.d", 'Qgc.invoke("$X.y")'], 1) == ["a.b", "c.d"] and declared(["x"], 0) == []
     for wrapper in ("qgcPath", "qgcString", "mapPath", "mapString", "mapInt"):
         assert wrapper in CALLS, "the wrapper sweep missed %s, so a module's reads are invisible" % wrapper
     sample = 'val x by qgcPath("vehicle.armed")\nval y by qgcPath("view.flyState")\nval z = someField("vehicle.nope")'
