@@ -9,6 +9,17 @@
 
 QGC_LOGGING_CATEGORY(PlanManagerLog, "PlanManager.PlanManager")
 
+namespace {
+
+// MISSION_ITEM_INT carries x and y as integers. Converting NaN (an unused coordinate) to one is
+// undefined: x86 produced INT32_MIN where ARM produced 0, so this sends 0 everywhere.
+int32_t missionItemIntCoordinate(double value)
+{
+    return qIsNaN(value) ? 0 : static_cast<int32_t>(value);
+}
+
+}  // namespace
+
 PlanManager::PlanManager(Vehicle* vehicle, MAV_MISSION_TYPE planType)
     : QObject                   (vehicle)
     , _vehicle                  (vehicle)
@@ -544,8 +555,8 @@ void PlanManager::_handleMissionRequest(const mavlink_message_t& message)
                                                item->param2(),
                                                item->param3(),
                                                item->param4(),
-                                               item->frame() == MAV_FRAME_MISSION ? item->param5() : item->param5() * 1e7,
-                                               item->frame() == MAV_FRAME_MISSION ? item->param6() : item->param6() * 1e7,
+                                               missionItemIntCoordinate(item->frame() == MAV_FRAME_MISSION ? item->param5() : item->param5() * 1e7),
+                                               missionItemIntCoordinate(item->frame() == MAV_FRAME_MISSION ? item->param6() : item->param6() * 1e7),
                                                item->param7(),
                                                _planType);
         _vehicle->sendMessageOnLinkThreadSafe(sharedLink.get(), messageOut);

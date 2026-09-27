@@ -42,7 +42,10 @@
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QScopeGuard>
+#include <QtCore/QTemporaryDir>
 #include <QtCore/QTemporaryFile>
+#include <QtCore/QtEndian>
+#include <QtCore/QtMath>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -94,6 +97,115 @@ int latestViewCount()
 {
     const qsizetype index = paths.lastIndexOf(QStringLiteral("view.messages"));
     return index < 0 ? -1 : QJsonDocument::fromJson(payloads.at(index).toUtf8()).object().value(QStringLiteral("count")).toInt(-1);
+}
+
+// A short PX4 flight log, written here because a recorded one is not something the repository
+// carries: tlog framing is an 8-byte big-endian microsecond timestamp before each frame.
+QString writeSampleTlog(const QTemporaryDir &dir)
+{
+    const uint8_t channel = MAVLINK_COMM_NUM_BUFFERS - 2;
+    const uint8_t systemId = 1;
+    const uint8_t componentId = MAV_COMP_ID_AUTOPILOT1;
+    const quint64 startUSecs = 1700000000000000ULL;
+    const uint32_t positionControl = 3u << 16;
+
+    QByteArray log;
+    const auto append = [&log](quint64 usecs, const mavlink_message_t &message) {
+        uint8_t stamp[sizeof(quint64)];
+        qToBigEndian(usecs, stamp);
+        log.append(reinterpret_cast<const char *>(stamp), sizeof(stamp));
+        uint8_t frame[MAVLINK_MAX_PACKET_LEN];
+        const uint16_t length = mavlink_msg_to_send_buffer(frame, &message);
+        log.append(reinterpret_cast<const char *>(frame), length);
+    };
+
+    for (int step = 0; step < 160; step++) {
+        const quint64 usecs = startUSecs + static_cast<quint64>(step) * 100000ULL;
+        const uint32_t bootMs = static_cast<uint32_t>(step * 100);
+        const int32_t lat = 473977420 + step * 10;
+        const int32_t lon = 85455940 + step * 10;
+        const uint16_t heading = static_cast<uint16_t>((step * 50) % 36000);
+        mavlink_message_t message{};
+
+        mavlink_msg_heartbeat_pack_chan(systemId, componentId, channel, &message, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_PX4,
+                                        MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, positionControl, MAV_STATE_STANDBY);
+        append(usecs, message);
+        mavlink_msg_gps_raw_int_pack_chan(systemId, componentId, channel, &message, usecs, GPS_FIX_TYPE_3D_FIX, lat, lon, 488000,
+                                          80, 120, 150, heading, 12, 0, 0, 0, 0, 0, 0);
+        append(usecs + 1, message);
+        mavlink_msg_global_position_int_pack_chan(systemId, componentId, channel, &message, bootMs, lat, lon, 488000,
+                                                  step * 100, 150, 0, 0, heading);
+        append(usecs + 2, message);
+        mavlink_msg_attitude_pack_chan(systemId, componentId, channel, &message, bootMs, 0.01f, -0.02f,
+                                       static_cast<float>(qDegreesToRadians(heading / 100.0)), 0, 0, 0);
+        append(usecs + 3, message);
+        mavlink_msg_vfr_hud_pack_chan(systemId, componentId, channel, &message, 1.5f, 1.5f, static_cast<int16_t>(heading / 100), 50,
+                                      488.0f + step * 0.1f, 0.0f);
+        append(usecs + 4, message);
+        mavlink_msg_sys_status_pack_chan(systemId, componentId, channel, &message, 0, 0, 0, 500, 15800, 1200, 87, 0, 0, 0, 0, 0,
+                                         0, 0, 0, 0);
+        append(usecs + 5, message);
+        const uint16_t cells[10] = {3950, 3950, 3950, 3950, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX};
+        const uint16_t extra[4] = {0, 0, 0, 0};
+        mavlink_msg_battery_status_pack_chan(systemId, componentId, channel, &message, 0, MAV_BATTERY_FUNCTION_ALL,
+                                             MAV_BATTERY_TYPE_LIPO, 2500, cells, 1200, 800, 12000, 87, 0,
+                                             MAV_BATTERY_CHARGE_STATE_OK, extra, MAV_BATTERY_MODE_UNKNOWN, 0);
+        append(usecs + 6, message);
+    }
+
+    const QString path = dir.filePath(QStringLiteral("sample.tlog"));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(log) != log.size()) {
+        return QString();
+    }
+    return path;
+}
+
+// Survey geometry goes through libm, whose last digit differs between the machine that recorded an
+// oracle and the one checking it; anything wider than rounding is still a change. A mission item is
+// recorded as "<command> <frame> <params json>", so its params compare the same way.
+bool sameWithinRounding(const QJsonValue &was, const QJsonValue &now)
+{
+    if (was.isDouble() && now.isDouble()) {
+        const double a = was.toDouble();
+        const double b = now.toDouble();
+        return a == b || qAbs(a - b) <= 1e-12 * std::max({1.0, qAbs(a), qAbs(b)});
+    }
+    if (was.isArray() && now.isArray()) {
+        const QJsonArray a = was.toArray();
+        const QJsonArray b = now.toArray();
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (qsizetype index = 0; index < a.size(); index++) {
+            if (!sameWithinRounding(a.at(index), b.at(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (was.isObject() && now.isObject()) {
+        const QJsonObject a = was.toObject();
+        const QJsonObject b = now.toObject();
+        if (a.keys() != b.keys()) {
+            return false;
+        }
+        for (auto it = a.constBegin(); it != a.constEnd(); ++it) {
+            if (!sameWithinRounding(it.value(), b.value(it.key()))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (was.isString() && now.isString() && was != now) {
+        static const QRegularExpression item(QStringLiteral("^(\\d+ \\d+) (\\[.*\\])$"));
+        const QRegularExpressionMatch a = item.match(was.toString());
+        const QRegularExpressionMatch b = item.match(now.toString());
+        return a.hasMatch() && b.hasMatch() && a.captured(1) == b.captured(1)
+               && sameWithinRounding(QJsonDocument::fromJson(a.captured(2).toUtf8()).array(),
+                                     QJsonDocument::fromJson(b.captured(2).toUtf8()).array());
+    }
+    return was == now;
 }
 
 }
@@ -1031,7 +1143,13 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
 void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 {
     ignoreLogMessage("Vehicle.MavCommandQueue", QtWarningMsg, QRegularExpression(QStringLiteral("Giving up sending command")));
-    const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
+    // A log cannot answer the metadata requests the replayed vehicle makes, any more than commands.
+    ignoreLogMessage("ComponentInformation.RequestMetaDataTypeStateMachine", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("failed to load metadata")));
+    const QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString sample = writeSampleTlog(dir);
+    QVERIFY(!sample.isEmpty());
     QFile file(sample);
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QByteArray bytes = file.readAll();
@@ -2292,13 +2410,17 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         QVERIFY2(expected.contains(key), qPrintable(key));
         const QByteArray was = QJsonDocument(expected.value(key).toObject()).toJson(QJsonDocument::Compact);
         const QByteArray now = QJsonDocument(recorded.value(key).toObject()).toJson(QJsonDocument::Compact);
-        QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
+        QVERIFY2(sameWithinRounding(expected.value(key), recorded.value(key)),
+                 qPrintable(QStringLiteral("%1 changed\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
     }
 }
 
 void QGCCoreCTest::_tlogSummaryDecodesTheSampleLog()
 {
-    const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
+    const QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString sample = writeSampleTlog(dir);
+    QVERIFY(!sample.isEmpty());
     const QJsonObject summary = take(qgc_bridge_get(QStringLiteral("view.tlog(%1)").arg(sample).toUtf8().constData()));
     QCOMPARE(summary.value(QStringLiteral("readable")).toBool(false), true);
     QVERIFY(summary.value(QStringLiteral("frames")).toInt() > 1000);
@@ -3297,6 +3419,14 @@ void QGCCoreCTest::_theFlyViewControllerCountsTheMissionThePlanEditorCannot()
 
 void QGCCoreCTest::_everyRootTheCoreReadsFromIsRegistered()
 {
+    // Reading the links root touches Qt Bluetooth, which warns when the host has no BlueZ (CI does
+    // not), as the Bluetooth tests allow for.
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("Cannot find a compatible running Bluez")));
+    ignoreLogMessage("qt.bluetooth", QtWarningMsg, QRegularExpression(QStringLiteral("LE controller has invalid adapter")));
+    ignoreLogMessage("qt.bluetooth.bluez", QtInfoMsg, QRegularExpression(QStringLiteral("Missing CAP_NET_ADMIN")));
+    ignoreLogMessage("qt.bluetooth.bluez", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("Cannot open HCI socket|Cannot determine bluetoothd version|"
+                                                       "Disabling Qt Bluetooth LE feature|Cannot find Bluez 5 adapter")));
     _connectMockLink(MAV_AUTOPILOT_PX4);
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
 
