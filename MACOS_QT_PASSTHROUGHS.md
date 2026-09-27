@@ -9,21 +9,21 @@ predicate: a quoted literal whose text is one of 23 bridge roots followed by a d
   served (view.*)        73   distinct, the migration's numerator
   claimed by the core    92   distinct writes and invokes the core keeps (109 named in actions.rs, the rest by pattern) -- these reach Qt through the core, so they are the destination and not the debt
     camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.\(property), geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.model.\(entry.index).selected, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, missionCommandTree.categoriesForVehicle, missionCommandTree.getCommandsForCategory, plan.geoFenceController.\(circle ? , plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.missionController.visualItems.0.commandName, plan.missionController.visualItems.0.coordinate, plan.missionController.visualItems.0.plannedHomePositionAltitude, plan.missionController.visualItems.\(index).\(plan.property), plan.missionController.visualItems.\(item.index).\(fact.pathSuffix), plan.missionController.visualItems.\(item.index).\(property), plan.missionController.visualItems.\(item.index).altitude, plan.missionController.visualItems.\(item.index).altitudeMode, plan.missionController.visualItems.\(item.index).cameraCalc, plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode, plan.missionController.visualItems.\(item.index).command, plan.missionController.visualItems.\(item.index).coordinate, plan.missionController.visualItems.\(item.index).setMapCenterHintForCommandChange, plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property), plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, settings.appSettings.\(setting), settings.appSettings.defaultMissionItemAltitude, settings.mavlinkSettings.forwardMavlinkAPMSupportHostName, settings.packetRadioSettings.deviceName, settings.videoSettings.extraVideoSources, vehicle.\(command), vehicle.\(target.action.invokable), vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.parameterManager.getParameter(\(componentId),\(name)), vehicle.parameterManager.parameterNames, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
-  literal Qt paths        6   distinct, mechanical to move
+  literal Qt paths        5   distinct, mechanical to move
   interpolated Qt         1   distinct TEMPLATES, each expanding to an unknown number of runtime paths -- needs a parameterised view, not a substitution
-  raw Qt total            7   distinct, literal + templates
-  call sites            212   occurrences, not distinct: effort rather than surface
+  raw Qt total            6   distinct, literal + templates
+  call sites            211   occurrences, not distinct: effort rather than surface
 
-  reads                   2   group/get/watch/qgc* -- a served view retires these
+  reads                   1   group/get/watch/qgc* -- a served view retires these
   actions                 2   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
   writes                  2   set/write -- a core `owns_write` claim retires these: router.set consults it first, then refuses view paths, then passes to Qt
   unclassified            1   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
   used more than one way   0   a path both read and written is counted under EACH use above, so those four exceed the raw total
 
-  vehicle                   2
   video                     2
   links                     1
   plan                      1  (1 interpolated)
+  vehicle                   1
   vehicles                  1
 ```
 
@@ -52,7 +52,6 @@ but what each path BECAME is the deliverable.**
 | `links.linkConfigurations.0.linkType` | write | passthrough |
 | `plan.\(MissionStore.nextClient())` | unclassified | passthrough |
 | `vehicle.armed` | write | passthrough |
-| `vehicle.parameterManager` | read | passthrough |
 | `vehicles.activeVehicleAvailable` | read | passthrough |
 | `video.initNative` | action | passthrough |
 | `video.setNativeRendering` | action | passthrough |
@@ -76,35 +75,22 @@ Measured reasons a path is still here. Preserved across regeneration by
   has one spelling on each side of the core. `qt-paths.py` now reads a constant interpolated into
   `view.control(...)` as served, and a `static let ...Path = "..."` declaration as where a path is
   spelled rather than a use of it.
-- **Reads the core already serves, waiting on the head.** Each of these is read raw by the macOS
-  head and served by an existing view that the Android head, where it has the screen, already reads:
-  `mavlinkInspector.activeSystem` and its selected message's `fields` -> `view.inspector`
-  (`available`, `systemId`, `fields`); `plan.missionController` -> `view.plan` (`patterns`, as
-  `{name,title}` objects rather than strings, and `globalAltitudeFrame`); a mission item's
-  `altitudeMode` -> `view.missionItems` `items[N].altitudeMode`; a survey or corridor shape ->
-  `view.polygon(<path>)` `vertices`; `vehicle.gps` -> `view.gps` (`rows`, `satellites`, `lock`,
-  `lockText`, with unusable DOP already dropped); `vehicle.terrain` -> `view.terrainDownload`
-  (`loaded`, `pending`, `fraction`, `text`); `plan.geoFenceController`, read for its
-  `breachReturnPoint` and to learn a plan exists -> `view.fences` (`breachReturnPoint`, null when
-  unset, and `available`); a mission item's `speedSection` -> `view.missionItems`
-  `editing.speedSection` (`available`, `specified`, `value`, `units`, and the `path` and
-  `specifyPath` the head writes, both claimed) for the selected item; a survey's `cameraShots` and
-  `complexDistance`, watched only to refresh the stats -> `view.surveyStats(N)`, which now watches
-  them (and `timeBetweenShots`, `coveredArea`) for the index it serves; `vehicle.batteries.<n>`,
-  read per pack for the instrument picker, and the whole `vehicle` object read for its own group ->
-  `view.instrumentGroups` `packGroups` (in the `groups` shape, ids `batteries.<n>`, titles
-  `Battery <n+1>`) and `vehicleFacts` (bare selections, the head's `""` group). A new survey's vertices now go through the core too:
-  `<item>.<shape>.appendVertex` is claimed and checked like `adjustVertex`.
-- **The mission item editor's fact lists -> `view.itemFacts(N)`.** The head read the item, its
-  `textFieldFacts` and `comboboxFacts`, and `cameraCalc`, and chose among them itself. The view
-  makes the same choice (the lists when there are any, else a complex item's own facts less the
-  launch altitude) and serves each as `view.control`'s shape plus `pathSuffix` and `group`, which
-  the head's `FactRange(control:)` already decodes. For a complex item it adds `camera`: brand,
-  model, the brand and model lists, the manual and custom names, `custom`, `distanceMode`, the
-  brand and model write paths, and the camera facts the head shows (optics first for a custom
-  camera). Every path it serves is one the core's fact write claims.
-- **No read is left without a core view.** Every raw read above now has a view serving what the
-  head takes from it; what remains is the head's own change, which needs a Swift toolchain.
+- **Moved to the core, typechecked but not yet built on a Mac.** Each of these was read raw and
+  is now read through a view, typechecked with `tools/macos/linux-typecheck.sh` and checked by
+  `tools/macos/swift-checks.sh` on a Linux Swift toolchain, but not compiled against AppKit, SwiftUI
+  or MapKit or run: `mavlinkInspector.activeSystem` and its selected message's fields ->
+  `view.inspector`; `vehicle.gps` and `vehicle.terrain` -> `view.gps` and `view.terrainDownload`;
+  `plan.geoFenceController` -> `view.fences` (`available`, `breachReturnPoint`); the whole
+  `vehicle` object and each `vehicle.batteries.<n>` -> `view.instrumentGroups` (`vehicleFacts`,
+  `packGroups`); `plan.missionController` -> `view.plan` (`available`, `patterns`,
+  `globalAltitudeFrame`); a mission item's facts, `textFieldFacts`, `comboboxFacts`, `speedSection`,
+  `cameraCalc` and `altitudeMode` -> `view.itemFacts(N)`; a survey's shot count and distance,
+  watched raw -> a watch on `view.surveyStats(N)`; a survey area or corridor read after an import
+  -> `view.polygon(<path>)`. `PacketRadioSection.swift` imports SwiftUI, so its one-line
+  `view.control` change is not typechecked.
+- **Calls through a path variable, declared.** The map-centre hint, the camera brand and model
+  writes, and `appendVertex` on a seeded survey build their path first, so `qt-paths.py` reads what
+  they become from `tools/macos/qt-paths-declared.tsv`; each is a call the core claims.
 - **`links.linkConfigurations.0.linkType` is a probe, not app traffic.** Its only caller is
   `LinksStore.probeInvoke("failWrite")`, which writes a deliberately bad value to exercise the
   head's write-failure sentence. A link's type is fixed when it is created, so no core claim would

@@ -323,7 +323,9 @@ def paths(roots):
             symbolic = (SYMBOL_ARGUMENT.search(line + previous)
                         or SYMBOL_DECLARATION.search(declaration))
             previous = line
-            if CONSTANT.search(line) or APP_STORAGE.search(line):
+            # A path named in a comment is prose about a call, not one: Parameters.swift explains
+            # why it no longer reads vehicle.parameterManager, and that counted as a read of it.
+            if CONSTANT.search(line) or APP_STORAGE.search(line) or line.lstrip().startswith("//"):
                 continue
             declares = SWIFT_CONSTANT.search(line) is not None
             line = expand(line, named)
