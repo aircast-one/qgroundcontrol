@@ -448,6 +448,13 @@ def fits(example, template):
     return re.fullmatch(".+".join(re.escape(part).replace("\x00", "0") for part in marked.split("0")), example) is not None
 
 
+def derives(example, template):
+    """An instance fits its template, or extends it: a path built into a variable and then used as
+    `\\(path).cameraBrand` is still that template's path, one segment further on."""
+    parts = example.split(".")
+    return any(fits(".".join(parts[:end]), template) for end in range(len(parts), 0, -1))
+
+
 def declarations(seen):
     """tools/macos/qt-paths-declared.tsv: template -> (use, instances). Refuses a line whose template
     the head no longer builds, and an instance its template cannot become."""
@@ -473,7 +480,7 @@ def declarations(seen):
                 sys.exit(2)
             table[template] = (use, examples)
             continue
-        bad = [example for example in examples if not fits(example, template)]
+        bad = [example for example in examples if not derives(example, template)]
         if bad or use not in ASKED_AS:
             print(f"  REFUSING: qt-paths-declared.tsv:{number}: {bad or use!r} does not fit {template!r}",
                   file=sys.stderr)

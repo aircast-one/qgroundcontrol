@@ -15,3 +15,9 @@ vehicle.parameterManager.getParameter(\(componentId),\(name))	write	vehicle.para
 # Mission.swift passes an item's shape path to its own polygon(at:ring:), which reads it through
 # view.polygon; the use "view" names that view, and holds only while no raw call uses the path.
 plan.missionController.visualItems.\(item.index).\(property)	view	view.polygon
+# Item 0 is always Mission Settings, so the instances below use index 1.
+plan.missionController.visualItems.\(item.index).setMapCenterHintForCommandChange	action	plan.missionController.visualItems.1.setMapCenterHintForCommandChange
+# setCamera builds the camera path into a variable and writes its brand and model beneath it.
+plan.missionController.visualItems.\(item.index).cameraCalc	write	plan.missionController.visualItems.1.cameraCalc.cameraBrand, plan.missionController.visualItems.1.cameraCalc.cameraModel
+# seed() appends each vertex view.missionSeed hands it to the new item's area or line.
+plan.missionController.visualItems.\(index).\(plan.property)	action	plan.missionController.visualItems.1.surveyAreaPolygon.appendVertex, plan.missionController.visualItems.1.corridorPolyline.appendVertex
