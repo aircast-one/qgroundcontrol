@@ -48,7 +48,11 @@ fi
 "$root/tools/macos/head-lists.py" || exit 1
 "$root/tools/macos/unpinned-rules.py" || exit 1
 
-swiftc -Onone -o "$out" \
+# Combine exists only on Apple platforms, so a Linux toolchain gets the two names it provides.
+shims=()
+[[ "$(uname)" == Darwin ]] || shims=("$root/tools/macos/linux-shims.swift")
+
+swiftc -Onone -o "$out" "${shims[@]}" \
     "$root/macos/Sources/DetectionModel.swift" \
     "$root/macos/Sources/LabelModel.swift" \
     "$root/macos/Sources/SetupCatalogueModel.swift" \
