@@ -301,6 +301,7 @@ impl View {
     pub fn deps_for(&self, args: &[String]) -> Vec<String> {
         match self.path {
             "view.instruments" => instruments::deps_for(args),
+            "view.surveyStats" => survey::deps_for(args),
             "view.battery" => battery::deps(),
             "view.coreRemoteId" => crate::remoteidview::deps(),
             "view.vehicles" => vehicles::deps(),

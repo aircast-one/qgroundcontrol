@@ -7,6 +7,20 @@ pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.di
     "settings.unitsSettings.areaUnits",
     "settings.unitsSettings.horizontalDistanceUnits",
 ];
+// A survey answers its shot count and flown distance only once its transects are computed, which
+// is after the read that drew the panel, so the fixed list above left both on an em-dash until
+// something else forced a reload. The macOS head watched the item's own properties raw to cover
+// it; the view now watches them itself, for the index it was asked about.
+const WATCHED: [&str; 4] = ["cameraShots", "complexDistance", "timeBetweenShots", "coveredArea"];
+
+pub fn deps_for(args: &[String]) -> Vec<String> {
+    let item = args.first().and_then(|a| a.parse::<usize>().ok());
+    DEPS.iter()
+        .map(|d| d.to_string())
+        .chain(item.into_iter().flat_map(|index| WATCHED.iter().map(move |property| format!("plan.missionController.visualItems.{index}.{property}"))))
+        .collect()
+}
+
 const ABSENT: &str = "\u{2014}";
 
 pub fn interval_text(seconds: f64) -> String {
@@ -252,5 +266,14 @@ mod tests {
         assert_eq!(view["shotsText"], ABSENT);
         assert_eq!(view["areaText"], ABSENT);
         assert_eq!(view["available"], false, "nothing has been computed, so there is nothing for a panel to show");
+    }
+
+    #[test]
+    fn the_stats_refresh_when_that_survey_finishes_computing() {
+        let deps = deps_for(&["4".to_string()]);
+        assert!(deps.contains(&"plan.missionController.visualItems.4.cameraShots".to_string()) && deps.contains(&"plan.missionController.visualItems.4.complexDistance".to_string()), "the shot count and distance arrive after the first read, and nothing else fires when they do");
+        assert!(DEPS.iter().all(|d| deps.contains(&d.to_string())), "the shared dependencies still apply");
+        assert_eq!(deps_for(&[]).len(), DEPS.len(), "with no index there is no item to watch");
+        assert_eq!(crate::view::lookup("view.surveyStats(4)").map(|v| v.deps_for(&["4".to_string()])), Some(deps), "and the router asks this function, not the fixed list");
     }
 }

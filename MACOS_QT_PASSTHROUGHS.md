@@ -109,11 +109,11 @@ Measured reasons a path is still here. Preserved across regeneration by
   `breachReturnPoint` and to learn a plan exists -> `view.fences` (`breachReturnPoint`, null when
   unset, and `available`); a mission item's `speedSection` -> `view.missionItems`
   `editing.speedSection` (`available`, `specified`, `value`, `units`, and the `path` and
-  `specifyPath` the head writes, both claimed) for the selected item. A new survey's vertices now go through the core too:
+  `specifyPath` the head writes, both claimed) for the selected item; a survey's `cameraShots` and
+  `complexDistance`, watched only to refresh the stats -> `view.surveyStats(N)`, which now watches
+  them (and `timeBetweenShots`, `coveredArea`) for the index it serves. A new survey's vertices now go through the core too:
   `<item>.<shape>.appendVertex` is claimed and checked like `adjustVertex`.
-- **Reads that still need core work.** A survey's `cameraShots` and `complexDistance` are watched
-  only to refresh `view.surveyStats`, which has no per-index dependencies of its own.
-  `vehicle.batteries.<n>`: per-pack reading groups for the instrument picker. And the mission
+- **Reads that still need core work.** `vehicle.batteries.<n>`: per-pack reading groups for the instrument picker. And the mission
   item editor's fact lists (the item's `facts`, its `textFieldFacts`/`comboboxFacts`, and
   `cameraCalc` with its camera catalogue), which no view serves with full descriptors.
 - **`links.linkConfigurations.0.linkType` is a probe, not app traffic.** Its only caller is
