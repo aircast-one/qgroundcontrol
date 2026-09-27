@@ -8,6 +8,6 @@ class ColoredSvgImageProviderTest : public UnitTest
 
 private slots:
     void _tintsAnSvg();
-    void _rasterAliasedAsSvgStillDraws();
+    void _rasterStillDraws();
     void _missingResourceDrawsNothing();
 };

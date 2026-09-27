@@ -37,12 +37,9 @@ void ColoredSvgImageProviderTest::_tintsAnSvg()
     QVERIFY(anyOpaquePixelIs(image, qRgb(255, 0, 0)));
 }
 
-/// qgcresources.qrc aliases QGCLogoWhite.png onto a .svg name. Choosing the
-/// renderer by suffix handed those bytes to QSvgRenderer, which rejected them,
-/// and the Settings entry in the view menu drew no icon at all.
-void ColoredSvgImageProviderTest::_rasterAliasedAsSvgStillDraws()
+void ColoredSvgImageProviderTest::_rasterStillDraws()
 {
-    const QImage image = request(QStringLiteral("/res/QGCLogoWhite.svg"));
+    const QImage image = request(QStringLiteral("/res/QGCLogoWhite.png"));
 
     QVERIFY(!image.isNull());
     QVERIFY(anyOpaquePixelIs(image, qRgb(255, 0, 0)));
