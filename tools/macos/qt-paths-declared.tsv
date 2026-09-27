@@ -12,3 +12,6 @@ vehicle.\(command)	action	vehicle.guidedModeChangeGroundSpeedMetersSecond, vehic
 vehicle.\(target.action.invokable)	action	vehicle.guidedModeGotoLocation, vehicle.guidedModeROI, vehicle.stopGuidedModeROI, vehicle.doSetHome, vehicle.guidedModeChangeHeading, vehicle.setEstimatorOrigin
 # ParameterModel.path, written by Parameters.write and read only through view.control(...).
 vehicle.parameterManager.getParameter(\(componentId),\(name))	write	vehicle.parameterManager.getParameter(1,RTL_ALT)
+# Mission.swift passes an item's shape path to its own polygon(at:ring:), which reads it through
+# view.polygon; the use "view" names that view, and holds only while no raw call uses the path.
+plan.missionController.visualItems.\(item.index).\(property)	view	view.polygon

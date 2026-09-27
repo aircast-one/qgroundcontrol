@@ -462,6 +462,17 @@ def declarations(seen):
             print(f"  REFUSING: qt-paths-declared.tsv:{number} declares {template!r}, which macos/Sources no "
                   f"longer builds", file=sys.stderr)
             sys.exit(2)
+        if use == "view":
+            # A path handed to a head helper that reads it through a core view, e.g.
+            # polygon(at:) -> view.polygon(<path>). The instance names the view, which has to be one
+            # the core registers; the template stays counted if any use of it is a raw call.
+            served = re.findall(r'"(view\.[A-Za-z0-9_]+)"', core_views())
+            if len(examples) != 1 or examples[0] not in served:
+                print(f"  REFUSING: qt-paths-declared.tsv:{number}: {examples!r} is not a view the core serves",
+                      file=sys.stderr)
+                sys.exit(2)
+            table[template] = (use, examples)
+            continue
         bad = [example for example in examples if not fits(example, template)]
         if bad or use not in ASKED_AS:
             print(f"  REFUSING: qt-paths-declared.tsv:{number}: {bad or use!r} does not fit {template!r}",
@@ -469,6 +480,10 @@ def declarations(seen):
             sys.exit(2)
         table[template] = (use, examples)
     return table
+
+
+def core_views():
+    return (anchored("core-rs/src/view.rs")).read_text()
 
 
 def kept_by_core(uses, named):
@@ -479,10 +494,12 @@ def kept_by_core(uses, named):
     script has no word for, not a read."""
     declared = declarations(uses)
     asked = {(kind, instance(path)) for path, kinds in uses.items() for use in kinds for kind in ASKED_AS.get(use, ())}
-    asked |= {(ASKED_AS[use][0], example) for use, examples in declared.values() for example in examples}
+    asked |= {(ASKED_AS[use][0], example) for use, examples in declared.values() if use != "view" for example in examples}
     kept = core_claims(asked) if asked else set()
     by_declaration = {template for template, (use, examples) in declared.items()
-                      if examples and all((ASKED_AS[use][0], example) in kept for example in examples)}
+                      if use != "view" and examples and all((ASKED_AS[use][0], example) in kept for example in examples)}
+    by_declaration |= {template for template, (use, _) in declared.items()
+                       if use == "view" and uses.get(template, set()) <= {"unclassified"}}
     return by_declaration | {path for path in uses if path in named} | {path for path, kinds in uses.items()
             if kinds <= set(ASKED_AS)
             and all(any((kind, instance(path)) in kept for kind in ASKED_AS[use]) for use in kinds)}
