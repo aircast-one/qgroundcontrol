@@ -537,7 +537,7 @@ def main():
     # `static let hostPath = "settings...."` is where a path is spelled, not a use of it, and it
     # counted as an unclassified use that kept every such setting in the debt however the constant
     # was then used. It stands for the constant's uses only when none of them could be seen.
-    for path, kinds in uses.items():
+    for kinds in uses.values():
         if "declared" in kinds:
             kinds.discard("declared")
             if not kinds:
