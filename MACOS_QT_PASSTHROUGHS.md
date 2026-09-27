@@ -97,6 +97,23 @@ Measured reasons a path is still here. Preserved across regeneration by
   the write: `factwrite::owns` claims every `settings.` path, so `router.set` validates it before
   Qt sees it. What is left is the head's side: read each through `view.control(<path>)`, keep
   writing the same path. The Android head made exactly this move for the same three settings.
+- **Reads the core already serves, waiting on the head.** Each of these is read raw by the macOS
+  head and served by an existing view that the Android head, where it has the screen, already reads:
+  `mavlinkInspector.activeSystem` and its selected message's `fields` -> `view.inspector`
+  (`available`, `systemId`, `fields`); `plan.missionController` -> `view.plan` (`patterns`, as
+  `{name,title}` objects rather than strings, and `globalAltitudeFrame`); a mission item's
+  `altitudeMode` -> `view.missionItems` `items[N].altitudeMode`; a survey or corridor shape ->
+  `view.polygon(<path>)` `vertices`; `vehicle.gps` -> `view.gps` (`rows`, `satellites`, `lock`,
+  `lockText`, with unusable DOP already dropped); `vehicle.terrain` -> `view.terrainDownload`
+  (`loaded`, `pending`, `fraction`, `text`). A new survey's vertices now go through the core too:
+  `<item>.<shape>.appendVertex` is claimed and checked like `adjustVertex`.
+- **Reads that still need core work.** `plan.geoFenceController`: the head reads
+  `breachReturnPoint`, which `view.fences` does not serve. A mission item's `speedSection`: its
+  `available` and `specifyFlightSpeed`. A survey's `cameraShots` and `complexDistance` are watched
+  only to refresh `view.surveyStats`, which has no per-index dependencies of its own.
+  `vehicle.batteries.<n>`: per-pack reading groups for the instrument picker. And the mission
+  item editor's fact lists (the item's `facts`, its `textFieldFacts`/`comboboxFacts`, and
+  `cameraCalc` with its camera catalogue), which no view serves with full descriptors.
 - **`links.linkConfigurations.0.linkType` is a probe, not app traffic.** Its only caller is
   `LinksStore.probeInvoke("failWrite")`, which writes a deliberately bad value to exercise the
   head's write-failure sentence. A link's type is fixed when it is created, so no core claim would
