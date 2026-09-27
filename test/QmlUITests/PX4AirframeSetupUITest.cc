@@ -1,13 +1,16 @@
 #include "PX4AirframeSetupUITest.h"
 
+#include <QtCore/QRegularExpression>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 
+#include "AutoPilotPlugin.h"
 #include "MockLink.h"
 #include "MultiVehicleManager.h"
 #include "Vehicle.h"
+#include "VehicleComponent.h"
 
 UT_REGISTER_TEST(PX4AirframeSetupUITest, TestLabel::Integration)
 
@@ -105,7 +108,20 @@ void PX4AirframeSetupUITest::_testAirframePrereqPages()
         { .objectName = "setupComponentJoystick",    .expectPrereqShown = false },
         { .objectName = "setupComponentAirframe",    .expectPrereqShown = false },
     };
+    // A custom autopilot plugin chooses its own pages, so check the ones this vehicle offers.
+    AutoPilotPlugin *autopilot = vehicle->autopilotPlugin();
+    QVERIFY(autopilot);
+    QStringList offered;
+    for (const QVariant &entry : autopilot->vehicleComponents()) {
+        if (const auto *component = entry.value<VehicleComponent*>()) {
+            offered.append(QStringLiteral("setupComponent") + component->name().remove(QRegularExpression(QStringLiteral("\\s"))));
+        }
+    }
+    QVERIFY2(offered.contains(QStringLiteral("setupComponentAirframe")), qPrintable(offered.join(u' ')));
     for (const PrereqCheck &check : checks) {
+        if (!offered.contains(QLatin1String(check.objectName))) {
+            continue;
+        }
         _verifyAirframePrereq(QLatin1String(check.objectName), check.expectPrereqShown);
         if (QTest::currentTestFailed()) return;
     }

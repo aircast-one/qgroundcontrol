@@ -62,12 +62,29 @@ void FlightModeReportingTest::_advancedModesAreASettableSubsetAndLeaveEverydayMo
     Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(vehicle);
 
+    FirmwarePlugin* const plugin = vehicle->firmwarePlugin();
+    QVERIFY(plugin);
+
+    // A custom firmware plugin may narrow what can be set (the custom example keeps only Hold, Return
+    // and Mission), so the expectation comes from the plugin's own table rather than stock PX4's.
+    QStringList settableAdvanced;
+    QStringList everyday;
+    for (const FirmwareFlightMode &mode : plugin->flightModeList()) {
+        if (mode.canBeSet) {
+            (mode.advanced ? settableAdvanced : everyday) += mode.mode_name;
+        }
+    }
+    QVERIFY(!everyday.isEmpty());
+
     const QStringList all = vehicle->flightModes();
     const QStringList advanced = vehicle->advancedFlightModes();
-    QVERIFY(!advanced.isEmpty());
+    QCOMPARE(advanced, settableAdvanced);
     QVERIFY(advanced.size() < all.size());
     for (const QString &mode : advanced) {
         QVERIFY2(all.contains(mode), qPrintable(mode));
+    }
+    for (const QString &mode : everyday) {
+        QVERIFY2(!advanced.contains(mode), qPrintable(mode));
     }
 }
 

@@ -176,6 +176,10 @@ void MissionControllerTest::_testPatternReadyMessageNamesItsOwnShape(void)
 
 void MissionControllerTest::_testAddWaypointAtIndexAPM(void)
 {
+    // Only ArduPilot's plugin inserts the takeoff item these expect; without it the generic plugin runs.
+    if (!apmFirmwareSupported()) {
+        QSKIP("ArduPilot support not registered in this build");
+    }
     _testAddWaypointAtIndexWorker(MAV_AUTOPILOT_ARDUPILOTMEGA);
 }
 
@@ -186,6 +190,10 @@ void MissionControllerTest::_testAddWaypointAtIndexPX4(void)
 
 void MissionControllerTest::_testAddWaypointAPM(void)
 {
+    // Only ArduPilot's plugin inserts the takeoff item these expect; without it the generic plugin runs.
+    if (!apmFirmwareSupported()) {
+        QSKIP("ArduPilot support not registered in this build");
+    }
     _testAddWaypointWorker(MAV_AUTOPILOT_ARDUPILOTMEGA);
 }
 

@@ -332,6 +332,9 @@ void GStreamerTest::_testSourceFactoryUdp265UsesExplicitDepayAndParser()
 
     GstElement* depay = findChildByFactoryName(bin, "rtph265depay");
     QVERIFY2(depay, "udp265:// must depayload H265 RTP explicitly");
+    if (!g_object_class_find_property(G_OBJECT_GET_CLASS(depay), "wait-for-keyframe")) {
+        QSKIP("this GStreamer's rtph265depay has no wait-for-keyframe");
+    }
     gboolean waitForKeyframe = FALSE;
     gboolean requestKeyframe = FALSE;
     g_object_get(depay, "wait-for-keyframe", &waitForKeyframe, "request-keyframe", &requestKeyframe, nullptr);

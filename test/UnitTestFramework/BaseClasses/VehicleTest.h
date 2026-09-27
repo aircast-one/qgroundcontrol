@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QtCore/QPointer>
+
 #include "MAVLinkMessageType.h"
 #include "MockLink.h"
 #include "UnitTest.h"
@@ -149,7 +151,8 @@ protected:
     QString failureContextSummary() const override;
 
     MockLink* _mockLink = nullptr;
-    Vehicle* _vehicle = nullptr;
+    // Guarded: a failed disconnect leaves it set, and the failure dump must not read a deleted vehicle.
+    QPointer<Vehicle> _vehicle;
 
 private slots:
     void _linkDeleted(const LinkInterface* link);

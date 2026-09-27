@@ -38,8 +38,15 @@ bool isH26xDepayloader(GstElement* element)
 
 void configureH26xDepayloader(GstElement* element)
 {
-    if (isH26xDepayloader(element)) {
-        g_object_set(element, "wait-for-keyframe", TRUE, "request-keyframe", TRUE, nullptr);
+    if (!isH26xDepayloader(element)) {
+        return;
+    }
+    // Older rtph265depay lacks these, and setting a missing property is a GLib critical.
+    GObjectClass* klass = G_OBJECT_GET_CLASS(element);
+    for (const char* property : {"wait-for-keyframe", "request-keyframe"}) {
+        if (g_object_class_find_property(klass, property)) {
+            g_object_set(element, property, TRUE, nullptr);
+        }
     }
 }
 

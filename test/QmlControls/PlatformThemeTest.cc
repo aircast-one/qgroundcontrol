@@ -3,6 +3,7 @@
 #include "FluentPlatformTheme.h"
 #include "MaterialPlatformTheme.h"
 #include "PlatformTheme.h"
+#include "QGCCorePlugin.h"
 #include "QGCPalette.h"
 
 #include <QtTest/QTest>
@@ -15,6 +16,28 @@ qreal luminance(const QColor &color)
         return v <= 0.03928 ? v / 12.92 : qPow((v + 0.055) / 1.055, 2.4);
     };
     return 0.2126 * channel(color.redF()) + 0.7152 * channel(color.greenF()) + 0.0722 * channel(color.blueF());
+}
+
+// A core plugin may recolour palette roles (the custom example does), and those no longer derive
+// from the host tones.
+bool overriddenByCorePlugin(const char *role)
+{
+    const QColor sentinel(0x12, 0x34, 0x56);
+    QGCPalette::PaletteColorInfo_t info;
+    for (auto &theme : info) {
+        for (QColor &color : theme) {
+            color = sentinel;
+        }
+    }
+    QGCCorePlugin::instance()->paletteOverride(QString::fromLatin1(role), info);
+    for (const auto &theme : info) {
+        for (const QColor &color : theme) {
+            if (color != sentinel) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 qreal contrastRatio(const QColor &a, const QColor &b)
@@ -77,6 +100,11 @@ void PlatformThemeTest::_inkReadsOnEverySurfaceInEveryTheme()
     }
 }
 
+#define COMPARE_ROLE(palette, role, expected) \
+    if (!overriddenByCorePlugin(#role)) { \
+        QCOMPARE(palette.role(), expected); \
+    }
+
 void PlatformThemeTest::_paletteRolesDeriveFromTheHostTones()
 {
     const PlatformTheme *host = PlatformTheme::instance();
@@ -92,29 +120,35 @@ void PlatformThemeTest::_paletteRolesDeriveFromTheHostTones()
 
         QGCPalette enabled;
         enabled.setColorGroupEnabled(true);
-        QCOMPARE(enabled.window(),          t.background);
-        QCOMPARE(enabled.toolbarBackground(), t.background);
-        QCOMPARE(enabled.windowShade(),     t.surface);
-        QCOMPARE(enabled.windowShadeDark(), t.surfaceSunken);
-        QCOMPARE(enabled.text(),            t.ink);
-        QCOMPARE(enabled.buttonText(),      t.ink);
-        QCOMPARE(enabled.buttonHighlight(), t.accent);
-        QCOMPARE(enabled.primaryButton(),   t.accent);
-        QCOMPARE(enabled.colorBlue(),       t.accent);
-        QCOMPARE(enabled.colorRed(),        t.red);
-        QCOMPARE(enabled.warningText(),     t.red);
-        QCOMPARE(enabled.groupBorder(),     t.outlineWeak);
-        QCOMPARE(enabled.overlayGlass(),    t.glass);
-        QCOMPARE(enabled.overlayBackground(), t.scrim);
-        QCOMPARE(enabled.overlayBorder().alpha(), 0x26);
-        QCOMPARE(enabled.overlayCard().alpha(),   0x1c);
+        COMPARE_ROLE(enabled, window,          t.background);
+        COMPARE_ROLE(enabled, toolbarBackground, t.background);
+        COMPARE_ROLE(enabled, windowShade,     t.surface);
+        COMPARE_ROLE(enabled, windowShadeDark, t.surfaceSunken);
+        COMPARE_ROLE(enabled, text,            t.ink);
+        COMPARE_ROLE(enabled, buttonText,      t.ink);
+        COMPARE_ROLE(enabled, buttonHighlight, t.accent);
+        COMPARE_ROLE(enabled, primaryButton,   t.accent);
+        COMPARE_ROLE(enabled, colorBlue,       t.accent);
+        COMPARE_ROLE(enabled, colorRed,        t.red);
+        COMPARE_ROLE(enabled, warningText,     t.red);
+        COMPARE_ROLE(enabled, groupBorder,     t.outlineWeak);
+        COMPARE_ROLE(enabled, overlayGlass,    t.glass);
+        COMPARE_ROLE(enabled, overlayBackground, t.scrim);
+        if (!overriddenByCorePlugin("overlayBorder")) {
+            QCOMPARE(enabled.overlayBorder().alpha(), 0x26);
+        }
+        if (!overriddenByCorePlugin("overlayCard")) {
+            QCOMPARE(enabled.overlayCard().alpha(), 0x1c);
+        }
 
         QGCPalette disabled;
         disabled.setColorGroupEnabled(false);
-        QCOMPARE(disabled.text(),            t.inkMuted);
-        QCOMPARE(disabled.buttonHighlight(), t.accentMuted);
-        QCOMPARE(disabled.primaryButtonText(), t.inkMuted);
+        COMPARE_ROLE(disabled, text,            t.inkMuted);
+        COMPARE_ROLE(disabled, buttonHighlight, t.accentMuted);
+        COMPARE_ROLE(disabled, primaryButtonText, t.inkMuted);
     }
 }
+
+#undef COMPARE_ROLE
 
 UT_REGISTER_TEST(PlatformThemeTest, TestLabel::Unit)
