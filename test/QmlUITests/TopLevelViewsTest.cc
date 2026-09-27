@@ -156,7 +156,7 @@ void TopLevelViewsTest::_testSettingsSectionVisibility()
 
     QTRY_VERIFY(!findVisibleSectionButton(videoButton->parentItem(), QStringLiteral("Settings")));
     QTRY_VERIFY(!findVisibleItem(_rootItem, QStringLiteral("settingsGroup_Settings"), 0));
-    QTRY_VERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsGroup_VideoSource"), 0));
+    QTRY_VERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsGroup_Cameras"), 0));
     QVERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsPage_Video")));
 }
 
@@ -196,7 +196,7 @@ void TopLevelViewsTest::_testSettingsHiddenSectionAfterPageSwitch()
         return;
     }
     QTRY_VERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsPage_Video"), 0));
-    QTRY_VERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsGroup_VideoSource"), 0));
+    QTRY_VERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsGroup_Cameras"), 0));
     QTRY_VERIFY(!findVisibleSectionButton(videoButton->parentItem(), QStringLiteral("Settings")));
 }
 
@@ -219,18 +219,18 @@ void TopLevelViewsTest::_testSettingsSectionCollapseToSingle()
     }
     QVERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsPage_Video")));
 
-    // Select the always-visible "Video Source" section
+    // Select the always-visible "Cameras" section
     QQuickItem* sourceSection = nullptr;
-    QTRY_VERIFY((sourceSection = findVisibleSectionButton(videoButton->parentItem(), QStringLiteral("Video Source"))));
-    QVERIFY(_clickItemAt(sourceSection, 0.5, 0.5, QStringLiteral("section Video Source")));
+    QTRY_VERIFY((sourceSection = findVisibleSectionButton(videoButton->parentItem(), QStringLiteral("Cameras"))));
+    QVERIFY(_clickItemAt(sourceSection, 0.5, 0.5, QStringLiteral("section Cameras")));
     QTRY_VERIFY(!videoButton->property("checked").toBool());
 
-    // Disabling the source hides all other sections, leaving only "Video Source"
+    // Disabling the source hides all other sections, leaving only "Cameras"
     setVideoSource(VideoSettings::videoDisabled);
 
-    QTRY_VERIFY(!findVisibleSectionButton(videoButton->parentItem(), QStringLiteral("Video Source")));
+    QTRY_VERIFY(!findVisibleSectionButton(videoButton->parentItem(), QStringLiteral("Cameras")));
     QTRY_VERIFY(videoButton->property("checked").toBool());
-    QTRY_VERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsGroup_VideoSource"), 0));
+    QTRY_VERIFY(findVisibleItem(_rootItem, QStringLiteral("settingsGroup_Cameras"), 0));
 }
 
 // When the selected page becomes entirely unavailable the view must fall back to

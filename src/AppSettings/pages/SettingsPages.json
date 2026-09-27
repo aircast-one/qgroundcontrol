@@ -34,7 +34,7 @@
             "name": "Packet Radio",
             "qml": "PacketRadioSettings.qml",
             "icon": "qrc:/InstrumentValueIcons/radio.svg",
-            "visible": "QGroundControl.settingsManager.packetRadioSettings.visible"
+            "visible": "QGroundControl.settingsManager.packetRadioSettings.userVisible"
         },
         {
             "name": "ADSB Server",

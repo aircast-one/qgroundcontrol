@@ -8,6 +8,7 @@ import QGroundControl.FactControls
 
 SettingsGroupLayout {
     id:                 camList
+    objectName:         "settingsGroup_Cameras"
     heading:            qsTr("Cameras")
     headingDescription: _videoAutoStreamConfig
                             ? qsTr("Camera 1 is configured automatically over MAVLink.")
@@ -200,7 +201,7 @@ SettingsGroupLayout {
         Layout.fillWidth:   true
         text:               qsTr("Show all cameras at once (picture-in-picture)")
         fact:               _videoSettings.multiViewEnabled
-        visible:            fact.visible
+        visible:            fact.userVisible
     }
 
     Component {
