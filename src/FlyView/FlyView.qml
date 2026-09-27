@@ -228,13 +228,16 @@ Item {
         visible:                toolbar.visible
 
         readonly property bool dockedInToolbar: y < ScreenTools.toolbarHeight
+        readonly property bool _fitsInToolbar:  toolbar.dockAreaRight - toolbar.dockAreaLeft >= width
 
         DragToPosition {
             id:                 telemetryBarDragPosition
             target:             telemetryValuesBar
             settingsKeyPrefix:  "TelemetryValuesBar"
-            defaultX:           (_root.width - telemetryValuesBar.width) / 2
-            defaultY:           0
+            defaultX:           telemetryValuesBar._fitsInToolbar
+                                    ? Math.max(toolbar.dockAreaLeft, Math.min((_root.width - telemetryValuesBar.width) / 2, toolbar.dockAreaRight - telemetryValuesBar.width))
+                                    : (_root.width - telemetryValuesBar.width) / 2
+            defaultY:           telemetryValuesBar._fitsInToolbar ? 0 : ScreenTools.toolbarHeight
         }
 
         DragHandler {
