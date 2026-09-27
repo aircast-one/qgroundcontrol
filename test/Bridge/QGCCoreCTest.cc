@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include "QGCApplication.h"
+#include "QGCCorePlugin.h"
 #include "QGCHostNotices.h"
 #include "SysStatusSensorInfo.h"
 #include "SettingsManager.h"
@@ -1691,6 +1692,13 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 {
+    // The contract is recorded with every setup page offered. A core plugin can default advanced UI
+    // off (the custom example does), which leaves most pages without a component to block them.
+    QGCCorePlugin *const corePlugin = QGCCorePlugin::instance();
+    QVERIFY(corePlugin);
+    const bool advancedBefore = corePlugin->showAdvancedUI();
+    corePlugin->setProperty("showAdvancedUI", true);
+    const auto restoreAdvanced = qScopeGuard([corePlugin, advancedBefore]() { corePlugin->setProperty("showAdvancedUI", advancedBefore); });
     ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral(".*")));
     ignoreLogMessage("Utilities.QGCStateMachine", QtWarningMsg, QRegularExpression(QStringLiteral("No active link available")));
     const QString checkoutRoot = QDir::cleanPath(QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../..")));

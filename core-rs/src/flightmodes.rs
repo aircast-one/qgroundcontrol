@@ -85,8 +85,14 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = object(&backend.get_fields("vehicle", "flightMode,flightModes,advancedFlightModes,flying,rtlFlightMode,landFlightMode,flightModeSetAvailable"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let strings = |key: &str| -> Vec<String> { vehicle.get(key).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default() };
-    let (all, advanced) = (strings("flightModes"), strings("advancedFlightModes"));
+    let (mut all, advanced) = (strings("flightModes"), strings("advancedFlightModes"));
     let current = text(&vehicle, "flightMode");
+    // vehicle.flightModes lists the modes that can be set, and a firmware plugin may narrow those
+    // (the custom example keeps Hold, Return and Mission), which would leave a picker without the
+    // mode the vehicle is in. Choosing it again changes nothing.
+    if !all.is_empty() && !current.is_empty() && !all.contains(&current) {
+        all.insert(0, current.clone());
+    }
     let flying = flag(&vehicle, "flying");
     let (rtl, land) = (text(&vehicle, "rtlFlightMode"), text(&vehicle, "landFlightMode"));
     let modes: Vec<Value> = all
@@ -150,6 +156,34 @@ pub fn write_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Narrowed;
+
+    impl Backend for Narrowed {
+        fn get(&self, _path: &str) -> String {
+            String::new()
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String {
+            json!({ "kind": "object", "flightMode": "Position", "flightModes": ["Hold", "Return", "Mission"], "advancedFlightModes": [], "flightModeSetAvailable": true }).to_string()
+        }
+        fn set(&self, _path: &str, _value: &str) -> String {
+            json!({ "ok": true }).to_string()
+        }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn the_mode_the_vehicle_is_in_is_listed_even_when_it_cannot_be_chosen() {
+        let view = flight_modes_view(&Narrowed, &[]);
+        let names: Vec<&str> = view["modes"].as_array().unwrap().iter().map(|m| m["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Position", "Hold", "Return", "Mission"]);
+        assert_eq!(view["everyday"][0]["current"], true, "a picker shows where the vehicle is");
+        assert_eq!(write_mode(&Narrowed, "vehicle.flightMode", r#"{"value":"Position"}"#)["unchanged"], true, "choosing it again sends nothing");
+        assert_eq!(write_mode(&Narrowed, "vehicle.flightMode", r#"{"value":"Manual"}"#)["refusal"], "unknownMode");
+    }
 
     #[test]
     fn a_flight_mode_is_set_only_by_a_name_the_vehicle_lists() {
