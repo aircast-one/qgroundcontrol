@@ -6980,6 +6980,7 @@
         "view.missionItems(geometry).editing.fields[].units",
         "view.missionItems(geometry).editing.fields[].value",
         "view.missionItems(geometry).editing.index",
+        "view.missionItems(geometry).editing.speedSection",
         "view.missionItems(geometry).items.#",
         "view.missionItems(geometry).items[].abbreviation",
         "view.missionItems(geometry).items[].altitude",
@@ -7072,6 +7073,7 @@
         "view.missionItems.editing.fields[].units",
         "view.missionItems.editing.fields[].value",
         "view.missionItems.editing.index",
+        "view.missionItems.editing.speedSection",
         "view.missionItems.items.#",
         "view.missionItems.items[].abbreviation",
         "view.missionItems.items[].altitude",
@@ -9746,7 +9748,8 @@
                     "value": "bool|number"
                 }
             ],
-            "index": "number"
+            "index": "number",
+            "speedSection": "null"
         },
         "items": [
             {
@@ -9833,7 +9836,8 @@
                     "value": "bool|number"
                 }
             ],
-            "index": "number"
+            "index": "number",
+            "speedSection": "null"
         },
         "items": [
             {

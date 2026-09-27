@@ -107,10 +107,11 @@ Measured reasons a path is still here. Preserved across regeneration by
   `lockText`, with unusable DOP already dropped); `vehicle.terrain` -> `view.terrainDownload`
   (`loaded`, `pending`, `fraction`, `text`); `plan.geoFenceController`, read for its
   `breachReturnPoint` and to learn a plan exists -> `view.fences` (`breachReturnPoint`, null when
-  unset, and `available`). A new survey's vertices now go through the core too:
+  unset, and `available`); a mission item's `speedSection` -> `view.missionItems`
+  `editing.speedSection` (`available`, `specified`, `value`, `units`, and the `path` and
+  `specifyPath` the head writes, both claimed) for the selected item. A new survey's vertices now go through the core too:
   `<item>.<shape>.appendVertex` is claimed and checked like `adjustVertex`.
-- **Reads that still need core work.** A mission item's `speedSection`: its
-  `available` and `specifyFlightSpeed`. A survey's `cameraShots` and `complexDistance` are watched
+- **Reads that still need core work.** A survey's `cameraShots` and `complexDistance` are watched
   only to refresh `view.surveyStats`, which has no per-index dependencies of its own.
   `vehicle.batteries.<n>`: per-pack reading groups for the instrument picker. And the mission
   item editor's fact lists (the item's `facts`, its `textFieldFacts`/`comboboxFacts`, and
