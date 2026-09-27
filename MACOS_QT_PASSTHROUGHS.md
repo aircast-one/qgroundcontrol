@@ -91,11 +91,23 @@ Measured reasons a path is still here. Preserved across regeneration by
   Plan tab opens. **Not a conversion: a request for a narrow watchable signal.** Recorded rather
   than done, because the cheaper-looking swap is a regression.
 - **`settings.mavlinkSettings.forwardMavlinkAPMSupportHostName`, `settings.packetRadioSettings.deviceName`
-  and `settings.videoSettings.extraVideoSources` stay whole.** Each is read AND written, and
-  `router.set` refuses a view path on write (`router.rs:59`), so routing the read through
-  `view.control(...)` would leave the write spelling the Qt path beside it — one setting, two
-  spellings, which is the drift this migration exists to remove. They move when the core claims
-  the write.
+  and `settings.videoSettings.extraVideoSources` are ready in the core; the head has not moved.**
+  They stayed whole because the write had no core route, and one setting read through
+  `view.control(...)` but written by its Qt path is two spellings of one thing. The core now keeps
+  the write: `factwrite::owns` claims every `settings.` path, so `router.set` validates it before
+  Qt sees it. What is left is the head's side: read each through `view.control(<path>)`, keep
+  writing the same path. The Android head made exactly this move for the same three settings.
+- **`links.linkConfigurations.0.linkType` is a probe, not app traffic.** Its only caller is
+  `LinksStore.probeInvoke("failWrite")`, which writes a deliberately bad value to exercise the
+  head's write-failure sentence. A link's type is fixed when it is created, so no core claim would
+  make the write mean anything; the probe needs it to fail, and it does.
+- **`plan.\(MissionStore.nextClient())` is not a path.** It is the name of a watch client
+  (`plan.1`, `plan.2`, ...), built the same way as `missionSummary.` and `terrainProfile.`; it
+  only matches because `plan` is also a bridge root. The predicate cannot tell a client id from a
+  path, and it is recorded here rather than excluded by name.
+- **`vehicle.armed`, `video.initNative` and `video.setNativeRendering` stay on Qt by decision.**
+  Arming goes straight to the vehicle on both heads, and the two video calls hand a native
+  rendering surface to the Qt video pipeline; neither has a view or a claim to become.
 
 - **The two converted settings reads are OBSERVED, not just compiled.** On the rig at 16:2x both
   paths answered live through the core: `view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)`
