@@ -116,8 +116,16 @@ Measured reasons a path is still here. Preserved across regeneration by
   `view.instrumentGroups` `packGroups` (in the `groups` shape, ids `batteries.<n>`, titles
   `Battery <n+1>`) and `vehicleFacts` (bare selections, the head's `""` group). A new survey's vertices now go through the core too:
   `<item>.<shape>.appendVertex` is claimed and checked like `adjustVertex`.
-- **Reads that still need core work.** The mission item editor's fact lists (the item's `facts`, its `textFieldFacts`/`comboboxFacts`, and
-  `cameraCalc` with its camera catalogue), which no view serves with full descriptors.
+- **The mission item editor's fact lists -> `view.itemFacts(N)`.** The head read the item, its
+  `textFieldFacts` and `comboboxFacts`, and `cameraCalc`, and chose among them itself. The view
+  makes the same choice (the lists when there are any, else a complex item's own facts less the
+  launch altitude) and serves each as `view.control`'s shape plus `pathSuffix` and `group`, which
+  the head's `FactRange(control:)` already decodes. For a complex item it adds `camera`: brand,
+  model, the brand and model lists, the manual and custom names, `custom`, `distanceMode`, the
+  brand and model write paths, and the camera facts the head shows (optics first for a custom
+  camera). Every path it serves is one the core's fact write claims.
+- **No read is left without a core view.** Every raw read above now has a view serving what the
+  head takes from it; what remains is the head's own change, which needs a Swift toolchain.
 - **`links.linkConfigurations.0.linkType` is a probe, not app traffic.** Its only caller is
   `LinksStore.probeInvoke("failWrite")`, which writes a deliberately bad value to exercise the
   head's write-failure sentence. A link's type is fixed when it is created, so no core claim would
