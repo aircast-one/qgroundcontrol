@@ -34,6 +34,12 @@ struct TerrainDownload: Equatable {
         return sinceIdle < lingerSeconds
     }
 
+    // view.terrainDownload serves the two counts, already cleared of a NaN or negative reading.
+    static func read(view: [String: Any]) -> TerrainDownload {
+        TerrainDownload(loaded: (view["loaded"] as? NSNumber)?.intValue ?? 0,
+                        pending: (view["pending"] as? NSNumber)?.intValue ?? 0)
+    }
+
     static func read(_ facts: [[String: Any]]) -> TerrainDownload {
         func value(_ name: String) -> Int {
             facts.first { ($0["name"] as? String) == name }

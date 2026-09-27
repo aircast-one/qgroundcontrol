@@ -1271,6 +1271,7 @@ checkObstacleSilenceIsNotClearAir()
 checkTheControlRowIsSilentUntilTheVehicleSpeaks()
 checkTheBreachReturnSaysWhichHalfIsMissing()
 checkAVertexHandleSaysWhichKindItIs()
+checkTheFlyViewReadsGpsAndTerrainFromTheCore()
 checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
@@ -6129,7 +6130,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2283
+let assertionFloor = 2287
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -9995,4 +9996,18 @@ func checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder() {
            "a plist without the key draws Qt's UI")
     expect(LaunchMode.bundleDeclaresNativeUI(nil) == false,
            "and so does a process with no bundle at all, which is how a bare binary runs")
+}
+
+func checkTheFlyViewReadsGpsAndTerrainFromTheCore() {
+    let rows = FlyDetail.gps(view: ["rows": [["label": "Position", "value": "47.3977420, 8.5456075"],
+                                             ["label": "Satellites", "value": "10"],
+                                             ["label": "broken"]]])
+    expect(rows.map(\.label) == ["Position", "Satellites"],
+           "view.gps rows are drawn in the order served, and a row without a value is skipped")
+    expect(FlyDetail.gps(view: [:]).isEmpty, "no vehicle serves no rows, and none are invented")
+
+    let busy = TerrainDownload.read(view: ["loaded": 3 as NSNumber, "pending": 1 as NSNumber])
+    expect(busy.busy && busy.text == "Loading terrain 3 of 4",
+           "view.terrainDownload's counts give the same progress the raw facts did")
+    expect(TerrainDownload.read(view: [:]) == .none, "a view with no counts is a download that never started")
 }
