@@ -38,6 +38,7 @@ public:
     quint64 framesDecoded() const { return _framesDecoded.load(std::memory_order_relaxed); }
     quint64 bytesReceived() const { return _bytesReceived.load(std::memory_order_relaxed); }
     qint64 lastFrameSeconds() const { return _lastFrameSeconds.load(std::memory_order_relaxed); }
+    int latencyMs() const { return _latencyMs.load(std::memory_order_relaxed); }
 
     virtual void setSink(VideoSinkHandle sink) { if (sink != _sink) { _sink = sink; emit sinkChanged(_sink); } }
     virtual void setWidget(QQuickItem *widget) { if (widget != _widget) { _widget = widget; emit widgetChanged(_widget); } }
@@ -112,6 +113,7 @@ protected:
     std::atomic<quint64> _framesDecoded = 0;
     std::atomic<quint64> _bytesReceived = 0;
     std::atomic<qint64> _lastFrameSeconds = 0;
+    std::atomic<int> _latencyMs = -1;
 
     VideoSinkHandle _sink = nullptr;
     QQuickItem *_widget = nullptr;

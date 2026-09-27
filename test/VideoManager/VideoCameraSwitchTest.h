@@ -12,4 +12,5 @@ private slots:
     void _widgetRoles();
     void _tileCameraNumbers();
     void _urlWhitespaceIsTrimmed();
+    void _videoStatsReadLikeTheWatchPage();
 };

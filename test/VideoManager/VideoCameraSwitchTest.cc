@@ -179,4 +179,11 @@ void VideoCameraSwitchTest::_urlWhitespaceIsTrimmed()
     settings->rtspUrl()->setRawValue(savedRtsp);
 }
 
+void VideoCameraSwitchTest::_videoStatsReadLikeTheWatchPage()
+{
+    QCOMPARE(VideoManager::formatVideoStats(279, 25, 1080), QStringLiteral("279 ms · 25 fps · 1080p"));
+    QCOMPARE(VideoManager::formatVideoStats(-1, 30, 720), QStringLiteral("30 fps · 720p"));
+    QCOMPARE(VideoManager::formatVideoStats(80, 0, 0), QStringLiteral("80 ms · 0 fps"));
+}
+
 UT_REGISTER_TEST(VideoCameraSwitchTest, TestLabel::Unit)

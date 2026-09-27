@@ -60,6 +60,11 @@ VideoManager::VideoManager(QObject *parent)
 
     (void) qRegisterMetaType<VideoReceiver::STATUS>("STATUS");
 
+    QTimer *statsTimer = new QTimer(this);
+    statsTimer->setInterval(1000);
+    (void) connect(statsTimer, &QTimer::timeout, this, &VideoManager::_updateVideoStats);
+    statsTimer->start();
+
     if (VideoBackend::needsAsyncInit()) {
         _backendDisabledForTests = VideoBackend::disabledForUnitTests();
         if (_backendDisabledForTests) {
@@ -676,6 +681,41 @@ void VideoManager::_setReceiverStatus(VideoReceiver *receiver, const QString &st
     }
     state.status = status;
     emit camerasChanged();
+}
+
+QString VideoManager::formatVideoStats(int latencyMs, int fps, int height)
+{
+    QStringList parts;
+    if (latencyMs >= 0) {
+        parts.append(QStringLiteral("%1 ms").arg(latencyMs));
+    }
+    parts.append(QStringLiteral("%1 fps").arg(fps));
+    if (height > 0) {
+        parts.append(QStringLiteral("%1p").arg(height));
+    }
+    return parts.join(QStringLiteral(" · "));
+}
+
+void VideoManager::_updateVideoStats()
+{
+    const int active = activeVideoSource();
+    const auto main = std::find_if(_videoReceivers.cbegin(), _videoReceivers.cend(), [this, active](const VideoReceiver *receiver) {
+        return !receiver->isThermal() && (_cameraIndexForReceiver(receiver) == active);
+    });
+    const VideoReceiver *receiver = (main != _videoReceivers.cend()) ? *main : nullptr;
+    const quint64 frames = receiver ? receiver->framesDecoded() : 0;
+    const int fps = ((receiver == _statsReceiver) && (frames >= _statsFramesDecoded))
+        ? static_cast<int>(frames - _statsFramesDecoded)
+        : 0;
+    _statsReceiver = receiver;
+    _statsFramesDecoded = frames;
+    const QString stats = (receiver && _decoding)
+        ? formatVideoStats(receiver->latencyMs(), fps, _videoSize.height())
+        : QString();
+    if (stats != _videoStats) {
+        _videoStats = stats;
+        emit videoStatsChanged();
+    }
 }
 
 quint64 VideoManager::cameraFramesDecoded(int index) const
