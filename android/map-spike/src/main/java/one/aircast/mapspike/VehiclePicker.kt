@@ -39,10 +39,14 @@ object FleetBridge {
         val targets = selectedPaths().filter { (_, id) -> id in confirmed }
         return when {
             targets.isEmpty() -> false
+            // qtpaths: vehicles.selectedVehicles.0.armed
             action == "mvArm" -> targets.map { still(it) { setOk("$it.armed", settingJson("true")) } }.all { it }
+            // qtpaths: vehicles.selectedVehicles.0.armed
             action == "mvDisarm" -> targets.map { still(it) { setOk("$it.armed", settingJson("false")) } }.all { it }
+            // qtpaths: vehicles.selectedVehicles.0.pauseVehicle
             action == "mvPause" -> targets.map { still(it) { invokeOk("$it.pauseVehicle") } }.all { it }
             action == "mvStartMission" -> targets.filter { (path, _) -> armedAt(path) }
+                // qtpaths: vehicles.selectedVehicles.0.startMission
                 .map { still(it) { invokeOk("$it.startMission") } }
                 .let { sent -> sent.isNotEmpty() && sent.all { it } }
             else -> false
