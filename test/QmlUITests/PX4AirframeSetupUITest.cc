@@ -109,12 +109,13 @@ void PX4AirframeSetupUITest::_testAirframePrereqPages()
         { .objectName = "setupComponentAirframe",    .expectPrereqShown = false },
     };
     // A custom autopilot plugin chooses its own pages, so check the ones this vehicle offers.
-    AutoPilotPlugin *autopilot = vehicle->autopilotPlugin();
+    AutoPilotPlugin* autopilot = vehicle->autopilotPlugin();
     QVERIFY(autopilot);
     QStringList offered;
-    for (const QVariant &entry : autopilot->vehicleComponents()) {
-        if (const auto *component = entry.value<VehicleComponent*>()) {
-            offered.append(QStringLiteral("setupComponent") + component->name().remove(QRegularExpression(QStringLiteral("\\s"))));
+    for (const QVariant& entry : autopilot->vehicleComponents()) {
+        if (const auto* component = entry.value<VehicleComponent*>()) {
+            offered.append(QStringLiteral("setupComponent") +
+                           component->name().remove(QRegularExpression(QStringLiteral("\\s"))));
         }
     }
     QVERIFY2(offered.contains(QStringLiteral("setupComponentAirframe")), qPrintable(offered.join(u' ')));

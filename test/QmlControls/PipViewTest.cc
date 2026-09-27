@@ -13,7 +13,6 @@
 #include <QtCore/QSettings>
 #include <QtCore/QRegularExpression>
 
-static const qreal kMargin = 8;
 static const qreal kTestViewWidth = 800;
 
 static void clearPipSettings()
@@ -51,8 +50,8 @@ void PipViewTest::_dragRepositionsAndPersists()
         QVERIFY(pip);
         QVERIFY(itemB);
 
-        QCOMPARE(pip->x(), kMargin);
-        QCOMPARE(pip->y(), root->height() - pip->height() - kMargin);
+        QCOMPARE(pip->x(), dropMarginOf(root));
+        QCOMPARE(pip->y(), root->height() - pip->height() - dropMarginOf(root));
 
         QQuickItem* pipParentBefore = itemB->parentItem();
 
@@ -62,8 +61,10 @@ void PipViewTest::_dragRepositionsAndPersists()
 
         const qreal grid = dropGridOf(root);
         const qreal margin = dropMarginOf(root);
-        const QPointF expected(snapToDropGrid(kMargin + target.x() - start.x(), pip->width(), root->width(), grid, margin),
-                               snapToDropGrid(root->height() - pip->height() - kMargin + target.y() - start.y(), pip->height(), root->height(), grid, margin));
+        const QPointF expected(
+            snapToDropGrid(dropMarginOf(root) + target.x() - start.x(), pip->width(), root->width(), grid, margin),
+            snapToDropGrid(root->height() - pip->height() - dropMarginOf(root) + target.y() - start.y(), pip->height(),
+                           root->height(), grid, margin));
         QTRY_VERIFY(qAbs(pip->x() - expected.x()) < 2);
         QTRY_VERIFY(qAbs(pip->y() - expected.y()) < 2);
 
@@ -117,7 +118,7 @@ void PipViewTest::_dragBackToDefaultSnapsAndResets()
         QQuickItem* pip = root->findChild<QQuickItem*>("pip");
         QVERIFY(pip);
 
-        const QPointF defaultPos(kMargin, root->height() - pip->height() - kMargin);
+        const QPointF defaultPos(dropMarginOf(root), root->height() - pip->height() - dropMarginOf(root));
 
         dragMouse(view, itemCenter(pip), QPoint(500, 250));
         QTRY_VERIFY(pip->x() != defaultPos.x());
@@ -132,8 +133,8 @@ void PipViewTest::_dragBackToDefaultSnapsAndResets()
     view2.rootObject()->setProperty("editMode", true);
     QQuickItem* pip2 = view2.rootObject()->findChild<QQuickItem*>("pip");
     QVERIFY(pip2);
-    QCOMPARE(pip2->x(), kMargin);
-    QCOMPARE(pip2->y(), view2.rootObject()->height() - pip2->height() - kMargin);
+    QCOMPARE(pip2->x(), dropMarginOf(view2.rootObject()));
+    QCOMPARE(pip2->y(), view2.rootObject()->height() - pip2->height() - dropMarginOf(view2.rootObject()));
 }
 
 void PipViewTest::_clickSwapsWithoutDrag()

@@ -8,10 +8,17 @@
  ****************************************************************************/
 
 #include "FlyViewToolBarEditTest.h"
+
+#include <QtQml/QQmlContext>
+
+#include "JoystickManager.h"
+#include "MultiVehicleManager.h"
 #include "QuickInteractionTestHelpers.h"
 
 static bool load(QQuickView &view)
 {
+    // The vehicle's joystick and gimbal indicators read the context property the app engine sets.
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("joystickManager"), JoystickManager::instance());
     return loadTestView(view, QStringLiteral("qrc:/unittest/FlyViewToolBarEditTest.qml"));
 }
 
@@ -77,6 +84,11 @@ void FlyViewToolBarEditTest::_narrowBarKeepsEveryToolClearOfTheButtons()
 
 void FlyViewToolBarEditTest::_narrowBarDropsTheIndicatorRow()
 {
+    // Without a vehicle the row holds only host indicators (GCS battery, RTK GPS), which a CI
+    // runner does not have; the vehicle's indicators give it something to drop.
+    _connectMockLinkNoInitialConnectSequence();
+    QVERIFY(MultiVehicleManager::instance()->activeVehicle());
+
     QQuickView view;
     QVERIFY(load(view));
 

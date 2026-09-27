@@ -69,7 +69,7 @@ void FlightModeReportingTest::_advancedModesAreASettableSubsetAndLeaveEverydayMo
     // and Mission), so the expectation comes from the plugin's own table rather than stock PX4's.
     QStringList settableAdvanced;
     QStringList everyday;
-    for (const FirmwareFlightMode &mode : plugin->flightModeList()) {
+    for (const FirmwareFlightMode& mode : plugin->flightModeList()) {
         if (mode.canBeSet) {
             (mode.advanced ? settableAdvanced : everyday) += mode.mode_name;
         }
@@ -83,7 +83,7 @@ void FlightModeReportingTest::_advancedModesAreASettableSubsetAndLeaveEverydayMo
     for (const QString &mode : advanced) {
         QVERIFY2(all.contains(mode), qPrintable(mode));
     }
-    for (const QString &mode : everyday) {
+    for (const QString& mode : everyday) {
         QVERIFY2(!advanced.contains(mode), qPrintable(mode));
     }
 }

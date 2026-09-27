@@ -35,8 +35,8 @@ Item {
             objectName: "dragPosition"
             target: panel
             settingsKeyPrefix: "TestPanel"
-            defaultX: root.width - panel.width - 8
-            defaultY: root.height - panel.height - 8
+            defaultX: root.width - panel.width - edgeMargin
+            defaultY: root.height - panel.height - edgeMargin
         }
 
         DragHandler {

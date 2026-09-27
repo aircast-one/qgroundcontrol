@@ -13,8 +13,6 @@
 #include <cmath>
 #include <QtCore/QRegularExpression>
 
-static const qreal kMargin = 8;
-
 static void clearPanelSettings()
 {
     clearDragPositionSettings({"TestPanel"});
@@ -49,8 +47,8 @@ void DragToPositionTest::_dragRepositionsAndPersists()
         QQuickItem* panel = root->findChild<QQuickItem*>("panel");
         QVERIFY(panel);
 
-        QCOMPARE(panel->x(), root->width() - panel->width() - kMargin);
-        QCOMPARE(panel->y(), root->height() - panel->height() - kMargin);
+        QCOMPARE(panel->x(), root->width() - panel->width() - dropMarginOf(root));
+        QCOMPARE(panel->y(), root->height() - panel->height() - dropMarginOf(root));
 
         const QPoint start = itemCenter(panel);
         const QPoint target(300, 200);
@@ -58,8 +56,11 @@ void DragToPositionTest::_dragRepositionsAndPersists()
 
         const qreal grid = dropGridOf(root);
         const qreal margin = dropMarginOf(root);
-        const QPointF expected(snapToDropGrid(root->width() - panel->width() - kMargin + target.x() - start.x(), panel->width(), root->width(), grid, margin),
-                               snapToDropGrid(root->height() - panel->height() - kMargin + target.y() - start.y(), panel->height(), root->height(), grid, margin));
+        const QPointF expected(
+            snapToDropGrid(root->width() - panel->width() - dropMarginOf(root) + target.x() - start.x(), panel->width(),
+                           root->width(), grid, margin),
+            snapToDropGrid(root->height() - panel->height() - dropMarginOf(root) + target.y() - start.y(),
+                           panel->height(), root->height(), grid, margin));
         QTRY_VERIFY(qAbs(panel->x() - expected.x()) < 2);
         QTRY_VERIFY(qAbs(panel->y() - expected.y()) < 2);
 
@@ -120,8 +121,8 @@ void DragToPositionTest::_dragBackToDefaultSnapsAndResets()
         QQuickItem* panel = root->findChild<QQuickItem*>("panel");
         QVERIFY(panel);
 
-        const QPointF defaultPos(root->width() - panel->width() - kMargin,
-                                 root->height() - panel->height() - kMargin);
+        const QPointF defaultPos(root->width() - panel->width() - dropMarginOf(root),
+                                 root->height() - panel->height() - dropMarginOf(root));
 
         dragPanel(view, itemCenter(panel), QPoint(300, 200));
         QTRY_VERIFY(panel->x() != defaultPos.x());
@@ -137,8 +138,8 @@ void DragToPositionTest::_dragBackToDefaultSnapsAndResets()
     QQuickItem* root2 = view2.rootObject();
     QQuickItem* panel2 = root2->findChild<QQuickItem*>("panel");
     QVERIFY(panel2);
-    QCOMPARE(panel2->x(), root2->width() - panel2->width() - kMargin);
-    QCOMPARE(panel2->y(), root2->height() - panel2->height() - kMargin);
+    QCOMPARE(panel2->x(), root2->width() - panel2->width() - dropMarginOf(root2));
+    QCOMPARE(panel2->y(), root2->height() - panel2->height() - dropMarginOf(root2));
 }
 
 void DragToPositionTest::_clickStillReachesChild()

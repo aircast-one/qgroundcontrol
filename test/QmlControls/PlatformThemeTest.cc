@@ -1,12 +1,13 @@
 #include "PlatformThemeTest.h"
+
+#include <QtTest/QTest>
+
 #include "ApplePlatformTheme.h"
 #include "FluentPlatformTheme.h"
 #include "MaterialPlatformTheme.h"
 #include "PlatformTheme.h"
 #include "QGCCorePlugin.h"
 #include "QGCPalette.h"
-
-#include <QtTest/QTest>
 
 namespace {
 
@@ -20,18 +21,18 @@ qreal luminance(const QColor &color)
 
 // A core plugin may recolour palette roles (the custom example does), and those no longer derive
 // from the host tones.
-bool overriddenByCorePlugin(const char *role)
+bool overriddenByCorePlugin(const char* role)
 {
     const QColor sentinel(0x12, 0x34, 0x56);
     QGCPalette::PaletteColorInfo_t info;
-    for (auto &theme : info) {
-        for (QColor &color : theme) {
+    for (auto& theme : info) {
+        for (QColor& color : theme) {
             color = sentinel;
         }
     }
     QGCCorePlugin::instance()->paletteOverride(QString::fromLatin1(role), info);
-    for (const auto &theme : info) {
-        for (const QColor &color : theme) {
+    for (const auto& theme : info) {
+        for (const QColor& color : theme) {
             if (color != sentinel) {
                 return true;
             }
@@ -101,8 +102,8 @@ void PlatformThemeTest::_inkReadsOnEverySurfaceInEveryTheme()
 }
 
 #define COMPARE_ROLE(palette, role, expected) \
-    if (!overriddenByCorePlugin(#role)) { \
-        QCOMPARE(palette.role(), expected); \
+    if (!overriddenByCorePlugin(#role)) {     \
+        QCOMPARE(palette.role(), expected);   \
     }
 
 void PlatformThemeTest::_paletteRolesDeriveFromTheHostTones()
@@ -120,19 +121,19 @@ void PlatformThemeTest::_paletteRolesDeriveFromTheHostTones()
 
         QGCPalette enabled;
         enabled.setColorGroupEnabled(true);
-        COMPARE_ROLE(enabled, window,          t.background);
+        COMPARE_ROLE(enabled, window, t.background);
         COMPARE_ROLE(enabled, toolbarBackground, t.background);
-        COMPARE_ROLE(enabled, windowShade,     t.surface);
+        COMPARE_ROLE(enabled, windowShade, t.surface);
         COMPARE_ROLE(enabled, windowShadeDark, t.surfaceSunken);
-        COMPARE_ROLE(enabled, text,            t.ink);
-        COMPARE_ROLE(enabled, buttonText,      t.ink);
+        COMPARE_ROLE(enabled, text, t.ink);
+        COMPARE_ROLE(enabled, buttonText, t.ink);
         COMPARE_ROLE(enabled, buttonHighlight, t.accent);
-        COMPARE_ROLE(enabled, primaryButton,   t.accent);
-        COMPARE_ROLE(enabled, colorBlue,       t.accent);
-        COMPARE_ROLE(enabled, colorRed,        t.red);
-        COMPARE_ROLE(enabled, warningText,     t.red);
-        COMPARE_ROLE(enabled, groupBorder,     t.outlineWeak);
-        COMPARE_ROLE(enabled, overlayGlass,    t.glass);
+        COMPARE_ROLE(enabled, primaryButton, t.accent);
+        COMPARE_ROLE(enabled, colorBlue, t.accent);
+        COMPARE_ROLE(enabled, colorRed, t.red);
+        COMPARE_ROLE(enabled, warningText, t.red);
+        COMPARE_ROLE(enabled, groupBorder, t.outlineWeak);
+        COMPARE_ROLE(enabled, overlayGlass, t.glass);
         COMPARE_ROLE(enabled, overlayBackground, t.scrim);
         if (!overriddenByCorePlugin("overlayBorder")) {
             QCOMPARE(enabled.overlayBorder().alpha(), 0x26);
@@ -143,7 +144,7 @@ void PlatformThemeTest::_paletteRolesDeriveFromTheHostTones()
 
         QGCPalette disabled;
         disabled.setColorGroupEnabled(false);
-        COMPARE_ROLE(disabled, text,            t.inkMuted);
+        COMPARE_ROLE(disabled, text, t.inkMuted);
         COMPARE_ROLE(disabled, buttonHighlight, t.accentMuted);
         COMPARE_ROLE(disabled, primaryButtonText, t.inkMuted);
     }

@@ -5,8 +5,8 @@
 #include "MAVLinkMessageType.h"
 #include "MockLink.h"
 #include "UnitTest.h"
+#include "Vehicle.h"
 
-class Vehicle;
 class LinkInterface;
 class MissionItem;
 

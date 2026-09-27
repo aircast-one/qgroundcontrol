@@ -64,7 +64,8 @@ Item {
         id: pip
         objectName: "pip"
         overlayRig: stubOverlayRig
-        margin: 8
+        // DragToPosition clamps to its font-relative edge margin, so a smaller fixed margin moves.
+        margin: ScreenTools.defaultFontPixelHeight / 2
         item1: itemA
         item2: itemB
         item1IsFullSettingsKey: "PipViewTestItem1IsFull"

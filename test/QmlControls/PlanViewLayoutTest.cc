@@ -105,6 +105,10 @@ void PlanViewLayoutTest::init()
     ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("First item is not MissionSettingsItem")));
     ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("(CameraSection|MissionSettingsEditor|SimpleItemEditor).qml.*TypeError")));
     ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("Required property missionItem was not initialized")));
+    // The plan view's asynchronous loaders can still be incubating when the view is torn down,
+    // as QmlUITestBase also allows for.
+    ignoreLogMessage("default", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("items in the process of being created at engine destruction")));
 }
 
 void PlanViewLayoutTest::_narrowWindowStacksTheInspectorUnderTheDock()
