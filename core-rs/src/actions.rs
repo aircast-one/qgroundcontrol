@@ -207,7 +207,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         _ if crate::linkconnect::disconnect_target(path).is_some() => crate::linkconnect::disconnect(backend, path),
         _ if crate::fenceedit::owns_member_action(path) => crate::fenceedit::member_action(backend, path, args),
         _ if crate::factwrite::owns_validate(path) => crate::factwrite::validate(backend, path, args),
-        _ if crate::itemshape::owns(path) => crate::itemshape::adjust_vertex(backend, path, args),
+        _ if crate::itemshape::owns(path) => crate::itemshape::edit(backend, path, args),
         _ if crate::itemshape::owns_split(path) => crate::itemshape::split(backend, path, args),
         _ if crate::vehicleselect::fleet_target(path).is_some() => crate::vehicleselect::fleet_command(backend, path),
         _ if crate::commandtree::hint_target(path).is_some() => crate::commandtree::hint(backend, path, args),
