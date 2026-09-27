@@ -166,18 +166,19 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func reload() {
-        let controller = Bridge.group("plan.missionController")
-        guard controller["kind"] as? String == "object" else {
+        // view.plan answers whether the mission controller is there, its pattern list and its
+        // altitude frame, the three things reading plan.missionController raw was for.
+        let planView = Bridge.group("view.plan")
+        guard (planView["available"] as? NSNumber)?.boolValue == true else {
             status = MissionSummary.planStatus(controller: false, reason: "")
             items = []
             patterns = []
             return
         }
 
-        let planView = Bridge.group("view.plan")
         readPlanVerdicts(planView)
 
-        let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
+        let offered = ((planView["patterns"] as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String }
         if offered != patterns { patterns = offered }
 
         let listed = readItems()
@@ -193,7 +194,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if profile != terrain { terrain = profile }
         let catalogue = MissionKinds(Bridge.group("view.missionKinds"))
         if !catalogue.all.isEmpty, catalogue != kinds { kinds = catalogue }
-        let mode = AltitudeMode.read(controller["globalAltitudeMode"])
+        let mode = AltitudeMode.read(planView["globalAltitudeFrame"])
         if mode != globalAltitudeMode { globalAltitudeMode = mode }
         let missionOffers = AltitudeMode.offers(
             Bridge.group("view.altitudeModes(\(AltitudeMode.missionContext),\(mode))"))

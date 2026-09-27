@@ -9,18 +9,18 @@ predicate: a quoted literal whose text is one of 23 bridge roots followed by a d
   served (view.*)        70   distinct, the migration's numerator
   claimed by the core    88   distinct writes and invokes the core keeps (109 named in actions.rs, the rest by pattern) -- these reach Qt through the core, so they are the destination and not the debt
     camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.\(property), geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.model.\(entry.index).selected, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, missionCommandTree.categoriesForVehicle, missionCommandTree.getCommandsForCategory, plan.geoFenceController.\(circle ? , plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.missionController.visualItems.0.commandName, plan.missionController.visualItems.0.coordinate, plan.missionController.visualItems.0.plannedHomePositionAltitude, plan.missionController.visualItems.\(item.index).\(fact.pathSuffix), plan.missionController.visualItems.\(item.index).altitude, plan.missionController.visualItems.\(item.index).altitudeMode, plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode, plan.missionController.visualItems.\(item.index).command, plan.missionController.visualItems.\(item.index).coordinate, plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property), plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, settings.appSettings.\(setting), settings.appSettings.defaultMissionItemAltitude, settings.mavlinkSettings.forwardMavlinkAPMSupportHostName, settings.packetRadioSettings.deviceName, settings.videoSettings.extraVideoSources, vehicle.\(command), vehicle.\(target.action.invokable), vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.parameterManager.getParameter(\(componentId),\(name)), vehicle.parameterManager.parameterNames, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
-  literal Qt paths        7   distinct, mechanical to move
+  literal Qt paths        6   distinct, mechanical to move
   interpolated Qt         9   distinct TEMPLATES, each expanding to an unknown number of runtime paths -- needs a parameterised view, not a substitution
-  raw Qt total           16   distinct, literal + templates
-  call sites            217   occurrences, not distinct: effort rather than surface
+  raw Qt total           15   distinct, literal + templates
+  call sites            216   occurrences, not distinct: effort rather than surface
 
-  reads                   7   group/get/watch/qgc* -- a served view retires these
+  reads                   6   group/get/watch/qgc* -- a served view retires these
   actions                 2   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
   writes                  2   set/write -- a core `owns_write` claim retires these: router.set consults it first, then refuses view paths, then passes to Qt
   unclassified            7   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
   used more than one way   2   a path both read and written is counted under EACH use above, so those four exceed the raw total
 
-  plan                     10  (9 interpolated)
+  plan                      9  (9 interpolated)
   vehicle                   2
   video                     2
   links                     1
@@ -51,7 +51,6 @@ but what each path BECAME is the deliverable.**
 |---|---|---|
 | `links.linkConfigurations.0.linkType` | write | passthrough |
 | `plan.\(MissionStore.nextClient())` | unclassified | passthrough |
-| `plan.missionController` | read | passthrough |
 | `plan.missionController.visualItems.\(index).\($0)` | unclassified | passthrough |
 | `plan.missionController.visualItems.\(index).\(plan.property)` | unclassified | passthrough |
 | `plan.missionController.visualItems.\(item.index)` | read | passthrough |
