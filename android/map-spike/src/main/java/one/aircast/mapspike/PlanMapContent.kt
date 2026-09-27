@@ -364,6 +364,7 @@ internal fun MapSpikeScreen(
             onWaypointSelected = { hit ->
                 when (hit) {
                     is MapHit.Midpoint -> onBridge("Adding a corner") {
+                        // qtpaths: plan.geoFenceController.polygons.0.splitPolygonSegment, plan.missionController.visualItems.0.surveyAreaPolygon.splitPolygonSegment, plan.missionController.visualItems.0.corridorPolyline.splitSegment
                         invokeOk("${hit.path}.${hit.invokable}", "[${hit.segment}]")
                     }
                     else -> selected = hit
