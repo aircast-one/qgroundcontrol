@@ -184,6 +184,7 @@ DEBIAN_PACKAGES: dict[str, list[str]] = {
         "gstreamer1.0-gl",
         "libusb-1.0-0-dev",
         "libsodium-dev",
+        "libpcap-dev",
         "libsdl2-dev",
     ],
 }
@@ -269,6 +270,7 @@ FEDORA_PACKAGES: dict[str, list[str]] = {
     "sdl": [
         "libusb1-devel",
         "libsodium-devel",
+        "libpcap-devel",
     ],
     "audio": [
         "pulseaudio-libs-devel",
@@ -348,6 +350,8 @@ ARCH_PACKAGES: dict[str, list[str]] = {
     ],
     "sdl": [
         "libusb",
+        "libsodium",
+        "libpcap",
     ],
     "audio": [
         "libpulse",
