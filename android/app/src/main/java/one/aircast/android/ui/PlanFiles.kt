@@ -127,6 +127,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
 
     fun discard(method: String, success: String, failure: String) {
         scope.launch {
+            // qtpaths: plan.removeAll, plan.removeAllFromVehicle
             val ok = withContext(Dispatchers.Default) { Qgc.invoke("$PLAN_ROOT.$method") }
             if (ok) {
                 forget()
