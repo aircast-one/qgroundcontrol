@@ -111,10 +111,12 @@ Measured reasons a path is still here. Preserved across regeneration by
   `editing.speedSection` (`available`, `specified`, `value`, `units`, and the `path` and
   `specifyPath` the head writes, both claimed) for the selected item; a survey's `cameraShots` and
   `complexDistance`, watched only to refresh the stats -> `view.surveyStats(N)`, which now watches
-  them (and `timeBetweenShots`, `coveredArea`) for the index it serves. A new survey's vertices now go through the core too:
+  them (and `timeBetweenShots`, `coveredArea`) for the index it serves; `vehicle.batteries.<n>`,
+  read per pack for the instrument picker, and the whole `vehicle` object read for its own group ->
+  `view.instrumentGroups` `packGroups` (in the `groups` shape, ids `batteries.<n>`, titles
+  `Battery <n+1>`) and `vehicleFacts` (bare selections, the head's `""` group). A new survey's vertices now go through the core too:
   `<item>.<shape>.appendVertex` is claimed and checked like `adjustVertex`.
-- **Reads that still need core work.** `vehicle.batteries.<n>`: per-pack reading groups for the instrument picker. And the mission
-  item editor's fact lists (the item's `facts`, its `textFieldFacts`/`comboboxFacts`, and
+- **Reads that still need core work.** The mission item editor's fact lists (the item's `facts`, its `textFieldFacts`/`comboboxFacts`, and
   `cameraCalc` with its camera catalogue), which no view serves with full descriptors.
 - **`links.linkConfigurations.0.linkType` is a probe, not app traffic.** Its only caller is
   `LinksStore.probeInvoke("failWrite")`, which writes a deliberately bad value to exercise the

@@ -6721,6 +6721,13 @@
         "view.instrumentGroups.groups[].group",
         "view.instrumentGroups.groups[].title",
         "view.instrumentGroups.kind",
+        "view.instrumentGroups.packGroups.#",
+        "view.instrumentGroups.packGroups[].facts.#",
+        "view.instrumentGroups.packGroups[].facts[].label",
+        "view.instrumentGroups.packGroups[].facts[].name",
+        "view.instrumentGroups.packGroups[].facts[].selection",
+        "view.instrumentGroups.packGroups[].group",
+        "view.instrumentGroups.packGroups[].title",
         "view.instrumentGroups.packs",
         "view.instrumentGroups.vehicleFacts.#",
         "view.instrumentGroups.vehicleFacts[].label",
@@ -9390,6 +9397,19 @@
             }
         ],
         "kind": "string",
+        "packGroups": [
+            {
+                "facts": [
+                    {
+                        "label": "string",
+                        "name": "string",
+                        "selection": "string"
+                    }
+                ],
+                "group": "string",
+                "title": "string"
+            }
+        ],
         "packs": "number",
         "vehicleFacts": [
             {
