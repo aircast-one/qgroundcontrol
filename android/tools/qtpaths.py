@@ -151,7 +151,7 @@ def declared(lines: list[str], at: int) -> list[str]:
     for line in (lines[at], lines[at - 1] if at > 0 else ""):
         hit = DECLARED.search(line)
         if hit:
-            return [path.strip() for path in hit.group(1).split(",") if path.strip()]
+            return [path.strip() for path in re.split(r",(?![^()]*\))", hit.group(1)) if path.strip()]
     return []
 
 
@@ -211,7 +211,7 @@ def check() -> None:
     assert resolve("$LINKS.${row.index}.link.disconnect", {"LINKS": "links.linkConfigurations"}) == "links.linkConfigurations.*.link.disconnect"
     assert instance("plan.fence.*.center") == "plan.fence.0.center" and instance("*.armed") is None
     assert fits("settings.appSettings.x.validate", "*.validate") and not fits("settings.x.enumIndex", "*.validate")
-    assert declared(["// qtpaths: a.b, c.d", 'Qgc.invoke("$X.y")'], 1) == ["a.b", "c.d"] and declared(["x"], 0) == []
+    assert declared(["// qtpaths: a.b, c.get(1,X).d", 'Qgc.invoke("$X.y")'], 1) == ["a.b", "c.get(1,X).d"] and declared(["x"], 0) == []
     for wrapper in ("qgcPath", "qgcString", "mapPath", "mapString", "mapInt"):
         assert wrapper in CALLS, "the wrapper sweep missed %s, so a module's reads are invisible" % wrapper
     sample = 'val x by qgcPath("vehicle.armed")\nval y by qgcPath("view.flyState")\nval z = someField("vehicle.nope")'
