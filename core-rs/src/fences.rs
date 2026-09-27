@@ -12,6 +12,7 @@ pub const DEPS: &[&str] = &[
     "plan.rallyPointController.points.count",
     "plan.geoFenceController@loadComplete",
     "plan.geoFenceController.supported",
+    "plan.geoFenceController.breachReturnPoint",
     "plan.rallyPointController.supported",
     "plan.managerVehicle.capabilitiesKnown",
     "plan.geoFenceController.paramCircularFence",
@@ -162,7 +163,7 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
             }))
         })
         .collect();
-    let controller = object(&backend.get_fields("plan.geoFenceController", "supported"));
+    let controller = object(&backend.get_fields("plan.geoFenceController", "supported,breachReturnPoint"));
     json!({
         "kind": "object",
         "class": "Fences",
@@ -176,6 +177,10 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "fenceSupported": crate::plan::capability(backend, "geoFenceController"),
         "rallySupported": crate::plan::capability(backend, "rallyPointController"),
         "firmwareFence": firmware_fence(backend),
+        // The macOS head read the whole controller raw for this one coordinate. An unset return
+        // point is an invalid QGeoCoordinate, whose NaN latitude arrives as null, so it is served
+        // as null rather than as a point at the null island.
+        "breachReturnPoint": controller.get("breachReturnPoint").and_then(point).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
     })
 }
 
@@ -297,6 +302,7 @@ mod tests {
             fn watch(&self, _p: &[String]) {}
         }
         let fence = fences_view(&Firmware(300.0), &[])["firmwareFence"].clone();
+        assert_eq!(fences_view(&Firmware(300.0), &[])["breachReturnPoint"], Value::Null, "a controller that sends no return point has none");
         assert_eq!(fence["radiusMetres"], 300.0);
         assert_eq!(fence["radiusText"], "300 m");
         assert_eq!(fence["centre"]["latitude"], 47.397, "a circular fence is centred on home rather than on anything the plan drew, so the centre has to come from the vehicle");
@@ -464,5 +470,27 @@ mod tests {
                 let counted = format!("{list}.count");
                 assert!(DEPS.iter().any(|dep| *dep == counted), "{counted} binds to countChanged and is the only one of the two that does; without it an add or a remove waits on a poll that only runs while the event loop is idle, which is not when a fence is being edited on a connected vehicle");
             });
+    }
+
+    #[test]
+    fn the_breach_return_point_is_served_only_when_it_is_set() {
+        struct Controller(Value);
+        impl Backend for Controller {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.geoFenceController" => json!({ "kind": "object", "supported": true, "breachReturnPoint": self.0 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let set = fences_view(&Controller(json!({ "latitude": 47.39, "longitude": 8.54, "altitude": 0.0 })), &[]);
+        assert_eq!(set["breachReturnPoint"], json!({ "latitude": 47.39, "longitude": 8.54 }));
+        let unset = fences_view(&Controller(json!({ "latitude": null, "longitude": null, "altitude": null })), &[]);
+        assert_eq!(unset["breachReturnPoint"], Value::Null, "an invalid QGeoCoordinate's NaN arrives as null and is no point, not 0,0");
     }
 }

@@ -143,6 +143,7 @@
         "view.detections.error",
         "view.detections.host",
         "view.detections.track",
+        "view.fences.breachReturnPoint",
         "view.flyState.rcSignal",
         "view.flyState.rcSignalText",
         "view.flyState.telemetry",
@@ -2095,6 +2096,7 @@
         "view.detections.stale",
         "view.detections.track",
         "view.fences.available",
+        "view.fences.breachReturnPoint",
         "view.fences.class",
         "view.fences.fenceSupported",
         "view.fences.kind",
@@ -6324,6 +6326,7 @@
         "view.detections.stale",
         "view.detections.track",
         "view.fences.available",
+        "view.fences.breachReturnPoint",
         "view.fences.circles.#",
         "view.fences.circles[].centre.latitude",
         "view.fences.circles[].centre.longitude",
@@ -8867,6 +8870,7 @@
     },
     "view.fences": {
         "available": "bool",
+        "breachReturnPoint": "null",
         "circles": [
             {
                 "centre": {
