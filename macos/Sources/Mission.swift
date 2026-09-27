@@ -431,15 +431,15 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {
         guard let property = kinds.areaProperty(of: item)
         else { return [] }
-        let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
-        return ((polygon["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+        let polygon = Bridge.group("view.polygon(plan.missionController.visualItems.\(item.index).\(property))")
+        return ((polygon["vertices"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
     private func corridorPath(of item: MissionItem) -> [GeoPoint] {
         guard let property = kinds.lineProperty(of: item)
         else { return [] }
-        let line = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
-        return ((line["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+        let line = Bridge.group("view.polygon(plan.missionController.visualItems.\(item.index).\(property),line)")
+        return ((line["vertices"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
     var corridorPaths: [[GeoPoint]] { PatternGeometry.lines(patternGeometries) }
