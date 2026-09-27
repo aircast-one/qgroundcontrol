@@ -129,6 +129,13 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             true => camera(backend, &item),
             false => Value::Null,
         },
+        // Served by index here rather than only for the plan's current item in view.missionItems,
+        // so an editor showing item N reads item N's speed and altitude mode.
+        "speedSection": match available {
+            true => crate::missionitems::speed_section(backend, index as i64),
+            false => Value::Null,
+        },
+        "altitudeMode": crate::missionitems::frame(&read).map(|mode| mode as i64),
     })
 }
 
@@ -149,7 +156,7 @@ mod tests {
     impl Backend for Plan {
         fn get(&self, path: &str) -> String {
             match path {
-                "plan.missionController.visualItems.2" => json!({ "kind": "object", "isSimpleItem": self.simple, "facts": [fact("Altitude", "altitude", 50.0), fact("Launch", LAUNCH_ALTITUDE, 0.0)] }),
+                "plan.missionController.visualItems.2" => json!({ "kind": "object", "isSimpleItem": self.simple, "altitudeFrame": 1, "facts": [fact("Altitude", "altitude", 50.0), fact("Launch", LAUNCH_ALTITUDE, 0.0)] }),
                 "plan.missionController.visualItems.2.textFieldFacts" if self.lists => json!({ "kind": "list", "elements": [fact("Hold", "", 5.0), json!({ "kind": "fact", "name": "" })] }),
                 "plan.missionController.visualItems.2.comboboxFacts" if self.lists => json!({ "kind": "list", "elements": [fact("Mode", "", 1.0)] }),
                 "plan.missionController.visualItems.2.cameraCalc" => json!({
@@ -179,6 +186,8 @@ mod tests {
         assert!(crate::factwrite::owns(view["fields"][0]["path"].as_str().unwrap()), "and that write is one the core validates");
         assert_eq!(view["fields"][0]["class"], "Control", "each field is view.control's shape, which the head already decodes");
         assert_eq!(view["camera"], Value::Null);
+        assert_eq!(view["altitudeMode"], 1, "the item's own altitude mode, by the index asked about");
+        assert_eq!(view["speedSection"], Value::Null, "an item with no speedSection object carries none");
     }
 
     #[test]

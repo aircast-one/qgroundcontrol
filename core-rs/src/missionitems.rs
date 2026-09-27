@@ -193,7 +193,7 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
 // The macOS head read an item's speedSection raw for three things: whether the item can carry a
 // speed change at all, whether it does, and the speed with its units. The value is read off the
 // flightSpeed Fact the head writes, so what it shows and what it writes are one path.
-fn speed_section(backend: &dyn Backend, index: i64) -> Value {
+pub(crate) fn speed_section(backend: &dyn Backend, index: i64) -> Value {
     let path = format!("plan.missionController.visualItems.{index}.speedSection");
     let section = object(&backend.get_fields(&path, "available,specifyFlightSpeed"));
     if section.get("kind").and_then(Value::as_str) != Some("object") {
@@ -262,7 +262,7 @@ fn altitude_frame(read: &Value, vertical: &Unit) -> Option<&'static str> {
     }
 }
 
-fn frame(read: &Value) -> Option<f64> {
+pub(crate) fn frame(read: &Value) -> Option<f64> {
     number(read, "altitudeFrame").or_else(|| number(read, "altitudeMode"))
 }
 

@@ -179,6 +179,8 @@
         "view.itemCamera(1).gimbalPitch",
         "view.itemCamera(1).gimbalYaw",
         "view.itemFacts(1).camera",
+        "view.itemFacts(4).altitudeMode",
+        "view.itemFacts(4).speedSection",
         "view.joystickMapping.functions.0.extensionBit",
         "view.joystickMapping.functions.0.rcChannel",
         "view.joystickMapping.functions.1.extensionBit",
@@ -2572,10 +2574,12 @@
         "view.itemFacts(1).fields.#",
         "view.itemFacts(1).index",
         "view.itemFacts(1).kind",
+        "view.itemFacts(4).altitudeMode",
         "view.itemFacts(4).class",
         "view.itemFacts(4).index",
         "view.itemFacts(4).kind",
         "view.itemFacts(4).simple",
+        "view.itemFacts(4).speedSection",
         "view.joystickMapping.actions.#",
         "view.joystickMapping.actions.0.action",
         "view.joystickMapping.actions.0.down",
@@ -6782,6 +6786,7 @@
         "view.itemCamera(1).index",
         "view.itemCamera(1).kind",
         "view.itemCamera(1).reason",
+        "view.itemFacts(1).altitudeMode",
         "view.itemFacts(1).available",
         "view.itemFacts(1).camera",
         "view.itemFacts(1).class",
@@ -6789,6 +6794,14 @@
         "view.itemFacts(1).index",
         "view.itemFacts(1).kind",
         "view.itemFacts(1).simple",
+        "view.itemFacts(1).speedSection",
+        "view.itemFacts(1).speedSection.available",
+        "view.itemFacts(1).speedSection.path",
+        "view.itemFacts(1).speedSection.specified",
+        "view.itemFacts(1).speedSection.specifyPath",
+        "view.itemFacts(1).speedSection.units",
+        "view.itemFacts(1).speedSection.value",
+        "view.itemFacts(4).altitudeMode",
         "view.itemFacts(4).available",
         "view.itemFacts(4).camera",
         "view.itemFacts(4).camera.brand",
@@ -6868,6 +6881,7 @@
         "view.itemFacts(4).index",
         "view.itemFacts(4).kind",
         "view.itemFacts(4).simple",
+        "view.itemFacts(4).speedSection",
         "view.joystickMapping.actions.#",
         "view.joystickMapping.actions[].action",
         "view.joystickMapping.actions[].down",
@@ -9570,6 +9584,7 @@
         "reason": "null|string"
     },
     "view.itemFacts(1)": {
+        "altitudeMode": "null|number",
         "available": "bool",
         "camera": "null",
         "class": "string",
@@ -9578,9 +9593,18 @@
         ],
         "index": "number",
         "kind": "string",
-        "simple": "bool"
+        "simple": "bool",
+        "speedSection": {
+            "available": "bool",
+            "path": "string",
+            "specified": "bool",
+            "specifyPath": "string",
+            "units": "string",
+            "value": "number"
+        }
     },
     "view.itemFacts(4)": {
+        "altitudeMode": "null",
         "available": "bool",
         "camera": {
             "brand": "string",
@@ -9681,7 +9705,8 @@
         ],
         "index": "number",
         "kind": "string",
-        "simple": "bool"
+        "simple": "bool",
+        "speedSection": "null"
     },
     "view.joystickMapping": {
         "actions": [

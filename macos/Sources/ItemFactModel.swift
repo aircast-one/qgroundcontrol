@@ -149,6 +149,32 @@ struct ItemFact: Identifiable, Equatable {
         range = FactRange(object, title: title)
     }
 
+    // view.itemFacts serves each field in view.control's shape plus the path suffix and group,
+    // having already chosen which lists and which camera facts the item shows.
+    private init?(control json: Any?) {
+        guard let control = json as? [String: Any],
+              let name = control["name"] as? String, !name.isEmpty,
+              let pathSuffix = control["pathSuffix"] as? String, !pathSuffix.isEmpty else { return nil }
+        self.pathSuffix = pathSuffix
+        self.name = name
+        title = (control["label"] as? String) ?? name
+        isBool = (control["control"] as? String) == "toggle"
+        value = (control["valueString"] as? String) ?? ""
+        display = (control["display"] as? String) ?? value
+        units = (control["units"] as? String) ?? ""
+        options = ((control["options"] as? [[String: Any]]) ?? []).compactMap { option in
+            guard let label = option["label"] as? String, let raw = option["raw"] as? String else { return nil }
+            return ItemFactOption(label: label, raw: raw)
+        }
+        readOnly = (control["readOnly"] as? NSNumber)?.boolValue ?? false
+        range = FactRange(control: control, title: title)
+        group = (control["group"] as? String) ?? ItemFact.itemGroup
+    }
+
+    static func served(_ json: Any?) -> [ItemFact] {
+        ((json as? [Any]) ?? []).compactMap { ItemFact(control: $0) }
+    }
+
     func refusal(_ entry: String) -> String? { range.refusal(entry) }
 
     // A fact in one of the item's fact lists is addressed by its position; a fact that

@@ -16,6 +16,14 @@ struct ItemSpeed: Equatable {
         self.units = units
     }
 
+    // view.itemFacts serves the section with the speed already read off its flightSpeed Fact.
+    init(served json: [String: Any]) {
+        available = (json["available"] as? NSNumber)?.boolValue ?? false
+        specified = (json["specified"] as? NSNumber)?.boolValue ?? false
+        value = (json["value"] as? NSNumber)?.doubleValue
+        units = (json["units"] as? String) ?? ItemSpeed.metresPerSecond
+    }
+
     init(json: [String: Any]) {
         available = (json["available"] as? NSNumber)?.boolValue ?? false
         specified = (json["specifyFlightSpeed"] as? NSNumber)?.boolValue ?? false

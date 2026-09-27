@@ -1273,6 +1273,7 @@ checkTheBreachReturnSaysWhichHalfIsMissing()
 checkAVertexHandleSaysWhichKindItIs()
 checkTheFlyViewReadsGpsAndTerrainFromTheCore()
 checkThePickerTakesEveryGroupFromTheCore()
+checkTheItemEditorReadsWhatTheCoreChose()
 checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
@@ -6131,7 +6132,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2291
+let assertionFloor = 2299
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -10024,4 +10025,35 @@ func checkThePickerTakesEveryGroupFromTheCore() {
                                          "facts": [["name": "voltage", "label": "Voltage", "selection": "batteries.0/voltage"]]]])
     expect(packs.map(\.group) == ["batteries.0"] && packs.first?.title == "Battery 1",
            "packGroups share the groups shape, so the same decoder reads them")
+}
+
+func checkTheItemEditorReadsWhatTheCoreChose() {
+    let fields = ItemFact.served([
+        ["class": "Control", "name": "Hold", "label": "Hold", "control": "number", "valueString": "5",
+         "display": "5", "units": "s", "readOnly": false as NSNumber, "options": [] as [Any],
+         "minimum": 0 as NSNumber, "minimumText": "0", "maximum": 600 as NSNumber, "maximumText": "600",
+         "pathSuffix": "textFieldFacts.0", "group": "Settings"],
+        ["class": "Control", "name": "Mode", "label": "Mode", "control": "choice", "valueString": "1",
+         "display": "Relative", "options": [["label": "Relative", "raw": "1"]], "pathSuffix": "comboboxFacts.0"],
+        ["name": "no path"],
+    ])
+    expect(fields.map(\.pathSuffix) == ["textFieldFacts.0", "comboboxFacts.0"],
+           "each served field keeps the path suffix the head writes, and one without a path is dropped")
+    expect(fields.first?.refusal("700") != nil && fields.first?.refusal("5") == nil,
+           "the range comes from the control's served bounds")
+    expect(fields.last?.options.map(\.raw) == ["1"] && fields.last?.display == "Relative",
+           "a choice carries its options and the label it currently shows")
+    expect(fields.last?.group == ItemFact.itemGroup, "a field with no group is an item setting")
+
+    let speed = ItemSpeed(served: ["available": true as NSNumber, "specified": true as NSNumber,
+                                   "value": 12.5 as NSNumber, "units": "m/s"])
+    expect(speed.available && speed.specified && speed.value == 12.5, "the speed section reads as served")
+    expect(ItemSpeed(served: [:]) == .unavailable, "an item with no speed section is unavailable")
+
+    let camera = CameraChoice(served: ["brand": "Sony", "model": "RX100", "brands": ["Manual", "Sony"],
+                                       "models": ["RX100"], "manualName": "Manual (no camera specs)",
+                                       "customName": "Custom Camera", "custom": false as NSNumber])
+    expect(camera.brand == "Sony" && camera.brands == ["Manual", "Sony"] && !camera.isCustom,
+           "the camera block's shorter names map onto the same choice")
+    expect(CameraChoice(served: [:]) == .empty, "a simple item's null camera is the empty choice")
 }
