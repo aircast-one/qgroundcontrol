@@ -1,0 +1,14 @@
+# Paths the macOS head builds at run time, and what each can become. qt-paths.py asks the core
+# about every instance; a template leaves the Qt debt only when all of its instances are claimed.
+# Kept here rather than as comments in the Swift, so declaring a path never touches the head.
+# Each line: template<TAB>use<TAB>instance, instance, ...   (use: write or action)
+# An instance must fit its template, and a template that no longer appears in macos/Sources is
+# refused -- a declaration left behind by a changed call would otherwise keep excusing it.
+geoTag.\(property)	write	geoTag.logFile, geoTag.imageDirectory, geoTag.saveDirectory
+plan.geoFenceController.\(circle ? 	action	plan.geoFenceController.addInclusionCircle, plan.geoFenceController.addInclusionPolygon
+vehicle.\(command)	action	vehicle.guidedModeChangeGroundSpeedMetersSecond, vehicle.guidedModeChangeEquivalentAirspeedMetersSecond
+# MapClickModel.invokable, less guidedModeOrbit: shown() never offers orbit (it would send an
+# invented radius and altitude), so that case cannot reach this call.
+vehicle.\(target.action.invokable)	action	vehicle.guidedModeGotoLocation, vehicle.guidedModeROI, vehicle.stopGuidedModeROI, vehicle.doSetHome, vehicle.guidedModeChangeHeading, vehicle.setEstimatorOrigin
+# ParameterModel.path, written by Parameters.write and read only through view.control(...).
+vehicle.parameterManager.getParameter(\(componentId),\(name))	write	vehicle.parameterManager.getParameter(1,RTL_ALT)

@@ -434,15 +434,48 @@ def core_claims(asked):
 ASKED_AS = {"write": ("set",), "action": ("invoke",)}
 
 
+def fits(example, template):
+    """Everything the template spells out has to be there; each run-time piece matches any run."""
+    marked = instance(template.replace("0", "\x00"))
+    return re.fullmatch(".+".join(re.escape(part).replace("\x00", "0") for part in marked.split("0")), example) is not None
+
+
+def declarations(seen):
+    """tools/macos/qt-paths-declared.tsv: template -> (use, instances). Refuses a line whose template
+    the head no longer builds, and an instance its template cannot become."""
+    table = {}
+    for number, line in enumerate(anchored("tools/macos/qt-paths-declared.tsv").read_text().splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        template, use, listed = line.split("\t")
+        found = re.split(r",(?![^()]*\))", listed)
+        examples = [example.strip() for example in found if example.strip()]
+        if template not in seen:
+            print(f"  REFUSING: qt-paths-declared.tsv:{number} declares {template!r}, which macos/Sources no "
+                  f"longer builds", file=sys.stderr)
+            sys.exit(2)
+        bad = [example for example in examples if not fits(example, template)]
+        if bad or use not in ASKED_AS:
+            print(f"  REFUSING: qt-paths-declared.tsv:{number}: {bad or use!r} does not fit {template!r}",
+                  file=sys.stderr)
+            sys.exit(2)
+        table[template] = (use, examples)
+    return table
+
+
 def kept_by_core(uses, named):
     """A path leaves the debt when every use of it is one the core keeps. A read always reaches
     Qt, so a path that is also read stays -- and so does one with an unclassified use, which may
     be a read this script could not see the call of. A path actions.rs names outright is kept however
     it is called, as before: those are commands, and `ask("camera.takePhoto")` is a call this
     script has no word for, not a read."""
+    declared = declarations(uses)
     asked = {(kind, instance(path)) for path, kinds in uses.items() for use in kinds for kind in ASKED_AS.get(use, ())}
+    asked |= {(ASKED_AS[use][0], example) for use, examples in declared.values() for example in examples}
     kept = core_claims(asked) if asked else set()
-    return {path for path in uses if path in named} | {path for path, kinds in uses.items()
+    by_declaration = {template for template, (use, examples) in declared.items()
+                      if examples and all((ASKED_AS[use][0], example) in kept for example in examples)}
+    return by_declaration | {path for path in uses if path in named} | {path for path, kinds in uses.items()
             if kinds <= set(ASKED_AS)
             and all(any((kind, instance(path)) in kept for kind in ASKED_AS[use]) for use in kinds)}
 

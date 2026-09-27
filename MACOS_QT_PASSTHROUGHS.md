@@ -7,25 +7,24 @@ head: /home/user/qgroundcontrol/macos/Sources
 predicate: a quoted literal whose text is one of 23 bridge roots followed by a dot; interpolation detected as \( or ${ or $name; literals in a systemName:/systemImage: argument or a symbol/glyph/icon/mark declaration are SwiftUI icons, not paths, and are excluded; a leading $NAME or a bare NAME argument is expanded when a const val NAME names a root path
 
   served (view.*)        65   distinct, the migration's numerator
-  claimed by the core    80   distinct writes and invokes the core keeps (109 named in actions.rs, the rest by pattern) -- these reach Qt through the core, so they are the destination and not the debt
-    camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.model.\(entry.index).selected, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, missionCommandTree.categoriesForVehicle, missionCommandTree.getCommandsForCategory, plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.missionController.visualItems.0.commandName, plan.missionController.visualItems.0.coordinate, plan.missionController.visualItems.0.plannedHomePositionAltitude, plan.missionController.visualItems.\(item.index).\(fact.pathSuffix), plan.missionController.visualItems.\(item.index).altitude, plan.missionController.visualItems.\(item.index).altitudeMode, plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode, plan.missionController.visualItems.\(item.index).command, plan.missionController.visualItems.\(item.index).coordinate, plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property), plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, settings.appSettings.\(setting), settings.appSettings.defaultMissionItemAltitude, vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.parameterManager.parameterNames, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
+  claimed by the core    85   distinct writes and invokes the core keeps (109 named in actions.rs, the rest by pattern) -- these reach Qt through the core, so they are the destination and not the debt
+    camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.\(property), geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.model.\(entry.index).selected, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, missionCommandTree.categoriesForVehicle, missionCommandTree.getCommandsForCategory, plan.geoFenceController.\(circle ? , plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.missionController.visualItems.0.commandName, plan.missionController.visualItems.0.coordinate, plan.missionController.visualItems.0.plannedHomePositionAltitude, plan.missionController.visualItems.\(item.index).\(fact.pathSuffix), plan.missionController.visualItems.\(item.index).altitude, plan.missionController.visualItems.\(item.index).altitudeMode, plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode, plan.missionController.visualItems.\(item.index).command, plan.missionController.visualItems.\(item.index).coordinate, plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property), plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, settings.appSettings.\(setting), settings.appSettings.defaultMissionItemAltitude, vehicle.\(command), vehicle.\(target.action.invokable), vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.parameterManager.getParameter(\(componentId),\(name)), vehicle.parameterManager.parameterNames, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
   literal Qt paths       14   distinct, mechanical to move
-  interpolated Qt        16   distinct TEMPLATES, each expanding to an unknown number of runtime paths -- needs a parameterised view, not a substitution
-  raw Qt total           30   distinct, literal + templates
+  interpolated Qt        11   distinct TEMPLATES, each expanding to an unknown number of runtime paths -- needs a parameterised view, not a substitution
+  raw Qt total           25   distinct, literal + templates
   call sites            221   occurrences, not distinct: effort rather than surface
 
   reads                  16   group/get/watch/qgc* -- a served view retires these
-  actions                 4   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
-  writes                  6   set/write -- a core `owns_write` claim retires these: router.set consults it first, then refuses view paths, then passes to Qt
-  unclassified           12   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
+  actions                 2   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
+  writes                  5   set/write -- a core `owns_write` claim retires these: router.set consults it first, then refuses view paths, then passes to Qt
+  unclassified           10   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
   used more than one way   5   a path both read and written is counted under EACH use above, so those four exceed the raw total
 
-  plan                     12  (10 interpolated)
-  vehicle                   8  (4 interpolated)
+  plan                     11  (9 interpolated)
+  vehicle                   5  (1 interpolated)
   settings                  3
   mavlinkInspector          2  (1 interpolated)
   video                     2
-  geoTag                    1  (1 interpolated)
   links                     1
   vehicles                  1
 ```
@@ -52,13 +51,11 @@ but what each path BECAME is the deliverable.**
 
 | path | use | status |
 |---|---|---|
-| `geoTag.\(property)` | write | passthrough |
 | `links.linkConfigurations.0.linkType` | write | passthrough |
 | `mavlinkInspector.activeSystem` | read | passthrough |
 | `mavlinkInspector.activeSystem.messages.\(current.index).fields` | read | passthrough |
 | `plan.\(MissionStore.nextClient())` | unclassified | passthrough |
 | `plan.geoFenceController` | read | passthrough |
-| `plan.geoFenceController.\(circle ? ` | action | passthrough |
 | `plan.missionController` | read | passthrough |
 | `plan.missionController.visualItems.\(index).\($0)` | unclassified | passthrough |
 | `plan.missionController.visualItems.\(index).\(plan.property)` | unclassified | passthrough |
@@ -71,13 +68,10 @@ but what each path BECAME is the deliverable.**
 | `settings.mavlinkSettings.forwardMavlinkAPMSupportHostName` | read/unclassified/write | passthrough |
 | `settings.packetRadioSettings.deviceName` | read/unclassified/write | passthrough |
 | `settings.videoSettings.extraVideoSources` | read/unclassified/write | passthrough |
-| `vehicle.\(command)` | action | passthrough |
 | `vehicle.\(group)` | read | passthrough |
-| `vehicle.\(target.action.invokable)` | unclassified | passthrough |
 | `vehicle.armed` | write | passthrough |
 | `vehicle.gps` | read | passthrough |
 | `vehicle.parameterManager` | read | passthrough |
-| `vehicle.parameterManager.getParameter(\(componentId),\(name))` | unclassified | passthrough |
 | `vehicle.terrain` | read | passthrough |
 | `vehicles.activeVehicleAvailable` | read | passthrough |
 | `video.initNative` | action | passthrough |
