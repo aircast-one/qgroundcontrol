@@ -171,10 +171,12 @@ Usage: python3 tools/macos/qt-paths.py [head directory ...]
        default macos/Sources
        Android: android/app/src/main android/map-spike/src/main
 """
+import os
 import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from sweepguard import anchored, refuse
 
@@ -381,6 +383,70 @@ def claimed_actions():
     return claimed
 
 
+def instance(path):
+    """A template the core can be asked about: every run-time piece -- \\(i), ${i}, $i -- becomes 0,
+    the way an index would. The root is always literal here, because PATH requires it."""
+    out, i = [], 0
+    while i < len(path):
+        if path.startswith("\\(", i):
+            depth, i = 1, i + 2
+            while i < len(path) and depth:
+                depth += {"(": 1, ")": -1}.get(path[i], 0)
+                i += 1
+            out.append("0")
+        elif path.startswith("${", i):
+            i = path.find("}", i) + 1 or len(path)
+            out.append("0")
+        elif path[i] == "$" and i + 1 < len(path) and (path[i + 1].isalpha() or path[i + 1] == "_"):
+            i += 1
+            while i < len(path) and (path[i].isalnum() or path[i] == "_"):
+                i += 1
+            out.append("0")
+        else:
+            out.append(path[i])
+            i += 1
+    return "".join(out)
+
+
+# The claimed-name list above sees a path only when actions.rs spells it out, and most of what the
+# core now keeps it keeps by PATTERN: a fact under settings., a link's field, a fence member, a
+# shape split. Those all counted as Qt debt. So the core is asked, through the ignored
+# claims_for_qtpaths test in actions.rs, which answers with the same owns and owns_write the
+# router consults -- the question android/tools/qtpaths.py already puts to it.
+def core_claims(asked):
+    queries = sorted(asked)
+    with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as query:
+        query.write("".join(f"{kind}\t{path}\n" for kind, path in queries))
+    try:
+        run = subprocess.run(
+            ["cargo", "test", "--locked", "-q", "--lib", "claims_for_qtpaths", "--", "--ignored", "--nocapture"],
+            cwd=anchored("core-rs"), capture_output=True, text=True, env={**os.environ, "QTPATHS_QUERY": query.name})
+    finally:
+        os.unlink(query.name)
+    answers = [line.split("\t")[1:] for line in run.stdout.splitlines() if line.startswith("CLAIM\t")]
+    if run.returncode != 0 or len(answers) != len(queries):
+        print(f"the core did not answer for its claims (cargo exited {run.returncode}):\n{run.stderr[-2000:]}",
+              file=sys.stderr)
+        sys.exit(2)
+    return {(kind, path) for kind, path, claimed in answers if claimed == "true"}
+
+
+ASKED_AS = {"write": ("set",), "action": ("invoke",)}
+
+
+def kept_by_core(uses, named):
+    """A path leaves the debt when every use of it is one the core keeps. A read always reaches
+    Qt, so a path that is also read stays -- and so does one with an unclassified use, which may
+    be a read this script could not see the call of. A path actions.rs names outright is kept however
+    it is called, as before: those are commands, and `ask("camera.takePhoto")` is a call this
+    script has no word for, not a read."""
+    asked = {(kind, instance(path)) for path, kinds in uses.items() for use in kinds for kind in ASKED_AS.get(use, ())}
+    kept = core_claims(asked) if asked else set()
+    return {path for path in uses if path in named} | {path for path, kinds in uses.items()
+            if kinds <= set(ASKED_AS)
+            and all(any((kind, instance(path)) in kept for kind in ASKED_AS[use]) for use in kinds)}
+
+
 def claimed_delta():
     """The --expect claim, in either spelling, or None.
 
@@ -423,14 +489,15 @@ def main():
     uses, sites = {}, 0
     for path, use in paths(roots):
         sites += 1
-        bucket = template if INTERPOLATION.search(path) else literal
         if path.startswith("view."):
             served.add(path)
-        elif path in owned:
-            claimed.add(path)
         else:
-            bucket.add(path)
             uses.setdefault(path, set()).add(use)
+    for path in kept_by_core(uses, owned):
+        claimed.add(path)
+        del uses[path]
+    for path in uses:
+        (template if INTERPOLATION.search(path) else literal).add(path)
 
     def counted(name):
         return sum(1 for kinds in uses.values() if name in kinds)
@@ -470,8 +537,9 @@ def main():
               f"so the keys are present and the values never arrive. Do not read a head migrating onto one of "
               f"these as progress:")
         print("    " + ", ".join(gated))
-    print(f"  claimed actions      {len(claimed):4}   distinct, of {len(owned)} the core owns -- "
-          f"these reach Qt through the core, so they are the destination and not the debt")
+    print(f"  claimed by the core  {len(claimed):4}   distinct writes and invokes the core keeps ({len(owned)} "
+          f"named in actions.rs, the rest by pattern) -- these reach Qt through the core, so they are the "
+          f"destination and not the debt")
     # Named rather than counted, because this line's input is the SHAPE of someone else's source
     # and nothing declares that dependency. The core made owns() enumerable for a test of their
     # own, my parser read the shape it replaced, and four migrated paths left the count in silence.
@@ -489,8 +557,7 @@ def main():
     print(f"  actions              {counted('action'):4}   invoke -- needs a core action, not a view, "
           f"and a grounded rig cannot exercise most of them")
     print(f"  writes               {counted('write'):4}   set/write -- a core `owns_write` claim retires "
-          f"these, as of 1fa63637d; router.set consults it first, then refuses view paths, then "
-          f"passes to Qt. One path claimed so far, so this column is still almost entirely Qt")
+          f"these: router.set consults it first, then refuses view paths, then passes to Qt")
     print(f"  unclassified         {counted('unclassified'):4}   not on a call line: a multi-line call or a "
           f"path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid")
     print(f"  used more than one way {sum(1 for k in uses.values() if len(k) > 1):3}   a path both read and "
