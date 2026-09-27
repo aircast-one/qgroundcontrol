@@ -171,7 +171,8 @@ private:
     /// Fetch /api/stream/config and /api/telemetry/config from an aircastd
     /// device and configure cameras and the telemetry link from them.
     void _setupFromDevice(const QString &host);
-    void _applyDeviceCameras(const QString &host, const QJsonObject &config);
+    void _fetchDeviceWatchVia(const QString &host, const QJsonObject &config);
+    void _applyDeviceCameras(const QString &host, const QJsonObject &config, const QJsonObject &via);
     void _applyDeviceTelemetry(const QString &host, const QJsonObject &config);
     void _applyDeviceCloud(const QString &host, const QJsonObject &cloud);
     static void _removeLinkConfigurationNamed(const QString &name);
@@ -218,6 +219,7 @@ private:
     bool _settingsReady = false;        ///< true once SettingsManager is initialized and deep links can be applied
     QUrl _pendingDeepLink;              ///< aircast-qgc:// link received before settings were ready
     QNetworkAccessManager *_deviceSetupNetworkManager = nullptr; ///< Long-lived manager for _setupFromDevice(); never deleted mid-request
+    QString _deviceSetupHost;
     int _deviceSetupGeneration = 0;     ///< Bumped on each _setupFromDevice() call so a stale reply from a superseded call can't overwrite a newer one's config
 
     QList<QPair<QString /* title */, QString /* message */>> _delayedAppMessages;

@@ -161,6 +161,29 @@ void AircastDeviceSetupTest::_configuresCamerasAndTelemetryFromDevice()
     _removeAircastLinkConfigs();
 }
 
+void AircastDeviceSetupTest::_camerasTheDeviceSteersToCloudflareAreWatchedThroughIt()
+{
+    FakeAircastd device;
+    device.setDevice({QStringLiteral("cam1"), QStringLiteral("cam2"), QStringLiteral("cam3")}, {QStringLiteral("udps:0.0.0.0:14550")});
+    device.routes.insert(QStringLiteral("/api/watch/via"),
+                         QJsonDocument(QJsonObject{{QStringLiteral("cam1"), QStringLiteral("cloudflare")},
+                                                   {QStringLiteral("cam3"), QStringLiteral("cloudflare")}}).toJson(QJsonDocument::Compact));
+
+    _applySetupDeepLink(device);
+
+    VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
+    const QString cloudflare = QStringLiteral("http://%1/whep/cloudflare/").arg(device.hostWithPort());
+    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->whepUrl()->rawValue().toString(), cloudflare + QStringLiteral("cam1"), 5000);
+    QCOMPARE(videoSettings->videoSource()->rawValue().toString(), QString::fromUtf8(VideoSettings::videoSourceWebRTC));
+
+    const QJsonArray extras = QJsonDocument::fromJson(videoSettings->extraVideoSources()->rawValue().toString().toUtf8()).array();
+    QCOMPARE(extras.size(), 2);
+    QCOMPARE(extras.at(0).toObject().value(QStringLiteral("url")).toString(), QStringLiteral("http://127.0.0.1:8889/cam2/whep"));
+    QCOMPARE(extras.at(1).toObject().value(QStringLiteral("url")).toString(), cloudflare + QStringLiteral("cam3"));
+
+    _removeAircastLinkConfigs();
+}
+
 void AircastDeviceSetupTest::_aDeviceWithACloudAccountAlsoGetsTheCloudLink()
 {
     FakeAircastd device;

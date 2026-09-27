@@ -856,6 +856,7 @@ void QGCApplication::_setupFromDevice(const QString &host)
     }
     QNetworkAccessManager *const nam = _deviceSetupNetworkManager;
     const int generation = ++_deviceSetupGeneration;
+    _deviceSetupHost = host;
     const auto fetch = [this, nam, host, bareHost, generation](const QString &path, void (QGCApplication::*apply)(const QString&, const QJsonObject&)) {
         QNetworkReply *reply = nam->get(QNetworkRequest(QUrl(QStringLiteral("http://%1%2").arg(host, path))));
         connect(reply, &QNetworkReply::finished, this, [this, reply, host, bareHost, path, apply, generation]() {
@@ -870,11 +871,27 @@ void QGCApplication::_setupFromDevice(const QString &host)
             (this->*apply)(bareHost, QJsonDocument::fromJson(reply->readAll()).object());
         });
     };
-    fetch(QStringLiteral("/api/stream/config"), &QGCApplication::_applyDeviceCameras);
+    fetch(QStringLiteral("/api/stream/config"), &QGCApplication::_fetchDeviceWatchVia);
     fetch(QStringLiteral("/api/telemetry/config"), &QGCApplication::_applyDeviceTelemetry);
 }
 
-void QGCApplication::_applyDeviceCameras(const QString &host, const QJsonObject &config)
+void QGCApplication::_fetchDeviceWatchVia(const QString &host, const QJsonObject &config)
+{
+    const int generation = _deviceSetupGeneration;
+    QNetworkReply *reply = _deviceSetupNetworkManager->get(QNetworkRequest(QUrl(QStringLiteral("http://%1/api/watch/via").arg(_deviceSetupHost))));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, host, config, generation]() {
+        reply->deleteLater();
+        if (generation != _deviceSetupGeneration) {
+            return;
+        }
+        const QJsonObject via = reply->error() == QNetworkReply::NoError
+            ? QJsonDocument::fromJson(reply->readAll()).object()
+            : QJsonObject{};
+        _applyDeviceCameras(host, config, via);
+    });
+}
+
+void QGCApplication::_applyDeviceCameras(const QString &host, const QJsonObject &config, const QJsonObject &via)
 {
     const QJsonObject paths = config.value(QStringLiteral("paths")).toObject();
     QStringList cams;
@@ -892,16 +909,31 @@ void QGCApplication::_applyDeviceCameras(const QString &host, const QJsonObject 
     if (!videoSettings) {
         return;
     }
-    videoSettings->rtspUrl()->setRawValue(QStringLiteral("rtsp://%1:8554/%2").arg(host, cams.first()));
-    videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
-    videoSettings->primaryCameraName()->setRawValue(QStringLiteral("%1 (%2)").arg(cams.first(), host));
+    const auto viaCloudflare = [&via](const QString &cam) {
+        return via.value(cam).toString() == QStringLiteral("cloudflare");
+    };
+    const auto whepUrl = [this, &host, &viaCloudflare](const QString &cam) {
+        return viaCloudflare(cam)
+            ? QStringLiteral("http://%1/whep/cloudflare/%2").arg(_deviceSetupHost, cam)
+            : QStringLiteral("http://%1:8889/%2/whep").arg(host, cam);
+    };
+
+    const QString primary = cams.first();
+    if (viaCloudflare(primary)) {
+        videoSettings->whepUrl()->setRawValue(whepUrl(primary));
+        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceWebRTC));
+    } else {
+        videoSettings->rtspUrl()->setRawValue(QStringLiteral("rtsp://%1:8554/%2").arg(host, primary));
+        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    }
+    videoSettings->primaryCameraName()->setRawValue(QStringLiteral("%1 (%2)").arg(primary, host));
 
     QJsonArray extras;
     for (int i = 1; i < cams.size(); ++i) {
         extras.append(QJsonObject{
             {QStringLiteral("name"), QStringLiteral("%1 (%2)").arg(cams.at(i), host)},
             {QStringLiteral("source"), QString::fromUtf8(VideoSettings::videoSourceWebRTC)},
-            {QStringLiteral("url"), QStringLiteral("http://%1:8889/%2/whep").arg(host, cams.at(i))},
+            {QStringLiteral("url"), whepUrl(cams.at(i))},
         });
     }
     videoSettings->extraVideoSources()->setRawValue(QString::fromUtf8(QJsonDocument(extras).toJson(QJsonDocument::Compact)));
