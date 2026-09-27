@@ -781,7 +781,8 @@ private fun InstrumentSheet(
     val connected = hasVehicle()
     LaunchedEffect(connected) {
         groups = withContext(Dispatchers.Default) {
-            listOfNotNull(vehicleOwnGroup(Qgc.get(VEHICLE_FACTS))) + instrumentGroups(Qgc.get(INSTRUMENT_GROUPS))
+            val catalogue = Qgc.get(INSTRUMENT_GROUPS)
+            listOfNotNull(vehicleOwnGroup(catalogue)) + instrumentGroups(catalogue)
         }
     }
 

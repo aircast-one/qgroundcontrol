@@ -6,8 +6,8 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "vehicle.batteries.count"];
 
-fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
-    object(&backend.get(&format!("vehicle.{group}")))
+fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
+    group
         .get("facts")
         .and_then(Value::as_array)
         .map(|facts| {
@@ -19,13 +19,17 @@ fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
                     let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
                     Some(json!({
                         "name": property,
-                        "selection": format!("{group}/{property}"),
+                        "selection": format!("{prefix}{property}"),
                         "label": described.map(str::to_string).unwrap_or_else(|| humanise(named)),
                     }))
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
+    facts_of(&object(&backend.get(&format!("vehicle.{group}"))), &format!("{group}/"))
 }
 
 pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -52,6 +56,13 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
         "available": available,
         "groups": groups,
         "packs": crate::read::value_number(&backend.get("vehicle.batteries.count")).unwrap_or(0.0) as i64,
+        // The vehicle's own readings stay out of groups, where the macOS head would meet them twice.
+        // The Android head read the whole vehicle object raw to list them; they are served here
+        // under a bare selection, which view.instruments resolves against the vehicle by default.
+        "vehicleFacts": match available {
+            true => facts_of(&object(&backend.get("vehicle")), ""),
+            false => Vec::new(),
+        },
     })
 }
 
@@ -72,6 +83,10 @@ mod tests {
                     { "property": "rpmFirst", "name": "rpm1", "shortDescription": "" },
                 ] }).to_string(),
                 "vehicle.parameterManager" => json!({ "kind": "object", "facts": [] }).to_string(),
+                "vehicle" => json!({ "kind": "object", "facts": [
+                    { "property": "altitudeRelative", "name": "altitudeRelative", "shortDescription": "Rel. Alt." },
+                    { "property": "groundSpeed", "name": "groundSpeed", "shortDescription": "" },
+                ] }).to_string(),
                 "vehicle.vehicle" => json!({ "kind": "object", "facts": [{ "property": "altitude", "name": "altitude", "shortDescription": "" }] }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
@@ -110,5 +125,10 @@ mod tests {
         assert_eq!(groups[0]["facts"][1]["label"], "Count", "and humanise fills in when it does not");
         assert_eq!(groups[0]["title"], "GPS", "the acronym table earns its keep on the title too, so the picker heading is not Gps");
         assert_eq!(view["packs"], json!(2), "the head names its own battery groups from this count, so the core does not invent their ids");
+
+        let own = view["vehicleFacts"].as_array().unwrap();
+        assert_eq!((&own[0]["name"], &own[0]["label"], &own[0]["selection"]), (&json!("altitudeRelative"), &json!("Rel. Alt."), &json!("altitudeRelative")));
+        assert_eq!(own[1]["label"], "Ground Speed", "a fact with no description is humanised like every other group's");
+        assert_eq!(crate::instruments::fact_path_of("altitudeRelative"), "vehicle.altitudeRelative", "a bare selection is the vehicle's own reading");
     }
 }

@@ -6719,6 +6719,10 @@
         "view.instrumentGroups.groups[].title",
         "view.instrumentGroups.kind",
         "view.instrumentGroups.packs",
+        "view.instrumentGroups.vehicleFacts.#",
+        "view.instrumentGroups.vehicleFacts[].label",
+        "view.instrumentGroups.vehicleFacts[].name",
+        "view.instrumentGroups.vehicleFacts[].selection",
         "view.instruments(vehicle/altitudeRelative).available",
         "view.instruments(vehicle/altitudeRelative).class",
         "view.instruments(vehicle/altitudeRelative).items.#",
@@ -9380,7 +9384,14 @@
             }
         ],
         "kind": "string",
-        "packs": "number"
+        "packs": "number",
+        "vehicleFacts": [
+            {
+                "label": "string",
+                "name": "string",
+                "selection": "string"
+            }
+        ]
     },
     "view.instruments": {
         "available": "bool",
