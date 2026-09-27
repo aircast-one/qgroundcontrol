@@ -1272,6 +1272,7 @@ checkTheControlRowIsSilentUntilTheVehicleSpeaks()
 checkTheBreachReturnSaysWhichHalfIsMissing()
 checkAVertexHandleSaysWhichKindItIs()
 checkTheFlyViewReadsGpsAndTerrainFromTheCore()
+checkThePickerTakesEveryGroupFromTheCore()
 checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
@@ -6130,7 +6131,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 //
 // Raise the floor in the same commit that adds assertions; the line below says so when it is
 // behind, so it cannot quietly stop being able to catch anything.
-let assertionFloor = 2287
+let assertionFloor = 2291
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -10010,4 +10011,17 @@ func checkTheFlyViewReadsGpsAndTerrainFromTheCore() {
     expect(busy.busy && busy.text == "Loading terrain 3 of 4",
            "view.terrainDownload's counts give the same progress the raw facts did")
     expect(TerrainDownload.read(view: [:]) == .none, "a view with no counts is a download that never started")
+}
+
+func checkThePickerTakesEveryGroupFromTheCore() {
+    let own = InstrumentGroup.own([["name": "altitudeRelative", "label": "Rel. Alt.", "selection": "altitudeRelative"],
+                                   ["name": "", "label": "blank"]])
+    expect(own.map(\.group) == [InstrumentSelection.vehicleGroup] && own.first?.title == InstrumentGroup.vehicleTitle,
+           "vehicleFacts become the head's own \"\" group, titled Vehicle, where the defaults live")
+    expect(own.first?.facts.map(\.name) == ["altitudeRelative"], "a fact with no name is not offered")
+    expect(InstrumentGroup.own(nil).isEmpty, "no vehicle offers no Vehicle group rather than an empty one")
+    let packs = InstrumentGroup.served([["group": "batteries.0", "title": "Battery 1",
+                                         "facts": [["name": "voltage", "label": "Voltage", "selection": "batteries.0/voltage"]]]])
+    expect(packs.map(\.group) == ["batteries.0"] && packs.first?.title == "Battery 1",
+           "packGroups share the groups shape, so the same decoder reads them")
 }

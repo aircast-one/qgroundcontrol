@@ -80,21 +80,14 @@ final class InstrumentsStore: ObservableObject, Probeable {
 
     // This was 2 + N reads, and the N was invisible in a grep over call sites: one read per child
     // of the vehicle, of which a copter has thirty-three. view.instrumentGroups does that walk in
-    // the core and serves the result already keyed and labelled. The two reads that remain are the
-    // two the view does NOT carry: it iterates the vehicle's CHILDREN, so the group an operator
-    // sees as "Vehicle" -- the one holding altitude, heading and climb rate, where every default
-    // selection lives -- has no entry, and the per-pack battery groups are named from packs by
-    // this head because their ids are ours rather than the core's.
+    // the core and serves the result already keyed and labelled -- the child groups, the vehicle's
+    // own readings (where every default selection lives) and one group per battery pack -- so the
+    // picker is one read.
     func discoverGroups() {
         let view = Bridge.group("view.instrumentGroups")
-        let packs = (view["packs"] as? NSNumber)?.intValue ?? 0
-        let own = [(group: InstrumentSelection.vehicleGroup, json: Bridge.group("vehicle"))]
-        let batteries = InstrumentGroup.batteryGroups(count: packs).map { group in
-            (group: group, json: Bridge.group("vehicle.\(group)"))
-        }
-        let assembled = InstrumentGroup.assemble(own, label: Labels.humanise)
+        let assembled = InstrumentGroup.own(view["vehicleFacts"])
             + InstrumentGroup.served(view["groups"])
-            + InstrumentGroup.assemble(batteries, label: Labels.humanise)
+            + InstrumentGroup.served(view["packGroups"])
         if assembled != groups { groups = assembled }
     }
 
