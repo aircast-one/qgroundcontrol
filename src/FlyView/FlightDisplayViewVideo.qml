@@ -318,6 +318,26 @@ Item {
             }
         }
 
+        Rectangle {
+            id:                 videoStatsPill
+            anchors.left:       videoContentArea.left
+            anchors.bottom:     videoContentArea.bottom
+            anchors.margins:    ScreenTools.defaultFontPixelHeight / 2
+            width:              videoStatsLabel.contentWidth + ScreenTools.defaultFontPixelHeight
+            height:             videoStatsLabel.contentHeight + ScreenTools.defaultFontPixelHeight / 2
+            radius:             height / 2
+            color:              Qt.rgba(0, 0, 0, 0.6)
+            visible:            !useSmallFont && _showStreamLoader && QGroundControl.videoManager.videoStats !== ""
+
+            QGCLabel {
+                id:                 videoStatsLabel
+                anchors.centerIn:   parent
+                text:               QGroundControl.videoManager.videoStats
+                color:              "white"
+                font.bold:          true
+                font.pointSize:     ScreenTools.smallFontPointSize
+            }
+        }
         DetectionOverlayVideo {
             width:            videoBackground.getWidth()
             height:           videoBackground.getHeight()

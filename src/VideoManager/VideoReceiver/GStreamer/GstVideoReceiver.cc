@@ -748,6 +748,16 @@ void GstVideoReceiver::_watchdog()
             emit decoderStatsChanged();
         }
 
+        GstQuery *latencyQuery = gst_query_new_latency();
+        gboolean live = FALSE;
+        GstClockTime minLatency = GST_CLOCK_TIME_NONE;
+        if (gst_element_query(_pipeline, latencyQuery)) {
+            gst_query_parse_latency(latencyQuery, &live, &minLatency, nullptr);
+        }
+        gst_query_unref(latencyQuery);
+        _latencyMs.store(GST_CLOCK_TIME_IS_VALID(minLatency) ? static_cast<int>(minLatency / GST_MSECOND) : -1,
+                         std::memory_order_relaxed);
+
         qint64 elapsed = now - lastSourceFrameTime;
         if (elapsed > _timeout) {
             qCDebug(GstVideoReceiverLog) << "Stream timeout, no frames for" << elapsed << _uri;

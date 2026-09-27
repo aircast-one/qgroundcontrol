@@ -62,6 +62,7 @@ class VideoManager : public QObject
     Q_PROPERTY(double   thermalAspectRatio      READ thermalAspectRatio                         NOTIFY aspectRatioChanged)
     Q_PROPERTY(double   thermalHfov             READ thermalHfov                                NOTIFY aspectRatioChanged)
     Q_PROPERTY(QSize    videoSize               READ videoSize                                  NOTIFY videoSizeChanged)
+    Q_PROPERTY(QString  videoStats              READ videoStats                                 NOTIFY videoStatsChanged)
     Q_PROPERTY(QString  imageFile               READ imageFile                                  NOTIFY imageFileChanged)
     Q_PROPERTY(QString  uvcVideoSourceID        READ uvcVideoSourceID                           NOTIFY uvcVideoSourceIDChanged)
 
@@ -131,6 +132,8 @@ public:
     double thermalAspectRatio() const;
     double thermalHfov() const;
     QSize videoSize() const { return _videoSize; }
+    QString videoStats() const { return _videoStats; }
+    static QString formatVideoStats(int latencyMs, int fps, int height);
     QString imageFile() const { return _imageFile; }
     QString uvcVideoSourceID() const { return _uvcVideoSourceID; }
     void setfullScreen(bool on);
@@ -155,6 +158,7 @@ signals:
     void streamingChanged();
     void uvcVideoSourceIDChanged();
     void videoSizeChanged();
+    void videoStatsChanged();
 
 private slots:
     void _communicationLostChanged(bool communicationLost);
@@ -245,6 +249,10 @@ private:
     QAtomicInteger<bool> _recording = false;
     QAtomicInteger<bool> _streaming = false;
     QSize _videoSize;
+    QString _videoStats;
+    quint64 _statsFramesDecoded = 0;
+    const VideoReceiver *_statsReceiver = nullptr;
+    void _updateVideoStats();
     QString _imageFile;
     QString _uvcVideoSourceID;
 
