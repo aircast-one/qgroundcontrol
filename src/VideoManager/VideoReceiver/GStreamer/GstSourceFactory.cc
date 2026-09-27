@@ -486,6 +486,9 @@ GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config, guint l
                  "audio-caps", audioCaps, "timeout", kWhepRequestTimeoutSec, nullptr);
     gst_clear_caps(&videoCaps);
     gst_clear_caps(&audioCaps);
+    if (!config.authToken.isEmpty()) {
+        g_object_set(source, "auth-token", config.authToken.toUtf8().constData(), nullptr);
+    }
 
     const guint webrtcLatencyMs = (config.jitterBuffer == JitterBuffer::None) ? kWhepLowLatencyJitterMs : latencyMs;
     GstElement* webrtcbin = findChildByFactory(source, "webrtcbin");

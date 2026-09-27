@@ -6,6 +6,7 @@
 #include <QtCore/QSettings>
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
+#include <QtCore/QUrlQuery>
 
 #include "QGCLoggingCategory.h"
 #ifndef QGC_HEADLESS_CORE
@@ -22,6 +23,11 @@ namespace {
 constexpr int kDefaultPollSecs = 5;
 const QString kSettingsGroup = QStringLiteral("AircastAccount");
 const QString kDeviceCodeGrant = QStringLiteral("urn:ietf:params:oauth:grant-type:device_code");
+const QString kTokenExchangeGrant = QStringLiteral("urn:ietf:params:oauth:grant-type:token-exchange");
+const QString kAccessTokenType = QStringLiteral("urn:ietf:params:oauth:token-type:access_token");
+const QString kViewScope = QStringLiteral("sfu:view");
+constexpr int kViewTokenRefreshMarginSecs = 60;
+constexpr int kViewTokenDefaultTtlSecs = 300;
 
 QNetworkRequest jsonRequest(const QString& apiBase, const QString& path)
 {
@@ -75,6 +81,64 @@ QString AircastAccount::token(const QString& apiBase) const
     return settings.value(_settingsKey(apiBase)).toString();
 }
 
+void AircastAccount::viewToken(const QString& deviceId, QObject* context, ViewTokenCallback done)
+{
+    const CachedToken cached = _viewTokens.value(deviceId);
+    if (!cached.token.isEmpty() &&
+        QDateTime::currentDateTimeUtc().addSecs(kViewTokenRefreshMarginSecs) < cached.expiresAt) {
+        done(cached.token);
+        return;
+    }
+    const QString session = token(_apiBase);
+    if (session.isEmpty() || deviceId.isEmpty()) {
+        done(QString());
+        return;
+    }
+    QNetworkRequest request = jsonRequest(_apiBase, QStringLiteral("/v1/oauth2/session-token"));
+    request.setRawHeader("Authorization", "Bearer " + session.toUtf8());
+    QNetworkReply* reply = _network->post(request, QByteArray());
+    (void) connect(reply, &QNetworkReply::finished, context, [this, reply, deviceId, context, done]() {
+        reply->deleteLater();
+        const QString firstParty =
+            QJsonDocument::fromJson(reply->readAll()).object().value(QStringLiteral("access_token")).toString();
+        if (reply->error() != QNetworkReply::NoError || firstParty.isEmpty()) {
+            qCWarning(AircastAccountLog) << "session token request failed" << reply->errorString();
+            done(QString());
+            return;
+        }
+        _exchangeForViewToken(deviceId, firstParty, context, done);
+    });
+}
+
+void AircastAccount::_exchangeForViewToken(const QString& deviceId, const QString& firstPartyToken, QObject* context,
+                                           ViewTokenCallback done)
+{
+    QUrlQuery form;
+    form.addQueryItem(QStringLiteral("grant_type"), kTokenExchangeGrant);
+    form.addQueryItem(QStringLiteral("client_id"), QString::fromLatin1(kClientId));
+    form.addQueryItem(QStringLiteral("scope"), kViewScope);
+    form.addQueryItem(QStringLiteral("subject_token"), firstPartyToken);
+    form.addQueryItem(QStringLiteral("subject_token_type"), kAccessTokenType);
+    form.addQueryItem(QStringLiteral("device_id"), deviceId);
+    QNetworkRequest request = jsonRequest(_apiBase, QStringLiteral("/v1/oauth2/token"));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
+    QNetworkReply* reply = _network->post(request, form.toString(QUrl::FullyEncoded).toUtf8());
+    (void) connect(reply, &QNetworkReply::finished, context, [this, reply, deviceId, done]() {
+        reply->deleteLater();
+        const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString view = obj.value(QStringLiteral("access_token")).toString();
+        if (reply->error() != QNetworkReply::NoError || view.isEmpty()) {
+            qCWarning(AircastAccountLog) << "view token exchange failed" << reply->errorString()
+                                         << obj.value(QStringLiteral("error_description")).toString();
+            done(QString());
+            return;
+        }
+        const int ttl = obj.value(QStringLiteral("expires_in")).toInt(kViewTokenDefaultTtlSecs);
+        _viewTokens.insert(deviceId, CachedToken{view, QDateTime::currentDateTimeUtc().addSecs(ttl)});
+        done(view);
+    });
+}
+
 void AircastAccount::setApiBase(const QString& apiBase)
 {
     const QString clean = apiBase.trimmed();
@@ -82,6 +146,7 @@ void AircastAccount::setApiBase(const QString& apiBase)
         return;
     }
     _apiBase = clean;
+    _viewTokens.clear();
     QSettings settings;
     settings.setValue(kSettingsGroup + QStringLiteral("/apiBase"), _apiBase);
     emit apiBaseChanged();
@@ -176,6 +241,7 @@ void AircastAccount::signOut()
 {
     QSettings settings;
     settings.remove(_settingsKey(_apiBase));
+    _viewTokens.clear();
     _finish(tr("Signed out."));
     emit tokensChanged();
 }

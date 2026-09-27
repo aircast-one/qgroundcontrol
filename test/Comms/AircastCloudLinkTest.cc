@@ -1,12 +1,20 @@
 #include "AircastCloudLinkTest.h"
 
+#include <QtCore/QJsonObject>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QSettings>
+#include <QtCore/QUrlQuery>
+#include <QtHttpServer/QHttpServer>
+#include <QtHttpServer/QHttpServerRequest>
+#include <QtHttpServer/QHttpServerResponse>
+#include <QtNetwork/QTcpServer>
 #include <QtNetwork/QHostAddress>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 #include <QtWebSockets/QWebSocket>
 #include <QtWebSockets/QWebSocketServer>
 
+#include "AircastAccount.h"
 #include "AircastCloudLink.h"
 #include "LinkManager.h"
 
@@ -82,6 +90,57 @@ void AircastCloudLinkTest::_withoutSigningInItAsksToSignIn()
     QVERIFY2(config->lastError().contains(QStringLiteral("Sign in")), qPrintable(config->lastError()));
 
     removeCloudConfig(config);
+}
+
+void AircastCloudLinkTest::_viewTokenExchangesTheSessionForThatDevice()
+{
+    QHttpServer api;
+    QTcpServer tcp;
+    QVERIFY(tcp.listen(QHostAddress::LocalHost));
+    int exchanges = 0;
+    QString sessionAuth;
+    QUrlQuery exchange;
+    api.route("/v1/oauth2/session-token", QHttpServerRequest::Method::Post, [&](const QHttpServerRequest& request) {
+        sessionAuth = QString::fromUtf8(request.headers().value(QHttpHeaders::WellKnownHeader::Authorization).toByteArray());
+        return QHttpServerResponse(QJsonObject{{"access_token", "first-party"}, {"expires_in", 300}});
+    });
+    api.route("/v1/oauth2/token", QHttpServerRequest::Method::Post, [&](const QHttpServerRequest& request) {
+        ++exchanges;
+        exchange = QUrlQuery(QString::fromUtf8(request.body()));
+        return QHttpServerResponse(QJsonObject{{"access_token", "view-token"}, {"expires_in", 300}});
+    });
+    QVERIFY(api.bind(&tcp));
+
+    AircastAccount* const account = AircastAccount::instance();
+    const QString savedBase = account->apiBase();
+    account->setApiBase(QStringLiteral("http://127.0.0.1:%1").arg(tcp.serverPort()));
+    QSettings().setValue(QStringLiteral("AircastAccount/tokens/127.0.0.1"), QStringLiteral("session-token"));
+    const auto restore = qScopeGuard([&] {
+        QSettings().remove(QStringLiteral("AircastAccount/tokens/127.0.0.1"));
+        account->setApiBase(savedBase);
+    });
+
+    QString token;
+    bool answered = false;
+    account->viewToken(QStringLiteral("d-1"), this, [&](const QString& t) {
+        token = t;
+        answered = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(answered, 5000);
+    QCOMPARE(token, QStringLiteral("view-token"));
+    QCOMPARE(sessionAuth, QStringLiteral("Bearer session-token"));
+    QCOMPARE(exchange.queryItemValue(QStringLiteral("client_id")), QStringLiteral("aircast-qgc"));
+    QCOMPARE(exchange.queryItemValue(QStringLiteral("scope")), QStringLiteral("sfu:view"));
+    QCOMPARE(exchange.queryItemValue(QStringLiteral("subject_token")), QStringLiteral("first-party"));
+    QCOMPARE(exchange.queryItemValue(QStringLiteral("device_id")), QStringLiteral("d-1"));
+
+    answered = false;
+    account->viewToken(QStringLiteral("d-1"), this, [&](const QString& t) {
+        token = t;
+        answered = true;
+    });
+    QVERIFY2(answered, "a fresh view token is reused without asking the server again");
+    QCOMPARE(exchanges, 1);
 }
 
 UT_REGISTER_TEST(AircastCloudLinkTest, TestLabel::Unit)

@@ -194,6 +194,37 @@ void GStreamerTest::_testSourceFactoryWhepRequestsRetransmission()
     QVERIFY2(doNack, "WHEP must ask the device to resend lost packets, as a browser does");
 }
 
+void GStreamerTest::_testSourceFactoryWhepSendsTheAuthToken()
+{
+    if (!gst_element_factory_find("whepsrc")) {
+        QSKIP("whepsrc plugin unavailable");
+    }
+    ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("whepsrc is now deprecated")));
+
+    const auto authToken = [](const QString& token) -> QString {
+        GStreamer::SourceFactory::Config config;
+        config.authToken = token;
+        GstElement* bin = GStreamer::SourceFactory::create(QStringLiteral("https://sfu.example/api/v1/whep/d-1/front"), config);
+        if (!bin) {
+            return QStringLiteral("<no bin>");
+        }
+        const auto cleanup = qScopeGuard([&] { gst_object_unref(bin); });
+        GstElement* source = findChildByFactoryName(bin, "whepsrc");
+        if (!source) {
+            return QStringLiteral("<no whepsrc>");
+        }
+        gchar* value = nullptr;
+        g_object_get(source, "auth-token", &value, nullptr);
+        const QString out = QString::fromUtf8(value);
+        g_free(value);
+        return out;
+    };
+
+    QCOMPARE(authToken(QStringLiteral("view-token")), QStringLiteral("view-token"));
+    QCOMPARE(authToken(QString()), QString());
+}
+
 void GStreamerTest::_testSourceFactoryAdaptJitterLatency()
 {
     using GStreamer::SourceFactory::adaptJitterLatencyMs;

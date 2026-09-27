@@ -9,4 +9,5 @@ class AircastCloudLinkTest : public UnitTest
 private slots:
     void _carriesMAVLinkBothWaysWithTheAccountToken();
     void _withoutSigningInItAsksToSignIn();
+    void _viewTokenExchangesTheSessionForThatDevice();
 };
