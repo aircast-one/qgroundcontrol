@@ -36,7 +36,7 @@ void ProximityRadarValuesTest::_testRadarValues()
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
 
     const QScopedPointer<QObject> radarValues(
-        component.createWithInitialProperties({{ QStringLiteral("vehicle"), QVariant::fromValue(_vehicle) }}));
+        component.createWithInitialProperties({{ QStringLiteral("vehicle"), QVariant::fromValue(_vehicle.data()) }}));
     QVERIFY(radarValues);
 
     QSignalSpy rotationSpy(radarValues.data(), SIGNAL(rotationValueChanged()));

@@ -31,6 +31,15 @@ bool ToolbarIndicatorUITest::_exerciseIndicator(QQuickItem *indicatorItem, const
     }
 
     if (expectExpand) {
+        // The drawer scales in over its enter transition; a click on Details while it is still
+        // moving can miss, so wait until the popup reports itself open.
+        QObject* const drawer = _window->findChild<QObject*>(QStringLiteral("indicatorDrawer"));
+        if (!drawer ||
+            !waitForCondition([drawer] { return drawer->property("opened").toBool(); }, TestTimeout::mediumMs(),
+                              QStringLiteral("%1 drawer opened").arg(indicatorName))) {
+            qWarning() << indicatorName << ": drawer did not finish opening";
+            return false;
+        }
         QQuickItem *expandBtn = findVisibleItem(_rootItem, QStringLiteral("drawerDetailsRow"), 500);
         if (!expandBtn) {
             qWarning() << indicatorName << ": expand button not found but was expected";

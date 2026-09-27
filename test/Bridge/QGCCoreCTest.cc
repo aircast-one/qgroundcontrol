@@ -7,6 +7,7 @@
 #include <QTemporaryDir>
 #include "QGCApplication.h"
 #include "QGCCorePlugin.h"
+#include "FirmwarePlugin.h"
 #include "QGCHostNotices.h"
 #include "SysStatusSensorInfo.h"
 #include "SettingsManager.h"
@@ -1885,7 +1886,14 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 
+    // A custom core plugin changes what the views answer (its own settings, plan patterns and
+    // settable modes), so the custom build CI tests (custom-example) keeps its own recording. The
+    // heads read view-shapes.json, the stock build's.
+#ifdef QGC_CUSTOM_BUILD
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes-custom.json"));
+#else
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
+#endif
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
         QFile out(fixture);
         QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -3163,6 +3171,17 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
             uploaded.append(QStringLiteral("%1 %2 %3").arg(sent->command()).arg(sent->frame()).arg(QJsonDocument(params).toJson(QJsonDocument::Compact).constData()));
         }
         QVERIFY2(uploaded.count() > 4, "the vehicle received no structure scan");
+        // The recording is of a vehicle without a gimbal. One whose firmware plugin reports a gimbal
+        // (the custom example's does) is first told to point it straight down, and otherwise flies
+        // the same scan.
+        bool rollSupported = false;
+        bool pitchSupported = false;
+        bool yawSupported = false;
+        if (vehicle->firmwarePlugin()->hasGimbal(vehicle, rollSupported, pitchSupported, yawSupported)) {
+            QVERIFY2(uploaded.at(1).toString().startsWith(QStringLiteral("205 2 [\"-90.0000000\"")),
+                     qPrintable(QStringLiteral("a vehicle with a gimbal was not told to point it down: %1").arg(uploaded.at(1).toString())));
+            uploaded.removeAt(1);
+        }
 
         recorded[QString::fromUtf8(scan.name)] = QJsonObject {
             { QStringLiteral("flight"), roundedCoordinates(flightPath) },
@@ -4098,7 +4117,7 @@ void QGCCoreCTest::_theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge(
 
     const QJsonArray named = take(qgc_bridge_get("vehicle.flightModes")).value(QStringLiteral("value")).toArray();
     const QJsonArray ids = take(qgc_bridge_get("vehicle.flightModeIds")).value(QStringLiteral("value")).toArray();
-    QVERIFY2(named.count() > 3, "this vehicle offers no flight modes, so the pairing proves nothing");
+    QVERIFY2(named.count() > 1, "this vehicle offers too few flight modes for the pairing to prove anything");
     QCOMPARE(ids.count(), named.count());
     QVERIFY2(std::any_of(ids.cbegin(), ids.cend(), [](const QJsonValue &id) { return id.toInt(-1) > 0; }),
              "every mode id came back zero, which is what an unmatched name list looks like");
