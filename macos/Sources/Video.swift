@@ -18,7 +18,9 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     private static let sourcesPath = "settings.videoSettings.extraVideoSources"
 
     func loadSources() {
-        let fact = Bridge.group(VideoStore.sourcesPath)
+        // Read through view.control and written by the fact path, which the core claims, so the
+        // setting has one spelling on each side of the core rather than a raw read beside it.
+        let fact = Bridge.group("view.control(\(VideoStore.sourcesPath))")
         let cameras = ((Bridge.group("view.video")["cameras"] as? [Any]) ?? [])
             .compactMap(VideoCamera.init)
         let raw = (fact["valueString"] as? String) ?? ""

@@ -296,6 +296,12 @@ def constants(sources):
     return whole | root, whole
 
 
+# A constant interpolated into view.control(...) is a read the core serves, not a Qt path: the head
+# reads a setting through the view and writes the same constant, which the core claims. Without
+# this the name was expanded like any bare use and counted as a raw read.
+SERVED_CONSTANT = re.compile(r'view\.control\(\\\((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*\)\)')
+
+
 def expand(line, named):
     for name, value in named.items():
         line = line.replace("${" + name + "}", value).replace("$" + name, value)
@@ -319,15 +325,17 @@ def paths(roots):
             previous = line
             if CONSTANT.search(line) or APP_STORAGE.search(line):
                 continue
+            declares = SWIFT_CONSTANT.search(line) is not None
             line = expand(line, named)
-            use = next((name for name, call in USE if call.search(line)), "unclassified")
+            use = "declared" if declares else next((name for name, call in USE if call.search(line)), "unclassified")
             if symbolic:
                 continue
             for match in PATH.finditer(line):
                 yield match.group(1), use
-            for match in bare.finditer(line) if bare else ():
+            unserved = SERVED_CONSTANT.sub("", line)
+            for match in bare.finditer(unserved) if bare else ():
                 yield whole[match.group(1)], use
-            for match in root_bare.finditer(line) if root_bare and use != "unclassified" else ():
+            for match in root_bare.finditer(unserved) if root_bare and use != "unclassified" else ():
                 yield rooted[match.group(1)], use
 
 
@@ -526,6 +534,14 @@ def main():
             served.add(path)
         else:
             uses.setdefault(path, set()).add(use)
+    # `static let hostPath = "settings...."` is where a path is spelled, not a use of it, and it
+    # counted as an unclassified use that kept every such setting in the debt however the constant
+    # was then used. It stands for the constant's uses only when none of them could be seen.
+    for path, kinds in uses.items():
+        if "declared" in kinds:
+            kinds.discard("declared")
+            if not kinds:
+                kinds.add("unclassified")
     for path in kept_by_core(uses, owned):
         claimed.add(path)
         del uses[path]

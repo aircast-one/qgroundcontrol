@@ -6,22 +6,21 @@
 head: /home/user/qgroundcontrol/macos/Sources
 predicate: a quoted literal whose text is one of 23 bridge roots followed by a dot; interpolation detected as \( or ${ or $name; literals in a systemName:/systemImage: argument or a symbol/glyph/icon/mark declaration are SwiftUI icons, not paths, and are excluded; a leading $NAME or a bare NAME argument is expanded when a const val NAME names a root path
 
-  served (view.*)        67   distinct, the migration's numerator
-  claimed by the core    85   distinct writes and invokes the core keeps (109 named in actions.rs, the rest by pattern) -- these reach Qt through the core, so they are the destination and not the debt
-    camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.\(property), geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.model.\(entry.index).selected, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, missionCommandTree.categoriesForVehicle, missionCommandTree.getCommandsForCategory, plan.geoFenceController.\(circle ? , plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.missionController.visualItems.0.commandName, plan.missionController.visualItems.0.coordinate, plan.missionController.visualItems.0.plannedHomePositionAltitude, plan.missionController.visualItems.\(item.index).\(fact.pathSuffix), plan.missionController.visualItems.\(item.index).altitude, plan.missionController.visualItems.\(item.index).altitudeMode, plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode, plan.missionController.visualItems.\(item.index).command, plan.missionController.visualItems.\(item.index).coordinate, plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property), plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, settings.appSettings.\(setting), settings.appSettings.defaultMissionItemAltitude, vehicle.\(command), vehicle.\(target.action.invokable), vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.parameterManager.getParameter(\(componentId),\(name)), vehicle.parameterManager.parameterNames, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
-  literal Qt paths       10   distinct, mechanical to move
+  served (view.*)        70   distinct, the migration's numerator
+  claimed by the core    88   distinct writes and invokes the core keeps (109 named in actions.rs, the rest by pattern) -- these reach Qt through the core, so they are the destination and not the debt
+    camera.setMode, camera.stopPhoto, camera.takePhoto, camera.toggleRecording, geoTag.\(property), geoTag.cancelTagging, geoTag.startTagging, host.acknowledge, host.postNotice, links.createConnectedLink, links.createMavlinkForwardingSupportLink, links.endMavlinkForwardingSupportLink, links.removeConfiguration, logDownload.cancel, logDownload.download, logDownload.eraseAll, logDownload.model.\(entry.index).selected, logDownload.refresh, mavlinkInspector.activeSystem.selected, mavlinkInspector.setMessageInterval, missionCommandTree.categoriesForVehicle, missionCommandTree.getCommandsForCategory, plan.geoFenceController.\(circle ? , plan.geoFenceController.breachReturnAltitude, plan.geoFenceController.breachReturnPoint, plan.geoFenceController.deleteCircle, plan.geoFenceController.deletePolygon, plan.loadFromFile, plan.loadFromVehicle, plan.missionController.globalAltitudeMode, plan.missionController.insertComplexMissionItem, plan.missionController.insertComplexMissionItemFromKMLOrSHP, plan.missionController.insertLandItem, plan.missionController.insertTakeoffItem, plan.missionController.setCurrentPlanViewSeqNum, plan.missionController.visualItems.0.commandName, plan.missionController.visualItems.0.coordinate, plan.missionController.visualItems.0.plannedHomePositionAltitude, plan.missionController.visualItems.\(item.index).\(fact.pathSuffix), plan.missionController.visualItems.\(item.index).altitude, plan.missionController.visualItems.\(item.index).altitudeMode, plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode, plan.missionController.visualItems.\(item.index).command, plan.missionController.visualItems.\(item.index).coordinate, plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property), plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed, plan.rallyPointController.addPoint, plan.rallyPointController.removePoint, plan.redo, plan.removeAll, plan.saveToCurrent, plan.saveToFile, plan.saveToKml, plan.sendToVehicle, plan.undo, plan.undoTracking, planFly.missionController.resumeMission, radioCal.cancelButtonClicked, radioCal.nextButtonClicked, radioCal.skipButtonClicked, radioCal.transmitterMode, sensorsCal.cancelCalibration, sensorsCal.nextClicked, settings.appSettings.\(setting), settings.appSettings.defaultMissionItemAltitude, settings.mavlinkSettings.forwardMavlinkAPMSupportHostName, settings.packetRadioSettings.deviceName, settings.videoSettings.extraVideoSources, vehicle.\(command), vehicle.\(target.action.invokable), vehicle.abortLanding, vehicle.cameraManager.currentCameraInstance.zoomLevel, vehicle.emergencyStop, vehicle.flightMode, vehicle.forceArm, vehicle.guidedModeChangeAltitude, vehicle.guidedModeLand, vehicle.guidedModeRTL, vehicle.guidedModeTakeoff, vehicle.motorTest, vehicle.parameterManager.getParameter(\(componentId),\(name)), vehicle.parameterManager.parameterNames, vehicle.pauseVehicle, vehicle.sendGripperAction, vehicle.startMission, vehicle.stopGuidedModeROI, vehicle.vtolInFwdFlight, video.switchActiveVideoSource
+  literal Qt paths        7   distinct, mechanical to move
   interpolated Qt         9   distinct TEMPLATES, each expanding to an unknown number of runtime paths -- needs a parameterised view, not a substitution
-  raw Qt total           19   distinct, literal + templates
+  raw Qt total           16   distinct, literal + templates
   call sites            217   occurrences, not distinct: effort rather than surface
 
-  reads                  10   group/get/watch/qgc* -- a served view retires these
+  reads                   7   group/get/watch/qgc* -- a served view retires these
   actions                 2   invoke -- needs a core action, not a view, and a grounded rig cannot exercise most of them
-  writes                  5   set/write -- a core `owns_write` claim retires these: router.set consults it first, then refuses view paths, then passes to Qt
-  unclassified           10   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
-  used more than one way   5   a path both read and written is counted under EACH use above, so those four exceed the raw total
+  writes                  2   set/write -- a core `owns_write` claim retires these: router.set consults it first, then refuses view paths, then passes to Qt
+  unclassified            7   not on a call line: a multi-line call or a path built up first. NOT counted as reads -- guessing here is the error this script exists to avoid
+  used more than one way   2   a path both read and written is counted under EACH use above, so those four exceed the raw total
 
   plan                     10  (9 interpolated)
-  settings                  3
   vehicle                   2
   video                     2
   links                     1
@@ -61,9 +60,6 @@ but what each path BECAME is the deliverable.**
 | `plan.missionController.visualItems.\(item.index).cameraCalc` | read/unclassified | passthrough |
 | `plan.missionController.visualItems.\(item.index).setMapCenterHintForCommandChange` | unclassified | passthrough |
 | `plan.missionController.visualItems.\(item.index).speedSection` | unclassified | passthrough |
-| `settings.mavlinkSettings.forwardMavlinkAPMSupportHostName` | read/unclassified/write | passthrough |
-| `settings.packetRadioSettings.deviceName` | read/unclassified/write | passthrough |
-| `settings.videoSettings.extraVideoSources` | read/unclassified/write | passthrough |
 | `vehicle.armed` | write | passthrough |
 | `vehicle.parameterManager` | read | passthrough |
 | `vehicles.activeVehicleAvailable` | read | passthrough |
@@ -84,12 +80,11 @@ Measured reasons a path is still here. Preserved across regeneration by
   Plan tab opens. **Not a conversion: a request for a narrow watchable signal.** Recorded rather
   than done, because the cheaper-looking swap is a regression.
 - **`settings.mavlinkSettings.forwardMavlinkAPMSupportHostName`, `settings.packetRadioSettings.deviceName`
-  and `settings.videoSettings.extraVideoSources` are ready in the core; the head has not moved.**
-  They stayed whole because the write had no core route, and one setting read through
-  `view.control(...)` but written by its Qt path is two spellings of one thing. The core now keeps
-  the write: `factwrite::owns` claims every `settings.` path, so `router.set` validates it before
-  Qt sees it. What is left is the head's side: read each through `view.control(<path>)`, keep
-  writing the same path. The Android head made exactly this move for the same three settings.
+  and `settings.videoSettings.extraVideoSources` have moved.** Each is read through
+  `view.control(<path>)` and written by its own path, which `factwrite::owns` claims, so the setting
+  has one spelling on each side of the core. `qt-paths.py` now reads a constant interpolated into
+  `view.control(...)` as served, and a `static let ...Path = "..."` declaration as where a path is
+  spelled rather than a use of it.
 - **Reads the core already serves, waiting on the head.** Each of these is read raw by the macOS
   head and served by an existing view that the Android head, where it has the screen, already reads:
   `mavlinkInspector.activeSystem` and its selected message's `fields` -> `view.inspector`
