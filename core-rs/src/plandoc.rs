@@ -237,6 +237,11 @@ fn previous_altitude(doc: &Document, commands: &std::collections::BTreeMap<i64, 
     })
 }
 
+pub fn previous_altitude_mode(doc: &Document, visual_index: i64) -> Option<i64> {
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    previous_altitude(doc, &commands, visual_index).map(|(_, mode)| mode)
+}
+
 fn param_defaults(command: Option<&cmdinfo::Command>) -> [Option<f64>; 7] {
     std::array::from_fn(|i| {
         let listed = command.and_then(|c| c.params.get(&(i as u8 + 1)));
@@ -756,6 +761,16 @@ mod tests {
         let placed = insert_roi(&apm, 47.63, -122.09, 2, &QT_DEFAULTS);
         let Some(Item::Simple(roi)) = placed.items.get(1) else { panic!("the region of interest goes where it was asked") };
         assert_eq!((roi.command, roi.params[0], roi.params[4], roi.params[5]), (CMD_DO_SET_ROI, Some(MAV_ROI_LOCATION), Some(47.63), Some(-122.09)));
+    }
+
+    #[test]
+    fn a_new_item_takes_the_altitude_mode_of_the_positioned_item_before_it() {
+        let absolute = set_global_altitude_mode(&section(), crate::altitudemodes::ABSOLUTE);
+        let with_absolute = insert_waypoint(&absolute, 47.634, -122.089, -1, &QT_DEFAULTS);
+        let mixed = set_global_altitude_mode(&with_absolute, crate::altitudemodes::MIXED);
+        let last = mixed.items.len() as i64;
+        assert_eq!(previous_altitude_mode(&mixed, last + 1), Some(crate::altitudemodes::ABSOLUTE));
+        assert_eq!(previous_altitude_mode(&mixed, -1), None, "appending finds nothing, as _findPreviousAltitude walks down from index -2");
     }
 
     #[test]

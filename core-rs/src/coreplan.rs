@@ -231,7 +231,8 @@ fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
             crate::altitudemodes::MIXED => crate::altitudemodes::RELATIVE,
             mode => mode,
         };
-        if distance_mode == crate::altitudemodes::CALC_ABOVE_TERRAIN {
+        let previous_mode = (doc.global_altitude_mode == crate::altitudemodes::MIXED && !corridor).then(|| plandoc::previous_altitude_mode(doc, index)).flatten();
+        if [Some(distance_mode), previous_mode].iter().flatten().any(|m| matches!(*m, crate::altitudemodes::CALC_ABOVE_TERRAIN | crate::altitudemodes::TERRAIN_FRAME)) {
             return Err("The core cannot build a scan that follows terrain yet.".to_string());
         }
         let fresh = crate::surveydoc::Fresh {
@@ -241,6 +242,7 @@ fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
             alternates: matches!(class, crate::cmdinfo::VehicleClass::FixedWing | crate::cmdinfo::VehicleClass::Vtol),
             default_altitude: defaults.mission_item_altitude,
             distance_mode,
+            previous_mode,
         };
         let (kind, built) = match corridor {
             true => ("CorridorScan", crate::surveydoc::fresh_corridor(&fresh)),

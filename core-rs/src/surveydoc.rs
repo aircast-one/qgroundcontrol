@@ -377,6 +377,7 @@ pub struct Fresh<'a> {
     pub alternates: bool,
     pub default_altitude: f64,
     pub distance_mode: i64,
+    pub previous_mode: Option<i64>,
 }
 
 const SAVED_BY_EVERY_CAMERA: [&str; 6] = ["version", "AdjustedFootprintSide", "AdjustedFootprintFrontal", "DistanceToSurface", "DistanceMode", "CameraName"];
@@ -414,6 +415,10 @@ fn fresh_transect(fresh: &Fresh, group: &str) -> Value {
         false => named,
     };
     let calc: serde_json::Map<String, Value> = settled.as_object().map(|o| o.iter().filter(|(k, _)| !manual || SAVED_BY_EVERY_CAMERA.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
+    let calc: serde_json::Map<String, Value> = calc.into_iter().map(|(k, v)| match (k.as_str(), fresh.previous_mode) {
+        ("DistanceMode", Some(mode)) => (k, json!(mode)),
+        _ => (k, v),
+    }).collect();
     let turnaround = if fresh.multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
     json!({
         "CameraCalc": calc,
@@ -519,6 +524,7 @@ mod tests {
             alternates: false,
             default_altitude: fixture["defaultAltitude"].as_f64().unwrap(),
             distance_mode: crate::altitudemodes::RELATIVE,
+            previous_mode: None,
         });
         built["TransectStyleComplexItem"]["Items"].as_array_mut().unwrap().iter_mut().for_each(|item| item["doJumpId"] = json!(item["doJumpId"].as_i64().unwrap() + 1));
         assert_eq!(by_value(&built), by_value(&fixture["corridor"]));
@@ -548,6 +554,7 @@ mod tests {
             alternates: false,
             default_altitude: fixture["defaultAltitude"].as_f64().unwrap(),
             distance_mode: crate::altitudemodes::RELATIVE,
+            previous_mode: None,
         });
         built["TransectStyleComplexItem"]["Items"].as_array_mut().unwrap().iter_mut().for_each(|item| item["doJumpId"] = json!(item["doJumpId"].as_i64().unwrap() + 1));
         assert_eq!(by_value(&built), by_value(&fixture["survey"]));
