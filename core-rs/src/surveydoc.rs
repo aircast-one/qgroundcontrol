@@ -68,6 +68,167 @@ pub fn regenerate(survey: &Value) -> Value {
     changed
 }
 
+const SURVEY_META: &str = include_str!("../../src/MissionManager/Survey.SettingsGroup.json");
+const TRANSECT_META: &str = include_str!("../../src/MissionManager/TransectStyle.SettingsGroup.json");
+const CAMERA_META: &str = include_str!("../../src/MissionManager/CameraCalc.FactMetaData.json");
+const CAMERA_SPEC_META: &str = include_str!("../../src/MissionManager/CameraSpec.FactMetaData.json");
+const CAMERA_LIST: &str = include_str!("../../src/Camera/CameraMetaData.json");
+const MANUAL_CAMERA: &str = "Manual (no camera specs)";
+const CUSTOM_CAMERA: &str = "Custom Camera";
+const DEFAULT_DECIMAL_PLACES: i64 = 3;
+
+fn meta(file: &str, name: &str) -> Option<crate::factmeta::MetaData> {
+    crate::factmeta::from_file(file).ok()?.remove(name)
+}
+
+fn integer_typed(value_type: &crate::factmeta::ValueType) -> bool {
+    use crate::factmeta::ValueType::*;
+    matches!(value_type, Uint8 | Int8 | Uint16 | Int16 | Uint32 | Int32 | Uint64 | Int64)
+}
+
+fn shown(value: &Value, decimals: i64) -> String {
+    match value {
+        Value::Bool(b) => b.to_string(),
+        other => other.as_f64().map_or_else(String::new, |n| format!("{n:.prec$}", prec = usize::try_from(decimals).unwrap_or(0))),
+    }
+}
+
+pub struct Units<'a> {
+    pub vertical: &'a crate::read::Unit,
+    pub horizontal: &'a crate::read::Unit,
+}
+
+fn cooked<'a>(raw: &str, units: &'a Units) -> Option<&'a crate::read::Unit> {
+    match raw {
+        "vertical m" => Some(units.vertical),
+        "m" | "meter" | "meters" | "horizontal m" => Some(units.horizontal),
+        _ => None,
+    }
+}
+
+fn fact(meta: &crate::factmeta::MetaData, value: Value, units: &Units) -> Value {
+    let decimals = meta.decimal_places.unwrap_or(DEFAULT_DECIMAL_PLACES);
+    let whole = integer_typed(&meta.value_type);
+    let shown = |v: &Value, d: i64| shown(v, if whole { 0 } else { d });
+    let bool_typed = meta.value_type == crate::factmeta::ValueType::Bool;
+    let raw_units = meta.units.clone().unwrap_or_default();
+    let unit = cooked(&raw_units, units);
+    let cook = |v: f64| unit.map_or(v, |u| u.show(v));
+    let number = |v: &Option<Value>| v.as_ref().and_then(Value::as_f64).map(cook);
+    let (min, max) = (number(&meta.min), number(&meta.max));
+    let raw = value.clone();
+    let value = match (unit, value.as_f64()) {
+        (Some(u), Some(v)) => json!(u.show(v)),
+        _ => value,
+    };
+    let default = meta.default.as_ref().map(|d| d.as_f64().map_or_else(|| d.clone(), |n| json!(cook(n))));
+    json!({
+        "kind": "fact",
+        "name": meta.name,
+        "shortDescription": meta.short_description,
+        "value": value,
+        "rawValue": raw,
+        "valueString": shown(&value, decimals),
+        "units": unit.map_or(raw_units.clone(), |u| u.name.clone()),
+        "rawUnits": raw_units,
+        "decimalPlaces": decimals,
+        "typeIsBool": bool_typed,
+        "typeIsInteger": whole,
+        "min": min,
+        "max": max,
+        "minString": min.map(|m| shown(&json!(m), decimals)),
+        "maxString": max.map(|m| shown(&json!(m), decimals)),
+        "minIsDefaultForType": min.is_none(),
+        "maxIsDefaultForType": max.is_none(),
+        "defaultValueAvailable": default.is_some(),
+        "defaultValue": default,
+        "defaultValueString": default.as_ref().map(|d| shown(d, decimals)),
+        "valueEqualsDefault": default.as_ref().is_some_and(|d| d == &value || d.as_f64().zip(value.as_f64()).is_some_and(|(a, b)| a == b)),
+        "readOnly": false,
+    })
+}
+
+fn control(meta: &crate::factmeta::MetaData, value: Value, item: &str, suffix: &str, group: &str, units: &Units) -> Value {
+    let mut built = crate::control::decode(&fact(meta, value, units), &format!("{item}.{suffix}"));
+    if let Value::Object(map) = &mut built {
+        map.insert("pathSuffix".to_string(), json!(suffix));
+        map.insert("group".to_string(), json!(group));
+    }
+    built
+}
+
+fn with_default(value: Option<&Value>, meta: &crate::factmeta::MetaData) -> Value {
+    value.cloned().or_else(|| meta.default.clone()).unwrap_or(Value::Null)
+}
+
+pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Vec<Value> {
+    let transect = survey.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
+    let turnaround = if multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
+    let listed: [(&str, &str, &str, &Value, &str); 10] = [
+        (TRANSECT_META, turnaround, "turnAroundDistance", &transect, "TurnAroundDistance"),
+        (TRANSECT_META, "CameraTriggerInTurnAround", "cameraTriggerInTurnAround", &transect, "CameraTriggerInTurnAround"),
+        (TRANSECT_META, "HoverAndCapture", "hoverAndCapture", &transect, "HoverAndCapture"),
+        (TRANSECT_META, "Refly90Degrees", "refly90Degrees", &transect, "Refly90Degrees"),
+        (TRANSECT_META, "TerrainAdjustTolerance", "terrainAdjustTolerance", &transect, "TerrainAdjustTolerance"),
+        (TRANSECT_META, "TerrainAdjustMaxDescentRate", "terrainAdjustMaxDescentRate", &transect, "TerrainAdjustMaxDescentRate"),
+        (TRANSECT_META, "TerrainAdjustMaxClimbRate", "terrainAdjustMaxClimbRate", &transect, "TerrainAdjustMaxClimbRate"),
+        (SURVEY_META, "GridAngle", "gridAngle", survey, "angle"),
+        (SURVEY_META, "FlyAlternateTransects", "flyAlternateTransects", survey, "flyAlternateTransects"),
+        (SURVEY_META, "SplitConcavePolygons", "splitConcavePolygons", survey, "splitConcavePolygons"),
+    ];
+    listed
+        .iter()
+        .filter_map(|(file, name, suffix, owner, key)| {
+            let meta = meta(file, name)?;
+            let value = with_default(owner.get(*key), &meta);
+            Some(control(&meta, value, item, suffix, "Settings", units))
+        })
+        .collect()
+}
+
+const OPTICS: [(&str, &str); 7] = [("SensorWidth", "sensorWidth"), ("SensorHeight", "sensorHeight"), ("ImageWidth", "imageWidth"), ("ImageHeight", "imageHeight"), ("FocalLength", "focalLength"), ("Landscape", "landscape"), ("MinTriggerInterval", "minTriggerInterval")];
+const FLIGHT: [(&str, &str); 4] = [("DistanceToSurface", "distanceToSurface"), ("ImageDensity", "imageDensity"), ("FrontalOverlap", "frontalOverlap"), ("SideOverlap", "sideOverlap")];
+
+fn cameras() -> Vec<Value> {
+    serde_json::from_str::<Value>(CAMERA_LIST).ok().and_then(|v| v.get("cameraMetaData").and_then(Value::as_array).cloned()).unwrap_or_default()
+}
+
+pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
+    let calc = survey.get("TransectStyleComplexItem").and_then(|t| t.get("CameraCalc")).cloned().unwrap_or(Value::Null);
+    let brand = calc.get("CameraName").and_then(Value::as_str).unwrap_or(MANUAL_CAMERA).to_string();
+    let custom = brand == CUSTOM_CAMERA;
+    let known = cameras();
+    let brands: Vec<String> = [MANUAL_CAMERA.to_string(), CUSTOM_CAMERA.to_string()]
+        .into_iter()
+        .chain(known.iter().filter_map(|c| c.get("brand").and_then(Value::as_str).map(str::to_string)))
+        .fold(Vec::new(), |seen, b| if seen.contains(&b) { seen } else { seen.into_iter().chain(std::iter::once(b)).collect() });
+    let models: Vec<String> = known.iter().filter(|c| c.get("brand").and_then(Value::as_str) == Some(brand.as_str())).filter_map(|c| c.get("model").and_then(Value::as_str).map(str::to_string)).collect();
+    let wanted: Vec<(&str, &str)> = match custom {
+        true => OPTICS.iter().chain(FLIGHT.iter()).copied().collect(),
+        false => FLIGHT.to_vec(),
+    };
+    let facts: Vec<Value> = wanted
+        .iter()
+        .filter_map(|(name, suffix)| {
+            let meta = meta(CAMERA_META, name).or_else(|| meta(CAMERA_SPEC_META, name))?;
+            Some(control(&meta, with_default(calc.get(*name), &meta), item, &format!("cameraCalc.{suffix}"), "Camera", units))
+        })
+        .collect();
+    json!({
+        "brand": brand,
+        "model": calc.get("CameraModel").and_then(Value::as_str).unwrap_or(""),
+        "brands": brands,
+        "models": models,
+        "manualName": MANUAL_CAMERA,
+        "customName": CUSTOM_CAMERA,
+        "custom": custom,
+        "distanceMode": calc.get("DistanceMode").cloned().unwrap_or(Value::Null),
+        "brandPath": format!("{item}.cameraCalc.cameraBrand"),
+        "modelPath": format!("{item}.cameraCalc.cameraModel"),
+        "facts": facts,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,6 +240,31 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.iter().map(|(k, v)| (k.clone(), by_value(v))).collect()),
             other => other.clone(),
         }
+    }
+
+    #[test]
+    fn a_survey_editor_offers_the_fields_and_camera_qt_offers() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let survey = plan["mission"]["items"][0].clone();
+        let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/itemfacts-survey-by-qt.json")).unwrap();
+        let item = "plan.missionController.visualItems.1";
+        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+        let units = Units { vertical: &metres, horizontal: &metres };
+        let mine = json!({ "fields": fields(&survey, item, true, &units), "camera": camera(&survey, item, &units) });
+        let rows = |v: &Value, key: &str| v[key].as_array().cloned().unwrap_or_default();
+        assert_eq!(rows(&mine, "fields").len(), rows(&qt, "fields").len());
+        rows(&mine, "fields").iter().zip(rows(&qt, "fields")).for_each(|(core, qt)| {
+            let (core, qt) = (by_value(core), by_value(&qt));
+            let differing: Vec<String> = qt.as_object().unwrap().iter().filter(|(k, v)| core.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}: core {} qt {v}", core.get(k.as_str()).unwrap_or(&Value::Null))).collect();
+            assert!(differing.is_empty(), "{}: {}", qt["name"], differing.join("; "));
+        });
+        let facts = |v: &Value| v["camera"]["facts"].as_array().cloned().unwrap_or_default();
+        facts(&mine).iter().zip(facts(&qt)).for_each(|(core, qt)| {
+            let (core, qt) = (by_value(core), by_value(&qt));
+            let differing: Vec<String> = qt.as_object().unwrap().iter().filter(|(k, v)| core.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}: core {} qt {v}", core.get(k.as_str()).unwrap_or(&Value::Null))).collect();
+            assert!(differing.is_empty(), "{}: {}", qt["name"], differing.join("; "));
+        });
+        ["brand", "model", "brands", "models", "custom", "distanceMode", "brandPath", "modelPath"].iter().for_each(|key| assert_eq!(mine["camera"][key], qt["camera"][key], "{key}"));
     }
 
     #[test]

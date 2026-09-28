@@ -823,7 +823,8 @@ mod tests {
         let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
         let qt: Vec<Value> = serde_json::from_str(include_str!("../tests/fixtures/itemfacts-commands-by-qt.json")).unwrap();
         qt.iter().enumerate().for_each(|(index, expected)| {
-            let mine = by_value(document_facts(&doc, index, 5.0, 15.0));
+            let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+            let mine = by_value(document_facts(&doc, index, 5.0, 15.0, (&metres, &metres)));
             let expected = by_value(expected.clone());
             let differing: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| mine.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}:\n  core {}\n  qt   {v}", mine.get(k.as_str()).unwrap_or(&Value::Null))).collect();
             assert!(differing.is_empty(), "item {index}: {}", differing.join("\n"));
@@ -1004,10 +1005,11 @@ fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple]
 pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let document = held().document.clone().unwrap_or_else(empty_document);
     let speed = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
-    document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0))
+    let (vertical, horizontal) = (crate::read::Unit::vertical(backend), crate::read::Unit::horizontal(backend));
+    document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0), (&vertical, &horizontal))
 }
 
-fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64) -> Value {
+fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, units: (&crate::read::Unit, &crate::read::Unit)) -> Value {
     let document = document.clone();
     let commands = crate::cmdinfo::tree(plandoc::firmware(document.firmware_type), plandoc::vehicle_class(document.vehicle_type));
     let item = format!("{ITEM_ROOT}.{index}");
@@ -1022,6 +1024,11 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64) ->
             speed_section(&document, index, &s.sections, s.command == 16, hover, cruise),
             Some(s.altitude.as_ref().map_or(crate::altitudemodes::RELATIVE, |a| a.mode)),
         ),
+        Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" => {
+            let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
+            let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null })
+        }
         Some(Some(plandoc::Item::Complex { kind, .. })) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index, "reason": format!("The core cannot edit a {kind} item yet.") }),
         Some(None) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index }),
     }
