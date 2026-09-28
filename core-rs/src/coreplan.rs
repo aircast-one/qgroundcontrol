@@ -27,6 +27,7 @@ struct Held {
     fetching: bool,
     selected: i64,
     file: Option<String>,
+    dirty: bool,
 }
 
 pub const CHANGED: &str = "core.plan@changed";
@@ -99,7 +100,9 @@ fn settle_home_on_terrain(before: Option<(f64, f64)>) {
             let mut state = held();
             let same = home_of(state.document.as_ref()) == Some((latitude, longitude));
             if same {
+                let moved = state.document.as_ref().and_then(|d| d.home).is_some_and(|h| h[2] != ground);
                 state.document = state.document.take().map(|d| Document { home: d.home.map(|h| [h[0], h[1], ground]), ..d });
+                state.dirty = state.dirty || moved;
             }
             same
         };
@@ -120,6 +123,7 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
             Ok(changed) => {
                 let count = changed.items.len();
                 state.document = Some(changed);
+                state.dirty = true;
                 (json!({ "ok": true, "items": count }), before)
             }
             Err(reason) => return refused(reason),
@@ -213,6 +217,7 @@ fn open(file: &str) -> Value {
                 state.document = Some(document);
                 state.selected = 0;
                 state.file = Some(file.to_string());
+                state.dirty = false;
             }
             settle_home_on_terrain(None);
             changed();
@@ -227,7 +232,15 @@ fn save(file: &str) -> Value {
         return refused("There is no plan to save.");
     };
     match std::fs::write(file, text) {
-        Ok(()) => json!({ "ok": true }),
+        Ok(()) => {
+            {
+                let mut state = held();
+                state.file = Some(file.to_string());
+                state.dirty = false;
+            }
+            changed();
+            json!({ "ok": true, "result": true })
+        }
         Err(e) => refused(format!("Could not write {file}: {e}")),
     }
 }
@@ -306,6 +319,7 @@ fn status() -> Value {
         let template = state.document.clone().unwrap_or_else(empty_document);
         state.document = Some(plandoc::from_vehicle(&downloaded, sends_home.unwrap_or(false), &template));
         state.selected = 0;
+        state.dirty = false;
     }
     json!({
         "ok": true,
@@ -353,6 +367,28 @@ fn visual_index_of_sequence(document: &Document, sequence: i64) -> Option<i64> {
     starts.enumerate().find(|(_, (first, last))| (*first as i64..=*last as i64).contains(&sequence)).map(|(i, _)| i as i64)
 }
 
+fn plan_for_offline_vehicle(backend: &dyn Backend) {
+    if !crate::read::flag(&crate::read::object(&backend.get_fields("plan", "offline")), "offline") {
+        return;
+    }
+    let Some((firmware, vehicle)) = held().document.as_ref().map(|d| (d.firmware_type, d.vehicle_type)) else { return };
+    let firmware_class = match plandoc::firmware(firmware) {
+        crate::cmdinfo::Firmware::Px4 => 12,
+        crate::cmdinfo::Firmware::ArduPilot => 3,
+        crate::cmdinfo::Firmware::Generic => 0,
+    };
+    let vehicle_class = match plandoc::vehicle_class(vehicle) {
+        crate::cmdinfo::VehicleClass::FixedWing => 1,
+        crate::cmdinfo::VehicleClass::MultiRotor => 2,
+        crate::cmdinfo::VehicleClass::Vtol => 20,
+        crate::cmdinfo::VehicleClass::Sub => 12,
+        crate::cmdinfo::VehicleClass::Rover => 10,
+        crate::cmdinfo::VehicleClass::Generic => 0,
+    };
+    backend.set("settings.appSettings.offlineEditingFirmwareClass", &json!({ "value": firmware_class }).to_string());
+    backend.set("settings.appSettings.offlineEditingVehicleClass", &json!({ "value": vehicle_class }).to_string());
+}
+
 fn select(args: &str) -> Value {
     let sequence = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0).and_then(Value::as_i64));
     let picked = {
@@ -378,6 +414,8 @@ fn clear() -> Value {
         let template = state.document.clone().unwrap_or_else(empty_document);
         state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..template });
         state.selected = 0;
+        state.dirty = false;
+        state.file = None;
     }
     changed();
     json!({ "ok": true })
@@ -418,7 +456,11 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
 pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
     let current = || held().file.clone();
     Some(match path {
-        "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| open(&file)),
+        "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| {
+            let opened = open(&file);
+            plan_for_offline_vehicle(backend);
+            opened
+        }),
         "plan.saveToFile" => first_text(args).map_or_else(|| refused("Save needs a path to write the plan to."), |file| save(&file)),
         "plan.saveToCurrent" => current().map_or_else(|| refused("This plan has not been saved to a file yet."), |file| save(&file)),
         "plan.sendToVehicle" => send(),
@@ -427,6 +469,7 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "mission.insert" => insert_kind(backend, args),
         "mission.remove" | "plan.missionController.removeVisualItem" => remove(args),
         "plan.missionController.setCurrentPlanViewSeqNum" => select(args),
+        "plan.undo" | "plan.redo" => json!({ "ok": false, "refusal": "notTracking", "reason": "The core plan does not keep an undo history yet." }),
         _ => return None,
     })
 }
@@ -445,4 +488,35 @@ mod tests {
         let rows: Vec<Option<i64>> = (0..8).map(|seq| visual_index_of_sequence(&doc, seq)).collect();
         assert_eq!(rows, vec![Some(0), Some(1), Some(2), Some(3), Some(3), Some(4), None, None], "sequence 4 is the mount control folded into row 3, so selecting it selects row 3");
     }
+}
+
+pub struct PlanState {
+    pub syncing: bool,
+    pub dirty: bool,
+    pub contains_items: bool,
+    pub has_mission_items: bool,
+    pub file: String,
+    pub global_mode: i64,
+}
+
+fn has_entries(section: &Value, key: &str) -> bool {
+    section.get(key).and_then(Value::as_array).is_some_and(|list| !list.is_empty())
+}
+
+pub fn plan_state() -> Option<PlanState> {
+    if !enabled() {
+        return None;
+    }
+    let syncing = crate::hub::lock().active().is_some_and(|v| v.mission_snapshot()["mission"]["inProgress"].as_bool() == Some(true));
+    let state = held();
+    let document = state.document.clone().unwrap_or_else(empty_document);
+    let has_mission_items = !document.items.is_empty();
+    Some(PlanState {
+        syncing,
+        dirty: state.dirty,
+        contains_items: has_mission_items || has_entries(&document.fence, "polygons") || has_entries(&document.fence, "circles") || has_entries(&document.rally, "points"),
+        has_mission_items,
+        file: state.file.clone().unwrap_or_default(),
+        global_mode: document.global_altitude_mode,
+    })
 }

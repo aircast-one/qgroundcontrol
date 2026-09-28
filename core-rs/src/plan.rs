@@ -16,6 +16,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.globalAltitudeFrame",
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
+    crate::coreplan::CHANGED,
     "vehicle.flightMode",
     "plan.managerVehicle.capabilitiesKnown",
     "plan.geoFenceController.supported",
@@ -104,16 +105,21 @@ fn patterns(mission: &Value) -> Vec<Value> {
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame"));
-    let syncing = flag(&plan, "syncInProgress");
     let offline = flag(&plan, "offline");
-    let dirty = flag(&plan, "dirty");
-    let contains_items = flag(&plan, "containsItems");
-    let has_mission_items = flag(&mission, "containsItems");
-    let file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("");
+    let core = crate::coreplan::plan_state();
+    let syncing = core.as_ref().map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
+    let dirty = core.as_ref().map_or_else(|| flag(&plan, "dirty"), |c| c.dirty);
+    let contains_items = core.as_ref().map_or_else(|| flag(&plan, "containsItems"), |c| c.contains_items);
+    let has_mission_items = core.as_ref().map_or_else(|| flag(&mission, "containsItems"), |c| c.has_mission_items);
+    let qt_file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("").to_string();
+    let file = core.as_ref().map_or(qt_file.as_str(), |c| c.file.as_str());
     let name = file.rsplit('/').next().filter(|n| !n.is_empty());
     let (fences, rally) = (capability(backend, "geoFenceController"), capability(backend, "rallyPointController"));
     let (offers_fence, offers_rally) = (fences.unwrap_or(true), rally.unwrap_or(true));
-    let readiness = result_integer(&backend.invoke("plan.readyForSaveState", "[]"));
+    let readiness = match core {
+        Some(_) => Some(0),
+        None => result_integer(&backend.invoke("plan.readyForSaveState", "[]")),
+    };
     let upload = result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]"));
     json!({
         "kind": "object",
@@ -128,7 +134,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // upstream renamed them, so both reads had been answering null since the merge.
         "available": mission.get("kind").and_then(Value::as_str) == Some("object"),
         "patterns": patterns(&mission),
-        "globalAltitudeFrame": mission.get("globalAltitudeFrame").and_then(Value::as_i64),
+        "globalAltitudeFrame": core.as_ref().map(|c| c.global_mode).or_else(|| mission.get("globalAltitudeFrame").and_then(Value::as_i64)),
         "defaults": defaults_json(backend),
         "readiness": readiness_json(readiness),
         "upload": upload_json(upload),
@@ -160,8 +166,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // two reads that could land either side of a change the view had already answered for.
         "containsItems": contains_items,
         "offline": offline,
-        "canUndo": flag(&plan, "canUndo"),
-        "canRedo": flag(&plan, "canRedo"),
+        "canUndo": core.is_none() && flag(&plan, "canUndo"),
+        "canRedo": core.is_none() && flag(&plan, "canRedo"),
     })
 }
 
