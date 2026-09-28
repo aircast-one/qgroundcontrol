@@ -82,6 +82,176 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
+const SETTINGS_NAME: &str = "Initial Camera Settings";
+
+fn abbreviation(command: i64) -> &'static str {
+    match command {
+        22 => "Takeoff",
+        21 => "Land",
+        84 => "Transition Direction",
+        85 => "VTOL Land",
+        201 | 195 => "ROI",
+        19 | 18 | 17 | 31 => "Loiter",
+        _ => "",
+    }
+}
+
+struct Leg {
+    azimuth: f64,
+    distance: f64,
+    alt_difference: f64,
+    from_start: f64,
+}
+
+fn amsl_entry(simple: &crate::plandoc::Simple, home_altitude: f64) -> f64 {
+    let seventh = simple.params[6].unwrap_or(f64::NAN);
+    match simple.altitude.as_ref().map(|a| a.mode) {
+        Some(crate::altitudemodes::RELATIVE) | None => seventh + home_altitude,
+        _ => seventh,
+    }
+}
+
+fn legs(doc: &crate::plandoc::Document, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>) -> Vec<Leg> {
+    let home = doc.home.unwrap_or([0.0, 0.0, 0.0]);
+    let flies = |s: &crate::plandoc::Simple| commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate);
+    let first_flown = doc.items.iter().find_map(|item| match item {
+        crate::plandoc::Item::Simple(s) if flies(s) => Some(s.command),
+        _ => None,
+    });
+    let link_start_to_home = doc.home.is_some() && first_flown.is_some_and(|c| commands.get(&c).is_some_and(|c| c.is_takeoff));
+    struct Walk {
+        last: Option<((f64, f64), f64, bool)>,
+        total: f64,
+        rtl: bool,
+    }
+    let start = Walk { last: None, total: 0.0, rtl: false };
+    doc.items
+        .iter()
+        .scan(start, |walk, item| {
+            let crate::plandoc::Item::Simple(s) = item else {
+                return Some(Leg { azimuth: 0.0, distance: 0.0, alt_difference: 0.0, from_start: 0.0 });
+            };
+            walk.rtl = walk.rtl || s.command == 20;
+            let unflown = Leg { azimuth: 0.0, distance: 0.0, alt_difference: 0.0, from_start: 0.0 };
+            if walk.rtl || !flies(s) {
+                return Some(unflown);
+            }
+            let here = (s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0));
+            let amsl = amsl_entry(s, home[2]);
+            let previous = walk.last.or(link_start_to_home.then_some(((home[0], home[1]), home[2], false)));
+            let leg = match previous {
+                Some((from, from_amsl, was_land)) => {
+                    let distance = crate::surveygrid::distance_between(from, here);
+                    walk.total += if was_land { 0.0 } else { distance };
+                    Leg { azimuth: crate::surveygrid::azimuth_to(from, here), distance: if was_land { 0.0 } else { distance }, alt_difference: amsl - from_amsl, from_start: walk.total }
+                }
+                None => unflown,
+            };
+            walk.last = Some((here, amsl, commands.get(&s.command).is_some_and(|c| c.is_land)));
+            Some(leg)
+        })
+        .collect()
+}
+
+fn altitude_fact(property: &str, metres: f64) -> Value {
+    json!([{ "property": property, "value": metres, "rawValue": metres, "units": "m" }])
+}
+
+pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
+    if doc.items.iter().any(|item| matches!(item, crate::plandoc::Item::Complex { .. })) {
+        return Err("The core cannot describe a pattern item's rows yet.".to_string());
+    }
+    let commands = crate::cmdinfo::tree(crate::plandoc::firmware(doc.firmware_type), crate::plandoc::vehicle_class(doc.vehicle_type));
+    let home = doc.home.unwrap_or([0.0, 0.0, 0.0]);
+    let settings = json!({
+        "homePosition": true,
+        "isSimpleItem": false,
+        "specifiesCoordinate": true,
+        "isStandaloneCoordinate": false,
+        "sequenceNumber": 0,
+        "lastSequenceNumber": doc.settings_sections.len(),
+        "abbreviation": "Home",
+        "commandName": SETTINGS_NAME,
+        "commandDescription": SETTINGS_NAME,
+        "isCurrentItem": selected == 0,
+        "coordinate": { "latitude": home[0], "longitude": home[1], "altitude": home[2], "valid": doc.home.is_some() },
+        "exitCoordinateSameAsEntry": true,
+        "amslEntryAlt": home[2],
+        "minAMSLAltitude": home[2],
+        "maxAMSLAltitude": home[2],
+        "altDifference": 0.0, "azimuth": 0.0, "distance": 0.0, "distanceFromStart": 0.0,
+        "additionalTimeDelay": 0.0,
+        "readyForSaveState": READY_TO_SAVE,
+        "facts": altitude_fact("plannedHomePositionAltitude", home[2]),
+    });
+    let starts = doc.items.iter().scan(doc.settings_sections.len() + 1, |next, item| {
+        let start = *next;
+        *next += match item {
+            crate::plandoc::Item::Simple(s) => 1 + s.sections.len(),
+            crate::plandoc::Item::Complex { item_count, .. } => *item_count,
+        };
+        Some(start)
+    });
+    let reads: Vec<Value> = doc
+        .items
+        .iter()
+        .zip(starts)
+        .zip(legs(doc, &commands))
+        .enumerate()
+        .filter_map(|(i, ((item, seq), leg))| {
+            let crate::plandoc::Item::Simple(s) = item else { return None };
+            let info = commands.get(&s.command);
+            let coordinate = info.is_some_and(|c| c.specifies_coordinate);
+            let altitude = s.altitude.as_ref();
+            Some(json!({
+                "isSimpleItem": true,
+                "homePosition": false,
+                "specifiesCoordinate": coordinate,
+                "isStandaloneCoordinate": info.is_some_and(|c| c.standalone_coordinate),
+                "specifiesAltitudeOnly": info.is_some_and(|c| c.specifies_altitude_only),
+                "specifiesAltitude": altitude.is_some(),
+                "isTakeoffItem": info.is_some_and(|c| c.is_takeoff),
+                "isLandCommand": info.is_some_and(|c| c.is_land),
+                "sequenceNumber": seq,
+                "lastSequenceNumber": seq + s.sections.len(),
+                "abbreviation": abbreviation(s.command),
+                "commandName": info.map(|c| c.friendly_name.clone()).unwrap_or_default(),
+                "commandDescription": info.map(|c| c.description.clone()).unwrap_or_default(),
+                "category": info.map(|c| c.category.clone()).unwrap_or_default(),
+                "command": s.command,
+                "isCurrentItem": selected == i as i64 + 1,
+                "coordinate": coordinate.then(|| json!({ "latitude": s.params[4], "longitude": s.params[5], "altitude": Value::Null, "valid": true })),
+                "exitCoordinateSameAsEntry": true,
+                "amslEntryAlt": amsl_entry(s, home[2]),
+                "altitudeFrame": altitude.map(|a| a.mode),
+                "facts": altitude.map(|a| altitude_fact("altitude", a.altitude)).unwrap_or(json!([])),
+                "additionalTimeDelay": match s.command { 16 | 112 | 93 => s.params[0].unwrap_or(0.0), _ => 0.0 },
+                "altDifference": leg.alt_difference,
+                "azimuth": leg.azimuth,
+                "distance": leg.distance,
+                "distanceFromStart": leg.from_start,
+                "readyForSaveState": READY_TO_SAVE,
+            }))
+        })
+        .collect();
+    let items: Vec<Value> = std::iter::once(settings).chain(reads).enumerate().map(|(index, read)| item(&read, index as i64, vertical, speed, imperial)).collect();
+    let items: Vec<Value> = match walked(&items) {
+        true => items,
+        false => items.into_iter().map(unwalked).collect(),
+    };
+    let has_items = !doc.items.is_empty();
+    Ok(json!({
+        "kind": "object",
+        "class": "MissionItems",
+        "available": has_items,
+        "linksStartToHome": rover || starts_from_the_ground(&items),
+        "editing": Value::Null,
+        "selected": selected,
+        "items": items,
+        "reason": if has_items { "" } else { "This plan has no items yet." },
+    }))
+}
+
 // MissionController::_recalcFlightPathSegments walks from i = 1: item 0 is the MissionSettingsItem
 // and MissionSettingsItem::specifiesCoordinate() returns true unconditionally, so a walk that
 // starts at 0 sees a flown leg on the settings row and stops before any takeoff.
@@ -475,6 +645,42 @@ fn kind(read: &Value) -> &'static str {
     match flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") {
         true => "waypoint",
         false => "command",
+    }
+}
+
+#[cfg(test)]
+mod from_the_document {
+    use super::*;
+
+    fn metres() -> (Unit, Unit) {
+        (Unit { name: "m".to_string(), factor: 1.0 }, Unit { name: "m/s".to_string(), factor: 1.0 })
+    }
+
+    fn by_value(value: Value) -> Value {
+        match value {
+            Value::Number(n) => json!((n.as_f64().unwrap() * 1e6).round() / 1e6),
+            Value::Array(items) => Value::Array(items.into_iter().map(by_value).collect()),
+            Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
+            other => other,
+        }
+    }
+
+    #[test]
+    fn the_rows_of_a_plan_the_core_holds_are_the_rows_qt_shows_for_it() {
+        let loaded = crate::plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
+        let terrain_under_home = 35.0;
+        let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
+        let (vertical, speed) = metres();
+        let mine = by_value(document_view(&doc, 0, &vertical, &speed, false, false).unwrap());
+        let qt = by_value(serde_json::from_str(include_str!("../tests/fixtures/missionitems-sectiontest-by-qt.json")).unwrap());
+        let rows = |v: &Value| v["items"].as_array().unwrap().clone();
+        assert_eq!(rows(&mine).len(), rows(&qt).len());
+        rows(&mine).iter().zip(rows(&qt)).for_each(|(core, qt)| {
+            let differing: Vec<String> = qt.as_object().unwrap().iter().filter(|(k, v)| core.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}: core {} qt {v}", core.get(k.as_str()).unwrap_or(&Value::Null))).collect();
+            assert!(differing.is_empty(), "row {}: {}", qt["index"], differing.join("; "));
+        });
+        let top = |v: &Value| v.as_object().unwrap().iter().filter(|(k, _)| *k != "items").map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>();
+        assert_eq!(top(&mine), top(&qt));
     }
 }
 

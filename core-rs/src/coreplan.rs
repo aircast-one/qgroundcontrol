@@ -17,7 +17,8 @@ pub const CORE_SET_COMMAND: &str = "core.plan.setCommand";
 pub const CORE_SET_ALTITUDE: &str = "core.plan.setAltitude";
 pub const CORE_INSERT_TAKEOFF: &str = "core.plan.insertTakeoff";
 pub const CORE_SET_ALTITUDE_MODE: &str = "core.plan.setAltitudeMode";
-const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE, CORE_INSERT_TAKEOFF, CORE_SET_ALTITUDE_MODE];
+pub const CORE_ITEMS: &str = "core.plan.items";
+const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE, CORE_INSERT_TAKEOFF, CORE_SET_ALTITUDE_MODE, CORE_ITEMS];
 const DEFAULT_ALTITUDE: &str = "settings.appSettings.defaultMissionItemAltitude";
 
 #[derive(Default)]
@@ -53,6 +54,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         CORE_SET_ALTITUDE => item_edit(backend, args, false),
         CORE_INSERT_TAKEOFF => insert_takeoff(backend, args),
         CORE_SET_ALTITUDE_MODE => set_altitude_mode(args),
+        CORE_ITEMS => items(backend, args),
         CORE_REMOVE => remove(args),
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
@@ -110,6 +112,18 @@ fn set_altitude_mode(args: &str) -> Value {
     match mode.filter(|m| (crate::altitudemodes::MIXED..=crate::altitudemodes::TERRAIN_FRAME).contains(m)) {
         Some(mode) => edit(|doc| Ok(plandoc::set_global_altitude_mode(doc, mode))),
         None => refused("An altitude mode is a number from 0 to 4."),
+    }
+}
+
+fn items(backend: &dyn Backend, args: &str) -> Value {
+    let selected = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0).and_then(Value::as_i64)).unwrap_or(0);
+    let Some(document) = held().document.clone() else {
+        return refused("There is no plan.");
+    };
+    let rover = crate::read::flag(&crate::read::object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
+    match crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover) {
+        Ok(view) => json!({ "ok": true, "view": view }),
+        Err(reason) => refused(reason),
     }
 }
 
