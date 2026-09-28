@@ -1,0 +1,252 @@
+{
+ "start": {
+  "altitudesAreRelative": true,
+  "complexItemType": "fwLandingPattern",
+  "finalApproachSpeed": 9,
+  "landCoordinate": [
+   -35.371,
+   149.171,
+   0
+  ],
+  "landingApproachCoordinate": [
+   -35.36,
+   149.18,
+   40
+  ],
+  "loiterClockwise": true,
+  "loiterRadius": 75,
+  "stopTakingPhotos": false,
+  "stopVideoPhotos": false,
+  "type": "ComplexItem",
+  "useDoChangeSpeed": false,
+  "useLoiterToAlt": true,
+  "valueSetIsDistance": false,
+  "version": 2
+ },
+ "steps": [
+  {
+   "field": "loiterRadius",
+   "value": 100,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.359865148888524,
+     149.17977743626483,
+     40
+    ],
+    "loiterClockwise": true,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": false,
+    "useLoiterToAlt": true,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  },
+  {
+   "field": "landingHeading",
+   "value": 200,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.358282283748416,
+     149.17550224465862,
+     40
+    ],
+    "loiterClockwise": true,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": false,
+    "useLoiterToAlt": true,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  },
+  {
+   "field": "landingDistance",
+   "value": 500,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.366466970559294,
+     149.17184963583762,
+     40
+    ],
+    "loiterClockwise": true,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": false,
+    "useLoiterToAlt": true,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  },
+  {
+   "field": "glideSlope",
+   "value": 8,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.36828716840558,
+     149.1710372224295,
+     40
+    ],
+    "loiterClockwise": true,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": false,
+    "useLoiterToAlt": true,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  },
+  {
+   "field": "finalApproachAltitude",
+   "value": 50,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.36828716840558,
+     149.1710372224295,
+     50
+    ],
+    "loiterClockwise": true,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": false,
+    "useLoiterToAlt": true,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  },
+  {
+   "field": "useDoChangeSpeed",
+   "value": true,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.36828716840558,
+     149.1710372224295,
+     50
+    ],
+    "loiterClockwise": true,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": true,
+    "useLoiterToAlt": true,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  },
+  {
+   "field": "loiterClockwise",
+   "value": false,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.368902302926784,
+     149.1731098985334,
+     50
+    ],
+    "loiterClockwise": false,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": true,
+    "useLoiterToAlt": true,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  },
+  {
+   "field": "useLoiterToAlt",
+   "value": false,
+   "after": {
+    "altitudesAreRelative": true,
+    "complexItemType": "fwLandingPattern",
+    "finalApproachSpeed": 9,
+    "landCoordinate": [
+     -35.371,
+     149.171,
+     0
+    ],
+    "landingApproachCoordinate": [
+     -35.36859474942055,
+     149.17207357048298,
+     50
+    ],
+    "loiterClockwise": false,
+    "loiterRadius": 100,
+    "stopTakingPhotos": false,
+    "stopVideoPhotos": false,
+    "type": "ComplexItem",
+    "useDoChangeSpeed": true,
+    "useLoiterToAlt": false,
+    "valueSetIsDistance": false,
+    "version": 2
+   }
+  }
+ ]
+}

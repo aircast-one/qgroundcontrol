@@ -90,6 +90,10 @@ const BUILT_IN_UNITS: [(&str, &str, f64); 6] = [
     ("centi-celsius", "C", 0.01),
 ];
 
+pub fn cooked_unit(raw: &str, units: &Units) -> Option<crate::read::Unit> {
+    cooked(raw, units)
+}
+
 fn cooked(raw: &str, units: &Units) -> Option<crate::read::Unit> {
     match raw {
         "vertical m" => Some(units.vertical.clone()),
@@ -143,6 +147,12 @@ fn fact(meta: &crate::factmeta::MetaData, value: Value, units: &Units) -> Value 
         "valueEqualsDefault": default.as_ref().is_some_and(|d| d == &value || d.as_f64().zip(value.as_f64()).is_some_and(|(a, b)| a == b)),
         "readOnly": false,
     })
+}
+
+pub fn fact_control(file: &str, name: &str, value: Value, item: &str, suffix: &str, units: &Units) -> Option<Value> {
+    let meta = meta(file, name)?;
+    let typed = crate::settingsstore::typed(&meta.value_type, &value).unwrap_or(value);
+    Some(control(&meta, typed, item, suffix, "Settings", units))
 }
 
 fn control(meta: &crate::factmeta::MetaData, value: Value, item: &str, suffix: &str, group: &str, units: &Units) -> Value {
@@ -413,6 +423,9 @@ fn relayered(before: &Value, after: &Value) -> Value {
 }
 
 pub fn changed_remembered(item: &Value, multirotor: bool, stored: &dyn Fn(&str) -> Option<String>) -> Vec<(String, Value)> {
+    if item.get("complexItemType").and_then(Value::as_str).is_some_and(crate::landingpattern::is_landing) {
+        return Vec::new();
+    }
     let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("survey");
     let corridor = kind == "CorridorScan";
     let structure = kind == "StructureScan";

@@ -214,7 +214,6 @@ fn insert_landing(_backend: &dyn Backend, args: &str) -> Value {
         let built = crate::landingpattern::fresh(&crate::landingpattern::Fresh {
             vtol,
             land: (latitude, longitude),
-            remembered: &crate::settingsstore::stored_text,
             ardupilot: plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
             relative: doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE,
         });
@@ -788,10 +787,14 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     let current = held().document.clone()?;
     if let Some(plandoc::Item::Complex { kind, json: pattern, item_count }) = index.checked_sub(1).and_then(|i| current.items.get(i)).filter(|item| matches!(item, plandoc::Item::Complex { kind, .. } if crate::landingpattern::is_landing(kind))) {
         let at = index - 1;
-        let Some(moved) = given.as_ref().and_then(|value| crate::landingpattern::moved(pattern, property, value)) else {
-            return Some(refused(format!("The landing pattern has no field {property} the core edits yet.")));
+        let (vertical, horizontal) = (crate::read::Unit::vertical(backend), crate::read::Unit::horizontal(backend));
+        let raw = given.as_ref().map(|value| crate::landingpattern::raw(pattern, property, value, &crate::surveydoc::Units { vertical: &vertical, horizontal: &horizontal }));
+        let edited = raw.as_ref().and_then(|value| crate::landingpattern::moved(pattern, property, value).or_else(|| crate::landingpattern::edit(pattern, property, value)));
+        let Some(edited) = edited else {
+            return Some(refused(format!("The landing pattern has no field {property} the core edits.")));
         };
-        let item = plandoc::Item::Complex { kind: kind.clone(), json: moved, item_count: *item_count };
+        let count = plandoc::complex_count(kind, &edited).unwrap_or(*item_count);
+        let item = plandoc::Item::Complex { kind: kind.clone(), json: edited, item_count: count };
         return Some(edit(|doc| Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })));
     }
     if let Some(plandoc::Item::Complex { kind, json: survey, .. }) = index.checked_sub(1).and_then(|i| current.items.get(i)) {
@@ -1364,6 +1367,10 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
             let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
             json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null })
+        }
+        Some(Some(plandoc::Item::Complex { kind, json: pattern, .. })) if crate::landingpattern::is_landing(kind) => {
+            let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::landingpattern::fields(pattern, &item, &units), "camera": Value::Null, "speedSection": Value::Null, "altitudeMode": Value::Null })
         }
         Some(Some(plandoc::Item::Complex { kind, .. })) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index, "reason": format!("The core cannot edit a {kind} item yet.") }),
         Some(None) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index }),

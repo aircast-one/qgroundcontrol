@@ -46,21 +46,17 @@ const FIXED_WING_META: &str = include_str!("../../src/MissionManager/FWLandingPa
 const VTOL_META: &str = include_str!("../../src/MissionManager/VTOLLandingPattern.FactMetaData.json");
 pub const WIZARD: &str = "wizardMode";
 
-pub struct Fresh<'a> {
+pub struct Fresh {
     pub vtol: bool,
     pub land: (f64, f64),
-    pub remembered: &'a dyn Fn(&str) -> Option<String>,
     pub ardupilot: bool,
     pub relative: bool,
 }
 
 fn fact(fresh: &Fresh, name: &str) -> Value {
-    let (file, group) = if fresh.vtol { (VTOL_META, "VTOLLanding") } else { (FIXED_WING_META, "FixedWingLanding") };
+    let file = if fresh.vtol { VTOL_META } else { FIXED_WING_META };
     let Some(meta) = crate::factmeta::from_file(file).ok().and_then(|mut all| all.remove(name)) else { return Value::Null };
-    (fresh.remembered)(&format!("{group}/{name}"))
-        .and_then(|text| crate::settingsstore::typed(&meta.value_type, &Value::String(text)))
-        .or_else(|| meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone())))
-        .unwrap_or(Value::Null)
+    meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone())).unwrap_or(Value::Null)
 }
 
 pub fn fresh(fresh: &Fresh) -> Value {
@@ -120,6 +116,157 @@ pub fn moved(pattern: &Value, member: &str, value: &Value) -> Option<Value> {
         changed.as_object_mut()?.remove("loiterCoordinate");
     }
     Some(changed)
+}
+
+struct Geometry {
+    land: (f64, f64),
+    approach: (f64, f64),
+    heading: f64,
+    distance: f64,
+}
+
+fn geometry(pattern: &Value) -> Option<Geometry> {
+    let land = coordinate(pattern, "landCoordinate")?;
+    let approach = approach(pattern)?;
+    let slope = slope_start(pattern)?;
+    let land = (land.latitude, land.longitude);
+    Some(Geometry { land, approach: (approach.latitude, approach.longitude), heading: crate::surveygrid::azimuth_to(slope, land), distance: crate::surveygrid::distance_between(land, slope) })
+}
+
+fn is_vtol(pattern: &Value) -> bool {
+    pattern.get("complexItemType").and_then(Value::as_str) == Some(VTOL_PATTERN)
+}
+
+fn altitudes(pattern: &Value) -> (f64, f64) {
+    (approach(pattern).map_or(0.0, |a| a.altitude), coordinate(pattern, "landCoordinate").map_or(0.0, |l| l.altitude))
+}
+
+fn glide_slope(pattern: &Value, distance: f64) -> f64 {
+    let (high, low) = altitudes(pattern);
+    ((high - low) / distance).atan().to_degrees()
+}
+
+const FIELDS: [(&str, &str); 13] = [
+    ("FinalApproachAltitude", "finalApproachAltitude"),
+    ("UseDoChangeSpeed", "useDoChangeSpeed"),
+    ("FinalApproachSpeed", "finalApproachSpeed"),
+    ("LoiterRadius", "loiterRadius"),
+    ("LandingAltitude", "landingAltitude"),
+    ("LandingHeading", "landingHeading"),
+    ("LandingDistance", "landingDistance"),
+    ("LoiterClockwise", "loiterClockwise"),
+    ("UseLoiterToAlt", "useLoiterToAlt"),
+    ("StopTakingPhotos", "stopTakingPhotos"),
+    ("StopTakingVideo", "stopTakingVideo"),
+    ("ValueSetIsDistance", "valueSetIsDistance"),
+    ("GlideSlope", "glideSlope"),
+];
+
+fn field_values(pattern: &Value) -> Vec<(&'static str, &'static str, Value)> {
+    let Some(g) = geometry(pattern) else { return Vec::new() };
+    let (high, low) = altitudes(pattern);
+    let value = |name: &str| match name {
+        "FinalApproachAltitude" => Some(json!(high)),
+        "UseDoChangeSpeed" => pattern.get("useDoChangeSpeed").cloned(),
+        "FinalApproachSpeed" => pattern.get("finalApproachSpeed").cloned(),
+        "LoiterRadius" => pattern.get("loiterRadius").cloned(),
+        "LandingAltitude" => Some(json!(low)),
+        "LandingHeading" => Some(json!(g.heading)),
+        "LandingDistance" => Some(json!(g.distance)),
+        "LoiterClockwise" => pattern.get("loiterClockwise").cloned(),
+        "UseLoiterToAlt" => pattern.get("useLoiterToAlt").cloned(),
+        "StopTakingPhotos" => pattern.get("stopTakingPhotos").cloned(),
+        "StopTakingVideo" => pattern.get("stopVideoPhotos").cloned(),
+        "ValueSetIsDistance" if !is_vtol(pattern) => pattern.get("valueSetIsDistance").cloned(),
+        "GlideSlope" if !is_vtol(pattern) => Some(json!(glide_slope(pattern, g.distance))),
+        _ => None,
+    };
+    FIELDS.iter().filter_map(|(name, suffix)| value(name).map(|v| (*name, *suffix, v))).collect()
+}
+
+pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> Vec<Value> {
+    let file = if is_vtol(pattern) { VTOL_META } else { FIXED_WING_META };
+    field_values(pattern).into_iter().filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units)).collect()
+}
+
+pub fn raw(pattern: &Value, suffix: &str, value: &Value, units: &crate::surveydoc::Units) -> Value {
+    let file = if is_vtol(pattern) { VTOL_META } else { FIXED_WING_META };
+    let unit = FIELDS.iter().find(|(_, s)| *s == suffix).and_then(|(name, _)| crate::factmeta::from_file(file).ok()?.remove(*name)).and_then(|m| crate::surveydoc::cooked_unit(m.units.as_deref().unwrap_or(""), units));
+    match (unit, value.as_f64()) {
+        (Some(u), Some(v)) => json!(u.meters(v)),
+        _ => value.clone(),
+    }
+}
+
+fn laid_out(pattern: &Value, heading: f64, distance: f64) -> Option<Value> {
+    let g = geometry(pattern)?;
+    let slope = crate::surveygrid::at_distance_and_azimuth(g.land, distance, heading + 180.0);
+    let radius = pattern.get("loiterRadius").and_then(Value::as_f64).unwrap_or(0.0);
+    let approach = match flag(pattern, "useLoiterToAlt") {
+        true => crate::surveygrid::at_distance_and_azimuth(slope, radius, heading - 180.0 + if flag(pattern, "loiterClockwise") { -90.0 } else { 90.0 }),
+        false => slope,
+    };
+    let (high, _) = altitudes(pattern);
+    let mut changed = pattern.clone();
+    changed["landingApproachCoordinate"] = json!([approach.0, approach.1, high]);
+    Some(changed)
+}
+
+fn circled(before: &Value, after: &Value) -> Option<Value> {
+    let g = geometry(before)?;
+    let radius = after.get("loiterRadius").and_then(Value::as_f64).unwrap_or(0.0);
+    if crate::surveygrid::distance_between(g.land, g.approach) < radius {
+        return Some(after.clone());
+    }
+    let reach = (radius.powi(2) + g.distance.powi(2)).sqrt();
+    let turn = (radius / reach).asin().to_degrees() * if flag(after, "loiterClockwise") { -1.0 } else { 1.0 };
+    let approach = crate::surveygrid::at_distance_and_azimuth(g.land, reach, g.heading + 180.0 + turn);
+    let (high, _) = altitudes(after);
+    let mut changed = after.clone();
+    changed["landingApproachCoordinate"] = json!([approach.0, approach.1, high]);
+    Some(changed)
+}
+
+pub fn edit(pattern: &Value, suffix: &str, value: &Value) -> Option<Value> {
+    let g = geometry(pattern)?;
+    let with = |key: &str, v: Value| {
+        let mut changed = pattern.clone();
+        changed[key] = v;
+        changed
+    };
+    let number = value.as_f64();
+    let on = value.as_bool().or_else(|| number.map(|n| n != 0.0));
+    match suffix {
+        "finalApproachAltitude" => {
+            let mut changed = pattern.clone();
+            changed["landingApproachCoordinate"][2] = json!(number?);
+            changed.as_object_mut()?.remove("loiterCoordinate");
+            Some(changed)
+        }
+        "landingAltitude" => {
+            let mut changed = pattern.clone();
+            changed["landCoordinate"][2] = json!(number?);
+            Some(changed)
+        }
+        "finalApproachSpeed" => Some(with("finalApproachSpeed", json!(number?))),
+        "useDoChangeSpeed" => Some(with("useDoChangeSpeed", json!(on?))),
+        "stopTakingPhotos" => Some(with("stopTakingPhotos", json!(on?))),
+        "stopTakingVideo" => Some(with("stopVideoPhotos", json!(on?))),
+        "valueSetIsDistance" if !is_vtol(pattern) => Some(with("valueSetIsDistance", json!(on?))),
+        "landingHeading" => laid_out(pattern, number?, g.distance),
+        "landingDistance" => laid_out(pattern, g.heading, number?),
+        "glideSlope" if !is_vtol(pattern) => {
+            let (high, low) = altitudes(pattern);
+            laid_out(pattern, g.heading, (high - low) / number?.to_radians().tan())
+        }
+        "loiterRadius" => circled(pattern, &with("loiterRadius", json!(number?))),
+        "loiterClockwise" => circled(pattern, &with("loiterClockwise", json!(on?))),
+        "useLoiterToAlt" => {
+            let switched = with("useLoiterToAlt", json!(on?));
+            laid_out(&switched, g.heading, g.distance)
+        }
+        _ => None,
+    }
 }
 
 pub fn slope_start(pattern: &Value) -> Option<(f64, f64)> {
@@ -207,11 +354,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn each_landing_field_edit_moves_the_pattern_as_qt_moves_it() {
+        let recorded: Value = serde_json::from_str(include_str!("../tests/fixtures/fwland-edits-by-qt.json")).unwrap();
+        let near = |a: &Value, b: &Value| a.as_array().unwrap().iter().zip(b.as_array().unwrap()).all(|(x, y)| (x.as_f64().unwrap() - y.as_f64().unwrap()).abs() < 1e-6);
+        recorded["steps"].as_array().unwrap().iter().fold(recorded["start"].clone(), |pattern, step| {
+            let field = step["field"].as_str().unwrap();
+            let edited = edit(&pattern, field, &step["value"]).unwrap();
+            ["landingApproachCoordinate", "landCoordinate"].iter().for_each(|key| assert!(near(&edited[*key], &step["after"][*key]), "{field}: {key} {} vs Qt {}", edited[*key], step["after"][*key]));
+            ["useDoChangeSpeed", "loiterClockwise", "loiterRadius", "useLoiterToAlt"].iter().for_each(|key| assert_eq!(edited[*key].as_f64().or(edited[*key].as_bool().map(f64::from)), step["after"][*key].as_f64().or(step["after"][*key].as_bool().map(f64::from)), "{field}: {key}"));
+            step["after"].clone()
+        });
+    }
+
+    #[test]
     fn a_new_landing_pattern_is_laid_out_behind_the_touchdown_as_qt_lays_it() {
         let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/landing-inserted-by-qt.json")).unwrap();
-        let nothing = |_: &str| None;
         [(false, "fixedWing"), (true, "vtol")].iter().for_each(|(vtol, name)| {
-            let built = fresh(&Fresh { vtol: *vtol, land: (-35.37, 149.172), remembered: &nothing, ardupilot: true, relative: true });
+            let built = fresh(&Fresh { vtol: *vtol, land: (-35.37, 149.172), ardupilot: true, relative: true });
             assert_eq!(built[WIZARD], json!(!vtol), "Qt opens a fixed wing landing in its wizard and a VTOL one finished");
             let mut saved = built.clone();
             saved.as_object_mut().unwrap().remove(WIZARD);
