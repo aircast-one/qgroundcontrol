@@ -355,9 +355,14 @@ pub fn changed_remembered(item: &Value, multirotor: bool, stored: &dyn Fn(&str) 
         true => vec![("CorridorWidth", "CorridorWidth")],
         false => vec![("GridAngle", "angle"), ("FlyAlternateTransects", "flyAlternateTransects"), ("SplitConcavePolygons", "splitConcavePolygons")],
     };
+    let manual_implies: Vec<(String, Value)> = match calc.get("CameraName").and_then(Value::as_str) == Some(MANUAL_CAMERA) {
+        true => vec![("FixedOrientation".to_string(), json!(false)), ("MinTriggerInterval".to_string(), json!(0))],
+        false => Vec::new(),
+    };
     calc_names
         .iter()
         .filter_map(|name| calc.get(*name).map(|v| (name.to_string(), v.clone())))
+        .chain(manual_implies)
         .chain(transect_names.iter().filter_map(|(name, key)| transect.get(*key).map(|v| (name.to_string(), v.clone()))))
         .chain(own.iter().filter_map(|(name, key)| item.get(*key).map(|v| (name.to_string(), v.clone()))))
         .filter(|(name, value)| {
@@ -541,6 +546,19 @@ mod tests {
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let listed: Vec<String> = fields(corridor, "i", true, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
         assert!(listed.contains(&"corridorWidth".to_string()) && !listed.contains(&"gridAngle".to_string()), "{listed:?}");
+    }
+
+    #[test]
+    fn a_manual_camera_remembers_the_trigger_interval_it_resets_though_it_saves_none() {
+        let stored = |key: &str| match key {
+            "Survey/MinTriggerInterval" => Some("1".to_string()),
+            "Survey/DistanceToSurface" => Some("50".to_string()),
+            _ => None,
+        };
+        let manual = json!({ "complexItemType": "survey", "TransectStyleComplexItem": { "CameraCalc": { "CameraName": MANUAL_CAMERA, "DistanceToSurface": 75 } } });
+        let changed: Vec<String> = changed_remembered(&manual, true, &stored).into_iter().map(|(key, value)| format!("{key}={value}")).collect();
+        assert!(changed.contains(&"Survey/MinTriggerInterval=0".to_string()) && changed.contains(&"Survey/DistanceToSurface=75".to_string()), "{changed:?}");
+        assert!(!changed.iter().any(|c| c.starts_with("Survey/FixedOrientation")), "false is already the default");
     }
 
     #[test]
