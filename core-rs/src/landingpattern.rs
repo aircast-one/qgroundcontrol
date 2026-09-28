@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::surveyitems::{CMD_DO_SET_CAM_TRIGG_DIST, CMD_NAV_WAYPOINT, FRAME_GLOBAL, FRAME_GLOBAL_RELATIVE_ALT, FRAME_MISSION, Item};
 
@@ -40,6 +40,86 @@ pub fn approach(pattern: &Value) -> Option<Point3> {
 
 fn flag(pattern: &Value, key: &str) -> bool {
     pattern.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+const FIXED_WING_META: &str = include_str!("../../src/MissionManager/FWLandingPattern.FactMetaData.json");
+const VTOL_META: &str = include_str!("../../src/MissionManager/VTOLLandingPattern.FactMetaData.json");
+pub const WIZARD: &str = "wizardMode";
+
+pub struct Fresh<'a> {
+    pub vtol: bool,
+    pub land: (f64, f64),
+    pub remembered: &'a dyn Fn(&str) -> Option<String>,
+    pub ardupilot: bool,
+    pub relative: bool,
+}
+
+fn fact(fresh: &Fresh, name: &str) -> Value {
+    let (file, group) = if fresh.vtol { (VTOL_META, "VTOLLanding") } else { (FIXED_WING_META, "FixedWingLanding") };
+    let Some(meta) = crate::factmeta::from_file(file).ok().and_then(|mut all| all.remove(name)) else { return Value::Null };
+    (fresh.remembered)(&format!("{group}/{name}"))
+        .and_then(|text| crate::settingsstore::typed(&meta.value_type, &Value::String(text)))
+        .or_else(|| meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone())))
+        .unwrap_or(Value::Null)
+}
+
+pub fn fresh(fresh: &Fresh) -> Value {
+    let number = |name: &str| fact(fresh, name).as_f64().unwrap_or(0.0);
+    let on = |name: &str| fact(fresh, name).as_bool().unwrap_or(false);
+    let (approach_altitude, land_altitude) = (number("FinalApproachAltitude"), number("LandingAltitude"));
+    let distance = match fresh.vtol || on("ValueSetIsDistance") {
+        true => number("LandingDistance"),
+        false => (approach_altitude - land_altitude) / number("GlideSlope").to_radians().tan(),
+    };
+    let heading = number("LandingHeading");
+    let clockwise = on("LoiterClockwise");
+    let slope = crate::surveygrid::at_distance_and_azimuth(fresh.land, distance, heading + 180.0);
+    let approach = match on("UseLoiterToAlt") {
+        true => crate::surveygrid::at_distance_and_azimuth(slope, number("LoiterRadius"), heading - 180.0 + if clockwise { -90.0 } else { 90.0 }),
+        false => slope,
+    };
+    let cameras = !fresh.ardupilot;
+    let mut pattern = json!({
+        "altitudesAreRelative": fresh.relative,
+        "complexItemType": if fresh.vtol { VTOL_PATTERN } else { FIXED_WING_PATTERN },
+        "finalApproachSpeed": fact(fresh, "FinalApproachSpeed"),
+        "landCoordinate": [fresh.land.0, fresh.land.1, land_altitude],
+        "landingApproachCoordinate": [approach.0, approach.1, approach_altitude],
+        "loiterClockwise": clockwise,
+        "loiterRadius": fact(fresh, "LoiterRadius"),
+        "stopTakingPhotos": cameras && on("StopTakingPhotos"),
+        "stopVideoPhotos": cameras && on("StopTakingVideo"),
+        "type": "ComplexItem",
+        "useDoChangeSpeed": on("UseDoChangeSpeed"),
+        "useLoiterToAlt": on("UseLoiterToAlt"),
+        "version": if fresh.vtol { 1 } else { 2 },
+        WIZARD: !fresh.vtol,
+    });
+    if !fresh.vtol {
+        pattern["valueSetIsDistance"] = fact(fresh, "ValueSetIsDistance");
+    }
+    pattern
+}
+
+pub fn moved(pattern: &Value, member: &str, value: &Value) -> Option<Value> {
+    let key = match member {
+        "landingCoordinate" => "landCoordinate",
+        "finalApproachCoordinate" => "landingApproachCoordinate",
+        WIZARD => {
+            let mut changed = pattern.clone();
+            changed[WIZARD] = json!(value.as_bool()?);
+            return Some(changed);
+        }
+        _ => return None,
+    };
+    let (latitude, longitude) = crate::fenceedit::point(Some(value))?;
+    let altitude = pattern.get(key).and_then(|at| at.get(2)).cloned().unwrap_or(json!(0.0));
+    let mut changed = pattern.clone();
+    changed[key] = json!([latitude, longitude, altitude]);
+    if key == "landingApproachCoordinate" {
+        changed.as_object_mut()?.remove("loiterCoordinate");
+    }
+    Some(changed)
 }
 
 pub fn slope_start(pattern: &Value) -> Option<(f64, f64)> {
@@ -125,6 +205,30 @@ pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Ite
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_landing_pattern_is_laid_out_behind_the_touchdown_as_qt_lays_it() {
+        let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/landing-inserted-by-qt.json")).unwrap();
+        let nothing = |_: &str| None;
+        [(false, "fixedWing"), (true, "vtol")].iter().for_each(|(vtol, name)| {
+            let built = fresh(&Fresh { vtol: *vtol, land: (-35.37, 149.172), remembered: &nothing, ardupilot: true, relative: true });
+            assert_eq!(built[WIZARD], json!(!vtol), "Qt opens a fixed wing landing in its wizard and a VTOL one finished");
+            let mut saved = built.clone();
+            saved.as_object_mut().unwrap().remove(WIZARD);
+            let near = |a: &Value, b: &Value| a.as_array().unwrap().iter().zip(b.as_array().unwrap()).all(|(x, y)| (x.as_f64().unwrap() - y.as_f64().unwrap()).abs() < 1e-9);
+            assert!(near(&saved["landingApproachCoordinate"], &qt[name]["landingApproachCoordinate"]), "{name}: {} vs {}", saved["landingApproachCoordinate"], qt[name]["landingApproachCoordinate"]);
+            saved["landingApproachCoordinate"] = qt[name]["landingApproachCoordinate"].clone();
+            fn numbers(v: &Value) -> Value {
+                match v {
+                    Value::Number(n) => json!(n.as_f64()),
+                    Value::Array(a) => Value::Array(a.iter().map(numbers).collect()),
+                    Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), numbers(v))).collect()),
+                    other => other.clone(),
+                }
+            }
+            assert_eq!(numbers(&saved), numbers(&qt[*name]));
+        });
+    }
 
     #[test]
     fn a_loiter_approach_starts_its_glide_where_the_circle_meets_the_line_to_land() {

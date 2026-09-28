@@ -20,6 +20,7 @@ const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDela
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
+const NOT_READY_FOR_SAVE: i64 = 2;
 const RETURN_TO_LAUNCH: i64 = 20;
 
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -116,6 +117,7 @@ fn amsl_entry(simple: &crate::plandoc::Simple, home_altitude: f64) -> f64 {
 }
 
 struct Survey {
+    unfinished: bool,
     landing: bool,
     touchdown_altitude: Option<f64>,
     entry: (f64, f64),
@@ -133,6 +135,7 @@ fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     let plan = crate::structurescan::saved_plan(json);
     let (top, bottom) = crate::structurescan::top_and_bottom(&plan);
     Ok(Survey {
+        unfinished: false,
         landing: false,
         touchdown_altitude: None,
         entry,
@@ -149,6 +152,7 @@ fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     let row = crate::landingpattern::row(json).ok_or("A landing pattern needs an approach and a landing coordinate.")?;
     let base = if row.relative { home_altitude } else { 0.0 };
     Ok(Survey {
+        unfinished: json.get(crate::landingpattern::WIZARD).and_then(Value::as_bool) == Some(true),
         landing: true,
         touchdown_altitude: Some(row.land_altitude),
         entry: row.approach,
@@ -185,6 +189,7 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         _ => return Err("The core cannot describe a survey flown above terrain yet.".to_string()),
     };
     Ok(Survey {
+        unfinished: false,
         landing: false,
         touchdown_altitude: None,
         entry,
@@ -532,7 +537,8 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                     "azimuth": leg.azimuth,
                     "distance": leg.distance,
                     "distanceFromStart": leg.from_start,
-                    "readyForSaveState": READY_TO_SAVE,
+                    "readyForSaveState": if v.unfinished { NOT_READY_FOR_SAVE } else { READY_TO_SAVE },
+                    "readyForSaveMessage": if v.unfinished { "Finish the landing setup" } else { "" },
                 });
             };
             let info = commands.get(&s.command);

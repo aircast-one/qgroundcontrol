@@ -202,6 +202,27 @@ fn remember_item(backend: &dyn Backend, visual_index: i64) {
     remember_patterns(backend, document.vehicle_type, at.and_then(|i| document.items.get(i)).into_iter());
 }
 
+fn insert_landing(_backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
+        return refused("A landing pattern needs a latitude and a longitude.");
+    };
+    let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
+    edit(|doc| {
+        let vtol = plandoc::vehicle_class(doc.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol;
+        let built = crate::landingpattern::fresh(&crate::landingpattern::Fresh {
+            vtol,
+            land: (latitude, longitude),
+            remembered: &crate::settingsstore::stored_text,
+            ardupilot: plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
+            relative: doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE,
+        });
+        let kind = if vtol { crate::landingpattern::VTOL_PATTERN } else { crate::landingpattern::FIXED_WING_PATTERN };
+        Ok(plandoc::insert_complex(doc, kind, built, (latitude, longitude), index))
+    })
+}
+
 fn insert_structure(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
@@ -722,7 +743,13 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     }
     let answered = match kind {
         "waypoint" => insert_at(backend, &rest, false),
-        "land" => insert_at(backend, &rest, true),
+        "land" => {
+            let class = held().document.as_ref().map(|d| plandoc::vehicle_class(d.vehicle_type));
+            match class {
+                Some(crate::cmdinfo::VehicleClass::FixedWing | crate::cmdinfo::VehicleClass::Vtol) => insert_landing(backend, &rest),
+                _ => insert_at(backend, &rest, true),
+            }
+        }
         "takeoff" => insert_takeoff(backend, &json!([given.get(3)]).to_string()),
         "survey" => insert_scan(backend, &rest, false),
         "corridor" => insert_scan(backend, &rest, true),
@@ -759,6 +786,14 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         Err(reason) => refused(reason),
     };
     let current = held().document.clone()?;
+    if let Some(plandoc::Item::Complex { kind, json: pattern, item_count }) = index.checked_sub(1).and_then(|i| current.items.get(i)).filter(|item| matches!(item, plandoc::Item::Complex { kind, .. } if crate::landingpattern::is_landing(kind))) {
+        let at = index - 1;
+        let Some(moved) = given.as_ref().and_then(|value| crate::landingpattern::moved(pattern, property, value)) else {
+            return Some(refused(format!("The landing pattern has no field {property} the core edits yet.")));
+        };
+        let item = plandoc::Item::Complex { kind: kind.clone(), json: moved, item_count: *item_count };
+        return Some(edit(|doc| Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })));
+    }
     if let Some(plandoc::Item::Complex { kind, json: survey, .. }) = index.checked_sub(1).and_then(|i| current.items.get(i)) {
         if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" {
             let Some(value) = given.clone() else { return Some(refused("That field needs a value.")) };
@@ -1024,7 +1059,9 @@ pub fn shape_vertices(path: &str) -> Option<Vec<(f64, f64)>> {
 
 pub fn drawing() -> bool {
     held().document.as_ref().is_some_and(|d| {
-        d.items.iter().any(|item| matches!(item, plandoc::Item::Complex { json, .. } if json.get("polygon").and_then(Value::as_array).is_some_and(|p| p.len() < 3)))
+        d.items.iter().any(|item| {
+            matches!(item, plandoc::Item::Complex { json, .. } if json.get("polygon").and_then(Value::as_array).is_some_and(|p| p.len() < 3) || json.get(crate::landingpattern::WIZARD).and_then(Value::as_bool) == Some(true))
+        })
     })
 }
 

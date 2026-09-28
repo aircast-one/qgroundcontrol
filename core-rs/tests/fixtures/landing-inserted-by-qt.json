@@ -1,0 +1,49 @@
+{
+ "fixedWing": {
+  "altitudesAreRelative": true,
+  "complexItemType": "fwLandingPattern",
+  "finalApproachSpeed": 9,
+  "landCoordinate": [
+   -35.37,
+   149.172,
+   0
+  ],
+  "landingApproachCoordinate": [
+   -35.369325436991005,
+   149.17619727182262,
+   40
+  ],
+  "loiterClockwise": true,
+  "loiterRadius": 75,
+  "stopTakingPhotos": false,
+  "stopVideoPhotos": false,
+  "type": "ComplexItem",
+  "useDoChangeSpeed": false,
+  "useLoiterToAlt": true,
+  "valueSetIsDistance": false,
+  "version": 2
+ },
+ "vtol": {
+  "altitudesAreRelative": true,
+  "complexItemType": "vtolLandingPattern",
+  "finalApproachSpeed": 9,
+  "landCoordinate": [
+   -35.37,
+   149.172,
+   0
+  ],
+  "landingApproachCoordinate": [
+   -35.36932546446567,
+   149.17530863283912,
+   30
+  ],
+  "loiterClockwise": true,
+  "loiterRadius": 75,
+  "stopTakingPhotos": false,
+  "stopVideoPhotos": false,
+  "type": "ComplexItem",
+  "useDoChangeSpeed": false,
+  "useLoiterToAlt": true,
+  "version": 1
+ }
+}

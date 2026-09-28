@@ -625,6 +625,9 @@ fn save_item(item: &Item, seq: usize) -> Value {
     match item {
         Item::Complex { json, .. } => {
             let mut numbered = json.clone();
+            if let Some(fields) = numbered.as_object_mut() {
+                fields.remove(crate::landingpattern::WIZARD);
+            }
             if let Some(items) = numbered.pointer_mut("/TransectStyleComplexItem/Items").and_then(Value::as_array_mut) {
                 items.iter_mut().enumerate().for_each(|(i, item)| item["doJumpId"] = json!(seq + i));
             }
