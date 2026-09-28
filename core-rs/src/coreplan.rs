@@ -185,6 +185,19 @@ fn insert_takeoff(backend: &dyn Backend, args: &str) -> Value {
     edit(|doc| plandoc::insert_takeoff(doc, index, &defaults))
 }
 
+fn insert_roi(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
+        return refused("A region of interest needs a latitude and a longitude.");
+    };
+    let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| Ok(plandoc::insert_roi(doc, latitude, longitude, index, &defaults)))
+}
+
 fn insert_survey(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
@@ -637,10 +650,22 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
         "land" => insert_at(backend, &rest, true),
         "takeoff" => insert_takeoff(backend, &json!([given.get(3)]).to_string()),
         "survey" => insert_survey(backend, &rest),
+        "roi" => insert_roi(backend, &rest),
         other => return refused(format!("The core plan cannot insert a {other} yet.")),
     };
     match answered.get("ok").and_then(Value::as_bool) {
-        Some(true) => json!({ "ok": true, "inserted": kind }),
+        Some(true) => {
+            let wanted = given.get(3).and_then(Value::as_i64).unwrap_or(-1);
+            let placed = {
+                let mut state = held();
+                let count = state.document.as_ref().map_or(0, |d| d.items.len() as i64);
+                let placed = if (1..=count).contains(&wanted) { wanted } else { count };
+                state.selected = placed;
+                placed
+            };
+            changed();
+            json!({ "ok": true, "inserted": kind, "index": placed })
+        }
         _ => answered,
     }
 }

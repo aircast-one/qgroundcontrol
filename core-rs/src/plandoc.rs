@@ -336,6 +336,18 @@ pub fn insert_complex(doc: &Document, kind: &str, json: Value, center: (f64, f64
     Document { items, home, ..doc.clone() }
 }
 
+const CMD_DO_SET_ROI: i64 = 201;
+const MAV_ROI_LOCATION: f64 = 3.0;
+
+pub fn insert_roi(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
+    let placed = insert_simple(doc, CMD_DO_SET_ROI_LOCATION, latitude, longitude, visual_index, defaults);
+    if firmware(doc.firmware_type) == Firmware::Px4 {
+        return placed;
+    }
+    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len()) + 1;
+    set_command(&placed, at, CMD_DO_SET_ROI, defaults).and_then(|changed| set_param(&changed, at, 1, MAV_ROI_LOCATION)).unwrap_or(placed)
+}
+
 pub fn insert_waypoint(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
     insert_simple(doc, CMD_NAV_WAYPOINT, latitude, longitude, visual_index, defaults)
 }
@@ -733,6 +745,17 @@ mod tests {
         matches_qt(&insert_takeoff(&without_takeoff, 1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-takeoff-by-qt.plan"));
         assert!(insert_takeoff(&Document { home: None, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err());
         assert!(insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff }, 1, &QT_DEFAULTS).is_err(), "Qt opens a plane's takeoff in the wizard for its climb-out");
+    }
+
+    #[test]
+    fn a_region_of_interest_is_the_location_command_only_where_the_firmware_takes_it() {
+        let px4 = Document { firmware_type: 12, ..section() };
+        let placed = insert_roi(&px4, 47.63, -122.09, -1, &QT_DEFAULTS);
+        assert!(matches!(placed.items.last(), Some(Item::Simple(s)) if s.command == CMD_DO_SET_ROI_LOCATION));
+        let apm = Document { firmware_type: 3, ..section() };
+        let placed = insert_roi(&apm, 47.63, -122.09, 2, &QT_DEFAULTS);
+        let Some(Item::Simple(roi)) = placed.items.get(1) else { panic!("the region of interest goes where it was asked") };
+        assert_eq!((roi.command, roi.params[0], roi.params[4], roi.params[5]), (CMD_DO_SET_ROI, Some(MAV_ROI_LOCATION), Some(47.63), Some(-122.09)));
     }
 
     #[test]
