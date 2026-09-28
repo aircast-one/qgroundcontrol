@@ -576,7 +576,7 @@ fn speed_span(rest: &[Simple], class: VehicleClass) -> usize {
     let kind_matches = match class {
         VehicleClass::MultiRotor => p(item, 0) == 1.0,
         VehicleClass::FixedWing => p(item, 0) == 0.0,
-        _ => true,
+        _ => false,
     };
     usize::from(shaped && kind_matches)
 }

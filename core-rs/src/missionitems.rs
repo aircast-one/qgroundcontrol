@@ -275,17 +275,32 @@ fn greatest_distance_to(json: &Value, to: (f64, f64)) -> f64 {
         .unwrap_or(0.0)
 }
 
+const MAV_VTOL_STATE_MC: i64 = 3;
+const MAV_VTOL_STATE_FW: i64 = 4;
+
 pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<FlightStatus> {
     let class = crate::plandoc::vehicle_class(doc.vehicle_type);
-    if class == crate::cmdinfo::VehicleClass::Vtol {
-        return None;
-    }
+    let vtol = class == crate::cmdinfo::VehicleClass::Vtol;
     let multirotor = class == crate::cmdinfo::VehicleClass::MultiRotor;
+    let simples = || doc.items.iter().filter_map(|item| match item {
+        crate::plandoc::Item::Simple(s) => Some(s),
+        crate::plandoc::Item::Complex { .. } => None,
+    });
+    let before_rtl: Vec<&crate::plandoc::Simple> = simples().scan(false, |past, s| {
+        let seen = !*past;
+        *past = *past || s.command == 20;
+        seen.then_some(s)
+    }).collect();
+    let starts_hovering = match vtol {
+        true => before_rtl.iter().rev().find(|s| s.command == 22 || s.command == 84).is_some_and(|s| s.command == 84),
+        false => multirotor,
+    };
     let commands = crate::cmdinfo::tree(crate::plandoc::firmware(doc.firmware_type), class);
     let home = doc.home;
     let home_alt = home.map_or(0.0, |h| h[2]);
     struct Walk {
         status: FlightStatus,
+        hovering: bool,
         hover: f64,
         cruise: f64,
         last: Option<((f64, f64), f64, bool)>,
@@ -295,16 +310,17 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
         past_land: bool,
     }
     let add = |w: &mut Walk, distance: f64, extra: f64| {
-        let time = distance / if multirotor { w.hover } else { w.cruise } + extra;
+        let time = distance / if w.hovering { w.hover } else { w.cruise } + extra;
         w.status.total_time += time;
         w.status.planned_distance += distance;
-        match multirotor {
+        match w.hovering {
             true => w.status.hover_distance += distance,
             false => w.status.cruise_distance += distance,
         }
     };
     let start = Walk {
         status: FlightStatus { min_amsl: f64::NAN, max_amsl: f64::NAN, ..FlightStatus::default() },
+        hovering: starts_hovering,
         hover: speeds.hover,
         cruise: speeds.cruise,
         last: None,
@@ -315,8 +331,8 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
     };
     let settings_speed = specified_speed(&doc.settings_sections);
     let seeded = Walk {
-        hover: if multirotor { settings_speed.unwrap_or(speeds.hover) } else { speeds.hover },
-        cruise: if multirotor { speeds.cruise } else { settings_speed.unwrap_or(speeds.cruise) },
+        hover: if starts_hovering { settings_speed.unwrap_or(speeds.hover) } else { speeds.hover },
+        cruise: if starts_hovering { speeds.cruise } else { settings_speed.unwrap_or(speeds.cruise) },
         ..start
     };
     let walked = doc.items.iter().fold(seeded, |mut w, item| {
@@ -329,7 +345,7 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
             if let Some(s) = simple.filter(|s| w.first_coordinate && (s.command == 22 || s.command == 84)) {
                 if home.is_some() {
                     w.link = true;
-                    if multirotor {
+                    if multirotor || vtol {
                         let climb = (home_alt - amsl_entry(s, home_alt)).abs() / speeds.ascent;
                         w.status.total_time += climb;
                     }
@@ -365,11 +381,21 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
                 w.last = Some((f.exit, f.amsl, f.is_land));
             }
         }
-        if let Some(changed) = simple.and_then(|s| specified_speed(&s.sections)) {
-            match multirotor {
+        let own_speed = |s: &crate::plandoc::Simple| (s.command == 178).then_some(s.params[1]).flatten().filter(|speed| *speed > 0.0);
+        if let Some(changed) = simple.and_then(|s| specified_speed(&s.sections).or_else(|| own_speed(s))) {
+            match w.hovering {
                 true => w.hover = changed,
                 false => w.cruise = changed,
             }
+        }
+        if let Some(s) = simple.filter(|_| vtol) {
+            w.hovering = match (s.command, s.params[0].map(|p| p as i64)) {
+                (22 | 84 | 21, _) => false,
+                (85, _) => true,
+                (3000, Some(MAV_VTOL_STATE_MC)) => true,
+                (3000, Some(MAV_VTOL_STATE_FW)) => false,
+                _ => w.hovering,
+            };
         }
         w.past_land = w.past_land || simple.is_some_and(|s| commands.get(&s.command).is_some_and(|c| c.is_land));
         w
@@ -501,8 +527,9 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                 "coordinate": coordinate.then(|| json!({ "latitude": s.params[4], "longitude": s.params[5], "altitude": Value::Null, "valid": true })),
                 "exitCoordinateSameAsEntry": true,
                 "amslEntryAlt": amsl_entry(s, home[2]),
-                "altitudeFrame": altitude.map(|a| a.mode),
-                "facts": altitude.map(|a| altitude_fact("altitude", a.altitude)).unwrap_or(json!([])),
+                "altitudeFrame": altitude.map_or(match doc.global_altitude_mode { crate::altitudemodes::MIXED => crate::altitudemodes::RELATIVE, mode => mode }, |a| a.mode),
+                "specifiedFlightSpeed": specified_speed(&s.sections).or_else(|| (s.command == 178).then_some(s.params[1]).flatten().filter(|speed| *speed > 0.0)),
+                "facts": altitude_fact("altitude", altitude.map_or(0.0, |a| a.altitude)),
                 "additionalTimeDelay": match s.command { 16 | 112 | 93 => s.params[0].unwrap_or(0.0), _ => 0.0 },
                 "altDifference": leg.alt_difference,
                 "azimuth": leg.azimuth,
@@ -1010,6 +1037,15 @@ mod from_the_document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vtol_flies_hover_and_cruise_legs_by_its_transitions_as_qt_times_them() {
+        let doc = crate::plandoc::load(include_str!("../tests/fixtures/vtol-transitions.plan")).unwrap();
+        let status = flight_status(&doc, &Speeds { hover: 6.0, cruise: 18.0, ascent: 3.0, descent: 1.0 }).unwrap();
+        assert!((status.total_time - 561.2644666123344).abs() < 1e-6, "Qt timed this plan at 561.26 s, core {}", status.total_time);
+        assert!((status.total_distance - 3546.2558210867846).abs() < 1e-6);
+        assert_eq!(doc.items.len(), 9, "a VTOL has no speed section, so its speed changes stay rows of their own");
+    }
 
     struct Plan(Vec<Value>, i64);
 

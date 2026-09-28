@@ -591,6 +591,16 @@ fn visual_index_of_sequence(document: &Document, sequence: i64) -> Option<i64> {
     starts.enumerate().find(|(_, (first, last))| (*first as i64..=*last as i64).contains(&sequence)).map(|(i, _)| i as i64)
 }
 
+fn plan_speeds(backend: &dyn Backend, file: &str) {
+    let Some(mission) = std::fs::read_to_string(file).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()).and_then(|plan| plan.get("mission").cloned()) else { return };
+    [("cruiseSpeed", "offlineEditingCruiseSpeed"), ("hoverSpeed", "offlineEditingHoverSpeed")]
+        .iter()
+        .filter_map(|(key, setting)| mission.get(*key).and_then(Value::as_f64).map(|speed| (setting, speed)))
+        .for_each(|(setting, speed)| {
+            backend.set(&format!("settings.appSettings.{setting}"), &json!({ "value": speed }).to_string());
+        });
+}
+
 fn plan_for_offline_vehicle(backend: &dyn Backend) {
     if !crate::read::flag(&crate::read::object(&backend.get_fields("plan", "offline")), "offline") {
         return;
@@ -1030,6 +1040,7 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| {
             let opened = open(&file);
             plan_for_offline_vehicle(backend);
+            plan_speeds(backend, &file);
             if let Some(document) = held().document.clone() {
                 remember_patterns(backend, document.vehicle_type, document.items.iter());
             }
