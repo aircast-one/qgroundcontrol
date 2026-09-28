@@ -405,6 +405,7 @@ mod deps_cover_reads {
             ("factmeta", include_str!("factmeta.rs")),
             ("factwrite", include_str!("factwrite.rs")),
             ("fenceedit", include_str!("fenceedit.rs")),
+            ("fencedoc", include_str!("fencedoc.rs")),
             ("fences", include_str!("fences.rs")),
             ("flightmodes", include_str!("flightmodes.rs")),
             ("flystate", include_str!("flystate.rs")),

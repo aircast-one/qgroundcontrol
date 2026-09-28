@@ -30,6 +30,7 @@ pub mod factmeta;
 pub mod control;
 pub mod factwrite;
 pub mod fenceedit;
+pub mod fencedoc;
 pub mod fences;
 pub mod flightmodes;
 pub mod flystate;

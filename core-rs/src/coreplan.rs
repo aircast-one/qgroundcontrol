@@ -573,7 +573,118 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     })
 }
 
+fn point_of(value: Option<&Value>) -> Option<(f64, f64)> {
+    let v = value?;
+    let lat = v.get("latitude")?.as_f64().filter(|l| l.is_finite() && (-90.0..=90.0).contains(l))?;
+    let lon = v.get("longitude")?.as_f64().filter(|l| l.is_finite() && (-180.0..=180.0).contains(l))?;
+    Some((lat, lon))
+}
+
+fn fence_edit(change: impl FnOnce(&Value, &Value) -> Option<(Value, Value)>, refusal: &str) -> Value {
+    let refusal = refusal.to_string();
+    edit(move |doc| change(&doc.fence, &doc.rally).map(|(fence, rally)| Document { fence, rally, ..doc.clone() }).ok_or(refusal))
+}
+
+fn indexed(path: &str, prefix: &str) -> Option<(usize, String)> {
+    let (index, member) = path.strip_prefix(prefix)?.split_once('.')?;
+    Some((index.parse().ok()?, member.to_string()))
+}
+
+fn fence_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let first_index = || given.get(0).and_then(Value::as_u64).map(|i| i as usize);
+    let window = || point_of(given.get(0)).zip(point_of(given.get(1))).filter(|((north, west), (south, east))| north > south && east != west);
+    Some(match path {
+        "plan.geoFenceController.addInclusionPolygon" => match window() {
+            Some((tl, br)) => fence_edit(|f, r| Some((crate::fencedoc::add_polygon(f, tl, br), r.clone())), ""),
+            None => refused("A new fence needs the map window's top-left and bottom-right corners."),
+        },
+        "plan.geoFenceController.addInclusionCircle" => match window() {
+            Some((tl, br)) => fence_edit(|f, r| Some((crate::fencedoc::add_circle(f, tl, br), r.clone())), ""),
+            None => refused("A new fence needs the map window's top-left and bottom-right corners."),
+        },
+        "plan.geoFenceController.deletePolygon" | "plan.geoFenceController.deleteCircle" => {
+            let key = if path.ends_with("Polygon") { "polygons" } else { "circles" };
+            fence_edit(|f, r| Some((crate::fencedoc::delete(f, key, first_index()?)?, r.clone())), "There is no fence shape at that position.")
+        }
+        "plan.rallyPointController.addPoint" => match point_of(given.get(0)) {
+            Some(at) => {
+                let fixed_wing = held().document.as_ref().is_some_and(|d| plandoc::vehicle_class(d.vehicle_type) == crate::cmdinfo::VehicleClass::FixedWing);
+                let altitude = crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).unwrap_or(0.0);
+                fence_edit(|f, r| Some((f.clone(), crate::fencedoc::add_rally(r, at, fixed_wing, altitude))), "")
+            }
+            None => refused("A rally point needs a latitude and a longitude."),
+        },
+        "plan.rallyPointController.removePoint" => {
+            let index = given.get(0).and_then(Value::as_str).and_then(|r| r.strip_prefix("@plan.rallyPointController.points.")?.parse::<usize>().ok());
+            fence_edit(|f, r| Some((f.clone(), crate::fencedoc::remove_rally(r, index?)?)), "There is no rally point at that position.")
+        }
+        _ => {
+            let (polygon, member) = indexed(path, "plan.geoFenceController.polygons.")?;
+            let vertex = first_index();
+            match member.as_str() {
+                "adjustVertex" => {
+                    let at = point_of(given.get(1));
+                    fence_edit(|f, r| Some((crate::fencedoc::move_vertex(f, polygon, vertex?, at?)?, r.clone())), "That vertex cannot be moved there.")
+                }
+                "removeVertex" => fence_edit(|f, r| Some((crate::fencedoc::remove_vertex(f, polygon, vertex?)?, r.clone())), "A fence polygon keeps at least three vertices."),
+                _ => return None,
+            }
+        }
+    })
+}
+
+fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
+    let given = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let altitude = given.get("altitude").and_then(Value::as_f64).filter(|a| a.is_finite());
+    Some(match path {
+        "plan.geoFenceController.breachReturnPoint" => match point_of(Some(&given)) {
+            Some(at) => {
+                let default = crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue")));
+                fence_edit(
+                    |f, r| {
+                        let kept = f.get("breachReturn").and_then(|b| b.get(2)).and_then(Value::as_f64).or(default);
+                        Some((crate::fencedoc::set_breach_return(f, at, kept), r.clone()))
+                    },
+                    "",
+                )
+            }
+            None => refused("A breach return point needs a latitude and a longitude."),
+        },
+        "plan.geoFenceController.breachReturnAltitude" => fence_edit(|f, r| Some((crate::fencedoc::set_breach_altitude(f, given.as_f64()?)?, r.clone())), "Set a breach return point before its altitude."),
+        _ => {
+            if let Some((index, member)) = indexed(path, "plan.geoFenceController.polygons.") {
+                return (member == "inclusion").then(|| fence_edit(|f, r| Some((crate::fencedoc::set_inclusion(f, "polygons", index, given.as_bool()?)?, r.clone())), "A polygon is an inclusion (true) or an exclusion (false)."));
+            }
+            if let Some((index, member)) = indexed(path, "plan.geoFenceController.circles.") {
+                return Some(match member.as_str() {
+                    "inclusion" => fence_edit(|f, r| Some((crate::fencedoc::set_inclusion(f, "circles", index, given.as_bool()?)?, r.clone())), "A circle is an inclusion (true) or an exclusion (false)."),
+                    "center" => fence_edit(|f, r| Some((crate::fencedoc::set_circle(f, index, Some(point_of(Some(&given))?), None)?, r.clone())), "A circle's centre needs a latitude and a longitude."),
+                    "radius" => fence_edit(|f, r| Some((crate::fencedoc::set_circle(f, index, None, Some(given.as_f64().filter(|v| *v >= 0.1)?))?, r.clone())), "A circle's radius is at least 0.1 m."),
+                    _ => return None,
+                });
+            }
+            let (index, member) = indexed(path, "plan.rallyPointController.points.")?;
+            match member.as_str() {
+                "coordinate" => fence_edit(|f, r| Some((f.clone(), crate::fencedoc::move_rally(r, index, point_of(Some(&given))?, altitude)?)), "A rally point needs a latitude and a longitude."),
+                "textFieldFacts.2" => fence_edit(
+                    |f, r| {
+                        let point = r["points"].get(index)?;
+                        let at = (point.get(0)?.as_f64()?, point.get(1)?.as_f64()?);
+                        Some((f.clone(), crate::fencedoc::move_rally(r, index, at, given.as_f64())?))
+                    },
+                    "A rally point's altitude is a number.",
+                ),
+                _ => return None,
+            }
+        }
+    })
+}
+
 pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
+    if let Some(answer) = fence_invoke(backend, path, args) {
+        return Some(answer);
+    }
     let current = || held().file.clone();
     Some(match path {
         "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| {
@@ -595,7 +706,7 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
 }
 
 pub fn route_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
-    item_write(backend, path, value)
+    fence_set(backend, path, value).or_else(|| item_write(backend, path, value))
 }
 
 #[cfg(test)]
