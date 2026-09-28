@@ -1775,7 +1775,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 
     QSet<QString> wereConstant;
     for (const QJsonValue &field : expected.value(QStringLiteral("_neverVaried")).toArray()) {
-        wereConstant.insert(field.toString());
+        wereConstant.insert(QString(field.toString()).replace(subscript, QStringLiteral("[]")));
     }
     QSet<QString> seenBefore;
     for (const QJsonValue &field : expected.value(QStringLiteral("_observed")).toArray()) {
@@ -1783,7 +1783,8 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
     QStringList stopped;
     for (const QJsonValue &field : recorded.value(QStringLiteral("_neverVaried")).toArray()) {
-        if (!wereConstant.contains(field.toString()) && seenBefore.contains(QString(field.toString()).replace(subscript, QStringLiteral("[]")))) {
+        const QString shape = QString(field.toString()).replace(subscript, QStringLiteral("[]"));
+        if (!wereConstant.contains(shape) && seenBefore.contains(shape)) {
             stopped.append(field.toString());
         }
     }
