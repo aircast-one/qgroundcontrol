@@ -42,6 +42,46 @@ fn flag(pattern: &Value, key: &str) -> bool {
     pattern.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+pub fn slope_start(pattern: &Value) -> Option<(f64, f64)> {
+    let approach = approach(pattern)?;
+    let land = coordinate(pattern, "landCoordinate")?;
+    let (from, to) = ((land.latitude, land.longitude), (approach.latitude, approach.longitude));
+    let radius = pattern.get("loiterRadius").and_then(Value::as_f64).unwrap_or(0.0);
+    let apart = crate::surveygrid::distance_between(from, to);
+    match flag(pattern, "useLoiterToAlt") && apart >= radius {
+        true => {
+            let turn = (radius / apart).asin().to_degrees() * if flag(pattern, "loiterClockwise") { 1.0 } else { -1.0 };
+            let along = (apart.powi(2) - radius.powi(2)).sqrt();
+            Some(crate::surveygrid::at_distance_and_azimuth(from, along, crate::surveygrid::azimuth_to(from, to) + turn))
+        }
+        false => Some(to),
+    }
+}
+
+pub struct Row {
+    pub approach: (f64, f64),
+    pub land: (f64, f64),
+    pub approach_altitude: f64,
+    pub land_altitude: f64,
+    pub relative: bool,
+    pub distance: f64,
+}
+
+pub fn row(pattern: &Value) -> Option<Row> {
+    let approach = approach(pattern)?;
+    let land = coordinate(pattern, "landCoordinate")?;
+    let slope = slope_start(pattern)?;
+    let (a, l) = ((approach.latitude, approach.longitude), (land.latitude, land.longitude));
+    Some(Row {
+        approach: a,
+        land: l,
+        approach_altitude: approach.altitude,
+        land_altitude: land.altitude,
+        relative: pattern.get("altitudesAreRelative").and_then(Value::as_bool).unwrap_or(true),
+        distance: crate::surveygrid::distance_between(a, slope) + crate::surveygrid::distance_between(slope, l),
+    })
+}
+
 pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Item>, String> {
     let kind = pattern.get("complexItemType").and_then(Value::as_str).unwrap_or("");
     let approach = approach(pattern).ok_or("A landing pattern has no approach coordinate.")?;
@@ -85,6 +125,16 @@ pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Ite
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_loiter_approach_starts_its_glide_where_the_circle_meets_the_line_to_land() {
+        let pattern: Value = serde_json::from_str(include_str!("../tests/fixtures/fwland-pattern.json")).unwrap();
+        let row = row(&pattern).unwrap();
+        assert!((row.distance - 944.2174039346808).abs() < 1e-6, "Qt measured this pattern at 944.22 m, core {}", row.distance);
+        let straight = serde_json::json!({ "landingApproachCoordinate": pattern["landingApproachCoordinate"], "landCoordinate": pattern["landCoordinate"], "useLoiterToAlt": false });
+        let direct = crate::surveygrid::distance_between((row.approach.0, row.approach.1), (row.land.0, row.land.1));
+        assert!((self::row(&straight).unwrap().distance - direct).abs() < 1e-9, "without a loiter the glide starts at the approach point");
+    }
 
     #[test]
     fn a_fixed_wing_landing_uploads_the_items_qt_sent() {

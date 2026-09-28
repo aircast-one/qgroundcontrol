@@ -116,6 +116,8 @@ fn amsl_entry(simple: &crate::plandoc::Simple, home_altitude: f64) -> f64 {
 }
 
 struct Survey {
+    landing: bool,
+    touchdown_altitude: Option<f64>,
     entry: (f64, f64),
     exit: (f64, f64),
     amsl: f64,
@@ -131,6 +133,8 @@ fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     let plan = crate::structurescan::saved_plan(json);
     let (top, bottom) = crate::structurescan::top_and_bottom(&plan);
     Ok(Survey {
+        landing: false,
+        touchdown_altitude: None,
         entry,
         exit: entry,
         amsl: plan.entrance_alt + home_altitude,
@@ -141,7 +145,26 @@ fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     })
 }
 
+fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
+    let row = crate::landingpattern::row(json).ok_or("A landing pattern needs an approach and a landing coordinate.")?;
+    let base = if row.relative { home_altitude } else { 0.0 };
+    Ok(Survey {
+        landing: true,
+        touchdown_altitude: Some(row.land_altitude),
+        entry: row.approach,
+        exit: row.land,
+        amsl: row.approach_altitude + base,
+        lowest: row.land_altitude + base,
+        highest: row.approach_altitude + base,
+        shots: 0,
+        distance: row.distance,
+    })
+}
+
 fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
+    if json.get("complexItemType").and_then(Value::as_str).is_some_and(crate::landingpattern::is_landing) {
+        return landing(json, home_altitude);
+    }
     if json.get("complexItemType").and_then(Value::as_str) == Some("StructureScan") {
         return structure(json, home_altitude);
     }
@@ -162,6 +185,8 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         _ => return Err("The core cannot describe a survey flown above terrain yet.".to_string()),
     };
     Ok(Survey {
+        landing: false,
+        touchdown_altitude: None,
         entry,
         exit,
         amsl,
@@ -191,7 +216,7 @@ fn flight(item: &crate::plandoc::Item, commands: &std::collections::BTreeMap<i64
                 Flight { entry: at, exit: at, amsl, band: (amsl, amsl), is_land: info.is_land, within: 0.0 }
             })
         }
-        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, band: (v.lowest, v.highest), is_land: false, within: v.distance }),
+        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, band: (v.lowest, v.highest), is_land: v.landing, within: v.distance }),
     }
 }
 
@@ -265,6 +290,9 @@ fn additional_delay(item: &crate::plandoc::Item) -> f64 {
 }
 
 fn greatest_distance_to(json: &Value, to: (f64, f64)) -> f64 {
+    if let Some(row) = json.get("complexItemType").and_then(Value::as_str).filter(|k| crate::landingpattern::is_landing(k)).and_then(|_| crate::landingpattern::row(json)) {
+        return crate::surveygrid::distance_between(row.approach, to).max(crate::surveygrid::distance_between(row.land, to));
+    }
     if json.get("complexItemType").and_then(Value::as_str) == Some("StructureScan") {
         return crate::structurescan::saved_flight(json).unwrap_or_default().iter().map(|at| crate::surveygrid::distance_between(*at, to)).fold(0.0, f64::max);
     }
@@ -397,7 +425,7 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
                 _ => w.hovering,
             };
         }
-        w.past_land = w.past_land || simple.is_some_and(|s| commands.get(&s.command).is_some_and(|c| c.is_land));
+        w.past_land = w.past_land || simple.is_some_and(|s| commands.get(&s.command).is_some_and(|c| c.is_land)) || matches!(item, crate::plandoc::Item::Complex { kind, .. } if crate::landingpattern::is_landing(kind));
         w
     });
     let mut w = walked;
@@ -424,7 +452,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
         .items
         .iter()
         .map(|item| match item {
-            crate::plandoc::Item::Complex { kind, json, .. } if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" => survey(json, doc.home.map_or(0.0, |h| h[2])).map(Some),
+            crate::plandoc::Item::Complex { kind, json, .. } if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" || crate::landingpattern::is_landing(kind) => survey(json, doc.home.map_or(0.0, |h| h[2])).map(Some),
             crate::plandoc::Item::Complex { kind, .. } => Err(format!("The core cannot describe a {kind} item's rows yet.")),
             crate::plandoc::Item::Simple(_) => Ok(None),
         })
@@ -473,6 +501,8 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                 let (class, name, abbreviation) = match kind.as_str() {
                     "CorridorScan" => ("CorridorScanComplexItem", "Corridor Scan", "C"),
                     "StructureScan" => ("StructureScanComplexItem", "Structure Scan", "S"),
+                    crate::landingpattern::VTOL_PATTERN => ("VTOLLandingComplexItem", "Landing Pattern", "L"),
+                    crate::landingpattern::FIXED_WING_PATTERN => ("FixedWingLandingComplexItem", "Landing Pattern", "L"),
                     _ => ("SurveyComplexItem", "Survey", "S"),
                 };
                 return json!({
@@ -488,13 +518,14 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                     "commandName": name,
                     "commandDescription": name,
                     "isCurrentItem": selected == i as i64 + 1,
-                    "coordinate": { "latitude": v.entry.0, "longitude": v.entry.1, "altitude": Value::Null, "valid": true },
-                    "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": Value::Null, "valid": true },
-                    "exitCoordinateSameAsEntry": v.entry == v.exit,
+                    "coordinate": { "latitude": if v.landing { v.exit.0 } else { v.entry.0 }, "longitude": if v.landing { v.exit.1 } else { v.entry.1 }, "altitude": v.touchdown_altitude, "valid": true },
+                    "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": v.touchdown_altitude, "valid": true },
+                    "exitCoordinateSameAsEntry": !v.landing && v.entry == v.exit,
+                    "isLandCommand": v.landing,
                     "amslEntryAlt": v.amsl,
                     "minAMSLAltitude": v.lowest,
                     "maxAMSLAltitude": v.highest,
-                    "cameraShots": v.shots,
+                    "cameraShots": (!v.landing).then_some(v.shots),
                     "complexDistance": v.distance,
                     "additionalTimeDelay": 0.0,
                     "altDifference": leg.alt_difference,
