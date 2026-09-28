@@ -15,7 +15,9 @@ pub const CORE_REMOVE: &str = "core.plan.remove";
 pub const CORE_INSERT_LAND: &str = "core.plan.insertLand";
 pub const CORE_SET_COMMAND: &str = "core.plan.setCommand";
 pub const CORE_SET_ALTITUDE: &str = "core.plan.setAltitude";
-const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE];
+pub const CORE_INSERT_TAKEOFF: &str = "core.plan.insertTakeoff";
+pub const CORE_SET_ALTITUDE_MODE: &str = "core.plan.setAltitudeMode";
+const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE, CORE_INSERT_TAKEOFF, CORE_SET_ALTITUDE_MODE];
 const DEFAULT_ALTITUDE: &str = "settings.appSettings.defaultMissionItemAltitude";
 
 #[derive(Default)]
@@ -49,6 +51,8 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         CORE_INSERT_LAND => insert_at(backend, args, true),
         CORE_SET_COMMAND => item_edit(backend, args, true),
         CORE_SET_ALTITUDE => item_edit(backend, args, false),
+        CORE_INSERT_TAKEOFF => insert_takeoff(backend, args),
+        CORE_SET_ALTITUDE_MODE => set_altitude_mode(args),
         CORE_REMOVE => remove(args),
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
@@ -91,6 +95,22 @@ fn insert_at(backend: &dyn Backend, args: &str, land: bool) -> Value {
         true => plandoc::insert_land(doc, latitude, longitude, index, &defaults),
         false => Ok(plandoc::insert_waypoint(doc, latitude, longitude, index, &defaults)),
     })
+}
+
+fn insert_takeoff(backend: &dyn Backend, args: &str) -> Value {
+    let index = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0).and_then(Value::as_i64)).unwrap_or(-1);
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| plandoc::insert_takeoff(doc, index, &defaults))
+}
+
+fn set_altitude_mode(args: &str) -> Value {
+    let mode = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0).and_then(Value::as_i64));
+    match mode.filter(|m| (crate::altitudemodes::MIXED..=crate::altitudemodes::TERRAIN_FRAME).contains(m)) {
+        Some(mode) => edit(|doc| Ok(plandoc::set_global_altitude_mode(doc, mode))),
+        None => refused("An altitude mode is a number from 0 to 4."),
+    }
 }
 
 fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {

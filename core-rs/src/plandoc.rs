@@ -326,6 +326,20 @@ pub fn insert_land(doc: &Document, latitude: f64, longitude: f64, visual_index: 
     }
 }
 
+const CMD_NAV_TAKEOFF: i64 = 22;
+
+pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults) -> Result<Document, String> {
+    let home = doc.home.ok_or("A takeoff is placed at the launch position, and this plan has none yet.")?;
+    match vehicle_class(doc.vehicle_type) {
+        VehicleClass::FixedWing => Err("A fixed-wing takeoff needs its climb-out placed on the map.".to_string()),
+        _ => Ok(insert_simple(doc, CMD_NAV_TAKEOFF, home[0], home[1], visual_index, defaults)),
+    }
+}
+
+pub fn set_global_altitude_mode(doc: &Document, mode: i64) -> Document {
+    Document { global_altitude_mode: mode, ..doc.clone() }
+}
+
 fn simple_at(doc: &Document, visual_index: usize) -> Option<(usize, &Simple)> {
     let at = visual_index.checked_sub(1)?;
     match doc.items.get(at)? {
@@ -509,6 +523,21 @@ mod tests {
     #[test]
     fn changing_a_command_resets_its_parameters_and_altitude_but_keeps_the_position() {
         matches_qt(&set_command(&section(), 2, 19, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-H-by-qt.plan"));
+    }
+
+    #[test]
+    fn a_takeoff_sits_on_the_launch_position_at_the_default_altitude() {
+        let without_takeoff = remove(&section(), 1).unwrap();
+        matches_qt(&insert_takeoff(&without_takeoff, 1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-takeoff-by-qt.plan"));
+        assert!(insert_takeoff(&Document { home: None, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err());
+        assert!(insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff }, 1, &QT_DEFAULTS).is_err(), "Qt opens a plane's takeoff in the wizard for its climb-out");
+    }
+
+    #[test]
+    fn the_plan_altitude_mode_changes_new_items_and_leaves_existing_ones() {
+        let absolute = set_global_altitude_mode(&section(), crate::altitudemodes::ABSOLUTE);
+        matches_qt(&absolute, include_str!("../tests/fixtures/edit-absolute-by-qt.plan"));
+        matches_qt(&insert_waypoint(&absolute, 47.634, -122.089, -1, &QT_DEFAULTS), include_str!("../tests/fixtures/edit-absolute-then-waypoint-by-qt.plan"));
     }
 
     #[test]
