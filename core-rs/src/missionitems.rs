@@ -111,43 +111,91 @@ fn amsl_entry(simple: &crate::plandoc::Simple, home_altitude: f64) -> f64 {
     }
 }
 
+struct Survey {
+    entry: (f64, f64),
+    exit: (f64, f64),
+    amsl: f64,
+    shots: i64,
+    distance: f64,
+}
+
+fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
+    let transect = json.get("TransectStyleComplexItem").ok_or("A survey has no transect data.")?;
+    let points: Vec<(f64, f64)> = transect
+        .get("VisualTransectPoints")
+        .and_then(Value::as_array)
+        .map(|points| points.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect())
+        .unwrap_or_default();
+    let (Some(entry), Some(exit)) = (points.first().copied(), points.last().copied()) else {
+        return Err("A survey without transects has no rows to describe.".to_string());
+    };
+    let calc = transect.get("CameraCalc").ok_or("A survey has no camera settings.")?;
+    let surface = calc.get("DistanceToSurface").and_then(Value::as_f64).ok_or("A survey has no distance to the surface.")?;
+    let amsl = match calc.get("DistanceMode").and_then(Value::as_i64) {
+        Some(crate::altitudemodes::RELATIVE) => surface + home_altitude,
+        Some(crate::altitudemodes::ABSOLUTE) => surface,
+        _ => return Err("The core cannot describe a survey flown above terrain yet.".to_string()),
+    };
+    Ok(Survey {
+        entry,
+        exit,
+        amsl,
+        shots: transect.get("CameraShots").and_then(Value::as_i64).unwrap_or(0),
+        distance: points.windows(2).map(|pair| crate::surveygrid::distance_between(pair[0], pair[1])).sum(),
+    })
+}
+
+struct Flight {
+    entry: (f64, f64),
+    exit: (f64, f64),
+    amsl: f64,
+    is_land: bool,
+    is_takeoff: bool,
+    within: f64,
+}
+
+fn flight(item: &crate::plandoc::Item, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>, home_altitude: f64) -> Option<Flight> {
+    match item {
+        crate::plandoc::Item::Simple(s) => {
+            let info = commands.get(&s.command)?;
+            (info.specifies_coordinate && !info.standalone_coordinate).then(|| {
+                let at = (s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0));
+                Flight { entry: at, exit: at, amsl: amsl_entry(s, home_altitude), is_land: info.is_land, is_takeoff: info.is_takeoff, within: 0.0 }
+            })
+        }
+        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, is_land: false, is_takeoff: false, within: v.distance }),
+    }
+}
+
 fn legs(doc: &crate::plandoc::Document, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>) -> Vec<Leg> {
     let home = doc.home.unwrap_or([0.0, 0.0, 0.0]);
-    let flies = |s: &crate::plandoc::Simple| commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate);
-    let first_flown = doc.items.iter().find_map(|item| match item {
-        crate::plandoc::Item::Simple(s) if flies(s) => Some(s.command),
-        _ => None,
-    });
-    let link_start_to_home = doc.home.is_some() && first_flown.is_some_and(|c| commands.get(&c).is_some_and(|c| c.is_takeoff));
+    let flights: Vec<Option<Flight>> = doc.items.iter().map(|item| flight(item, commands, home[2])).collect();
+    let link_start_to_home = doc.home.is_some() && flights.iter().flatten().next().is_some_and(|f| f.is_takeoff);
     struct Walk {
         last: Option<((f64, f64), f64, bool)>,
         total: f64,
         rtl: bool,
     }
-    let start = Walk { last: None, total: 0.0, rtl: false };
+    let unflown = || Leg { azimuth: 0.0, distance: 0.0, alt_difference: 0.0, from_start: 0.0 };
     doc.items
         .iter()
-        .scan(start, |walk, item| {
-            let crate::plandoc::Item::Simple(s) = item else {
-                return Some(Leg { azimuth: 0.0, distance: 0.0, alt_difference: 0.0, from_start: 0.0 });
+        .zip(flights)
+        .scan(Walk { last: None, total: 0.0, rtl: false }, |walk, (item, flown)| {
+            walk.rtl = walk.rtl || matches!(item, crate::plandoc::Item::Simple(s) if s.command == 20);
+            let Some(f) = flown.filter(|_| !walk.rtl) else {
+                return Some(unflown());
             };
-            walk.rtl = walk.rtl || s.command == 20;
-            let unflown = Leg { azimuth: 0.0, distance: 0.0, alt_difference: 0.0, from_start: 0.0 };
-            if walk.rtl || !flies(s) {
-                return Some(unflown);
-            }
-            let here = (s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0));
-            let amsl = amsl_entry(s, home[2]);
             let previous = walk.last.or(link_start_to_home.then_some(((home[0], home[1]), home[2], false)));
             let leg = match previous {
                 Some((from, from_amsl, was_land)) => {
-                    let distance = crate::surveygrid::distance_between(from, here);
-                    walk.total += if was_land { 0.0 } else { distance };
-                    Leg { azimuth: crate::surveygrid::azimuth_to(from, here), distance: if was_land { 0.0 } else { distance }, alt_difference: amsl - from_amsl, from_start: walk.total }
+                    let distance = if was_land { 0.0 } else { crate::surveygrid::distance_between(from, f.entry) };
+                    walk.total += distance;
+                    Leg { azimuth: crate::surveygrid::azimuth_to(from, f.entry), distance, alt_difference: f.amsl - from_amsl, from_start: walk.total }
                 }
-                None => unflown,
+                None => unflown(),
             };
-            walk.last = Some((here, amsl, commands.get(&s.command).is_some_and(|c| c.is_land)));
+            walk.total += f.within;
+            walk.last = Some((f.exit, f.amsl, f.is_land));
             Some(leg)
         })
         .collect()
@@ -158,9 +206,15 @@ fn altitude_fact(property: &str, metres: f64) -> Value {
 }
 
 pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
-    if doc.items.iter().any(|item| matches!(item, crate::plandoc::Item::Complex { .. })) {
-        return Err("The core cannot describe a pattern item's rows yet.".to_string());
-    }
+    let surveys: Vec<Option<Survey>> = doc
+        .items
+        .iter()
+        .map(|item| match item {
+            crate::plandoc::Item::Complex { kind, json, .. } if kind == "survey" => survey(json, doc.home.map_or(0.0, |h| h[2])).map(Some),
+            crate::plandoc::Item::Complex { kind, .. } => Err(format!("The core cannot describe a {kind} item's rows yet.")),
+            crate::plandoc::Item::Simple(_) => Ok(None),
+        })
+        .collect::<Result<_, _>>()?;
     let commands = crate::cmdinfo::tree(crate::plandoc::firmware(doc.firmware_type), crate::plandoc::vehicle_class(doc.vehicle_type));
     let home = doc.home.unwrap_or([0.0, 0.0, 0.0]);
     let settings = json!({
@@ -197,13 +251,43 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
         .iter()
         .zip(starts)
         .zip(legs(doc, &commands))
+        .zip(surveys)
         .enumerate()
-        .filter_map(|(i, ((item, seq), leg))| {
-            let crate::plandoc::Item::Simple(s) = item else { return None };
+        .map(|(i, (((item, seq), leg), pattern))| {
+            let crate::plandoc::Item::Simple(s) = item else {
+                let (Some(v), crate::plandoc::Item::Complex { item_count, .. }) = (pattern, item) else { return Value::Null };
+                return json!({
+                    "isSimpleItem": false,
+                    "isSurveyItem": true,
+                    "homePosition": false,
+                    "specifiesCoordinate": true,
+                    "isStandaloneCoordinate": false,
+                    "sequenceNumber": seq,
+                    "lastSequenceNumber": seq + item_count - 1,
+                    "abbreviation": "S",
+                    "commandName": "Survey",
+                    "commandDescription": "Survey",
+                    "isCurrentItem": selected == i as i64 + 1,
+                    "coordinate": { "latitude": v.entry.0, "longitude": v.entry.1, "altitude": Value::Null, "valid": true },
+                    "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": Value::Null, "valid": true },
+                    "exitCoordinateSameAsEntry": false,
+                    "amslEntryAlt": v.amsl,
+                    "minAMSLAltitude": v.amsl,
+                    "maxAMSLAltitude": v.amsl,
+                    "cameraShots": v.shots,
+                    "complexDistance": v.distance,
+                    "additionalTimeDelay": 0.0,
+                    "altDifference": leg.alt_difference,
+                    "azimuth": leg.azimuth,
+                    "distance": leg.distance,
+                    "distanceFromStart": leg.from_start,
+                    "readyForSaveState": READY_TO_SAVE,
+                });
+            };
             let info = commands.get(&s.command);
             let coordinate = info.is_some_and(|c| c.specifies_coordinate);
             let altitude = s.altitude.as_ref();
-            Some(json!({
+            json!({
                 "isSimpleItem": true,
                 "homePosition": false,
                 "specifiesCoordinate": coordinate,
@@ -231,7 +315,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                 "distance": leg.distance,
                 "distanceFromStart": leg.from_start,
                 "readyForSaveState": READY_TO_SAVE,
-            }))
+            })
         })
         .collect();
     let items: Vec<Value> = std::iter::once(settings).chain(reads).enumerate().map(|(index, read)| item(&read, index as i64, vertical, speed, imperial)).collect();
@@ -663,6 +747,25 @@ mod from_the_document {
             Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
             other => other,
         }
+    }
+
+    fn agrees(plan: &str, terrain_under_home: f64, qt: &str) {
+        let loaded = crate::plandoc::load(plan).unwrap();
+        let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
+        let (vertical, speed) = metres();
+        let mine = by_value(document_view(&doc, 0, &vertical, &speed, false, false).unwrap());
+        let qt = by_value(serde_json::from_str(qt).unwrap());
+        let rows = |v: &Value| v["items"].as_array().unwrap().clone();
+        assert_eq!(rows(&mine).len(), rows(&qt).len());
+        rows(&mine).iter().zip(rows(&qt)).for_each(|(core, qt)| {
+            let differing: Vec<String> = qt.as_object().unwrap().iter().filter(|(k, v)| core.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}: core {} qt {v}", core.get(k.as_str()).unwrap_or(&Value::Null))).collect();
+            assert!(differing.is_empty(), "row {}: {}", qt["index"], differing.join("; "));
+        });
+    }
+
+    #[test]
+    fn a_survey_row_carries_its_pattern_as_qt_describes_it() {
+        agrees(include_str!("../tests/fixtures/survey-upload.plan"), 585.0, include_str!("../tests/fixtures/missionitems-survey-by-qt.json"));
     }
 
     #[test]
