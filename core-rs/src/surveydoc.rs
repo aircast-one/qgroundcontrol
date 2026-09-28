@@ -46,25 +46,8 @@ pub fn regenerate(survey: &Value) -> Value {
     let transects = surveygrid::typed_transects(&polygon(survey), &params);
     let trigger_distance = f64::from(number(&calc, "AdjustedFootprintFrontal").unwrap_or(0.0) as f32);
     let in_turnaround = flag(&transect, "CameraTriggerInTurnAround");
-    let plan = Plan {
-        altitude: number(&calc, "DistanceToSurface").unwrap_or(0.0),
-        trigger_distance,
-        altitude_mode: calc.get("DistanceMode").and_then(Value::as_i64).unwrap_or(crate::altitudemodes::RELATIVE),
-        images_in_turnaround: in_turnaround,
-    };
-    let visual: Vec<Point> = transects.iter().flatten().map(|c| c.at).collect();
-    let complex_distance: f64 = visual.windows(2).map(|pair| surveygrid::distance_between(pair[0], pair[1])).sum();
-    let items: Vec<Value> = surveyitems::items(&transects, &plan)
-        .iter()
-        .enumerate()
-        .map(|(i, item)| json!({ "autoContinue": true, "command": item.command, "doJumpId": i + 1, "frame": item.frame, "params": item.params, "type": "SimpleItem" }))
-        .collect();
-    let mut rebuilt = transect.clone();
-    rebuilt["Items"] = Value::Array(items);
-    rebuilt["VisualTransectPoints"] = json!(visual.iter().map(|(lat, lon)| json!([lat, lon])).collect::<Vec<_>>());
-    rebuilt["CameraShots"] = json!(camera_shots(&transects, trigger_distance, in_turnaround, complex_distance));
     let mut changed = survey.clone();
-    changed["TransectStyleComplexItem"] = rebuilt;
+    changed["TransectStyleComplexItem"] = rebuilt(&transect, &calc, &transects, trigger_distance, in_turnaround, |complex_distance| camera_shots(&transects, trigger_distance, in_turnaround, complex_distance));
     changed
 }
 
@@ -356,19 +339,19 @@ pub struct Fresh<'a> {
 
 const SAVED_BY_EVERY_CAMERA: [&str; 6] = ["version", "AdjustedFootprintSide", "AdjustedFootprintFrontal", "DistanceToSurface", "DistanceMode", "CameraName"];
 
-fn remembered(fresh: &Fresh, file: &str, name: &str) -> Value {
+fn remembered(fresh: &Fresh, group: &str, file: &str, name: &str) -> Value {
     let Some(meta) = meta(file, name) else { return Value::Null };
-    let stored = (fresh.remembered)(&format!("Survey/{name}")).and_then(|text| crate::settingsstore::typed(&meta.value_type, &Value::String(text)));
+    let stored = (fresh.remembered)(&format!("{group}/{name}")).and_then(|text| crate::settingsstore::typed(&meta.value_type, &Value::String(text)));
     stored.or_else(|| meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone()))).unwrap_or(Value::Null)
 }
 
-pub fn fresh(fresh: &Fresh) -> Value {
+fn fresh_transect(fresh: &Fresh, group: &str) -> Value {
     let calc_keys = ["CameraName", "ValueSetIsDistance", "DistanceToSurface", "ImageDensity", "FrontalOverlap", "SideOverlap", "AdjustedFootprintSide", "AdjustedFootprintFrontal"];
     let spec_keys = ["SensorWidth", "SensorHeight", "ImageWidth", "ImageHeight", "FocalLength", "Landscape", "FixedOrientation", "MinTriggerInterval"];
     let stored_calc: serde_json::Map<String, Value> = calc_keys
         .iter()
-        .map(|k| (k.to_string(), remembered(fresh, CAMERA_META, k)))
-        .chain(spec_keys.iter().map(|k| (k.to_string(), remembered(fresh, CAMERA_SPEC_META, k))))
+        .map(|k| (k.to_string(), remembered(fresh, group, CAMERA_META, k)))
+        .chain(spec_keys.iter().map(|k| (k.to_string(), remembered(fresh, group, CAMERA_SPEC_META, k))))
         .chain([("DistanceMode".to_string(), json!(fresh.distance_mode)), ("version".to_string(), json!(2))])
         .collect();
     let stored_name = stored_calc.get("CameraName").and_then(Value::as_str).unwrap_or(MANUAL_CAMERA).to_string();
@@ -390,35 +373,114 @@ pub fn fresh(fresh: &Fresh) -> Value {
     };
     let calc: serde_json::Map<String, Value> = settled.as_object().map(|o| o.iter().filter(|(k, _)| !manual || SAVED_BY_EVERY_CAMERA.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
     let turnaround = if fresh.multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
-    let transect = json!({
+    json!({
         "CameraCalc": calc,
-        "CameraTriggerInTurnAround": remembered(fresh, TRANSECT_META, "CameraTriggerInTurnAround"),
-        "HoverAndCapture": remembered(fresh, TRANSECT_META, "HoverAndCapture"),
-        "Refly90Degrees": remembered(fresh, TRANSECT_META, "Refly90Degrees"),
-        "TurnAroundDistance": remembered(fresh, TRANSECT_META, turnaround),
+        "CameraTriggerInTurnAround": remembered(fresh, group, TRANSECT_META, "CameraTriggerInTurnAround"),
+        "HoverAndCapture": remembered(fresh, group, TRANSECT_META, "HoverAndCapture"),
+        "Refly90Degrees": remembered(fresh, group, TRANSECT_META, "Refly90Degrees"),
+        "TurnAroundDistance": remembered(fresh, group, TRANSECT_META, turnaround),
         "version": 2,
-    });
+    })
+}
+
+pub fn fresh(fresh: &Fresh) -> Value {
     let alternates = match fresh.alternates {
-        true => remembered(fresh, SURVEY_META, "FlyAlternateTransects"),
+        true => remembered(fresh, "Survey", SURVEY_META, "FlyAlternateTransects"),
         false => json!(false),
     };
     let polygon: Vec<Value> = crate::missionkinds::default_area(fresh.center.0, fresh.center.1).iter().map(|(lat, lon)| json!([lat, lon])).collect();
     regenerate(&json!({
-        "TransectStyleComplexItem": transect,
-        "angle": remembered(fresh, SURVEY_META, "GridAngle"),
+        "TransectStyleComplexItem": fresh_transect(fresh, "Survey"),
+        "angle": remembered(fresh, "Survey", SURVEY_META, "GridAngle"),
         "complexItemType": "survey",
         "entryLocation": 0,
         "flyAlternateTransects": alternates,
         "polygon": polygon,
-        "splitConcavePolygons": remembered(fresh, SURVEY_META, "SplitConcavePolygons"),
+        "splitConcavePolygons": remembered(fresh, "Survey", SURVEY_META, "SplitConcavePolygons"),
         "type": "ComplexItem",
         "version": 5,
     }))
 }
 
+const CORRIDOR_META: &str = include_str!("../../src/MissionManager/CorridorScan.SettingsGroup.json");
+
+pub fn fresh_corridor(fresh: &Fresh) -> Value {
+    let polyline: Vec<Value> = crate::missionkinds::default_line(fresh.center.0, fresh.center.1).iter().map(|(lat, lon)| json!([lat, lon])).collect();
+    regenerate_corridor(&json!({
+        "CorridorWidth": remembered(fresh, "CorridorScan", CORRIDOR_META, "CorridorWidth"),
+        "EntryPoint": 0,
+        "TransectStyleComplexItem": fresh_transect(fresh, "CorridorScan"),
+        "complexItemType": "CorridorScan",
+        "polyline": polyline,
+        "type": "ComplexItem",
+        "version": 2,
+    }))
+}
+
+pub fn regenerate_corridor(corridor: &Value) -> Value {
+    let transect = corridor.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
+    let calc = transect.get("CameraCalc").cloned().unwrap_or(Value::Null);
+    let polyline: Vec<Point> = corridor.get("polyline").and_then(Value::as_array).map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default();
+    let params = crate::corridorscan::Params {
+        width: number(corridor, "CorridorWidth").unwrap_or(0.0),
+        spacing: number(&calc, "AdjustedFootprintSide").unwrap_or(0.0),
+        turnaround: number(&transect, "TurnAroundDistance").unwrap_or(0.0),
+        entry: corridor.get("EntryPoint").and_then(Value::as_i64).unwrap_or(0),
+    };
+    let transects = crate::corridorscan::typed_transects(&polyline, &params);
+    let trigger_distance = f64::from(number(&calc, "AdjustedFootprintFrontal").unwrap_or(0.0) as f32);
+    let in_turnaround = flag(&transect, "CameraTriggerInTurnAround");
+    let length: f64 = polyline.windows(2).map(|pair| surveygrid::distance_between(pair[0], pair[1])).sum();
+    let shots = |complex_distance: f64| match (trigger_distance == 0.0, in_turnaround) {
+        (true, _) => 0,
+        (false, true) => (complex_distance / trigger_distance).ceil() as i64,
+        (false, false) => (length / trigger_distance).ceil() as i64 * transects.len() as i64,
+    };
+    let mut changed = corridor.clone();
+    changed["TransectStyleComplexItem"] = rebuilt(&transect, &calc, &transects, trigger_distance, in_turnaround, shots);
+    changed
+}
+
+fn rebuilt(transect: &Value, calc: &Value, transects: &[Vec<Coord>], trigger_distance: f64, in_turnaround: bool, shots: impl Fn(f64) -> i64) -> Value {
+    let plan = Plan {
+        altitude: number(calc, "DistanceToSurface").unwrap_or(0.0),
+        trigger_distance,
+        altitude_mode: calc.get("DistanceMode").and_then(Value::as_i64).unwrap_or(crate::altitudemodes::RELATIVE),
+        images_in_turnaround: in_turnaround,
+    };
+    let visual: Vec<Point> = transects.iter().flatten().map(|c| c.at).collect();
+    let complex_distance: f64 = visual.windows(2).map(|pair| surveygrid::distance_between(pair[0], pair[1])).sum();
+    let items: Vec<Value> = surveyitems::items(transects, &plan)
+        .iter()
+        .enumerate()
+        .map(|(i, item)| json!({ "autoContinue": true, "command": item.command, "doJumpId": i + 1, "frame": item.frame, "params": item.params, "type": "SimpleItem" }))
+        .collect();
+    let mut rebuilt = transect.clone();
+    rebuilt["Items"] = Value::Array(items);
+    rebuilt["VisualTransectPoints"] = json!(visual.iter().map(|(lat, lon)| json!([lat, lon])).collect::<Vec<_>>());
+    rebuilt["CameraShots"] = json!(shots(complex_distance));
+    rebuilt
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_corridor_starts_from_the_remembered_corridor_settings_as_qt_builds_it() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
+        let remembered = |key: &str| key.strip_prefix("CorridorScan/").and_then(|name| fixture["remembered"][name].as_str()).map(str::to_string);
+        let mut built = fresh_corridor(&Fresh {
+            center: (fixture["center"][0].as_f64().unwrap(), fixture["center"][1].as_f64().unwrap()),
+            remembered: &remembered,
+            multirotor: true,
+            alternates: false,
+            default_altitude: fixture["defaultAltitude"].as_f64().unwrap(),
+            distance_mode: crate::altitudemodes::RELATIVE,
+        });
+        built["TransectStyleComplexItem"]["Items"].as_array_mut().unwrap().iter_mut().for_each(|item| item["doJumpId"] = json!(item["doJumpId"].as_i64().unwrap() + 1));
+        assert_eq!(by_value(&built), by_value(&fixture["corridor"]));
+    }
 
     #[test]
     fn a_new_survey_starts_from_the_remembered_survey_settings_as_qt_builds_it() {

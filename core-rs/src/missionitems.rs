@@ -370,7 +370,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
         .items
         .iter()
         .map(|item| match item {
-            crate::plandoc::Item::Complex { kind, json, .. } if kind == "survey" => survey(json, doc.home.map_or(0.0, |h| h[2])).map(Some),
+            crate::plandoc::Item::Complex { kind, json, .. } if kind == "survey" || kind == "CorridorScan" => survey(json, doc.home.map_or(0.0, |h| h[2])).map(Some),
             crate::plandoc::Item::Complex { kind, .. } => Err(format!("The core cannot describe a {kind} item's rows yet.")),
             crate::plandoc::Item::Simple(_) => Ok(None),
         })
@@ -415,18 +415,23 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
         .enumerate()
         .map(|(i, (((item, seq), leg), pattern))| {
             let crate::plandoc::Item::Simple(s) = item else {
-                let (Some(v), crate::plandoc::Item::Complex { item_count, .. }) = (pattern, item) else { return Value::Null };
+                let (Some(v), crate::plandoc::Item::Complex { item_count, kind, .. }) = (pattern, item) else { return Value::Null };
+                let (class, name, abbreviation) = match kind.as_str() {
+                    "CorridorScan" => ("CorridorScanComplexItem", "Corridor Scan", "C"),
+                    _ => ("SurveyComplexItem", "Survey", "S"),
+                };
                 return json!({
+                    "class": class,
                     "isSimpleItem": false,
-                    "isSurveyItem": true,
+                    "isSurveyItem": class == "SurveyComplexItem",
                     "homePosition": false,
                     "specifiesCoordinate": true,
                     "isStandaloneCoordinate": false,
                     "sequenceNumber": seq,
                     "lastSequenceNumber": seq + item_count - 1,
-                    "abbreviation": "S",
-                    "commandName": "Survey",
-                    "commandDescription": "Survey",
+                    "abbreviation": abbreviation,
+                    "commandName": name,
+                    "commandDescription": name,
                     "isCurrentItem": selected == i as i64 + 1,
                     "coordinate": { "latitude": v.entry.0, "longitude": v.entry.1, "altitude": Value::Null, "valid": true },
                     "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": Value::Null, "valid": true },

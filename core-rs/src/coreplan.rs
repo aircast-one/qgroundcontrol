@@ -198,11 +198,11 @@ fn insert_roi(backend: &dyn Backend, args: &str) -> Value {
     edit(|doc| Ok(plandoc::insert_roi(doc, latitude, longitude, index, &defaults)))
 }
 
-fn insert_survey(backend: &dyn Backend, args: &str) -> Value {
+fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
     let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
-        return refused("A survey needs a latitude and a longitude.");
+        return refused("A scan needs a latitude and a longitude.");
     };
     let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
     let Some(defaults) = edit_defaults(backend) else {
@@ -215,17 +215,21 @@ fn insert_survey(backend: &dyn Backend, args: &str) -> Value {
             mode => mode,
         };
         if distance_mode == crate::altitudemodes::CALC_ABOVE_TERRAIN {
-            return Err("The core cannot build a survey that follows terrain yet.".to_string());
+            return Err("The core cannot build a scan that follows terrain yet.".to_string());
         }
-        let survey = crate::surveydoc::fresh(&crate::surveydoc::Fresh {
+        let fresh = crate::surveydoc::Fresh {
             center: (latitude, longitude),
             remembered: &crate::settingsstore::stored_text,
             multirotor: class == crate::cmdinfo::VehicleClass::MultiRotor,
             alternates: matches!(class, crate::cmdinfo::VehicleClass::FixedWing | crate::cmdinfo::VehicleClass::Vtol),
             default_altitude: defaults.mission_item_altitude,
             distance_mode,
-        });
-        Ok(plandoc::insert_complex(doc, "survey", survey, (latitude, longitude), index))
+        };
+        let (kind, built) = match corridor {
+            true => ("CorridorScan", crate::surveydoc::fresh_corridor(&fresh)),
+            false => ("survey", crate::surveydoc::fresh(&fresh)),
+        };
+        Ok(plandoc::insert_complex(doc, kind, built, (latitude, longitude), index))
     })
 }
 
@@ -649,7 +653,8 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
         "waypoint" => insert_at(backend, &rest, false),
         "land" => insert_at(backend, &rest, true),
         "takeoff" => insert_takeoff(backend, &json!([given.get(3)]).to_string()),
-        "survey" => insert_survey(backend, &rest),
+        "survey" => insert_scan(backend, &rest, false),
+        "corridor" => insert_scan(backend, &rest, true),
         "roi" => insert_roi(backend, &rest),
         other => return refused(format!("The core plan cannot insert a {other} yet.")),
     };
