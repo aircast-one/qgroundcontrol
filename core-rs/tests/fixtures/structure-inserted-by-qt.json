@@ -1,0 +1,49 @@
+{
+ "center": [
+  -35.3632,
+  149.1652
+ ],
+ "defaultAltitude": 75,
+ "remembered": {
+  "EntranceAltitude": "75",
+  "Layers": "2",
+  "MinTriggerInterval": "0"
+ },
+ "structure": {
+  "CameraCalc": {
+   "AdjustedFootprintFrontal": 25,
+   "AdjustedFootprintSide": 25,
+   "CameraName": "Manual (no camera specs)",
+   "DistanceMode": 1,
+   "DistanceToSurface": 50,
+   "version": 2
+  },
+  "EntranceAltitude": 75,
+  "GimbalPitch": 0,
+  "Layers": 2,
+  "ScanBottomAlt": 50,
+  "StartFromTop": true,
+  "StructureHeight": 100,
+  "complexItemType": "StructureScan",
+  "polygon": [
+   [
+    -35.36454746676249,
+    149.16354767961195
+   ],
+   [
+    -35.36454746676249,
+    149.166852320388
+   ],
+   [
+    -35.36185253323751,
+    149.166852320388
+   ],
+   [
+    -35.36185253323751,
+    149.16354767961195
+   ]
+  ],
+  "type": "ComplexItem",
+  "version": 3
+ }
+}

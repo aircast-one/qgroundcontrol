@@ -112,11 +112,7 @@ fn load_item(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::C
         Some("SimpleItem") => load_simple(item, commands).map(Item::Simple),
         Some("ComplexItem") => {
             let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("").to_string();
-            let item_count = match TRANSECT_STYLE.contains(&kind.as_str()) {
-                true => item.get("TransectStyleComplexItem").and_then(|t| t.get("Items")).and_then(Value::as_array).map(Vec::len).ok_or_else(|| format!("The {kind} item has no saved mission items."))?,
-                false if kind == "StructureScan" => crate::structurescan::saved_items(item)?.len(),
-                false => return Err(format!("The core cannot hold a {kind} item yet.")),
-            };
+            let item_count = complex_count(&kind, item)?;
             Ok(Item::Complex { kind, json: item.clone(), item_count })
         }
         other => Err(format!("Unknown item type: {}", other.unwrap_or("none"))),
@@ -330,8 +326,16 @@ pub fn insert_simple(doc: &Document, command: i64, latitude: f64, longitude: f64
     Document { items, home, ..doc.clone() }
 }
 
+pub fn complex_count(kind: &str, item: &Value) -> Result<usize, String> {
+    match TRANSECT_STYLE.contains(&kind) {
+        true => item.get("TransectStyleComplexItem").and_then(|t| t.get("Items")).and_then(Value::as_array).map(Vec::len).ok_or_else(|| format!("The {kind} item has no saved mission items.")),
+        false if kind == "StructureScan" => crate::structurescan::saved_items(item).map(|items| items.len()),
+        false => Err(format!("The core cannot hold a {kind} item yet.")),
+    }
+}
+
 pub fn insert_complex(doc: &Document, kind: &str, json: Value, center: (f64, f64), visual_index: i64) -> Document {
-    let item_count = json["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
+    let item_count = complex_count(kind, &json).unwrap_or(0);
     let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
     let item = Item::Complex { kind: kind.to_string(), json, item_count };
     let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(item)).chain(doc.items[at..].iter().cloned()).collect();

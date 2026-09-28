@@ -202,6 +202,34 @@ fn remember_item(backend: &dyn Backend, visual_index: i64) {
     remember_patterns(backend, document.vehicle_type, at.and_then(|i| document.items.get(i)).into_iter());
 }
 
+fn insert_structure(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
+        return refused("A structure scan needs a latitude and a longitude.");
+    };
+    let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| {
+        let distance_mode = match doc.global_altitude_mode {
+            crate::altitudemodes::MIXED => crate::altitudemodes::RELATIVE,
+            mode => mode,
+        };
+        let built = crate::surveydoc::fresh_structure(&crate::surveydoc::Fresh {
+            center: (latitude, longitude),
+            remembered: &crate::settingsstore::stored_text,
+            multirotor: plandoc::vehicle_class(doc.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor,
+            alternates: false,
+            default_altitude: defaults.mission_item_altitude,
+            distance_mode,
+            previous_mode: None,
+        });
+        Ok(plandoc::insert_complex(doc, "StructureScan", built, (latitude, longitude), index))
+    })
+}
+
 fn insert_roi(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
@@ -688,6 +716,7 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
         "takeoff" => insert_takeoff(backend, &json!([given.get(3)]).to_string()),
         "survey" => insert_scan(backend, &rest, false),
         "corridor" => insert_scan(backend, &rest, true),
+        "structure" => insert_structure(backend, &rest),
         "roi" => insert_roi(backend, &rest),
         other => return refused(format!("The core plan cannot insert a {other} yet.")),
     };

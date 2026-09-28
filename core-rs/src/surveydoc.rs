@@ -344,16 +344,22 @@ pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
 }
 
 pub fn changed_remembered(item: &Value, multirotor: bool, stored: &dyn Fn(&str) -> Option<String>) -> Vec<(String, Value)> {
-    let corridor = item.get("complexItemType").and_then(Value::as_str) == Some("CorridorScan");
-    let group = if corridor { "CorridorScan" } else { "Survey" };
+    let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("survey");
+    let corridor = kind == "CorridorScan";
+    let structure = kind == "StructureScan";
+    let group = match kind {
+        "CorridorScan" | "StructureScan" => kind,
+        _ => "Survey",
+    };
     let transect = item.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
-    let calc = transect.get("CameraCalc").cloned().unwrap_or(Value::Null);
+    let calc = if structure { item.get("CameraCalc").cloned().unwrap_or(Value::Null) } else { transect.get("CameraCalc").cloned().unwrap_or(Value::Null) };
     let calc_names = ["CameraName", "ValueSetIsDistance", "DistanceToSurface", "ImageDensity", "FrontalOverlap", "SideOverlap", "AdjustedFootprintSide", "AdjustedFootprintFrontal", "SensorWidth", "SensorHeight", "ImageWidth", "ImageHeight", "FocalLength", "Landscape", "FixedOrientation", "MinTriggerInterval"];
     let turnaround = if multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
     let transect_names = [("CameraTriggerInTurnAround", "CameraTriggerInTurnAround"), ("HoverAndCapture", "HoverAndCapture"), ("Refly90Degrees", "Refly90Degrees"), (turnaround, "TurnAroundDistance"), ("TerrainAdjustTolerance", "TerrainAdjustTolerance"), ("TerrainAdjustMaxClimbRate", "TerrainAdjustMaxClimbRate"), ("TerrainAdjustMaxDescentRate", "TerrainAdjustMaxDescentRate")];
-    let own: Vec<(&str, &str)> = match corridor {
-        true => vec![("CorridorWidth", "CorridorWidth")],
-        false => vec![("GridAngle", "angle"), ("FlyAlternateTransects", "flyAlternateTransects"), ("SplitConcavePolygons", "splitConcavePolygons")],
+    let own: Vec<(&str, &str)> = match (corridor, structure) {
+        (true, _) => vec![("CorridorWidth", "CorridorWidth")],
+        (_, true) => ["EntranceAltitude", "ScanBottomAlt", "StructureHeight", "Layers", "GimbalPitch", "StartFromTop"].iter().map(|n| (*n, *n)).collect(),
+        _ => vec![("GridAngle", "angle"), ("FlyAlternateTransects", "flyAlternateTransects"), ("SplitConcavePolygons", "splitConcavePolygons")],
     };
     let manual_implies: Vec<(String, Value)> = match calc.get("CameraName").and_then(Value::as_str) == Some(MANUAL_CAMERA) {
         true => vec![("FixedOrientation".to_string(), json!(false)), ("MinTriggerInterval".to_string(), json!(0))],
@@ -366,7 +372,7 @@ pub fn changed_remembered(item: &Value, multirotor: bool, stored: &dyn Fn(&str) 
         .chain(transect_names.iter().filter_map(|(name, key)| transect.get(*key).map(|v| (name.to_string(), v.clone()))))
         .chain(own.iter().filter_map(|(name, key)| item.get(*key).map(|v| (name.to_string(), v.clone()))))
         .filter(|(name, value)| {
-            let Some(meta) = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META].iter().find_map(|file| meta(file, name)) else { return true };
+            let Some(meta) = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META, STRUCTURE_META].iter().find_map(|file| meta(file, name)) else { return true };
             let held = stored(&format!("{group}/{name}")).map(Value::String).or_else(|| meta.default.clone());
             let typed = |v: &Value| crate::settingsstore::typed(&meta.value_type, v);
             held.as_ref().and_then(typed) != typed(value)
@@ -393,7 +399,7 @@ fn remembered(fresh: &Fresh, group: &str, file: &str, name: &str) -> Value {
     stored.or_else(|| meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone()))).unwrap_or(Value::Null)
 }
 
-fn fresh_transect(fresh: &Fresh, group: &str) -> Value {
+fn fresh_calc(fresh: &Fresh, group: &str, lowered_when_manual: bool) -> serde_json::Map<String, Value> {
     let calc_keys = ["CameraName", "ValueSetIsDistance", "DistanceToSurface", "ImageDensity", "FrontalOverlap", "SideOverlap", "AdjustedFootprintSide", "AdjustedFootprintFrontal"];
     let spec_keys = ["SensorWidth", "SensorHeight", "ImageWidth", "ImageHeight", "FocalLength", "Landscape", "FixedOrientation", "MinTriggerInterval"];
     let stored_calc: serde_json::Map<String, Value> = calc_keys
@@ -411,7 +417,7 @@ fn fresh_transect(fresh: &Fresh, group: &str) -> Value {
     let named = named_camera(&Value::Object(stored_calc), &name);
     let manual = name == MANUAL_CAMERA;
     let by_distance = named.get("ValueSetIsDistance").and_then(Value::as_bool).unwrap_or(true);
-    let settled = match manual || !by_distance {
+    let settled = match lowered_when_manual && (manual || !by_distance) {
         true => {
             let mut lowered = named.clone();
             lowered["DistanceToSurface"] = json!(fresh.default_altitude);
@@ -420,10 +426,14 @@ fn fresh_transect(fresh: &Fresh, group: &str) -> Value {
         false => named,
     };
     let calc: serde_json::Map<String, Value> = settled.as_object().map(|o| o.iter().filter(|(k, _)| !manual || SAVED_BY_EVERY_CAMERA.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
-    let calc: serde_json::Map<String, Value> = calc.into_iter().map(|(k, v)| match (k.as_str(), fresh.previous_mode) {
+    calc.into_iter().map(|(k, v)| match (k.as_str(), fresh.previous_mode) {
         ("DistanceMode", Some(mode)) => (k, json!(mode)),
         _ => (k, v),
-    }).collect();
+    }).collect()
+}
+
+fn fresh_transect(fresh: &Fresh, group: &str) -> Value {
+    let calc = fresh_calc(fresh, group, true);
     let turnaround = if fresh.multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
     json!({
         "CameraCalc": calc,
@@ -467,6 +477,30 @@ pub fn fresh_corridor(fresh: &Fresh) -> Value {
         "type": "ComplexItem",
         "version": 2,
     }))
+}
+
+const STRUCTURE_META: &str = include_str!("../../src/MissionManager/StructureScan.SettingsGroup.json");
+
+pub fn fresh_structure(fresh: &Fresh) -> Value {
+    let calc = fresh_calc(fresh, "StructureScan", false);
+    let own = |name: &str| remembered(fresh, "StructureScan", STRUCTURE_META, name);
+    let (height, bottom) = (own("StructureHeight").as_f64().unwrap_or(0.0), own("ScanBottomAlt").as_f64().unwrap_or(0.0));
+    let frontal = calc.get("AdjustedFootprintFrontal").and_then(Value::as_f64).unwrap_or(0.0);
+    let layers = ((height - bottom).max(0.0) / frontal).ceil().max(1.0);
+    let polygon: Vec<Value> = crate::missionkinds::default_area(fresh.center.0, fresh.center.1).iter().map(|(lat, lon)| json!([lat, lon])).collect();
+    json!({
+        "CameraCalc": calc,
+        "EntranceAltitude": fresh.default_altitude,
+        "GimbalPitch": own("GimbalPitch"),
+        "Layers": layers,
+        "ScanBottomAlt": bottom,
+        "StartFromTop": own("StartFromTop"),
+        "StructureHeight": height,
+        "complexItemType": "StructureScan",
+        "polygon": polygon,
+        "type": "ComplexItem",
+        "version": 3,
+    })
 }
 
 pub fn regenerate_corridor(corridor: &Value) -> Value {
@@ -559,6 +593,22 @@ mod tests {
         let changed: Vec<String> = changed_remembered(&manual, true, &stored).into_iter().map(|(key, value)| format!("{key}={value}")).collect();
         assert!(changed.contains(&"Survey/MinTriggerInterval=0".to_string()) && changed.contains(&"Survey/DistanceToSurface=75".to_string()), "{changed:?}");
         assert!(!changed.iter().any(|c| c.starts_with("Survey/FixedOrientation")), "false is already the default");
+    }
+
+    #[test]
+    fn a_new_structure_scan_starts_from_the_remembered_settings_as_qt_builds_it() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
+        let remembered = |key: &str| key.strip_prefix("StructureScan/").and_then(|name| fixture["remembered"][name].as_str()).map(str::to_string);
+        let built = fresh_structure(&Fresh {
+            center: (fixture["center"][0].as_f64().unwrap(), fixture["center"][1].as_f64().unwrap()),
+            remembered: &remembered,
+            multirotor: true,
+            alternates: false,
+            default_altitude: fixture["defaultAltitude"].as_f64().unwrap(),
+            distance_mode: crate::altitudemodes::RELATIVE,
+            previous_mode: None,
+        });
+        assert_eq!(by_value(&built), by_value(&fixture["structure"]));
     }
 
     #[test]
