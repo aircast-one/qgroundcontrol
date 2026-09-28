@@ -11,6 +11,7 @@ pub const DEPS: &[&str] = &[
     "plan.currentPlanFile",
     "plan.canUndo",
     "plan.canRedo",
+    "plan.undoTracking",
     "plan.missionController.containsItems",
     "plan.missionController.complexMissionItems",
     "plan.missionController.globalAltitudeFrame",
@@ -103,7 +104,7 @@ fn patterns(mission: &Value) -> Vec<Value> {
 }
 
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo"));
+    let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo,undoTracking"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame"));
     let offline = flag(&plan, "offline");
     let core = crate::coreplan::plan_state();
@@ -167,8 +168,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // two reads that could land either side of a change the view had already answered for.
         "containsItems": contains_items,
         "offline": offline,
-        "canUndo": core.is_none() && flag(&plan, "canUndo"),
-        "canRedo": core.is_none() && flag(&plan, "canRedo"),
+        "canUndo": crate::coreplan::history().map_or_else(|| flag(&plan, "canUndo"), |(undo, _)| undo && flag(&plan, "undoTracking")),
+        "canRedo": crate::coreplan::history().map_or_else(|| flag(&plan, "canRedo"), |(_, redo)| redo && flag(&plan, "undoTracking")),
     })
 }
 

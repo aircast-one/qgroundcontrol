@@ -28,6 +28,28 @@ struct Held {
     selected: i64,
     file: Option<String>,
     dirty: bool,
+    clean: Option<Document>,
+    undo: Vec<Document>,
+    redo: Vec<Document>,
+    last_change_ms: u64,
+}
+
+const UNDO_DEPTH: usize = 100;
+const UNDO_COALESCE_MS: u64 = 500;
+
+fn remember(state: &mut Held, before: Option<Document>, now: u64) {
+    let burst = now.saturating_sub(state.last_change_ms) < UNDO_COALESCE_MS && !state.undo.is_empty();
+    state.last_change_ms = now;
+    if burst || before.is_none() || before == state.document {
+        return;
+    }
+    state.undo = state.undo.iter().cloned().chain(before).rev().take(UNDO_DEPTH).collect::<Vec<_>>().into_iter().rev().collect();
+    state.redo.clear();
+}
+
+fn settle_clean(state: &mut Held) {
+    state.dirty = false;
+    state.clean = state.document.clone();
 }
 
 pub const CHANGED: &str = "core.plan@changed";
@@ -122,7 +144,8 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
         match change(current) {
             Ok(changed) => {
                 let count = changed.items.len();
-                state.document = Some(changed);
+                let previous = state.document.replace(changed);
+                remember(&mut state, previous, crate::hub::now_ms());
                 state.dirty = true;
                 (json!({ "ok": true, "items": count }), before)
             }
@@ -245,10 +268,12 @@ fn open(file: &str) -> Value {
             let count = document.items.len();
             {
                 let mut state = held();
+                let before = state.document.take();
                 state.document = Some(document);
+                remember(&mut state, before, crate::hub::now_ms());
                 state.selected = 0;
                 state.file = Some(file.to_string());
-                state.dirty = false;
+                settle_clean(&mut state);
             }
             settle_home_on_terrain(None);
             changed();
@@ -267,7 +292,7 @@ fn save(file: &str) -> Value {
             {
                 let mut state = held();
                 state.file = Some(file.to_string());
-                state.dirty = false;
+                settle_clean(&mut state);
             }
             changed();
             json!({ "ok": true, "result": true })
@@ -344,7 +369,7 @@ fn send() -> Value {
     match started {
         Ok(outbound) => {
             deliver(outbound);
-            held().dirty = false;
+            settle_clean(&mut held());
             send_after_mission(document);
             changed();
             json!({ "ok": true, "items": items.len() })
@@ -409,14 +434,16 @@ fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool)
         .unwrap_or_default();
     let mut state = held();
     let template = state.document.clone().unwrap_or_else(empty_document);
+    let before = state.document.clone();
     let mission = plandoc::from_vehicle(&downloaded, sends_home, &template);
     state.document = Some(Document {
         fence: if fence_read { fence_from(&snapshot["fence"]) } else { mission.fence.clone() },
         rally: if rally_read { json!({ "version": 2, "points": snapshot["rally"]["points"] }) } else { mission.rally.clone() },
         ..mission
     });
+    remember(&mut state, before, crate::hub::now_ms());
     state.selected = 0;
-    state.dirty = false;
+    settle_clean(&mut state);
     state.fetching = false;
 }
 
@@ -547,14 +574,49 @@ fn fresh_document(backend: &dyn Backend) -> Document {
     }
 }
 
+fn step(backend: &dyn Backend, undoing: bool) -> Value {
+    let word = if undoing { "undo" } else { "redo" };
+    if !crate::read::flag(&crate::read::object(&backend.get_fields("plan", "undoTracking")), "undoTracking") {
+        return json!({ "ok": false, "reason": format!("This plan is not recording edits, so there is nothing to {word}."), "refusal": "notTracking" });
+    }
+    {
+        let mut state = held();
+        let taken = match undoing {
+            true => state.undo.pop(),
+            false => state.redo.pop(),
+        };
+        let Some(restored) = taken else {
+            return json!({ "ok": false, "reason": format!("Nothing to {word}."), "refusal": "nothingTo" });
+        };
+        let current = state.document.replace(restored);
+        match undoing {
+            true => state.redo.extend(current),
+            false => state.undo.extend(current),
+        }
+        state.last_change_ms = 0;
+        state.dirty = state.document.as_ref().map(plandoc::save) != state.clean.as_ref().map(plandoc::save);
+    }
+    changed();
+    json!({ "ok": true, "reason": null, "refusal": null })
+}
+
+pub fn history() -> Option<(bool, bool)> {
+    enabled().then(|| {
+        let state = held();
+        (!state.undo.is_empty(), !state.redo.is_empty())
+    })
+}
+
 fn clear(backend: &dyn Backend) -> Value {
     let fresh = held().document.is_none().then(|| fresh_document(backend));
     {
         let mut state = held();
         let template = state.document.clone().or(fresh).unwrap_or_else(empty_document);
+        let before = state.document.clone();
         state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..template });
+        remember(&mut state, before, crate::hub::now_ms());
         state.selected = 0;
-        state.dirty = false;
+        settle_clean(&mut state);
         state.file = None;
     }
     changed();
@@ -863,7 +925,8 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "mission.insert" => insert_kind(backend, args),
         "mission.remove" | "plan.missionController.removeVisualItem" => remove(args),
         "plan.missionController.setCurrentPlanViewSeqNum" => select(args),
-        "plan.undo" | "plan.redo" => json!({ "ok": false, "refusal": "notTracking", "reason": "The core plan does not keep an undo history yet." }),
+        "plan.undo" => step(backend, true),
+        "plan.redo" => step(backend, false),
         _ => return None,
     })
 }
@@ -896,6 +959,23 @@ mod tests {
             let differing: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| mine.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}:\n  core {}\n  qt   {v}", mine.get(k.as_str()).unwrap_or(&Value::Null))).collect();
             assert!(differing.is_empty(), "item {index}: {}", differing.join("\n"));
         });
+    }
+
+    #[test]
+    fn edits_in_one_burst_undo_together_and_a_pause_starts_a_new_step() {
+        let doc = |n: usize| Document { cruise_speed: n as f64, ..empty_document() };
+        let mut state = Held { document: Some(doc(0)), ..Held::default() };
+        let apply = |state: &mut Held, n: usize, at: u64| {
+            let previous = state.document.replace(doc(n));
+            remember(state, previous, at);
+        };
+        apply(&mut state, 1, 10_000);
+        apply(&mut state, 2, 10_100);
+        assert_eq!(state.undo, vec![doc(0)], "a drag's many writes are one step back to where it started");
+        apply(&mut state, 3, 11_000);
+        assert_eq!(state.undo, vec![doc(0), doc(2)]);
+        (4..4 + UNDO_DEPTH + 5).for_each(|n| apply(&mut state, n, 20_000 + n as u64 * 1_000));
+        assert_eq!(state.undo.len(), UNDO_DEPTH, "the oldest steps fall off as Qt's do");
     }
 
     #[test]
