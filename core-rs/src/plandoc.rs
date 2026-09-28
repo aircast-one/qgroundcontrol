@@ -39,7 +39,7 @@ pub struct Document {
     pub cruise_speed: f64,
     pub hover_speed: f64,
     pub global_altitude_mode: i64,
-    pub home: [f64; 3],
+    pub home: Option<[f64; 3]>,
     pub items: Vec<Item>,
     pub fence: Value,
     pub rally: Value,
@@ -92,7 +92,7 @@ pub fn load(text: &str) -> Result<Document, String> {
         cruise_speed: number("cruiseSpeed", 0.0),
         hover_speed: number("hoverSpeed", 0.0),
         global_altitude_mode: integer("globalPlanAltitudeMode"),
-        home,
+        home: Some(home),
         items,
         fence: current_or_empty(root.get("geoFence"), FENCE_VERSION, json!({ "circles": [], "polygons": [], "version": FENCE_VERSION })),
         rally: current_or_empty(root.get("rallyPoints"), RALLY_VERSION, json!({ "points": [], "version": RALLY_VERSION })),
@@ -168,7 +168,7 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
     let home = fake_home
         .filter(|h| h.params[4] != 0.0 || h.params[5] != 0.0)
         .map(|h| [h.params[4], h.params[5], h.params[6]])
-        .unwrap_or(template.home);
+        .or(template.home);
     let listed = &items[usize::from(fake_home.is_some())..];
     let simple = |item: &Downloaded| {
         let specifies_altitude = commands.get(&item.command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
@@ -199,6 +199,77 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
     }
 }
 
+pub struct EditDefaults {
+    pub mission_item_altitude: f64,
+}
+
+const CMD_NAV_WAYPOINT: i64 = 16;
+const PLANNED_HOME_OFFSET_M: f64 = 30.0;
+
+fn frame_for(mode: i64) -> i64 {
+    match mode {
+        crate::altitudemodes::RELATIVE => FRAME_GLOBAL_RELATIVE_ALT,
+        crate::altitudemodes::TERRAIN_FRAME => FRAME_GLOBAL_TERRAIN_ALT,
+        _ => FRAME_GLOBAL,
+    }
+}
+
+fn default_mode(doc: &Document) -> i64 {
+    match doc.global_altitude_mode {
+        crate::altitudemodes::MIXED => crate::altitudemodes::RELATIVE,
+        mode => mode,
+    }
+}
+
+fn previous_altitude(doc: &Document, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>, visual_index: i64) -> Option<(f64, i64)> {
+    let before = usize::try_from(visual_index - 1).ok()?.min(doc.items.len());
+    doc.items[..before].iter().rev().find_map(|item| match item {
+        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate) => s.altitude.as_ref().map(|a| (a.altitude, a.mode)),
+        _ => None,
+    })
+}
+
+fn param_defaults(command: Option<&cmdinfo::Command>) -> [Option<f64>; 7] {
+    std::array::from_fn(|i| {
+        let listed = command.and_then(|c| c.params.get(&(i as u8 + 1)));
+        match listed {
+            Some(param) => param.get("default").and_then(Value::as_f64),
+            None => Some(0.0),
+        }
+    })
+}
+
+pub fn insert_waypoint(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let listed = param_defaults(commands.get(&CMD_NAV_WAYPOINT));
+    let (altitude, mode) = previous_altitude(doc, &commands, visual_index)
+        .map(|(altitude, mode)| (altitude, if doc.global_altitude_mode == crate::altitudemodes::MIXED { mode } else { default_mode(doc) }))
+        .unwrap_or((defaults.mission_item_altitude, default_mode(doc)));
+    let waypoint = Item::Simple(Simple {
+        command: CMD_NAV_WAYPOINT,
+        frame: frame_for(mode),
+        params: [listed[0], Some(0.0), listed[2], listed[3], Some(latitude), Some(longitude), Some(altitude)],
+        auto_continue: true,
+        altitude: Some(Altitude { mode, altitude, amsl_above_terrain: None }),
+    });
+    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
+    let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(waypoint)).chain(doc.items[at..].iter().cloned()).collect();
+    let first_coordinate = items.iter().find_map(|item| match item {
+        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate) => Some((s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0))),
+        _ => None,
+    });
+    let home = doc.home.or_else(|| {
+        let (lat, lon) = crate::surveygrid::at_distance_and_azimuth(first_coordinate.unwrap_or((latitude, longitude)), PLANNED_HOME_OFFSET_M, 0.0);
+        Some([lat, lon, 0.0])
+    });
+    Document { items, home, ..doc.clone() }
+}
+
+pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
+    let at = visual_index.checked_sub(1).filter(|i| *i < doc.items.len())?;
+    Some(Document { items: doc.items.iter().enumerate().filter(|(i, _)| *i != at).map(|(_, item)| item.clone()).collect(), ..doc.clone() })
+}
+
 pub fn save(doc: &Document) -> Value {
     let starts = doc.items.iter().scan(1usize, |next, item| {
         let start = *next;
@@ -221,7 +292,7 @@ pub fn save(doc: &Document) -> Value {
             "globalPlanAltitudeMode": doc.global_altitude_mode,
             "hoverSpeed": doc.hover_speed,
             "items": items,
-            "plannedHomePosition": doc.home,
+            "plannedHomePosition": doc.home.unwrap_or([0.0, 0.0, 0.0]),
             "vehicleType": doc.vehicle_type,
             "version": MISSION_VERSION,
         },
@@ -294,6 +365,43 @@ mod tests {
         let from_doc = crate::planitems::flatten(&save(&load(text).unwrap())).unwrap();
         let from_file = crate::planitems::flatten(&serde_json::from_str(text).unwrap()).unwrap();
         assert_eq!(format!("{from_doc:?}"), format!("{from_file:?}"));
+    }
+
+    fn section() -> Document {
+        load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap()
+    }
+
+    const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0 };
+
+    fn matches_qt(doc: &Document, qt: &str) {
+        let qt: Value = serde_json::from_str(qt).unwrap();
+        assert_eq!(without_home_altitude(save(doc)), without_home_altitude(qt));
+    }
+
+    #[test]
+    fn an_appended_waypoint_takes_the_default_altitude_because_qt_never_looks_back_on_append() {
+        matches_qt(&insert_waypoint(&section(), 47.634, -122.089, -1, &QT_DEFAULTS), include_str!("../tests/fixtures/edit-A-by-qt.plan"));
+    }
+
+    #[test]
+    fn an_inserted_waypoint_copies_the_altitude_before_it() {
+        matches_qt(&insert_waypoint(&section(), 47.6335, -122.0885, 3, &QT_DEFAULTS), include_str!("../tests/fixtures/edit-B-by-qt.plan"));
+    }
+
+    #[test]
+    fn a_removed_item_renumbers_those_after_it() {
+        matches_qt(&remove(&section(), 2).unwrap(), include_str!("../tests/fixtures/edit-C-by-qt.plan"));
+        assert!(remove(&section(), 0).is_none(), "visual index zero is the mission settings item, which is never removed");
+        assert!(remove(&section(), 6).is_none());
+    }
+
+    #[test]
+    fn the_first_waypoint_of_an_empty_plan_puts_home_thirty_metres_north_of_it() {
+        let empty = Document { home: None, items: Vec::new(), ..section() };
+        let placed = insert_waypoint(&empty, 47.64, -122.1, -1, &QT_DEFAULTS);
+        matches_qt(&placed, include_str!("../tests/fixtures/edit-D-by-qt.plan"));
+        let home = placed.home.unwrap();
+        assert!((home[0] - 47.64026979617687).abs() < 1e-12 && home[1] == -122.1 && home[2] == 0.0);
     }
 
     #[test]

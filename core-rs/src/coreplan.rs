@@ -10,7 +10,10 @@ pub const SAVE: &str = "core.plan.save";
 pub const SEND: &str = "core.plan.send";
 pub const FETCH: &str = "core.plan.fetch";
 pub const STATUS: &str = "core.plan.status";
-const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS];
+pub const CORE_INSERT_WAYPOINT: &str = "core.plan.insertWaypoint";
+pub const CORE_REMOVE: &str = "core.plan.remove";
+const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE];
+const DEFAULT_ALTITUDE: &str = "settings.appSettings.defaultMissionItemAltitude";
 
 #[derive(Default)]
 struct Held {
@@ -32,19 +35,57 @@ fn first_text(args: &str) -> Option<String> {
     serde_json::from_str::<Value>(args).ok()?.get(0)?.as_str().map(str::to_string)
 }
 
-pub fn act(_backend: &dyn Backend, path: &str, args: &str) -> Value {
+pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
     match path {
         OPEN => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| open(&file)),
         SAVE => first_text(args).map_or_else(|| refused("Save needs a path to write the plan to."), |file| save(&file)),
         SEND => send(),
         FETCH => fetch(),
         STATUS => status(),
+        CORE_INSERT_WAYPOINT => insert_waypoint(backend, args),
+        CORE_REMOVE => remove(args),
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
 }
 
 fn held() -> std::sync::MutexGuard<'static, Held> {
     HELD.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
+    let mut state = held();
+    let Some(current) = state.document.as_ref() else {
+        return refused("There is no plan to edit.");
+    };
+    match change(current) {
+        Ok(changed) => {
+            let count = changed.items.len();
+            state.document = Some(changed);
+            json!({ "ok": true, "items": count })
+        }
+        Err(reason) => refused(reason),
+    }
+}
+
+fn insert_waypoint(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
+        return refused("A waypoint needs a latitude and a longitude.");
+    };
+    let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
+    let Some(altitude) = crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| Ok(plandoc::insert_waypoint(doc, latitude, longitude, index, &plandoc::EditDefaults { mission_item_altitude: altitude })))
+}
+
+fn remove(args: &str) -> Value {
+    let index = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0).and_then(Value::as_u64));
+    let Some(index) = index.and_then(|i| usize::try_from(i).ok()) else {
+        return refused("Remove needs the index of the item.");
+    };
+    edit(|doc| plandoc::remove(doc, index).ok_or_else(|| format!("This plan has no item {index} to remove.")))
 }
 
 fn open(file: &str) -> Value {
@@ -158,7 +199,7 @@ fn empty_document() -> Document {
         cruise_speed: 0.0,
         hover_speed: 0.0,
         global_altitude_mode: crate::altitudemodes::RELATIVE,
-        home: [0.0, 0.0, 0.0],
+        home: None,
         items: Vec::new(),
         fence: json!({ "circles": [], "polygons": [], "version": 2 }),
         rally: json!({ "points": [], "version": 2 }),
