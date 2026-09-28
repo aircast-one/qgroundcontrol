@@ -443,6 +443,7 @@ mod deps_cover_reads {
             ("links", include_str!("links.rs")),
             ("linkconnect", include_str!("linkconnect.rs")),
             ("landingpattern", include_str!("landingpattern.rs")),
+            ("vehiclefacade", include_str!("vehiclefacade.rs")),
             ("linkremove", include_str!("linkremove.rs")),
             ("mapclick", include_str!("mapclick.rs")),
             ("commandtree", include_str!("commandtree.rs")),

@@ -125,6 +125,7 @@ pub mod statustext;
 pub mod survey;
 pub mod landingpattern;
 pub mod structurescan;
+pub mod vehiclefacade;
 pub mod tilecache;
 pub mod surveydoc;
 pub mod surveygrid;

@@ -653,6 +653,10 @@ impl Vehicle {
         connect::Vehicle { px4, apm, fence_supported: self.capabilities & connect::CAP_MISSION_FENCE != 0 && proto >= PROTO_MAVLINK2, rally_supported: self.capabilities & connect::CAP_MISSION_RALLY != 0 && proto >= PROTO_MAVLINK2, max_proto_version: proto }
     }
 
+    pub fn parameters_ready(&self) -> bool {
+        self.params.ready()
+    }
+
     pub fn firmware(&self) -> Option<Firmware> {
         self.autopilot_version.as_ref().map(|v| connect::firmware_from(v, self.autopilot == crate::modes::AUTOPILOT_PX4))
     }

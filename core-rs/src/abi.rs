@@ -54,7 +54,7 @@ impl Backend for QtBackend {
     }
 }
 
-static CORE: LazyLock<Core<crate::settingsstore::Owner<QtBackend>>> = LazyLock::new(|| Core::new(crate::settingsstore::Owner(QtBackend)));
+static CORE: LazyLock<Core<crate::settingsstore::Owner<crate::vehiclefacade::Facade<QtBackend>>>> = LazyLock::new(|| Core::new(crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend))));
 static HEAD: Mutex<EventFn> = Mutex::new(None);
 
 fn c(text: &str) -> CString {
