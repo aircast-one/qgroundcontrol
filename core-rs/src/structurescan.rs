@@ -88,6 +88,32 @@ pub fn items(flight: &[Point], plan: &Plan) -> Vec<Item> {
         .collect()
 }
 
+pub fn saved_items(scan: &serde_json::Value) -> Result<Vec<Item>, String> {
+    let number = |value: &serde_json::Value, key: &str| value.get(key).and_then(serde_json::Value::as_f64);
+    let calc = scan.get("CameraCalc").ok_or("The structure scan has no camera settings.")?;
+    let structure: Vec<Point> = scan.get("polygon").and_then(serde_json::Value::as_array).map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default();
+    if structure.len() < 3 {
+        return Ok(Vec::new());
+    }
+    let flight = flight_polygon(&structure, number(calc, "DistanceToSurface").unwrap_or(0.0)).ok_or("The structure scan's flight path could not be laid around its structure.")?;
+    let plan = Plan {
+        adjusted_side: number(calc, "AdjustedFootprintSide").unwrap_or(0.0),
+        adjusted_frontal: number(calc, "AdjustedFootprintFrontal").unwrap_or(0.0),
+        entrance_alt: number(scan, "EntranceAltitude").unwrap_or(0.0),
+        scan_bottom_alt: number(scan, "ScanBottomAlt").unwrap_or(0.0),
+        structure_height: number(scan, "StructureHeight").unwrap_or(0.0),
+        layers: number(scan, "Layers").unwrap_or(1.0) as i64,
+        start_from_top: scan.get("StartFromTop").and_then(serde_json::Value::as_bool).unwrap_or(true),
+        gimbal_pitch: number(scan, "GimbalPitch").unwrap_or(0.0),
+        entry_vertex: 0,
+    };
+    Ok(items(&flight, &plan))
+}
+
+pub fn saved_item_json(item: &Item) -> serde_json::Value {
+    serde_json::json!({ "type": "SimpleItem", "autoContinue": true, "command": item.command, "frame": item.frame, "params": item.params })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

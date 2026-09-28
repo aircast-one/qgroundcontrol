@@ -75,6 +75,10 @@ fn expand(item: &Value) -> Result<Vec<Placed>, String> {
                     .iter()
                     .map(|inner| simple(inner).map(|placed| Placed { jump_id: None, ..placed }))
                     .collect(),
+                false if kind == "StructureScan" => crate::structurescan::saved_items(item)?
+                    .iter()
+                    .map(|inner| simple(&crate::structurescan::saved_item_json(inner)).map(|placed| Placed { jump_id: None, ..placed }))
+                    .collect(),
                 false => Err(format!("The core cannot build the mission items of a {kind} item yet.")),
             }
         }
@@ -157,9 +161,9 @@ mod tests {
     #[test]
     fn items_the_core_cannot_generate_are_refused_rather_than_skipped() {
         let plan = json!({ "mission": { "plannedHomePosition": [1.0, 2.0, 3.0], "items": [
-            { "type": "ComplexItem", "complexItemType": "StructureScan" },
+            { "type": "ComplexItem", "complexItemType": "FWLandingPattern" },
         ] } });
-        assert!(flatten(&plan).unwrap_err().contains("StructureScan"));
+        assert!(flatten(&plan).unwrap_err().contains("FWLandingPattern"));
     }
 }
 

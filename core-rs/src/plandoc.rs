@@ -114,6 +114,7 @@ fn load_item(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::C
             let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("").to_string();
             let item_count = match TRANSECT_STYLE.contains(&kind.as_str()) {
                 true => item.get("TransectStyleComplexItem").and_then(|t| t.get("Items")).and_then(Value::as_array).map(Vec::len).ok_or_else(|| format!("The {kind} item has no saved mission items."))?,
+                false if kind == "StructureScan" => crate::structurescan::saved_items(item)?.len(),
                 false => return Err(format!("The core cannot hold a {kind} item yet.")),
             };
             Ok(Item::Complex { kind, json: item.clone(), item_count })
@@ -859,7 +860,7 @@ mod tests {
 
     #[test]
     fn an_item_the_core_cannot_hold_refuses_the_whole_plan() {
-        let plan = json!({ "fileType": "Plan", "mission": { "plannedHomePosition": [0, 0, 0], "items": [{ "type": "ComplexItem", "complexItemType": "StructureScan" }] } });
-        assert!(load(&plan.to_string()).unwrap_err().contains("StructureScan"));
+        let plan = json!({ "fileType": "Plan", "mission": { "plannedHomePosition": [0, 0, 0], "items": [{ "type": "ComplexItem", "complexItemType": "FWLandingPattern" }] } });
+        assert!(load(&plan.to_string()).unwrap_err().contains("FWLandingPattern"));
     }
 }
