@@ -37,10 +37,10 @@ impl Backend for QtBackend {
         unsafe { qgc_qt_watch(c(&paths.join(",")).as_ptr()) }
     }
     fn core_guided(&self, action: &serde_json::Value) -> Option<Result<(), String>> {
-        let vehicle = action.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+        let vehicle = action.get("vehicle").and_then(serde_json::Value::as_u64).and_then(|id| u8::try_from(id).ok())?;
         let mut hub = crate::hub::lock();
-        vehicle.filter(|id| hub.carries(*id))?;
-        let started = hub.guided(vehicle, action, crate::hub::now_ms());
+        hub.carries(vehicle).then_some(())?;
+        let started = hub.guided(Some(vehicle), action, crate::hub::now_ms());
         drop(hub);
         Some(started.map(|outbound| {
             start_pump();

@@ -842,6 +842,10 @@ impl Vehicle {
             "land" => guidedcmd::land(&state),
             "speed" => guidedcmd::change_speed(flag("ground"), number("metresPerSecond")),
             "arm" => Plan::Steps(vec![guidedcmd::arm(flag("arm"), flag("force"))]),
+            "emergencyStop" => guidedcmd::emergency_stop(),
+            "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
+            "gripper" => guidedcmd::gripper(number("gripAction")),
+            "cancelRoi" => guidedcmd::cancel_roi(&state),
             "setMode" => guidedcmd::set_mode(&state, action.get("mode").and_then(Value::as_str).unwrap_or("")).map(Plan::Steps).unwrap_or_else(|| Plan::Refused("Unknown flight mode".to_string())),
             other => Plan::Refused(format!("Unknown guided action {other:?}")),
         }

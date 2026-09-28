@@ -398,18 +398,26 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
         Ok(args) => args,
         Err(reason) => return json!({ "ok": false, "refusal": "malformed", "reason": reason }),
     };
-    let state = match offered {
-        [Action::EmergencyStop] => GuidedState {
-            connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
-            armed: flag(&object(&backend.get_fields("vehicle", "armed")), "armed"),
-            ..GuidedState::default()
-        },
-        _ => read_state(backend),
+    let (state, vehicle) = match offered {
+        [Action::EmergencyStop] => {
+            let read = object(&backend.get_fields("vehicle", "armed,id"));
+            let state = GuidedState {
+                connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
+                armed: flag(&read, "armed"),
+                ..GuidedState::default()
+            };
+            (state, integer(&read, "id"))
+        }
+        _ => (read_state(backend), active_id(backend)),
     };
     if let Some((token, reason)) = invoke_refusal(offered, &state) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
-    dispatch(backend, core_action(offered, &args), path, &args)
+    dispatch(backend, core_action(offered, &args), vehicle, path, &args)
+}
+
+fn active_id(backend: &dyn Backend) -> Option<i64> {
+    integer(&object(&backend.get_fields("vehicle", "id")), "id")
 }
 
 fn core_action(offered: &[Action], args: &str) -> Option<Value> {
@@ -419,6 +427,10 @@ fn core_action(offered: &[Action], args: &str) -> Option<Value> {
         [Action::Land] => Some(json!({ "action": "land" })),
         [Action::ForceArm] => Some(json!({ "action": "arm", "arm": true, "force": true })),
         [Action::Pause] => Some(json!({ "action": "pause" })),
+        [Action::EmergencyStop] => Some(json!({ "action": "emergencyStop" })),
+        [Action::CancelRoi] => Some(json!({ "action": "cancelRoi" })),
+        [Action::LandAbort] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "abortLanding", "climbOut": metres })),
+        [Action::Grab] | [Action::Release] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip })),
         [Action::Takeoff] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "takeoff", "altitude": metres })),
         [Action::ChangeAltitude] | [Action::Pause, Action::ChangeAltitude] => given.get(0).and_then(Value::as_f64).map(|delta| json!({
             "action": "changeAltitude",
@@ -429,9 +441,9 @@ fn core_action(offered: &[Action], args: &str) -> Option<Value> {
     }
 }
 
-fn dispatch(backend: &dyn Backend, core: Option<Value>, path: &str, args: &str) -> Value {
-    let on_core = core.and_then(|mut action| {
-        action["vehicle"] = object(&backend.get_fields("vehicle", "id")).get("id").cloned().unwrap_or(Value::Null);
+fn dispatch(backend: &dyn Backend, core: Option<Value>, vehicle: Option<i64>, path: &str, args: &str) -> Value {
+    let on_core = core.zip(vehicle).and_then(|(mut action, id)| {
+        action["vehicle"] = json!(id);
         backend.core_guided(&action)
     });
     let (dispatched, reason) = match on_core {
@@ -510,7 +522,7 @@ pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str
         Ok(checked) => checked,
         Err((token, reason)) => return json!({ "ok": false, "refusal": token, "reason": reason }),
     };
-    dispatch(backend, core_action(&offered, &forwarded), path, &forwarded)
+    dispatch(backend, core_action(&offered, &forwarded), active_id(backend), path, &forwarded)
 }
 
 pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -998,16 +1010,16 @@ mod core_route {
     #[test]
     fn a_vehicle_the_core_carries_is_commanded_by_the_core_and_qt_is_never_asked() {
         let hub = Hubbed::new(Some(Ok(())));
-        let answered = dispatch(&hub, core_action(&[Action::Rtl], "[true]"), "vehicle.guidedModeRTL", "[true]");
+        let answered = dispatch(&hub, core_action(&[Action::Rtl], "[true]"), Some(7), "vehicle.guidedModeRTL", "[true]");
         assert_eq!(answered["ok"], true);
         assert!(hub.invoked.borrow().is_empty(), "sending on both routes would command the vehicle twice");
-        assert_eq!(hub.asked.borrow()[0], json!({ "action": "rtl", "smart": true, "vehicle": 7 }));
+        assert_eq!(hub.asked.borrow()[0], json!({ "action": "rtl", "smart": true, "vehicle": 7 }), "the hub is told which vehicle Qt has active, so it never commands a different one it happens to carry");
     }
 
     #[test]
     fn the_hubs_refusal_is_the_answer_rather_than_a_fallback_to_qt() {
         let hub = Hubbed::new(Some(Err("A guided action is still running.".to_string())));
-        let answered = dispatch(&hub, core_action(&[Action::Land], "[]"), "vehicle.guidedModeLand", "[]");
+        let answered = dispatch(&hub, core_action(&[Action::Land], "[]"), Some(7), "vehicle.guidedModeLand", "[]");
         assert_eq!(answered["ok"], false);
         assert_eq!(answered["reason"], "A guided action is still running.");
         assert!(hub.invoked.borrow().is_empty(), "a refused core command retried through Qt would be sent anyway");
@@ -1016,13 +1028,21 @@ mod core_route {
     #[test]
     fn a_vehicle_on_a_qt_link_is_still_commanded_through_qt() {
         let hub = Hubbed::new(None);
-        assert_eq!(dispatch(&hub, core_action(&[Action::Rtl], "[false]"), "vehicle.guidedModeRTL", "[false]")["ok"], true);
+        assert_eq!(dispatch(&hub, core_action(&[Action::Rtl], "[false]"), Some(7), "vehicle.guidedModeRTL", "[false]")["ok"], true);
         assert_eq!(*hub.invoked.borrow(), vec!["vehicle.guidedModeRTL".to_string()]);
     }
 
     #[test]
+    fn an_unknown_active_vehicle_is_never_guessed_at_by_the_core() {
+        let hub = Hubbed::new(Some(Ok(())));
+        assert_eq!(dispatch(&hub, core_action(&[Action::Land], "[]"), None, "vehicle.guidedModeLand", "[]")["ok"], true);
+        assert!(hub.asked.borrow().is_empty());
+        assert_eq!(*hub.invoked.borrow(), vec!["vehicle.guidedModeLand".to_string()]);
+    }
+
+    #[test]
     fn actions_the_hub_cannot_plan_never_reach_it() {
-        [Action::EmergencyStop, Action::LandAbort, Action::StartMission, Action::CancelRoi]
+        [Action::StartMission, Action::ContinueMission, Action::ResumeMission]
             .iter()
             .for_each(|action| assert_eq!(core_action(&[*action], "[50]"), None, "{action:?}"));
     }
@@ -1032,5 +1052,7 @@ mod core_route {
         assert_eq!(core_action(&[Action::Takeoff], "[12.5]"), Some(json!({ "action": "takeoff", "altitude": 12.5 })));
         assert_eq!(core_action(&[Action::Pause, Action::ChangeAltitude], "[-3.0,true]"), Some(json!({ "action": "changeAltitude", "delta": -3.0, "pause": true })));
         assert_eq!(core_action(&[Action::ForceArm], "[]"), Some(json!({ "action": "arm", "arm": true, "force": true })));
+        assert_eq!(core_action(&[Action::LandAbort], "[50.0]"), Some(json!({ "action": "abortLanding", "climbOut": 50.0 })));
+        assert_eq!(core_action(&[Action::Release], "[0]"), Some(json!({ "action": "gripper", "gripAction": 0.0 })));
     }
 }

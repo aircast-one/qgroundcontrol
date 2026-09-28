@@ -4,6 +4,9 @@ pub const CMD_NAV_TAKEOFF: u16 = 22;
 pub const CMD_DO_SET_MODE: u16 = 176;
 pub const CMD_DO_CHANGE_SPEED: u16 = 178;
 pub const CMD_DO_REPOSITION: u16 = 192;
+pub const CMD_DO_GO_AROUND: u16 = 191;
+pub const CMD_DO_SET_ROI_NONE: u16 = 197;
+pub const CMD_DO_GRIPPER: u16 = 211;
 pub const CMD_COMPONENT_ARM_DISARM: u16 = 400;
 pub const REPOSITION_CHANGE_MODE: f64 = 1.0;
 pub const FRAME_GLOBAL: u8 = 0;
@@ -193,6 +196,29 @@ pub fn change_speed(ground: bool, metres_per_second: f64) -> Plan {
 
 pub fn arm(arm: bool, force: bool) -> Step {
     Step::Command { command: CMD_COMPONENT_ARM_DISARM, params: [if arm { 1.0 } else { 0.0 }, if force { ARM_MAGIC } else { 0.0 }, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }
+}
+
+pub fn emergency_stop() -> Plan {
+    Plan::Steps(vec![arm(false, true)])
+}
+
+pub fn abort_landing(climb_out: f64) -> Plan {
+    match climb_out.is_finite() {
+        true => Plan::Steps(vec![Step::Command { command: CMD_DO_GO_AROUND, params: [climb_out, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+        false => Plan::Refused("Abort Landing needs a climb-out height.".into()),
+    }
+}
+
+pub fn gripper(action: f64) -> Plan {
+    match action {
+        0.0 | 1.0 => Plan::Steps(vec![Step::Command { command: CMD_DO_GRIPPER, params: [0.0, action, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+        _ => Plan::Refused("The gripper is sent 1 to grab or 0 to release.".into()),
+    }
+}
+
+pub fn cancel_roi(state: &VehicleState) -> Plan {
+    let command_int = state.capabilities & CAP_COMMAND_INT != 0;
+    Plan::Steps(vec![Step::Command { command: CMD_DO_SET_ROI_NONE, params: [nan(); 7], command_int, frame: FRAME_GLOBAL, show_error: true }])
 }
 
 #[cfg(test)]
