@@ -193,11 +193,18 @@ fn cameras() -> Vec<Value> {
     serde_json::from_str::<Value>(CAMERA_LIST).ok().and_then(|v| v.get("cameraMetaData").and_then(Value::as_array).cloned()).unwrap_or_default()
 }
 
+fn known_camera<'a>(known: &'a [Value], name: &str) -> Option<&'a Value> {
+    known.iter().find(|c| c.get("canonicalName").and_then(Value::as_str) == Some(name))
+}
+
 pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
     let calc = survey.get("TransectStyleComplexItem").and_then(|t| t.get("CameraCalc")).cloned().unwrap_or(Value::Null);
-    let brand = calc.get("CameraName").and_then(Value::as_str).unwrap_or(MANUAL_CAMERA).to_string();
-    let custom = brand == CUSTOM_CAMERA;
+    let name = calc.get("CameraName").and_then(Value::as_str).unwrap_or(MANUAL_CAMERA).to_string();
     let known = cameras();
+    let listed = known_camera(&known, &name);
+    let brand = listed.and_then(|c| c.get("brand").and_then(Value::as_str)).map_or_else(|| name.clone(), str::to_string);
+    let model = listed.and_then(|c| c.get("model").and_then(Value::as_str)).unwrap_or("").to_string();
+    let custom = name == CUSTOM_CAMERA;
     let brands: Vec<String> = [MANUAL_CAMERA.to_string(), CUSTOM_CAMERA.to_string()]
         .into_iter()
         .chain(known.iter().filter_map(|c| c.get("brand").and_then(Value::as_str).map(str::to_string)))
@@ -216,7 +223,7 @@ pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
         .collect();
     json!({
         "brand": brand,
-        "model": calc.get("CameraModel").and_then(Value::as_str).unwrap_or(""),
+        "model": model,
         "brands": brands,
         "models": models,
         "manualName": MANUAL_CAMERA,
@@ -278,7 +285,52 @@ fn recalculated(calc: &Value) -> Value {
     )
 }
 
+const SPECS: [(&str, &str); 8] = [("SensorWidth", "sensorWidth"), ("SensorHeight", "sensorHeight"), ("ImageWidth", "imageWidth"), ("ImageHeight", "imageHeight"), ("FocalLength", "focalLength"), ("Landscape", "landscape"), ("FixedOrientation", "fixedOrientation"), ("MinTriggerInterval", "minTriggerInterval")];
+
+fn named_camera(calc: &Value, name: &str) -> Value {
+    let known = cameras();
+    let mut changed = calc.clone();
+    changed["CameraName"] = json!(name);
+    match known_camera(&known, name) {
+        Some(camera) => SPECS.iter().for_each(|(key, spec)| changed[*key] = camera.get(*spec).cloned().unwrap_or(Value::Null)),
+        None => {
+            changed["FixedOrientation"] = json!(false);
+            changed["MinTriggerInterval"] = json!(0);
+            if name == MANUAL_CAMERA {
+                changed["ValueSetIsDistance"] = json!(true);
+            }
+        }
+    }
+    let mut settled = recalculated(&changed);
+    if name != MANUAL_CAMERA && settled.get("DistanceMode").and_then(Value::as_i64) == Some(crate::altitudemodes::ABSOLUTE) {
+        settled["DistanceMode"] = json!(crate::altitudemodes::RELATIVE);
+    }
+    settled
+}
+
+fn chosen_camera(calc: &Value, suffix: &str, value: &Value) -> Option<String> {
+    let known = cameras();
+    let wanted = value.as_str()?;
+    match suffix {
+        "cameraCalc.cameraBrand" if wanted == MANUAL_CAMERA || wanted == CUSTOM_CAMERA => Some(wanted.to_string()),
+        "cameraCalc.cameraBrand" => known.iter().find(|c| c.get("brand").and_then(Value::as_str) == Some(wanted)).and_then(|c| c.get("canonicalName")?.as_str().map(str::to_string)),
+        "cameraCalc.cameraModel" => {
+            let current = calc.get("CameraName").and_then(Value::as_str).unwrap_or("");
+            let brand = known_camera(&known, current)?.get("brand")?.as_str()?.to_string();
+            known.iter().find(|c| c.get("brand").and_then(Value::as_str) == Some(brand.as_str()) && c.get("model").and_then(Value::as_str) == Some(wanted)).and_then(|c| c.get("canonicalName")?.as_str().map(str::to_string))
+        }
+        _ => None,
+    }
+}
+
 pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
+    if suffix == "cameraCalc.cameraBrand" || suffix == "cameraCalc.cameraModel" {
+        let calc = &survey["TransectStyleComplexItem"]["CameraCalc"];
+        let name = chosen_camera(calc, suffix, value)?;
+        let mut changed = survey.clone();
+        changed["TransectStyleComplexItem"]["CameraCalc"] = named_camera(calc, &name);
+        return Some(regenerate(&changed));
+    }
     let (owner, key) = target(suffix)?;
     let mut changed = survey.clone();
     match owner {
@@ -317,6 +369,23 @@ mod tests {
         let turned = set(&survey, "gridAngle", &json!(0.0)).unwrap();
         assert_eq!(turned["angle"], 0.0);
         assert!(set(&survey, "noSuchField", &json!(1)).is_none());
+    }
+
+    #[test]
+    fn choosing_a_known_camera_takes_its_optics_from_the_database() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let survey = plan["mission"]["items"][0].clone();
+        let sony = set(&survey, "cameraCalc.cameraBrand", &json!("Sony")).unwrap();
+        let calc = &sony["TransectStyleComplexItem"]["CameraCalc"];
+        let first = cameras().into_iter().find(|c| c["brand"] == "Sony").unwrap();
+        assert_eq!(calc["CameraName"], first["canonicalName"]);
+        assert_eq!(calc["SensorWidth"], first["sensorWidth"]);
+        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+        let described = camera(&sony, "p", &Units { vertical: &metres, horizontal: &metres });
+        assert_eq!((described["brand"].as_str(), described["model"].as_str()), (Some("Sony"), first["model"].as_str()));
+        let manual = set(&sony, "cameraCalc.cameraBrand", &json!(MANUAL_CAMERA)).unwrap();
+        assert_eq!(manual["TransectStyleComplexItem"]["CameraCalc"]["ValueSetIsDistance"], true);
+        assert!(set(&survey, "cameraCalc.cameraModel", &json!("anything")).is_none(), "a custom camera has no models to pick from");
     }
 
     #[test]
