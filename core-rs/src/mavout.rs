@@ -120,7 +120,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
         Outbound::MissionCount { target, plan, count } => Some(MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count: *count, target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)?, opaque_id: 0 })),
         Outbound::MissionAck { target, plan, result } => Some(MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: target.0, target_component: target.1, mavtype: MavMissionResult::from_u8(*result)?, mission_type: plan_type(*plan)?, opaque_id: 0 })),
         Outbound::MissionItemInt { target, plan, item } => {
-            let scale = |v: f64| if item.frame == crate::plantransfer::FRAME_MISSION { v as i32 } else { (v * 1e7).round() as i32 };
+            let scale = |v: f64| if item.frame == crate::plantransfer::FRAME_MISSION { v as i32 } else { (v * 1e7) as i32 };
             Some(MavMessage::MISSION_ITEM_INT(MISSION_ITEM_INT_DATA {
                 param1: item.params[0] as f32,
                 param2: item.params[1] as f32,
@@ -232,6 +232,14 @@ mod tests {
 
     fn decode(bytes: &[u8]) -> (MavHeader, MavMessage) {
         read_versioned_msg::<MavMessage, _>(&mut mavlink::peek_reader::PeekReader::new(bytes), ReadVersion::Single(MavlinkVersion::V2)).unwrap()
+    }
+
+    #[test]
+    fn a_mission_coordinate_is_truncated_toward_zero_as_qt_passes_it_to_an_int32() {
+        let item = crate::plantransfer::Item { seq: 1, frame: 3, command: 16, current: false, auto_continue: true, params: [0.0, 0.0, 0.0, f64::NAN, 47.63311996, -35.36193628, 20.0] };
+        let bytes = encode(0, &Outbound::MissionItemInt { target: (1, 1), plan: crate::plantransfer::PLAN_MISSION, item }).unwrap();
+        let MavMessage::MISSION_ITEM_INT(sent) = decode(&bytes).1 else { panic!() };
+        assert_eq!((sent.x, sent.y), (476331199, -353619362), "PlanManager hands param5 * 1e7 to mission_item_int_pack's int32_t, so 476331199.6 goes out as ...199, never rounded to ...200 (captured from Qt against SITL)");
     }
 
     #[test]

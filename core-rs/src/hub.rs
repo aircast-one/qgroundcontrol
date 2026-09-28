@@ -459,6 +459,19 @@ impl Vehicle {
         Some(plantransfer::Fence { polygons, circles, breach_return })
     }
 
+    pub fn write_mission(&mut self, items: Vec<plantransfer::Item>, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        let plan = &mut self.plans[PLAN_MISSION as usize];
+        if plan.transfer.in_progress() {
+            return Err("A plan transfer is still in progress.".to_string());
+        }
+        let outs = plan.transfer.write(items);
+        Ok(self.follow_plan(PLAN_MISSION, outs, now_ms))
+    }
+
+    pub fn sends_home(&self) -> bool {
+        self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT
+    }
+
     pub fn mission_request(&mut self, request: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
         let kind = match request.get("plan").and_then(Value::as_str).unwrap_or("mission") {
             "mission" => PLAN_MISSION,
@@ -1379,6 +1392,13 @@ impl Hub {
         vehicle.parameter_request(request, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
     }
 
+    pub fn write_mission(&mut self, id: Option<u8>, items: Vec<plantransfer::Item>, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
+        let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
+        let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
+        let link = vehicle.link;
+        vehicle.write_mission(items, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
+    }
+
     pub fn mission_request(&mut self, id: Option<u8>, request: &Value, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
         let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
         let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
@@ -1956,23 +1976,25 @@ mod tests {
             { "frame": 2, "command": 177, "params": [1, 2, 0, 0, 0, 0, 0] }
         ]);
         let started = hub.mission_request(None, &json!({ "action": "write", "items": items }), 10_000).unwrap();
-        assert!(matches!(decode(&started[0].1), MavMessage::MISSION_COUNT(c) if c.count == 2), "ArduPilot does not take the home item");
+        assert!(matches!(decode(&started[0].1), MavMessage::MISSION_COUNT(c) if c.count == 3), "ArduPilot is sent the planned home as item zero, as Qt's PlanManager sends it");
         assert!(hub.mission_request(None, &json!({ "action": "load" }), 10_000).is_err(), "one transfer at a time");
         let request = |seq: u16| MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq, target_system: 255, target_component: 190, ..Default::default() });
         let first = hub.on_frame(origin(4), &autopilot, &request(0), 10_100_000, 10_100);
-        assert!(matches!(decode(&first[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0 && i.current == 1 && i.x == 471000000));
-        let second = hub.on_frame(origin(4), &autopilot, &request(1), 10_200_000, 10_200);
-        assert!(matches!(decode(&second[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 1 && i.param1 == 0.0), "the jump target follows the dropped home item");
+        assert!(matches!(decode(&first[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0 && i.current == 1 && i.x == 470000000));
+        let second = hub.on_frame(origin(4), &autopilot, &request(1), 10_150_000, 10_150);
+        assert!(matches!(decode(&second[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 1 && i.x == 471000000));
+        let third = hub.on_frame(origin(4), &autopilot, &request(2), 10_200_000, 10_200);
+        assert!(matches!(decode(&third[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 2 && i.param1 == 1.0), "with home sent, the jump target keeps its sequence");
         hub.on_frame(origin(4), &autopilot, &MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: 255, target_component: 190, mavtype: MavMissionResult::MAV_MISSION_ACCEPTED, ..Default::default() }), 10_300_000, 10_300);
         let mission = hub.active().unwrap().mission_snapshot()["mission"].clone();
-        assert_eq!((mission["inProgress"].as_bool(), mission["count"].as_u64(), mission["error"].is_null()), (Some(false), Some(2), true));
+        assert_eq!((mission["inProgress"].as_bool(), mission["count"].as_u64(), mission["error"].is_null()), (Some(false), Some(3), true));
         assert!(hub.tick(12_000).is_empty());
         assert!(hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0 }] }), 12_000).is_err());
         assert!(hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0, "command": 16, "params": [0, "x", 0, 0, 47, 8, 50] }] }), 12_000).is_err(), "a non-numeric param is refused before anything is sent");
         assert!(hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0, "command": 65000, "params": [0, 0, 0, 0, 47, 8, 50] }] }), 12_000).is_err(), "a command the dialect cannot name is refused");
         assert!(hub.mission_request(None, &json!({ "action": "write", "items": [] }), 12_000).is_err());
         let again = hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0, "command": 16, "params": [0, 0, 0, 0, 47.0, 8.0, 0] }, { "frame": 3, "command": 16, "params": [0, 0, 0, 0, 47.2, 8.2, 60] }] }), 13_000).unwrap();
-        assert!(matches!(decode(&again[0].1), MavMessage::MISSION_COUNT(c) if c.count == 1));
+        assert!(matches!(decode(&again[0].1), MavMessage::MISSION_COUNT(c) if c.count == 2));
         use mavlink::dialects::ardupilotmega::MISSION_REQUEST_DATA;
         let plain = hub.on_frame(origin(4), &autopilot, &MavMessage::MISSION_REQUEST(MISSION_REQUEST_DATA { seq: 0, target_system: 0, target_component: 190, ..Default::default() }), 13_100_000, 13_100);
         assert!(matches!(decode(&plain[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0), "the float request form and a broadcast target are served too");

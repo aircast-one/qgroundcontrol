@@ -165,7 +165,7 @@ fn result_text(result: u8) -> String {
 
 impl Transfer {
     pub fn new(apm: bool, plan_type: u8) -> Transfer {
-        Transfer { plan_type, apm, skip_first: apm && plan_type == PLAN_MISSION, ..Transfer::default() }
+        Transfer { plan_type, apm, skip_first: !apm && plan_type == PLAN_MISSION, ..Transfer::default() }
     }
 
     pub fn in_progress(&self) -> bool {
@@ -406,11 +406,15 @@ mod tests {
     }
 
     #[test]
-    fn a_write_skips_the_home_item_on_ardupilot_and_serves_requests_until_the_ack() {
-        let mut transfer = Transfer::new(true, PLAN_MISSION);
+    fn a_write_skips_the_home_item_on_px4_and_serves_requests_until_the_ack() {
+        let mut ardupilot = Transfer::new(true, PLAN_MISSION);
         let jump = Item { command: CMD_DO_JUMP, params: [3.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], ..waypoint(2, 0.0) };
+        assert!(ardupilot.write(vec![waypoint(0, 0.0), waypoint(1, 47.0), jump.clone()]).contains(&Out::SendCount(3)), "ArduPilot is sent the planned home as item zero (APMFirmwarePlugin::sendHomePositionToVehicle is true), and without it the first real item would land in the slot ArduPilot overwrites with home");
+        let kept = ardupilot.on_request(2);
+        assert!(matches!(kept.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.params[0] == 3.0), "with home sent, a jump target keeps its sequence");
+        let mut transfer = Transfer::new(false, PLAN_MISSION);
         let started = transfer.write(vec![waypoint(0, 0.0), waypoint(1, 47.0), jump]);
-        assert!(started.contains(&Out::SendCount(2)), "the home item is not sent to ArduPilot");
+        assert!(started.contains(&Out::SendCount(2)), "the home item is not sent to PX4");
         let first = transfer.on_request(0);
         assert!(matches!(first.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.seq == 0 && item.current && item.params[4] == 47.0));
         let second = transfer.on_request(1);
@@ -418,10 +422,10 @@ mod tests {
         let done = transfer.on_ack(RESULT_ACCEPTED);
         assert!(matches!(done.last(), Some(Out::Done { success: true, .. })));
         assert_eq!(transfer.items.len(), 2, "a successful write becomes the known mission");
-        let mut refused = Transfer::new(false, PLAN_MISSION);
+        let mut refused = Transfer::new(true, PLAN_MISSION);
         refused.write(vec![waypoint(0, 0.0)]);
         assert!(matches!(refused.on_ack(4).last(), Some(Out::Done { success: false, error }) if error.contains("storage")));
-        let mut outside = Transfer::new(false, PLAN_MISSION);
+        let mut outside = Transfer::new(true, PLAN_MISSION);
         outside.write(vec![waypoint(0, 0.0)]);
         assert!(matches!(outside.on_request(7).last(), Some(Out::Done { success: false, error }) if error.contains("outside range")));
     }
@@ -434,17 +438,21 @@ mod tests {
         let retried: Vec<Vec<Out>> = (0..6).map(|_| transfer.on_timeout()).collect();
         assert!(retried.iter().all(|r| r.contains(&Out::RequestItem(0)) && timer(r) == Some(ITEM_TIMEOUT_MS)));
         assert!(matches!(transfer.on_timeout().last(), Some(Out::Done { success: false, error }) if error.contains("Mission read failed")));
-        let mut reading = Transfer::new(true, PLAN_MISSION);
-        reading.load();
-        reading.on_count(1);
         let jump = Item { command: CMD_DO_JUMP, params: [3.7, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], ..waypoint(0, 0.0) };
-        reading.on_item(jump);
-        assert_eq!(reading.items[0].params[0], 4.0, "a jump read from ArduPilot moves up past the home item the head shows");
-        let mut early = Transfer::new(false, PLAN_MISSION);
+        let read_jump = |apm: bool| {
+            let mut reading = Transfer::new(apm, PLAN_MISSION);
+            reading.load();
+            reading.on_count(1);
+            reading.on_item(jump.clone());
+            reading.items[0].params[0]
+        };
+        assert_eq!(read_jump(false), 4.0, "a jump read from PX4 moves up past the home item the plan puts in front of it");
+        assert_eq!(read_jump(true), 3.7, "ArduPilot's list already holds home at zero, so its jumps are read as sent");
+        let mut early = Transfer::new(true, PLAN_MISSION);
         early.write(vec![waypoint(0, 0.0), waypoint(1, 1.0)]);
         early.on_request(0);
         assert!(matches!(early.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: false, error }) if error.contains("before requesting every item")));
-        let mut stalled = Transfer::new(false, PLAN_MISSION);
+        let mut stalled = Transfer::new(true, PLAN_MISSION);
         stalled.write(vec![waypoint(0, 0.0), waypoint(1, 1.0)]);
         stalled.on_request(0);
         assert!(matches!(stalled.on_timeout().last(), Some(Out::Done { success: false, error }) if error.contains("did not request all items")));

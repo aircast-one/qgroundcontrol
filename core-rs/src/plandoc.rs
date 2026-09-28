@@ -2,7 +2,9 @@ use serde_json::{Map, Value, json};
 
 use crate::cmdinfo::{self, Firmware, VehicleClass};
 
+const FRAME_GLOBAL: i64 = 0;
 const FRAME_GLOBAL_RELATIVE_ALT: i64 = 3;
+const FRAME_GLOBAL_TERRAIN_ALT: i64 = 10;
 const TRANSECT_STYLE: &[&str] = &["survey", "CorridorScan"];
 const FENCE_VERSION: i64 = 2;
 const RALLY_VERSION: i64 = 2;
@@ -153,6 +155,50 @@ fn load_simple(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo:
     })
 }
 
+pub struct Downloaded {
+    pub frame: i64,
+    pub command: i64,
+    pub params: [f64; 7],
+    pub auto_continue: bool,
+}
+
+pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document) -> Document {
+    let commands = cmdinfo::tree(firmware(template.firmware_type), vehicle_class(template.vehicle_type));
+    let fake_home = items.first().filter(|_| sends_home);
+    let home = fake_home
+        .filter(|h| h.params[4] != 0.0 || h.params[5] != 0.0)
+        .map(|h| [h.params[4], h.params[5], h.params[6]])
+        .unwrap_or(template.home);
+    let listed = &items[usize::from(fake_home.is_some())..];
+    let simple = |item: &Downloaded| {
+        let specifies_altitude = commands.get(&item.command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
+        Item::Simple(Simple {
+            command: item.command,
+            frame: item.frame,
+            params: item.params.map(|p| Some(p).filter(|p| !p.is_nan())),
+            auto_continue: item.auto_continue,
+            altitude: specifies_altitude.then(|| Altitude {
+                mode: match item.frame {
+                    FRAME_GLOBAL_TERRAIN_ALT => crate::altitudemodes::TERRAIN_FRAME,
+                    FRAME_GLOBAL => crate::altitudemodes::ABSOLUTE,
+                    _ => crate::altitudemodes::RELATIVE,
+                },
+                altitude: item.params[6],
+                amsl_above_terrain: None,
+            }),
+        })
+    };
+    Document {
+        home,
+        items: listed.iter().map(simple).collect(),
+        global_altitude_mode: match listed.is_empty() {
+            true => crate::altitudemodes::RELATIVE,
+            false => crate::altitudemodes::MIXED,
+        },
+        ..template.clone()
+    }
+}
+
 pub fn save(doc: &Document) -> Value {
     let starts = doc.items.iter().scan(1usize, |next, item| {
         let start = *next;
@@ -245,8 +291,8 @@ mod tests {
     #[test]
     fn a_loaded_document_flattens_to_the_same_upload_as_the_file() {
         let text = include_str!("../tests/fixtures/survey-upload.plan");
-        let from_doc = crate::planitems::flatten(&save(&load(text).unwrap()), true).unwrap();
-        let from_file = crate::planitems::flatten(&serde_json::from_str(text).unwrap(), true).unwrap();
+        let from_doc = crate::planitems::flatten(&save(&load(text).unwrap())).unwrap();
+        let from_file = crate::planitems::flatten(&serde_json::from_str(text).unwrap()).unwrap();
         assert_eq!(format!("{from_doc:?}"), format!("{from_file:?}"));
     }
 

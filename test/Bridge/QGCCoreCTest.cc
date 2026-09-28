@@ -1013,15 +1013,17 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     const QJsonObject writing = take(qgc_core_mission("{\"vehicle\":11,\"action\":\"write\",\"items\":[{\"frame\":0,\"command\":16,\"params\":[0,0,0,0,47.0,8.0,0]},{\"frame\":3,\"command\":16,\"params\":[0,0,0,0,47.2,8.2,60]}]}"));
     QVERIFY2(writing.value(QStringLiteral("ok")).toBool(false), qPrintable(writing.value(QStringLiteral("reason")).toString()));
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_COUNT, 0), "no mission count reached the peer");
-    mavlink_message_t request{};
-    mavlink_msg_mission_request_int_pack(11, 1, &request, 255, MAV_COMP_ID_MISSIONPLANNER, 0, MAV_MISSION_TYPE_MISSION);
-    send(request);
-    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_ITEM_INT, 0), "the requested item did not reach the peer");
+    for (const uint16_t seq : {uint16_t{0}, uint16_t{1}}) {
+        mavlink_message_t request{};
+        mavlink_msg_mission_request_int_pack(11, 1, &request, 255, MAV_COMP_ID_MISSIONPLANNER, seq, MAV_MISSION_TYPE_MISSION);
+        send(request);
+        QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_ITEM_INT, 0), "the requested item did not reach the peer");
+    }
     mavlink_message_t accepted{};
     mavlink_msg_mission_ack_pack(11, 1, &accepted, 255, MAV_COMP_ID_MISSIONPLANNER, MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION, 0);
     send(accepted);
     const auto missionCount = []() { return take(qgc_bridge_get("view.coreMission(11)")).value(QStringLiteral("plans")).toObject().value(QStringLiteral("mission")).toObject().value(QStringLiteral("count")).toInt(-1); };
-    QTRY_COMPARE_WITH_TIMEOUT(missionCount(), 1, 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(missionCount(), 2, 3000);
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);

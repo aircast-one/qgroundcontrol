@@ -19,7 +19,7 @@ struct Placed {
     jump_id: Option<i64>,
 }
 
-pub fn flatten(plan: &Value, send_home: bool) -> Result<Vec<UploadItem>, String> {
+pub fn flatten(plan: &Value) -> Result<Vec<UploadItem>, String> {
     let mission = plan.get("mission").ok_or("The plan has no mission.")?;
     let home = mission
         .get("plannedHomePosition")
@@ -40,17 +40,13 @@ pub fn flatten(plan: &Value, send_home: bool) -> Result<Vec<UploadItem>, String>
         .enumerate()
         .map(|(seq, placed)| Placed { item: UploadItem { seq, ..placed.item }, ..placed })
         .collect();
-    let resolved = placed
+    placed
         .iter()
         .map(|p| match p.item.command {
             CMD_DO_JUMP => jump_target(&placed, p.item.params[0]).map(|target| UploadItem { params: with_first(p.item.params, target as f64), ..p.item.clone() }),
             _ => Ok(p.item.clone()),
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(match send_home {
-        true => resolved,
-        false => resolved.into_iter().skip(1).enumerate().map(|(seq, item)| UploadItem { seq, ..item }).collect(),
-    })
+        .collect()
 }
 
 fn jump_target(placed: &[Placed], jump_id: f64) -> Result<usize, String> {
@@ -122,20 +118,13 @@ mod tests {
 
     #[test]
     fn ardupilot_is_sent_the_planned_home_as_item_zero() {
-        let items = flatten(&section_test(), true).unwrap();
+        let items = flatten(&section_test()).unwrap();
         assert_eq!(items.len(), 6);
         assert_eq!((items[0].command, items[0].frame, items[0].params[4], items[0].params[6]), (16, 0, 47.633389756176875, 20.0));
         assert_eq!(items.iter().map(|i| i.seq).collect::<Vec<_>>(), (0..6).collect::<Vec<_>>());
         assert_eq!((items[1].command, items[1].frame, items[1].params[6]), (22, 3, 20.0));
         assert!(items[1].params[3].is_nan(), "a null param is NaN on the wire, as Qt sends it");
         assert_eq!((items[4].command, items[4].params[4], items[4].params[6]), (205, 0.0, 2.0));
-    }
-
-    #[test]
-    fn a_vehicle_that_keeps_home_to_itself_is_not_sent_one() {
-        let items = flatten(&section_test(), false).unwrap();
-        assert_eq!(items.len(), 5);
-        assert_eq!((items[0].seq, items[0].command), (0, 22));
     }
 
     #[test]
@@ -149,7 +138,7 @@ mod tests {
             { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 9, "params": [0, 0, 0, 0, 1.3, 2.3, 10.0] },
             { "type": "SimpleItem", "command": 177, "frame": 2, "doJumpId": 10, "params": [9, 3, 0, 0, 0, 0, 0] },
         ] } });
-        let items = flatten(&plan, true).unwrap();
+        let items = flatten(&plan).unwrap();
         assert_eq!(items.len(), 6, "home, one waypoint, two survey items, a waypoint and the jump");
         assert_eq!((items[5].command, items[5].params[0], items[5].params[1]), (177, 4.0, 3.0));
     }
@@ -162,7 +151,7 @@ mod tests {
             ] } },
             { "type": "SimpleItem", "command": 177, "frame": 2, "doJumpId": 3, "params": [2, 1, 0, 0, 0, 0, 0] },
         ] } });
-        assert_eq!(flatten(&plan, true), Err("Could not find doJumpId: 2".to_string()));
+        assert_eq!(flatten(&plan), Err("Could not find doJumpId: 2".to_string()));
     }
 
     #[test]
@@ -170,7 +159,7 @@ mod tests {
         let plan = json!({ "mission": { "plannedHomePosition": [1.0, 2.0, 3.0], "items": [
             { "type": "ComplexItem", "complexItemType": "StructureScan" },
         ] } });
-        assert!(flatten(&plan, true).unwrap_err().contains("StructureScan"));
+        assert!(flatten(&plan).unwrap_err().contains("StructureScan"));
     }
 }
 
@@ -202,7 +191,7 @@ mod qt_oracle {
     }
 
     fn agrees_with_home_altitude(plan: &str, sent: &str, home_altitude: Option<f64>) {
-        let flat = flatten(&serde_json::from_str(plan).unwrap(), true).unwrap();
+        let flat = flatten(&serde_json::from_str(plan).unwrap()).unwrap();
         let items: Vec<UploadItem> = flat
             .into_iter()
             .map(|item| match (item.seq, home_altitude) {
@@ -221,7 +210,7 @@ mod qt_oracle {
         let sent = include_str!("../tests/fixtures/sectiontest-sent-by-qt.json");
         let terrain_under_home = 0.0;
         agrees_with_home_altitude(include_str!("../../test/MissionManager/SectionTest.plan"), sent, Some(terrain_under_home));
-        let file_home = flatten(&serde_json::from_str(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap(), true).unwrap()[0].params[6];
+        let file_home = flatten(&serde_json::from_str(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap()).unwrap()[0].params[6];
         assert_eq!(file_home, 20.0, "Qt's editor replaces the file's home altitude with the terrain height under it (MissionSettingsItem::_setHomeAltFromTerrain), so the model that owns the plan must apply that rule; flattening passes through whatever the document holds");
     }
 
