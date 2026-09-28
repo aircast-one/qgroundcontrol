@@ -25,6 +25,25 @@ const DEFAULT_ALTITUDE: &str = "settings.appSettings.defaultMissionItemAltitude"
 struct Held {
     document: Option<Document>,
     fetching: bool,
+    selected: i64,
+    file: Option<String>,
+}
+
+pub const CHANGED: &str = "core.plan@changed";
+
+pub static ON_CHANGE: std::sync::Mutex<Option<std::sync::Arc<dyn Fn() + Send + Sync>>> = std::sync::Mutex::new(None);
+
+static ENABLED: LazyLock<bool> = LazyLock::new(|| std::env::var("QGC_CORE_PLAN").is_ok_and(|v| v == "1"));
+
+pub fn enabled() -> bool {
+    *ENABLED
+}
+
+fn changed() {
+    let notify = ON_CHANGE.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    if let Some(notify) = notify {
+        notify();
+    }
 }
 
 static HELD: LazyLock<Mutex<Held>> = LazyLock::new(|| Mutex::new(Held::default()));
@@ -76,9 +95,16 @@ fn settle_home_on_terrain(before: Option<(f64, f64)>) {
         let Ok(ground) = crate::terrainquery::elevation(latitude, longitude, None, &crate::terrainquery::fetch_over_http) else {
             return;
         };
-        let mut state = held();
-        if home_of(state.document.as_ref()) == Some((latitude, longitude)) {
-            state.document = state.document.take().map(|d| Document { home: d.home.map(|h| [h[0], h[1], ground]), ..d });
+        let settled = {
+            let mut state = held();
+            let same = home_of(state.document.as_ref()) == Some((latitude, longitude));
+            if same {
+                state.document = state.document.take().map(|d| Document { home: d.home.map(|h| [h[0], h[1], ground]), ..d });
+            }
+            same
+        };
+        if settled {
+            changed();
         }
     });
 }
@@ -100,6 +126,7 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
         }
     };
     settle_home_on_terrain(before);
+    changed();
     answer
 }
 
@@ -181,9 +208,15 @@ fn open(file: &str) -> Value {
     match loaded {
         Ok(document) => {
             let count = document.items.len();
-            held().document = Some(document);
+            {
+                let mut state = held();
+                state.document = Some(document);
+                state.selected = 0;
+                state.file = Some(file.to_string());
+            }
             settle_home_on_terrain(None);
-            json!({ "ok": true, "items": count })
+            changed();
+            json!({ "ok": true, "items": count, "result": true })
         }
         Err(reason) => refused(reason),
     }
@@ -272,6 +305,7 @@ fn status() -> Value {
             .unwrap_or_default();
         let template = state.document.clone().unwrap_or_else(empty_document);
         state.document = Some(plandoc::from_vehicle(&downloaded, sends_home.unwrap_or(false), &template));
+        state.selected = 0;
     }
     json!({
         "ok": true,
@@ -293,5 +327,122 @@ fn empty_document() -> Document {
         items: Vec::new(),
         fence: json!({ "circles": [], "polygons": [], "version": 2 }),
         rally: json!({ "points": [], "version": 2 }),
+    }
+}
+
+pub fn view(backend: &dyn Backend) -> Value {
+    let (document, selected) = {
+        let state = held();
+        (state.document.clone().unwrap_or_else(empty_document), state.selected)
+    };
+    let rover = crate::read::flag(&crate::read::object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
+    crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
+        .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
+}
+
+fn visual_index_of_sequence(document: &Document, sequence: i64) -> Option<i64> {
+    let starts = std::iter::once((0usize, document.settings_sections.len())).chain(document.items.iter().scan(document.settings_sections.len() + 1, |next, item| {
+        let start = *next;
+        let span = match item {
+            plandoc::Item::Simple(s) => 1 + s.sections.len(),
+            plandoc::Item::Complex { item_count, .. } => *item_count,
+        };
+        *next += span;
+        Some((start, start + span - 1))
+    }));
+    starts.enumerate().find(|(_, (first, last))| (*first as i64..=*last as i64).contains(&sequence)).map(|(i, _)| i as i64)
+}
+
+fn select(args: &str) -> Value {
+    let sequence = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0).and_then(Value::as_i64));
+    let picked = {
+        let mut state = held();
+        let found = state.document.as_ref().zip(sequence).and_then(|(d, seq)| visual_index_of_sequence(d, seq));
+        if let Some(index) = found {
+            state.selected = index;
+        }
+        found
+    };
+    match picked {
+        Some(index) => {
+            changed();
+            json!({ "ok": true, "selected": index })
+        }
+        None => refused("There is no item at that sequence number."),
+    }
+}
+
+fn clear() -> Value {
+    {
+        let mut state = held();
+        let template = state.document.clone().unwrap_or_else(empty_document);
+        state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..template });
+        state.selected = 0;
+    }
+    changed();
+    json!({ "ok": true })
+}
+
+fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let kind = given.get(0).and_then(Value::as_str).unwrap_or("");
+    let rest = json!([given.get(1), given.get(2), given.get(3)]).to_string();
+    let answered = match kind {
+        "waypoint" => insert_at(backend, &rest, false),
+        "land" => insert_at(backend, &rest, true),
+        "takeoff" => insert_takeoff(backend, &json!([given.get(3)]).to_string()),
+        other => return refused(format!("The core plan cannot insert a {other} yet.")),
+    };
+    match answered.get("ok").and_then(Value::as_bool) {
+        Some(true) => json!({ "ok": true, "inserted": kind }),
+        _ => answered,
+    }
+}
+
+fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
+    let rest = path.strip_prefix("plan.missionController.visualItems.")?;
+    let (index, property) = rest.split_once('.')?;
+    let index: u64 = index.parse().ok()?;
+    let number = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64));
+    let command = match property {
+        "altitude" => false,
+        "command" => true,
+        _ => return None,
+    };
+    Some(match number {
+        Some(n) => item_edit(backend, &json!([index, n]).to_string(), command),
+        None => refused("That field takes a number."),
+    })
+}
+
+pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
+    let current = || held().file.clone();
+    Some(match path {
+        "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| open(&file)),
+        "plan.saveToFile" => first_text(args).map_or_else(|| refused("Save needs a path to write the plan to."), |file| save(&file)),
+        "plan.saveToCurrent" => current().map_or_else(|| refused("This plan has not been saved to a file yet."), |file| save(&file)),
+        "plan.sendToVehicle" => send(),
+        "plan.loadFromVehicle" => fetch(),
+        "plan.removeAll" => clear(),
+        "mission.insert" => insert_kind(backend, args),
+        "mission.remove" | "plan.missionController.removeVisualItem" => remove(args),
+        "plan.missionController.setCurrentPlanViewSeqNum" => select(args),
+        _ => return None,
+    })
+}
+
+pub fn route_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
+    item_write(backend, path, value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_sequence_number_selects_the_row_that_holds_it_as_qt_selects_it() {
+        let doc = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
+        let rows: Vec<Option<i64>> = (0..8).map(|seq| visual_index_of_sequence(&doc, seq)).collect();
+        assert_eq!(rows, vec![Some(0), Some(1), Some(2), Some(3), Some(3), Some(4), None, None], "sequence 4 is the mount control folded into row 3, so selecting it selects row 3");
     }
 }

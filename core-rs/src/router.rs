@@ -62,6 +62,9 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn set(&self, path: &str, value: &str) -> String {
+        if let Some(answer) = crate::coreplan::enabled().then(|| crate::coreplan::route_set(&self.backend, path, value)).flatten() {
+            return answer.to_string();
+        }
         if crate::actions::owns_write(path) {
             return crate::actions::write(&self.backend, path, value).to_string();
         }
@@ -75,6 +78,9 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn invoke(&self, path: &str, args: &str) -> String {
+        if let Some(answer) = crate::coreplan::enabled().then(|| crate::coreplan::route_invoke(&self.backend, path, args)).flatten() {
+            return answer.to_string();
+        }
         if crate::actions::owns(path) {
             return crate::actions::run(&self.backend, path, args).to_string();
         }
@@ -121,6 +127,7 @@ impl<B: Backend> Core<B> {
                 Some(v) => v.deps_for(&view::split(path).1),
                 None => vec![path.clone()],
             })
+            .filter(|dep| dep != crate::coreplan::CHANGED)
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();

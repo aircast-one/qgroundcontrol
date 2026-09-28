@@ -13,6 +13,7 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.verticalDistanceUnits",
     "settings.unitsSettings.speedUnits",
     "plan.controllerVehicle.rover",
+    crate::coreplan::CHANGED,
 ];
 
 const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
@@ -22,6 +23,9 @@ const AWAITING_TERRAIN: i64 = 1;
 const RETURN_TO_LAUNCH: i64 = 20;
 
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
+    if crate::coreplan::enabled() {
+        return crate::coreplan::view(backend);
+    }
     let everything = args.iter().any(|arg| arg == "fields");
     let vertical = Unit::vertical(backend);
     let speed = Unit::speed(backend);
@@ -150,7 +154,6 @@ struct Flight {
     exit: (f64, f64),
     amsl: f64,
     is_land: bool,
-    is_takeoff: bool,
     within: f64,
 }
 
@@ -160,17 +163,19 @@ fn flight(item: &crate::plandoc::Item, commands: &std::collections::BTreeMap<i64
             let info = commands.get(&s.command)?;
             (info.specifies_coordinate && !info.standalone_coordinate).then(|| {
                 let at = (s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0));
-                Flight { entry: at, exit: at, amsl: amsl_entry(s, home_altitude), is_land: info.is_land, is_takeoff: info.is_takeoff, within: 0.0 }
+                Flight { entry: at, exit: at, amsl: amsl_entry(s, home_altitude), is_land: info.is_land, within: 0.0 }
             })
         }
-        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, is_land: false, is_takeoff: false, within: v.distance }),
+        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, is_land: false, within: v.distance }),
     }
 }
 
 fn legs(doc: &crate::plandoc::Document, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>) -> Vec<Leg> {
     let home = doc.home.unwrap_or([0.0, 0.0, 0.0]);
     let flights: Vec<Option<Flight>> = doc.items.iter().map(|item| flight(item, commands, home[2])).collect();
-    let link_start_to_home = doc.home.is_some() && flights.iter().flatten().next().is_some_and(|f| f.is_takeoff);
+    let first_flight = flights.iter().position(Option::is_some).unwrap_or(flights.len());
+    let takes_off_first = doc.items.iter().take(first_flight + 1).any(|item| matches!(item, crate::plandoc::Item::Simple(s) if s.command == 22 || s.command == 84));
+    let link_start_to_home = doc.home.is_some() && takes_off_first;
     struct Walk {
         last: Option<((f64, f64), f64, bool)>,
         total: f64,
@@ -761,6 +766,13 @@ mod from_the_document {
             let differing: Vec<String> = qt.as_object().unwrap().iter().filter(|(k, v)| core.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}: core {} qt {v}", core.get(k.as_str()).unwrap_or(&Value::Null))).collect();
             assert!(differing.is_empty(), "row {}: {}", qt["index"], differing.join("; "));
         });
+    }
+
+    #[test]
+    fn an_ardupilot_takeoff_has_no_position_yet_still_links_the_first_leg_to_home() {
+        let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json")).unwrap();
+        let home_altitude = qt["items"][0]["altitudeMetres"].as_f64().unwrap();
+        agrees(include_str!("../tests/fixtures/ardupilot-takeoff-without-coordinate.plan"), home_altitude, include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json"));
     }
 
     #[test]
