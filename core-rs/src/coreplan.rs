@@ -1055,3 +1055,48 @@ pub fn fence_and_rally() -> Option<(Value, Value)> {
     let document = held().document.clone().unwrap_or_else(empty_document);
     Some((document.fence, document.rally))
 }
+
+fn speed_in_force(document: &Document, before: usize, hover: f64, cruise: f64) -> f64 {
+    let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
+    let start = if multirotor { hover } else { cruise };
+    let changes = std::iter::once(&document.settings_sections).chain(document.items.iter().take(before).filter_map(|item| match item {
+        plandoc::Item::Simple(s) => Some(&s.sections),
+        plandoc::Item::Complex { .. } => None,
+    }));
+    changes.fold(start, |speed, sections| sections.iter().find(|s| s.command == 178).and_then(|s| s.params[1]).unwrap_or(speed))
+}
+
+pub fn survey_stats_inputs(backend: &dyn Backend, index: usize) -> Option<(Value, Value)> {
+    if !enabled() {
+        return None;
+    }
+    let document = held().document.clone()?;
+    let at = index.checked_sub(1)?;
+    let plandoc::Item::Complex { json: survey, .. } = document.items.get(at)? else {
+        return Some((json!({ "kind": "object", "isSurveyItem": false }), json!({ "kind": "null" })));
+    };
+    let setting = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+    let speed = speed_in_force(&document, at, setting("offlineEditingHoverSpeed", 5.0), setting("offlineEditingCruiseSpeed", 15.0));
+    let transect = &survey["TransectStyleComplexItem"];
+    let calc = &transect["CameraCalc"];
+    let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+    let visual: Vec<(f64, f64)> = transect["VisualTransectPoints"].as_array().map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default();
+    let frontal = number(calc, "AdjustedFootprintFrontal");
+    let horizontal = crate::read::Unit::horizontal(backend);
+    let metres_fact = |property: &str, metres: f64| json!({ "property": property, "value": horizontal.show(metres), "rawValue": metres, "units": horizontal.name });
+    let stats = json!({
+        "kind": "object",
+        "isSurveyItem": true,
+        "cameraShots": number(transect, "CameraShots"),
+        "timeBetweenShots": if speed == 0.0 { 0.0 } else { frontal / speed },
+        "coveredArea": crate::mappolygon::area(&crate::surveydoc::polygon(survey)),
+        "complexDistance": visual.windows(2).map(|pair| crate::surveygrid::distance_between(pair[0], pair[1])).sum::<f64>(),
+    });
+    let facts = json!({ "kind": "object", "facts": [
+        metres_fact("adjustedFootprintSide", number(calc, "AdjustedFootprintSide")),
+        metres_fact("adjustedFootprintFrontal", frontal),
+        metres_fact("distanceToSurface", number(calc, "DistanceToSurface")),
+        { "property": "minTriggerInterval", "value": number(calc, "MinTriggerInterval"), "rawValue": number(calc, "MinTriggerInterval") },
+    ] });
+    Some((stats, facts))
+}
