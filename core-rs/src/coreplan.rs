@@ -512,13 +512,22 @@ fn empty_document() -> Document {
     }
 }
 
+fn marked_edited(view: Value, document: &Document, clean: Option<&Document>) -> Value {
+    let mut marked = view;
+    if let Some(rows) = marked.get_mut("items").and_then(Value::as_array_mut) {
+        rows.iter_mut().skip(1).zip(&document.items).for_each(|(row, item)| row["edited"] = json!(!clean.is_some_and(|c| c.items.contains(item))));
+    }
+    marked
+}
+
 pub fn view(backend: &dyn Backend) -> Value {
-    let (document, selected) = {
+    let (document, selected, clean) = {
         let state = held();
-        (state.document.clone().unwrap_or_else(empty_document), state.selected)
+        (state.document.clone().unwrap_or_else(empty_document), state.selected, state.clean.clone())
     };
     let rover = crate::read::flag(&crate::read::object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
     crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
+        .map(|view| marked_edited(view, &document, clean.as_ref()))
         .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
 }
 
@@ -989,6 +998,19 @@ mod tests {
             let differing: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| mine.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}:\n  core {}\n  qt   {v}", mine.get(k.as_str()).unwrap_or(&Value::Null))).collect();
             assert!(differing.is_empty(), "item {index}: {}", differing.join("\n"));
         });
+    }
+
+    #[test]
+    fn an_item_reads_edited_until_the_plan_it_is_in_is_saved() {
+        let saved = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
+        let moved = plandoc::set_altitude(&saved, 2, 33.0).unwrap();
+        let rows = json!({ "items": std::iter::repeat_n(json!({}), moved.items.len() + 1).collect::<Vec<_>>() });
+        let marked = marked_edited(rows.clone(), &moved, Some(&saved));
+        let edited: Vec<bool> = marked["items"].as_array().unwrap().iter().skip(1).map(|r| r["edited"].as_bool().unwrap()).collect();
+        assert_eq!(edited.iter().filter(|e| **e).count(), 1, "only the item whose altitude changed: {edited:?}");
+        assert!(edited[1]);
+        let never_saved = marked_edited(rows, &moved, None);
+        assert!(never_saved["items"].as_array().unwrap().iter().skip(1).all(|r| r["edited"] == true), "a plan that was never saved or loaded is all new");
     }
 
     #[test]
