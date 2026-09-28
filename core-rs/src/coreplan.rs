@@ -876,6 +876,7 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
 
 enum Shape {
     Survey(usize),
+    Corridor(usize),
     Fence(usize),
 }
 
@@ -883,10 +884,13 @@ fn shape_of(path: &str) -> Option<Shape> {
     if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|r| r.strip_suffix(".surveyAreaPolygon")) {
         return index.parse().ok().map(Shape::Survey);
     }
+    if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|r| r.strip_suffix(".corridorPolyline")) {
+        return index.parse().ok().map(Shape::Corridor);
+    }
     path.strip_prefix("plan.geoFenceController.polygons.").and_then(|r| r.parse().ok()).map(Shape::Fence)
 }
 
-fn vertex_edit(vertices: &[Value], member: &str, given: &Value) -> Option<Vec<Value>> {
+fn vertex_edit(vertices: &[Value], member: &str, given: &Value, ring: bool) -> Option<Vec<Value>> {
     let at = |i: usize| Some((vertices.get(i)?.get(0)?.as_f64()?, vertices.get(i)?.get(1)?.as_f64()?));
     let index = || given.get(0).and_then(Value::as_u64).map(|i| i as usize);
     let spelled = |(lat, lon): (f64, f64)| json!([lat, lon]);
@@ -898,10 +902,11 @@ fn vertex_edit(vertices: &[Value], member: &str, given: &Value) -> Option<Vec<Va
         }
         "removeVertex" => {
             let i = index()?;
-            (i < vertices.len() && vertices.len() > 3).then(|| vertices.iter().enumerate().filter(|(k, _)| *k != i).map(|(_, v)| v.clone()).collect())
+            (i < vertices.len() && vertices.len() > if ring { 3 } else { 2 }).then(|| vertices.iter().enumerate().filter(|(k, _)| *k != i).map(|(_, v)| v.clone()).collect())
         }
-        "splitPolygonSegment" => {
+        "splitPolygonSegment" | "splitSegment" => {
             let i = index()?;
+            (ring || i + 1 < vertices.len()).then_some(())?;
             let next = if i + 1 >= vertices.len() { 0 } else { i + 1 };
             let (from, to) = (at(i)?, at(next)?);
             let middle = crate::surveygrid::at_distance_and_azimuth(from, crate::surveygrid::distance_between(from, to) / 2.0, crate::surveygrid::azimuth_to(from, to));
@@ -922,23 +927,33 @@ fn shape_invoke(path: &str, args: &str) -> Option<Value> {
     let (owner, member) = path.rsplit_once('.')?;
     let shape = shape_of(owner)?;
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    if let Some((_, ring)) = crate::itemshape::split_target(path) {
+        let count = shape_vertices(owner).map_or(0, |v| v.len() as i64);
+        if let Some((token, reason)) = crate::itemshape::split_refusal(count, ring, given.get(0).and_then(Value::as_i64)) {
+            return Some(json!({ "ok": false, "refusal": token, "reason": reason }));
+        }
+    }
     let refusal = "That vertex edit does not fit this shape.";
     Some(match shape {
         Shape::Fence(index) => fence_edit(
             |f, r| {
                 let polygons = f.get("polygons").and_then(Value::as_array)?;
                 let polygon = polygons.get(index)?;
-                let edited = with_polygon(polygon, "polygon", vertex_edit(polygon.get("polygon")?.as_array()?, member, &given)?);
+                let edited = with_polygon(polygon, "polygon", vertex_edit(polygon.get("polygon")?.as_array()?, member, &given, true)?);
                 let replaced: Vec<Value> = polygons.iter().enumerate().map(|(k, p)| if k == index { edited.clone() } else { p.clone() }).collect();
                 Some((with_polygon(f, "polygons", replaced), r.clone()))
             },
             refusal,
         ),
-        Shape::Survey(index) => edit(|doc| {
+        Shape::Survey(index) | Shape::Corridor(index) => edit(|doc| {
+            let (key, ring) = match shape_of(owner) {
+                Some(Shape::Corridor(_)) => ("polyline", false),
+                _ => ("polygon", true),
+            };
             let at = index.checked_sub(1).filter(|i| *i < doc.items.len()).ok_or(refusal)?;
             let plandoc::Item::Complex { kind, json, .. } = &doc.items[at] else { return Err(refusal.to_string()) };
-            let vertices = json.get("polygon").and_then(Value::as_array).cloned().unwrap_or_default();
-            let edited = crate::surveydoc::regenerate(&with_polygon(json, "polygon", vertex_edit(&vertices, member, &given).ok_or(refusal)?));
+            let vertices = json.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+            let edited = crate::surveydoc::regenerate_item(&with_polygon(json, key, vertex_edit(&vertices, member, &given, ring).ok_or(refusal)?));
             let item_count = edited["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
             let item = plandoc::Item::Complex { kind: kind.clone(), json: edited, item_count };
             Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })
@@ -954,6 +969,10 @@ pub fn shape_vertices(path: &str) -> Option<Vec<(f64, f64)>> {
     let vertices = match shape_of(path)? {
         Shape::Survey(index) => match document.items.get(index.checked_sub(1)?)? {
             plandoc::Item::Complex { json, .. } => json.get("polygon")?.as_array()?.clone(),
+            plandoc::Item::Simple(_) => return None,
+        },
+        Shape::Corridor(index) => match document.items.get(index.checked_sub(1)?)? {
+            plandoc::Item::Complex { json, .. } => json.get("polyline")?.as_array()?.clone(),
             plandoc::Item::Simple(_) => return None,
         },
         Shape::Fence(index) => document.fence.get("polygons")?.get(index)?.get("polygon")?.as_array()?.clone(),
@@ -1039,6 +1058,16 @@ mod tests {
         assert!(edited[1]);
         let never_saved = marked_edited(rows, &moved, None);
         assert!(never_saved["items"].as_array().unwrap().iter().skip(1).all(|r| r["edited"] == true), "a plan that was never saved or loaded is all new");
+    }
+
+    #[test]
+    fn a_polyline_keeps_two_vertices_and_splits_only_its_real_segments() {
+        let line = vec![json!([0.0, 0.0]), json!([0.0, 1.0]), json!([0.0, 2.0])];
+        assert_eq!(vertex_edit(&line, "splitSegment", &json!([1]), false).map(|v| v.len()), Some(4));
+        assert!(vertex_edit(&line, "splitSegment", &json!([2]), false).is_none(), "the last vertex starts no segment on a line");
+        assert_eq!(vertex_edit(&line, "splitPolygonSegment", &json!([2]), true).map(|v| v.len()), Some(4), "a ring closes back to its first vertex");
+        let two = vertex_edit(&line, "removeVertex", &json!([0]), false).unwrap();
+        assert!(vertex_edit(&two, "removeVertex", &json!([0]), false).is_none());
     }
 
     #[test]

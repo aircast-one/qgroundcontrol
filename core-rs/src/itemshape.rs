@@ -110,7 +110,7 @@ pub fn owns_split(path: &str) -> bool {
     split_target(path).is_some()
 }
 
-fn split_refusal(vertices: i64, ring: bool, segment: Option<i64>) -> Option<(&'static str, String)> {
+pub(crate) fn split_refusal(vertices: i64, ring: bool, segment: Option<i64>) -> Option<(&'static str, String)> {
     let segments = match ring {
         true if vertices >= 3 => vertices,
         false if vertices >= 2 => vertices - 1,
