@@ -119,11 +119,32 @@ struct Survey {
     entry: (f64, f64),
     exit: (f64, f64),
     amsl: f64,
+    lowest: f64,
+    highest: f64,
     shots: i64,
     distance: f64,
 }
 
+fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
+    let flight = crate::structurescan::saved_flight(json)?;
+    let entry = *flight.first().ok_or("A structure scan without an outline has no rows to describe.")?;
+    let plan = crate::structurescan::saved_plan(json);
+    let (top, bottom) = crate::structurescan::top_and_bottom(&plan);
+    Ok(Survey {
+        entry,
+        exit: entry,
+        amsl: plan.entrance_alt + home_altitude,
+        lowest: bottom.min(plan.entrance_alt) + home_altitude,
+        highest: top.max(plan.entrance_alt) + home_altitude,
+        shots: crate::structurescan::camera_shots(&flight, plan.adjusted_side, plan.layers),
+        distance: crate::structurescan::scan_distance(&flight, &plan),
+    })
+}
+
 fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
+    if json.get("complexItemType").and_then(Value::as_str) == Some("StructureScan") {
+        return structure(json, home_altitude);
+    }
     let transect = json.get("TransectStyleComplexItem").ok_or("A survey has no transect data.")?;
     let points: Vec<(f64, f64)> = transect
         .get("VisualTransectPoints")
@@ -144,6 +165,8 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         entry,
         exit,
         amsl,
+        lowest: amsl,
+        highest: amsl,
         shots: transect.get("CameraShots").and_then(Value::as_i64).unwrap_or(0),
         distance: points.windows(2).map(|pair| crate::surveygrid::distance_between(pair[0], pair[1])).sum(),
     })
@@ -153,6 +176,7 @@ struct Flight {
     entry: (f64, f64),
     exit: (f64, f64),
     amsl: f64,
+    band: (f64, f64),
     is_land: bool,
     within: f64,
 }
@@ -163,10 +187,11 @@ fn flight(item: &crate::plandoc::Item, commands: &std::collections::BTreeMap<i64
             let info = commands.get(&s.command)?;
             (info.specifies_coordinate && !info.standalone_coordinate).then(|| {
                 let at = (s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0));
-                Flight { entry: at, exit: at, amsl: amsl_entry(s, home_altitude), is_land: info.is_land, within: 0.0 }
+                let amsl = amsl_entry(s, home_altitude);
+                Flight { entry: at, exit: at, amsl, band: (amsl, amsl), is_land: info.is_land, within: 0.0 }
             })
         }
-        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, is_land: false, within: v.distance }),
+        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, band: (v.lowest, v.highest), is_land: false, within: v.distance }),
     }
 }
 
@@ -240,6 +265,9 @@ fn additional_delay(item: &crate::plandoc::Item) -> f64 {
 }
 
 fn greatest_distance_to(json: &Value, to: (f64, f64)) -> f64 {
+    if json.get("complexItemType").and_then(Value::as_str) == Some("StructureScan") {
+        return crate::structurescan::saved_flight(json).unwrap_or_default().iter().map(|at| crate::surveygrid::distance_between(*at, to)).fold(0.0, f64::max);
+    }
     json.get("TransectStyleComplexItem")
         .and_then(|t| t.get("VisualTransectPoints"))
         .and_then(Value::as_array)
@@ -311,7 +339,7 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
                 add(&mut w, 0.0, additional_delay(item));
             }
             if let Some(f) = flight(item, &commands, home_alt) {
-                let (low, high) = (f.amsl, f.amsl);
+                let (low, high) = f.band;
                 w.status.min_amsl = w.status.min_amsl.min(low);
                 w.status.max_amsl = w.status.max_amsl.max(high);
                 w.first_coordinate = false;
@@ -370,7 +398,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
         .items
         .iter()
         .map(|item| match item {
-            crate::plandoc::Item::Complex { kind, json, .. } if kind == "survey" || kind == "CorridorScan" => survey(json, doc.home.map_or(0.0, |h| h[2])).map(Some),
+            crate::plandoc::Item::Complex { kind, json, .. } if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" => survey(json, doc.home.map_or(0.0, |h| h[2])).map(Some),
             crate::plandoc::Item::Complex { kind, .. } => Err(format!("The core cannot describe a {kind} item's rows yet.")),
             crate::plandoc::Item::Simple(_) => Ok(None),
         })
@@ -418,6 +446,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                 let (Some(v), crate::plandoc::Item::Complex { item_count, kind, .. }) = (pattern, item) else { return Value::Null };
                 let (class, name, abbreviation) = match kind.as_str() {
                     "CorridorScan" => ("CorridorScanComplexItem", "Corridor Scan", "C"),
+                    "StructureScan" => ("StructureScanComplexItem", "Structure Scan", "S"),
                     _ => ("SurveyComplexItem", "Survey", "S"),
                 };
                 return json!({
@@ -435,10 +464,10 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                     "isCurrentItem": selected == i as i64 + 1,
                     "coordinate": { "latitude": v.entry.0, "longitude": v.entry.1, "altitude": Value::Null, "valid": true },
                     "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": Value::Null, "valid": true },
-                    "exitCoordinateSameAsEntry": false,
+                    "exitCoordinateSameAsEntry": v.entry == v.exit,
                     "amslEntryAlt": v.amsl,
-                    "minAMSLAltitude": v.amsl,
-                    "maxAMSLAltitude": v.amsl,
+                    "minAMSLAltitude": v.lowest,
+                    "maxAMSLAltitude": v.highest,
                     "cameraShots": v.shots,
                     "complexDistance": v.distance,
                     "additionalTimeDelay": 0.0,

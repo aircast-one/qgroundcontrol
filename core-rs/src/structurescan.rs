@@ -88,17 +88,24 @@ pub fn items(flight: &[Point], plan: &Plan) -> Vec<Item> {
         .collect()
 }
 
-pub fn saved_items(scan: &serde_json::Value) -> Result<Vec<Item>, String> {
-    let number = |value: &serde_json::Value, key: &str| value.get(key).and_then(serde_json::Value::as_f64);
+fn number(value: &serde_json::Value, key: &str) -> Option<f64> {
+    value.get(key).and_then(serde_json::Value::as_f64)
+}
+
+pub fn saved_flight(scan: &serde_json::Value) -> Result<Vec<Point>, String> {
     let calc = scan.get("CameraCalc").ok_or("The structure scan has no camera settings.")?;
     let structure: Vec<Point> = scan.get("polygon").and_then(serde_json::Value::as_array).map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default();
     if structure.len() < 3 {
         return Ok(Vec::new());
     }
-    let flight = flight_polygon(&structure, number(calc, "DistanceToSurface").unwrap_or(0.0)).ok_or("The structure scan's flight path could not be laid around its structure.")?;
-    let plan = Plan {
-        adjusted_side: number(calc, "AdjustedFootprintSide").unwrap_or(0.0),
-        adjusted_frontal: number(calc, "AdjustedFootprintFrontal").unwrap_or(0.0),
+    flight_polygon(&structure, number(calc, "DistanceToSurface").unwrap_or(0.0)).ok_or_else(|| "The structure scan's flight path could not be laid around its structure.".to_string())
+}
+
+pub fn saved_plan(scan: &serde_json::Value) -> Plan {
+    let calc = scan.get("CameraCalc").cloned().unwrap_or(serde_json::Value::Null);
+    Plan {
+        adjusted_side: number(&calc, "AdjustedFootprintSide").unwrap_or(0.0),
+        adjusted_frontal: number(&calc, "AdjustedFootprintFrontal").unwrap_or(0.0),
         entrance_alt: number(scan, "EntranceAltitude").unwrap_or(0.0),
         scan_bottom_alt: number(scan, "ScanBottomAlt").unwrap_or(0.0),
         structure_height: number(scan, "StructureHeight").unwrap_or(0.0),
@@ -106,8 +113,27 @@ pub fn saved_items(scan: &serde_json::Value) -> Result<Vec<Item>, String> {
         start_from_top: scan.get("StartFromTop").and_then(serde_json::Value::as_bool).unwrap_or(true),
         gimbal_pitch: number(scan, "GimbalPitch").unwrap_or(0.0),
         entry_vertex: 0,
-    };
-    Ok(items(&flight, &plan))
+    }
+}
+
+pub fn saved_items(scan: &serde_json::Value) -> Result<Vec<Item>, String> {
+    Ok(items(&saved_flight(scan)?, &saved_plan(scan)))
+}
+
+pub fn top_and_bottom(plan: &Plan) -> (f64, f64) {
+    let half = plan.adjusted_frontal / 2.0;
+    let span = half + (plan.layers - 1) as f64 * plan.adjusted_frontal;
+    match plan.start_from_top {
+        true => (plan.structure_height - half, plan.structure_height - span),
+        false => (plan.scan_bottom_alt + span, plan.scan_bottom_alt + half),
+    }
+}
+
+pub fn scan_distance(flight: &[Point], plan: &Plan) -> f64 {
+    match flight.len() > 2 {
+        true => perimeter(flight) * plan.layers as f64 + (plan.structure_height - plan.scan_bottom_alt).max(0.0),
+        false => 0.0,
+    }
 }
 
 pub fn saved_item_json(item: &Item) -> serde_json::Value {
@@ -117,6 +143,15 @@ pub fn saved_item_json(item: &Item) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_flown_band_is_half_a_layer_inside_the_structure_as_qt_bounds_it() {
+        let plan = Plan { adjusted_frontal: 25.0, structure_height: 100.0, scan_bottom_alt: 50.0, layers: 2, start_from_top: true, ..Plan::default() };
+        assert_eq!(top_and_bottom(&plan), (87.5, 62.5));
+        assert_eq!(top_and_bottom(&Plan { start_from_top: false, ..plan }), (87.5, 62.5), "two layers of 25 m between 50 m and 100 m fly the same band from either end");
+        let square = vec![(0.0, 0.0), (0.0, 0.001), (0.001, 0.001), (0.001, 0.0)];
+        assert!((scan_distance(&square, &plan) - (perimeter(&square) * 2.0 + 50.0)).abs() < 1e-9, "each layer walks the perimeter and the climb between the ends counts once");
+    }
     use serde_json::Value;
 
     fn oracle() -> Value {
