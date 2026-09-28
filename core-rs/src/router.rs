@@ -14,6 +14,7 @@ pub trait Backend {
     fn core_guided(&self, _action: &serde_json::Value) -> Option<Result<(), String>> {
         None
     }
+    fn remember_setting(&self, _key: &str, _value: &serde_json::Value) {}
 }
 
 #[derive(Default)]

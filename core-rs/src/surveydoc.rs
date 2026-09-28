@@ -343,6 +343,33 @@ pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
     Some(regenerate_item(&changed))
 }
 
+pub fn changed_remembered(item: &Value, multirotor: bool, stored: &dyn Fn(&str) -> Option<String>) -> Vec<(String, Value)> {
+    let corridor = item.get("complexItemType").and_then(Value::as_str) == Some("CorridorScan");
+    let group = if corridor { "CorridorScan" } else { "Survey" };
+    let transect = item.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
+    let calc = transect.get("CameraCalc").cloned().unwrap_or(Value::Null);
+    let calc_names = ["CameraName", "ValueSetIsDistance", "DistanceToSurface", "ImageDensity", "FrontalOverlap", "SideOverlap", "AdjustedFootprintSide", "AdjustedFootprintFrontal", "SensorWidth", "SensorHeight", "ImageWidth", "ImageHeight", "FocalLength", "Landscape", "FixedOrientation", "MinTriggerInterval"];
+    let turnaround = if multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
+    let transect_names = [("CameraTriggerInTurnAround", "CameraTriggerInTurnAround"), ("HoverAndCapture", "HoverAndCapture"), ("Refly90Degrees", "Refly90Degrees"), (turnaround, "TurnAroundDistance"), ("TerrainAdjustTolerance", "TerrainAdjustTolerance"), ("TerrainAdjustMaxClimbRate", "TerrainAdjustMaxClimbRate"), ("TerrainAdjustMaxDescentRate", "TerrainAdjustMaxDescentRate")];
+    let own: Vec<(&str, &str)> = match corridor {
+        true => vec![("CorridorWidth", "CorridorWidth")],
+        false => vec![("GridAngle", "angle"), ("FlyAlternateTransects", "flyAlternateTransects"), ("SplitConcavePolygons", "splitConcavePolygons")],
+    };
+    calc_names
+        .iter()
+        .filter_map(|name| calc.get(*name).map(|v| (name.to_string(), v.clone())))
+        .chain(transect_names.iter().filter_map(|(name, key)| transect.get(*key).map(|v| (name.to_string(), v.clone()))))
+        .chain(own.iter().filter_map(|(name, key)| item.get(*key).map(|v| (name.to_string(), v.clone()))))
+        .filter(|(name, value)| {
+            let Some(meta) = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META].iter().find_map(|file| meta(file, name)) else { return true };
+            let held = stored(&format!("{group}/{name}")).map(Value::String).or_else(|| meta.default.clone());
+            let typed = |v: &Value| crate::settingsstore::typed(&meta.value_type, v);
+            held.as_ref().and_then(typed) != typed(value)
+        })
+        .map(|(name, value)| (format!("{group}/{name}"), value))
+        .collect()
+}
+
 pub struct Fresh<'a> {
     pub center: (f64, f64),
     pub remembered: &'a dyn Fn(&str) -> Option<String>,

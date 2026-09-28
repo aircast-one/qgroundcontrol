@@ -4,6 +4,9 @@
 #include "QGCCoreC.h"
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QSettings>
 #include <QtCore/QThread>
 
 #include <cstdlib>
@@ -87,6 +90,17 @@ QStringList splitWatchPaths(const QString &csv)
     paths.removeAll(QString());
     return paths;
 }
+}
+
+void qgc_qt_remember_setting(const char *key, const char *value_json)
+{
+    const QString copiedKey = QString::fromUtf8(key);
+    const QByteArray wrapped = QByteArray("[") + value_json + "]";
+    const QVariant value = QJsonDocument::fromJson(wrapped).array().at(0).toVariant();
+    (void) onQtThread([&] {
+        QSettings().setValue(copiedKey, value);
+        return QString();
+    });
 }
 
 char *qgc_qt_watch_status(void)

@@ -371,6 +371,12 @@ impl<B: Backend> Backend for Owner<B> {
     fn core_guided(&self, action: &Value) -> Option<Result<(), String>> {
         self.0.core_guided(action)
     }
+    fn remember_setting(&self, key: &str, value: &Value) {
+        if let Some(values) = stored().as_mut() {
+            values.insert(key.to_string(), Setting::Text(value.as_str().map_or_else(|| value.to_string(), str::to_string)));
+        }
+        self.0.remember_setting(key, value);
+    }
 }
 
 #[cfg(test)]

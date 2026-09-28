@@ -14,6 +14,7 @@ unsafe extern "C" {
     fn qgc_qt_set(path: *const c_char, value_json: *const c_char) -> *mut c_char;
     fn qgc_qt_invoke(path: *const c_char, args_json: *const c_char) -> *mut c_char;
     fn qgc_qt_watch(paths_csv: *const c_char);
+    fn qgc_qt_remember_setting(key: *const c_char, value_json: *const c_char);
     fn qgc_qt_set_event_handler(handler: EventFn);
     fn qgc_qt_free(text: *mut c_char);
 }
@@ -35,6 +36,9 @@ impl Backend for QtBackend {
     }
     fn watch(&self, paths: &[String]) {
         unsafe { qgc_qt_watch(c(&paths.join(",")).as_ptr()) }
+    }
+    fn remember_setting(&self, key: &str, value: &serde_json::Value) {
+        unsafe { qgc_qt_remember_setting(c(key).as_ptr(), c(&value.to_string()).as_ptr()) }
     }
     fn core_guided(&self, action: &serde_json::Value) -> Option<Result<(), String>> {
         let vehicle = action.get("vehicle").and_then(serde_json::Value::as_u64).and_then(|id| u8::try_from(id).ok())?;

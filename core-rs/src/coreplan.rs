@@ -185,6 +185,23 @@ fn insert_takeoff(backend: &dyn Backend, args: &str) -> Value {
     edit(|doc| plandoc::insert_takeoff(doc, index, &defaults))
 }
 
+fn remember_patterns<'a>(backend: &dyn Backend, vehicle_type: i64, items: impl Iterator<Item = &'a plandoc::Item>) {
+    let multirotor = plandoc::vehicle_class(vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
+    items
+        .filter_map(|item| match item {
+            plandoc::Item::Complex { json, .. } => Some(crate::surveydoc::changed_remembered(json, multirotor, &crate::settingsstore::stored_text)),
+            plandoc::Item::Simple(_) => None,
+        })
+        .flatten()
+        .for_each(|(key, value)| backend.remember_setting(&key, &value));
+}
+
+fn remember_item(backend: &dyn Backend, visual_index: i64) {
+    let Some(document) = held().document.clone() else { return };
+    let at = usize::try_from(visual_index - 1).ok();
+    remember_patterns(backend, document.vehicle_type, at.and_then(|i| document.items.get(i)).into_iter());
+}
+
 fn insert_roi(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
@@ -683,6 +700,7 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
                 placed
             };
             changed();
+            remember_item(backend, placed);
             json!({ "ok": true, "inserted": kind, "index": placed })
         }
         _ => answered,
@@ -708,7 +726,9 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                 Some(edited) => {
                     let item_count = edited["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
                     let item = plandoc::Item::Complex { kind: kind.clone(), json: edited, item_count };
-                    edit(|doc| Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() }))
+                    let answered = edit(|doc| Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() }));
+                    remember_item(backend, index as i64);
+                    answered
                 }
                 None => refused(format!("The survey has no field {property}.")),
             });
@@ -959,6 +979,9 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| {
             let opened = open(&file);
             plan_for_offline_vehicle(backend);
+            if let Some(document) = held().document.clone() {
+                remember_patterns(backend, document.vehicle_type, document.items.iter());
+            }
             opened
         }),
         "plan.saveToFile" => first_text(args).map_or_else(|| refused("Save needs a path to write the plan to."), |file| save(&file)),
