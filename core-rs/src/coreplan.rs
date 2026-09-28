@@ -654,9 +654,14 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     let kind = given.get(0).and_then(Value::as_str).unwrap_or("");
     let rest = json!([given.get(1), given.get(2), given.get(3)]).to_string();
     let clicked = given.get(1).and_then(Value::as_f64).zip(given.get(2).and_then(Value::as_f64));
-    if let Some((latitude, longitude)) = clicked {
+    let placed_home = clicked.is_some_and(|(latitude, longitude)| {
         let mut state = held();
+        let homeless = state.document.as_ref().is_some_and(|d| d.home.is_none());
         state.document = state.document.take().map(|d| Document { home: d.home.or(Some([latitude, longitude, 0.0])), ..d });
+        homeless
+    });
+    if placed_home {
+        settle_home_on_terrain(None);
     }
     let answered = match kind {
         "waypoint" => insert_at(backend, &rest, false),
@@ -696,7 +701,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     };
     let current = held().document.clone()?;
     if let Some(plandoc::Item::Complex { kind, json: survey, .. }) = index.checked_sub(1).and_then(|i| current.items.get(i)) {
-        if kind == "survey" {
+        if kind == "survey" || kind == "CorridorScan" {
             let Some(value) = given.clone() else { return Some(refused("That field needs a value.")) };
             let at = index - 1;
             return Some(match crate::surveydoc::set(survey, property, &value) {
@@ -1223,7 +1228,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
             speed_section(&document, index, &s.sections, s.command == 16, hover, cruise),
             Some(s.altitude.as_ref().map_or(crate::altitudemodes::RELATIVE, |a| a.mode)),
         ),
-        Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" => {
+        Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" || kind == "CorridorScan" => {
             let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
             json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null })

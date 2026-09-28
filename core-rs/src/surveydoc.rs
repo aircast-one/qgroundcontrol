@@ -147,7 +147,8 @@ fn with_default(value: Option<&Value>, meta: &crate::factmeta::MetaData) -> Valu
 pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Vec<Value> {
     let transect = survey.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
     let turnaround = if multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
-    let listed: [(&str, &str, &str, &Value, &str); 10] = [
+    let corridor = survey.get("complexItemType").and_then(Value::as_str) == Some("CorridorScan");
+    let listed: Vec<(&str, &str, &str, &Value, &str)> = vec![
         (TRANSECT_META, turnaround, "turnAroundDistance", &transect, "TurnAroundDistance"),
         (TRANSECT_META, "CameraTriggerInTurnAround", "cameraTriggerInTurnAround", &transect, "CameraTriggerInTurnAround"),
         (TRANSECT_META, "HoverAndCapture", "hoverAndCapture", &transect, "HoverAndCapture"),
@@ -155,15 +156,21 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Ve
         (TRANSECT_META, "TerrainAdjustTolerance", "terrainAdjustTolerance", &transect, "TerrainAdjustTolerance"),
         (TRANSECT_META, "TerrainAdjustMaxDescentRate", "terrainAdjustMaxDescentRate", &transect, "TerrainAdjustMaxDescentRate"),
         (TRANSECT_META, "TerrainAdjustMaxClimbRate", "terrainAdjustMaxClimbRate", &transect, "TerrainAdjustMaxClimbRate"),
-        (SURVEY_META, "GridAngle", "gridAngle", survey, "angle"),
-        (SURVEY_META, "FlyAlternateTransects", "flyAlternateTransects", survey, "flyAlternateTransects"),
-        (SURVEY_META, "SplitConcavePolygons", "splitConcavePolygons", survey, "splitConcavePolygons"),
     ];
+    let own: Vec<(&str, &str, &str, &Value, &str)> = match corridor {
+        true => vec![(CORRIDOR_META, "CorridorWidth", "corridorWidth", survey, "CorridorWidth")],
+        false => vec![
+            (SURVEY_META, "GridAngle", "gridAngle", survey, "angle"),
+            (SURVEY_META, "FlyAlternateTransects", "flyAlternateTransects", survey, "flyAlternateTransects"),
+            (SURVEY_META, "SplitConcavePolygons", "splitConcavePolygons", survey, "splitConcavePolygons"),
+        ],
+    };
     listed
-        .iter()
+        .into_iter()
+        .chain(own)
         .filter_map(|(file, name, suffix, owner, key)| {
             let meta = meta(file, name)?;
-            let value = with_default(owner.get(*key), &meta);
+            let value = with_default(owner.get(key), &meta);
             Some(control(&meta, value, item, suffix, "Settings", units))
         })
         .collect()
@@ -224,6 +231,7 @@ fn target(suffix: &str) -> Option<(&'static str, String)> {
     let capital = |s: &str| s.chars().next().map(|c| c.to_ascii_uppercase().to_string() + &s[c.len_utf8()..]).unwrap_or_default();
     match suffix {
         "gridAngle" => Some(("survey", "angle".to_string())),
+        "corridorWidth" => Some(("survey", "CorridorWidth".to_string())),
         "flyAlternateTransects" | "splitConcavePolygons" => Some(("survey", suffix.to_string())),
         _ => match suffix.strip_prefix("cameraCalc.") {
             Some(calc) => {
@@ -306,13 +314,20 @@ fn chosen_camera(calc: &Value, suffix: &str, value: &Value) -> Option<String> {
     }
 }
 
+pub fn regenerate_item(item: &Value) -> Value {
+    match item.get("complexItemType").and_then(Value::as_str) {
+        Some("CorridorScan") => regenerate_corridor(item),
+        _ => regenerate(item),
+    }
+}
+
 pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
     if suffix == "cameraCalc.cameraBrand" || suffix == "cameraCalc.cameraModel" {
         let calc = &survey["TransectStyleComplexItem"]["CameraCalc"];
         let name = chosen_camera(calc, suffix, value)?;
         let mut changed = survey.clone();
         changed["TransectStyleComplexItem"]["CameraCalc"] = named_camera(calc, &name);
-        return Some(regenerate(&changed));
+        return Some(regenerate_item(&changed));
     }
     let (owner, key) = target(suffix)?;
     let mut changed = survey.clone();
@@ -325,7 +340,7 @@ pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
             changed["TransectStyleComplexItem"]["CameraCalc"] = recalculated(&calc);
         }
     }
-    Some(regenerate(&changed))
+    Some(regenerate_item(&changed))
 }
 
 pub struct Fresh<'a> {
@@ -480,6 +495,19 @@ mod tests {
         });
         built["TransectStyleComplexItem"]["Items"].as_array_mut().unwrap().iter_mut().for_each(|item| item["doJumpId"] = json!(item["doJumpId"].as_i64().unwrap() + 1));
         assert_eq!(by_value(&built), by_value(&fixture["corridor"]));
+    }
+
+    #[test]
+    fn a_wider_corridor_flies_more_passes_and_lists_its_width_among_its_fields() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
+        let corridor = &fixture["corridor"];
+        let passes = |c: &Value| c["TransectStyleComplexItem"]["Items"].as_array().unwrap().iter().filter(|i| i["command"] == 16).count();
+        let wider = set(corridor, "corridorWidth", &json!(80.0)).unwrap();
+        assert_eq!(wider["CorridorWidth"], 80.0);
+        assert!(passes(&wider) > passes(corridor), "{} passes at 80 m against {} at 50 m", passes(&wider), passes(corridor));
+        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+        let listed: Vec<String> = fields(corridor, "i", true, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
+        assert!(listed.contains(&"corridorWidth".to_string()) && !listed.contains(&"gridAngle".to_string()), "{listed:?}");
     }
 
     #[test]
