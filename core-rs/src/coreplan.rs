@@ -750,12 +750,13 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     };
     let current = held().document.clone()?;
     if let Some(plandoc::Item::Complex { kind, json: survey, .. }) = index.checked_sub(1).and_then(|i| current.items.get(i)) {
-        if kind == "survey" || kind == "CorridorScan" {
+        if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" {
             let Some(value) = given.clone() else { return Some(refused("That field needs a value.")) };
             let at = index - 1;
-            return Some(match crate::surveydoc::set(survey, property, &value) {
+            let (vertical, horizontal) = (crate::read::Unit::vertical(backend), crate::read::Unit::horizontal(backend));
+            return Some(match crate::surveydoc::set(survey, property, &value, &crate::surveydoc::Units { vertical: &vertical, horizontal: &horizontal }) {
                 Some(edited) => {
-                    let item_count = edited["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
+                    let item_count = plandoc::complex_count(kind, &edited).unwrap_or(0);
                     let item = plandoc::Item::Complex { kind: kind.clone(), json: edited, item_count };
                     let answered = edit(|doc| Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() }));
                     remember_item(backend, index as i64);
@@ -912,7 +913,7 @@ enum Shape {
 }
 
 fn shape_of(path: &str) -> Option<Shape> {
-    if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|r| r.strip_suffix(".surveyAreaPolygon")) {
+    if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|r| r.strip_suffix(".surveyAreaPolygon").or_else(|| r.strip_suffix(".structurePolygon"))) {
         return index.parse().ok().map(Shape::Survey);
     }
     if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|r| r.strip_suffix(".corridorPolyline")) {
@@ -985,7 +986,7 @@ fn shape_invoke(path: &str, args: &str) -> Option<Value> {
             let plandoc::Item::Complex { kind, json, .. } = &doc.items[at] else { return Err(refusal.to_string()) };
             let vertices = json.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
             let edited = crate::surveydoc::regenerate_item(&with_polygon(json, key, vertex_edit(&vertices, member, &given, ring).ok_or(refusal)?));
-            let item_count = edited["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
+            let item_count = plandoc::complex_count(kind, &edited).unwrap_or(0);
             let item = plandoc::Item::Complex { kind: kind.clone(), json: edited, item_count };
             Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })
         }),
@@ -1311,7 +1312,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
             speed_section(&document, index, &s.sections, s.command == 16, hover, cruise),
             Some(s.altitude.as_ref().map_or(crate::altitudemodes::RELATIVE, |a| a.mode)),
         ),
-        Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" || kind == "CorridorScan" => {
+        Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" => {
             let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
             json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null })

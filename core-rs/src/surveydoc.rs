@@ -81,11 +81,20 @@ pub struct Units<'a> {
     pub horizontal: &'a crate::read::Unit,
 }
 
-fn cooked<'a>(raw: &str, units: &'a Units) -> Option<&'a crate::read::Unit> {
+const BUILT_IN_UNITS: [(&str, &str, f64); 6] = [
+    ("centi-degrees", "deg", 0.01),
+    ("radians", "deg", 180.0 / std::f64::consts::PI),
+    ("rad", "deg", 180.0 / std::f64::consts::PI),
+    ("gimbal-degrees", "deg", -1.0),
+    ("norm", "%", 100.0),
+    ("centi-celsius", "C", 0.01),
+];
+
+fn cooked(raw: &str, units: &Units) -> Option<crate::read::Unit> {
     match raw {
-        "vertical m" => Some(units.vertical),
-        "m" | "meter" | "meters" | "horizontal m" => Some(units.horizontal),
-        _ => None,
+        "vertical m" => Some(units.vertical.clone()),
+        "m" | "meter" | "meters" | "horizontal m" => Some(units.horizontal.clone()),
+        other => BUILT_IN_UNITS.iter().find(|(name, _, _)| *name == other).map(|(_, shown, factor)| crate::read::Unit { name: shown.to_string(), factor: *factor }),
     }
 }
 
@@ -96,12 +105,17 @@ fn fact(meta: &crate::factmeta::MetaData, value: Value, units: &Units) -> Value 
     let bool_typed = meta.value_type == crate::factmeta::ValueType::Bool;
     let raw_units = meta.units.clone().unwrap_or_default();
     let unit = cooked(&raw_units, units);
-    let cook = |v: f64| unit.map_or(v, |u| u.show(v));
+    let unit = unit.as_ref();
+    let cook = |v: f64| unit.map_or(v, |u| u.show(v)) + 0.0;
     let number = |v: &Option<Value>| v.as_ref().and_then(Value::as_f64).map(cook);
-    let (min, max) = (number(&meta.min), number(&meta.max));
+    let (first, second) = (number(&meta.min), number(&meta.max));
+    let (min, max) = match (first, second) {
+        (Some(a), Some(b)) if a > b => (Some(b), Some(a)),
+        bounds => bounds,
+    };
     let raw = value.clone();
     let value = match (unit, value.as_f64()) {
-        (Some(u), Some(v)) => json!(u.show(v)),
+        (Some(_), Some(v)) => json!(cook(v)),
         _ => value,
     };
     let default = meta.default.as_ref().map(|d| d.as_f64().map_or_else(|| d.clone(), |n| json!(cook(n))));
@@ -165,9 +179,16 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Ve
             (SURVEY_META, "SplitConcavePolygons", "splitConcavePolygons", survey, "splitConcavePolygons"),
         ],
     };
-    listed
+    let structure: Vec<(&str, &str, &str, &Value, &str)> = [("EntranceAltitude", "entranceAlt"), ("StructureHeight", "structureHeight"), ("ScanBottomAlt", "scanBottomAlt"), ("Layers", "layers"), ("GimbalPitch", "gimbalPitch"), ("StartFromTop", "startFromTop")]
+        .iter()
+        .map(|(name, suffix)| (STRUCTURE_META, *name, *suffix, survey, *name))
+        .collect();
+    let chosen = match is_structure(survey) {
+        true => structure,
+        false => listed.into_iter().chain(own).collect(),
+    };
+    chosen
         .into_iter()
-        .chain(own)
         .filter_map(|(file, name, suffix, owner, key)| {
             let meta = meta(file, name)?;
             let value = with_default(owner.get(key), &meta);
@@ -187,8 +208,29 @@ fn known_camera<'a>(known: &'a [Value], name: &str) -> Option<&'a Value> {
     known.iter().find(|c| c.get("canonicalName").and_then(Value::as_str) == Some(name))
 }
 
+fn is_structure(item: &Value) -> bool {
+    item.get("complexItemType").and_then(Value::as_str) == Some("StructureScan")
+}
+
+fn calc_of(item: &Value) -> Value {
+    match is_structure(item) {
+        true => item.get("CameraCalc").cloned(),
+        false => item.get("TransectStyleComplexItem").and_then(|t| t.get("CameraCalc")).cloned(),
+    }
+    .unwrap_or(Value::Null)
+}
+
+fn with_calc(item: &Value, calc: Value) -> Value {
+    let mut changed = item.clone();
+    match is_structure(item) {
+        true => changed["CameraCalc"] = calc,
+        false => changed["TransectStyleComplexItem"]["CameraCalc"] = calc,
+    }
+    changed
+}
+
 pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
-    let calc = survey.get("TransectStyleComplexItem").and_then(|t| t.get("CameraCalc")).cloned().unwrap_or(Value::Null);
+    let calc = calc_of(survey);
     let name = calc.get("CameraName").and_then(Value::as_str).unwrap_or(MANUAL_CAMERA).to_string();
     let known = cameras();
     let listed = known_camera(&known, &name);
@@ -232,6 +274,8 @@ fn target(suffix: &str) -> Option<(&'static str, String)> {
     match suffix {
         "gridAngle" => Some(("survey", "angle".to_string())),
         "corridorWidth" => Some(("survey", "CorridorWidth".to_string())),
+        "entranceAlt" => Some(("survey", "EntranceAltitude".to_string())),
+        "structureHeight" | "scanBottomAlt" | "layers" | "gimbalPitch" | "startFromTop" => Some(("survey", suffix.chars().next().map(|c| c.to_ascii_uppercase().to_string() + &suffix[1..]).unwrap_or_default())),
         "flyAlternateTransects" | "splitConcavePolygons" => Some(("survey", suffix.to_string())),
         _ => match suffix.strip_prefix("cameraCalc.") {
             Some(calc) => {
@@ -317,30 +361,55 @@ fn chosen_camera(calc: &Value, suffix: &str, value: &Value) -> Option<String> {
 pub fn regenerate_item(item: &Value) -> Value {
     match item.get("complexItemType").and_then(Value::as_str) {
         Some("CorridorScan") => regenerate_corridor(item),
+        Some("StructureScan") => item.clone(),
         _ => regenerate(item),
     }
 }
 
-pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
-    if suffix == "cameraCalc.cameraBrand" || suffix == "cameraCalc.cameraModel" {
-        let calc = &survey["TransectStyleComplexItem"]["CameraCalc"];
-        let name = chosen_camera(calc, suffix, value)?;
-        let mut changed = survey.clone();
-        changed["TransectStyleComplexItem"]["CameraCalc"] = named_camera(calc, &name);
-        return Some(regenerate_item(&changed));
-    }
-    let (owner, key) = target(suffix)?;
-    let mut changed = survey.clone();
-    match owner {
-        "survey" => changed[key.as_str()] = value.clone(),
-        "transect" => changed["TransectStyleComplexItem"][key.as_str()] = value.clone(),
-        _ => {
-            let mut calc = changed["TransectStyleComplexItem"]["CameraCalc"].clone();
-            calc[key.as_str()] = value.clone();
-            changed["TransectStyleComplexItem"]["CameraCalc"] = recalculated(&calc);
+pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option<Value> {
+    let calc = calc_of(survey);
+    let raw = |key: &str| {
+        let unit = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META, STRUCTURE_META].iter().find_map(|file| meta(file, key)).and_then(|m| cooked(m.units.as_deref().unwrap_or(""), units));
+        match (unit, value.as_f64()) {
+            (Some(u), Some(v)) => json!(u.meters(v)),
+            _ => value.clone(),
         }
+    };
+    let changed = match suffix {
+        "cameraCalc.cameraBrand" | "cameraCalc.cameraModel" => with_calc(survey, named_camera(&calc, &chosen_camera(&calc, suffix, value)?)),
+        _ => {
+            let (owner, key) = target(suffix)?;
+            match owner {
+                "survey" => {
+                    let mut changed = survey.clone();
+                    changed[key.as_str()] = raw(&key);
+                    changed
+                }
+                "transect" => {
+                    let mut changed = survey.clone();
+                    changed["TransectStyleComplexItem"][key.as_str()] = raw(&key);
+                    changed
+                }
+                _ => {
+                    let mut edited = calc.clone();
+                    edited[key.as_str()] = raw(&key);
+                    with_calc(survey, recalculated(&edited))
+                }
+            }
+        }
+    };
+    Some(regenerate_item(&relayered(survey, &changed)))
+}
+
+fn relayered(before: &Value, after: &Value) -> Value {
+    let inputs = |item: &Value| (item.get("StructureHeight").cloned(), item.get("ScanBottomAlt").cloned(), calc_of(item).get("AdjustedFootprintFrontal").cloned());
+    if !is_structure(after) || inputs(before) == inputs(after) {
+        return after.clone();
     }
-    Some(regenerate_item(&changed))
+    let plan = crate::structurescan::saved_plan(after);
+    let mut changed = after.clone();
+    changed["Layers"] = json!(crate::structurescan::layer_count(plan.structure_height, plan.scan_bottom_alt, plan.adjusted_frontal));
+    changed
 }
 
 pub fn changed_remembered(item: &Value, multirotor: bool, stored: &dyn Fn(&str) -> Option<String>) -> Vec<(String, Value)> {
@@ -552,6 +621,25 @@ fn rebuilt(transect: &Value, calc: &Value, transects: &[Vec<Coord>], trigger_dis
 mod tests {
     use super::*;
 
+    static METRES: std::sync::LazyLock<crate::read::Unit> = std::sync::LazyLock::new(|| crate::read::Unit { name: "m".to_string(), factor: 1.0 });
+
+    fn metric() -> Units<'static> {
+        Units { vertical: &METRES, horizontal: &METRES }
+    }
+
+    #[test]
+    fn a_cooked_write_is_stored_raw_and_a_gimbal_angle_reads_upside_down_as_qt_shows_it() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
+        let feet = crate::read::Unit { name: "ft".to_string(), factor: 3.28084 };
+        let imperial = Units { vertical: &feet, horizontal: &feet };
+        let higher = set(&fixture["structure"], "entranceAlt", &json!(328.084), &imperial).unwrap();
+        assert!((higher["EntranceAltitude"].as_f64().unwrap() - 100.0).abs() < 1e-9, "328.084 ft is stored as 100 m");
+        let pitched = set(&fixture["structure"], "gimbalPitch", &json!(45.0), &metric()).unwrap();
+        assert_eq!(pitched["GimbalPitch"], -45.0);
+        let shown = fields(&pitched, "i", true, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
+        assert_eq!((shown["value"].as_f64(), shown["minimum"].as_f64(), shown["maximum"].as_f64(), shown["units"].as_str()), (Some(45.0), Some(0.0), Some(90.0), Some("deg")));
+    }
+
     #[test]
     fn a_new_corridor_starts_from_the_remembered_corridor_settings_as_qt_builds_it() {
         let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
@@ -574,7 +662,7 @@ mod tests {
         let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
         let corridor = &fixture["corridor"];
         let passes = |c: &Value| c["TransectStyleComplexItem"]["Items"].as_array().unwrap().iter().filter(|i| i["command"] == 16).count();
-        let wider = set(corridor, "corridorWidth", &json!(80.0)).unwrap();
+        let wider = set(corridor, "corridorWidth", &json!(80.0), &metric()).unwrap();
         assert_eq!(wider["CorridorWidth"], 80.0);
         assert!(passes(&wider) > passes(corridor), "{} passes at 80 m against {} at 50 m", passes(&wider), passes(corridor));
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
@@ -641,20 +729,20 @@ mod tests {
     fn a_camera_write_recomputes_the_footprint_and_the_survey_regenerates() {
         let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
         let survey = plan["mission"]["items"][0].clone();
-        let higher = set(&survey, "cameraCalc.distanceToSurface", &json!(100.0)).unwrap();
+        let higher = set(&survey, "cameraCalc.distanceToSurface", &json!(100.0), &metric()).unwrap();
         let calc = &higher["TransectStyleComplexItem"]["CameraCalc"];
         assert!((calc["AdjustedFootprintSide"].as_f64().unwrap() - 2.0 * survey["TransectStyleComplexItem"]["CameraCalc"]["AdjustedFootprintSide"].as_f64().unwrap()).abs() < 1e-9, "doubling the height doubles the footprint");
         assert!(higher["TransectStyleComplexItem"]["Items"].as_array().unwrap().len() < survey["TransectStyleComplexItem"]["Items"].as_array().unwrap().len(), "wider spacing means fewer transects");
-        let turned = set(&survey, "gridAngle", &json!(0.0)).unwrap();
+        let turned = set(&survey, "gridAngle", &json!(0.0), &metric()).unwrap();
         assert_eq!(turned["angle"], 0.0);
-        assert!(set(&survey, "noSuchField", &json!(1)).is_none());
+        assert!(set(&survey, "noSuchField", &json!(1), &metric()).is_none());
     }
 
     #[test]
     fn choosing_a_known_camera_takes_its_optics_from_the_database() {
         let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
         let survey = plan["mission"]["items"][0].clone();
-        let sony = set(&survey, "cameraCalc.cameraBrand", &json!("Sony")).unwrap();
+        let sony = set(&survey, "cameraCalc.cameraBrand", &json!("Sony"), &metric()).unwrap();
         let calc = &sony["TransectStyleComplexItem"]["CameraCalc"];
         let first = cameras().into_iter().find(|c| c["brand"] == "Sony").unwrap();
         assert_eq!(calc["CameraName"], first["canonicalName"]);
@@ -662,9 +750,9 @@ mod tests {
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let described = camera(&sony, "p", &Units { vertical: &metres, horizontal: &metres });
         assert_eq!((described["brand"].as_str(), described["model"].as_str()), (Some("Sony"), first["model"].as_str()));
-        let manual = set(&sony, "cameraCalc.cameraBrand", &json!(MANUAL_CAMERA)).unwrap();
+        let manual = set(&sony, "cameraCalc.cameraBrand", &json!(MANUAL_CAMERA), &metric()).unwrap();
         assert_eq!(manual["TransectStyleComplexItem"]["CameraCalc"]["ValueSetIsDistance"], true);
-        assert!(set(&survey, "cameraCalc.cameraModel", &json!("anything")).is_none(), "a custom camera has no models to pick from");
+        assert!(set(&survey, "cameraCalc.cameraModel", &json!("anything"), &metric()).is_none(), "a custom camera has no models to pick from");
     }
 
     #[test]
