@@ -1,6 +1,11 @@
+use std::collections::BTreeMap;
+use std::sync::{LazyLock, Mutex, PoisonError};
+
 use serde_json::{Value, json};
 
 use crate::factmeta::{MetaData, ValueType};
+use crate::router::Backend;
+use crate::settingsini::Setting;
 
 const OBJECTS: [(&str, &str); 25] = [
     ("adsbVehicleManagerSettings", "ADSBVehicleManager"),
@@ -39,17 +44,17 @@ const EXTRA_GROUPS: [(&str, &str); 4] = [
 
 const DEFAULT_DECIMAL_PLACES: i64 = 3;
 
-pub const RUNTIME: [(&str, &[&str]); 7] = [
+pub const RUNTIME: [(&str, &[&str]); 5] = [
     ("appSettings.androidDontSaveToSDCard", &["userVisible", "visible"]),
     ("appSettings.androidUsePosixSerial", &["userVisible", "visible"]),
     ("appSettings.indoorPalette", &["defaultValue", "defaultValueString", "valueEqualsDefault"]),
     ("appSettings.qLocaleLanguage", &["enumIndex", "enumOrValueString", "enumStrings", "enumValues"]),
-    ("batteryIndicatorSettings.valueDisplay", &["defaultValue", "defaultValueString", "valueEqualsDefault"]),
-    ("videoSettings.aspectRatio", &["defaultValue", "valueEqualsDefault"]),
     ("videoSettings.forceVideoDecoder", &["enumStrings", "enumValues"]),
 ];
 
 pub const RUNTIME_WHOLE: [&str; 1] = ["videoSettings.videoSource"];
+
+pub const UNEXPOSED: [&str; 3] = ["autoConnectSettings.autoConnectZeroConf", "flightModeSettings.px4HiddenFlightModes", "videoSettings.videoSavePath"];
 
 pub fn runtime_fields(path: &str) -> Option<&'static [&'static str]> {
     let short = path.strip_prefix("settings.")?;
@@ -99,9 +104,15 @@ fn spelled(value: &Value, decimals: i64, whole: bool) -> String {
         Value::String(s) => s.clone(),
         other => other.as_f64().map_or_else(String::new, |n| match whole {
             true => format!("{}", n as i64),
-            false => format!("{n:.prec$}", prec = usize::try_from(decimals).unwrap_or(0)),
+            false => half_away(n, usize::try_from(decimals).unwrap_or(0)),
         }),
     }
+}
+
+fn half_away(n: f64, decimals: usize) -> String {
+    let scale = 10f64.powi(i32::try_from(decimals).unwrap_or(0));
+    let rounded = (n * scale).round() / scale;
+    format!("{:.decimals$}", if rounded.is_finite() { rounded } else { n })
 }
 
 fn number_json(value: f64, whole: bool) -> Value {
@@ -140,6 +151,7 @@ pub fn fact_json(meta: &MetaData, raw: &Value, units: &crate::surveydoc::Units) 
     let value_string = spelled(&value, decimals, whole);
     let units = unit.map_or_else(|| raw_units.clone(), |u| u.name.clone());
     let is_number = raw.is_number();
+    let default = default_of(meta);
     json!({
         "kind": "fact",
         "name": meta.name,
@@ -155,10 +167,10 @@ pub fn fact_json(meta: &MetaData, raw: &Value, units: &crate::surveydoc::Units) 
         "units": units,
         "rawUnits": raw_units,
         "decimalPlaces": decimals,
-        "defaultValueAvailable": meta.default.is_some(),
-        "defaultValue": meta.default,
-        "defaultValueString": meta.default.as_ref().map_or_else(String::new, |d| spelled(d, decimals, whole)),
-        "valueEqualsDefault": meta.default.as_ref().is_some_and(|d| d == raw || d.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b)),
+        "defaultValueAvailable": default.is_some(),
+        "defaultValue": default,
+        "defaultValueString": default.as_ref().map_or_else(String::new, |d| spelled(d, decimals, whole)),
+        "valueEqualsDefault": default.as_ref().is_some_and(|d| d == raw || d.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b)),
         "min": number_json(shown_min, whole || !is_number),
         "max": number_json(shown_max, whole || !is_number),
         "minString": bound_text(shown_min),
@@ -179,6 +191,181 @@ pub fn fact_json(meta: &MetaData, raw: &Value, units: &crate::surveydoc::Units) 
     })
 }
 
+static SWITCHED_ON: LazyLock<bool> = LazyLock::new(|| std::env::var("QGC_CORE_SETTINGS").is_ok_and(|v| v == "1"));
+
+static STORED: Mutex<Option<BTreeMap<String, Setting>>> = Mutex::new(None);
+
+fn stored() -> std::sync::MutexGuard<'static, Option<BTreeMap<String, Setting>>> {
+    STORED.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn open(path: &std::path::Path) {
+    *stored() = Some(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default()));
+}
+
+pub fn enabled() -> bool {
+    *SWITCHED_ON && stored().is_some()
+}
+
+fn key(group: &str, fact: &str) -> String {
+    crate::settingsgroups::settings_key(group, fact).unwrap_or_else(|| format!("{group}/{fact}"))
+}
+
+pub fn typed(value_type: &ValueType, value: &Value) -> Option<Value> {
+    let number = value.as_f64().or_else(|| value.as_bool().map(f64::from)).or_else(|| value.as_str().and_then(|t| t.trim().parse().ok()));
+    match value_type {
+        ValueType::Bool => value.as_bool().or_else(|| value.as_str().and_then(|t| match t {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        })).or_else(|| number.map(|n| n != 0.0)).map(Value::Bool),
+        ValueType::String => Some(value.as_str().map_or_else(|| crate::control::raw_text(value), str::to_string)).map(Value::String),
+        t if integer(t) => number.map(|n| json!(n.round() as i64)),
+        ValueType::Float => number.filter(|n| n.is_finite()).map(|n| number_json(f64::from(n as f32), false)),
+        _ => number.filter(|n| n.is_finite()).map(|n| number_json(n, false)),
+    }
+}
+
+fn default_of(meta: &MetaData) -> Option<Value> {
+    meta.default.as_ref().map(|d| typed(&meta.value_type, d).unwrap_or_else(|| d.clone()))
+}
+
+fn raw(group: &str, fact: &str, meta: &MetaData) -> Value {
+    let held = match stored().as_ref().and_then(|values| values.get(&key(group, fact)).cloned()) {
+        Some(Setting::Text(text)) => typed(&meta.value_type, &Value::String(text)),
+        _ => None,
+    };
+    held.or_else(|| default_of(meta)).unwrap_or(Value::Null)
+}
+
+fn units_for(backend: &dyn Backend, meta: &MetaData) -> (crate::read::Unit, crate::read::Unit) {
+    let metres = || crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+    match meta.units.as_deref() {
+        Some("vertical m") => (crate::read::Unit::vertical(backend), metres()),
+        Some("m" | "meter" | "meters" | "horizontal m") => (metres(), crate::read::Unit::horizontal(backend)),
+        _ => (metres(), metres()),
+    }
+}
+
+struct Addressed {
+    group: &'static str,
+    fact: String,
+    field: Option<String>,
+    meta: MetaData,
+}
+
+fn address(path: &str) -> Option<Addressed> {
+    let (group, rest) = locate(path)?;
+    let (fact, field) = match rest.split_once('.') {
+        Some((fact, field)) => (fact.to_string(), Some(field.to_string())),
+        None => (rest.to_string(), None),
+    };
+    let fact_path = path.strip_suffix(&field.as_ref().map(|f| format!(".{f}")).unwrap_or_default()).unwrap_or(path).to_string();
+    (!served_by_host(&fact_path)).then_some(())?;
+    let meta = metadata(group, &fact)?;
+    Some(Addressed { group, fact, field, meta })
+}
+
+fn described(backend: &dyn Backend, at: &Addressed, path: &str) -> Value {
+    let (vertical, horizontal) = units_for(backend, &at.meta);
+    let mine = fact_json(&at.meta, &raw(at.group, &at.fact, &at.meta), &crate::surveydoc::Units { vertical: &vertical, horizontal: &horizontal });
+    let fact_path = path.split('.').take(3).collect::<Vec<_>>().join(".");
+    match runtime_fields(&fact_path) {
+        Some(keys) => {
+            let host = crate::read::object(&backend.get_fields(&fact_path, &keys.join(",")));
+            let mut merged = mine;
+            keys.iter().filter_map(|k| host.get(*k).map(|v| (*k, v.clone()))).for_each(|(k, v)| merged[k] = v);
+            merged
+        }
+        None => mine,
+    }
+}
+
+fn unexposed(path: &str) -> bool {
+    path.strip_prefix("settings.").is_some_and(|short| UNEXPOSED.iter().any(|name| short == *name || short.starts_with(&format!("{name}."))))
+}
+
+pub fn get(backend: &dyn Backend, path: &str) -> Option<String> {
+    if unexposed(path) {
+        return Some(json!({ "found": false, "kind": "value", "value": null }).to_string());
+    }
+    let at = address(path)?;
+    let fact = described(backend, &at, path);
+    match &at.field {
+        None => Some(fact.to_string()),
+        Some(field) => fact.get(field.as_str()).map(|v| json!({ "kind": "value", "value": v }).to_string()),
+    }
+}
+
+pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<String> {
+    let at = address(path)?;
+    at.field.is_none().then_some(())?;
+    let fact = described(backend, &at, path);
+    let asked: Vec<&str> = fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect();
+    let everything = asked.contains(&"*");
+    let picked: serde_json::Map<String, Value> = fact.as_object()?.iter().filter(|(k, _)| everything || k.as_str() == "kind" || asked.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
+    let unknown: Vec<&str> = asked.iter().filter(|f| **f != "*" && fact.get(**f).is_none()).copied().collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    let mut answer = Value::Object(picked);
+    if !unknown.is_empty() {
+        answer["unknownFields"] = json!(unknown);
+    }
+    Some(answer.to_string())
+}
+
+pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
+    let at = address(path)?;
+    let cooked = match at.field.as_deref() {
+        None | Some("value") => true,
+        Some("rawValue") => false,
+        Some(_) => return None,
+    };
+    let written = crate::read::object(value);
+    let given = written.get("value").cloned().unwrap_or(written);
+    let (vertical, horizontal) = units_for(backend, &at.meta);
+    let unit = match at.meta.units.as_deref() {
+        Some("vertical m") => Some(vertical),
+        Some("m" | "meter" | "meters" | "horizontal m") => Some(horizontal),
+        _ => None,
+    };
+    let raw_given = match (cooked, unit, given.as_f64()) {
+        (true, Some(u), Some(n)) => json!(u.meters(n)),
+        _ => given,
+    };
+    if let Some(new) = typed(&at.meta.value_type, &raw_given) {
+        let spelled = match &new {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        };
+        if let Some(values) = stored().as_mut() {
+            values.insert(key(at.group, &at.fact), Setting::Text(spelled));
+        }
+    }
+    Some(backend.set(path, value))
+}
+
+pub struct Owner<B>(pub B);
+
+impl<B: Backend> Backend for Owner<B> {
+    fn get(&self, path: &str) -> String {
+        enabled().then(|| get(&self.0, path)).flatten().unwrap_or_else(|| self.0.get(path))
+    }
+    fn get_fields(&self, path: &str, fields: &str) -> String {
+        enabled().then(|| get_fields(&self.0, path, fields)).flatten().unwrap_or_else(|| self.0.get_fields(path, fields))
+    }
+    fn set(&self, path: &str, value: &str) -> String {
+        enabled().then(|| set(&self.0, path, value)).flatten().unwrap_or_else(|| self.0.set(path, value))
+    }
+    fn invoke(&self, path: &str, args: &str) -> String {
+        self.0.invoke(path, args)
+    }
+    fn watch(&self, paths: &[String]) {
+        self.0.watch(paths);
+    }
+    fn core_guided(&self, action: &Value) -> Option<Result<(), String>> {
+        self.0.core_guided(action)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,6 +377,16 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.iter().map(|(k, v)| (k.clone(), by_value(v))).collect()),
             other => other.clone(),
         }
+    }
+
+    #[test]
+    fn a_stored_value_is_read_as_the_fact_type_qt_converts_it_to() {
+        assert_eq!(typed(&ValueType::Bool, &json!("true")), Some(json!(true)));
+        assert_eq!(typed(&ValueType::Uint32, &json!(false)), Some(json!(0)), "a false default on an integer fact reads as 0");
+        assert_eq!(typed(&ValueType::Float, &json!(1.777777)), Some(json!(1.7777769565582275)), "a float fact holds single precision");
+        assert_eq!(typed(&ValueType::Double, &json!("15")), Some(json!(15)));
+        assert_eq!(typed(&ValueType::Uint8, &json!("abc")), None);
+        assert_eq!(spelled(&json!(17.25), 1, false), "17.3", "Qt rounds a written half away from zero");
     }
 
     #[test]

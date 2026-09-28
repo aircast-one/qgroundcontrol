@@ -19,6 +19,8 @@ void qgc_core_watch_client(const char *client, const char *paths_csv);
 void qgc_core_set_event_handler(QGCCoreEventFn handler);
 void qgc_core_free(char *text);
 
+void qgc_core_settings_open(const char *path);
+
 char *qgc_core_tile_open(const char *path);
 void qgc_core_tile_close(void);
 long long qgc_core_tile_size(const char *hash);

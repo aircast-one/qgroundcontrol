@@ -50,7 +50,7 @@ impl Backend for QtBackend {
     }
 }
 
-static CORE: LazyLock<Core<QtBackend>> = LazyLock::new(|| Core::new(QtBackend));
+static CORE: LazyLock<Core<crate::settingsstore::Owner<QtBackend>>> = LazyLock::new(|| Core::new(crate::settingsstore::Owner(QtBackend)));
 static HEAD: Mutex<EventFn> = Mutex::new(None);
 
 fn c(text: &str) -> CString {
@@ -424,6 +424,11 @@ pub unsafe extern "C" fn qgc_core_link_announce_on_state() {
 }
 
 static TILE_CACHE: std::sync::Mutex<Option<crate::tilecache::Cache>> = std::sync::Mutex::new(None);
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_settings_open(path: *const c_char) {
+    crate::settingsstore::open(std::path::Path::new(&text(path)));
+}
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_tile_open(path: *const c_char) -> *mut c_char {

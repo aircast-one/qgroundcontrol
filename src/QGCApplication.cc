@@ -48,6 +48,7 @@
 #endif
 #include "ParameterManager.h"
 #include "PositionManager.h"
+#include "QGCCoreC.h"
 #include "QGCCommandLineParser.h"
 #include "QGCCorePlugin.h"
 #include "QGCFileDownload.h"
@@ -161,6 +162,8 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
         }
     }
     settings.setValue(_settingsVersionKey, QGC_SETTINGS_VERSION);
+    settings.sync();
+    qgc_core_settings_open(settings.fileName().toUtf8().constData());
 
     if (fClearCache) {
         QDir dir(ParameterManager::parameterCacheDir());
