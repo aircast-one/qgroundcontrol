@@ -12,7 +12,10 @@ pub const FETCH: &str = "core.plan.fetch";
 pub const STATUS: &str = "core.plan.status";
 pub const CORE_INSERT_WAYPOINT: &str = "core.plan.insertWaypoint";
 pub const CORE_REMOVE: &str = "core.plan.remove";
-const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE];
+pub const CORE_INSERT_LAND: &str = "core.plan.insertLand";
+pub const CORE_SET_COMMAND: &str = "core.plan.setCommand";
+pub const CORE_SET_ALTITUDE: &str = "core.plan.setAltitude";
+const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE];
 const DEFAULT_ALTITUDE: &str = "settings.appSettings.defaultMissionItemAltitude";
 
 #[derive(Default)]
@@ -42,7 +45,10 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         SEND => send(),
         FETCH => fetch(),
         STATUS => status(),
-        CORE_INSERT_WAYPOINT => insert_waypoint(backend, args),
+        CORE_INSERT_WAYPOINT => insert_at(backend, args, false),
+        CORE_INSERT_LAND => insert_at(backend, args, true),
+        CORE_SET_COMMAND => item_edit(backend, args, true),
+        CORE_SET_ALTITUDE => item_edit(backend, args, false),
         CORE_REMOVE => remove(args),
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
@@ -67,17 +73,41 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
     }
 }
 
-fn insert_waypoint(backend: &dyn Backend, args: &str) -> Value {
+fn edit_defaults(backend: &dyn Backend) -> Option<plandoc::EditDefaults> {
+    crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude })
+}
+
+fn insert_at(backend: &dyn Backend, args: &str, land: bool) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
     let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
-        return refused("A waypoint needs a latitude and a longitude.");
+        return refused("An item needs a latitude and a longitude.");
     };
     let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
-    let Some(altitude) = crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))) else {
+    let Some(defaults) = edit_defaults(backend) else {
         return refused("The default mission item altitude is not known.");
     };
-    edit(|doc| Ok(plandoc::insert_waypoint(doc, latitude, longitude, index, &plandoc::EditDefaults { mission_item_altitude: altitude })))
+    edit(|doc| match land {
+        true => plandoc::insert_land(doc, latitude, longitude, index, &defaults),
+        false => Ok(plandoc::insert_waypoint(doc, latitude, longitude, index, &defaults)),
+    })
+}
+
+fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let (Some(index), Some(value)) = (given.get(0).and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok()), given.get(1).and_then(Value::as_f64).filter(|v| v.is_finite())) else {
+        return refused("An item edit needs the item's index and a number.");
+    };
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| {
+        let changed = match command {
+            true => plandoc::set_command(doc, index, value as i64, &defaults),
+            false => plandoc::set_altitude(doc, index, value),
+        };
+        changed.ok_or_else(|| format!("Item {index} cannot take that edit."))
+    })
 }
 
 fn remove(args: &str) -> Value {

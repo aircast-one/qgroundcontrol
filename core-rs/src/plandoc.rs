@@ -239,21 +239,71 @@ fn param_defaults(command: Option<&cmdinfo::Command>) -> [Option<f64>; 7] {
     })
 }
 
-pub fn insert_waypoint(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
-    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
-    let listed = param_defaults(commands.get(&CMD_NAV_WAYPOINT));
-    let (altitude, mode) = previous_altitude(doc, &commands, visual_index)
-        .map(|(altitude, mode)| (altitude, if doc.global_altitude_mode == crate::altitudemodes::MIXED { mode } else { default_mode(doc) }))
-        .unwrap_or((defaults.mission_item_altitude, default_mode(doc)));
-    let waypoint = Item::Simple(Simple {
-        command: CMD_NAV_WAYPOINT,
-        frame: frame_for(mode),
-        params: [listed[0], Some(0.0), listed[2], listed[3], Some(latitude), Some(longitude), Some(altitude)],
+const CMD_NAV_RETURN_TO_LAUNCH: i64 = 20;
+const CMD_DO_SET_ROI_LOCATION: i64 = 195;
+const FRAME_MISSION: i64 = 2;
+
+fn with_command_defaults(doc: &Document, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>, command: i64, kept: [Option<f64>; 7], defaults: &EditDefaults) -> Simple {
+    let info = commands.get(&command);
+    let coordinate = info.is_some_and(|c| c.specifies_coordinate || c.standalone_coordinate);
+    let specifies_altitude = info.is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
+    let listed = param_defaults(info);
+    let (latitude, longitude) = match coordinate {
+        true => (kept[4], kept[5]),
+        false => (Some(0.0), Some(0.0)),
+    };
+    let takeoff = info.is_some_and(|c| c.is_takeoff);
+    let mode = match takeoff {
+        true => crate::altitudemodes::RELATIVE,
+        false => default_mode(doc),
+    };
+    let grounded = info.is_some_and(|c| c.is_land) || command == CMD_DO_SET_ROI_LOCATION;
+    let altitude = match (specifies_altitude, grounded) {
+        (true, true) => Some(0.0),
+        (true, false) => Some(defaults.mission_item_altitude),
+        (false, _) => None,
+    };
+    let param = |i: usize| info.and_then(|c| c.params.get(&(i as u8 + 1))).map_or(Some(0.0), |_| listed[i]);
+    let seventh = match altitude {
+        Some(alt) => Some(alt),
+        None => info.and_then(|c| c.params.get(&7)).map_or(Some(0.0), |_| listed[6]),
+    };
+    let fifth = info.and_then(|c| c.params.get(&5)).map_or(latitude, |_| listed[4]);
+    let sixth = info.and_then(|c| c.params.get(&6)).map_or(longitude, |_| listed[5]);
+    Simple {
+        command,
+        frame: match altitude {
+            Some(_) => frame_for(mode),
+            None => FRAME_MISSION,
+        },
+        params: [param(0), if command == CMD_NAV_WAYPOINT { Some(0.0) } else { param(1) }, param(2), param(3), fifth, sixth, seventh],
         auto_continue: true,
-        altitude: Some(Altitude { mode, altitude, amsl_above_terrain: None }),
-    });
+        altitude: altitude.map(|altitude| Altitude { mode, altitude, amsl_above_terrain: None }),
+    }
+}
+
+pub fn insert_simple(doc: &Document, command: i64, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let fresh = with_command_defaults(doc, &commands, command, [None, None, None, None, Some(latitude), Some(longitude), None], defaults);
+    let land = commands.get(&command).is_some_and(|c| c.is_land);
+    let inherited = previous_altitude(doc, &commands, visual_index).filter(|_| fresh.altitude.is_some() && !land);
+    let placed = match inherited {
+        Some((altitude, previous_mode)) => {
+            let mode = match doc.global_altitude_mode {
+                crate::altitudemodes::MIXED => previous_mode,
+                _ => fresh.altitude.as_ref().map_or(previous_mode, |a| a.mode),
+            };
+            Simple {
+                frame: frame_for(mode),
+                params: [fresh.params[0], fresh.params[1], fresh.params[2], fresh.params[3], fresh.params[4], fresh.params[5], Some(altitude)],
+                altitude: Some(Altitude { mode, altitude, amsl_above_terrain: None }),
+                ..fresh
+            }
+        }
+        None => fresh,
+    };
     let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
-    let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(waypoint)).chain(doc.items[at..].iter().cloned()).collect();
+    let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(Item::Simple(placed))).chain(doc.items[at..].iter().cloned()).collect();
     let first_coordinate = items.iter().find_map(|item| match item {
         Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate) => Some((s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0))),
         _ => None,
@@ -263,6 +313,45 @@ pub fn insert_waypoint(doc: &Document, latitude: f64, longitude: f64, visual_ind
         Some([lat, lon, 0.0])
     });
     Document { items, home, ..doc.clone() }
+}
+
+pub fn insert_waypoint(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
+    insert_simple(doc, CMD_NAV_WAYPOINT, latitude, longitude, visual_index, defaults)
+}
+
+pub fn insert_land(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Result<Document, String> {
+    match vehicle_class(doc.vehicle_type) {
+        VehicleClass::FixedWing | VehicleClass::Vtol => Err("The core cannot build a landing pattern yet.".to_string()),
+        _ => Ok(insert_simple(doc, CMD_NAV_RETURN_TO_LAUNCH, latitude, longitude, visual_index, defaults)),
+    }
+}
+
+fn simple_at(doc: &Document, visual_index: usize) -> Option<(usize, &Simple)> {
+    let at = visual_index.checked_sub(1)?;
+    match doc.items.get(at)? {
+        Item::Simple(simple) => Some((at, simple)),
+        Item::Complex { .. } => None,
+    }
+}
+
+fn replaced(doc: &Document, at: usize, item: Simple) -> Document {
+    Document { items: doc.items.iter().enumerate().map(|(i, existing)| if i == at { Item::Simple(item.clone()) } else { existing.clone() }).collect(), ..doc.clone() }
+}
+
+pub fn set_command(doc: &Document, visual_index: usize, command: i64, defaults: &EditDefaults) -> Option<Document> {
+    let (at, current) = simple_at(doc, visual_index)?;
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    match current.command == command {
+        true => Some(doc.clone()),
+        false => Some(replaced(doc, at, with_command_defaults(doc, &commands, command, current.params, defaults))),
+    }
+}
+
+pub fn set_altitude(doc: &Document, visual_index: usize, altitude: f64) -> Option<Document> {
+    let (at, current) = simple_at(doc, visual_index)?;
+    let held = current.altitude.as_ref()?;
+    let params = [current.params[0], current.params[1], current.params[2], current.params[3], current.params[4], current.params[5], Some(altitude)];
+    Some(replaced(doc, at, Simple { params, altitude: Some(Altitude { altitude, ..held.clone() }), ..current.clone() }))
 }
 
 pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
@@ -402,6 +491,24 @@ mod tests {
         matches_qt(&placed, include_str!("../tests/fixtures/edit-D-by-qt.plan"));
         let home = placed.home.unwrap();
         assert!((home[0] - 47.64026979617687).abs() < 1e-12 && home[1] == -122.1 && home[2] == 0.0);
+    }
+
+    #[test]
+    fn landing_a_multirotor_appends_a_return_to_launch_as_qt_does() {
+        matches_qt(&insert_land(&section(), 47.6325, -122.0870, -1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-F-by-qt.plan"));
+        let plane = Document { vehicle_type: 1, ..section() };
+        assert!(insert_land(&plane, 47.6325, -122.0870, -1, &QT_DEFAULTS).is_err(), "a fixed-wing landing is a pattern, not a simple item");
+    }
+
+    #[test]
+    fn an_altitude_edit_moves_param_seven_with_it() {
+        matches_qt(&set_altitude(&section(), 2, 33.0).unwrap(), include_str!("../tests/fixtures/edit-G-by-qt.plan"));
+        assert!(set_altitude(&section(), 4, 33.0).is_none(), "the mount control item has no altitude to set");
+    }
+
+    #[test]
+    fn changing_a_command_resets_its_parameters_and_altitude_but_keeps_the_position() {
+        matches_qt(&set_command(&section(), 2, 19, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-H-by-qt.plan"));
     }
 
     #[test]
