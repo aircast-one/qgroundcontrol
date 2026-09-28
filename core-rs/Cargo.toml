@@ -25,7 +25,7 @@ socket2 = { version = "0.6.5", features = ["all"] }
 if-addrs = "0.15.0"
 num-traits = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-ureq = { version = "3", default-features = false }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 

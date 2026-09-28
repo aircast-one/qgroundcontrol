@@ -129,6 +129,7 @@ pub mod sysstatus;
 pub mod takeoff;
 pub mod tcplink;
 pub mod terrain;
+pub mod terrainquery;
 pub mod terraintile;
 pub mod terraindownload;
 pub mod tlog;

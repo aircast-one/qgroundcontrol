@@ -64,19 +64,43 @@ fn held() -> std::sync::MutexGuard<'static, Held> {
     HELD.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
-    let mut state = held();
-    let Some(current) = state.document.as_ref() else {
-        return refused("There is no plan to edit.");
+fn home_of(document: Option<&Document>) -> Option<(f64, f64)> {
+    document.and_then(|d| d.home).map(|h| (h[0], h[1]))
+}
+
+fn settle_home_on_terrain(before: Option<(f64, f64)>) {
+    let Some((latitude, longitude)) = home_of(held().document.as_ref()).filter(|now| Some(*now) != before) else {
+        return;
     };
-    match change(current) {
-        Ok(changed) => {
-            let count = changed.items.len();
-            state.document = Some(changed);
-            json!({ "ok": true, "items": count })
+    std::thread::spawn(move || {
+        let Ok(ground) = crate::terrainquery::elevation(latitude, longitude, None, &crate::terrainquery::fetch_over_http) else {
+            return;
+        };
+        let mut state = held();
+        if home_of(state.document.as_ref()) == Some((latitude, longitude)) {
+            state.document = state.document.take().map(|d| Document { home: d.home.map(|h| [h[0], h[1], ground]), ..d });
         }
-        Err(reason) => refused(reason),
-    }
+    });
+}
+
+fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
+    let (answer, before) = {
+        let mut state = held();
+        let Some(current) = state.document.as_ref() else {
+            return refused("There is no plan to edit.");
+        };
+        let before = home_of(Some(current));
+        match change(current) {
+            Ok(changed) => {
+                let count = changed.items.len();
+                state.document = Some(changed);
+                (json!({ "ok": true, "items": count }), before)
+            }
+            Err(reason) => return refused(reason),
+        }
+    };
+    settle_home_on_terrain(before);
+    answer
 }
 
 fn edit_defaults(backend: &dyn Backend) -> Option<plandoc::EditDefaults> {
@@ -158,6 +182,7 @@ fn open(file: &str) -> Value {
         Ok(document) => {
             let count = document.items.len();
             held().document = Some(document);
+            settle_home_on_terrain(None);
             json!({ "ok": true, "items": count })
         }
         Err(reason) => refused(reason),
