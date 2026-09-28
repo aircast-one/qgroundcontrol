@@ -520,3 +520,30 @@ pub fn plan_state() -> Option<PlanState> {
         global_mode: document.global_altitude_mode,
     })
 }
+
+pub fn summary_fields(backend: &dyn Backend) -> Option<Value> {
+    if !enabled() {
+        return None;
+    }
+    let document = held().document.clone().unwrap_or_else(empty_document);
+    let speed = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue")));
+    let speeds = crate::missionitems::Speeds {
+        hover: speed("offlineEditingHoverSpeed").unwrap_or(5.0),
+        cruise: speed("offlineEditingCruiseSpeed").unwrap_or(15.0),
+        ascent: speed("offlineEditingAscentSpeed").unwrap_or(3.0),
+        descent: speed("offlineEditingDescentSpeed").unwrap_or(1.0),
+    };
+    let status = crate::missionitems::flight_status(&document, &speeds);
+    Some(json!({
+        "kind": "object",
+        "containsItems": !document.items.is_empty(),
+        "missionTotalDistance": status.as_ref().map(|s| s.total_distance),
+        "missionPlannedDistance": status.as_ref().map(|s| s.planned_distance),
+        "missionTime": status.as_ref().map(|s| s.total_time),
+        "missionHoverDistance": status.as_ref().map(|s| s.hover_distance),
+        "missionCruiseDistance": status.as_ref().map(|s| s.cruise_distance),
+        "missionMaxTelemetry": status.as_ref().map(|s| s.max_telemetry),
+        "minAMSLAltitude": status.as_ref().map(|s| s.min_amsl).filter(|v| v.is_finite()),
+        "maxAMSLAltitude": status.as_ref().map(|s| s.max_amsl).filter(|v| v.is_finite()),
+    }))
+}

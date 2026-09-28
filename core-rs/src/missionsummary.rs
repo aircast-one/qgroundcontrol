@@ -22,6 +22,7 @@ pub const DEPS: &[&str] = &[
     "settings.appSettings.offlineEditingCruiseSpeed",
     "settings.appSettings.offlineEditingAscentSpeed",
     "settings.unitsSettings.verticalDistanceUnits",
+    crate::coreplan::CHANGED,
 ];
 
 const FEET_PER_METRE: f64 = 3.2808399;
@@ -206,10 +207,12 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         .then(|| crate::missionitems::items_view(backend, &["geometry".to_string()]))
         .and_then(|view| view.get("items").and_then(Value::as_array).cloned());
     let imperial = imperial(backend);
-    let mission = object(&backend.get_fields(
-        "plan.missionController",
-        "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionMaxTelemetry,minAMSLAltitude,maxAMSLAltitude",
-    ));
+    let mission = crate::coreplan::summary_fields(backend).unwrap_or_else(|| {
+        object(&backend.get_fields(
+            "plan.missionController",
+            "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionMaxTelemetry,minAMSLAltitude,maxAMSLAltitude",
+        ))
+    });
     let has_items = mission.get("containsItems").and_then(Value::as_bool).unwrap_or(false);
     let metres = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
     let seconds = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);

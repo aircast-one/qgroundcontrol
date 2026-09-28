@@ -206,6 +206,161 @@ fn legs(doc: &crate::plandoc::Document, commands: &std::collections::BTreeMap<i6
         .collect()
 }
 
+pub struct Speeds {
+    pub hover: f64,
+    pub cruise: f64,
+    pub ascent: f64,
+    pub descent: f64,
+}
+
+#[derive(Debug, Default)]
+pub struct FlightStatus {
+    pub total_distance: f64,
+    pub planned_distance: f64,
+    pub hover_distance: f64,
+    pub cruise_distance: f64,
+    pub total_time: f64,
+    pub max_telemetry: f64,
+    pub min_amsl: f64,
+    pub max_amsl: f64,
+}
+
+fn specified_speed(sections: &[crate::plandoc::Simple]) -> Option<f64> {
+    sections.iter().find(|s| s.command == 178).and_then(|s| s.params[1])
+}
+
+fn additional_delay(item: &crate::plandoc::Item) -> f64 {
+    match item {
+        crate::plandoc::Item::Simple(s) => match s.command {
+            16 | 112 | 93 => s.params[0].unwrap_or(0.0),
+            _ => 0.0,
+        },
+        crate::plandoc::Item::Complex { .. } => 0.0,
+    }
+}
+
+fn greatest_distance_to(json: &Value, to: (f64, f64)) -> f64 {
+    json.get("TransectStyleComplexItem")
+        .and_then(|t| t.get("VisualTransectPoints"))
+        .and_then(Value::as_array)
+        .map(|points| points.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).map(|at| crate::surveygrid::distance_between(at, to)).fold(0.0, f64::max))
+        .unwrap_or(0.0)
+}
+
+pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<FlightStatus> {
+    let class = crate::plandoc::vehicle_class(doc.vehicle_type);
+    if class == crate::cmdinfo::VehicleClass::Vtol {
+        return None;
+    }
+    let multirotor = class == crate::cmdinfo::VehicleClass::MultiRotor;
+    let commands = crate::cmdinfo::tree(crate::plandoc::firmware(doc.firmware_type), class);
+    let home = doc.home;
+    let home_alt = home.map_or(0.0, |h| h[2]);
+    struct Walk {
+        status: FlightStatus,
+        hover: f64,
+        cruise: f64,
+        last: Option<((f64, f64), f64, bool)>,
+        first_coordinate: bool,
+        link: bool,
+        rtl: bool,
+        past_land: bool,
+    }
+    let add = |w: &mut Walk, distance: f64, extra: f64| {
+        let time = distance / if multirotor { w.hover } else { w.cruise } + extra;
+        w.status.total_time += time;
+        w.status.planned_distance += distance;
+        match multirotor {
+            true => w.status.hover_distance += distance,
+            false => w.status.cruise_distance += distance,
+        }
+    };
+    let start = Walk {
+        status: FlightStatus { min_amsl: f64::NAN, max_amsl: f64::NAN, ..FlightStatus::default() },
+        hover: speeds.hover,
+        cruise: speeds.cruise,
+        last: None,
+        first_coordinate: true,
+        link: false,
+        rtl: false,
+        past_land: false,
+    };
+    let settings_speed = specified_speed(&doc.settings_sections);
+    let seeded = Walk {
+        hover: if multirotor { settings_speed.unwrap_or(speeds.hover) } else { speeds.hover },
+        cruise: if multirotor { speeds.cruise } else { settings_speed.unwrap_or(speeds.cruise) },
+        ..start
+    };
+    let walked = doc.items.iter().fold(seeded, |mut w, item| {
+        let simple = match item {
+            crate::plandoc::Item::Simple(s) => Some(s),
+            crate::plandoc::Item::Complex { .. } => None,
+        };
+        w.rtl = w.rtl || simple.is_some_and(|s| s.command == 20);
+        if !w.rtl {
+            if let Some(s) = simple.filter(|s| w.first_coordinate && (s.command == 22 || s.command == 84)) {
+                if home.is_some() {
+                    w.link = true;
+                    if multirotor {
+                        let climb = (home_alt - amsl_entry(s, home_alt)).abs() / speeds.ascent;
+                        w.status.total_time += climb;
+                    }
+                }
+            }
+            if !w.past_land {
+                add(&mut w, 0.0, additional_delay(item));
+            }
+            if let Some(f) = flight(item, &commands, home_alt) {
+                let (low, high) = (f.amsl, f.amsl);
+                w.status.min_amsl = w.status.min_amsl.min(low);
+                w.status.max_amsl = w.status.max_amsl.max(high);
+                w.first_coordinate = false;
+                let previous = w.last.or(w.link.then_some((home.map_or((0.0, 0.0), |h| (h[0], h[1])), home_alt, false)));
+                if let (Some((from, _, was_land)), true) = (previous, w.last.is_some() || w.link) {
+                    let distance = crate::surveygrid::distance_between(from, f.entry);
+                    if !was_land {
+                        w.status.total_distance += distance;
+                        if !w.past_land {
+                            add(&mut w, distance, 0.0);
+                        }
+                    }
+                    let to_home = home.map_or(0.0, |h| crate::surveygrid::distance_between((h[0], h[1]), f.entry));
+                    w.status.max_telemetry = w.status.max_telemetry.max(to_home);
+                }
+                if let crate::plandoc::Item::Complex { json, .. } = item {
+                    w.status.max_telemetry = w.status.max_telemetry.max(greatest_distance_to(json, f.exit));
+                    if !w.past_land {
+                        add(&mut w, f.within, 0.0);
+                    }
+                    w.status.total_distance += f.within;
+                }
+                w.last = Some((f.exit, f.amsl, f.is_land));
+            }
+        }
+        if let Some(changed) = simple.and_then(|s| specified_speed(&s.sections)) {
+            match multirotor {
+                true => w.hover = changed,
+                false => w.cruise = changed,
+            }
+        }
+        w.past_land = w.past_land || simple.is_some_and(|s| commands.get(&s.command).is_some_and(|c| c.is_land));
+        w
+    });
+    let mut w = walked;
+    if let (true, Some((exit, exit_amsl, _)), Some(h)) = (w.rtl, w.last, home) {
+        let distance = crate::surveygrid::distance_between(exit, (h[0], h[1]));
+        if !w.past_land {
+            let land = (h[2] - exit_amsl).abs() / speeds.descent;
+            add(&mut w, distance, land);
+        }
+    }
+    if w.link {
+        w.status.min_amsl = w.status.min_amsl.min(home_alt);
+        w.status.max_amsl = w.status.max_amsl.max(home_alt);
+    }
+    Some(w.status)
+}
+
 fn altitude_fact(property: &str, metres: f64) -> Value {
     json!([{ "property": property, "value": metres, "rawValue": metres, "units": "m" }])
 }
@@ -773,6 +928,25 @@ mod from_the_document {
         let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json")).unwrap();
         let home_altitude = qt["items"][0]["altitudeMetres"].as_f64().unwrap();
         agrees(include_str!("../tests/fixtures/ardupilot-takeoff-without-coordinate.plan"), home_altitude, include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json"));
+    }
+
+    fn status_matches(plan: &str, home_altitude: f64, qt: &str) {
+        let loaded = crate::plandoc::load(plan).unwrap();
+        let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], home_altitude]), ..loaded };
+        let status = flight_status(&doc, &Speeds { hover: 5.0, cruise: 15.0, ascent: 3.0, descent: 1.0 }).unwrap();
+        let qt: Value = serde_json::from_str(qt).unwrap();
+        let close = |mine: f64, key: &str| (mine - qt[key].as_f64().unwrap()).abs() < 1e-6;
+        assert!(close(status.total_distance, "distanceMetres"), "distance {} qt {}", status.total_distance, qt["distanceMetres"]);
+        assert!(close(status.total_time, "timeSeconds"), "time {} qt {}", status.total_time, qt["timeSeconds"]);
+        assert!(close(status.max_telemetry, "maxTelemetryMetres"), "telemetry {} qt {}", status.max_telemetry, qt["maxTelemetryMetres"]);
+        assert_eq!(json!([status.min_amsl, status.max_amsl]), qt["altitudeBandMetres"]);
+    }
+
+    #[test]
+    fn the_flight_status_of_the_core_plan_is_qts() {
+        status_matches(include_str!("../../test/MissionManager/SectionTest.plan"), 35.0, include_str!("../tests/fixtures/summary-SectionTest-by-qt.json"));
+        status_matches(include_str!("../tests/fixtures/survey-upload.plan"), 585.0, include_str!("../tests/fixtures/summary-survey-upload-by-qt.json"));
+        status_matches(include_str!("../tests/fixtures/ardupilot-takeoff-without-coordinate.plan"), 585.0, include_str!("../tests/fixtures/summary-sitl-base-by-qt.json"));
     }
 
     #[test]
