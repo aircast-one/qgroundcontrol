@@ -251,6 +251,49 @@ fn deliver(outbound: Vec<(u32, Vec<u8>)>) {
     });
 }
 
+fn mission_idle(kind: &str) -> bool {
+    crate::hub::lock().active().is_none_or(|v| v.mission_snapshot()[kind]["inProgress"].as_bool() != Some(true))
+}
+
+fn send_shape(kind: &str, document: &Document) -> Value {
+    let pair = |v: &Value| json!([v.get(0), v.get(1)]);
+    match kind {
+        "fence" => json!({
+            "action": "write",
+            "plan": "fence",
+            "polygons": document.fence["polygons"].as_array().map(|list| list.iter().map(|p| json!({
+                "inclusion": p["inclusion"],
+                "vertices": p["polygon"].as_array().map(|v| v.iter().map(pair).collect::<Vec<_>>()).unwrap_or_default(),
+            })).collect::<Vec<_>>()).unwrap_or_default(),
+            "circles": document.fence["circles"].as_array().map(|list| list.iter().map(|c| json!({
+                "inclusion": c["inclusion"],
+                "center": c["circle"]["center"],
+                "radius": c["circle"]["radius"],
+            })).collect::<Vec<_>>()).unwrap_or_default(),
+            "breachReturn": document.fence.get("breachReturn").cloned().unwrap_or(Value::Null),
+        }),
+        _ => json!({ "action": "write", "plan": "rally", "points": document.rally["points"].as_array().cloned().unwrap_or_default() }),
+    }
+}
+
+fn send_after_mission(document: Document) {
+    std::thread::spawn(move || {
+        let (fence, rally) = crate::hub::lock().active().map_or((false, false), crate::hub::Vehicle::plans_supported);
+        let wanted: Vec<&str> = [("fence", fence), ("rally", rally)].into_iter().filter(|(_, supported)| *supported).map(|(k, _)| k).collect();
+        let previous = std::iter::once("mission").chain(wanted.iter().copied()).collect::<Vec<_>>();
+        wanted.iter().zip(previous).for_each(|(kind, before)| {
+            if settle(before) {
+                let started = crate::hub::lock().mission_request(None, &send_shape(kind, &document), crate::hub::now_ms());
+                if let Ok(outbound) = started {
+                    deliver(outbound);
+                }
+            }
+        });
+        let _ = wanted.last().is_some_and(|last| settle(last));
+        changed();
+    });
+}
+
 fn send() -> Value {
     let Some(document) = held().document.clone() else {
         return refused("There is no plan to send.");
@@ -270,21 +313,30 @@ fn send() -> Value {
     match started {
         Ok(outbound) => {
             deliver(outbound);
+            held().dirty = false;
+            send_after_mission(document);
+            changed();
             json!({ "ok": true, "items": items.len() })
         }
         Err(reason) => refused(reason),
     }
 }
 
-fn fetch() -> Value {
-    let started = crate::hub::lock().mission_request(None, &json!({ "action": "load" }), crate::hub::now_ms());
+fn settle(kind: &str) -> bool {
+    (0..600).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        mission_idle(kind)
+    })
+}
+
+fn load(kind: &str) -> bool {
+    let started = crate::hub::lock().mission_request(None, &json!({ "action": "load", "plan": kind }), crate::hub::now_ms());
     match started {
         Ok(outbound) => {
-            held().fetching = true;
             deliver(outbound);
-            json!({ "ok": true })
+            settle(kind)
         }
-        Err(reason) => refused(reason),
+        Err(_) => false,
     }
 }
 
@@ -292,35 +344,76 @@ fn number(value: &Value) -> f64 {
     value.as_f64().unwrap_or(f64::NAN)
 }
 
-fn status() -> Value {
-    let (snapshot, sends_home) = {
-        let hub = crate::hub::lock();
-        (hub.active().map(|v| v.mission_snapshot()["mission"].clone()), hub.active().map(crate::hub::Vehicle::sends_home))
-    };
-    let mission = snapshot.unwrap_or(Value::Null);
-    let idle = mission.get("inProgress").and_then(Value::as_bool) == Some(false);
+fn fence_from(snapshot: &Value) -> Value {
+    json!({
+        "version": 2,
+        "polygons": snapshot["polygons"].as_array().map(|list| list.iter().map(|p| json!({ "inclusion": p["inclusion"], "polygon": p["vertices"], "version": 1 })).collect::<Vec<_>>()).unwrap_or_default(),
+        "circles": snapshot["circles"].as_array().map(|list| list.iter().map(|c| json!({ "inclusion": c["inclusion"], "circle": { "center": c["center"], "radius": c["radius"] }, "version": 1 })).collect::<Vec<_>>()).unwrap_or_default(),
+    })
+    .as_object()
+    .cloned()
+    .map(|mut fence| {
+        if let Some(back) = snapshot.get("breachReturn").filter(|b| !b.is_null()) {
+            fence.insert("breachReturn".to_string(), back.clone());
+        }
+        Value::Object(fence)
+    })
+    .unwrap_or(Value::Null)
+}
+
+fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool) {
+    let downloaded: Vec<Downloaded> = snapshot["mission"]["items"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|i| Downloaded {
+                    frame: i["frame"].as_i64().unwrap_or(0),
+                    command: i["command"].as_i64().unwrap_or(0),
+                    params: std::array::from_fn(|k| number(&i["params"][k])),
+                    auto_continue: i["autoContinue"].as_bool().unwrap_or(true),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let mut state = held();
-    if state.fetching && idle {
-        state.fetching = false;
-        let downloaded: Vec<Downloaded> = mission["items"]
-            .as_array()
-            .map(|items| {
-                items
-                    .iter()
-                    .map(|i| Downloaded {
-                        frame: i["frame"].as_i64().unwrap_or(0),
-                        command: i["command"].as_i64().unwrap_or(0),
-                        params: std::array::from_fn(|k| number(&i["params"][k])),
-                        auto_continue: i["autoContinue"].as_bool().unwrap_or(true),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let template = state.document.clone().unwrap_or_else(empty_document);
-        state.document = Some(plandoc::from_vehicle(&downloaded, sends_home.unwrap_or(false), &template));
-        state.selected = 0;
-        state.dirty = false;
-    }
+    let template = state.document.clone().unwrap_or_else(empty_document);
+    let mission = plandoc::from_vehicle(&downloaded, sends_home, &template);
+    state.document = Some(Document {
+        fence: if fence_read { fence_from(&snapshot["fence"]) } else { mission.fence.clone() },
+        rally: if rally_read { json!({ "version": 2, "points": snapshot["rally"]["points"] }) } else { mission.rally.clone() },
+        ..mission
+    });
+    state.selected = 0;
+    state.dirty = false;
+    state.fetching = false;
+}
+
+fn fetch() -> Value {
+    let Some((fence, rally, sends_home)) = crate::hub::lock().active().map(|v| {
+        let (fence, rally) = v.plans_supported();
+        (fence, rally, v.sends_home())
+    }) else {
+        return refused("No vehicle is connected through the core.");
+    };
+    held().fetching = true;
+    std::thread::spawn(move || {
+        let mission_read = load("mission");
+        let fence_read = fence && load("fence");
+        let rally_read = rally && load("rally");
+        let snapshot = crate::hub::lock().active().map(crate::hub::Vehicle::mission_snapshot).unwrap_or(Value::Null);
+        match mission_read {
+            true => adopt(&snapshot, sends_home, fence_read, rally_read),
+            false => held().fetching = false,
+        }
+        changed();
+    });
+    json!({ "ok": true })
+}
+
+fn status() -> Value {
+    let mission = crate::hub::lock().active().map(|v| v.mission_snapshot()["mission"].clone()).unwrap_or(Value::Null);
+    let state = held();
     json!({
         "ok": true,
         "transfer": mission,
@@ -725,4 +818,12 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64) ->
         Some(Some(plandoc::Item::Complex { kind, .. })) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index, "reason": format!("The core cannot edit a {kind} item yet.") }),
         Some(None) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index }),
     }
+}
+
+pub fn fence_and_rally() -> Option<(Value, Value)> {
+    if !enabled() {
+        return None;
+    }
+    let document = held().document.clone().unwrap_or_else(empty_document);
+    Some((document.fence, document.rally))
 }

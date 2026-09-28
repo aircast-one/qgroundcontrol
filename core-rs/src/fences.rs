@@ -20,6 +20,7 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.areaUnits",
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",
+    crate::coreplan::CHANGED,
 ];
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -79,10 +80,13 @@ fn radius_bounds(backend: &dyn Backend, index: usize) -> (Option<f64>, Option<f6
 }
 
 fn circle_json(backend: &dyn Backend, index: usize, json: &Value) -> Value {
+    circle_json_bounded(index, json, radius_bounds(backend, index))
+}
+
+fn circle_json_bounded(index: usize, json: &Value, (smallest, largest): (Option<f64>, Option<f64>)) -> Value {
     let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
     let centre = json.get("center").and_then(point);
     let (metres, radius, units) = radius_fact(json);
-    let (smallest, largest) = radius_bounds(backend, index);
     let framing: Vec<Value> = centre
         .map(|(lat, lon)| {
             let lat_span = metres / METRES_PER_DEGREE;
@@ -128,7 +132,81 @@ fn firmware_fence(backend: &dyn Backend) -> Value {
     })
 }
 
+const CIRCLE_RADIUS_MINIMUM: f64 = 0.1;
+
+fn pair(value: &Value) -> Option<(f64, f64)> {
+    Some((value.get(0)?.as_f64()?, value.get(1)?.as_f64()?))
+}
+
+fn document_fences(backend: &dyn Backend, fence: &Value, rally: &Value) -> Value {
+    let vertical = Unit::vertical(backend);
+    let listed = |section: &Value, key: &str| section.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let polygons: Vec<Value> = listed(fence, "polygons")
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let vertices: Vec<(f64, f64)> = p.get("polygon").and_then(Value::as_array).map(|v| v.iter().filter_map(pair).collect()).unwrap_or_default();
+            let read = json!({
+                "inclusion": p.get("inclusion").and_then(Value::as_bool).unwrap_or(false),
+                "path": vertices.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
+                "count": vertices.len(),
+                "area": crate::mappolygon::area(&vertices),
+            });
+            polygon_json(i, &read, &Unit::area(backend))
+        })
+        .collect();
+    let circles: Vec<Value> = listed(fence, "circles")
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let circle = c.get("circle").cloned().unwrap_or(Value::Null);
+            let radius = circle.get("radius").and_then(Value::as_f64).unwrap_or(0.0);
+            let read = json!({
+                "inclusion": c.get("inclusion").and_then(Value::as_bool).unwrap_or(false),
+                "center": circle.get("center").and_then(pair).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+                "facts": [{ "name": "Radius", "value": radius, "rawValue": radius, "units": "m" }],
+            });
+            circle_json_bounded(i, &read, (Some(CIRCLE_RADIUS_MINIMUM), None))
+        })
+        .collect();
+    let rally_points: Vec<Value> = listed(rally, "points")
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            let (lat, lon) = pair(p)?;
+            let altitude = p.get(2).and_then(Value::as_f64);
+            Some(json!({
+                "index": i,
+                "path": format!("plan.rallyPointController.points.{i}"),
+                "latitude": lat,
+                "longitude": lon,
+                "altitude": altitude,
+                "altitudeUnits": "m",
+                "altitudeText": altitude.map(|metres| crate::read::format_measure(vertical.show(metres), &vertical.name)),
+                "altitudeMetres": altitude,
+                "altitudePath": format!("plan.rallyPointController.points.{i}.textFieldFacts.2"),
+            }))
+        })
+        .collect();
+    json!({
+        "kind": "object",
+        "class": "Fences",
+        "available": true,
+        "count": polygons.len() + circles.len(),
+        "polygons": polygons,
+        "circles": circles,
+        "rallyPoints": rally_points,
+        "fenceSupported": crate::plan::capability(backend, "geoFenceController"),
+        "rallySupported": crate::plan::capability(backend, "rallyPointController"),
+        "firmwareFence": firmware_fence(backend),
+        "breachReturnPoint": fence.get("breachReturn").and_then(pair).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+    })
+}
+
 pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    if let Some((fence, rally)) = crate::coreplan::fence_and_rally() {
+        return document_fences(backend, &fence, &rally);
+    }
     let vertical = Unit::vertical(backend);
     let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons").iter().enumerate().map(|(i, p)| polygon_json(i, p, &Unit::area(backend))).collect();
     let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles").iter().enumerate().map(|(i, c)| circle_json(backend, i, c)).collect();
@@ -492,5 +570,37 @@ mod tests {
         assert_eq!(set["breachReturnPoint"], json!({ "latitude": 47.39, "longitude": 8.54 }));
         let unset = fences_view(&Controller(json!({ "latitude": null, "longitude": null, "altitude": null })), &[]);
         assert_eq!(unset["breachReturnPoint"], Value::Null, "an invalid QGeoCoordinate's NaN arrives as null and is no point, not 0,0");
+    }
+}
+
+#[cfg(test)]
+mod from_the_document {
+    use super::*;
+
+    struct Metric;
+
+    impl Backend for Metric {
+        fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn by_value(value: Value) -> Value {
+        match value {
+            Value::Number(n) => json!(n.as_f64()),
+            Value::Array(items) => Value::Array(items.into_iter().map(by_value).collect()),
+            Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
+            other => other,
+        }
+    }
+
+    #[test]
+    fn a_fence_the_core_holds_reads_as_qt_shows_it() {
+        let doc = crate::plandoc::load(include_str!("../tests/fixtures/fence.plan")).unwrap();
+        let mine = document_fences(&Metric, &doc.fence, &doc.rally);
+        let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/fences-by-qt.json")).unwrap();
+        ["polygons", "circles", "rallyPoints", "count", "breachReturnPoint"].iter().for_each(|key| assert_eq!(by_value(mine[key].clone()), by_value(qt[key].clone()), "{key}"));
     }
 }

@@ -641,6 +641,11 @@ impl Vehicle {
         connect::Link { present: true, high_latency: self.commands.high_latency, log_replay: self.replay }
     }
 
+    pub fn plans_supported(&self) -> (bool, bool) {
+        let v = self.connect_vehicle();
+        (v.fence_supported, v.rally_supported)
+    }
+
     fn connect_vehicle(&self) -> connect::Vehicle {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
         let apm = self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
