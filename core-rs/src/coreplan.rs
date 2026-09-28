@@ -440,16 +440,43 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
 fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     let rest = path.strip_prefix("plan.missionController.visualItems.")?;
     let (index, property) = rest.split_once('.')?;
-    let index: u64 = index.parse().ok()?;
-    let number = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64));
-    let command = match property {
-        "altitude" => false,
-        "command" => true,
-        _ => return None,
+    let index: usize = index.parse().ok()?;
+    let given = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned());
+    let number = given.as_ref().and_then(Value::as_f64);
+    let answer = |edited: Result<Document, String>| match edited {
+        Ok(changed) => edit(|_| Ok(changed)),
+        Err(reason) => refused(reason),
     };
-    Some(match number {
-        Some(n) => item_edit(backend, &json!([index, n]).to_string(), command),
-        None => refused("That field takes a number."),
+    let current = held().document.clone()?;
+    let field = |group: &str| {
+        let at: usize = property.strip_prefix(group)?.parse().ok()?;
+        let plandoc::Item::Simple(s) = current.items.get(index.checked_sub(1)?)? else { return None };
+        let commands = crate::cmdinfo::tree(plandoc::firmware(current.firmware_type), plandoc::vehicle_class(current.vehicle_type));
+        field_params(commands.get(&s.command)?, group == "comboboxFacts.").get(at).map(|(param, _)| usize::from(*param))
+    };
+    let unknown = || Err(format!("Item {index} has no such field."));
+    Some(match property {
+        "altitude" | "command" => return Some(match number {
+            Some(n) => item_edit(backend, &json!([index, n]).to_string(), property == "command"),
+            None => refused("That field takes a number."),
+        }),
+        "speedSection.flightSpeed" => answer(number.ok_or_else(|| "A speed is a number.".to_string()).and_then(|v| plandoc::set_speed(&current, index, Some(v)).ok_or_else(|| format!("Item {index} carries no speed.")))),
+        "speedSection.specifyFlightSpeed" => {
+            let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);
+            let keep = plandoc::specified_speed(&current, index);
+            let setting = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+            let default = match plandoc::vehicle_class(current.vehicle_type) {
+                crate::cmdinfo::VehicleClass::MultiRotor => setting("offlineEditingHoverSpeed", 5.0),
+                _ => setting("offlineEditingCruiseSpeed", 15.0),
+            };
+            let speed = on.then(|| keep.unwrap_or(default));
+            answer(plandoc::set_speed(&current, index, speed).ok_or_else(|| format!("Item {index} carries no speed.")))
+        }
+        _ => match (field("textFieldFacts.").or_else(|| field("comboboxFacts.")), number) {
+            (Some(param), Some(v)) => answer(plandoc::set_param(&current, index, param, v).ok_or_else(|| format!("Item {index} has no such field."))),
+            (Some(_), None) => refused("That field takes a number."),
+            (None, _) => answer(unknown()),
+        },
     })
 }
 
@@ -481,6 +508,27 @@ pub fn route_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn by_value(value: Value) -> Value {
+        match value {
+            Value::Number(n) => json!(n.as_f64()),
+            Value::Array(items) => Value::Array(items.into_iter().map(by_value).collect()),
+            Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
+            other => other,
+        }
+    }
+
+    #[test]
+    fn the_editor_fields_of_each_command_are_the_ones_qt_builds() {
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let qt: Vec<Value> = serde_json::from_str(include_str!("../tests/fixtures/itemfacts-commands-by-qt.json")).unwrap();
+        qt.iter().enumerate().for_each(|(index, expected)| {
+            let mine = by_value(document_facts(&doc, index, 5.0, 15.0));
+            let expected = by_value(expected.clone());
+            let differing: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| mine.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}:\n  core {}\n  qt   {v}", mine.get(k.as_str()).unwrap_or(&Value::Null))).collect();
+            assert!(differing.is_empty(), "item {index}: {}", differing.join("\n"));
+        });
+    }
 
     #[test]
     fn a_sequence_number_selects_the_row_that_holds_it_as_qt_selects_it() {
@@ -546,4 +594,135 @@ pub fn summary_fields(backend: &dyn Backend) -> Option<Value> {
         "minAMSLAltitude": status.as_ref().map(|s| s.min_amsl).filter(|v| v.is_finite()),
         "maxAMSLAltitude": status.as_ref().map(|s| s.max_amsl).filter(|v| v.is_finite()),
     }))
+}
+
+const DEFAULT_DECIMAL_PLACES: i64 = 3;
+const ITEM_ROOT: &str = "plan.missionController.visualItems";
+
+fn formatted(value: f64, decimals: i64) -> String {
+    let places = usize::try_from(decimals).unwrap_or(0);
+    format!("{value:.places$}")
+}
+
+fn list(param: &Value, key: &str) -> Vec<String> {
+    param.get(key).and_then(Value::as_str).map(|joined| joined.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default()
+}
+
+fn number_json(value: f64) -> Value {
+    match value.fract() == 0.0 && value.abs() < 1e15 {
+        true => json!(value as i64),
+        false => json!(value),
+    }
+}
+
+fn param_fact(param: &Value, value: f64) -> Value {
+    let label = param.get("label").and_then(Value::as_str).unwrap_or("").to_string();
+    let decimals = param.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(DEFAULT_DECIMAL_PLACES);
+    let units = param.get("units").and_then(Value::as_str).unwrap_or("").to_string();
+    let default = param.get("default").and_then(Value::as_f64);
+    let min = param.get("min").and_then(Value::as_f64);
+    let max = param.get("max").and_then(Value::as_f64);
+    let labels = list(param, "enumStrings");
+    let values: Vec<f64> = list(param, "enumValues").iter().filter_map(|v| v.parse().ok()).collect();
+    json!({
+        "kind": "fact",
+        "name": label,
+        "shortDescription": label,
+        "value": number_json(value),
+        "rawValue": value,
+        "valueString": formatted(value, decimals),
+        "units": units,
+        "rawUnits": units,
+        "decimalPlaces": decimals,
+        "min": min,
+        "max": max,
+        "minString": min.map(|m| formatted(m, decimals)),
+        "maxString": max.map(|m| formatted(m, decimals)),
+        "minIsDefaultForType": min.is_none(),
+        "maxIsDefaultForType": max.is_none(),
+        "defaultValueAvailable": default.is_some(),
+        "defaultValue": default.map(number_json),
+        "defaultValueString": default.map(|d| formatted(d, decimals)),
+        "valueEqualsDefault": default == Some(value),
+        "enumStrings": labels,
+        "enumValues": values.iter().map(|v| number_json(*v)).collect::<Vec<_>>(),
+        "enumIndex": values.iter().position(|v| *v == value).map_or(-1, |i| i as i64),
+        "readOnly": false,
+    })
+}
+
+fn field_params(info: &crate::cmdinfo::Command, combo: bool) -> Vec<(u8, Value)> {
+    let flag = |p: &Value, key: &str| p.get(key).and_then(Value::as_bool).unwrap_or(false);
+    (1..=7u8)
+        .filter(|i| !info.hidden.contains(i))
+        .filter_map(|i| info.params.get(&i).map(|p| (i, p.clone())))
+        .filter(|(_, p)| match combo {
+            true => !list(p, "enumStrings").is_empty(),
+            false => list(p, "enumStrings").is_empty() && !flag(p, "nanUnchanged") && !flag(p, "advanced"),
+        })
+        .collect()
+}
+
+fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>, item: &str) -> Vec<Value> {
+    let Some(info) = commands.get(&simple.command) else { return Vec::new() };
+    let text = field_params(info, false);
+    let combo = field_params(info, true);
+    let text_params = text.iter().map(|(i, p)| (*i, p));
+    let combo_params = combo.iter().map(|(i, p)| (*i, p));
+    let build = |group: &'static str| {
+        move |(at, (i, p)): (usize, (u8, &Value))| {
+            let value = simple.params[usize::from(i) - 1].unwrap_or(f64::NAN);
+            let suffix = format!("{group}.{at}");
+            let mut control = crate::control::decode(&param_fact(p, value), &format!("{item}.{suffix}"));
+            if let Value::Object(map) = &mut control {
+                map.insert("pathSuffix".to_string(), json!(suffix));
+                map.insert("group".to_string(), json!("Settings"));
+            }
+            control
+        }
+    };
+    text_params.enumerate().map(build("textFieldFacts")).chain(combo_params.enumerate().map(build("comboboxFacts"))).collect()
+}
+
+fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], available: bool, hover: f64, cruise: f64) -> Value {
+    let item = format!("{ITEM_ROOT}.{index}.speedSection");
+    let specified = sections.iter().find(|s| s.command == 178).and_then(|s| s.params[1]);
+    let default = match plandoc::vehicle_class(document.vehicle_type) {
+        crate::cmdinfo::VehicleClass::MultiRotor => hover,
+        _ => cruise,
+    };
+    json!({
+        "available": available,
+        "specified": specified.is_some(),
+        "value": specified.unwrap_or(default),
+        "units": "m/s",
+        "path": format!("{item}.flightSpeed"),
+        "specifyPath": format!("{item}.specifyFlightSpeed"),
+    })
+}
+
+pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
+    let document = held().document.clone().unwrap_or_else(empty_document);
+    let speed = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+    document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0))
+}
+
+fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64) -> Value {
+    let document = document.clone();
+    let commands = crate::cmdinfo::tree(plandoc::firmware(document.firmware_type), plandoc::vehicle_class(document.vehicle_type));
+    let item = format!("{ITEM_ROOT}.{index}");
+    let base = |simple: bool, fields: Vec<Value>, section: Value, mode: Option<i64>| {
+        json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": simple, "fields": fields, "camera": Value::Null, "speedSection": section, "altitudeMode": mode })
+    };
+    match index.checked_sub(1).map(|i| document.items.get(i)) {
+        None => base(false, Vec::new(), speed_section(&document, index, &document.settings_sections, true, hover, cruise), None),
+        Some(Some(plandoc::Item::Simple(s))) => base(
+            true,
+            simple_fields(s, &commands, &item),
+            speed_section(&document, index, &s.sections, s.command == 16, hover, cruise),
+            Some(s.altitude.as_ref().map_or(crate::altitudemodes::RELATIVE, |a| a.mode)),
+        ),
+        Some(Some(plandoc::Item::Complex { kind, .. })) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index, "reason": format!("The core cannot edit a {kind} item yet.") }),
+        Some(None) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index }),
+    }
 }

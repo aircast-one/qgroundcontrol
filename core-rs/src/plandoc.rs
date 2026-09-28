@@ -370,6 +370,56 @@ pub fn set_command(doc: &Document, visual_index: usize, command: i64, defaults: 
     }
 }
 
+pub fn set_param(doc: &Document, visual_index: usize, param: usize, value: f64) -> Option<Document> {
+    let (at, current) = simple_at(doc, visual_index)?;
+    let slot = param.checked_sub(1).filter(|p| *p < 7)?;
+    let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == slot { Some(value) } else { current.params[i] });
+    let altitude = match slot {
+        6 => current.altitude.as_ref().map(|a| Altitude { altitude: value, ..a.clone() }),
+        _ => current.altitude.clone(),
+    };
+    Some(replaced(doc, at, Simple { params, altitude, ..current.clone() }))
+}
+
+fn speed_change(class: VehicleClass, speed: f64) -> Simple {
+    let ground = match class {
+        VehicleClass::MultiRotor => 1.0,
+        _ => 0.0,
+    };
+    Simple {
+        command: CMD_DO_CHANGE_SPEED,
+        frame: FRAME_MISSION,
+        params: [Some(ground), Some(speed), Some(-1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)],
+        auto_continue: true,
+        altitude: None,
+        sections: Vec::new(),
+    }
+}
+
+fn with_speed(sections: &[Simple], class: VehicleClass, speed: Option<f64>) -> Vec<Simple> {
+    let others = sections.iter().filter(|s| s.command != CMD_DO_CHANGE_SPEED).cloned();
+    others.chain(speed.map(|v| speed_change(class, v))).collect()
+}
+
+pub fn set_speed(doc: &Document, visual_index: usize, speed: Option<f64>) -> Option<Document> {
+    let class = vehicle_class(doc.vehicle_type);
+    match visual_index {
+        0 => Some(Document { settings_sections: with_speed(&doc.settings_sections, class, speed), ..doc.clone() }),
+        _ => {
+            let (at, current) = simple_at(doc, visual_index)?;
+            (current.command == CMD_NAV_WAYPOINT).then(|| replaced(doc, at, Simple { sections: with_speed(&current.sections, class, speed), ..current.clone() }))
+        }
+    }
+}
+
+pub fn specified_speed(doc: &Document, visual_index: usize) -> Option<f64> {
+    let sections = match visual_index {
+        0 => &doc.settings_sections,
+        _ => &simple_at(doc, visual_index)?.1.sections,
+    };
+    sections.iter().find(|s| s.command == CMD_DO_CHANGE_SPEED).and_then(|s| s.params[1])
+}
+
 pub fn set_altitude(doc: &Document, visual_index: usize, altitude: f64) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     let held = current.altitude.as_ref()?;
@@ -701,6 +751,27 @@ mod tests {
         let resaved = save(&load(&plan(1.0, 2)).unwrap());
         assert_eq!(resaved["mission"]["items"].as_array().unwrap().len(), 2, "a folded section is still written out after its owner");
         assert_eq!(resaved["mission"]["items"][1]["doJumpId"], 2);
+    }
+
+    #[test]
+    fn a_speed_section_is_the_change_speed_command_shaped_for_the_airframe() {
+        let with = set_speed(&section(), 2, Some(8.0)).unwrap();
+        assert_eq!(specified_speed(&with, 2), Some(8.0));
+        let written = save(&with);
+        let items = written["mission"]["items"].as_array().unwrap();
+        assert_eq!((items[2]["command"].as_i64(), items[2]["params"][0].as_f64(), items[2]["params"][2].as_f64()), (Some(178), Some(1.0), Some(-1.0)), "a multirotor's speed section is a ground speed with no throttle change, the shape SpeedSection writes");
+        assert_eq!(load(&written.to_string()).unwrap().items.len(), section().items.len(), "and it folds back into its waypoint on load");
+        assert_eq!(specified_speed(&set_speed(&with, 2, None).unwrap(), 2), None);
+        assert!(set_speed(&section(), 1, Some(8.0)).is_none(), "a takeoff has no speed section");
+        assert_eq!(specified_speed(&set_speed(&section(), 0, Some(6.0)).unwrap(), 0), Some(6.0), "the settings item carries the plan's opening speed");
+    }
+
+    #[test]
+    fn a_field_edit_moves_the_param_it_shows() {
+        let edited = set_param(&section(), 2, 1, 4.0).unwrap();
+        let Item::Simple(s) = &edited.items[1] else { panic!() };
+        assert_eq!(s.params[0], Some(4.0));
+        assert!(set_param(&section(), 2, 8, 1.0).is_none());
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub const DEPS: &[&str] = &[
     "plan.dirty",
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",
+    crate::coreplan::CHANGED,
 ];
 
 const ITEM_ROOT: &str = "plan.missionController.visualItems";
@@ -106,6 +107,9 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else {
         return refused("view.itemFacts needs the index of the item in the plan, as view.itemFacts(3)");
     };
+    if crate::coreplan::enabled() {
+        return crate::coreplan::item_facts(backend, index);
+    }
     let item = format!("{ITEM_ROOT}.{index}");
     let read = object(&backend.get(&item));
     let available = read.get("kind").and_then(Value::as_str) == Some("object");
