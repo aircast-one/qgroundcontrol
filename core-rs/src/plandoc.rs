@@ -24,6 +24,7 @@ pub struct Simple {
     pub params: [Option<f64>; 7],
     pub auto_continue: bool,
     pub altitude: Option<Altitude>,
+    pub sections: Vec<Simple>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +41,7 @@ pub struct Document {
     pub hover_speed: f64,
     pub global_altitude_mode: i64,
     pub home: Option<[f64; 3]>,
+    pub settings_sections: Vec<Simple>,
     pub items: Vec<Item>,
     pub fence: Value,
     pub rally: Value,
@@ -86,6 +88,7 @@ pub fn load(text: &str) -> Result<Document, String> {
         .map(|items| items.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>())
         .transpose()?
         .unwrap_or_default();
+    let (settings_sections, items) = fold(items, vehicle_class(vehicle_type));
     Ok(Document {
         firmware_type,
         vehicle_type,
@@ -93,6 +96,7 @@ pub fn load(text: &str) -> Result<Document, String> {
         hover_speed: number("hoverSpeed", 0.0),
         global_altitude_mode: integer("globalPlanAltitudeMode"),
         home: Some(home),
+        settings_sections,
         items,
         fence: current_or_empty(root.get("geoFence"), FENCE_VERSION, json!({ "circles": [], "polygons": [], "version": FENCE_VERSION })),
         rally: current_or_empty(root.get("rallyPoints"), RALLY_VERSION, json!({ "points": [], "version": RALLY_VERSION })),
@@ -152,6 +156,7 @@ fn load_simple(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo:
         params: [params[0], params[1], params[2], params[3], params[4], params[5], params[6]],
         auto_continue: item.get("autoContinue").and_then(Value::as_bool).unwrap_or(true),
         altitude,
+        sections: Vec::new(),
     })
 }
 
@@ -186,11 +191,14 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
                 altitude: item.params[6],
                 amsl_above_terrain: None,
             }),
+            sections: Vec::new(),
         })
     };
+    let (settings_sections, items) = fold(listed.iter().map(simple).collect(), vehicle_class(template.vehicle_type));
     Document {
         home,
-        items: listed.iter().map(simple).collect(),
+        settings_sections,
+        items,
         global_altitude_mode: match listed.is_empty() {
             true => crate::altitudemodes::RELATIVE,
             false => crate::altitudemodes::MIXED,
@@ -279,6 +287,7 @@ fn with_command_defaults(doc: &Document, commands: &std::collections::BTreeMap<i
         params: [param(0), if command == CMD_NAV_WAYPOINT { Some(0.0) } else { param(1) }, param(2), param(3), fifth, sixth, seventh],
         auto_continue: true,
         altitude: altitude.map(|altitude| Altitude { mode, altitude, amsl_above_terrain: None }),
+        sections: Vec::new(),
     }
 }
 
@@ -374,15 +383,26 @@ pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
 }
 
 pub fn save(doc: &Document) -> Value {
-    let starts = doc.items.iter().scan(1usize, |next, item| {
+    let settings = doc.settings_sections.iter().map(|section| Item::Simple(section.clone()));
+    let spans: Vec<(Item, usize)> = settings
+        .chain(doc.items.iter().flat_map(|item| match item {
+            Item::Simple(simple) => std::iter::once(Item::Simple(Simple { sections: Vec::new(), ..simple.clone() })).chain(simple.sections.iter().cloned().map(Item::Simple)).collect::<Vec<_>>(),
+            complex => vec![complex.clone()],
+        }))
+        .map(|item| {
+            let span = match &item {
+                Item::Simple(_) => 1,
+                Item::Complex { item_count, .. } => *item_count,
+            };
+            (item, span)
+        })
+        .collect();
+    let starts = spans.iter().scan(1usize, |next, (_, span)| {
         let start = *next;
-        *next += match item {
-            Item::Simple(_) => 1,
-            Item::Complex { item_count, .. } => *item_count,
-        };
+        *next += span;
         Some(start)
     });
-    let items: Vec<Value> = doc.items.iter().zip(starts).map(|(item, seq)| save_item(item, seq)).collect();
+    let items: Vec<Value> = spans.iter().zip(starts).map(|((item, _), seq)| save_item(item, seq)).collect();
     json!({
         "fileType": "Plan",
         "groundStation": "QGroundControl",
@@ -400,6 +420,112 @@ pub fn save(doc: &Document) -> Value {
             "version": MISSION_VERSION,
         },
     })
+}
+
+const CMD_DO_CHANGE_SPEED: i64 = 178;
+const CMD_DO_MOUNT_CONTROL: i64 = 205;
+const CMD_DO_SET_CAM_TRIGG_DIST: i64 = 206;
+const CMD_SET_CAMERA_MODE: i64 = 530;
+const CMD_IMAGE_START_CAPTURE: i64 = 2000;
+const CMD_IMAGE_STOP_CAPTURE: i64 = 2001;
+const CMD_VIDEO_START_CAPTURE: i64 = 2500;
+const CMD_VIDEO_STOP_CAPTURE: i64 = 2501;
+const MOUNT_MODE_MAVLINK_TARGETING: f64 = 2.0;
+const VIDEO_CAPTURE_STATUS_INTERVAL: f64 = 0.2;
+
+fn p(item: &Simple, i: usize) -> f64 {
+    item.params[i].unwrap_or(f64::NAN)
+}
+
+fn zero(item: &Simple, from: usize) -> bool {
+    (from..7).all(|i| p(item, i) == 0.0)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Found {
+    Gimbal,
+    Action,
+    Mode,
+}
+
+fn camera_match(rest: &[Simple], found: &[Found]) -> Option<(Found, usize)> {
+    let item = rest.first()?;
+    let next = rest.get(1);
+    let not = |kind: Found| !found.contains(&kind);
+    let gimbal = item.command == CMD_DO_MOUNT_CONTROL && p(item, 1) == 0.0 && p(item, 3) == 0.0 && p(item, 4) == 0.0 && p(item, 5) == 0.0 && p(item, 6) == MOUNT_MODE_MAVLINK_TARGETING;
+    let photo = item.command == CMD_IMAGE_START_CAPTURE && p(item, 0) == 0.0 && p(item, 1) == 0.0 && p(item, 2) == 1.0;
+    let interval = item.command == CMD_IMAGE_START_CAPTURE && p(item, 0) == 0.0 && p(item, 1) >= 1.0 && p(item, 2) == 0.0;
+    let trigger_zero = item.command == CMD_DO_SET_CAM_TRIGG_DIST && zero(item, 0);
+    let stop_photos = trigger_zero && next.is_some_and(|n| n.command == CMD_IMAGE_STOP_CAPTURE && p(n, 0) == 0.0);
+    let trigger_start = item.command == CMD_DO_SET_CAM_TRIGG_DIST && p(item, 0) > 0.0 && p(item, 1) == 0.0 && p(item, 2) == 1.0 && zero(item, 3);
+    let video = item.command == CMD_VIDEO_START_CAPTURE && p(item, 0) == 0.0 && p(item, 1) == VIDEO_CAPTURE_STATUS_INTERVAL;
+    let stop_video = item.command == CMD_VIDEO_STOP_CAPTURE && p(item, 0) == 0.0;
+    let mode = item.command == CMD_SET_CAMERA_MODE && p(item, 0) == 0.0 && [0.0, 1.0, 2.0].contains(&p(item, 1)) && p(item, 2).is_nan();
+    match () {
+        _ if not(Found::Gimbal) && gimbal => Some((Found::Gimbal, 1)),
+        _ if not(Found::Action) && (photo || interval) => Some((Found::Action, 1)),
+        _ if not(Found::Action) && stop_photos => Some((Found::Action, 2)),
+        _ if not(Found::Action) && (trigger_start || trigger_zero || video || stop_video) => Some((Found::Action, 1)),
+        _ if not(Found::Mode) && mode => Some((Found::Mode, 1)),
+        _ => None,
+    }
+}
+
+fn camera_span(rest: &[Simple], found: Vec<Found>) -> usize {
+    match camera_match(rest, &found) {
+        Some((kind, taken)) => taken + camera_span(&rest[taken..], found.into_iter().chain(std::iter::once(kind)).collect()),
+        None => 0,
+    }
+}
+
+fn speed_span(rest: &[Simple], class: VehicleClass) -> usize {
+    let Some(item) = rest.first() else { return 0 };
+    let shaped = item.command == CMD_DO_CHANGE_SPEED && p(item, 2) == -1.0 && zero(item, 3);
+    let kind_matches = match class {
+        VehicleClass::MultiRotor => p(item, 0) == 1.0,
+        VehicleClass::FixedWing => p(item, 0) == 0.0,
+        _ => true,
+    };
+    usize::from(shaped && kind_matches)
+}
+
+fn section_span(rest: &[Item], class: VehicleClass) -> usize {
+    let simple: Vec<Simple> = rest
+        .iter()
+        .map_while(|item| match item {
+            Item::Simple(s) => Some(s.clone()),
+            Item::Complex { .. } => None,
+        })
+        .collect();
+    let camera = camera_span(&simple, Vec::new());
+    camera + speed_span(&simple[camera..], class)
+}
+
+fn simples(items: &[Item]) -> Vec<Simple> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Simple(s) => Some(s.clone()),
+            Item::Complex { .. } => None,
+        })
+        .collect()
+}
+
+fn fold_rest(items: &[Item], class: VehicleClass) -> Vec<Item> {
+    match items.split_first() {
+        None => Vec::new(),
+        Some((Item::Simple(owner), rest)) if owner.command == CMD_NAV_WAYPOINT => {
+            let span = section_span(rest, class);
+            let folded = Simple { sections: simples(&rest[..span]), ..owner.clone() };
+            std::iter::once(Item::Simple(folded)).chain(fold_rest(&rest[span..], class)).collect()
+        }
+        Some((first, rest)) => std::iter::once(first.clone()).chain(fold_rest(rest, class)).collect(),
+    }
+}
+
+fn fold(items: Vec<Item>, class: VehicleClass) -> (Vec<Simple>, Vec<Item>) {
+    let settings = section_span(&items, class);
+    (simples(&items[..settings]), fold_rest(&items[settings..], class))
 }
 
 fn save_item(item: &Item, seq: usize) -> Value {
@@ -517,7 +643,7 @@ mod tests {
     #[test]
     fn an_altitude_edit_moves_param_seven_with_it() {
         matches_qt(&set_altitude(&section(), 2, 33.0).unwrap(), include_str!("../tests/fixtures/edit-G-by-qt.plan"));
-        assert!(set_altitude(&section(), 4, 33.0).is_none(), "the mount control item has no altitude to set");
+        assert!(set_altitude(&section(), 9, 33.0).is_none(), "there is no ninth item");
     }
 
     #[test]
@@ -538,6 +664,43 @@ mod tests {
         let absolute = set_global_altitude_mode(&section(), crate::altitudemodes::ABSOLUTE);
         matches_qt(&absolute, include_str!("../tests/fixtures/edit-absolute-by-qt.plan"));
         matches_qt(&insert_waypoint(&absolute, 47.634, -122.089, -1, &QT_DEFAULTS), include_str!("../tests/fixtures/edit-absolute-then-waypoint-by-qt.plan"));
+    }
+
+    fn qt_view(text: &str) -> Vec<Value> {
+        serde_json::from_str::<Value>(text).unwrap()["items"].as_array().unwrap().clone()
+    }
+
+    fn folded_counts(doc: &Document) -> Vec<i64> {
+        std::iter::once(doc.settings_sections.len() as i64)
+            .chain(doc.items.iter().map(|item| match item {
+                Item::Simple(s) => s.sections.len() as i64,
+                Item::Complex { item_count, .. } => *item_count as i64 - 1,
+            }))
+            .collect()
+    }
+
+    #[test]
+    fn section_commands_fold_into_the_item_before_them_as_qt_shows_them() {
+        let qt = qt_view(include_str!("../tests/fixtures/missionitems-sectiontest-by-qt.json"));
+        assert_eq!(folded_counts(&section()), qt.iter().map(|i| i["foldedCommands"].as_i64().unwrap()).collect::<Vec<_>>(), "the mount control after the second waypoint is that waypoint's camera section, so Qt shows five rows where the file holds six items");
+        let survey = load(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let qt = qt_view(include_str!("../tests/fixtures/missionitems-survey-by-qt.json"));
+        assert_eq!(folded_counts(&survey), qt.iter().map(|i| i["foldedCommands"].as_i64().unwrap()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_speed_change_folds_only_when_it_is_the_kind_the_airframe_flies_by() {
+        let speed = |ground: f64| json!({ "type": "SimpleItem", "command": 178, "frame": 2, "doJumpId": 3, "params": [ground, 12, -1, 0, 0, 0, 0] });
+        let plan = |ground: f64, vehicle: i64| json!({ "fileType": "Plan", "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [1, 2, 0], "items": [
+            { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 1.0, 2.0, 30] },
+            speed(ground),
+        ] } }).to_string();
+        assert_eq!(load(&plan(1.0, 2)).unwrap().items.len(), 1, "a multirotor flies by ground speed");
+        assert_eq!(load(&plan(0.0, 2)).unwrap().items.len(), 2, "an airspeed change on a multirotor stays its own row");
+        assert_eq!(load(&plan(0.0, 1)).unwrap().items.len(), 1, "a plane flies by airspeed");
+        let resaved = save(&load(&plan(1.0, 2)).unwrap());
+        assert_eq!(resaved["mission"]["items"].as_array().unwrap().len(), 2, "a folded section is still written out after its owner");
+        assert_eq!(resaved["mission"]["items"][1]["doJumpId"], 2);
     }
 
     #[test]

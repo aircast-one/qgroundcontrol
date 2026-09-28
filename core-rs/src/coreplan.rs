@@ -250,6 +250,7 @@ fn empty_document() -> Document {
         hover_speed: 0.0,
         global_altitude_mode: crate::altitudemodes::RELATIVE,
         home: None,
+        settings_sections: Vec::new(),
         items: Vec::new(),
         fence: json!({ "circles": [], "polygons": [], "version": 2 }),
         rally: json!({ "points": [], "version": 2 }),
