@@ -56,7 +56,12 @@ pub const CHANGED: &str = "core.plan@changed";
 
 pub static ON_CHANGE: std::sync::Mutex<Option<std::sync::Arc<dyn Fn() + Send + Sync>>> = std::sync::Mutex::new(None);
 
-static ENABLED: LazyLock<bool> = LazyLock::new(|| std::env::var("QGC_CORE_PLAN").is_ok_and(|v| v == "1"));
+#[cfg(not(test))]
+const ON_WITHOUT_SWITCH: bool = true;
+#[cfg(test)]
+const ON_WITHOUT_SWITCH: bool = false;
+
+static ENABLED: LazyLock<bool> = LazyLock::new(|| std::env::var("QGC_CORE_PLAN").map_or(ON_WITHOUT_SWITCH, |v| v == "1"));
 
 pub fn enabled() -> bool {
     *ENABLED
@@ -432,6 +437,93 @@ fn send_after_mission(document: Document) {
         let _ = wanted.last().is_some_and(|last| settle(last));
         changed();
     });
+}
+
+fn carried() -> bool {
+    crate::hub::lock().active().is_some()
+}
+
+fn host_file() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("qgc-core-plan-{}.plan", std::process::id()))
+}
+
+fn send_through_host(backend: &dyn Backend) -> Value {
+    let Some(document) = held().document.clone() else {
+        return refused("There is no plan to send.");
+    };
+    let file = host_file();
+    if let Err(e) = std::fs::write(&file, plandoc::save(&document).to_string()) {
+        return refused(format!("The plan could not be handed to the vehicle link: {e}"));
+    }
+    let path = file.to_string_lossy().to_string();
+    let loaded = crate::read::object(&backend.invoke("plan.loadFromFile", &json!([path]).to_string()));
+    if !crate::read::flag(&loaded, "ok") {
+        return refused("The vehicle link could not take the plan.");
+    }
+    let sent = crate::read::object(&backend.invoke("plan.sendToVehicle", "[]"));
+    if crate::read::flag(&sent, "ok") {
+        settle_clean(&mut held());
+        changed();
+    }
+    sent
+}
+
+pub const HOST_SYNC: &str = "plan.syncInProgress";
+
+static HOST_FETCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn host_watches() -> Vec<String> {
+    match HOST_FETCH.load(std::sync::atomic::Ordering::SeqCst) {
+        true => vec![HOST_SYNC.to_string()],
+        false => Vec::new(),
+    }
+}
+
+fn host_syncing(backend: &dyn Backend) -> bool {
+    crate::read::object(&backend.get(HOST_SYNC)).get("value").and_then(Value::as_bool) == Some(true)
+}
+
+pub fn poll_host(backend: &dyn Backend) {
+    if HOST_FETCH.load(std::sync::atomic::Ordering::SeqCst) && !host_syncing(backend) {
+        on_host_event(backend, HOST_SYNC, &json!({ "value": false }).to_string());
+    }
+}
+
+fn fetch_through_host(backend: &dyn Backend) -> Value {
+    let asked = crate::read::object(&backend.invoke("plan.loadFromVehicle", "[]"));
+    if !host_syncing(backend) {
+        return refused("The vehicle link did not start the download.");
+    }
+    if crate::read::flag(&asked, "ok") {
+        HOST_FETCH.store(true, std::sync::atomic::Ordering::SeqCst);
+        held().fetching = true;
+        changed();
+    }
+    asked
+}
+
+pub fn on_host_event(backend: &dyn Backend, path: &str, value: &str) -> bool {
+    let finished = path == HOST_SYNC && crate::read::object(value).get("value").and_then(Value::as_bool) == Some(false);
+    if !finished || !HOST_FETCH.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return false;
+    }
+    let file = host_file();
+    let path = file.to_string_lossy().to_string();
+    backend.invoke("plan.saveToFile", &json!([path]).to_string());
+    let adopted = std::fs::read_to_string(&file).map_err(|e| e.to_string()).and_then(|text| plandoc::load(&text));
+    {
+        let mut state = held();
+        state.fetching = false;
+        if let Ok(document) = adopted {
+            let before = state.document.replace(document);
+            remember(&mut state, before, crate::hub::now_ms());
+            state.selected = 0;
+            state.file = None;
+            settle_clean(&mut state);
+        }
+    }
+    changed();
+    true
 }
 
 fn send() -> Value {
@@ -1100,6 +1192,8 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         }),
         "plan.saveToFile" => first_text(args).map_or_else(|| refused("Save needs a path to write the plan to."), |file| save(&file)),
         "plan.saveToCurrent" => current().map_or_else(|| refused("This plan has not been saved to a file yet."), |file| save(&file)),
+        "plan.sendToVehicle" if !carried() => send_through_host(backend),
+        "plan.loadFromVehicle" if !carried() => fetch_through_host(backend),
         "plan.sendToVehicle" => send(),
         "plan.loadFromVehicle" => fetch(),
         "plan.removeAll" => clear(backend),

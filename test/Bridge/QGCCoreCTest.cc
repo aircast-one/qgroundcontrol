@@ -100,6 +100,7 @@ int latestViewCount()
 
 void QGCCoreCTest::init()
 {
+    qputenv("QGC_CORE_PLAN", "0");
     VehicleTestManualConnect::init();
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression(QStringLiteral("showAppMessage")));
     ignoreLogMessage("FactSystem.FactMetaData", QtWarningMsg, QRegularExpression(QStringLiteral("unavailable default value")));

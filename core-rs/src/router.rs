@@ -41,6 +41,7 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn get(&self, path: &str) -> String {
+        crate::coreplan::poll_host(&self.backend);
         match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render(&self.backend, path),
             (true, None) => view::unknown(path).to_string(),
@@ -52,6 +53,7 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn get_fields(&self, path: &str, fields: &str) -> String {
+        crate::coreplan::poll_host(&self.backend);
         match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render_fields(&self.backend, path, fields),
             (true, None) => view::unknown(path).to_string(),
@@ -80,6 +82,10 @@ impl<B: Backend> Core<B> {
 
     pub fn invoke(&self, path: &str, args: &str) -> String {
         if let Some(answer) = crate::coreplan::enabled().then(|| crate::coreplan::route_invoke(&self.backend, path, args)).flatten() {
+            if path == "plan.loadFromVehicle" {
+                let asked = self.watching.lock().unwrap().asked();
+                self.rewatch(&asked, false);
+            }
             return answer.to_string();
         }
         if crate::actions::owns(path) {
@@ -129,6 +135,7 @@ impl<B: Backend> Core<B> {
                 None => vec![path.clone()],
             })
             .filter(|dep| dep != crate::coreplan::CHANGED)
+            .chain(crate::coreplan::host_watches())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
@@ -148,6 +155,10 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn on_event(&self, path: &str, json: &str) -> Vec<(String, String)> {
+        if crate::coreplan::on_host_event(&self.backend, path, json) {
+            let asked = self.watching.lock().unwrap().asked();
+            self.rewatch(&asked, false);
+        }
         let (direct, dependents): (bool, Vec<(String, &'static view::View)>) = {
             let asked = self.watching.lock().unwrap().asked();
             (
