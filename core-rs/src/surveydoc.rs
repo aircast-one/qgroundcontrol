@@ -229,6 +229,70 @@ pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
     })
 }
 
+fn target(suffix: &str) -> Option<(&'static str, String)> {
+    let transect = ["TurnAroundDistance", "CameraTriggerInTurnAround", "HoverAndCapture", "Refly90Degrees", "TerrainAdjustTolerance", "TerrainAdjustMaxDescentRate", "TerrainAdjustMaxClimbRate"];
+    let capital = |s: &str| s.chars().next().map(|c| c.to_ascii_uppercase().to_string() + &s[c.len_utf8()..]).unwrap_or_default();
+    match suffix {
+        "gridAngle" => Some(("survey", "angle".to_string())),
+        "flyAlternateTransects" | "splitConcavePolygons" => Some(("survey", suffix.to_string())),
+        _ => match suffix.strip_prefix("cameraCalc.") {
+            Some(calc) => {
+                let key = capital(calc);
+                OPTICS.iter().chain(FLIGHT.iter()).any(|(name, _)| *name == key).then_some(("calc", key)).or((calc == "valueSetIsDistance").then(|| ("calc", "ValueSetIsDistance".to_string())))
+            }
+            None => transect.iter().find(|name| capital(suffix) == **name).map(|name| ("transect", name.to_string())),
+        },
+    }
+}
+
+fn recalculated(calc: &Value) -> Value {
+    let number = |key: &str| calc.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+    if calc.get("CameraName").and_then(Value::as_str) == Some(MANUAL_CAMERA) {
+        return calc.clone();
+    }
+    let camera = crate::cameracalc::Camera {
+        focal_length: number("FocalLength"),
+        sensor_width: number("SensorWidth"),
+        sensor_height: number("SensorHeight"),
+        image_width: number("ImageWidth"),
+        image_height: number("ImageHeight"),
+        landscape: calc.get("Landscape").and_then(Value::as_bool).unwrap_or(true),
+        frontal_overlap: number("FrontalOverlap"),
+        side_overlap: number("SideOverlap"),
+    };
+    let by_distance = calc.get("ValueSetIsDistance").and_then(Value::as_bool).unwrap_or(true);
+    let footprint = match by_distance {
+        true => crate::cameracalc::from_distance(&camera, number("DistanceToSurface")),
+        false => crate::cameracalc::from_density(&camera, number("ImageDensity")),
+    };
+    footprint.map_or_else(
+        || calc.clone(),
+        |f| {
+            let mut changed = calc.clone();
+            changed["ImageDensity"] = json!(f.image_density);
+            changed["DistanceToSurface"] = json!(f.distance_to_surface);
+            changed["AdjustedFootprintSide"] = json!(f.adjusted_side);
+            changed["AdjustedFootprintFrontal"] = json!(f.adjusted_frontal);
+            changed
+        },
+    )
+}
+
+pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
+    let (owner, key) = target(suffix)?;
+    let mut changed = survey.clone();
+    match owner {
+        "survey" => changed[key.as_str()] = value.clone(),
+        "transect" => changed["TransectStyleComplexItem"][key.as_str()] = value.clone(),
+        _ => {
+            let mut calc = changed["TransectStyleComplexItem"]["CameraCalc"].clone();
+            calc[key.as_str()] = value.clone();
+            changed["TransectStyleComplexItem"]["CameraCalc"] = recalculated(&calc);
+        }
+    }
+    Some(regenerate(&changed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +304,19 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.iter().map(|(k, v)| (k.clone(), by_value(v))).collect()),
             other => other.clone(),
         }
+    }
+
+    #[test]
+    fn a_camera_write_recomputes_the_footprint_and_the_survey_regenerates() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let survey = plan["mission"]["items"][0].clone();
+        let higher = set(&survey, "cameraCalc.distanceToSurface", &json!(100.0)).unwrap();
+        let calc = &higher["TransectStyleComplexItem"]["CameraCalc"];
+        assert!((calc["AdjustedFootprintSide"].as_f64().unwrap() - 2.0 * survey["TransectStyleComplexItem"]["CameraCalc"]["AdjustedFootprintSide"].as_f64().unwrap()).abs() < 1e-9, "doubling the height doubles the footprint");
+        assert!(higher["TransectStyleComplexItem"]["Items"].as_array().unwrap().len() < survey["TransectStyleComplexItem"]["Items"].as_array().unwrap().len(), "wider spacing means fewer transects");
+        let turned = set(&survey, "gridAngle", &json!(0.0)).unwrap();
+        assert_eq!(turned["angle"], 0.0);
+        assert!(set(&survey, "noSuchField", &json!(1)).is_none());
     }
 
     #[test]

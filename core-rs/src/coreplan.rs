@@ -541,6 +541,20 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         Err(reason) => refused(reason),
     };
     let current = held().document.clone()?;
+    if let Some(plandoc::Item::Complex { kind, json: survey, .. }) = index.checked_sub(1).and_then(|i| current.items.get(i)) {
+        if kind == "survey" {
+            let Some(value) = given.clone() else { return Some(refused("That field needs a value.")) };
+            let at = index - 1;
+            return Some(match crate::surveydoc::set(survey, property, &value) {
+                Some(edited) => {
+                    let item_count = edited["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
+                    let item = plandoc::Item::Complex { kind: kind.clone(), json: edited, item_count };
+                    edit(|doc| Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() }))
+                }
+                None => refused(format!("The survey has no field {property}.")),
+            });
+        }
+    }
     let field = |group: &str| {
         let at: usize = property.strip_prefix(group)?.parse().ok()?;
         let plandoc::Item::Simple(s) = current.items.get(index.checked_sub(1)?)? else { return None };
