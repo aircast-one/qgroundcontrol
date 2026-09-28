@@ -159,6 +159,7 @@ void AircastDeviceSetupTest::_configuresCamerasAndTelemetryFromDevice()
     const UDPConfiguration *udpConfig = qobject_cast<UDPConfiguration*>(linkConfig);
     QVERIFY(udpConfig);
     QCOMPARE(udpConfig->hostList(), QStringList{QStringLiteral("127.0.0.1:14550")});
+    QCOMPARE(udpConfig->localPort(), quint16(0));
 
     _removeAircastLinkConfigs();
 }

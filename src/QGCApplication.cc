@@ -1019,6 +1019,9 @@ void QGCApplication::_applyDeviceTelemetry(const QString &host, const QJsonObjec
     }
 
     linkConfig->setAutoConnect(true);
+    if (UDPConfiguration *udpConfig = qobject_cast<UDPConfiguration*>(linkConfig)) {
+        udpConfig->setLocalPort(0);
+    }
     SharedLinkConfigurationPtr sharedConfig = linkMgr->addConfiguration(linkConfig);
     linkMgr->saveLinkConfigurationList();
     if (linkMgr->createConnectedLink(sharedConfig)) {
