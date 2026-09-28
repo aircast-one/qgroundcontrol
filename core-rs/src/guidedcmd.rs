@@ -7,6 +7,7 @@ pub const CMD_DO_REPOSITION: u16 = 192;
 pub const CMD_DO_GO_AROUND: u16 = 191;
 pub const CMD_DO_SET_ROI_NONE: u16 = 197;
 pub const CMD_DO_GRIPPER: u16 = 211;
+pub const CMD_MISSION_START: u16 = 300;
 pub const CMD_COMPONENT_ARM_DISARM: u16 = 400;
 pub const REPOSITION_CHANGE_MODE: f64 = 1.0;
 pub const FRAME_GLOBAL: u8 = 0;
@@ -198,6 +199,31 @@ pub fn arm(arm: bool, force: bool) -> Step {
     Step::Command { command: CMD_COMPONENT_ARM_DISARM, params: [if arm { 1.0 } else { 0.0 }, if force { ARM_MAGIC } else { 0.0 }, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }
 }
 
+pub fn start_mission(state: &VehicleState, flying: bool) -> Plan {
+    let arm = |mut steps: Vec<Step>| {
+        steps.extend([Step::Arm, Step::WaitArmed]);
+        steps
+    };
+    match state.autopilot {
+        AUTOPILOT_PX4 => mode_or_refuse(state, "Mission").map(arm).map_or_else(Plan::Refused, Plan::Steps),
+        AUTOPILOT_ARDUPILOT if flying => mode_or_refuse(state, "Auto").map_or_else(Plan::Refused, Plan::Steps),
+        AUTOPILOT_ARDUPILOT if modes::vehicle_class(state.vehicle_type) == VehicleClass::FixedWing => mode_or_refuse(state, "Auto").map(arm).map_or_else(Plan::Refused, Plan::Steps),
+        AUTOPILOT_ARDUPILOT => {
+            let armed = match state.armed {
+                true => Ok(vec![]),
+                false => mode_or_refuse(state, "Guided").map(arm),
+            };
+            armed
+                .map(|mut steps| {
+                    steps.push(Step::Command { command: CMD_MISSION_START, params: [0.0; 7], command_int: false, frame: FRAME_GLOBAL, show_error: true });
+                    steps
+                })
+                .map_or_else(Plan::Refused, Plan::Steps)
+        }
+        _ => Plan::Refused("Vehicle does not support starting a mission".into()),
+    }
+}
+
 pub fn emergency_stop() -> Plan {
     Plan::Steps(vec![arm(false, true)])
 }
@@ -238,6 +264,46 @@ mod tests {
             Step::Command { command, params, command_int, .. } => (*command, *params, *command_int),
             other => panic!("not a command: {other:?}"),
         }
+    }
+
+    fn modes_of(plan: Plan) -> Vec<String> {
+        let Plan::Steps(steps) = plan else { panic!("refused") };
+        steps.iter().map(|step| match step {
+            Step::SetMode { mode, .. } => format!("mode {mode}"),
+            Step::WaitForMode(mode) => format!("wait {mode}"),
+            Step::Arm => "arm".into(),
+            Step::WaitArmed => "armed".into(),
+            Step::Command { command, .. } => format!("cmd {command}"),
+            other => format!("{other:?}"),
+        }).collect()
+    }
+
+    #[test]
+    fn a_mission_starts_the_way_each_firmware_plugin_starts_it() {
+        assert_eq!(modes_of(start_mission(&px4(), false)), ["mode Mission", "wait Mission", "arm", "armed"]);
+        assert_eq!(modes_of(start_mission(&copter(), true)), ["mode Auto", "wait Auto"], "in the air ArduPilot only switches to Auto");
+        assert_eq!(modes_of(start_mission(&copter(), false)), ["mode Guided", "wait Guided", "arm", "armed", "cmd 300"], "a copter on the ground arms in Guided and is sent MISSION_START");
+        assert_eq!(modes_of(start_mission(&VehicleState { armed: true, ..copter() }, false)), ["cmd 300"], "already armed, it is not switched to Guided first");
+        let plane = VehicleState { vehicle_type: 1, ..copter() };
+        assert_eq!(modes_of(start_mission(&plane, false)), ["mode Auto", "wait Auto", "arm", "armed"], "a plane is put in Auto before arming, never armed in Guided");
+        let tilt_rotor = VehicleState { vehicle_type: 21, ..copter() };
+        assert_eq!(modes_of(start_mission(&tilt_rotor, false)), ["mode Auto", "wait Auto", "arm", "armed"], "arming a VTOL in Guided would arm its rotors in forward-flight position");
+    }
+
+    #[test]
+    fn the_single_command_actions_match_what_qt_sends() {
+        assert_eq!(modes_of(emergency_stop()), ["cmd 400"]);
+        let Plan::Steps(steps) = emergency_stop() else { panic!() };
+        assert_eq!(command(&steps[0]).1[..2], [0.0, ARM_MAGIC]);
+        let Plan::Steps(steps) = abort_landing(30.0) else { panic!() };
+        assert_eq!((command(&steps[0]).0, command(&steps[0]).1[0]), (CMD_DO_GO_AROUND, 30.0));
+        let Plan::Steps(steps) = gripper(1.0) else { panic!() };
+        assert_eq!((command(&steps[0]).0, command(&steps[0]).1[..2].to_vec()), (CMD_DO_GRIPPER, vec![0.0, 1.0]));
+        assert!(matches!(gripper(2.0), Plan::Refused(_)));
+        let Plan::Steps(steps) = cancel_roi(&px4()) else { panic!() };
+        assert_eq!((command(&steps[0]).0, command(&steps[0]).2), (CMD_DO_SET_ROI_NONE, true));
+        let Plan::Steps(steps) = cancel_roi(&copter()) else { panic!() };
+        assert!(!command(&steps[0]).2, "without the COMMAND_INT capability it goes as COMMAND_LONG, as Qt sends it");
     }
 
     #[test]

@@ -842,6 +842,7 @@ impl Vehicle {
             "land" => guidedcmd::land(&state),
             "speed" => guidedcmd::change_speed(flag("ground"), number("metresPerSecond")),
             "arm" => Plan::Steps(vec![guidedcmd::arm(flag("arm"), flag("force"))]),
+            "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
             "gripper" => guidedcmd::gripper(number("gripAction")),
