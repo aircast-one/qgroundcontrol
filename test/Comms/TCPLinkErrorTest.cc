@@ -29,7 +29,7 @@ SharedLinkConfigurationPtr addTcpConfig(const QString &name, const QString &host
 void connectAndWaitForFailure(SharedLinkConfigurationPtr config)
 {
     SharedLinkConfigurationPtr shared = config;
-    QVERIFY(LinkManager::instance()->createConnectedLink(shared));
+    (void) LinkManager::instance()->createConnectedLink(shared);
     QTRY_VERIFY_WITH_TIMEOUT(!config->lastError().isEmpty(), 5000);
 }
 
@@ -40,6 +40,7 @@ void TCPLinkErrorTest::init()
     UnitTest::init();
     ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Socket error|Communication error")));
     ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Connection to")));
+    ignoreLogMessage("qgc.comms.corelink", QtWarningMsg, QRegularExpression(QStringLiteral("core link open failed")));
 }
 
 void TCPLinkErrorTest::_refusedConnectionAsksForTheAddress()

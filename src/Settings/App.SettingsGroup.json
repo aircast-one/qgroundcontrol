@@ -404,7 +404,7 @@
             "name": "coreLinks",
             "shortDesc": "Open UDP, TCP and serial links on the Rust core",
             "type": "bool",
-            "default": false,
+            "default": true,
             "label": "Open UDP, TCP and serial links on the Rust core"
         },
         {

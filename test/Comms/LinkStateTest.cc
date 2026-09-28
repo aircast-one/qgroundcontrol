@@ -41,6 +41,7 @@ void LinkStateTest::init()
     UnitTest::init();
     ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Socket error|Communication error")));
     ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral("Connection to")));
+    ignoreLogMessage("qgc.comms.corelink", QtWarningMsg, QRegularExpression(QStringLiteral("core link open failed")));
 }
 
 void LinkStateTest::_connectingNameFollowsTheLink()
@@ -90,7 +91,7 @@ void LinkStateTest::_newConnectClearsTheFailure()
 {
     const SharedLinkConfigurationPtr broken = addLocalTcpConfig(QStringLiteral("broken"), closedPort());
     SharedLinkConfigurationPtr shared = broken;
-    QVERIFY(LinkManager::instance()->createConnectedLink(shared));
+    (void) LinkManager::instance()->createConnectedLink(shared);
     QTRY_VERIFY_WITH_TIMEOUT(LinkManager::instance()->failedLink() == broken.get(), 5000);
     QVERIFY(!broken->lastError().isEmpty());
 

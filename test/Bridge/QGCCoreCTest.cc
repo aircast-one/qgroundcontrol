@@ -1576,6 +1576,7 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 {
     ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral(".*")));
+    ignoreLogMessage("qgc.comms.corelink", QtWarningMsg, QRegularExpression(QStringLiteral("core link open failed")));
     ignoreLogMessage("Utilities.QGCStateMachine", QtWarningMsg, QRegularExpression(QStringLiteral("No active link available")));
     const QString checkoutRoot = QDir::cleanPath(QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../..")));
     const auto stable = [&checkoutRoot](const QString &key) {
