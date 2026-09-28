@@ -681,7 +681,103 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     })
 }
 
+enum Shape {
+    Survey(usize),
+    Fence(usize),
+}
+
+fn shape_of(path: &str) -> Option<Shape> {
+    if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|r| r.strip_suffix(".surveyAreaPolygon")) {
+        return index.parse().ok().map(Shape::Survey);
+    }
+    path.strip_prefix("plan.geoFenceController.polygons.").and_then(|r| r.parse().ok()).map(Shape::Fence)
+}
+
+fn vertex_edit(vertices: &[Value], member: &str, given: &Value) -> Option<Vec<Value>> {
+    let at = |i: usize| Some((vertices.get(i)?.get(0)?.as_f64()?, vertices.get(i)?.get(1)?.as_f64()?));
+    let index = || given.get(0).and_then(Value::as_u64).map(|i| i as usize);
+    let spelled = |(lat, lon): (f64, f64)| json!([lat, lon]);
+    match member {
+        "appendVertex" => Some(vertices.iter().cloned().chain(std::iter::once(spelled(point_of(given.get(0))?))).collect()),
+        "adjustVertex" => {
+            let (i, to) = (index()?, point_of(given.get(1))?);
+            (i < vertices.len()).then(|| vertices.iter().enumerate().map(|(k, v)| if k == i { spelled(to) } else { v.clone() }).collect())
+        }
+        "removeVertex" => {
+            let i = index()?;
+            (i < vertices.len() && vertices.len() > 3).then(|| vertices.iter().enumerate().filter(|(k, _)| *k != i).map(|(_, v)| v.clone()).collect())
+        }
+        "splitPolygonSegment" => {
+            let i = index()?;
+            let next = if i + 1 >= vertices.len() { 0 } else { i + 1 };
+            let (from, to) = (at(i)?, at(next)?);
+            let middle = crate::surveygrid::at_distance_and_azimuth(from, crate::surveygrid::distance_between(from, to) / 2.0, crate::surveygrid::azimuth_to(from, to));
+            let place = if next == 0 { vertices.len() } else { next };
+            Some(vertices[..place].iter().cloned().chain(std::iter::once(spelled(middle))).chain(vertices[place..].iter().cloned()).collect())
+        }
+        _ => None,
+    }
+}
+
+fn with_polygon(owner: &Value, key: &str, vertices: Vec<Value>) -> Value {
+    let mut changed = owner.clone();
+    changed[key] = Value::Array(vertices);
+    changed
+}
+
+fn shape_invoke(path: &str, args: &str) -> Option<Value> {
+    let (owner, member) = path.rsplit_once('.')?;
+    let shape = shape_of(owner)?;
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let refusal = "That vertex edit does not fit this shape.";
+    Some(match shape {
+        Shape::Fence(index) => fence_edit(
+            |f, r| {
+                let polygons = f.get("polygons").and_then(Value::as_array)?;
+                let polygon = polygons.get(index)?;
+                let edited = with_polygon(polygon, "polygon", vertex_edit(polygon.get("polygon")?.as_array()?, member, &given)?);
+                let replaced: Vec<Value> = polygons.iter().enumerate().map(|(k, p)| if k == index { edited.clone() } else { p.clone() }).collect();
+                Some((with_polygon(f, "polygons", replaced), r.clone()))
+            },
+            refusal,
+        ),
+        Shape::Survey(index) => edit(|doc| {
+            let at = index.checked_sub(1).filter(|i| *i < doc.items.len()).ok_or(refusal)?;
+            let plandoc::Item::Complex { kind, json, .. } = &doc.items[at] else { return Err(refusal.to_string()) };
+            let vertices = json.get("polygon").and_then(Value::as_array).cloned().unwrap_or_default();
+            let edited = crate::surveydoc::regenerate(&with_polygon(json, "polygon", vertex_edit(&vertices, member, &given).ok_or(refusal)?));
+            let item_count = edited["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
+            let item = plandoc::Item::Complex { kind: kind.clone(), json: edited, item_count };
+            Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })
+        }),
+    })
+}
+
+pub fn shape_vertices(path: &str) -> Option<Vec<(f64, f64)>> {
+    if !enabled() {
+        return None;
+    }
+    let document = held().document.clone()?;
+    let vertices = match shape_of(path)? {
+        Shape::Survey(index) => match document.items.get(index.checked_sub(1)?)? {
+            plandoc::Item::Complex { json, .. } => json.get("polygon")?.as_array()?.clone(),
+            plandoc::Item::Simple(_) => return None,
+        },
+        Shape::Fence(index) => document.fence.get("polygons")?.get(index)?.get("polygon")?.as_array()?.clone(),
+    };
+    Some(vertices.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect())
+}
+
+pub fn drawing() -> bool {
+    held().document.as_ref().is_some_and(|d| {
+        d.items.iter().any(|item| matches!(item, plandoc::Item::Complex { json, .. } if json.get("polygon").and_then(Value::as_array).is_some_and(|p| p.len() < 3)))
+    })
+}
+
 pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
+    if let Some(answer) = shape_invoke(path, args) {
+        return Some(answer);
+    }
     if let Some(answer) = fence_invoke(backend, path, args) {
         return Some(answer);
     }

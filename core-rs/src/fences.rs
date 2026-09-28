@@ -265,7 +265,10 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
 pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.polygon needs the path of the shape to read") };
     let ring = args.get(1).map(|r| r != "line").unwrap_or(true);
-    let json = object(&backend.get(path));
+    let json = match crate::coreplan::shape_vertices(path) {
+        Some(vertices) => json!({ "kind": "object", "path": vertices.iter().map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })).collect::<Vec<_>>() }),
+        None => object(&backend.get(path)),
+    };
     if json.get("kind").and_then(Value::as_str) != Some("object") {
         return refused("nothing answers at that path, so there is no shape to read");
     }
