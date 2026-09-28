@@ -324,6 +324,18 @@ pub fn insert_simple(doc: &Document, command: i64, latitude: f64, longitude: f64
     Document { items, home, ..doc.clone() }
 }
 
+pub fn insert_complex(doc: &Document, kind: &str, json: Value, center: (f64, f64), visual_index: i64) -> Document {
+    let item_count = json["TransectStyleComplexItem"]["Items"].as_array().map_or(0, Vec::len);
+    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
+    let item = Item::Complex { kind: kind.to_string(), json, item_count };
+    let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(item)).chain(doc.items[at..].iter().cloned()).collect();
+    let home = doc.home.or_else(|| {
+        let (lat, lon) = crate::surveygrid::at_distance_and_azimuth(center, PLANNED_HOME_OFFSET_M, 0.0);
+        Some([lat, lon, 0.0])
+    });
+    Document { items, home, ..doc.clone() }
+}
+
 pub fn insert_waypoint(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
     insert_simple(doc, CMD_NAV_WAYPOINT, latitude, longitude, visual_index, defaults)
 }
@@ -341,7 +353,15 @@ pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults
     let home = doc.home.ok_or("A takeoff is placed at the launch position, and this plan has none yet.")?;
     match vehicle_class(doc.vehicle_type) {
         VehicleClass::FixedWing => Err("A fixed-wing takeoff needs its climb-out placed on the map.".to_string()),
-        _ => Ok(insert_simple(doc, CMD_NAV_TAKEOFF, home[0], home[1], visual_index, defaults)),
+        _ => {
+            let inserted = insert_simple(doc, CMD_NAV_TAKEOFF, home[0], home[1], visual_index, defaults);
+            let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
+            let launched = |item: &Item| match item {
+                Item::Simple(s) => Item::Simple(Simple { params: [s.params[0], s.params[1], s.params[2], s.params[3], Some(home[0]), Some(home[1]), s.params[6]], ..s.clone() }),
+                other => other.clone(),
+            };
+            Ok(Document { items: inserted.items.iter().enumerate().map(|(i, item)| if i == at { launched(item) } else { item.clone() }).collect(), ..inserted })
+        }
     }
 }
 
@@ -580,7 +600,13 @@ fn fold(items: Vec<Item>, class: VehicleClass) -> (Vec<Simple>, Vec<Item>) {
 
 fn save_item(item: &Item, seq: usize) -> Value {
     match item {
-        Item::Complex { json, .. } => json.clone(),
+        Item::Complex { json, .. } => {
+            let mut numbered = json.clone();
+            if let Some(items) = numbered.pointer_mut("/TransectStyleComplexItem/Items").and_then(Value::as_array_mut) {
+                items.iter_mut().enumerate().for_each(|(i, item)| item["doJumpId"] = json!(seq + i));
+            }
+            numbered
+        }
         Item::Simple(simple) => {
             let base = json!({
                 "type": "SimpleItem",
@@ -707,6 +733,18 @@ mod tests {
         matches_qt(&insert_takeoff(&without_takeoff, 1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-takeoff-by-qt.plan"));
         assert!(insert_takeoff(&Document { home: None, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err());
         assert!(insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff }, 1, &QT_DEFAULTS).is_err(), "Qt opens a plane's takeoff in the wizard for its climb-out");
+    }
+
+    #[test]
+    fn a_survey_numbers_its_items_from_the_sequence_it_lands_on() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-inserted-by-qt.json")).unwrap();
+        let placed = insert_complex(&section(), "survey", fixture["survey"].clone(), (47.63, -122.09), 2);
+        let saved = save(&placed);
+        let survey = &saved["mission"]["items"][1]["TransectStyleComplexItem"]["Items"];
+        let before = &saved["mission"]["items"][0]["doJumpId"];
+        assert_eq!(survey[0]["doJumpId"].as_i64(), before.as_i64().map(|n| n + 1));
+        let after = saved["mission"]["items"][2]["doJumpId"].as_i64().unwrap();
+        assert_eq!(after, survey[0]["doJumpId"].as_i64().unwrap() + survey.as_array().unwrap().len() as i64);
     }
 
     #[test]

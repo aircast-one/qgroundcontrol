@@ -203,6 +203,13 @@ pub fn open(path: &std::path::Path) {
     *stored() = Some(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default()));
 }
 
+pub fn stored_text(key: &str) -> Option<String> {
+    match stored().as_ref()?.get(key)? {
+        Setting::Text(text) => Some(text.clone()),
+        _ => None,
+    }
+}
+
 pub fn enabled() -> bool {
     *SWITCHED_ON && stored().is_some()
 }

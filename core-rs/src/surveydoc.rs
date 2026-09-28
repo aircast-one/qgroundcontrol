@@ -345,9 +345,96 @@ pub fn set(survey: &Value, suffix: &str, value: &Value) -> Option<Value> {
     Some(regenerate(&changed))
 }
 
+pub struct Fresh<'a> {
+    pub center: (f64, f64),
+    pub remembered: &'a dyn Fn(&str) -> Option<String>,
+    pub multirotor: bool,
+    pub alternates: bool,
+    pub default_altitude: f64,
+    pub distance_mode: i64,
+}
+
+const SAVED_BY_EVERY_CAMERA: [&str; 6] = ["version", "AdjustedFootprintSide", "AdjustedFootprintFrontal", "DistanceToSurface", "DistanceMode", "CameraName"];
+
+fn remembered(fresh: &Fresh, file: &str, name: &str) -> Value {
+    let Some(meta) = meta(file, name) else { return Value::Null };
+    let stored = (fresh.remembered)(&format!("Survey/{name}")).and_then(|text| crate::settingsstore::typed(&meta.value_type, &Value::String(text)));
+    stored.or_else(|| meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone()))).unwrap_or(Value::Null)
+}
+
+pub fn fresh(fresh: &Fresh) -> Value {
+    let calc_keys = ["CameraName", "ValueSetIsDistance", "DistanceToSurface", "ImageDensity", "FrontalOverlap", "SideOverlap", "AdjustedFootprintSide", "AdjustedFootprintFrontal"];
+    let spec_keys = ["SensorWidth", "SensorHeight", "ImageWidth", "ImageHeight", "FocalLength", "Landscape", "FixedOrientation", "MinTriggerInterval"];
+    let stored_calc: serde_json::Map<String, Value> = calc_keys
+        .iter()
+        .map(|k| (k.to_string(), remembered(fresh, CAMERA_META, k)))
+        .chain(spec_keys.iter().map(|k| (k.to_string(), remembered(fresh, CAMERA_SPEC_META, k))))
+        .chain([("DistanceMode".to_string(), json!(fresh.distance_mode)), ("version".to_string(), json!(2))])
+        .collect();
+    let stored_name = stored_calc.get("CameraName").and_then(Value::as_str).unwrap_or(MANUAL_CAMERA).to_string();
+    let name = match stored_name.as_str() {
+        MANUAL_CAMERA | CUSTOM_CAMERA => stored_name,
+        known if known_camera(&cameras(), known).is_some() => stored_name,
+        _ => CUSTOM_CAMERA.to_string(),
+    };
+    let named = named_camera(&Value::Object(stored_calc), &name);
+    let manual = name == MANUAL_CAMERA;
+    let by_distance = named.get("ValueSetIsDistance").and_then(Value::as_bool).unwrap_or(true);
+    let settled = match manual || !by_distance {
+        true => {
+            let mut lowered = named.clone();
+            lowered["DistanceToSurface"] = json!(fresh.default_altitude);
+            recalculated(&lowered)
+        }
+        false => named,
+    };
+    let calc: serde_json::Map<String, Value> = settled.as_object().map(|o| o.iter().filter(|(k, _)| !manual || SAVED_BY_EVERY_CAMERA.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
+    let turnaround = if fresh.multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
+    let transect = json!({
+        "CameraCalc": calc,
+        "CameraTriggerInTurnAround": remembered(fresh, TRANSECT_META, "CameraTriggerInTurnAround"),
+        "HoverAndCapture": remembered(fresh, TRANSECT_META, "HoverAndCapture"),
+        "Refly90Degrees": remembered(fresh, TRANSECT_META, "Refly90Degrees"),
+        "TurnAroundDistance": remembered(fresh, TRANSECT_META, turnaround),
+        "version": 2,
+    });
+    let alternates = match fresh.alternates {
+        true => remembered(fresh, SURVEY_META, "FlyAlternateTransects"),
+        false => json!(false),
+    };
+    let polygon: Vec<Value> = crate::missionkinds::default_area(fresh.center.0, fresh.center.1).iter().map(|(lat, lon)| json!([lat, lon])).collect();
+    regenerate(&json!({
+        "TransectStyleComplexItem": transect,
+        "angle": remembered(fresh, SURVEY_META, "GridAngle"),
+        "complexItemType": "survey",
+        "entryLocation": 0,
+        "flyAlternateTransects": alternates,
+        "polygon": polygon,
+        "splitConcavePolygons": remembered(fresh, SURVEY_META, "SplitConcavePolygons"),
+        "type": "ComplexItem",
+        "version": 5,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_survey_starts_from_the_remembered_survey_settings_as_qt_builds_it() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-inserted-by-qt.json")).unwrap();
+        let remembered = |key: &str| key.strip_prefix("Survey/").and_then(|name| fixture["remembered"][name].as_str()).map(str::to_string);
+        let mut built = fresh(&Fresh {
+            center: (fixture["center"][0].as_f64().unwrap(), fixture["center"][1].as_f64().unwrap()),
+            remembered: &remembered,
+            multirotor: true,
+            alternates: false,
+            default_altitude: fixture["defaultAltitude"].as_f64().unwrap(),
+            distance_mode: crate::altitudemodes::RELATIVE,
+        });
+        built["TransectStyleComplexItem"]["Items"].as_array_mut().unwrap().iter_mut().for_each(|item| item["doJumpId"] = json!(item["doJumpId"].as_i64().unwrap() + 1));
+        assert_eq!(by_value(&built), by_value(&fixture["survey"]));
+    }
 
     fn by_value(value: &Value) -> Value {
         match value {

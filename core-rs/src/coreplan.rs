@@ -162,6 +162,37 @@ fn insert_takeoff(backend: &dyn Backend, args: &str) -> Value {
     edit(|doc| plandoc::insert_takeoff(doc, index, &defaults))
 }
 
+fn insert_survey(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
+        return refused("A survey needs a latitude and a longitude.");
+    };
+    let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| {
+        let class = plandoc::vehicle_class(doc.vehicle_type);
+        let distance_mode = match doc.global_altitude_mode {
+            crate::altitudemodes::MIXED => crate::altitudemodes::RELATIVE,
+            mode => mode,
+        };
+        if distance_mode == crate::altitudemodes::CALC_ABOVE_TERRAIN {
+            return Err("The core cannot build a survey that follows terrain yet.".to_string());
+        }
+        let survey = crate::surveydoc::fresh(&crate::surveydoc::Fresh {
+            center: (latitude, longitude),
+            remembered: &crate::settingsstore::stored_text,
+            multirotor: class == crate::cmdinfo::VehicleClass::MultiRotor,
+            alternates: matches!(class, crate::cmdinfo::VehicleClass::FixedWing | crate::cmdinfo::VehicleClass::Vtol),
+            default_altitude: defaults.mission_item_altitude,
+            distance_mode,
+        });
+        Ok(plandoc::insert_complex(doc, "survey", survey, (latitude, longitude), index))
+    })
+}
+
 fn set_altitude_mode(args: &str) -> Value {
     let mode = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0).and_then(Value::as_i64));
     match mode.filter(|m| (crate::altitudemodes::MIXED..=crate::altitudemodes::TERRAIN_FRAME).contains(m)) {
@@ -501,10 +532,26 @@ fn select(args: &str) -> Value {
     }
 }
 
-fn clear() -> Value {
+fn setting_number(backend: &dyn Backend, name: &str) -> Option<f64> {
+    crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue")))
+}
+
+fn fresh_document(backend: &dyn Backend) -> Document {
+    let offline = empty_document();
+    Document {
+        firmware_type: setting_number(backend, "offlineEditingFirmwareClass").map_or(offline.firmware_type, |v| v as i64),
+        vehicle_type: setting_number(backend, "offlineEditingVehicleClass").map_or(offline.vehicle_type, |v| v as i64),
+        cruise_speed: setting_number(backend, "offlineEditingCruiseSpeed").unwrap_or(offline.cruise_speed),
+        hover_speed: setting_number(backend, "offlineEditingHoverSpeed").unwrap_or(offline.hover_speed),
+        ..offline
+    }
+}
+
+fn clear(backend: &dyn Backend) -> Value {
+    let fresh = held().document.is_none().then(|| fresh_document(backend));
     {
         let mut state = held();
-        let template = state.document.clone().unwrap_or_else(empty_document);
+        let template = state.document.clone().or(fresh).unwrap_or_else(empty_document);
         state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..template });
         state.selected = 0;
         state.dirty = false;
@@ -518,10 +565,16 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let kind = given.get(0).and_then(Value::as_str).unwrap_or("");
     let rest = json!([given.get(1), given.get(2), given.get(3)]).to_string();
+    let clicked = given.get(1).and_then(Value::as_f64).zip(given.get(2).and_then(Value::as_f64));
+    if let Some((latitude, longitude)) = clicked {
+        let mut state = held();
+        state.document = state.document.take().map(|d| Document { home: d.home.or(Some([latitude, longitude, 0.0])), ..d });
+    }
     let answered = match kind {
         "waypoint" => insert_at(backend, &rest, false),
         "land" => insert_at(backend, &rest, true),
         "takeoff" => insert_takeoff(backend, &json!([given.get(3)]).to_string()),
+        "survey" => insert_survey(backend, &rest),
         other => return refused(format!("The core plan cannot insert a {other} yet.")),
     };
     match answered.get("ok").and_then(Value::as_bool) {
@@ -806,7 +859,7 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "plan.saveToCurrent" => current().map_or_else(|| refused("This plan has not been saved to a file yet."), |file| save(&file)),
         "plan.sendToVehicle" => send(),
         "plan.loadFromVehicle" => fetch(),
-        "plan.removeAll" => clear(),
+        "plan.removeAll" => clear(backend),
         "mission.insert" => insert_kind(backend, args),
         "mission.remove" | "plan.missionController.removeVisualItem" => remove(args),
         "plan.missionController.setCurrentPlanViewSeqNum" => select(args),
