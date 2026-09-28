@@ -1,0 +1,24 @@
+{
+ "altitudesAreRelative": true,
+ "complexItemType": "fwLandingPattern",
+ "finalApproachSpeed": 14,
+ "landCoordinate": [
+  -35.3632,
+  149.1652,
+  0
+ ],
+ "landingApproachCoordinate": [
+  -35.37,
+  149.17,
+  60
+ ],
+ "loiterClockwise": false,
+ "loiterRadius": 75,
+ "stopTakingPhotos": true,
+ "stopVideoPhotos": true,
+ "type": "ComplexItem",
+ "useDoChangeSpeed": true,
+ "useLoiterToAlt": true,
+ "valueSetIsDistance": false,
+ "version": 2
+}

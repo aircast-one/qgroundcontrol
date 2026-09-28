@@ -34,7 +34,8 @@ pub fn flatten(plan: &Value) -> Result<Vec<UploadItem>, String> {
         auto_continue: true,
     };
     let saved = mission.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
-    let expanded = saved.iter().map(expand).collect::<Result<Vec<_>, _>>()?;
+    let land_start_coordinate = crate::landingpattern::land_start_has_coordinate(mission.get("firmwareType").and_then(Value::as_i64).unwrap_or(0), mission.get("vehicleType").and_then(Value::as_i64).unwrap_or(0));
+    let expanded = saved.iter().map(|item| expand(item, land_start_coordinate)).collect::<Result<Vec<_>, _>>()?;
     let placed: Vec<Placed> = std::iter::once(Placed { item: home_item, jump_id: None })
         .chain(expanded.into_iter().flatten())
         .enumerate()
@@ -61,7 +62,7 @@ fn with_first(params: [f64; 7], first: f64) -> [f64; 7] {
     [first, params[1], params[2], params[3], params[4], params[5], params[6]]
 }
 
-fn expand(item: &Value) -> Result<Vec<Placed>, String> {
+fn expand(item: &Value, land_start_coordinate: bool) -> Result<Vec<Placed>, String> {
     match item.get("type").and_then(Value::as_str) {
         Some("SimpleItem") => simple(item).map(|placed| vec![placed]),
         Some("ComplexItem") => {
@@ -74,6 +75,10 @@ fn expand(item: &Value) -> Result<Vec<Placed>, String> {
                     .ok_or_else(|| format!("The {kind} item has no saved mission items."))?
                     .iter()
                     .map(|inner| simple(inner).map(|placed| Placed { jump_id: None, ..placed }))
+                    .collect(),
+                false if crate::landingpattern::is_landing(kind) => crate::landingpattern::items(item, land_start_coordinate)?
+                    .iter()
+                    .map(|inner| simple(&crate::structurescan::saved_item_json(inner)).map(|placed| Placed { jump_id: None, ..placed }))
                     .collect(),
                 false if kind == "StructureScan" => crate::structurescan::saved_items(item)?
                     .iter()

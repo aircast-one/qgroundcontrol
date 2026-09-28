@@ -123,6 +123,7 @@ pub mod speed;
 pub mod standardmodes;
 pub mod statustext;
 pub mod survey;
+pub mod landingpattern;
 pub mod structurescan;
 pub mod tilecache;
 pub mod surveydoc;

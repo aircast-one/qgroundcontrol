@@ -330,6 +330,7 @@ pub fn complex_count(kind: &str, item: &Value) -> Result<usize, String> {
     match TRANSECT_STYLE.contains(&kind) {
         true => item.get("TransectStyleComplexItem").and_then(|t| t.get("Items")).and_then(Value::as_array).map(Vec::len).ok_or_else(|| format!("The {kind} item has no saved mission items.")),
         false if kind == "StructureScan" => crate::structurescan::saved_items(item).map(|items| items.len()),
+        false if crate::landingpattern::is_landing(kind) => crate::landingpattern::items(item, false).map(|items| items.len()),
         false => Err(format!("The core cannot hold a {kind} item yet.")),
     }
 }
