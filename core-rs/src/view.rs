@@ -526,6 +526,7 @@ mod deps_cover_reads {
 
     const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
         "video.gstreamerEnabled",
+        "vehicle.id",
         "vehicle.flightModeSetAvailable",
         "vehicle.rtlFlightMode",
         "vehicle.landFlightMode",

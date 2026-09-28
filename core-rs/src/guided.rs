@@ -409,12 +409,40 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
     if let Some((token, reason)) = invoke_refusal(offered, &state) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
-    let dispatched = flag(&object(&backend.invoke(path, &args)), "ok");
-    json!({
-        "ok": dispatched,
-        "refusal": Value::Null,
-        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") },
-    })
+    dispatch(backend, core_action(offered, &args), path, &args)
+}
+
+fn core_action(offered: &[Action], args: &str) -> Option<Value> {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    match offered {
+        [Action::Rtl] => Some(json!({ "action": "rtl", "smart": given.get(0).and_then(Value::as_bool).unwrap_or(false) })),
+        [Action::Land] => Some(json!({ "action": "land" })),
+        [Action::ForceArm] => Some(json!({ "action": "arm", "arm": true, "force": true })),
+        [Action::Pause] => Some(json!({ "action": "pause" })),
+        [Action::Takeoff] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "takeoff", "altitude": metres })),
+        [Action::ChangeAltitude] | [Action::Pause, Action::ChangeAltitude] => given.get(0).and_then(Value::as_f64).map(|delta| json!({
+            "action": "changeAltitude",
+            "delta": delta,
+            "pause": given.get(1).and_then(Value::as_bool).unwrap_or(false),
+        })),
+        _ => None,
+    }
+}
+
+fn dispatch(backend: &dyn Backend, core: Option<Value>, path: &str, args: &str) -> Value {
+    let on_core = core.and_then(|mut action| {
+        action["vehicle"] = object(&backend.get_fields("vehicle", "id")).get("id").cloned().unwrap_or(Value::Null);
+        backend.core_guided(&action)
+    });
+    let (dispatched, reason) = match on_core {
+        Some(Ok(())) => (true, Value::Null),
+        Some(Err(reason)) => (false, json!(reason)),
+        None => match flag(&object(&backend.invoke(path, args)), "ok") {
+            true => (true, Value::Null),
+            false => (false, json!("The vehicle was not sent the command.")),
+        },
+    };
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": reason })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -476,18 +504,13 @@ pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str
     let altitude = matches!(kind, Valued::ChangeAltitude).then(|| crate::altitude::range_meters(backend)).flatten().map(|r| (r.current, r.minimum, r.maximum));
     let checked = valued_check(kind, &given, &state, takeoff, altitude).and_then(|(offered, forwarded)| match invoke_refusal(&offered, &state) {
         Some(refused) => Err(refused),
-        None => Ok(forwarded),
+        None => Ok((offered, forwarded)),
     });
-    let forwarded = match checked {
-        Ok(forwarded) => forwarded,
+    let (offered, forwarded) = match checked {
+        Ok(checked) => checked,
         Err((token, reason)) => return json!({ "ok": false, "refusal": token, "reason": reason }),
     };
-    let dispatched = flag(&object(&backend.invoke(path, &forwarded)), "ok");
-    json!({
-        "ok": dispatched,
-        "refusal": Value::Null,
-        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") },
-    })
+    dispatch(backend, core_action(&offered, &forwarded), path, &forwarded)
 }
 
 pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -936,5 +959,78 @@ mod loiter {
             fn watch(&self, _p: &[String]) {}
         }
         assert_eq!(guided_view(&Silent, &[])["gotoLoiterRadius"], 0.0);
+    }
+}
+
+#[cfg(test)]
+mod core_route {
+    use super::*;
+    use std::cell::RefCell;
+
+    struct Hubbed { answer: Option<Result<(), String>>, asked: RefCell<Vec<Value>>, invoked: RefCell<Vec<String>> }
+
+    impl Hubbed {
+        fn new(answer: Option<Result<(), String>>) -> Self {
+            Hubbed { answer, asked: RefCell::new(vec![]), invoked: RefCell::new(vec![]) }
+        }
+    }
+
+    impl Backend for Hubbed {
+        fn get(&self, _p: &str) -> String { String::new() }
+        fn get_fields(&self, path: &str, _f: &str) -> String {
+            match path {
+                "vehicle" => json!({ "kind": "object", "id": 7 }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, path: &str, _a: &str) -> String {
+            self.invoked.borrow_mut().push(path.to_string());
+            json!({ "ok": true }).to_string()
+        }
+        fn watch(&self, _p: &[String]) {}
+        fn core_guided(&self, action: &Value) -> Option<Result<(), String>> {
+            self.asked.borrow_mut().push(action.clone());
+            self.answer.clone()
+        }
+    }
+
+    #[test]
+    fn a_vehicle_the_core_carries_is_commanded_by_the_core_and_qt_is_never_asked() {
+        let hub = Hubbed::new(Some(Ok(())));
+        let answered = dispatch(&hub, core_action(&[Action::Rtl], "[true]"), "vehicle.guidedModeRTL", "[true]");
+        assert_eq!(answered["ok"], true);
+        assert!(hub.invoked.borrow().is_empty(), "sending on both routes would command the vehicle twice");
+        assert_eq!(hub.asked.borrow()[0], json!({ "action": "rtl", "smart": true, "vehicle": 7 }));
+    }
+
+    #[test]
+    fn the_hubs_refusal_is_the_answer_rather_than_a_fallback_to_qt() {
+        let hub = Hubbed::new(Some(Err("A guided action is still running.".to_string())));
+        let answered = dispatch(&hub, core_action(&[Action::Land], "[]"), "vehicle.guidedModeLand", "[]");
+        assert_eq!(answered["ok"], false);
+        assert_eq!(answered["reason"], "A guided action is still running.");
+        assert!(hub.invoked.borrow().is_empty(), "a refused core command retried through Qt would be sent anyway");
+    }
+
+    #[test]
+    fn a_vehicle_on_a_qt_link_is_still_commanded_through_qt() {
+        let hub = Hubbed::new(None);
+        assert_eq!(dispatch(&hub, core_action(&[Action::Rtl], "[false]"), "vehicle.guidedModeRTL", "[false]")["ok"], true);
+        assert_eq!(*hub.invoked.borrow(), vec!["vehicle.guidedModeRTL".to_string()]);
+    }
+
+    #[test]
+    fn actions_the_hub_cannot_plan_never_reach_it() {
+        [Action::EmergencyStop, Action::LandAbort, Action::StartMission, Action::CancelRoi]
+            .iter()
+            .for_each(|action| assert_eq!(core_action(&[*action], "[50]"), None, "{action:?}"));
+    }
+
+    #[test]
+    fn valued_actions_carry_their_value_to_the_hub() {
+        assert_eq!(core_action(&[Action::Takeoff], "[12.5]"), Some(json!({ "action": "takeoff", "altitude": 12.5 })));
+        assert_eq!(core_action(&[Action::Pause, Action::ChangeAltitude], "[-3.0,true]"), Some(json!({ "action": "changeAltitude", "delta": -3.0, "pause": true })));
+        assert_eq!(core_action(&[Action::ForceArm], "[]"), Some(json!({ "action": "arm", "arm": true, "force": true })));
     }
 }

@@ -11,6 +11,9 @@ pub trait Backend {
     fn set(&self, path: &str, value: &str) -> String;
     fn invoke(&self, path: &str, args: &str) -> String;
     fn watch(&self, paths: &[String]);
+    fn core_guided(&self, _action: &serde_json::Value) -> Option<Result<(), String>> {
+        None
+    }
 }
 
 #[derive(Default)]

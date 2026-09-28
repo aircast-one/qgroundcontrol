@@ -1381,6 +1381,10 @@ impl Hub {
         vehicle.mission_request(request, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
     }
 
+    pub fn carries(&self, id: u8) -> bool {
+        self.vehicles.contains_key(&id)
+    }
+
     pub fn guided_snapshot(&self, id: Option<u8>) -> Value {
         let chosen = match id { Some(id) => self.vehicles.get(&id), None => self.active() };
         json!({
