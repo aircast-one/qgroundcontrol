@@ -501,7 +501,11 @@ fn fence_from(snapshot: &Value) -> Value {
     .unwrap_or(Value::Null)
 }
 
-fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool) {
+fn remembered_speed(name: &str, fallback: f64) -> f64 {
+    crate::settingsstore::stored_text(name).and_then(|text| text.parse().ok()).unwrap_or(fallback)
+}
+
+fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool, types: (i64, i64)) {
     let downloaded: Vec<Downloaded> = snapshot["mission"]["items"]
         .as_array()
         .map(|items| {
@@ -517,7 +521,12 @@ fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool)
         })
         .unwrap_or_default();
     let mut state = held();
-    let template = state.document.clone().unwrap_or_else(empty_document);
+    let held_document = state.document.clone().unwrap_or_else(|| Document {
+        cruise_speed: remembered_speed("offlineEditingCruiseSpeed", 15.0),
+        hover_speed: remembered_speed("offlineEditingHoverSpeed", 5.0),
+        ..empty_document()
+    });
+    let template = Document { firmware_type: types.0, vehicle_type: types.1, ..held_document };
     let before = state.document.clone();
     let mission = plandoc::from_vehicle(&downloaded, sends_home, &template);
     state.document = Some(Document {
@@ -532,9 +541,9 @@ fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool)
 }
 
 fn fetch() -> Value {
-    let Some((fence, rally, sends_home)) = crate::hub::lock().active().map(|v| {
+    let Some((fence, rally, sends_home, types)) = crate::hub::lock().active().map(|v| {
         let (fence, rally) = v.plans_supported();
-        (fence, rally, v.sends_home())
+        (fence, rally, v.sends_home(), (i64::from(v.autopilot), i64::from(v.vehicle_type)))
     }) else {
         return refused("No vehicle is connected through the core.");
     };
@@ -545,7 +554,10 @@ fn fetch() -> Value {
         let rally_read = rally && load("rally");
         let snapshot = crate::hub::lock().active().map(crate::hub::Vehicle::mission_snapshot).unwrap_or(Value::Null);
         match mission_read {
-            true => adopt(&snapshot, sends_home, fence_read, rally_read),
+            true => {
+                adopt(&snapshot, sends_home, fence_read, rally_read, types);
+                settle_home_on_terrain(None);
+            }
             false => held().fetching = false,
         }
         changed();

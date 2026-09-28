@@ -110,8 +110,9 @@ struct Leg {
 
 fn amsl_entry(simple: &crate::plandoc::Simple, home_altitude: f64) -> f64 {
     let seventh = simple.params[6].unwrap_or(f64::NAN);
-    match simple.altitude.as_ref().map(|a| a.mode) {
-        Some(crate::altitudemodes::RELATIVE) | None => seventh + home_altitude,
+    let mode = simple.altitude.as_ref().map_or(match simple.frame { 10 => crate::altitudemodes::TERRAIN_FRAME, 0 => crate::altitudemodes::ABSOLUTE, _ => crate::altitudemodes::RELATIVE }, |a| a.mode);
+    match mode {
+        crate::altitudemodes::RELATIVE => seventh + home_altitude,
         _ => seventh,
     }
 }
@@ -564,7 +565,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
                 "coordinate": coordinate.then(|| json!({ "latitude": s.params[4], "longitude": s.params[5], "altitude": Value::Null, "valid": true })),
                 "exitCoordinateSameAsEntry": true,
                 "amslEntryAlt": amsl_entry(s, home[2]),
-                "altitudeFrame": altitude.map_or(match doc.global_altitude_mode { crate::altitudemodes::MIXED => crate::altitudemodes::RELATIVE, mode => mode }, |a| a.mode),
+                "altitudeFrame": altitude.map_or(match s.frame { 10 => crate::altitudemodes::TERRAIN_FRAME, 0 => crate::altitudemodes::ABSOLUTE, _ => crate::altitudemodes::RELATIVE }, |a| a.mode),
                 "specifiedFlightSpeed": specified_speed(&s.sections).or_else(|| (s.command == 178).then_some(s.params[1]).flatten().filter(|speed| *speed > 0.0)),
                 "facts": altitude_fact("altitude", altitude.map_or(0.0, |a| a.altitude)),
                 "additionalTimeDelay": match s.command { 16 | 112 | 93 => s.params[0].unwrap_or(0.0), _ => 0.0 },

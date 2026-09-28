@@ -88,6 +88,7 @@ pub fn load(text: &str) -> Result<Document, String> {
         .map(|items| items.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>())
         .transpose()?
         .unwrap_or_default();
+    let items = crate::landingpattern::fold(items, firmware(firmware_type) == Firmware::ArduPilot);
     let (settings_sections, items) = fold(items, vehicle_class(vehicle_type));
     Ok(Document {
         firmware_type,
@@ -173,11 +174,17 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
         .or(template.home);
     let listed = &items[usize::from(fake_home.is_some())..];
     let simple = |item: &Downloaded| {
-        let specifies_altitude = commands.get(&item.command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
+        let info = commands.get(&item.command);
+        let specifies_altitude = info.is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
+        let launched_here = info.is_some_and(|c| c.is_takeoff && !c.specifies_coordinate);
+        let params = match (launched_here, home) {
+            (true, Some(h)) => [item.params[0], item.params[1], item.params[2], item.params[3], h[0], h[1], item.params[6]],
+            _ => item.params,
+        };
         Item::Simple(Simple {
             command: item.command,
             frame: item.frame,
-            params: item.params.map(|p| Some(p).filter(|p| !p.is_nan())),
+            params: params.map(|p| Some(p).filter(|p| !p.is_nan())),
             auto_continue: item.auto_continue,
             altitude: specifies_altitude.then(|| Altitude {
                 mode: match item.frame {
@@ -191,7 +198,8 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
             sections: Vec::new(),
         })
     };
-    let (settings_sections, items) = fold(listed.iter().map(simple).collect(), vehicle_class(template.vehicle_type));
+    let landings = crate::landingpattern::fold(listed.iter().map(simple).collect(), firmware(template.firmware_type) == Firmware::ArduPilot);
+    let (settings_sections, items) = fold(landings, vehicle_class(template.vehicle_type));
     Document {
         home,
         settings_sections,
@@ -476,10 +484,11 @@ pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
 }
 
 pub fn save(doc: &Document) -> Value {
-    let settings = doc.settings_sections.iter().map(|section| Item::Simple(section.clone()));
+    let section = |s: &Simple| Item::Simple(Simple { frame: FRAME_MISSION, ..s.clone() });
+    let settings = doc.settings_sections.iter().map(section);
     let spans: Vec<(Item, usize)> = settings
         .chain(doc.items.iter().flat_map(|item| match item {
-            Item::Simple(simple) => std::iter::once(Item::Simple(Simple { sections: Vec::new(), ..simple.clone() })).chain(simple.sections.iter().cloned().map(Item::Simple)).collect::<Vec<_>>(),
+            Item::Simple(simple) => std::iter::once(Item::Simple(Simple { sections: Vec::new(), ..simple.clone() })).chain(simple.sections.iter().map(section)).collect::<Vec<_>>(),
             complex => vec![complex.clone()],
         }))
         .map(|item| {

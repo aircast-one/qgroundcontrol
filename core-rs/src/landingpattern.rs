@@ -269,6 +269,100 @@ pub fn edit(pattern: &Value, suffix: &str, value: &Value) -> Option<Value> {
     }
 }
 
+fn p(item: &crate::plandoc::Simple, n: usize) -> f64 {
+    item.params[n - 1].unwrap_or(f64::NAN)
+}
+
+fn zeros(item: &crate::plandoc::Simple, range: std::ops::RangeInclusive<usize>) -> bool {
+    range.into_iter().all(|n| p(item, n) == 0.0)
+}
+
+fn valid_land(item: &crate::plandoc::Simple, vtol: bool) -> bool {
+    let placed = item.frame == i64::from(FRAME_GLOBAL_RELATIVE_ALT) || item.frame == i64::from(FRAME_GLOBAL);
+    match vtol {
+        true => item.command == i64::from(CMD_NAV_VTOL_LAND) && placed && zeros(item, 1..=3) && p(item, 4).is_nan(),
+        false => item.command == i64::from(CMD_NAV_LAND) && placed && zeros(item, 1..=3) && (p(item, 4) == 0.0 || p(item, 4) == 1.0),
+    }
+}
+
+fn scan_at(items: &[crate::plandoc::Item], start: usize, vtol: bool, ardupilot: bool) -> Option<(usize, Value)> {
+    let simple = |at: usize| match items.get(at) {
+        Some(crate::plandoc::Item::Simple(s)) => Some(s),
+        _ => None,
+    };
+    let land = simple(start.checked_sub(1)?).filter(|s| valid_land(s, vtol))?;
+    let approach_at = start.checked_sub(2)?;
+    let approach = simple(approach_at)?;
+    let loiter = match approach.command {
+        c if c == i64::from(CMD_NAV_LOITER_TO_ALT) => {
+            let first = p(approach, 1);
+            let heading_ok = if ardupilot { first == 0.0 || first == 1.0 } else { first == 1.0 };
+            (approach.frame == land.frame && heading_ok && p(approach, 3) == 0.0 && p(approach, 4) == 1.0).then_some(true)?
+        }
+        c if c == i64::from(CMD_NAV_WAYPOINT) => {
+            let ok = approach.frame == land.frame && zeros(approach, 1..=3) && (ardupilot || p(approach, 4).is_nan()) && !p(approach, 5).is_nan() && !p(approach, 6).is_nan();
+            ok.then_some(false)?
+        }
+        _ => return None,
+    };
+    let video = approach_at.checked_sub(1).and_then(simple).is_some_and(|s| s.command == i64::from(CMD_VIDEO_STOP_CAPTURE) && p(s, 1) == 0.0);
+    let after_video = approach_at - usize::from(video);
+    let photos = after_video.checked_sub(2).and_then(|at| Some((simple(at)?, simple(at + 1)?))).is_some_and(|(trigger, stop)| {
+        trigger.command == i64::from(CMD_DO_SET_CAM_TRIGG_DIST) && zeros(trigger, 1..=7) && stop.command == i64::from(CMD_IMAGE_STOP_CAPTURE) && p(stop, 1) == 0.0
+    });
+    let after_photos = after_video - if photos { 2 } else { 0 };
+    let speed = after_photos.checked_sub(1).and_then(simple).filter(|s| s.command == i64::from(CMD_DO_CHANGE_SPEED) && p(s, 1) == SPEED_TYPE_AIRSPEED && p(s, 2) >= -2.0 && p(s, 3) == -1.0 && p(s, 4) == 0.0);
+    let after_speed = after_photos - usize::from(speed.is_some());
+    let first = after_speed.checked_sub(1)?;
+    simple(first).filter(|s| s.command == i64::from(CMD_DO_LAND_START) && zeros(s, 1..=7))?;
+    let defaults = |name: &str| fact(&Fresh { vtol, land: (0.0, 0.0), ardupilot, relative: true }, name);
+    let radius = if loiter { json!(p(approach, 2).abs()) } else { defaults("LoiterRadius") };
+    let mut pattern = json!({
+        "altitudesAreRelative": land.frame == i64::from(FRAME_GLOBAL_RELATIVE_ALT),
+        "complexItemType": if vtol { VTOL_PATTERN } else { FIXED_WING_PATTERN },
+        "finalApproachSpeed": speed.map_or_else(|| defaults("FinalApproachSpeed"), |s| json!(p(s, 2))),
+        "landCoordinate": [p(land, 5), p(land, 6), p(land, 7)],
+        "landingApproachCoordinate": [p(approach, 5), p(approach, 6), p(approach, 7)],
+        "loiterClockwise": if loiter { json!(p(approach, 2) > 0.0) } else { defaults("LoiterClockwise") },
+        "loiterRadius": radius,
+        "stopTakingPhotos": photos,
+        "stopVideoPhotos": video,
+        "type": "ComplexItem",
+        "useDoChangeSpeed": speed.is_some(),
+        "useLoiterToAlt": loiter,
+        "version": if vtol { 1 } else { 2 },
+    });
+    if !vtol {
+        pattern["valueSetIsDistance"] = defaults("ValueSetIsDistance");
+    }
+    Some((first, pattern))
+}
+
+fn scan_all(items: Vec<crate::plandoc::Item>, vtol: bool, ardupilot: bool) -> (Vec<crate::plandoc::Item>, bool) {
+    std::iter::successors(Some((items.len() as i64, items, false)), |(start, items, found)| {
+        let at = usize::try_from(*start).ok()?;
+        match scan_at(items, at, vtol, ardupilot) {
+            Some((first, pattern)) => {
+                let count = at - first;
+                let folded = crate::plandoc::Item::Complex { kind: pattern["complexItemType"].as_str().unwrap_or("").to_string(), json: pattern, item_count: count };
+                let rebuilt: Vec<crate::plandoc::Item> = items[..first].iter().cloned().chain(std::iter::once(folded)).chain(items[at..].iter().cloned()).collect();
+                Some((first as i64, rebuilt, true))
+            }
+            None => Some((start - 1, items.clone(), *found)),
+        }
+    })
+    .last()
+    .map(|(_, items, found)| (items, found))
+    .unwrap_or_default()
+}
+
+pub fn fold(items: Vec<crate::plandoc::Item>, ardupilot: bool) -> Vec<crate::plandoc::Item> {
+    match scan_all(items, false, ardupilot) {
+        (folded, true) => folded,
+        (unchanged, false) => scan_all(unchanged, true, ardupilot).0,
+    }
+}
+
 pub fn slope_start(pattern: &Value) -> Option<(f64, f64)> {
     let approach = approach(pattern)?;
     let land = coordinate(pattern, "landCoordinate")?;
@@ -352,6 +446,26 @@ pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Ite
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_downloaded_landing_sequence_folds_back_into_the_pattern_it_came_from() {
+        let sent: Vec<Value> = serde_json::from_str(include_str!("../tests/fixtures/fwland-sent-by-qt.json")).unwrap();
+        let items: Vec<crate::plandoc::Item> = sent
+            .iter()
+            .skip(1)
+            .map(|i| {
+                let params: [Option<f64>; 7] = std::array::from_fn(|k| i["params"][k].as_f64().map(|v| if k == 4 || k == 5 { if i["frame"] == 2 { v } else { v / 1e7 } } else { v }));
+                crate::plandoc::Item::Simple(crate::plandoc::Simple { command: i["command"].as_i64().unwrap(), frame: i["frame"].as_i64().unwrap(), params, auto_continue: true, altitude: None, sections: Vec::new() })
+            })
+            .collect();
+        let folded = fold(items, true);
+        assert_eq!(folded.len(), 3, "takeoff, waypoint and the pattern");
+        let crate::plandoc::Item::Complex { kind, json, item_count } = &folded[2] else { panic!("the landing sequence did not fold") };
+        assert_eq!((kind.as_str(), *item_count), (FIXED_WING_PATTERN, 7));
+        let original: Value = serde_json::from_str(include_str!("../tests/fixtures/fwland-pattern.json")).unwrap();
+        ["useDoChangeSpeed", "stopTakingPhotos", "stopVideoPhotos", "useLoiterToAlt", "loiterClockwise", "altitudesAreRelative"].iter().for_each(|key| assert_eq!(json[*key], original[*key], "{key}"));
+        assert_eq!((json["finalApproachSpeed"].as_f64(), json["loiterRadius"].as_f64()), (Some(14.0), Some(75.0)));
+    }
 
     #[test]
     fn each_landing_field_edit_moves_the_pattern_as_qt_moves_it() {
