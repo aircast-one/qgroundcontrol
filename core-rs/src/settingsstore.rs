@@ -191,7 +191,12 @@ pub fn fact_json(meta: &MetaData, raw: &Value, units: &crate::surveydoc::Units) 
     })
 }
 
-static SWITCHED_ON: LazyLock<bool> = LazyLock::new(|| std::env::var("QGC_CORE_SETTINGS").is_ok_and(|v| v == "1"));
+#[cfg(not(test))]
+const ON_WITHOUT_SWITCH: bool = true;
+#[cfg(test)]
+const ON_WITHOUT_SWITCH: bool = false;
+
+static SWITCHED_ON: LazyLock<bool> = LazyLock::new(|| std::env::var("QGC_CORE_SETTINGS").map_or(ON_WITHOUT_SWITCH, |v| v == "1"));
 
 static STORED: Mutex<Option<BTreeMap<String, Setting>>> = Mutex::new(None);
 
