@@ -60,6 +60,83 @@ fn supports(autopilot: u8, vehicle_type: u8) -> Value {
     })
 }
 
+fn mav_type_text(mav_type: u8) -> &'static str {
+    match mav_type {
+        0 => "Generic micro air vehicle",
+        1 => "Fixed wing aircraft",
+        2 => "Quadrotor",
+        3 => "Coaxial helicopter",
+        4 => "Normal helicopter with tail rotor.",
+        5 => "Ground installation",
+        6 => "Operator control unit / ground control station",
+        7 => "Airship, controlled",
+        8 => "Free balloon, uncontrolled",
+        9 => "Rocket",
+        10 => "Ground rover",
+        11 => "Surface vessel, boat, ship",
+        12 => "Submarine",
+        13 => "Hexarotor",
+        14 => "Octorotor",
+        15 => "trirotor",
+        16 => "Flapping wing",
+        17 => "Kite",
+        18 => "Onboard companion controller",
+        19 => "Two-rotor VTOL using control surfaces in vertical operation in addition. Tailsitter",
+        20 => "Quad-rotor VTOL using a V-shaped quad config in vertical operation. Tailsitter",
+        21 => "Tiltrotor VTOL",
+        22 => "VTOL Fixedrotor",
+        23 => "VTOL Tailsitter",
+        24 => "VTOL Tiltwing",
+        25 => "VTOL reserved 5",
+        26 => "Onboard gimbal",
+        27 => "Onboard ADSB peripheral",
+        45 => "Spacecraft, orbiter",
+        _ => "MAV_TYPE_UNKNOWN",
+    }
+}
+
+fn motor_count(mav_type: u8, sub_frame: Option<f64>) -> Option<i64> {
+    Some(match mav_type {
+        4 => 1,
+        19 => 2,
+        15 => 3,
+        2 | 20 => 4,
+        13 => 6,
+        14 | 45 => 8,
+        12 => match sub_frame? as i64 {
+            0 | 1 => 6,
+            4 => 3,
+            5 => 4,
+            6 => 5,
+            2 | 3 | 7 => 8,
+            _ => -1,
+        },
+        _ => -1,
+    })
+}
+
+fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) -> Value {
+    let version = firmware.and_then(|f| f.version);
+    let part = |pick: fn((u8, u8, u8, u8)) -> u8| version.map_or(-1, |v| i64::from(pick(v)));
+    json!({
+        "firmwareTypeString": match autopilot {
+            crate::modes::AUTOPILOT_PX4 => "PX4 Pro",
+            crate::modes::AUTOPILOT_ARDUPILOT => "ArduPilot",
+            _ => "Generic",
+        },
+        "firmwareMajorVersion": part(|v| v.0),
+        "firmwareMinorVersion": part(|v| v.1),
+        "firmwarePatchVersion": part(|v| v.2),
+        "firmwareVersionTypeString": match version.map(|v| v.3) {
+            Some(0) => "dev",
+            Some(64) => "alpha",
+            Some(128) => "beta",
+            Some(192) => "rc",
+            _ => "",
+        },
+    })
+}
+
 fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> serde_json::Map<String, Value> {
     use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4, VehicleClass, px4};
     let listed: Vec<(String, u32, bool, bool)> = if available.is_empty() {
@@ -121,7 +198,21 @@ fn carried() -> Option<Known> {
             "sub": class == Sub,
             "initialConnectComplete": v.connected,
         });
-        let fields = Value::Object(fields.as_object().cloned().unwrap_or_default().into_iter().chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes)).collect());
+        let described = json!({
+            "vehicleTypeString": mav_type_text(v.vehicle_type),
+            "airship": v.vehicle_type == 7,
+        });
+        let motors = motor_count(v.vehicle_type, v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64())).map(|count| ("motorCount".to_string(), json!(count)));
+        let object = |value: Value| value.as_object().cloned().unwrap_or_default();
+        let fields = Value::Object(
+            object(fields)
+                .into_iter()
+                .chain(object(described))
+                .chain(object(firmware_fields(v.autopilot, v.firmware())))
+                .chain(motors)
+                .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
+                .collect(),
+        );
         Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
@@ -236,6 +327,17 @@ impl<B: Backend> Backend for Facade<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn airframe_and_firmware_text_follow_the_heartbeat_and_autopilot_version() {
+        assert_eq!((mav_type_text(2), mav_type_text(45), mav_type_text(99)), ("Quadrotor", "Spacecraft, orbiter", "MAV_TYPE_UNKNOWN"));
+        assert_eq!((motor_count(2, None), motor_count(10, None), motor_count(12, Some(4.0)), motor_count(12, Some(9.0))), (Some(4), Some(-1), Some(3), Some(-1)));
+        assert_eq!(motor_count(12, None), None, "a sub's count waits for FRAME_CONFIG");
+        let unknown = firmware_fields(3, None);
+        assert_eq!((unknown["firmwareMajorVersion"].as_i64(), unknown["firmwareVersionTypeString"].as_str(), unknown["firmwareTypeString"].as_str()), (Some(-1), Some(""), Some("ArduPilot")));
+        let beta = firmware_fields(12, Some(crate::connect::Firmware { version: Some((1, 15, 2, 128)), custom: None, git_hash: String::new() }));
+        assert_eq!((beta["firmwareMinorVersion"].as_i64(), beta["firmwareVersionTypeString"].as_str(), beta["firmwareTypeString"].as_str()), (Some(15), Some("beta"), Some("PX4 Pro")));
+    }
 
     #[test]
     fn mode_names_come_from_the_firmware_class_and_what_the_vehicle_announced() {
