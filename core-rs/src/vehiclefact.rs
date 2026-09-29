@@ -658,6 +658,23 @@ pub fn orbit_circle_part(circle: Option<(f32, i32, i32)>, part: &str) -> Option<
     }
 }
 
+fn trigger_point((latitude, longitude, altitude): (f64, f64, f64)) -> Value {
+    json!({ "children": [], "class": "QGCQGeoCoordinate", "coordinate": { "altitude": altitude, "latitude": latitude, "longitude": longitude, "valid": true }, "dirty": false, "facts": [], "kind": "object", "objectName": "" })
+}
+
+pub fn trigger_points(points: &[(f64, f64, f64)], appended: bool) -> Value {
+    json!({ "children": [], "class": "QmlObjectListModel", "count": points.len(), "dirty": appended, "elements": points.iter().map(|p| trigger_point(*p)).collect::<Vec<_>>(), "facts": [], "kind": "object", "objectName": "" })
+}
+
+pub fn trigger_points_part(points: &[(f64, f64, f64)], part: &str) -> Option<Value> {
+    match part.split_once('.') {
+        None if part == "count" => Some(json!({ "kind": "value", "value": points.len() })),
+        None => points.get(part.parse::<usize>().ok()?).map(|p| trigger_point(*p)),
+        Some((index, "coordinate")) => points.get(index.parse::<usize>().ok()?).map(|(latitude, longitude, altitude)| json!({ "altitude": altitude, "kind": "coordinate", "latitude": latitude, "longitude": longitude, "valid": true })),
+        Some(_) => None,
+    }
+}
+
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
     let meta = crate::factmeta::from_file(VEHICLE_META).ok()?.remove(name)?;
     Some(fact(&meta, raw, None))

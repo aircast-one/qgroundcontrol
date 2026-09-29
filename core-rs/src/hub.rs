@@ -158,6 +158,9 @@ pub struct Vehicle {
     pub terrain_blocks: (u16, u16),
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
+    pub trigger_points: Vec<(f64, f64, f64)>,
+    pub trigger_points_appended: bool,
+    image_captured_seen: bool,
     rc_release_ticks: u8,
     rc_due: Option<u64>,
     pub temperature: TemperatureFacts,
@@ -257,6 +260,9 @@ impl Vehicle {
             terrain_blocks: (0, 0),
             escs: Escs::default(),
             rc_override: BTreeMap::new(),
+            trigger_points: Vec::new(),
+            trigger_points_appended: false,
+            image_captured_seen: false,
             rc_release_ticks: 0,
             rc_due: None,
             temperature: TemperatureFacts::default(),
@@ -514,6 +520,9 @@ impl Vehicle {
                     Vec::new()
                 }
                 plantransfer::Out::Done { success, error } => {
+                    if kind == plantransfer::PLAN_MISSION {
+                        self.clear_trigger_points();
+                    }
                     self.plans[plan].due = None;
                     self.plans[plan].error = (!success).then_some(error.clone());
                     if !success {
@@ -1231,6 +1240,27 @@ impl Vehicle {
         }
     }
 
+    fn note_trigger_point(&mut self, message: &MavMessage) {
+        let point = match message {
+            MavMessage::CAMERA_IMAGE_CAPTURED(d) => {
+                let first = !self.image_captured_seen;
+                self.image_captured_seen = true;
+                (!(first && !self.trigger_points.is_empty()) && d.capture_result.bits() == 1).then(|| (f64::from(d.lat) / 1e7, f64::from(d.lon) / 1e7, f64::from(d.alt)))
+            }
+            MavMessage::CAMERA_FEEDBACK(d) if !self.image_captured_seen => Some((f64::from(d.lat) / 1e7, f64::from(d.lng) / 1e7, f64::from(d.alt_msl))),
+            _ => None,
+        };
+        if let Some(point) = point {
+            self.trigger_points.push(point);
+            self.trigger_points_appended = true;
+        }
+    }
+
+    fn clear_trigger_points(&mut self) {
+        self.image_captured_seen = false;
+        self.trigger_points.clear();
+    }
+
     pub fn orbit_active(&self, now_ms: u64) -> bool {
         self.orbit_heard_ms.is_some_and(|heard| now_ms.saturating_sub(heard) < ORBIT_TELEMETRY_TIMEOUT_MS)
     }
@@ -1259,6 +1289,7 @@ impl Vehicle {
 
     #[allow(deprecated)]
     fn apply(&mut self, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<Vec<u8>> {
+        let was_armed = self.armed_now;
         self.messages += 1;
         *self.by_name.entry(message.message_name().to_string()).or_insert(0) += 1;
         let from = (header.system_id, header.component_id);
@@ -1453,6 +1484,10 @@ impl Vehicle {
         self.vibration.apply(message);
         self.radio.apply((header.system_id, header.component_id), message);
         self.obstacle.apply(message, now_ms);
+        if !was_armed && self.armed_now {
+            self.clear_trigger_points();
+        }
+        self.note_trigger_point(message);
         if let MavMessage::ORBIT_EXECUTION_STATUS(d) = message {
             self.orbit_heard_ms = Some(now_ms);
             self.orbit_circle = Some((d.radius, d.x, d.y));
@@ -2019,6 +2054,23 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn camera_trigger_points_follow_qt_and_arming_clears_them() {
+        use mavlink::dialects::ardupilotmega::{CAMERA_FEEDBACK_DATA, CAMERA_IMAGE_CAPTURED_DATA, MavBool};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::CAMERA_FEEDBACK(CAMERA_FEEDBACK_DATA { lat: 10, lng: 20, alt_msl: 5.0, ..Default::default() }), 1, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::CAMERA_IMAGE_CAPTURED(CAMERA_IMAGE_CAPTURED_DATA { capture_result: MavBool::MAV_BOOL_TRUE, lat: 30, ..Default::default() }), 2, 0);
+        assert_eq!(hub.active().unwrap().trigger_points.len(), 1, "the first captured image after a feedback point is taken as its duplicate");
+        hub.on_frame(origin(0), &header, &MavMessage::CAMERA_IMAGE_CAPTURED(CAMERA_IMAGE_CAPTURED_DATA { capture_result: MavBool::MAV_BOOL_TRUE, lat: 40, ..Default::default() }), 3, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::CAMERA_IMAGE_CAPTURED(CAMERA_IMAGE_CAPTURED_DATA { capture_result: MavBool::MAV_BOOL_FALSE, lat: 50, ..Default::default() }), 4, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::CAMERA_FEEDBACK(CAMERA_FEEDBACK_DATA { lat: 60, ..Default::default() }), 5, 0);
+        assert_eq!(hub.active().unwrap().trigger_points.iter().map(|p| (p.0 * 1e7).round() as i32).collect::<Vec<_>>(), vec![10, 40], "a failed capture and feedback after captures arrive add nothing");
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, true), 6, 0);
+        assert!(hub.active().unwrap().trigger_points.is_empty() && hub.active().unwrap().trigger_points_appended, "arming starts a fresh set; the list stays marked as changed");
     }
 
     #[test]
