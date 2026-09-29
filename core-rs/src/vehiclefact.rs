@@ -373,6 +373,56 @@ impl ObstacleFacts {
     }
 }
 
+const VEHICLE_META: &str = include_str!("../../src/Vehicle/FactGroups/VehicleFact.json");
+
+pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
+    let meta = crate::factmeta::from_file(VEHICLE_META).ok()?.remove(name)?;
+    Some(fact(&meta, raw, None))
+}
+
+pub fn compact(full: &Value, property: &str) -> Value {
+    json!({ "kind": "fact", "name": full["name"], "value": full["value"], "valueString": full["valueString"], "rawValue": full["rawValue"], "units": full["units"], "property": property })
+}
+
+const RSSI_UNKNOWN: u8 = 255;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RcRssi {
+    store: f64,
+    pub shown: u8,
+}
+
+impl Default for RcRssi {
+    fn default() -> Self {
+        RcRssi { store: f64::from(RSSI_UNKNOWN), shown: RSSI_UNKNOWN }
+    }
+}
+
+impl RcRssi {
+    pub fn apply(&mut self, message: &mavlink::dialects::ardupilotmega::MavMessage, ardupilot: bool) {
+        let mavlink::dialects::ardupilotmega::MavMessage::RC_CHANNELS(c) = message else { return };
+        let raw = [c.chan1_raw, c.chan2_raw, c.chan3_raw, c.chan4_raw, c.chan5_raw, c.chan6_raw, c.chan7_raw, c.chan8_raw, c.chan9_raw, c.chan10_raw, c.chan11_raw, c.chan12_raw, c.chan13_raw, c.chan14_raw, c.chan15_raw, c.chan16_raw, c.chan17_raw, c.chan18_raw];
+        let valid = raw.iter().filter(|v| **v != u16::MAX).count();
+        let first_unused = raw.iter().position(|v| *v == u16::MAX);
+        if first_unused.is_some_and(|at| at != valid) {
+            return;
+        }
+        let rssi = match (ardupilot, c.rssi) {
+            (true, r) if r != 0 && r != RSSI_UNKNOWN => ((f64::from(r) / 254.0) * 100.0) as u8,
+            (_, r) => r,
+        };
+        if rssi > 100 {
+            self.shown = RSSI_UNKNOWN;
+            return;
+        }
+        if self.store == f64::from(RSSI_UNKNOWN) {
+            self.store = f64::from(rssi);
+        }
+        self.store = self.store.mul_add(0.9, f64::from(rssi) * 0.1);
+        self.shown = if self.store < 0.1 { 0 } else { self.store.ceil() as u8 };
+    }
+}
+
 pub fn mgrs(latitude: f64, longitude: f64) -> String {
     let Ok(position) = geoconvert::LatLon::create(latitude, longitude) else { return String::new() };
     let packed = geoconvert::Mgrs::from_latlon(&position, 5).to_string();
@@ -443,6 +493,18 @@ mod tests {
         distance.apply(&MavMessage::DISTANCE_SENSOR(DISTANCE_SENSOR_DATA { current_distance: 250, max_distance: 4000, orientation: MavSensorOrientation::MAV_SENSOR_ROTATION_PITCH_270, ..Default::default() }));
         let raw = |n: &str| distance_raw(&distance, n, &Value::Null);
         assert_eq!((raw("rotationPitch270"), raw("maxDistance"), raw("rotationNone")), (json!(2.5), json!(40.0), Value::Null));
+    }
+
+    #[test]
+    fn rc_signal_filters_like_the_arm64_qt_build() {
+        use mavlink::dialects::ardupilotmega::{MavMessage, RC_CHANNELS_DATA};
+        let frame = |rssi: u8| MavMessage::RC_CHANNELS(RC_CHANNELS_DATA { chancount: 8, chan1_raw: 1500, chan2_raw: 1500, chan3_raw: 1500, chan4_raw: 1500, chan5_raw: 1500, chan6_raw: 1500, chan7_raw: 1500, chan8_raw: 1500, rssi, ..Default::default() });
+        let mut signal = RcRssi::default();
+        assert_eq!(signal.shown, 255, "unknown until a strength is reported");
+        (0..5).for_each(|_| signal.apply(&frame(80), true));
+        assert_eq!(signal.shown, 31, "ArduPilot's 0-254 becomes 31 percent, and the filter holds it there: unfused, 31 * 0.9 + 3.1 is 31.000000000000004 and would read 32");
+        signal.apply(&frame(255), true);
+        assert_eq!(signal.shown, 255);
     }
 
     #[test]

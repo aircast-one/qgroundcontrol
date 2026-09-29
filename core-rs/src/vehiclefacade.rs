@@ -4,6 +4,8 @@ use crate::router::Backend;
 
 pub struct Facade<B>(pub B);
 
+const VEHICLE_FACTS: [&str; 1] = ["rcRSSI"];
+
 static FELL_THROUGH: std::sync::Mutex<std::collections::BTreeMap<String, u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 fn shape(path: &str) -> String {
@@ -222,6 +224,7 @@ fn carried() -> Option<Known> {
             "rover": class == Rover,
             "sub": class == Sub,
             "initialConnectComplete": v.connected,
+            "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
         });
         let described = json!({
             "vehicleTypeString": mav_type_text(v.vehicle_type),
@@ -282,6 +285,7 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
             known.sensors.as_object()?.iter().for_each(|(k, v)| object[k.as_str()] = v.clone());
             return Some(object);
         }
+        "vehicle.rcRSSI" => return known.fields.get("rcRSSI").cloned(),
         field if field.starts_with("vehicle.") && !field["vehicle.".len()..].contains('.') && known.fields.get(&field["vehicle.".len()..]).is_some() => known.fields[&field["vehicle.".len()..]].clone(),
         capability if capability.starts_with("vehicle.supports.") => known.supports.get(capability.trim_start_matches("vehicle.supports."))?.clone(),
         sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
@@ -402,15 +406,30 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answered) = avoidance {
             return answered.to_string();
         }
-        let (answered, missing) = switched_on().then(carried).flatten().map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, &known));
-        if missing.is_empty() && !answered.is_empty() {
+        let (mut answered, missing) = switched_on().then(carried).flatten().map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, &known));
+        let facts: Vec<Value> = match path {
+            "vehicle" => VEHICLE_FACTS.iter().filter_map(|name| Some(crate::vehiclefact::compact(&answered.remove(*name)?, name))).collect(),
+            _ => Vec::new(),
+        };
+        if missing.is_empty() && (!answered.is_empty() || !facts.is_empty()) {
             let mut object = Value::Object(answered);
             object["kind"] = json!("object");
+            if !facts.is_empty() {
+                object["facts"] = json!(facts);
+            }
             return object.to_string();
         }
-        let asked = if answered.is_empty() { fields.to_string() } else { missing.join(",") };
+        let asked = if answered.is_empty() && facts.is_empty() { fields.to_string() } else { missing.join(",") };
         fell_through("fields", &format!("{path} [{asked}]"));
-        merged(answered, self.0.get_fields(path, &asked))
+        let host = merged(answered, self.0.get_fields(path, &asked));
+        match facts.is_empty() {
+            true => host,
+            false => serde_json::from_str::<Value>(&host).ok().filter(|h| h["kind"] == "object").map_or(host, |mut h| {
+                let theirs = h.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+                h["facts"] = json!(theirs.into_iter().chain(facts).collect::<Vec<_>>());
+                h.to_string()
+            }),
+        }
     }
     fn set(&self, path: &str, value: &str) -> String {
         fell_through("set", path);

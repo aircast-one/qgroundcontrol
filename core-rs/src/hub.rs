@@ -149,6 +149,7 @@ pub struct Vehicle {
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
     pub obstacle: crate::vehiclefact::ObstacleFacts,
+    pub rc_rssi: crate::vehiclefact::RcRssi,
     pub distance: DistanceSensorFacts,
     pub local: LocalPositionFacts,
     pub estimator: EstimatorStatusFacts,
@@ -233,6 +234,7 @@ impl Vehicle {
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
             obstacle: crate::vehiclefact::ObstacleFacts::default(),
+            rc_rssi: crate::vehiclefact::RcRssi::default(),
             distance: DistanceSensorFacts::default(),
             local: LocalPositionFacts::default(),
             estimator: EstimatorStatusFacts::default(),
@@ -1321,6 +1323,7 @@ impl Vehicle {
         self.vibration.apply(message);
         self.radio.apply((header.system_id, header.component_id), message);
         self.obstacle.apply(message, now_ms);
+        self.rc_rssi.apply(message, self.ardupilot_components.contains(&header.component_id));
         self.distance.apply(message);
         self.local.apply(message);
         self.estimator.apply(message);
