@@ -660,6 +660,17 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "kind": "value", "value": value }).to_string();
             }
         }
+        if let Some(value) = path.strip_prefix("positionManager.").filter(|_| switched_on()).and_then(|name| crate::gcsposition::lock().property(name)) {
+            return match (path, value) {
+                ("positionManager.gcsPosition", Value::Null) => json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }),
+                ("positionManager.gcsPosition", mut point) => {
+                    point["kind"] = json!("coordinate");
+                    point
+                }
+                (_, value) => json!({ "kind": "value", "value": value }),
+            }
+            .to_string();
+        }
         if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(crate::seriallink::links_field) {
             return json!({ "kind": "value", "value": field }).to_string();
         }
@@ -693,6 +704,14 @@ impl<B: Backend> Backend for Facade<B> {
                 }
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
+            }
+        }
+        if asked_path == "positionManager" && switched_on() {
+            let position = crate::gcsposition::lock();
+            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), position.property(f)?))).collect();
+            if let Some(mut object) = answered.map(Value::Object) {
+                object["kind"] = json!("object");
+                return object.to_string();
             }
         }
         if asked_path == "links" && switched_on() {

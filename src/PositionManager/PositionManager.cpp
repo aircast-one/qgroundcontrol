@@ -1,4 +1,5 @@
 #include "PositionManager.h"
+#include "QGCCoreC.h"
 #include "AppMessages.h"
 #include "QGCCorePlugin.h"
 #include "SimulatedPosition.h"
@@ -126,6 +127,13 @@ void QGCPositionManager::_positionUpdated(const QGeoPositionInfo &update)
     _geoPositionInfo = update;
     _gcsPositioningError = QGeoPositionInfoSource::NoError;
 
+    const auto attribute = [&update](QGeoPositionInfo::Attribute name) {
+        return update.hasAttribute(name) ? update.attribute(name) : qQNaN();
+    };
+    qgc_core_gcs_position_update(update.coordinate().latitude(), update.coordinate().longitude(), update.coordinate().altitude(),
+                                 attribute(QGeoPositionInfo::HorizontalAccuracy), attribute(QGeoPositionInfo::VerticalAccuracy),
+                                 attribute(QGeoPositionInfo::Direction), attribute(QGeoPositionInfo::DirectionAccuracy));
+
     QGeoCoordinate newGCSPosition(_gcsPosition);
 
     if (update.hasAttribute(QGeoPositionInfo::HorizontalAccuracy)) {
@@ -170,6 +178,7 @@ void QGCPositionManager::_positionError(QGeoPositionInfoSource::Error gcsPositio
 {
     qCWarning(QGCPositionManagerLog) << Q_FUNC_INFO << "Positioning error:" << gcsPositioningError;
     _gcsPositioningError = gcsPositioningError;
+    qgc_core_gcs_position_error(static_cast<int64_t>(gcsPositioningError));
 }
 
 void QGCPositionManager::_setGCSHeading(qreal newGCSHeading)
@@ -239,6 +248,7 @@ void QGCPositionManager::_setPositionSource(QGCPositionSource source)
         : (_currentSource == _simulatedSource)           ? QStringLiteral("simulated")
         : (_currentSource == _defaultSource && _usingPluginSource) ? QStringLiteral("plugin")
                                                          : QStringLiteral("internalGps");
+    qgc_core_gcs_position_source(_currentSourceName.toUtf8().constData());
     if (wasName != _currentSourceName) {
         emit gcsPositionSourceChanged(_currentSourceName);
     }

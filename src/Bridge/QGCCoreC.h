@@ -25,6 +25,9 @@ void qgc_core_setting_written(const char *key, const char *text);
 void qgc_core_set_active_vehicle(int32_t id);
 void qgc_core_set_vehicle_order(const int32_t *ids, size_t count);
 void qgc_core_set_selected_vehicles(const int32_t *ids, size_t count);
+void qgc_core_gcs_position_source(const char *token);
+void qgc_core_gcs_position_update(double latitude, double longitude, double altitude, double horizontal_accuracy_m, double vertical_accuracy_m, double direction_deg, double direction_accuracy_deg);
+void qgc_core_gcs_position_error(int64_t code);
 
 char *qgc_core_tile_open(const char *path);
 void qgc_core_tile_close(void);

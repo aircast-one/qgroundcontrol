@@ -458,6 +458,31 @@ pub extern "C" fn qgc_core_set_selected_vehicles(ids: *const i32, count: usize) 
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_gcs_position_source(token: *const c_char) {
+    let token = if token.is_null() { String::new() } else { unsafe { CStr::from_ptr(token) }.to_string_lossy().into_owned() };
+    crate::gcsposition::lock().host_source(crate::gcsposition::Source::from_token(&token));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_gcs_position_update(latitude: f64, longitude: f64, altitude: f64, horizontal_accuracy_m: f64, vertical_accuracy_m: f64, direction_deg: f64, direction_accuracy_deg: f64) {
+    let update = crate::gcsposition::Update {
+        latitude: Some(latitude),
+        longitude: Some(longitude),
+        altitude: Some(altitude),
+        horizontal_accuracy_m: Some(horizontal_accuracy_m),
+        vertical_accuracy_m: Some(vertical_accuracy_m),
+        direction_deg: Some(direction_deg),
+        direction_accuracy_deg: Some(direction_accuracy_deg),
+    };
+    crate::gcsposition::lock().on_update(update, crate::gcsposition::wall_now());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_gcs_position_error(code: i64) {
+    crate::gcsposition::lock().on_error(code);
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_measurement_system(system: u8) {
     crate::units::set_measurement_system(system);
 }

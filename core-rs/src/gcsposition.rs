@@ -29,6 +29,10 @@ pub fn now() -> MonotonicMs {
     MonotonicMs(crate::hub::now_ms())
 }
 
+pub fn wall_now() -> MonotonicMs {
+    MonotonicMs(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Source {
     #[default]
@@ -153,7 +157,7 @@ pub fn wrap_heading(degrees: f64) -> f64 {
 }
 
 pub fn wrap_longitude(degrees: f64) -> f64 {
-    (degrees + 180.0).rem_euclid(360.0) - 180.0
+    if (-180.0..=180.0).contains(&degrees) { degrees } else { (degrees + 180.0).rem_euclid(360.0) - 180.0 }
 }
 
 fn age_of(stamped_ms: Option<u64>, now: MonotonicMs) -> Option<u64> {
@@ -176,6 +180,7 @@ pub struct GcsPosition {
     pub last_report_ms: Option<u64>,
     pub refusal: Option<Refusal>,
     pub error: Option<Error>,
+    pub hosted: bool,
     stale_announced: bool,
 }
 
@@ -306,6 +311,27 @@ impl GcsPosition {
         diff(&before, self)
     }
 
+    pub fn host_source(&mut self, source: Source) {
+        self.select_source(source);
+        self.hosted = true;
+    }
+
+    pub fn property(&self, name: &str) -> Option<Value> {
+        let coordinate = || match (self.latitude, self.longitude) {
+            (Some(latitude), Some(longitude)) => json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": self.altitude }),
+            _ => Value::Null,
+        };
+        self.hosted.then_some(())?;
+        match name {
+            "gcsPosition" => Some(coordinate()),
+            "gcsHeading" => Some(json!(self.heading_deg)),
+            "gcsPositionHorizontalAccuracy" => Some(json!(self.horizontal_accuracy_m)),
+            "gcsPositionTimestamp" => Some(json!(self.stamped_ms.unwrap_or(0))),
+            "gcsPositionSource" => Some(json!(self.source.token())),
+            _ => None,
+        }
+    }
+
     pub fn snapshot(&self, now: MonotonicMs) -> Value {
         json!({
             "kind": "object",
@@ -352,25 +378,13 @@ pub fn lock() -> MutexGuard<'static, GcsPosition> {
 }
 
 pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let read = crate::read::object(&backend.get_fields("positionManager", "gcsPosition,gcsHeading,gcsPositionHorizontalAccuracy,gcsPositionTimestamp,gcsPositionSource"));
-    let number = |key: &str| read.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
-    // gcsPositionTimestamp is epoch milliseconds while now() counts from process start, and the
-    // ladder subtracts one from the other. Converting the stamp into the process frame collapses
-    // whenever the process is younger than the fix, so BOTH sides are read on the wall clock here
-    // instead: every comparison in the struct is a difference, and a difference only needs the two
-    // operands to share a frame.
-    let stamped = read.get("gcsPositionTimestamp").and_then(Value::as_i64).filter(|stamped| *stamped > 0).map(|stamped| stamped as u64);
-    let wall = MonotonicMs(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0));
-    let coordinate = crate::read::nested_coordinate_at(&read, "gcsPosition");
+    let wall = wall_now();
     let mut position = lock();
-    position.source = Source::from_token(read.get("gcsPositionSource").and_then(Value::as_str).unwrap_or("none"));
-    position.latitude = coordinate.map(|(latitude, _)| latitude);
-    position.longitude = coordinate.map(|(_, longitude)| longitude);
-    position.altitude = read.get("gcsPosition").and_then(|point| point.get("altitude")).and_then(Value::as_f64).filter(|metres| metres.is_finite());
-    position.heading_deg = number("gcsHeading").map(wrap_heading);
-    position.horizontal_accuracy_m = number("gcsPositionHorizontalAccuracy");
-    position.stamped_ms = stamped;
-    position.last_report_ms = stamped.or(position.last_report_ms);
+    if !(position.hosted && crate::vehiclefacade::switched_on()) {
+        drop(position);
+        fill_from_host(backend);
+        position = lock();
+    }
     let mut snapshot = position.snapshot(wall);
     // Every backend call blocks until the Qt thread services it, and the Qt thread reaches this
     // same view through Watcher::_notified, so a guard held across one is a deadlock that wedges
@@ -384,6 +398,27 @@ pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
     snapshot["distanceToVehicleText"] = json!(separation.map(|metres| unit.label(metres)));
     snapshot["distanceToVehicleUnits"] = json!(unit.name);
     snapshot
+}
+
+fn fill_from_host(backend: &dyn Backend) {
+    let read = crate::read::object(&backend.get_fields("positionManager", "gcsPosition,gcsHeading,gcsPositionHorizontalAccuracy,gcsPositionTimestamp,gcsPositionSource"));
+    let number = |key: &str| read.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
+    // gcsPositionTimestamp is epoch milliseconds while now() counts from process start, and the
+    // ladder subtracts one from the other. Converting the stamp into the process frame collapses
+    // whenever the process is younger than the fix, so BOTH sides are read on the wall clock here
+    // instead: every comparison in the struct is a difference, and a difference only needs the two
+    // operands to share a frame.
+    let stamped = read.get("gcsPositionTimestamp").and_then(Value::as_i64).filter(|stamped| *stamped > 0).map(|stamped| stamped as u64);
+    let coordinate = crate::read::nested_coordinate_at(&read, "gcsPosition");
+    let mut position = lock();
+    position.source = Source::from_token(read.get("gcsPositionSource").and_then(Value::as_str).unwrap_or("none"));
+    position.latitude = coordinate.map(|(latitude, _)| latitude);
+    position.longitude = coordinate.map(|(_, longitude)| longitude);
+    position.altitude = read.get("gcsPosition").and_then(|point| point.get("altitude")).and_then(Value::as_f64).filter(|metres| metres.is_finite());
+    position.heading_deg = number("gcsHeading").map(wrap_heading);
+    position.horizontal_accuracy_m = number("gcsPositionHorizontalAccuracy");
+    position.stamped_ms = stamped;
+    position.last_report_ms = stamped.or(position.last_report_ms);
 }
 
 // The vehicle's coordinate is held after the link drops, so a distance drawn from
@@ -622,7 +657,7 @@ mod tests {
     #[test]
     fn bearings_and_longitudes_wrap_before_anyone_reads_them() {
         assert_eq!((wrap_heading(370.0), wrap_heading(-90.0), wrap_heading(360.0)), (10.0, 270.0, 0.0));
-        assert_eq!((wrap_longitude(185.0), wrap_longitude(-185.0), wrap_longitude(180.0)), (-175.0, 175.0, -180.0));
+        assert_eq!((wrap_longitude(185.0), wrap_longitude(-185.0), wrap_longitude(180.0), wrap_longitude(149.16599999999997)), (-175.0, 175.0, 180.0, 149.16599999999997), "a longitude already in range passes through untouched, as QGeoCoordinate keeps it");
         let mut position = listening(Source::InternalGps);
         position.on_update(Update { longitude: Some(185.0), direction_deg: Some(730.0), direction_accuracy_deg: Some(1.0), ..fix(Some(4.0)) }, at(1_000));
         assert_eq!((position.longitude, position.heading_deg), (Some(-175.0), Some(10.0)), "a bearing past a full turn and a longitude past the antimeridian name real places, and every consumer expects them inside one turn");
