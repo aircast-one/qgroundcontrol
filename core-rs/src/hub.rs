@@ -147,6 +147,7 @@ pub struct Vehicle {
     pub wind: WindFacts,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
+    pub radio: crate::vehiclefact::RadioStatusFacts,
     pub distance: DistanceSensorFacts,
     pub local: LocalPositionFacts,
     pub estimator: EstimatorStatusFacts,
@@ -229,6 +230,7 @@ impl Vehicle {
             wind: WindFacts::default(),
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
+            radio: crate::vehiclefact::RadioStatusFacts::default(),
             distance: DistanceSensorFacts::default(),
             local: LocalPositionFacts::default(),
             estimator: EstimatorStatusFacts::default(),
@@ -1315,6 +1317,7 @@ impl Vehicle {
         self.wind.apply(message);
         self.temperature.apply(message);
         self.vibration.apply(message);
+        self.radio.apply((header.system_id, header.component_id), message);
         self.distance.apply(message);
         self.local.apply(message);
         self.estimator.apply(message);
@@ -1413,6 +1416,9 @@ impl Hub {
                     self.active.get_or_insert(header.system_id);
                 }
             }
+        }
+        if let MavMessage::RADIO_STATUS(_) = message {
+            self.vehicles.values_mut().filter(|v| v.link == origin.link && v.id != header.system_id).for_each(|v| v.radio.apply((header.system_id, header.component_id), message));
         }
         let inputs = self.remote_inputs.as_ref();
         let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return Vec::new() };

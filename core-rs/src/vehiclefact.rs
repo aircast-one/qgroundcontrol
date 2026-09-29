@@ -186,6 +186,21 @@ pub fn spec_group(spec: &GroupSpec, raw: impl Fn(&str) -> Value, telemetry: bool
     group(spec.class, spec.added, facts, telemetry)
 }
 
+pub fn spec_group_fields(spec: &GroupSpec, fields: &str, raw: impl Fn(&str) -> Value) -> Option<Value> {
+    let wanted: Vec<&str> = fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect();
+    wanted.iter().all(|w| spec.properties.iter().any(|(p, _)| p == w)).then_some(())?;
+    let facts: Vec<Value> = spec
+        .properties
+        .iter()
+        .filter(|(property, _)| wanted.contains(property))
+        .filter_map(|(property, name)| {
+            let full = spec_fact(spec, name, &raw(name), None)?;
+            Some(json!({ "kind": "fact", "name": full["name"], "value": full["value"], "valueString": full["valueString"], "rawValue": full["rawValue"], "units": full["units"], "property": property }))
+        })
+        .collect();
+    Some(json!({ "kind": "object", "class": spec.class, "facts": facts, "children": [] }))
+}
+
 pub fn spec_property(spec: &GroupSpec, property: &str, raw: impl Fn(&str) -> Value) -> Option<Value> {
     let name = spec.properties.iter().find(|(p, _)| *p == property)?.1;
     spec_fact(spec, name, &raw(name), None)
@@ -283,6 +298,39 @@ pub fn distance_raw(d: &crate::sensorfacts::DistanceSensorFacts, name: &str, uns
         "minDistance" if d.seen => json!(d.min_distance),
         "maxDistance" if d.seen => json!(d.max_distance),
         rotation => ROTATIONS.iter().find(|(n, _)| *n == rotation).and_then(|(_, orientation)| d.by_orientation.get(orientation)).map_or_else(|| unset.clone(), |v| json!(v)),
+    }
+}
+
+pub const RADIO: GroupSpec = GroupSpec {
+    class: "RadioStatusFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/RadioStatusFact.json"),
+    properties: &[("lrssi", "lrssi"), ("rrssi", "rrssi"), ("rxErrors", "rxErrors"), ("fixed", "fixed"), ("txBuffer", "txBuffer"), ("lNoise", "lNoise"), ("rNoise", "rNoise")],
+    added: &["lrssi", "rrssi", "rxErrors", "fixed", "txBuffer", "lNoise", "rNoise"],
+};
+
+const SIK_SYSTEM: u8 = b'3';
+const SIK_COMPONENT: u8 = b'D';
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct RadioStatusFacts {
+    pub values: [i64; 7],
+    pub telemetry: bool,
+}
+
+impl RadioStatusFacts {
+    pub fn apply(&mut self, from: (u8, u8), message: &mavlink::dialects::ardupilotmega::MavMessage) {
+        let mavlink::dialects::ardupilotmega::MavMessage::RADIO_STATUS(r) = message else { return };
+        let sik = |raw: u8| ((f64::from(raw) / 1.9 - 127.0).round() as i64).clamp(-120, 0);
+        let signed = |raw: u8| i64::from(raw as i8);
+        let (rssi, remote) = match from == (SIK_SYSTEM, SIK_COMPONENT) {
+            true => (sik(r.rssi), sik(r.remrssi)),
+            false => (signed(r.rssi), signed(r.remrssi)),
+        };
+        *self = RadioStatusFacts { values: [rssi, remote, i64::from(r.rxerrors), i64::from(r.fixed), i64::from(r.txbuf), signed(r.noise), signed(r.remnoise)], telemetry: true };
+    }
+
+    pub fn raw(&self, name: &str) -> Value {
+        RADIO.added.iter().position(|n| *n == name).map_or(Value::Null, |i| json!(self.values[i]))
     }
 }
 

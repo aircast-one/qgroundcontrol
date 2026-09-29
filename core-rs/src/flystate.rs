@@ -60,7 +60,7 @@ pub fn state_of(connected: bool, contact_lost: bool, armed: bool, flying: bool, 
 // worst one: QGC's own indicator hides at zero, so a total RC loss looks the same there as
 // an aircraft with no transmitter fitted.
 fn rc_signal(vehicle: &Value) -> Option<i64> {
-    vehicle.get("rcRSSI").and_then(Value::as_i64).filter(|rssi| (0..=100).contains(rssi))
+    crate::read::fact_property(vehicle, "rcRSSI").and_then(|fact| fact.get("value")).and_then(Value::as_i64).filter(|rssi| (0..=100).contains(rssi))
 }
 
 fn flying_to(backend: &dyn Backend) -> Option<i64> {
@@ -75,7 +75,7 @@ fn flying_to(backend: &dyn Backend) -> Option<i64> {
 // not a reading of zero dBm. Serving the numbers ungated would let a head draw -0 dBm and a
 // healthy-looking link for a radio that has never reported.
 fn telemetry(radio: &Value) -> Value {
-    let reading = |name: &str| radio.get(name).and_then(|fact| fact.get("value").or(Some(fact))).and_then(Value::as_i64);
+    let reading = |name: &str| crate::read::fact_property(radio, name).and_then(|fact| fact.get("value")).and_then(Value::as_i64);
     match reading("lrssi").filter(|local| *local != 0) {
         None => Value::Null,
         Some(local) => json!({
@@ -189,7 +189,7 @@ mod tests {
     fn a_transmitter_reporting_nothing_is_not_a_transmitter_reporting_no_signal() {
         let at = |rssi: i64| {
             let mut vehicle = aloft(true, true, false);
-            vehicle["rcRSSI"] = json!(rssi);
+            vehicle["facts"] = json!([{ "kind": "fact", "name": "rcRSSI", "property": "rcRSSI", "value": rssi }]);
             vehicle["supports"] = json!({ "kind": "object", "radio": true });
             fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])
         };
@@ -206,7 +206,8 @@ mod tests {
     fn a_radio_that_has_never_reported_is_not_a_radio_at_zero_dbm() {
         let radio = |local: i64| {
             let mut vehicle = aloft(true, true, false);
-            vehicle["radioStatus"] = json!({ "kind": "object", "lrssi": { "value": local }, "rrssi": { "value": -42 }, "lNoise": { "value": 12 }, "rNoise": { "value": 14 }, "rxErrors": { "value": 3 } });
+            let fact = |property: &str, value: i64| json!({ "kind": "fact", "name": property, "property": property, "value": value });
+            vehicle["radioStatus"] = json!({ "kind": "object", "class": "RadioStatusFactGroup", "facts": [fact("lrssi", local), fact("rrssi", -42), fact("rxErrors", 3), fact("lNoise", 12), fact("rNoise", 14)], "children": [] });
             fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])["telemetry"].clone()
         };
 

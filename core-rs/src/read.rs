@@ -110,6 +110,10 @@ pub fn ok_result(json: &str) -> Option<Value> {
     (reply.get("ok") == Some(&Value::Bool(true))).then(|| reply.get("result").cloned()).flatten()
 }
 
+pub fn fact_property<'a>(object: &'a Value, property: &str) -> Option<&'a Value> {
+    object.get("facts")?.as_array()?.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(property))
+}
+
 pub fn fact_flag(object: &Value, name: &str) -> bool {
     object
         .get("facts")
