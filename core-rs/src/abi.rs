@@ -440,6 +440,11 @@ pub unsafe extern "C" fn qgc_core_setting_written(key: *const c_char, text_value
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_set_active_vehicle(id: i32) {
+    crate::hub::lock().set_active(u8::try_from(id).ok());
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_measurement_system(system: u8) {
     crate::units::set_measurement_system(system);
 }

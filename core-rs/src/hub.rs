@@ -1380,7 +1380,9 @@ impl Vehicle {
 #[derive(Debug, Default)]
 pub struct Hub {
     vehicles: BTreeMap<u8, Vehicle>,
+    arrival: Vec<u8>,
     active: Option<u8>,
+    host_selects: bool,
     remote_inputs: Option<RemoteInputs>,
     log_inputs: LogInputs,
 }
@@ -1406,7 +1408,10 @@ impl Hub {
                 }
                 bytes.extend(vehicle.begin_connect(now_ms));
                 self.vehicles.insert(header.system_id, vehicle);
-                self.active.get_or_insert(header.system_id);
+                self.arrival.push(header.system_id);
+                if !self.host_selects {
+                    self.active.get_or_insert(header.system_id);
+                }
             }
         }
         let inputs = self.remote_inputs.as_ref();
@@ -1575,9 +1580,19 @@ impl Hub {
 
     pub fn remove(&mut self, id: u8) {
         self.vehicles.remove(&id);
-        if self.active == Some(id) {
-            self.active = self.vehicles.keys().next().copied();
+        self.arrival.retain(|known| *known != id);
+        if self.active == Some(id) && !self.host_selects {
+            self.active = self.arrival.first().copied();
         }
+    }
+
+    pub fn set_active(&mut self, id: Option<u8>) {
+        self.host_selects = true;
+        self.active = id;
+    }
+
+    pub fn in_arrival_order(&self) -> Vec<&Vehicle> {
+        self.arrival.iter().filter_map(|id| self.vehicles.get(id)).collect()
     }
 
     pub fn snapshot(&self) -> Value {
@@ -1819,6 +1834,21 @@ mod tests {
         assert!(hub.active().unwrap().flying);
         send(&mut hub, beat(1, false, MavState::MAV_STATE_ACTIVE));
         assert!(!hub.active().unwrap().flying, "a disarmed ArduPilot is on the ground whatever its status");
+    }
+
+    #[test]
+    fn the_host_chooses_the_active_vehicle_once_it_has_said_anything() {
+        let mut hub = Hub::default();
+        hub.on_frame(origin(0), &MavHeader { system_id: 7, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &MavHeader { system_id: 3, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 1, 0);
+        assert_eq!(hub.active().map(|v| v.id), Some(7), "without a host the first vehicle heard is active");
+        assert_eq!(hub.in_arrival_order().iter().map(|v| v.id).collect::<Vec<_>>(), vec![7, 3], "the fleet is listed in arrival order, as MultiVehicleManager appends it");
+        hub.set_active(Some(3));
+        assert_eq!(hub.active().map(|v| v.id), Some(3));
+        hub.remove(3);
+        assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
+        hub.set_active(Some(7));
+        assert_eq!(hub.active().map(|v| v.id), Some(7));
     }
 
     #[test]

@@ -5,6 +5,7 @@
 #include "SettingsManager.h"
 #include "MavlinkSettings.h"
 #include "FirmwareUpgradeSettings.h"
+#include "QGCCoreC.h"
 #include "QGCCorePlugin.h"
 #include "QGCOptions.h"
 #include "LinkManager.h"
@@ -348,6 +349,7 @@ void MultiVehicleManager::_setActiveVehicle(Vehicle *vehicle)
 {
     if (vehicle != _activeVehicle) {
         _activeVehicle = vehicle;
+        qgc_core_set_active_vehicle(vehicle ? vehicle->id() : -1);
         emit activeVehicleChanged(vehicle);
     }
 }
