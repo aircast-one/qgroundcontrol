@@ -1651,6 +1651,10 @@ impl Hub {
         })
     }
 
+    pub fn active_id(&self) -> Option<u8> {
+        self.active
+    }
+
     pub fn active(&self) -> Option<&Vehicle> {
         self.active.and_then(|id| self.vehicles.get(&id))
     }
@@ -1944,6 +1948,7 @@ mod tests {
     #[test]
     fn the_host_chooses_the_active_vehicle_once_it_has_said_anything() {
         let mut hub = Hub::default();
+        assert_eq!(hub.active_id(), None, "with nothing heard there is no vehicle to answer for");
         hub.on_frame(origin(0), &MavHeader { system_id: 7, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
         hub.on_frame(origin(0), &MavHeader { system_id: 3, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 1, 0);
         assert_eq!(hub.active().map(|v| v.id), Some(7), "without a host the first vehicle heard is active");
