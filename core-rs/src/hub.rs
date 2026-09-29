@@ -1637,6 +1637,10 @@ impl Hub {
         self.listed = Some(ids);
     }
 
+    pub fn listed_count(&self) -> Option<usize> {
+        self.listed.as_ref().map(Vec::len)
+    }
+
     pub fn listed(&self, index: usize) -> Option<&Vehicle> {
         self.listed.as_ref().unwrap_or(&self.arrival).get(index).and_then(|id| self.vehicles.get(id))
     }
@@ -1896,6 +1900,9 @@ mod tests {
         hub.set_active(Some(3));
         assert_eq!(hub.active().map(|v| v.id), Some(3));
         hub.remove(3);
+        assert_eq!(hub.listed_count(), None, "the list is the host's until it reports one");
+        hub.set_listed(vec![7]);
+        assert_eq!((hub.listed_count(), hub.listed(0).map(|v| v.id), hub.listed(1).map(|v| v.id)), (Some(1), Some(7), None));
         assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
         hub.set_active(Some(7));
         assert_eq!(hub.active().map(|v| v.id), Some(7));
