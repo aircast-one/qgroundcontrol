@@ -159,6 +159,8 @@ pub struct Vehicle {
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
     pub mission_current: i32,
+    pub roi_enabled: bool,
+    pub check_list_state: i64,
     pub mission_last_current: i32,
     mission_cached_last: i32,
     pub trigger_points: Vec<(f64, f64, f64)>,
@@ -264,6 +266,8 @@ impl Vehicle {
             escs: Escs::default(),
             rc_override: BTreeMap::new(),
             mission_current: -1,
+            roi_enabled: false,
+            check_list_state: 0,
             mission_last_current: -1,
             mission_cached_last: -1,
             trigger_points: Vec::new(),
@@ -1379,6 +1383,13 @@ impl Vehicle {
                 }
             }
             MavMessage::COMMAND_ACK(a) => {
+                if a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
+                    match a.command {
+                        mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_LOCATION => self.roi_enabled = true,
+                        mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_NONE => self.roi_enabled = false,
+                        _ => {}
+                    }
+                }
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
                 let announced = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
@@ -1800,6 +1811,10 @@ impl Hub {
         })
     }
 
+    pub fn set_check_list_state(&mut self, state: i64) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.check_list_state = state).is_some()
+    }
+
     pub fn active_id(&self) -> Option<u8> {
         self.active
     }
@@ -2102,6 +2117,21 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn an_accepted_roi_command_turns_roi_on_and_an_accepted_none_turns_it_off() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let ack = |command, result| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command, result, ..Default::default() });
+        hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_LOCATION, MavResult::MAV_RESULT_DENIED), 1, 0);
+        assert!(!hub.active().unwrap().roi_enabled);
+        hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_LOCATION, MavResult::MAV_RESULT_ACCEPTED), 2, 0);
+        assert!(hub.active().unwrap().roi_enabled);
+        hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_NONE, MavResult::MAV_RESULT_ACCEPTED), 3, 0);
+        assert!(!hub.active().unwrap().roi_enabled);
     }
 
     #[test]

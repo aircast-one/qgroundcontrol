@@ -264,6 +264,8 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "heading": crate::vehiclefact::vehicle_fact("heading", &json!(v.facts.heading)),
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
+        "isROIEnabled": v.roi_enabled,
+        "checkListState": v.check_list_state,
         "haveMRSpeedLimits": v.speed_limits().0,
         "haveFWSpeedLimits": v.speed_limits().1,
         "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
@@ -517,6 +519,13 @@ impl<B: Backend> Backend for Facade<B> {
         }
     }
     fn set(&self, path: &str, value: &str) -> String {
+        if path == "vehicle.checkListState" && switched_on() {
+            let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
+            if let Some(state) = state {
+                crate::hub::lock().set_check_list_state(state);
+            }
+            return self.0.set(path, value);
+        }
         fell_through("set", path);
         self.0.set(path, value)
     }
