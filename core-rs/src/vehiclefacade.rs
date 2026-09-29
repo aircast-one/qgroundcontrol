@@ -225,6 +225,8 @@ fn carried() -> Option<Known> {
             "sub": class == Sub,
             "initialConnectComplete": v.connected,
             "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
+            "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
+            "longitude": v.facts.coordinate.map(|(_, longitude, _)| f64::from(longitude as f32)),
         });
         let described = json!({
             "vehicleTypeString": mav_type_text(v.vehicle_type),

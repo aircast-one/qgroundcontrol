@@ -195,7 +195,15 @@ pub fn fields(path: &str, fields: &str) -> Option<String> {
     Some(object.to_string())
 }
 
+fn kind_of_setting(setting: &str) -> Option<Kind> {
+    [Kind::Horizontal, Kind::Vertical, Kind::Area, Kind::Speed, Kind::Temperature, Kind::Weight].into_iter().find(|kind| kind.setting() == setting)
+}
+
 pub fn get(path: &str) -> Option<String> {
+    if let Some(setting) = path.strip_prefix("settings.unitsSettings.").and_then(|rest| rest.strip_suffix(".rawValue")) {
+        let kind = kind_of_setting(setting)?;
+        return Some(json!({ "kind": "value", "value": choice(kind, &crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed)) }).to_string());
+    }
     let kind = name_of(path.strip_prefix("units.")?)?;
     Some(json!({ "kind": "value", "value": chosen(kind).map_or(kind.base(), |c| c.name) }).to_string())
 }
