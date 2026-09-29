@@ -119,6 +119,7 @@ void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicle
     (void) connect(vehicle->parameterManager(), &ParameterManager::parametersReadyChanged, this, &MultiVehicleManager::_vehicleParametersReadyChanged);
 
     _vehicles->append(vehicle);
+    _reportVehicleOrder();
 
     // Send QGC heartbeat ASAP, this allows PX4 to start accepting commands
     _sendGCSHeartbeat();
@@ -153,6 +154,7 @@ void MultiVehicleManager::_deleteVehiclePhase1(Vehicle *vehicle)
     for (int i = 0; i < _vehicles->count(); i++) {
         if (_vehicles->get(i) == vehicle) {
             (void) _vehicles->removeAt(i);
+            _reportVehicleOrder();
             found = true;
             break;
         }
@@ -352,6 +354,15 @@ void MultiVehicleManager::_setActiveVehicle(Vehicle *vehicle)
         qgc_core_set_active_vehicle(vehicle ? vehicle->id() : -1);
         emit activeVehicleChanged(vehicle);
     }
+}
+
+void MultiVehicleManager::_reportVehicleOrder()
+{
+    QList<int32_t> ids;
+    for (int i = 0; i < _vehicles->count(); i++) {
+        ids.append(qobject_cast<Vehicle*>(_vehicles->get(i))->id());
+    }
+    qgc_core_set_vehicle_order(ids.constData(), static_cast<size_t>(ids.size()));
 }
 
 void MultiVehicleManager::_setActiveVehicleAvailable(bool activeVehicleAvailable)

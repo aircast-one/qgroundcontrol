@@ -1421,6 +1421,7 @@ pub struct Hub {
     arrival: Vec<u8>,
     active: Option<u8>,
     host_selects: bool,
+    listed: Option<Vec<u8>>,
     remote_inputs: Option<RemoteInputs>,
     log_inputs: LogInputs,
 }
@@ -1630,6 +1631,14 @@ impl Hub {
     pub fn set_active(&mut self, id: Option<u8>) {
         self.host_selects = true;
         self.active = id;
+    }
+
+    pub fn set_listed(&mut self, ids: Vec<u8>) {
+        self.listed = Some(ids);
+    }
+
+    pub fn listed(&self, index: usize) -> Option<&Vehicle> {
+        self.listed.as_ref().unwrap_or(&self.arrival).get(index).and_then(|id| self.vehicles.get(id))
     }
 
     pub fn in_arrival_order(&self) -> Vec<&Vehicle> {

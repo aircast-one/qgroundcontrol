@@ -202,57 +202,73 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
 }
 
 fn carried() -> Option<Known> {
-    let hub = crate::hub::lock();
-    hub.active().map(|v| {
-        let ordered = v.sensors.ordered();
-        let sensors = json!({ "sensorNames": ordered.names, "sensorStatus": ordered.status, "sensorEnabled": ordered.enabled, "sensorHealthy": ordered.healthy });
-        let class = crate::plandoc::vehicle_class(i64::from(v.vehicle_type));
-        use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Rover, Sub, Vtol};
-        let fields = json!({
-            "id": v.id,
-            "armed": v.armed(),
-            "flying": v.flying,
-            "vtolInFwdFlight": v.vtol_in_forward_flight,
-            "hasGripper": has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
-            "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
-            "readyToFly": v.status_bits.ready_to_fly,
-            "allSensorsHealthy": v.status_bits.all_healthy,
-            "requiresGpsFix": v.status_bits.requires_gps_fix(),
-            "sensorsUnhealthyBits": v.status_bits.unhealthy(),
-            "landing": v.landing,
-            "flightMode": v.flight_mode(),
-            "px4Firmware": v.autopilot == crate::modes::AUTOPILOT_PX4,
-            "apmFirmware": v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT,
-            "fixedWing": class == FixedWing,
-            "multiRotor": class == MultiRotor,
-            "vtol": class == Vtol,
-            "rover": class == Rover,
-            "sub": class == Sub,
-            "initialConnectComplete": v.connected,
-            "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
-            "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
-            "longitude": v.facts.coordinate.map(|(_, longitude, _)| f64::from(longitude as f32)),
-        });
-        let described = json!({
-            "vehicleTypeString": mav_type_text(v.vehicle_type),
-            "airship": v.vehicle_type == 7,
-        });
-        let motors = motor_count(v.vehicle_type, v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64())).map(|count| ("motorCount".to_string(), json!(count)));
-        let object = |value: Value| value.as_object().cloned().unwrap_or_default();
-        let prearm = (v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then(|| ("prearmError".to_string(), json!(v.prearm_error(crate::hub::now_ms()))));
-        let fields = Value::Object(
-            object(fields)
-                .into_iter()
-                .chain(prearm)
-                .into_iter()
-                .chain(object(described))
-                .chain(object(firmware_fields(v.autopilot, v.firmware())))
-                .chain(motors)
-                .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
-                .collect(),
-        );
-        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
-    })
+    crate::hub::lock().active().map(known_of)
+}
+
+fn fleet_member(path: &str) -> Option<(usize, &str)> {
+    let rest = path.strip_prefix("vehicles.vehicles.")?;
+    let (index, tail) = rest.split_once('.').map_or((rest, ""), |(i, t)| (i, t));
+    Some((index.parse().ok()?, tail))
+}
+
+fn resolved(path: &str) -> Option<(String, Known)> {
+    switched_on().then_some(())?;
+    match fleet_member(path) {
+        Some((index, "")) => crate::hub::lock().listed(index).map(|v| ("vehicle".to_string(), known_of(v))),
+        Some((index, tail)) => crate::hub::lock().listed(index).map(|v| (format!("vehicle.{tail}"), known_of(v))),
+        None => carried().map(|known| (path.to_string(), known)),
+    }
+}
+
+fn known_of(v: &crate::hub::Vehicle) -> Known {
+    let ordered = v.sensors.ordered();
+    let sensors = json!({ "sensorNames": ordered.names, "sensorStatus": ordered.status, "sensorEnabled": ordered.enabled, "sensorHealthy": ordered.healthy });
+    let class = crate::plandoc::vehicle_class(i64::from(v.vehicle_type));
+    use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Rover, Sub, Vtol};
+    let fields = json!({
+        "id": v.id,
+        "armed": v.armed(),
+        "flying": v.flying,
+        "vtolInFwdFlight": v.vtol_in_forward_flight,
+        "hasGripper": has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
+        "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
+        "readyToFly": v.status_bits.ready_to_fly,
+        "allSensorsHealthy": v.status_bits.all_healthy,
+        "requiresGpsFix": v.status_bits.requires_gps_fix(),
+        "sensorsUnhealthyBits": v.status_bits.unhealthy(),
+        "landing": v.landing,
+        "flightMode": v.flight_mode(),
+        "px4Firmware": v.autopilot == crate::modes::AUTOPILOT_PX4,
+        "apmFirmware": v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT,
+        "fixedWing": class == FixedWing,
+        "multiRotor": class == MultiRotor,
+        "vtol": class == Vtol,
+        "rover": class == Rover,
+        "sub": class == Sub,
+        "initialConnectComplete": v.connected,
+        "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
+        "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
+        "longitude": v.facts.coordinate.map(|(_, longitude, _)| f64::from(longitude as f32)),
+    });
+    let described = json!({
+        "vehicleTypeString": mav_type_text(v.vehicle_type),
+        "airship": v.vehicle_type == 7,
+    });
+    let motors = motor_count(v.vehicle_type, v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64())).map(|count| ("motorCount".to_string(), json!(count)));
+    let object = |value: Value| value.as_object().cloned().unwrap_or_default();
+    let prearm = (v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then(|| ("prearmError".to_string(), json!(v.prearm_error(crate::hub::now_ms()))));
+    let fields = Value::Object(
+        object(fields)
+            .into_iter()
+            .chain(prearm)
+            .into_iter()
+            .chain(object(described))
+            .chain(object(firmware_fields(v.autopilot, v.firmware())))
+            .chain(motors)
+            .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
+            .collect(),
+    );
+    Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
 }
 
 fn fields_of(fields: &str) -> Vec<&str> {
@@ -270,6 +286,7 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("plan.geoFenceController", "supported") => Some(json!(known.capabilities.unwrap_or(0) & crate::connect::CAP_MISSION_FENCE != 0)),
             ("plan.rallyPointController", "supported") => Some(json!(known.capabilities.unwrap_or(0) & crate::connect::CAP_MISSION_RALLY != 0)),
             ("vehicle", "coordinate") => Some(known.coordinate.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
+            ("vehicle", "homePosition") => Some(known.home.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
             ("vehicle", field) => known.fields.get(field).cloned(),
             _ => None,
         }
@@ -400,7 +417,7 @@ impl<B: Backend> Backend for Facade<B> {
         if path == "core.qtReads" {
             return tally().to_string();
         }
-        switched_on().then(|| answer_parameter(path)).flatten().or_else(|| switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known).or_else(|| answer_scalar(path, &known)))).map_or_else(
+        switched_on().then(|| answer_parameter(path)).flatten().or_else(|| resolved(path).and_then(|(path, known)| answer_get(&path, &known).or_else(|| answer_scalar(&path, &known)))).map_or_else(
             || {
                 fell_through("get", path);
                 self.0.get(path)
@@ -408,12 +425,15 @@ impl<B: Backend> Backend for Facade<B> {
             |v| v.to_string(),
         )
     }
-    fn get_fields(&self, path: &str, fields: &str) -> String {
-        let group = (path == "vehicle.radioStatus").then(|| switched_on().then(carried).flatten()).flatten().and_then(|known| crate::vehiclefact::spec_group_fields(&crate::vehiclefact::RADIO, fields, |n| known.radio.raw(n)));
+    fn get_fields(&self, asked_path: &str, fields: &str) -> String {
+        let resolved = resolved(asked_path);
+        let path = resolved.as_ref().map_or(asked_path, |(path, _)| path.as_str());
+        let known = resolved.as_ref().map(|(_, known)| known);
+        let group = (path == "vehicle.radioStatus").then_some(known).flatten().and_then(|known| crate::vehiclefact::spec_group_fields(&crate::vehiclefact::RADIO, fields, |n| known.radio.raw(n)));
         if let Some(answered) = group {
             return answered.to_string();
         }
-        let avoidance = (path == "vehicle.objectAvoidance").then(|| switched_on().then(carried).flatten()).flatten().and_then(|known| {
+        let avoidance = (path == "vehicle.objectAvoidance").then_some(known).flatten().and_then(|known| {
             let now = crate::hub::now_ms();
             let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), known.obstacle.field(f, known.avoidance_enabled, now)?))).collect();
             let mut object = Value::Object(answered?);
@@ -426,7 +446,7 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answered) = avoidance {
             return answered.to_string();
         }
-        let (mut answered, missing) = switched_on().then(carried).flatten().map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, &known));
+        let (mut answered, missing) = known.map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, known));
         let facts: Vec<Value> = match path {
             "vehicle" => VEHICLE_FACTS.iter().filter_map(|name| Some(crate::vehiclefact::compact(&answered.remove(*name)?, name))).collect(),
             _ => Vec::new(),
@@ -440,8 +460,8 @@ impl<B: Backend> Backend for Facade<B> {
             return object.to_string();
         }
         let asked = if answered.is_empty() && facts.is_empty() { fields.to_string() } else { missing.join(",") };
-        fell_through("fields", &format!("{path} [{asked}]"));
-        let host = merged(answered, self.0.get_fields(path, &asked));
+        fell_through("fields", &format!("{asked_path} [{asked}]"));
+        let host = merged(answered, self.0.get_fields(asked_path, &asked));
         match facts.is_empty() {
             true => host,
             false => serde_json::from_str::<Value>(&host).ok().filter(|h| h["kind"] == "object").map_or(host, |mut h| {
@@ -515,6 +535,14 @@ mod tests {
         assert_eq!((announced["rtlFlightMode"].as_str(), announced["pauseFlightMode"].as_str()), (Some("Return Home"), Some("Brake")), "an announced list replaces the table and a missing mode falls back");
         assert!(mode_fields(12, 2, &[]).get("flightModes").is_none(), "PX4's list filters by airframe flags the core does not keep yet");
         assert!(mode_fields(0, 2, &[]).is_empty());
+    }
+
+    #[test]
+    fn a_fleet_path_names_a_list_position_and_what_follows_it() {
+        assert_eq!(fleet_member("vehicles.vehicles.0"), Some((0, "")));
+        assert_eq!(fleet_member("vehicles.vehicles.12.gps.lat"), Some((12, "gps.lat")));
+        assert_eq!(fleet_member("vehicles.vehicles.#.supports"), None, "a wildcard is the host's to expand");
+        assert_eq!(fleet_member("vehicles.vehicles.count"), None);
     }
 
     #[test]
