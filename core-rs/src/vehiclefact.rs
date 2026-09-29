@@ -373,6 +373,23 @@ impl ObstacleFacts {
     }
 }
 
+pub const TEMPERATURE: GroupSpec = GroupSpec {
+    class: "VehicleTemperatureFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/TemperatureFact.json"),
+    properties: &[("temperature1", "temperature1"), ("temperature2", "temperature2"), ("temperature3", "temperature3")],
+    added: &["temperature1", "temperature2", "temperature3"],
+};
+
+pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> Value {
+    let (value, seen) = match name {
+        "temperature1" => (t.temperature1, t.seen[0]),
+        "temperature2" => (t.temperature2, t.seen[1]),
+        "temperature3" => (t.temperature3, t.seen[2]),
+        _ => return Value::Null,
+    };
+    if seen { json!(value) } else { Value::Null }
+}
+
 const VEHICLE_META: &str = include_str!("../../src/Vehicle/FactGroups/VehicleFact.json");
 
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {

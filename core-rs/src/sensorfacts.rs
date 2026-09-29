@@ -14,6 +14,7 @@ pub struct TemperatureFacts {
     pub temperature1: f64,
     pub temperature2: f64,
     pub temperature3: f64,
+    pub seen: [bool; 3],
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -110,22 +111,27 @@ impl TemperatureFacts {
         match message {
             MavMessage::SCALED_PRESSURE(d) => {
                 self.temperature1 = d.temperature as f64 / 100.0;
+                self.seen[0] = true;
                 true
             }
             MavMessage::SCALED_PRESSURE2(d) => {
                 self.temperature2 = d.temperature as f64 / 100.0;
+                self.seen[1] = true;
                 true
             }
             MavMessage::SCALED_PRESSURE3(d) => {
                 self.temperature3 = d.temperature as f64 / 100.0;
+                self.seen[2] = true;
                 true
             }
             MavMessage::HIGH_LATENCY(d) => {
                 self.temperature1 = d.temperature_air as f64;
+                self.seen[0] = true;
                 true
             }
             MavMessage::HIGH_LATENCY2(d) => {
                 self.temperature1 = d.temperature_air as f64;
+                self.seen[0] = true;
                 true
             }
             _ => false,
