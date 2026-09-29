@@ -33,7 +33,7 @@ fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
 }
 
 pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "id"));
+    let vehicle = object(&backend.get("vehicle"));
     let available = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let groups: Vec<Value> = vehicle
         .get("children")
@@ -72,7 +72,7 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
         // The Android head read the whole vehicle object raw to list them; they are served here
         // under a bare selection, which view.instruments resolves against the vehicle by default.
         "vehicleFacts": match available {
-            true => facts_of(&object(&backend.get("vehicle")), ""),
+            true => facts_of(&vehicle, ""),
             false => Vec::new(),
         },
     })
@@ -96,7 +96,7 @@ mod tests {
                     { "property": "rpmFirst", "name": "rpm1", "shortDescription": "" },
                 ] }).to_string(),
                 "vehicle.parameterManager" => json!({ "kind": "object", "facts": [] }).to_string(),
-                "vehicle" => json!({ "kind": "object", "facts": [
+                "vehicle" => json!({ "kind": "object", "id": 1, "children": ["vehicle", "gps", "escStatus", "parameterManager"], "facts": [
                     { "property": "altitudeRelative", "name": "altitudeRelative", "shortDescription": "Rel. Alt." },
                     { "property": "groundSpeed", "name": "groundSpeed", "shortDescription": "" },
                 ] }).to_string(),

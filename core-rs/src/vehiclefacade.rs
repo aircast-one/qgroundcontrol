@@ -30,6 +30,7 @@ struct Known {
     home: Option<(f64, f64, f64)>,
     sensors: Value,
     supports: Value,
+    fields: Value,
 }
 
 fn supports(autopilot: u8, vehicle_type: u8) -> Value {
@@ -64,7 +65,22 @@ fn carried() -> Option<Known> {
     hub.active().map(|v| {
         let ordered = v.sensors.ordered();
         let sensors = json!({ "sensorNames": ordered.names, "sensorStatus": ordered.status, "sensorEnabled": ordered.enabled, "sensorHealthy": ordered.healthy });
-        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, sensors, supports: supports(v.autopilot, v.vehicle_type) }
+        let class = crate::plandoc::vehicle_class(i64::from(v.vehicle_type));
+        use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Rover, Sub, Vtol};
+        let fields = json!({
+            "id": v.id,
+            "armed": v.armed(),
+            "flightMode": v.flight_mode(),
+            "px4Firmware": v.autopilot == crate::modes::AUTOPILOT_PX4,
+            "apmFirmware": v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT,
+            "fixedWing": class == FixedWing,
+            "multiRotor": class == MultiRotor,
+            "vtol": class == Vtol,
+            "rover": class == Rover,
+            "sub": class == Sub,
+            "initialConnectComplete": v.connected,
+        });
+        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
 
@@ -80,6 +96,7 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> Option<Value> {
             ("vehicle.parameterManager", "parametersReady") => Some(json!(known.parameters_ready)),
             ("vehicle.vehicleLinkManager", "communicationLost") => Some(json!(known.lost)),
             ("vehicle.supports", capability) => known.supports.get(capability).cloned(),
+            ("vehicle", field) => known.fields.get(field).cloned(),
             _ => None,
         }
     };
@@ -99,6 +116,7 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
             known.sensors.as_object()?.iter().for_each(|(k, v)| object[k.as_str()] = v.clone());
             return Some(object);
         }
+        field if field.starts_with("vehicle.") && !field["vehicle.".len()..].contains('.') && known.fields.get(&field["vehicle.".len()..]).is_some() => known.fields[&field["vehicle.".len()..]].clone(),
         capability if capability.starts_with("vehicle.supports.") => known.supports.get(capability.trim_start_matches("vehicle.supports."))?.clone(),
         sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
         "vehicle.homePosition" => {
@@ -173,11 +191,12 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2) };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable", &known), Some(json!({ "kind": "object", "activeVehicleAvailable": true })));
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), None, "one unknown field sends the whole read to the host");
         assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
-        assert_eq!(answer_get("vehicle.armed", &known), None);
+        assert_eq!(answer_get("vehicle.flying", &known), None);
+        assert_eq!(answer_get("vehicle.armed", &known), Some(json!({ "kind": "value", "value": false })));
         assert_eq!(answer_fields("vehicle.supports", "guidedTakeoffWithAltitude,orbitMode,smartRTL", &known), Some(json!({ "kind": "object", "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true })), "an ArduCopter quad");
         assert_eq!(supports(12, 1)["guidedTakeoffWithoutAltitude"], true, "a PX4 plane takes off without an altitude");
         assert_eq!(answer_get("vehicle.sysStatusSensorInfo.sensorNames", &known), Some(json!({ "kind": "value", "value": ["GPS"] })));
