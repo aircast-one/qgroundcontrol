@@ -4,6 +4,21 @@ use crate::router::Backend;
 
 pub struct Facade<B>(pub B);
 
+static FELL_THROUGH: std::sync::Mutex<std::collections::BTreeMap<String, u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+fn shape(path: &str) -> String {
+    path.split('.').map(|part| if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) { "#" } else { part }).collect::<Vec<_>>().join(".")
+}
+
+fn fell_through(kind: &str, path: &str) {
+    let mut tally = FELL_THROUGH.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    *tally.entry(format!("{kind} {}", shape(path))).or_default() += 1;
+}
+
+fn tally() -> Value {
+    json!({ "kind": "value", "value": FELL_THROUGH.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone() })
+}
+
 fn switched_on() -> bool {
     std::env::var("QGC_CORE_VEHICLE").map_or(cfg!(not(test)), |v| v == "1")
 }
@@ -108,16 +123,38 @@ fn answer_invoke(path: &str, args: &str) -> Option<Value> {
 
 impl<B: Backend> Backend for Facade<B> {
     fn get(&self, path: &str) -> String {
-        switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known)).map_or_else(|| self.0.get(path), |v| v.to_string())
+        if path == "core.qtReads" {
+            return tally().to_string();
+        }
+        switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known)).map_or_else(
+            || {
+                fell_through("get", path);
+                self.0.get(path)
+            },
+            |v| v.to_string(),
+        )
     }
     fn get_fields(&self, path: &str, fields: &str) -> String {
-        switched_on().then(carried).flatten().and_then(|known| answer_fields(path, fields, &known)).map_or_else(|| self.0.get_fields(path, fields), |v| v.to_string())
+        switched_on().then(carried).flatten().and_then(|known| answer_fields(path, fields, &known)).map_or_else(
+            || {
+                fell_through("fields", &format!("{path} [{fields}]"));
+                self.0.get_fields(path, fields)
+            },
+            |v| v.to_string(),
+        )
     }
     fn set(&self, path: &str, value: &str) -> String {
+        fell_through("set", path);
         self.0.set(path, value)
     }
     fn invoke(&self, path: &str, args: &str) -> String {
-        switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(|| self.0.invoke(path, args), |v| v.to_string())
+        switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(
+            || {
+                fell_through("invoke", path);
+                self.0.invoke(path, args)
+            },
+            |v| v.to_string(),
+        )
     }
     fn watch(&self, paths: &[String]) {
         self.0.watch(paths);
