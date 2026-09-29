@@ -32,6 +32,7 @@ struct Held {
     undo: Vec<Document>,
     redo: Vec<Document>,
     last_change_ms: u64,
+    shown_vehicle: Option<u8>,
 }
 
 const UNDO_DEPTH: usize = 100;
@@ -497,7 +498,62 @@ fn host_syncing(backend: &dyn Backend) -> bool {
     crate::read::object(&backend.get(HOST_SYNC)).get("value").and_then(Value::as_bool) == Some(true)
 }
 
+fn follow_vehicle() {
+    if !enabled() {
+        return;
+    }
+    let shown = held().shown_vehicle;
+    let (active, connected) = {
+        let hub = crate::hub::lock();
+        (hub.active_id(), hub.active().is_some_and(|v| v.connected))
+    };
+    if active == shown || (active.is_some() && !connected) {
+        return;
+    }
+    let (active, ready) = {
+        let hub = crate::hub::lock();
+        let ready = hub.active().filter(|v| v.connected).map(|v| {
+            let (fence, rally) = v.plans_supported();
+            (v.id, v.mission_snapshot(), v.sends_home(), fence, rally, (i64::from(v.autopilot), i64::from(v.vehicle_type)))
+        });
+        (hub.active_id(), ready)
+    };
+    let adopted = {
+        let mut state = held();
+        if state.fetching {
+            return;
+        }
+        match (active, ready) {
+            (None, _) if state.shown_vehicle.is_some() => {
+                state.shown_vehicle = None;
+                let has_items = state.document.as_ref().is_some_and(|d| !d.items.is_empty());
+                if state.dirty || !has_items {
+                    return;
+                }
+                let before = state.document.clone();
+                state.document = state.document.clone().map(|d| Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..d });
+                remember(&mut state, before, crate::hub::now_ms());
+                state.selected = 0;
+                settle_clean(&mut state);
+                state.file = None;
+                None
+            }
+            (Some(id), Some(vehicle)) if state.shown_vehicle != Some(id) && vehicle.0 == id => {
+                state.shown_vehicle = Some(id);
+                (!state.dirty).then_some(vehicle)
+            }
+            _ => return,
+        }
+    };
+    if let Some((_, snapshot, sends_home, fence, rally, types)) = adopted {
+        adopt(&snapshot, sends_home, fence, rally, types);
+        held().file = None;
+    }
+    changed();
+}
+
 pub fn poll_host(backend: &dyn Backend) {
+    follow_vehicle();
     if HOST_FETCH.load(std::sync::atomic::Ordering::SeqCst) && !host_syncing(backend) {
         on_host_event(backend, HOST_SYNC, &json!({ "value": false }).to_string());
     }
