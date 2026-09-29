@@ -38,6 +38,25 @@ impl ParamValue {
         })
     }
 
+    pub fn decode_cast(param_type: u8, value: f32) -> Option<ParamValue> {
+        Some(match param_type {
+            1 => ParamValue::U8(value as u8),
+            2 => ParamValue::I8(value as i8),
+            3 => ParamValue::U16(value as u16),
+            4 => ParamValue::I16(value as i16),
+            5 => ParamValue::U32(value as u32),
+            6 => ParamValue::I32(value as i32),
+            _ => return ParamValue::decode(param_type, value),
+        })
+    }
+
+    pub fn encode_cast(self) -> f32 {
+        match self {
+            ParamValue::F32(_) | ParamValue::Unsupported(_) => self.encode(),
+            other => other.as_f64() as f32,
+        }
+    }
+
     pub fn from_f64(param_type: u8, value: f64) -> Option<ParamValue> {
         if !value.is_finite() {
             return None;
@@ -374,6 +393,16 @@ mod tests {
             .filter(|(i, _)| !skip.contains(&(*i as u16)))
             .flat_map(|(i, name)| params.on_param_value(1, name, names.len() as u16, i as u16, ParamValue::I32(i as i32)))
             .collect()
+    }
+
+    #[test]
+    fn ardupilot_casts_every_value_to_the_float() {
+        assert_eq!(ParamValue::decode_cast(6, 1.0), Some(ParamValue::I32(1)));
+        assert_eq!(ParamValue::decode_cast(2, -3.0), Some(ParamValue::I8(-3)));
+        assert_eq!(ParamValue::decode_cast(9, 0.25), Some(ParamValue::F32(0.25)));
+        assert_eq!(ParamValue::I32(1500).encode_cast(), 1500.0);
+        assert_eq!(ParamValue::F32(0.25).encode_cast(), 0.25);
+        assert_ne!(ParamValue::decode(6, 1.0), Some(ParamValue::I32(1)), "the spec's byte-wise reading of the same frame is a different number");
     }
 
     #[test]

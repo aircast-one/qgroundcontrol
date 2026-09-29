@@ -41,6 +41,7 @@ const SENSOR_PREARM_CHECK: u32 = 0x1000_0000;
 const MAV_STATE_CRITICAL: u8 = 5;
 const MAV_STATE_EMERGENCY: u8 = 6;
 const LANDED_ON_GROUND: u8 = 1;
+const VTOL_STATE_FW: u8 = 4;
 const LANDED_IN_AIR: u8 = 2;
 const LANDED_TAKEOFF: u8 = 3;
 const LANDED_LANDING: u8 = 4;
@@ -158,6 +159,8 @@ pub struct Vehicle {
     pub errors: Vec<String>,
     pub connection_lost: bool,
     pub flying: bool,
+    ardupilot_components: std::collections::BTreeSet<u8>,
+    pub vtol_in_forward_flight: bool,
     armed_now: bool,
     pub status_bits: StatusBits,
     pub landing: bool,
@@ -235,6 +238,8 @@ impl Vehicle {
             errors: Vec::new(),
             connection_lost: false,
             flying: false,
+            ardupilot_components: std::collections::BTreeSet::new(),
+            vtol_in_forward_flight: false,
             armed_now: false,
             status_bits: StatusBits { all_healthy: true, ..StatusBits::default() },
             landing: false,
@@ -826,7 +831,7 @@ impl Vehicle {
                 params::Action::RequestList { component } => self.encode(&Outbound::ParamRequestList { target: (id, component) }).into_iter().collect(),
                 params::Action::ReadByIndex { component, index } => self.encode(&Outbound::ParamRequestRead { target: (id, component), name: None, index: index as i16 }).into_iter().collect(),
                 params::Action::ReadByName { component, name } => self.encode(&Outbound::ParamRequestRead { target: (id, component), name: Some(name), index: -1 }).into_iter().collect(),
-                params::Action::Set { component, name, value } => self.encode(&Outbound::ParamSet { target: (id, component), name, bits: value.encode(), param_type: value.param_type() }).into_iter().collect(),
+                params::Action::Set { component, name, value } => self.encode(&Outbound::ParamSet { target: (id, component), name, bits: if self.ardupilot_components.contains(&component) { value.encode_cast() } else { value.encode() }, param_type: value.param_type() }).into_iter().collect(),
                 params::Action::StartInitialTimer => {
                     self.initial_due = Some(now_ms + INITIAL_REQUEST_TIMEOUT_MS);
                     Vec::new()
@@ -1092,6 +1097,15 @@ impl Vehicle {
         self.messages += 1;
         *self.by_name.entry(message.message_name().to_string()).or_insert(0) += 1;
         let from = (header.system_id, header.component_id);
+        if let MavMessage::HEARTBEAT(h) = message
+            && header.system_id == self.id
+        {
+            if h.autopilot as u8 == crate::modes::AUTOPILOT_ARDUPILOT {
+                self.ardupilot_components.insert(header.component_id);
+            } else {
+                self.ardupilot_components.remove(&header.component_id);
+            }
+        }
         match message {
             MavMessage::HEARTBEAT(h) if from == (self.id, self.component) => {
                 self.heartbeats += 1;
@@ -1117,6 +1131,9 @@ impl Vehicle {
                 };
                 self.flying = flying.unwrap_or(self.flying);
                 self.landing = landing.filter(|_| self.armed()).unwrap_or(self.landing);
+                if (19..=25).contains(&self.vehicle_type) {
+                    self.vtol_in_forward_flight = e.vtol_state as u8 == VTOL_STATE_FW;
+                }
             }
             MavMessage::COMMAND_ACK(a) => {
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
@@ -1178,7 +1195,8 @@ impl Vehicle {
             }
             MavMessage::PARAM_VALUE(p) => {
                 let name = p.param_id.to_str().unwrap_or("").to_string();
-                let Some(value) = ParamValue::decode(p.param_type as u8, p.param_value) else { return Vec::new() };
+                let decode = if self.ardupilot_components.contains(&header.component_id) { ParamValue::decode_cast } else { ParamValue::decode };
+                let Some(value) = decode(p.param_type as u8, p.param_value) else { return Vec::new() };
                 let actions = self.params.on_param_value(header.component_id, &name, p.param_count, p.param_index, value);
                 return self.follow_params(actions, now_ms);
             }
@@ -1726,6 +1744,24 @@ mod tests {
     }
 
     #[test]
+    fn only_a_vtol_follows_the_forward_flight_state() {
+        use mavlink::dialects::ardupilotmega::{EXTENDED_SYS_STATE_DATA, HEARTBEAT_DATA, MavAutopilot, MavType, MavVtolState};
+        let forward = MavMessage::EXTENDED_SYS_STATE(EXTENDED_SYS_STATE_DATA { vtol_state: MavVtolState::MAV_VTOL_STATE_FW, ..Default::default() });
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let in_forward_flight = |mavtype: MavType| {
+            let mut hub = Hub::default();
+            let mut h = HEARTBEAT_DATA::default();
+            h.mavtype = mavtype;
+            h.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+            hub.on_frame(origin(0), &header, &MavMessage::HEARTBEAT(h), 0, 0);
+            hub.on_frame(origin(0), &header, &forward, 1, 0);
+            hub.active().unwrap().vtol_in_forward_flight
+        };
+        assert!(in_forward_flight(MavType::MAV_TYPE_VTOL_TILTROTOR));
+        assert!(!in_forward_flight(MavType::MAV_TYPE_QUADROTOR));
+    }
+
+    #[test]
     fn an_ardupilot_heartbeat_decides_flying_from_armed_and_status() {
         use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavState, MavType};
         let mut hub = Hub::default();
@@ -1950,6 +1986,13 @@ mod tests {
         assert_eq!((set.param_id.to_str().unwrap(), set.param_value, set.param_type as u8, set.target_component), ("RTL_ALT", 2000.0, 9, 1));
         assert_eq!(hub.parameter_request(None, &json!({ "name": "NEW_ONE", "value": 1.0 }), 11_000).unwrap_err(), "NEW_ONE is not a parameter of component 1.");
         assert!(hub.parameter_request(None, &json!({ "name": "RTL ALT", "value": 1.0 }), 11_000).is_err(), "a name with a space never goes on the wire");
+        use mavlink::dialects::ardupilotmega::{MavParamType, PARAM_VALUE_DATA};
+        let echoed = MavMessage::PARAM_VALUE(PARAM_VALUE_DATA { param_value: 2000.0, param_count: 2, param_index: 0, param_id: mavout::param_id("RTL_ALT"), param_type: MavParamType::MAV_PARAM_TYPE_INT32 });
+        hub.on_frame(origin(4), &autopilot, &echoed, 11_100_000, 11_100);
+        assert_eq!(hub.active().unwrap().parameter(1, "RTL_ALT"), Some(ParamValue::I32(2000)), "ArduPilot casts an integer into the float rather than packing its bytes");
+        let integer = hub.parameter_request(None, &json!({ "name": "RTL_ALT", "value": 2100.0 }), 11_200).unwrap();
+        let MavMessage::PARAM_SET(set) = decode(&integer[0].1) else { panic!() };
+        assert_eq!((set.param_value, set.param_type as u8), (2100.0, 6), "and expects the same cast back");
         hub.on_frame(origin(4), &autopilot, &param_value("RTL_ALT", 2, 0, 2000.0), 11_100_000, 11_100);
         assert_eq!(hub.active().unwrap().parameter(1, "RTL_ALT").map(ParamValue::as_f64), Some(2000.0));
         let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();

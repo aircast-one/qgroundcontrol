@@ -28,6 +28,7 @@ struct Known {
     parameters_ready: bool,
     lost: bool,
     home: Option<(f64, f64, f64)>,
+    coordinate: Option<(f64, f64, f64)>,
     sensors: Value,
     supports: Value,
     fields: Value,
@@ -137,6 +138,14 @@ fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) ->
     })
 }
 
+fn has_gripper(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> bool {
+    match autopilot {
+        crate::modes::AUTOPILOT_ARDUPILOT => parameter("GRIP_ENABLE") == Some(1.0),
+        crate::modes::AUTOPILOT_PX4 => parameter("PD_GRIPPER_EN").map(|v| v != 0.0).or_else(|| parameter("PD_GRIPPER_TYPE").map(|v| v >= 0.0)).unwrap_or(false),
+        _ => false,
+    }
+}
+
 fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> serde_json::Map<String, Value> {
     use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4, VehicleClass, px4};
     let listed: Vec<(String, u32, bool, bool)> = if available.is_empty() {
@@ -187,6 +196,8 @@ fn carried() -> Option<Known> {
             "id": v.id,
             "armed": v.armed(),
             "flying": v.flying,
+            "vtolInFwdFlight": v.vtol_in_forward_flight,
+            "hasGripper": has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
             "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
             "readyToFly": v.status_bits.ready_to_fly,
             "allSensorsHealthy": v.status_bits.all_healthy,
@@ -218,7 +229,7 @@ fn carried() -> Option<Known> {
                 .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
                 .collect(),
         );
-        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
+        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
 
@@ -233,6 +244,7 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("vehicle.parameterManager", "parametersReady") => Some(json!(known.parameters_ready)),
             ("vehicle.vehicleLinkManager", "communicationLost") => Some(json!(known.lost)),
             ("vehicle.supports", capability) => known.supports.get(capability).cloned(),
+            ("vehicle", "coordinate") => Some(known.coordinate.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
             ("vehicle", field) => known.fields.get(field).cloned(),
             _ => None,
         }
@@ -261,6 +273,10 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         field if field.starts_with("vehicle.") && !field["vehicle.".len()..].contains('.') && known.fields.get(&field["vehicle.".len()..]).is_some() => known.fields[&field["vehicle.".len()..]].clone(),
         capability if capability.starts_with("vehicle.supports.") => known.supports.get(capability.trim_start_matches("vehicle.supports."))?.clone(),
         sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
+        "vehicle.coordinate" => {
+            let (latitude, longitude, altitude) = known.coordinate?;
+            return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
+        }
         "vehicle.homePosition" => {
             let (latitude, longitude, altitude) = known.home?;
             return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
@@ -345,6 +361,16 @@ mod tests {
     }
 
     #[test]
+    fn a_gripper_is_read_from_each_firmware_parameter() {
+        let with = |pairs: &'static [(&'static str, f64)]| move |name: &str| pairs.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        assert!(has_gripper(3, with(&[("GRIP_ENABLE", 1.0)])));
+        assert!(!has_gripper(3, with(&[("GRIP_ENABLE", 2.0)])));
+        assert!(has_gripper(12, with(&[("PD_GRIPPER_TYPE", 0.0)])), "PX4 1.17 names a gripper type instead of enabling one");
+        assert!(!has_gripper(12, with(&[("PD_GRIPPER_EN", 0.0), ("PD_GRIPPER_TYPE", 1.0)])), "the older switch wins where it exists");
+        assert!(!has_gripper(0, with(&[("GRIP_ENABLE", 1.0)])));
+    }
+
+    #[test]
     fn mode_names_come_from_the_firmware_class_and_what_the_vehicle_announced() {
         let copter = mode_fields(3, 2, &[]);
         assert_eq!((copter["pauseFlightMode"].as_str(), copter["landFlightMode"].as_str(), copter["missionFlightMode"].as_str()), (Some("Brake"), Some("Land"), Some("Auto")));
@@ -363,11 +389,16 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
         assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
+        assert_eq!(answer_fields("vehicle", "coordinate", &known).0.get("coordinate"), Some(&Value::Null), "an unknown position reads as null nested, as the bridge spells it");
+        assert_eq!(answer_get("vehicle.coordinate", &known), None, "a direct read of an unknown position stays with the host");
+        let placed = Known { coordinate: Some((1.0, 2.0, 3.0)), ..known };
+        assert_eq!(answer_get("vehicle.coordinate", &placed).unwrap()["kind"], "coordinate");
+        let known = placed;
         assert_eq!(answer_get("vehicle.flying", &known), None);
         assert_eq!(answer_get("vehicle.armed", &known), Some(json!({ "kind": "value", "value": false })));
         assert_eq!(answer_fields("vehicle.supports", "guidedTakeoffWithAltitude,orbitMode,smartRTL", &known).0, json!({ "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true }).as_object().unwrap().clone(), "an ArduCopter quad");
