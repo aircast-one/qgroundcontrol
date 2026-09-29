@@ -195,6 +195,12 @@ impl LocalPositionFacts {
         *self = LocalPositionFacts { x: d.x as f64, y: d.y as f64, z: d.z as f64, vx: d.vx as f64, vy: d.vy as f64, vz: d.vz as f64, seen: true };
         true
     }
+
+    pub fn apply_target(&mut self, message: &MavMessage) -> bool {
+        let MavMessage::POSITION_TARGET_LOCAL_NED(d) = message else { return false };
+        *self = LocalPositionFacts { x: d.x as f64, y: d.y as f64, z: d.z as f64, vx: d.vx as f64, vy: d.vy as f64, vz: d.vz as f64, seen: true };
+        true
+    }
 }
 
 impl EstimatorStatusFacts {
@@ -232,6 +238,15 @@ impl EstimatorStatusFacts {
 mod tests {
     use super::*;
     use mavlink::dialects::ardupilotmega::{DISTANCE_SENSOR_DATA, ESTIMATOR_STATUS_DATA, HIGH_LATENCY2_DATA, SCALED_PRESSURE2_DATA, WIND_COV_DATA, WIND_DATA};
+
+    #[test]
+    fn a_position_target_fills_the_setpoint_not_the_position() {
+        let mut position = LocalPositionFacts::default();
+        let target = mavlink::dialects::ardupilotmega::POSITION_TARGET_LOCAL_NED_DATA { x: 1.5, vz: -0.25, ..Default::default() };
+        assert!(!position.apply(&MavMessage::POSITION_TARGET_LOCAL_NED(target.clone())));
+        assert!(position.apply_target(&MavMessage::POSITION_TARGET_LOCAL_NED(target)));
+        assert_eq!((position.x, position.vz, position.seen), (1.5, -0.25, true));
+    }
 
     #[test]
     fn setpoint_yaw_is_brought_into_a_heading_range() {

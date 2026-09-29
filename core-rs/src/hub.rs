@@ -157,6 +157,7 @@ pub struct Vehicle {
     prearm_spoken: BTreeMap<String, u64>,
     pub distance: DistanceSensorFacts,
     pub local: LocalPositionFacts,
+    pub local_setpoint: LocalPositionFacts,
     pub estimator: EstimatorStatusFacts,
     pub sensors: SysStatusSensors,
     pub status_text: Handler,
@@ -245,6 +246,7 @@ impl Vehicle {
             prearm_spoken: BTreeMap::new(),
             distance: DistanceSensorFacts::default(),
             local: LocalPositionFacts::default(),
+            local_setpoint: LocalPositionFacts::default(),
             estimator: EstimatorStatusFacts::default(),
             sensors: SysStatusSensors::default(),
             status_text: Handler::default(),
@@ -1352,6 +1354,7 @@ impl Vehicle {
         self.rc_rssi.apply(message, self.ardupilot_components.contains(&header.component_id));
         self.distance.apply(message);
         self.local.apply(message);
+        self.local_setpoint.apply_target(message);
         self.estimator.apply(message);
         Vec::new()
     }

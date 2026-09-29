@@ -434,6 +434,8 @@ pub const LOCAL_POSITION: GroupSpec = GroupSpec {
     added: &["x", "y", "z", "vx", "vy", "vz"],
 };
 
+pub const LOCAL_POSITION_SETPOINT: GroupSpec = GroupSpec { class: "VehicleLocalPositionSetpointFactGroup", ..LOCAL_POSITION };
+
 pub fn local_position_raw(p: &crate::sensorfacts::LocalPositionFacts, name: &str) -> Value {
     let value = match name {
         "x" => p.x,

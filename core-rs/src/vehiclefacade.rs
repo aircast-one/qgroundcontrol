@@ -42,6 +42,7 @@ struct Known {
     avoidance_enabled: bool,
     temperature: crate::sensorfacts::TemperatureFacts,
     local: crate::sensorfacts::LocalPositionFacts,
+    local_setpoint: crate::sensorfacts::LocalPositionFacts,
     wind: crate::sensorfacts::WindFacts,
     setpoint: crate::sensorfacts::SetpointFacts,
     sensors: Value,
@@ -250,7 +251,7 @@ fn carried() -> Option<Known> {
                 .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
                 .collect(),
         );
-        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
+        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
 
@@ -314,6 +315,8 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         setpoint if setpoint.starts_with("vehicle.setpoint.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::SETPOINT, &setpoint["vehicle.setpoint.".len()..], |n| crate::vehiclefact::setpoint_raw(&known.setpoint, n)),
         "vehicle.wind" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::WIND, |n| crate::vehiclefact::wind_raw(&known.wind, n), known.wind.seen.iter().any(|s| *s))),
         wind if wind.starts_with("vehicle.wind.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::WIND, &wind["vehicle.wind.".len()..], |n| crate::vehiclefact::wind_raw(&known.wind, n)),
+        "vehicle.localPositionSetpoint" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::LOCAL_POSITION_SETPOINT, |n| crate::vehiclefact::local_position_raw(&known.local_setpoint, n), known.local_setpoint.seen)),
+        target if target.starts_with("vehicle.localPositionSetpoint.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::LOCAL_POSITION_SETPOINT, &target["vehicle.localPositionSetpoint.".len()..], |n| crate::vehiclefact::local_position_raw(&known.local_setpoint, n)),
         "vehicle.localPosition" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::LOCAL_POSITION, |n| crate::vehiclefact::local_position_raw(&known.local, n), known.local.seen)),
         local if local.starts_with("vehicle.localPosition.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::LOCAL_POSITION, &local["vehicle.localPosition.".len()..], |n| crate::vehiclefact::local_position_raw(&known.local, n)),
         "vehicle.vibration" => return Some(crate::vehiclefact::vibration_group(&known.vibration)),
@@ -516,7 +519,7 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), wind: Default::default(), setpoint: Default::default(), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), local_setpoint: Default::default(), wind: Default::default(), setpoint: Default::default(), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
