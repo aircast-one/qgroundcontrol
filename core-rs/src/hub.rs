@@ -159,6 +159,8 @@ pub struct Vehicle {
     pub terrain_blocks: (u16, u16),
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
+    pub cameras: crate::cameraproto::Cameras,
+    camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
     pub roi_enabled: bool,
     pub comm_lost_enabled: bool,
@@ -270,6 +272,8 @@ impl Vehicle {
             terrain_blocks: (0, 0),
             escs: Escs::default(),
             rc_override: BTreeMap::new(),
+            cameras: crate::cameraproto::Cameras::new(),
+            camera_sent: BTreeMap::new(),
             mission_current: -1,
             roi_enabled: false,
             comm_lost_enabled: true,
@@ -1191,6 +1195,8 @@ impl Vehicle {
         let ticked = self.commands.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
         bytes.extend(self.tick_rc_override(now_ms));
+        let camera_due = self.cameras.tick(now_ms);
+        bytes.extend(self.camera_commands(camera_due));
         if self.chunk_due.is_some_and(|due| now_ms >= due) {
             self.chunk_due = None;
             let expired = self.status_text.expire_pending();
@@ -1296,6 +1302,85 @@ impl Vehicle {
         }
         self.link_states.iter_mut().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).for_each(|state| state.2 = true);
         self.update_primary_link();
+    }
+
+    fn camera_commands(&mut self, commands: Vec<crate::cameraproto::Command>) -> Vec<Vec<u8>> {
+        commands
+            .into_iter()
+            .filter_map(|c| {
+                self.camera_sent.insert((c.compid, c.command), c.params[0]);
+                self.encode(&Outbound::CommandLong { target: (self.id, c.compid), command: c.command, params: c.params })
+            })
+            .collect()
+    }
+
+    fn note_camera(&mut self, compid: u8, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
+        use crate::cameraproto::{CaptureStatusReport, Info, SettingsReport, StorageReport, StreamReport, StreamStatusReport};
+        let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).trim_end_matches('\0').to_string();
+        let commands = match message {
+            MavMessage::HEARTBEAT(_) => self.cameras.on_heartbeat(compid, now_ms),
+            MavMessage::CAMERA_INFORMATION(d) => {
+                let info = Info {
+                    vendor: text(&d.vendor_name),
+                    model: text(&d.model_name),
+                    firmware_version: d.firmware_version,
+                    focal_length_mm: f64::from(d.focal_length),
+                    sensor_size_h_mm: f64::from(d.sensor_size_h),
+                    sensor_size_v_mm: f64::from(d.sensor_size_v),
+                    resolution_h: d.resolution_h,
+                    resolution_v: d.resolution_v,
+                    flags: d.flags.bits(),
+                    definition_version: d.cam_definition_version,
+                    definition_uri: text(&d.cam_definition_uri[..]),
+                    gimbal_device_id: d.gimbal_device_id,
+                };
+                self.cameras.on_camera_information(compid, info, now_ms);
+                Vec::new()
+            }
+            MavMessage::CAMERA_SETTINGS(d) => {
+                self.cameras.on_camera_settings(compid, SettingsReport { mode_id: d.mode_id as u8, zoom_percent: f64::from(d.zoomLevel), focus_percent: f64::from(d.focusLevel) }, now_ms);
+                Vec::new()
+            }
+            MavMessage::STORAGE_INFORMATION(d) => {
+                let report = StorageReport { storage_id: d.storage_id, storage_count: d.storage_count, status: d.status as u8, total_capacity_mib: f64::from(d.total_capacity), available_capacity_mib: f64::from(d.available_capacity) };
+                self.cameras.on_storage_information(compid, report, now_ms);
+                Vec::new()
+            }
+            MavMessage::CAMERA_CAPTURE_STATUS(d) => {
+                let report = CaptureStatusReport { image_status: d.image_status, video_status: d.video_status, image_interval_s: f64::from(d.image_interval), recording_time_ms: d.recording_time_ms, available_capacity_mib: f64::from(d.available_capacity) };
+                self.cameras.on_capture_status(compid, report, now_ms);
+                Vec::new()
+            }
+            MavMessage::BATTERY_STATUS(d) if crate::cameraproto::is_camera_component(compid) => {
+                self.cameras.on_battery_status(compid, d.battery_remaining, now_ms);
+                Vec::new()
+            }
+            MavMessage::VIDEO_STREAM_INFORMATION(d) => {
+                let report = StreamReport {
+                    stream_id: d.stream_id,
+                    count: d.count,
+                    kind: d.mavtype as u8,
+                    flags: d.flags.bits(),
+                    framerate_hz: f64::from(d.framerate),
+                    resolution_h: d.resolution_h,
+                    resolution_v: d.resolution_v,
+                    bitrate_bps: d.bitrate,
+                    rotation_deg: f64::from(d.rotation),
+                    hfov_deg: f64::from(d.hfov),
+                    name: text(&d.name[..]),
+                    uri: text(&d.uri[..]),
+                };
+                self.cameras.on_video_stream_information(compid, report, now_ms);
+                Vec::new()
+            }
+            MavMessage::VIDEO_STREAM_STATUS(d) => {
+                let report = StreamStatusReport { stream_id: d.stream_id, flags: d.flags.bits(), framerate_hz: f64::from(d.framerate), resolution_h: d.resolution_h, resolution_v: d.resolution_v, bitrate_bps: d.bitrate, rotation_deg: f64::from(d.rotation), hfov_deg: f64::from(d.hfov) };
+                self.cameras.on_video_stream_status(compid, report, now_ms);
+                Vec::new()
+            }
+            _ => Vec::new(),
+        };
+        self.camera_commands(commands)
     }
 
     fn note_mission_index(&mut self, message: &MavMessage) {
@@ -1435,10 +1520,19 @@ impl Vehicle {
                         _ => {}
                     }
                 }
+                let camera = match crate::cameraproto::is_camera_component(header.component_id) {
+                    true => {
+                        let sent = a.command as u32 as u16;
+                        let param1 = self.camera_sent.get(&(header.component_id, sent)).copied().unwrap_or(0.0);
+                        let follow = self.cameras.on_command_result(header.component_id, sent, param1, a.result as u8, now_ms);
+                        self.camera_commands(follow)
+                    }
+                    false => Vec::new(),
+                };
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
                 let announced = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
-                return announced.into_iter().chain(self.handle(outs, now_ms)).collect();
+                return camera.into_iter().chain(announced).chain(self.handle(outs, now_ms)).collect();
             }
             MavMessage::COMMAND_LONG(c) if c.command as u32 as u16 == sensorcal::CMD_ACCELCAL_VEHICLE_POS => {
                 let actions = self.calibrate.on_accel_position(c.param1 as u32, now_ms);
@@ -1601,7 +1695,7 @@ impl Vehicle {
         self.local.apply(message);
         self.local_setpoint.apply_target(message);
         self.estimator.apply(message);
-        Vec::new()
+        self.note_camera(header.component_id, message, now_ms)
     }
 
     pub fn snapshot(&self) -> Value {
@@ -1963,6 +2057,12 @@ pub fn core_vehicle_view(_backend: &dyn crate::router::Backend, args: &[String])
     let mut hub = lock();
     hub.expire(now_us());
     hub.snapshot_of(args.first().and_then(|a| a.trim().parse().ok()))
+}
+
+pub fn core_cameras_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
+    let hub = lock();
+    let vehicle = match args.first().map(|a| a.trim().parse().ok()) { Some(id) => id.and_then(|id: u8| hub.vehicles.get(&id)), None => hub.active() };
+    vehicle.map_or_else(|| json!({ "kind": "object", "class": "Cameras", "available": false }), |v| v.cameras.snapshot(now_ms()))
 }
 
 pub fn core_guided_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
