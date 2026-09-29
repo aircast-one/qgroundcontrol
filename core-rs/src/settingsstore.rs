@@ -156,7 +156,7 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
     let value = cook(raw);
     let value_string = spelled(&value, decimals, whole);
     let units = unit.map_or_else(|| raw_units.clone(), |u| u.name.to_string());
-    let is_number = raw.is_number();
+    let is_number = raw.is_number() || raw.is_null();
     let raw_default = default_of(meta);
     let default = raw_default.as_ref().map(cook);
     json!({
