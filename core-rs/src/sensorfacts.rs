@@ -7,6 +7,7 @@ pub struct WindFacts {
     pub direction: f64,
     pub speed: f64,
     pub vertical_speed: f64,
+    pub seen: [bool; 3],
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -83,23 +84,28 @@ impl WindFacts {
         match message {
             MavMessage::WIND_COV(d) => {
                 self.direction = compass(d.wind_y.atan2(d.wind_x).to_degrees());
-                self.speed = d.wind_x.hypot(d.wind_y) as f64;
+                self.speed = ((d.wind_x as f64).powi(2) + (d.wind_y as f64).powi(2)).sqrt() as f32 as f64;
                 self.vertical_speed = d.wind_z as f64;
+                self.seen = [true; 3];
                 true
             }
             MavMessage::HIGH_LATENCY(d) => {
                 self.speed = d.airspeed as f64 / 5.0;
+                self.seen[1] = true;
                 true
             }
             MavMessage::HIGH_LATENCY2(d) => {
                 self.direction = d.wind_heading as f64 * 2.0;
                 self.speed = d.windspeed as f64 / 5.0;
+                self.seen[0] = true;
+                self.seen[1] = true;
                 true
             }
             MavMessage::WIND(d) => {
                 self.direction = compass(d.direction);
                 self.speed = d.speed as f64;
                 self.vertical_speed = d.speed_z as f64;
+                self.seen = [true; 3];
                 true
             }
             _ => false,
@@ -198,12 +204,21 @@ mod tests {
     use mavlink::dialects::ardupilotmega::{DISTANCE_SENSOR_DATA, ESTIMATOR_STATUS_DATA, HIGH_LATENCY2_DATA, SCALED_PRESSURE2_DATA, WIND_COV_DATA, WIND_DATA};
 
     #[test]
+    fn high_latency_wind_marks_only_the_facts_it_carries() {
+        let mut wind = WindFacts::default();
+        wind.apply(&MavMessage::HIGH_LATENCY(Default::default()));
+        assert_eq!(wind.seen, [false, true, false]);
+        wind.apply(&MavMessage::HIGH_LATENCY2(Default::default()));
+        assert_eq!(wind.seen, [true, true, false]);
+    }
+
+    #[test]
     fn wind_direction_is_a_compass_bearing_from_the_vector() {
         let mut wind = WindFacts::default();
         let mut cov = WIND_COV_DATA::default();
         (cov.wind_x, cov.wind_y, cov.wind_z) = (0.0, -3.0, 0.5);
         wind.apply(&MavMessage::WIND_COV(cov));
-        assert_eq!((wind.direction, wind.speed, wind.vertical_speed), (270.0, 3.0, 0.5));
+        assert_eq!((wind.direction, wind.speed, wind.vertical_speed, wind.seen), (270.0, 3.0, 0.5, [true; 3]));
         let mut plain = WIND_DATA::default();
         (plain.direction, plain.speed) = (-10.0, 2.0);
         wind.apply(&MavMessage::WIND(plain));

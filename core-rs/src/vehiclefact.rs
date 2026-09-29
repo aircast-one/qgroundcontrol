@@ -390,6 +390,23 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const WIND: GroupSpec = GroupSpec {
+    class: "VehicleWindFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/WindFact.json"),
+    properties: &[("direction", "direction"), ("speed", "speed"), ("verticalSpeed", "verticalSpeed")],
+    added: &["direction", "speed", "verticalSpeed"],
+};
+
+pub fn wind_raw(w: &crate::sensorfacts::WindFacts, name: &str) -> Value {
+    let (value, seen) = match name {
+        "direction" => (w.direction, w.seen[0]),
+        "speed" => (w.speed, w.seen[1]),
+        "verticalSpeed" => (w.vertical_speed, w.seen[2]),
+        _ => return Value::Null,
+    };
+    if seen { json!(value) } else { Value::Null }
+}
+
 pub const LOCAL_POSITION: GroupSpec = GroupSpec {
     class: "VehicleLocalPositionFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/LocalPositionFact.json"),
