@@ -250,6 +250,9 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "initialConnectComplete": v.connected,
         "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
         "heading": crate::vehiclefact::vehicle_fact("heading", &json!(v.facts.heading)),
+        "orbitActive": v.orbit_active(crate::hub::now_ms()),
+        "haveMRSpeedLimits": v.speed_limits().0,
+        "haveFWSpeedLimits": v.speed_limits().1,
         "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
         "longitude": v.facts.coordinate.map(|(_, longitude, _)| f64::from(longitude as f32)),
     });

@@ -35,6 +35,7 @@ pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MAV_STATE_ACTIVE: u8 = 4;
+const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const SENSOR_GPS: u32 = 0x20;
 const SENSOR_MOTOR_OUTPUTS: u32 = 0x8000;
 const SENSOR_PREARM_CHECK: u32 = 0x1000_0000;
@@ -153,6 +154,7 @@ pub struct Vehicle {
     pub radio: crate::vehiclefact::RadioStatusFacts,
     pub obstacle: crate::vehiclefact::ObstacleFacts,
     pub rc_rssi: crate::vehiclefact::RcRssi,
+    pub orbit_heard_ms: Option<u64>,
     pub prearm: Option<(String, u64)>,
     prearm_spoken: BTreeMap<String, u64>,
     pub distance: DistanceSensorFacts,
@@ -242,6 +244,7 @@ impl Vehicle {
             radio: crate::vehiclefact::RadioStatusFacts::default(),
             obstacle: crate::vehiclefact::ObstacleFacts::default(),
             rc_rssi: crate::vehiclefact::RcRssi::default(),
+            orbit_heard_ms: None,
             prearm: None,
             prearm_spoken: BTreeMap::new(),
             distance: DistanceSensorFacts::default(),
@@ -1150,6 +1153,20 @@ impl Vehicle {
         }
     }
 
+    pub fn orbit_active(&self, now_ms: u64) -> bool {
+        self.orbit_heard_ms.is_some_and(|heard| now_ms.saturating_sub(heard) < ORBIT_TELEMETRY_TIMEOUT_MS)
+    }
+
+    pub fn speed_limits(&self) -> (bool, bool) {
+        let has = |name: &str| self.parameter(self.component, name).is_some();
+        match (self.parameters_ready(), self.autopilot) {
+            (false, _) => (false, false),
+            (true, crate::modes::AUTOPILOT_ARDUPILOT) => (has("WP_SPD") || has("WPNAV_SPEED"), has("AIRSPEED_MIN") && has("AIRSPEED_MAX")),
+            (true, crate::modes::AUTOPILOT_PX4) => (has("MPC_XY_VEL_MAX"), has("FW_AIRSPD_MIN") && has("FW_AIRSPD_MAX")),
+            _ => (false, false),
+        }
+    }
+
     pub fn prearm_error(&self, now_ms: u64) -> String {
         self.prearm.as_ref().filter(|(_, at)| now_ms.saturating_sub(*at) < PREARM_SHOWN_MS).map_or_else(String::new, |(text, _)| text.clone())
     }
@@ -1351,6 +1368,9 @@ impl Vehicle {
         self.vibration.apply(message);
         self.radio.apply((header.system_id, header.component_id), message);
         self.obstacle.apply(message, now_ms);
+        if let MavMessage::ORBIT_EXECUTION_STATUS(_) = message {
+            self.orbit_heard_ms = Some(now_ms);
+        }
         self.rc_rssi.apply(message, self.ardupilot_components.contains(&header.component_id));
         self.distance.apply(message);
         self.local.apply(message);
@@ -1888,6 +1908,17 @@ mod tests {
         assert!(hub.active().unwrap().flying);
         send(&mut hub, beat(1, false, MavState::MAV_STATE_ACTIVE));
         assert!(!hub.active().unwrap().flying, "a disarmed ArduPilot is on the ground whatever its status");
+    }
+
+    #[test]
+    fn an_orbit_is_active_until_its_status_stops_for_three_seconds() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        assert!(!hub.active().unwrap().orbit_active(0));
+        hub.on_frame(origin(0), &header, &MavMessage::ORBIT_EXECUTION_STATUS(Default::default()), 0, 1_000);
+        let vehicle = hub.active().unwrap();
+        assert_eq!((vehicle.orbit_active(3_999), vehicle.orbit_active(4_000)), (true, false));
     }
 
     #[test]
