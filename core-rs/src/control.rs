@@ -17,10 +17,23 @@ pub fn control_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 pub fn raw_text(value: &Value) -> String {
     match value.as_f64() {
-        Some(n) if n == n.round() && n.abs() < 1e15 => format!("{}", n as i64),
-        Some(n) => format!("{n}"),
+        Some(_) if value.is_i64() || value.is_u64() => value.to_string(),
+        Some(n) if n == n.round() && n.abs() < 1e15 && !value.is_f64() => format!("{}", n as i64),
+        Some(n) => qt_shortest(n),
         None => value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string()),
     }
+}
+
+pub fn qt_shortest(value: f64) -> String {
+    if value == 0.0 || !value.is_finite() {
+        return if value.is_nan() { "nan".to_string() } else if value.is_infinite() { if value > 0.0 { "inf" } else { "-inf" }.to_string() } else { "0".to_string() };
+    }
+    let fixed = format!("{value}");
+    let scientific = format!("{value:e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let scientific = format!("{mantissa}e{}{:02}", if exponent < 0 { '-' } else { '+' }, exponent.abs());
+    if scientific.len() < fixed.len() { scientific } else { fixed }
 }
 
 pub fn decode(fact: &Value, path: &str) -> Value {

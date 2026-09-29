@@ -21,6 +21,7 @@ fn number(value_type: ValueType, raw: &str) -> Option<Value> {
 
 fn bare(value_type: ValueType) -> MetaData {
     MetaData {
+        bits: Vec::new(),
         name: String::new(),
         value_type,
         short_description: String::new(),
@@ -65,6 +66,7 @@ fn parameter(node: Node, group: &str) -> Result<MetaData, String> {
     let boolean: Vec<EnumEntry> = child("boolean").map(|_| vec![EnumEntry { label: "Enabled".into(), value: Value::from(1) }, EnumEntry { label: "Disabled".into(), value: Value::from(0) }]).unwrap_or_default();
     let bitmask = !bit_entries.is_empty();
     Ok(MetaData {
+        bits: Vec::new(),
         name: name.to_string(),
         value_type,
         short_description: child("short_desc").map(text).unwrap_or_default(),

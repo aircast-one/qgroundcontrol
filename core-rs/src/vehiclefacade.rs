@@ -316,6 +316,37 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
     Some(json!({ "kind": "value", "value": value }))
 }
 
+fn answer_parameter(path: &str) -> Option<Value> {
+    (std::env::var("QGC_CORE_PARAMETERS").as_deref() == Ok("1")).then_some(())?;
+    let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
+    let (component, name) = call.split_once(',')?;
+    let hub = crate::hub::lock();
+    let vehicle = hub.active()?;
+    (vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then_some(())?;
+    let component = match component.trim().parse::<i64>().ok()? {
+        -1 => vehicle.component,
+        id => u8::try_from(id).ok()?,
+    };
+    let value = vehicle.parameter(component, name.trim())?;
+    let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
+    let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
+    let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
+    let raw = match value {
+        crate::params::ParamValue::F32(v) => json!(f64::from(v)),
+        other => json!(other.as_f64() as i64),
+    };
+    let meta = crate::apmmeta::json_metadata(&definitions, name.trim(), value_type);
+    let mut described = crate::vehiclefact::fact(&meta, &raw, None);
+    if described["typeIsInteger"] == true {
+        [("minString", &meta.min), ("maxString", &meta.max)].into_iter().filter_map(|(key, bound)| Some((key, bound.as_ref()?.as_f64()?))).for_each(|(key, bound)| described[key] = json!(crate::control::qt_shortest(bound)));
+    }
+    match rest.strip_prefix('.') {
+        None if rest.is_empty() => Some(described),
+        Some(field) => Some(json!({ "kind": "value", "value": described.get(field)?.clone() })),
+        None => None,
+    }
+}
+
 fn answer_scalar(path: &str, known: &Known) -> Option<Value> {
     let (parent, leaf) = path.rsplit_once('.')?;
     let (answered, _) = answer_fields(parent, leaf, known);
@@ -339,7 +370,7 @@ impl<B: Backend> Backend for Facade<B> {
         if path == "core.qtReads" {
             return tally().to_string();
         }
-        switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known).or_else(|| answer_scalar(path, &known))).map_or_else(
+        switched_on().then(|| answer_parameter(path)).flatten().or_else(|| switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known).or_else(|| answer_scalar(path, &known)))).map_or_else(
             || {
                 fell_through("get", path);
                 self.0.get(path)

@@ -23,10 +23,12 @@ function(qgc_rust_require_target triple)
 endfunction()
 
 set(QGC_RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/core-rs)
+get_property(QGC_APM_PARAMS_DIR GLOBAL PROPERTY QGC_APM_PARAMS_DIR)
+set(QGC_CARGO_RUN ${CMAKE_COMMAND} -E env QGC_APM_PARAMS_DIR=${QGC_APM_PARAMS_DIR} ${QGC_CARGO})
 set(QGC_RUST_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml)
 
 file(GLOB_RECURSE QGC_RUST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.rs)
-list(APPEND QGC_RUST_SOURCES ${QGC_RUST_MANIFEST})
+list(APPEND QGC_RUST_SOURCES ${QGC_RUST_MANIFEST} ${CMAKE_CURRENT_SOURCE_DIR}/build.rs)
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock)
     list(APPEND QGC_RUST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock)
 endif()
@@ -66,7 +68,7 @@ if(ANDROID)
     add_custom_command(
         OUTPUT ${QGC_RUST_LIB}
         COMMAND ${CMAKE_COMMAND} -E env ANDROID_NDK_HOME=${ANDROID_NDK_ROOT}
-            ${QGC_CARGO} ndk --target ${ANDROID_ABI} --platform ${ANDROID_PLATFORM_LEVEL}
+            ${QGC_CARGO_RUN} ndk --target ${ANDROID_ABI} --platform ${ANDROID_PLATFORM_LEVEL}
             build ${QGC_RUST_PROFILE_FLAG}
             --manifest-path ${QGC_RUST_MANIFEST}
             --target-dir ${QGC_RUST_TARGET_DIR}
@@ -91,7 +93,7 @@ elseif(IOS)
     add_custom_command(
         OUTPUT ${QGC_RUST_LIB}
         COMMAND ${CMAKE_COMMAND} -E env IPHONEOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
-            ${QGC_CARGO} build ${QGC_RUST_PROFILE_FLAG} --target ${QGC_RUST_TRIPLE}
+            ${QGC_CARGO_RUN} build ${QGC_RUST_PROFILE_FLAG} --target ${QGC_RUST_TRIPLE}
             --manifest-path ${QGC_RUST_MANIFEST}
             --target-dir ${QGC_RUST_TARGET_DIR}
         DEPENDS ${QGC_RUST_SOURCES}
@@ -119,7 +121,7 @@ else()
         set(QGC_RUST_LIB ${QGC_RUST_TARGET_DIR}/universal/${QGC_RUST_PROFILE}/libqgc_core.a)
         add_custom_command(
             OUTPUT ${QGC_RUST_LIB}
-            COMMAND ${QGC_CARGO} build ${QGC_RUST_PROFILE_FLAG} ${QGC_RUST_TARGET_FLAGS}
+            COMMAND ${QGC_CARGO_RUN} build ${QGC_RUST_PROFILE_FLAG} ${QGC_RUST_TARGET_FLAGS}
                 --manifest-path ${QGC_RUST_MANIFEST}
                 --target-dir ${QGC_RUST_TARGET_DIR}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${QGC_RUST_TARGET_DIR}/universal/${QGC_RUST_PROFILE}
@@ -149,7 +151,7 @@ else()
                 PKG_CONFIG_ALLOW_CROSS=1
                 "PKG_CONFIG_SYSROOT_DIR=$ENV{PKG_CONFIG_SYSROOT_DIR}"
                 "PKG_CONFIG_LIBDIR=$ENV{PKG_CONFIG_LIBDIR}"
-                ${QGC_CARGO} build ${QGC_RUST_PROFILE_FLAG} --target ${QGC_RUST_TRIPLE}
+                ${QGC_CARGO_RUN} build ${QGC_RUST_PROFILE_FLAG} --target ${QGC_RUST_TRIPLE}
                 --manifest-path ${QGC_RUST_MANIFEST}
                 --target-dir ${QGC_RUST_TARGET_DIR}
             DEPENDS ${QGC_RUST_SOURCES}
@@ -165,7 +167,7 @@ else()
         endif()
         add_custom_command(
             OUTPUT ${QGC_RUST_LIB}
-            COMMAND ${QGC_CARGO} build ${QGC_RUST_PROFILE_FLAG}
+            COMMAND ${QGC_CARGO_RUN} build ${QGC_RUST_PROFILE_FLAG}
                 --manifest-path ${QGC_RUST_MANIFEST}
                 --target-dir ${QGC_RUST_TARGET_DIR}
             DEPENDS ${QGC_RUST_SOURCES}

@@ -33,6 +33,7 @@ fn indexed_match<'a>(template: &'a str, name: &str) -> Option<String> {
 
 fn bare(name: &str, value_type: ValueType, component: u8) -> MetaData {
     MetaData {
+        bits: Vec::new(),
         name: name.to_string(),
         value_type,
         short_description: String::new(),
@@ -63,6 +64,7 @@ impl ComponentParameters {
         let indexed = self.indexed.iter().find_map(|template| {
             let index = indexed_match(&template.name, name)?;
             Some(MetaData {
+                bits: Vec::new(),
                 name: name.to_string(),
                 short_description: template.short_description.replace(INDEXED_NAME_TAG, &index),
                 long_description: template.short_description.replace(INDEXED_NAME_TAG, &index),

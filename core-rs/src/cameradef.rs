@@ -448,6 +448,7 @@ fn parameter(node: Node) -> Result<Parsed, Refusal> {
     Ok(Parsed {
         parameter: Parameter {
             meta: MetaData {
+                bits: Vec::new(),
                 name: name.clone(),
                 value_type,
                 short_description: description.clone(),

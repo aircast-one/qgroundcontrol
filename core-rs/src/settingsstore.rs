@@ -98,13 +98,20 @@ fn type_limits(value_type: &ValueType) -> (f64, f64) {
     }
 }
 
+fn unsigned_zero(text: String) -> String {
+    match text.strip_prefix('-') {
+        Some(rest) if rest.chars().all(|c| c == '0' || c == '.') => rest.to_string(),
+        _ => text,
+    }
+}
+
 fn spelled(value: &Value, decimals: i64, whole: bool) -> String {
     match value {
         Value::Bool(b) => b.to_string(),
         Value::String(s) => s.clone(),
         other => other.as_f64().map_or_else(String::new, |n| match whole {
             true => format!("{}", n as i64),
-            false => half_away(n, usize::try_from(decimals).unwrap_or(0)),
+            false => unsigned_zero(half_away(n, usize::try_from(decimals).unwrap_or(0))),
         }),
     }
 }
@@ -146,9 +153,13 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         (false, false) => if v > 0.0 { "inf" } else { "-inf" }.to_string(),
         (false, true) => spelled(&json!(v), decimals, whole || meta.value_type == ValueType::String),
     };
-    let labels: Vec<String> = meta.enums.iter().map(|e| e.label.clone()).collect();
-    let values: Vec<Value> = meta.enums.iter().map(|e| e.value.clone()).collect();
-    let enum_index = values.iter().position(|v| v == raw || v.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b)).map_or(-1, |i| i as i64);
+    let real = matches!(meta.value_type, ValueType::Float | ValueType::Double);
+    let matches = |v: &Value| v == raw || v.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b || (real && (a - b).abs() < 1e-6));
+    let unknown_label = format!("Unknown: {}", crate::control::raw_text(raw));
+    let unknown = !meta.enums.is_empty() && !meta.enums.iter().any(|e| matches(&e.value));
+    let labels: Vec<String> = meta.enums.iter().map(|e| e.label.clone()).chain(unknown.then(|| unknown_label.clone())).collect();
+    let values: Vec<Value> = meta.enums.iter().map(|e| e.value.clone()).chain(unknown.then(|| raw.clone())).collect();
+    let enum_index = values.iter().position(matches).map_or(-1, |i| i as i64);
     let cook = |given: &Value| match (unit, given.as_f64()) {
         (Some(_), Some(v)) => number_json(cooked(v), whole),
         _ => given.clone(),
@@ -190,9 +201,9 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         "readOnly": meta.read_only,
         "qgcRebootRequired": meta.qgc_reboot_required,
         "vehicleRebootRequired": meta.vehicle_reboot_required,
-        "unknownEnumLabel": format!("Unknown: {}", crate::control::raw_text(raw)),
-        "bitmaskStrings": [],
-        "bitmaskValues": [],
+        "unknownEnumLabel": unknown_label,
+        "bitmaskStrings": meta.bits.iter().map(|e| e.label.clone()).collect::<Vec<_>>(),
+        "bitmaskValues": meta.bits.iter().map(|e| e.value.clone()).collect::<Vec<_>>(),
         "userVisible": true,
         "visible": true,
     })
@@ -264,7 +275,7 @@ fn raw(group: &str, fact: &str, meta: &MetaData) -> Value {
 }
 
 fn unit_for(meta: &MetaData) -> Option<crate::units::Conversion> {
-    crate::units::cooking(meta.units.as_deref().unwrap_or(""))
+    crate::units::for_fact(meta, crate::units::cooking)
 }
 
 struct Addressed {
@@ -419,7 +430,7 @@ mod tests {
                 if served_by_host(path) {
                     return None;
                 }
-                let mine = by_value(&fact_json(&meta, &expected["rawValue"], crate::units::metric(meta.units.as_deref().unwrap_or(""))));
+                let mine = by_value(&fact_json(&meta, &expected["rawValue"], crate::units::for_fact(&meta, crate::units::metric)));
                 let expected = by_value(expected);
                 let host = runtime_fields(path).unwrap_or(&[]);
                 let keys: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| !host.contains(&k.as_str()) && mine.get(k.as_str()) != Some(v)).map(|(k, _)| k.clone()).collect();
@@ -448,7 +459,7 @@ mod tests {
             let path = format!("settings.{short}");
             let (group, fact) = locate(&path).unwrap();
             let meta = metadata(group, fact).unwrap();
-            let mine = by_value(&fact_json(&meta, &qt[&path]["rawValue"], crate::units::metric(meta.units.as_deref().unwrap_or(""))));
+            let mine = by_value(&fact_json(&meta, &qt[&path]["rawValue"], crate::units::for_fact(&meta, crate::units::metric)));
             let expected = by_value(&qt[&path]);
             assert!(keys.iter().any(|k| mine.get(*k) != expected.get(*k)), "{path} is listed as runtime but the metadata already answers it - take it off the list");
         });

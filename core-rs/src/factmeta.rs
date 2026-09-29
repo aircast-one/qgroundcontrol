@@ -67,6 +67,7 @@ pub struct EnumEntry {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetaData {
+    pub bits: Vec<EnumEntry>,
     pub name: String,
     pub value_type: ValueType,
     pub short_description: String,
@@ -168,6 +169,7 @@ pub fn from_object_for(json: &Map<String, Value>, defines: &BTreeMap<String, Str
     let flag = |key: &str, fallback: bool| json.get(key).and_then(Value::as_bool).unwrap_or(fallback);
     let number = |key: &str| json.get(key).map(|v| typed(value_type, v));
     Ok(MetaData {
+        bits: Vec::new(),
         default: json.get("mobileDefault").filter(|_| mobile).or(json.get("default")).map(|v| match (v, value_type) {
             (Value::Null, ValueType::Float | ValueType::Double) => Value::Null,
             _ => typed(value_type, v),

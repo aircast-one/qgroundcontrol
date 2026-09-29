@@ -16,7 +16,7 @@ fn invalid_text(value_type: &ValueType, decimals: i64) -> String {
 }
 
 pub fn fact(meta: &MetaData, raw: &Value, property: Option<&str>) -> Value {
-    let mut described = crate::settingsstore::fact_json(meta, raw, crate::units::cooking(meta.units.as_deref().unwrap_or("")));
+    let mut described = crate::settingsstore::fact_json(meta, raw, crate::units::for_fact(meta, crate::units::cooking));
     described["userVisible"] = Value::Null;
     described["visible"] = Value::Null;
     if meta.default.is_none() {

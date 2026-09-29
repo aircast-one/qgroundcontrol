@@ -127,6 +127,30 @@ pub fn cooking(raw_units: &str) -> Option<Conversion> {
     cooking_with(raw_units, crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed))
 }
 
+const BUILT_IN: [(&str, Conversion); 6] = [
+    ("centi-degrees", Conversion { name: "deg", shown: |v| v / 100.0, base: |v| v * 100.0 }),
+    ("radians", Conversion { name: "deg", shown: f64::to_degrees, base: f64::to_radians }),
+    ("rad", Conversion { name: "deg", shown: f64::to_degrees, base: f64::to_radians }),
+    ("gimbal-degrees", Conversion { name: "deg", shown: |v| v * -1.0, base: |v| v * -1.0 }),
+    ("norm", Conversion { name: "%", shown: |v| v * 100.0, base: |v| v / 100.0 }),
+    ("centi-celsius", Conversion { name: "C", shown: |v| v / 100.0, base: |v| v * 100.0 }),
+];
+
+pub fn for_fact(meta: &crate::factmeta::MetaData, preference: impl Fn(&str) -> Option<Conversion>) -> Option<Conversion> {
+    let raw_units = meta.units.as_deref().unwrap_or("");
+    let lowered = raw_units.to_lowercase();
+    if !meta.enums.is_empty() || !meta.bits.is_empty() {
+        return None;
+    }
+    let real = matches!(meta.value_type, crate::factmeta::ValueType::Float | crate::factmeta::ValueType::Double);
+    BUILT_IN
+        .iter()
+        .find(|(units, _)| *units == lowered)
+        .map(|(_, conversion)| *conversion)
+        .or_else(|| real.then(|| preference(raw_units)).flatten())
+        .or_else(|| (lowered == "vertical m").then_some(Conversion { name: "m", shown: |v| v, base: |v| v }))
+}
+
 pub fn metric(raw_units: &str) -> Option<Conversion> {
     cooking_with(raw_units, |_| None, METRIC)
 }

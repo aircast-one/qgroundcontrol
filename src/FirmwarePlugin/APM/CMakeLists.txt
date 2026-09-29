@@ -45,6 +45,7 @@ CPMAddPackage(
     GIT_SHALLOW       TRUE
     DOWNLOAD_ONLY     TRUE
 )
+set_property(GLOBAL PROPERTY QGC_APM_PARAMS_DIR "${ArduPilotParams_SOURCE_DIR}")
 qgc_track_git_head(
     REPO_PATH "${ArduPilotParams_SOURCE_DIR}"
     GIT_REF   main
