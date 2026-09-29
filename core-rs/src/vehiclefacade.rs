@@ -4,7 +4,7 @@ use crate::router::Backend;
 
 pub struct Facade<B>(pub B);
 
-const VEHICLE_FACTS: [&str; 1] = ["rcRSSI"];
+const VEHICLE_FACTS: [&str; 2] = ["rcRSSI", "heading"];
 
 static FELL_THROUGH: std::sync::Mutex<std::collections::BTreeMap<String, u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
@@ -171,7 +171,7 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
     };
     let named = |custom: Option<u32>, fallback: &str| custom.and_then(|c| listed.iter().find(|m| m.1 == c)).map_or_else(|| fallback.to_string(), |m| m.0.clone());
     let names = |advanced_only: bool| listed.iter().filter(|m| m.2 && (!advanced_only || m.3)).map(|m| m.0.clone()).collect::<Vec<_>>();
-    let apm = |rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str)| {
+    let apm = |rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str)| {
         json!({
             "flightModes": names(false),
             "advancedFlightModes": names(true),
@@ -181,13 +181,14 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
             "missionFlightMode": named(mission, "Auto"),
             "landFlightMode": named(land.0, land.1),
             "pauseFlightMode": named(pause.0, pause.1),
+            "followFlightMode": named(follow.0, follow.1),
         })
     };
     let fields = match (autopilot, crate::modes::vehicle_class(vehicle_type)) {
-        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(None, None, Some(3), (None, ""), (None, "")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake"), (Some(23), "Follow")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter"), (None, "")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(None, None, Some(3), (None, ""), (None, ""), (None, "")),
         (AUTOPILOT_PX4, _) => json!({
             "advancedFlightModes": names(true),
             "rtlFlightMode": named(Some(px4(4, 5)), ""),
@@ -195,6 +196,7 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
             "missionFlightMode": named(Some(px4(4, 4)), ""),
             "landFlightMode": named(Some(px4(4, 6)), ""),
             "pauseFlightMode": named(Some(px4(4, 3)), ""),
+            "followFlightMode": named(Some(px4(4, 8)), ""),
         }),
         _ => json!({}),
     };
@@ -247,6 +249,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "sub": class == Sub,
         "initialConnectComplete": v.connected,
         "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
+        "heading": crate::vehiclefact::vehicle_fact("heading", &json!(v.facts.heading)),
         "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
         "longitude": v.facts.coordinate.map(|(_, longitude, _)| f64::from(longitude as f32)),
     });
@@ -313,6 +316,7 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
             return Some(object);
         }
         "vehicle.rcRSSI" => return known.fields.get("rcRSSI").cloned(),
+        "vehicle.heading" => return known.fields.get("heading").cloned(),
         field if field.starts_with("vehicle.") && !field["vehicle.".len()..].contains('.') && known.fields.get(&field["vehicle.".len()..]).is_some() => known.fields[&field["vehicle.".len()..]].clone(),
         capability if capability.starts_with("vehicle.supports.") => known.supports.get(capability.trim_start_matches("vehicle.supports."))?.clone(),
         sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
@@ -524,6 +528,7 @@ mod tests {
     fn mode_names_come_from_the_firmware_class_and_what_the_vehicle_announced() {
         let copter = mode_fields(3, 2, &[]);
         assert_eq!((copter["pauseFlightMode"].as_str(), copter["landFlightMode"].as_str(), copter["missionFlightMode"].as_str()), (Some("Brake"), Some("Land"), Some("Auto")));
+        assert_eq!(copter["followFlightMode"], "Follow");
         assert!(copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Brake")));
         assert!(!copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Loiter")));
         let plane = mode_fields(3, 1, &[]);
