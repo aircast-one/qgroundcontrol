@@ -74,7 +74,7 @@ impl Insertable {
 pub fn insertable(backend: &dyn Backend) -> Insertable {
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed",
+        if crate::coreplan::enabled() { "homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed" } else { "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed" },
     ));
     let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
@@ -84,9 +84,9 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         takeoff: answered("isInsertTakeoffValid", true),
         land: answered("isInsertLandValid", false),
         fly_through: answered("flyThroughCommandsAllowed", true),
-        patterns: mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
+        patterns: if crate::coreplan::enabled() { Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect()) } else { mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
             names.iter().filter_map(|name| name.as_str().or_else(|| name.get("canonicalName").and_then(Value::as_str))).map(str::to_string).collect()
-        }),
+        }) },
     }
 }
 

@@ -603,6 +603,9 @@ fn insert_direct(backend: &dyn Backend, kind_id: &str, path: &str, args: &str) -
 }
 
 fn offered_patterns(backend: &dyn Backend) -> Option<Vec<String>> {
+    if crate::coreplan::enabled() {
+        return Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect());
+    }
     let controller = object(&backend.get_fields("plan.missionController", "complexMissionItems"));
     controller.get("complexMissionItems")?.as_array().map(|items| items.iter().filter_map(|item| item.as_str().or_else(|| item.get("canonicalName")?.as_str())).map(str::to_string).collect())
 }

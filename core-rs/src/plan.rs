@@ -33,6 +33,12 @@ pub const DEPS: &[&str] = &[
     "settings.appSettings.offlineEditingHoverSpeed",
 ];
 
+pub fn offered_patterns(backend: &dyn Backend) -> Vec<&'static str> {
+    let vehicle = offline_vehicle(backend);
+    let hovers = flag(&vehicle, "multiRotor") || flag(&vehicle, "vtol");
+    ["Survey", "Corridor Scan"].into_iter().chain(hovers.then_some("Structure Scan")).collect()
+}
+
 fn offline_vehicle(backend: &dyn Backend) -> Value {
     let setting = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64).unwrap_or(0);
     let (firmware, class) = (setting("offlineEditingFirmwareClass"), setting("offlineEditingVehicleClass"));
@@ -130,7 +136,10 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         Some(_) => json!({}),
         None => object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo,undoTracking")),
     };
-    let mission = object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame"));
+    let mission = match core {
+        Some(_) => json!({ "kind": "object", "complexMissionItems": offered_patterns(backend).iter().map(|name| json!({ "canonicalName": name, "translatedName": name })).collect::<Vec<_>>() }),
+        None => object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame")),
+    };
     let offline = core.as_ref().map_or_else(|| flag(&plan, "offline"), |_| crate::coreplan::offline());
     let syncing = core.as_ref().map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
     let dirty = core.as_ref().map_or_else(|| flag(&plan, "dirty"), |c| c.dirty);
