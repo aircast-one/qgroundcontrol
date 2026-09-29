@@ -53,10 +53,26 @@ impl Units {
 // everything metric. A head watching this view was served metres with an "m" label while the same
 // read through get came back in feet, and the push arrives every frame, so the wrong one wins.
 // The view's compute runs on Qt's thread; it leaves what it read here for the push to use.
+#[cfg(not(test))]
 static LAST_UNITS: Mutex<Option<Units>> = Mutex::new(None);
 
+#[cfg(not(test))]
+fn with_last_units<R>(use_them: impl FnOnce(&mut Option<Units>) -> R) -> R {
+    use_them(&mut LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner))
+}
+
+#[cfg(test)]
+thread_local! {
+    static LAST_UNITS: std::cell::RefCell<Option<Units>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn with_last_units<R>(use_them: impl FnOnce(&mut Option<Units>) -> R) -> R {
+    LAST_UNITS.with(|units| use_them(&mut units.borrow_mut()))
+}
+
 fn remembered_units() -> Units {
-    LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner).clone().unwrap_or_else(Units::metric)
+    with_last_units(|units| units.clone()).unwrap_or_else(Units::metric)
 }
 
 pub const EXPIRATION_MS: u64 = 120_000;
@@ -638,7 +654,7 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
         std::thread::Builder::new().name("qgc-core-adsb".to_string()).spawn(move || follow(source, generation)).expect("adsb thread");
     }
     traffic.expire(now_ms);
-    *LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner) = Some(units.clone());
+    with_last_units(|last| *last = Some(units.clone()));
     traffic.snapshot_in(now_ms, &units)
 }
 
@@ -1189,7 +1205,7 @@ mod tests {
         traffic.observe(Some(Own { latitude: 47.0, longitude: 8.0, altitude_metres: Some(100.0) }));
         traffic.receive(&Report { icao_address: 1, altitude_metres: Some(300.0), latitude: Some(47.01), longitude: Some(8.0), ..Report::default() }, 0);
 
-        *LAST_UNITS.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        with_last_units(|last| *last = None);
         let metric = traffic.announced(0);
         assert_eq!(metric["units"]["altitude"], "m", "with no view computed yet the push falls back to metric, which is what it always did");
 
