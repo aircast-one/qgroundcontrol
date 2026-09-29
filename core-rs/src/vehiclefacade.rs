@@ -494,6 +494,9 @@ impl<B: Backend> Backend for Facade<B> {
             return tally().to_string();
         }
         let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| crate::hub::lock().listed_count()).flatten().map(|n| json!({ "kind": "value", "value": n }));
+        if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(crate::seriallink::links_field) {
+            return json!({ "kind": "value", "value": field }).to_string();
+        }
         let absent = (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && crate::hub::lock().active_id().is_none()).then(|| json!({ "kind": "null" }));
         count.or(absent).or_else(|| switched_on().then(|| answer_parameter(path)).flatten()).or_else(|| resolved(path).and_then(|(path, known)| answer_get(&path, &known).or_else(|| answer_scalar(&path, &known)))).map_or_else(
             || {
@@ -504,6 +507,18 @@ impl<B: Backend> Backend for Facade<B> {
         )
     }
     fn get_fields(&self, asked_path: &str, fields: &str) -> String {
+        if asked_path == "links" && switched_on() {
+            let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields).into_iter().map(|f| (f, crate::seriallink::links_field(f))).partition(|(_, v)| v.is_some());
+            let answered: serde_json::Map<String, Value> = answered.into_iter().filter_map(|(f, v)| Some((f.to_string(), v?))).collect();
+            if missing.is_empty() {
+                let mut object = Value::Object(answered);
+                object["kind"] = json!("object");
+                return object.to_string();
+            }
+            let asked = missing.iter().map(|(f, _)| *f).collect::<Vec<_>>().join(",");
+            fell_through("fields", &format!("links [{asked}]"));
+            return merged(answered, self.0.get_fields(asked_path, &asked));
+        }
         let resolved = resolved(asked_path);
         let path = resolved.as_ref().map_or(asked_path, |(path, _)| path.as_str());
         let known = resolved.as_ref().map(|(_, known)| known);
