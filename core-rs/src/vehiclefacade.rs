@@ -234,6 +234,17 @@ fn resolved(path: &str) -> Option<(String, Known)> {
     }
 }
 
+fn circular_fence(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> f64 {
+    match autopilot {
+        crate::modes::AUTOPILOT_PX4 => parameter("GF_MAX_HOR_DIST").unwrap_or(0.0),
+        crate::modes::AUTOPILOT_ARDUPILOT => match (parameter("FENCE_RADIUS"), parameter("FENCE_ENABLE"), parameter("FENCE_TYPE")) {
+            (Some(radius), Some(enabled), Some(kind)) if enabled != 0.0 && (kind as u32) & 2 != 0 => radius,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    }
+}
+
 fn known_of(v: &crate::hub::Vehicle) -> Known {
     let ordered = v.sensors.ordered();
     let sensors = json!({ "sensorNames": ordered.names, "sensorStatus": ordered.status, "sensorEnabled": ordered.enabled, "sensorHealthy": ordered.healthy });
@@ -265,6 +276,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "isROIEnabled": v.roi_enabled,
+        "paramCircularFence": circular_fence(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
         "checkListState": v.check_list_state,
         "haveMRSpeedLimits": v.speed_limits().0,
         "haveFWSpeedLimits": v.speed_limits().1,
@@ -311,6 +323,7 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("planFly.missionController", "currentMissionIndex") => Some(json!(known.mission_indices.0)),
             ("planFly.missionController", "resumeMissionIndex") => Some(json!(known.mission_indices.1)),
             ("planFly.missionController.visualItems", "count") => Some(json!(known.mission_indices.2)),
+            ("plan.geoFenceController", "paramCircularFence") => known.fields.get("paramCircularFence").cloned(),
             ("vehicle.cameraTriggerPoints", "count") => Some(json!(known.trigger_points.0.len())),
             ("vehicle", field) => known.fields.get(field).cloned(),
             _ => None,
@@ -590,6 +603,16 @@ mod tests {
         assert_eq!((announced["rtlFlightMode"].as_str(), announced["pauseFlightMode"].as_str()), (Some("Return Home"), Some("Brake")), "an announced list replaces the table and a missing mode falls back");
         assert!(mode_fields(12, 2, &[]).get("flightModes").is_none(), "PX4's list filters by airframe flags the core does not keep yet");
         assert!(mode_fields(0, 2, &[]).is_empty());
+    }
+
+    #[test]
+    fn a_circular_fence_is_the_radius_only_while_enabled_as_a_circle() {
+        let params = |list: &'static [(&'static str, f64)]| move |name: &str| list.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        assert_eq!(circular_fence(3, params(&[("FENCE_RADIUS", 150.0), ("FENCE_ENABLE", 1.0), ("FENCE_TYPE", 7.0)])), 150.0);
+        assert_eq!(circular_fence(3, params(&[("FENCE_RADIUS", 150.0), ("FENCE_ENABLE", 0.0), ("FENCE_TYPE", 7.0)])), 0.0);
+        assert_eq!(circular_fence(3, params(&[("FENCE_RADIUS", 150.0), ("FENCE_ENABLE", 1.0), ("FENCE_TYPE", 5.0)])), 0.0, "bit 1 is the circle");
+        assert_eq!(circular_fence(12, params(&[("GF_MAX_HOR_DIST", 80.0)])), 80.0);
+        assert_eq!(circular_fence(12, params(&[])), 0.0);
     }
 
     #[test]
