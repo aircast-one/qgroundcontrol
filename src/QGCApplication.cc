@@ -164,6 +164,7 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
     settings.setValue(_settingsVersionKey, QGC_SETTINGS_VERSION);
     settings.sync();
     qgc_core_settings_open(settings.fileName().toUtf8().constData());
+    qgc_core_measurement_system(static_cast<uint8_t>(QLocale::system().measurementSystem()));
 
     if (fClearCache) {
         QDir dir(ParameterManager::parameterCacheDir());

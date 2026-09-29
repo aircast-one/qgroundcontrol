@@ -1,5 +1,6 @@
 #include "SettingsFact.h"
 #include "AppMessages.h"
+#include "QGCCoreC.h"
 #include "QGCCorePlugin.h"
 #include "QGCLoggingCategory.h"
 #include "SettingsManager.h"
@@ -84,4 +85,6 @@ void SettingsFact::_rawValueChanged(const QVariant &value)
     }
 
     settings.setValue(_name, value);
+    const QString key = _settingsGroup.isEmpty() ? _name : _settingsGroup + QLatin1Char('/') + _name;
+    qgc_core_setting_written(key.toUtf8().constData(), value.toString().toUtf8().constData());
 }

@@ -20,6 +20,8 @@ void qgc_core_set_event_handler(QGCCoreEventFn handler);
 void qgc_core_free(char *text);
 
 void qgc_core_settings_open(const char *path);
+void qgc_core_measurement_system(uint8_t system);
+void qgc_core_setting_written(const char *key, const char *text);
 
 char *qgc_core_tile_open(const char *path);
 void qgc_core_tile_close(void);

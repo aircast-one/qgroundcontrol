@@ -115,43 +115,50 @@ fn half_away(n: f64, decimals: usize) -> String {
     format!("{:.decimals$}", if rounded.is_finite() { rounded } else { n })
 }
 
+fn decimal_places(meta: &MetaData, cooked: impl Fn(f64) -> f64) -> i64 {
+    let from_increment = meta.increment.map(|increment| cooked(increment).fract().abs()).map(|fraction| if fraction == 0.0 { 0 } else { -(fraction.log10().ceil() as i64) });
+    meta.decimal_places.or(from_increment).unwrap_or_else(|| ((DEFAULT_DECIMAL_PLACES as f64 - cooked(1.0).log10()) as i64).clamp(0, 25))
+}
+
 fn number_json(value: f64, whole: bool) -> Value {
+    if !value.is_finite() {
+        return Value::Null;
+    }
     match whole || (value.fract() == 0.0 && value.abs() < 1e15) {
         true => json!(value as i64),
         false => json!(value),
     }
 }
 
-pub fn fact_json(meta: &MetaData, raw: &Value, units: &crate::surveydoc::Units) -> Value {
+pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conversion>) -> Value {
     let whole = integer(&meta.value_type);
-    let decimals = meta.decimal_places.unwrap_or(DEFAULT_DECIMAL_PLACES);
     let limits = type_limits(&meta.value_type);
     let raw_units = meta.units.clone().unwrap_or_default();
-    let unit = match raw_units.as_str() {
-        "vertical m" => Some(units.vertical),
-        "m" | "meter" | "meters" | "horizontal m" => Some(units.horizontal),
-        _ => None,
-    };
-    let cooked = |v: f64| unit.map_or(v, |u| u.show(v));
+    let cooked = |v: f64| unit.map_or(v, |u| (u.shown)(v));
+    let decimals = decimal_places(meta, cooked);
     let bound = |v: &Option<Value>| v.as_ref().and_then(Value::as_f64);
-    let (min, max) = (bound(&meta.min), bound(&meta.max));
-    let (shown_min, shown_max) = (min.map(cooked).unwrap_or(limits.0), max.map(cooked).unwrap_or(limits.1));
+    let (raw_min, raw_max) = (bound(&meta.min).unwrap_or(limits.0), bound(&meta.max).unwrap_or(limits.1));
+    let (shown_min, shown_max) = (cooked(raw_min), cooked(raw_max));
     let bool_typed = meta.value_type == ValueType::Bool;
-    let bound_text = |v: f64| match bool_typed {
-        true => (v != 0.0).to_string(),
-        false => spelled(&json!(v), decimals, whole || meta.value_type == ValueType::String),
+    let single = meta.value_type == ValueType::Float;
+    let bound_text = |v: f64| match (bool_typed, if single { f64::from(v as f32) } else { v }.is_finite()) {
+        (true, _) => (v != 0.0).to_string(),
+        (false, false) => if v > 0.0 { "inf" } else { "-inf" }.to_string(),
+        (false, true) => spelled(&json!(v), decimals, whole || meta.value_type == ValueType::String),
     };
     let labels: Vec<String> = meta.enums.iter().map(|e| e.label.clone()).collect();
     let values: Vec<Value> = meta.enums.iter().map(|e| e.value.clone()).collect();
     let enum_index = values.iter().position(|v| v == raw || v.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b)).map_or(-1, |i| i as i64);
-    let value = match (unit, raw.as_f64()) {
-        (Some(u), Some(v)) => number_json(u.show(v), whole),
-        _ => raw.clone(),
+    let cook = |given: &Value| match (unit, given.as_f64()) {
+        (Some(_), Some(v)) => number_json(cooked(v), whole),
+        _ => given.clone(),
     };
+    let value = cook(raw);
     let value_string = spelled(&value, decimals, whole);
-    let units = unit.map_or_else(|| raw_units.clone(), |u| u.name.clone());
+    let units = unit.map_or_else(|| raw_units.clone(), |u| u.name.to_string());
     let is_number = raw.is_number();
-    let default = default_of(meta);
+    let raw_default = default_of(meta);
+    let default = raw_default.as_ref().map(cook);
     json!({
         "kind": "fact",
         "name": meta.name,
@@ -170,13 +177,13 @@ pub fn fact_json(meta: &MetaData, raw: &Value, units: &crate::surveydoc::Units) 
         "defaultValueAvailable": default.is_some(),
         "defaultValue": default,
         "defaultValueString": default.as_ref().map_or_else(String::new, |d| spelled(d, decimals, whole)),
-        "valueEqualsDefault": default.as_ref().is_some_and(|d| d == raw || d.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b)),
+        "valueEqualsDefault": raw_default.as_ref().is_some_and(|d| d == raw || d.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b)),
         "min": number_json(shown_min, whole || !is_number),
         "max": number_json(shown_max, whole || !is_number),
         "minString": bound_text(shown_min),
         "maxString": bound_text(shown_max),
-        "minIsDefaultForType": shown_min == limits.0,
-        "maxIsDefaultForType": shown_max == limits.1,
+        "minIsDefaultForType": raw_min == limits.0,
+        "maxIsDefaultForType": raw_max == limits.1,
         "typeIsBool": meta.value_type == ValueType::Bool,
         "typeIsInteger": whole,
         "typeIsString": meta.value_type == ValueType::String,
@@ -202,6 +209,12 @@ static STORED: Mutex<Option<BTreeMap<String, Setting>>> = Mutex::new(None);
 
 fn stored() -> std::sync::MutexGuard<'static, Option<BTreeMap<String, Setting>>> {
     STORED.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn written(key: &str, text: &str) {
+    if let Some(values) = stored().as_mut() {
+        values.insert(key.to_string(), Setting::Text(text.to_string()));
+    }
 }
 
 pub fn open(path: &std::path::Path) {
@@ -250,13 +263,8 @@ fn raw(group: &str, fact: &str, meta: &MetaData) -> Value {
     held.or_else(|| default_of(meta)).unwrap_or(Value::Null)
 }
 
-fn units_for(backend: &dyn Backend, meta: &MetaData) -> (crate::read::Unit, crate::read::Unit) {
-    let metres = || crate::read::Unit { name: "m".to_string(), factor: 1.0 };
-    match meta.units.as_deref() {
-        Some("vertical m") => (crate::read::Unit::vertical(backend), metres()),
-        Some("m" | "meter" | "meters" | "horizontal m") => (metres(), crate::read::Unit::horizontal(backend)),
-        _ => (metres(), metres()),
-    }
+fn unit_for(meta: &MetaData) -> Option<crate::units::Conversion> {
+    crate::units::cooking(meta.units.as_deref().unwrap_or(""))
 }
 
 struct Addressed {
@@ -279,8 +287,7 @@ fn address(path: &str) -> Option<Addressed> {
 }
 
 fn described(backend: &dyn Backend, at: &Addressed, path: &str) -> Value {
-    let (vertical, horizontal) = units_for(backend, &at.meta);
-    let mine = fact_json(&at.meta, &raw(at.group, &at.fact, &at.meta), &crate::surveydoc::Units { vertical: &vertical, horizontal: &horizontal });
+    let mine = fact_json(&at.meta, &raw(at.group, &at.fact, &at.meta), unit_for(&at.meta));
     let fact_path = path.split('.').take(3).collect::<Vec<_>>().join(".");
     match runtime_fields(&fact_path) {
         Some(keys) => {
@@ -333,14 +340,8 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
     };
     let written = crate::read::object(value);
     let given = written.get("value").cloned().unwrap_or(written);
-    let (vertical, horizontal) = units_for(backend, &at.meta);
-    let unit = match at.meta.units.as_deref() {
-        Some("vertical m") => Some(vertical),
-        Some("m" | "meter" | "meters" | "horizontal m") => Some(horizontal),
-        _ => None,
-    };
-    let raw_given = match (cooked, unit, given.as_f64()) {
-        (true, Some(u), Some(n)) => json!(u.meters(n)),
+    let raw_given = match (cooked, unit_for(&at.meta), given.as_f64()) {
+        (true, Some(u), Some(n)) => json!((u.base)(n)),
         _ => given,
     };
     if let Some(new) = typed(&at.meta.value_type, &raw_given) {
@@ -359,16 +360,16 @@ pub struct Owner<B>(pub B);
 
 impl<B: Backend> Backend for Owner<B> {
     fn get(&self, path: &str) -> String {
-        enabled().then(|| get(&self.0, path)).flatten().unwrap_or_else(|| self.0.get(path))
+        enabled().then(|| crate::units::get(path).or_else(|| get(&self.0, path))).flatten().unwrap_or_else(|| self.0.get(path))
     }
     fn get_fields(&self, path: &str, fields: &str) -> String {
-        enabled().then(|| get_fields(&self.0, path, fields)).flatten().unwrap_or_else(|| self.0.get_fields(path, fields))
+        enabled().then(|| crate::units::fields(path, fields).or_else(|| get_fields(&self.0, path, fields))).flatten().unwrap_or_else(|| self.0.get_fields(path, fields))
     }
     fn set(&self, path: &str, value: &str) -> String {
         enabled().then(|| set(&self.0, path, value)).flatten().unwrap_or_else(|| self.0.set(path, value))
     }
     fn invoke(&self, path: &str, args: &str) -> String {
-        self.0.invoke(path, args)
+        enabled().then(|| crate::units::invoke(path, args)).flatten().unwrap_or_else(|| self.0.invoke(path, args))
     }
     fn watch(&self, paths: &[String]) {
         self.0.watch(paths);
@@ -418,8 +419,7 @@ mod tests {
                 if served_by_host(path) {
                     return None;
                 }
-                let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
-                let mine = by_value(&fact_json(&meta, &expected["rawValue"], &crate::surveydoc::Units { vertical: &metres, horizontal: &metres }));
+                let mine = by_value(&fact_json(&meta, &expected["rawValue"], crate::units::metric(meta.units.as_deref().unwrap_or(""))));
                 let expected = by_value(expected);
                 let host = runtime_fields(path).unwrap_or(&[]);
                 let keys: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| !host.contains(&k.as_str()) && mine.get(k.as_str()) != Some(v)).map(|(k, _)| k.clone()).collect();
@@ -430,14 +430,25 @@ mod tests {
     }
 
     #[test]
+    fn an_imperial_fact_cooks_its_default_bounds_and_decimals_as_qgc_does() {
+        let meta = metadata("FlyView", "guidedMinimumAltitude").unwrap();
+        let feet = crate::units::cooking_with("vertical m", |_| None, crate::units::IMPERIAL_US);
+        let fact = fact_json(&meta, &json!(2.0), feet);
+        assert_eq!((fact["decimalPlaces"].as_i64(), fact["valueString"].as_str(), fact["units"].as_str()), (Some(2), Some("6.56"), Some("ft")), "three places less log10 of 3.28 ft to the metre");
+        assert_eq!((fact["max"].clone(), fact["maxString"].as_str(), fact["maxIsDefaultForType"].as_bool()), (Value::Null, Some("inf"), Some(true)), "the type's own limit is converted too and overflows");
+        assert_eq!(fact["defaultValueString"], "6.56");
+        let speed = fact_json(&metadata("App", "offlineEditingCruiseSpeed").unwrap(), &json!(15.0), crate::units::cooking_with("m/s", |_| None, crate::units::IMPERIAL_US));
+        assert_eq!(speed["units"], "mph");
+    }
+
+    #[test]
     fn every_field_left_to_the_host_really_differs_from_the_metadata() {
         let qt: serde_json::Map<String, Value> = serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json")).unwrap();
-        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
-        let units = crate::surveydoc::Units { vertical: &metres, horizontal: &metres };
         RUNTIME.iter().for_each(|(short, keys)| {
             let path = format!("settings.{short}");
             let (group, fact) = locate(&path).unwrap();
-            let mine = by_value(&fact_json(&metadata(group, fact).unwrap(), &qt[&path]["rawValue"], &units));
+            let meta = metadata(group, fact).unwrap();
+            let mine = by_value(&fact_json(&meta, &qt[&path]["rawValue"], crate::units::metric(meta.units.as_deref().unwrap_or(""))));
             let expected = by_value(&qt[&path]);
             assert!(keys.iter().any(|k| mine.get(*k) != expected.get(*k)), "{path} is listed as runtime but the metadata already answers it - take it off the list");
         });

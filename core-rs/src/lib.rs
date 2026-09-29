@@ -126,6 +126,7 @@ pub mod survey;
 pub mod landingpattern;
 pub mod structurescan;
 pub mod vehiclefacade;
+pub mod units;
 pub mod tilecache;
 pub mod surveydoc;
 pub mod surveygrid;
