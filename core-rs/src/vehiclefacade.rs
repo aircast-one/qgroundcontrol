@@ -13,11 +13,16 @@ struct Known {
     parameters_ready: bool,
     lost: bool,
     home: Option<(f64, f64, f64)>,
+    sensors: Value,
 }
 
 fn carried() -> Option<Known> {
     let hub = crate::hub::lock();
-    hub.active().map(|v| Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home })
+    hub.active().map(|v| {
+        let ordered = v.sensors.ordered();
+        let sensors = json!({ "sensorNames": ordered.names, "sensorStatus": ordered.status, "sensorEnabled": ordered.enabled, "sensorHealthy": ordered.healthy });
+        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, sensors }
+    })
 }
 
 fn fields_of(fields: &str) -> Vec<&str> {
@@ -45,6 +50,12 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         "vehicle.id" => json!(known.id),
         "vehicle.parameterManager.parametersReady" => json!(known.parameters_ready),
         "vehicle.vehicleLinkManager.communicationLost" => json!(known.lost),
+        "vehicle.sysStatusSensorInfo" => {
+            let mut object = json!({ "children": [], "class": "SysStatusSensorInfo", "facts": [], "kind": "object", "objectName": "" });
+            known.sensors.as_object()?.iter().for_each(|(k, v)| object[k.as_str()] = v.clone());
+            return Some(object);
+        }
+        sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
         "vehicle.homePosition" => {
             let (latitude, longitude, altitude) = known.home?;
             return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
@@ -95,10 +106,11 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, sensors: json!({ "sensorNames": ["GPS"] }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable", &known), Some(json!({ "kind": "object", "activeVehicleAvailable": true })));
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), None, "one unknown field sends the whole read to the host");
         assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
         assert_eq!(answer_get("vehicle.armed", &known), None);
+        assert_eq!(answer_get("vehicle.sysStatusSensorInfo.sensorNames", &known), Some(json!({ "kind": "value", "value": ["GPS"] })));
     }
 }
