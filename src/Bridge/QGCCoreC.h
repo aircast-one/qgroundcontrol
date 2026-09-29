@@ -24,6 +24,7 @@ void qgc_core_measurement_system(uint8_t system);
 void qgc_core_setting_written(const char *key, const char *text);
 void qgc_core_set_active_vehicle(int32_t id);
 void qgc_core_set_vehicle_order(const int32_t *ids, size_t count);
+void qgc_core_set_selected_vehicles(const int32_t *ids, size_t count);
 
 char *qgc_core_tile_open(const char *path);
 void qgc_core_tile_close(void);

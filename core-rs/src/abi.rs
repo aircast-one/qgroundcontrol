@@ -452,6 +452,12 @@ pub extern "C" fn qgc_core_set_vehicle_order(ids: *const i32, count: usize) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_set_selected_vehicles(ids: *const i32, count: usize) {
+    let selected = if ids.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(ids, count) } };
+    crate::hub::lock().set_selected(selected.iter().filter_map(|id| u8::try_from(*id).ok()).collect());
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_measurement_system(system: u8) {
     crate::units::set_measurement_system(system);
 }

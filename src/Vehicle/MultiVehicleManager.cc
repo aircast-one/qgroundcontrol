@@ -304,6 +304,7 @@ void MultiVehicleManager::selectVehicle(int vehicleId)
     if(!_vehicleSelected(vehicleId)) {
         Vehicle *const vehicle = getVehicleById(vehicleId);
         _selectedVehicles->append(vehicle);
+        _reportSelection();
         return;
     }
 }
@@ -314,6 +315,7 @@ void MultiVehicleManager::deselectVehicle(int vehicleId)
         Vehicle *const vehicle = qobject_cast<Vehicle*>(_selectedVehicles->get(i));
         if (vehicle->id() == vehicleId) {
             _selectedVehicles->removeAt(i);
+            _reportSelection();
             return;
         }
     }
@@ -322,6 +324,7 @@ void MultiVehicleManager::deselectVehicle(int vehicleId)
 void MultiVehicleManager::deselectAllVehicles()
 {
     _selectedVehicles->clear();
+    _reportSelection();
 }
 
 bool MultiVehicleManager::_vehicleSelected(int vehicleId)
@@ -363,6 +366,15 @@ void MultiVehicleManager::_reportVehicleOrder()
         ids.append(qobject_cast<Vehicle*>(_vehicles->get(i))->id());
     }
     qgc_core_set_vehicle_order(ids.constData(), static_cast<size_t>(ids.size()));
+}
+
+void MultiVehicleManager::_reportSelection()
+{
+    QList<int32_t> ids;
+    for (int i = 0; i < _selectedVehicles->count(); i++) {
+        ids.append(qobject_cast<Vehicle*>(_selectedVehicles->get(i))->id());
+    }
+    qgc_core_set_selected_vehicles(ids.constData(), static_cast<size_t>(ids.size()));
 }
 
 void MultiVehicleManager::_setActiveVehicleAvailable(bool activeVehicleAvailable)

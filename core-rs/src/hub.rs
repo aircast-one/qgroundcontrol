@@ -1826,6 +1826,7 @@ pub struct Hub {
     active: Option<u8>,
     host_selects: bool,
     listed: Option<Vec<u8>>,
+    selected: Vec<u8>,
     remote_inputs: Option<RemoteInputs>,
     log_inputs: LogInputs,
 }
@@ -2065,6 +2066,7 @@ impl Hub {
     pub fn remove(&mut self, id: u8) {
         self.vehicles.remove(&id);
         self.arrival.retain(|known| *known != id);
+        self.selected.retain(|known| *known != id);
         if self.active == Some(id) && !self.host_selects {
             self.active = self.arrival.first().copied();
         }
@@ -2077,6 +2079,28 @@ impl Hub {
 
     pub fn set_listed(&mut self, ids: Vec<u8>) {
         self.listed = Some(ids);
+    }
+
+    pub fn set_selected(&mut self, ids: Vec<u8>) {
+        self.selected = ids;
+    }
+
+    pub fn select_vehicle(&mut self, id: u8) {
+        if self.vehicles.contains_key(&id) && !self.selected.contains(&id) {
+            self.selected.push(id);
+        }
+    }
+
+    pub fn deselect_vehicle(&mut self, id: u8) {
+        self.selected.retain(|known| *known != id);
+    }
+
+    pub fn selected_count(&self) -> usize {
+        self.selected.len()
+    }
+
+    pub fn selected_member(&self, index: usize) -> Option<&Vehicle> {
+        self.selected.get(index).and_then(|id| self.vehicles.get(id))
     }
 
     pub fn listed_count(&self) -> Option<usize> {
@@ -2464,6 +2488,22 @@ mod tests {
         assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
         hub.set_active(Some(7));
         assert_eq!(hub.active().map(|v| v.id), Some(7));
+    }
+
+    #[test]
+    fn a_selection_holds_only_heard_vehicles_once_each_and_drops_one_that_goes() {
+        let mut hub = Hub::default();
+        hub.on_frame(origin(0), &MavHeader { system_id: 7, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &MavHeader { system_id: 3, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 1, 0);
+        hub.select_vehicle(3);
+        hub.select_vehicle(3);
+        hub.select_vehicle(9);
+        hub.select_vehicle(7);
+        assert_eq!((hub.selected_count(), hub.selected_member(0).map(|v| v.id), hub.selected_member(1).map(|v| v.id)), (2, Some(3), Some(7)), "selection keeps the order it was made in, as selectedVehicles appends");
+        hub.remove(3);
+        assert_eq!((hub.selected_count(), hub.selected_member(0).map(|v| v.id)), (1, Some(7)), "a vehicle that goes is deselected");
+        hub.deselect_vehicle(7);
+        assert_eq!(hub.selected_count(), 0);
     }
 
     #[test]

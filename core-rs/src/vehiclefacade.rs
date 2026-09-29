@@ -227,8 +227,18 @@ fn fleet_member(path: &str) -> Option<(usize, &str)> {
     Some((index.parse().ok()?, tail))
 }
 
+fn selected_member(path: &str) -> Option<(usize, &str)> {
+    let rest = path.strip_prefix("vehicles.selectedVehicles.")?;
+    let (index, tail) = rest.split_once('.').map_or((rest, ""), |(i, t)| (i, t));
+    Some((index.parse().ok()?, tail))
+}
+
 fn resolved(path: &str) -> Option<(String, Known)> {
     switched_on().then_some(())?;
+    if let Some((index, tail)) = selected_member(path) {
+        let field = if tail.is_empty() { "vehicle".to_string() } else { format!("vehicle.{tail}") };
+        return crate::hub::lock().selected_member(index).map(|v| (field, known_of(v)));
+    }
     match fleet_member(path) {
         Some((index, "")) => crate::hub::lock().listed(index).map(|v| ("vehicle".to_string(), known_of(v))),
         Some((index, tail)) => crate::hub::lock().listed(index).map(|v| (format!("vehicle.{tail}"), known_of(v))),
@@ -598,6 +608,19 @@ fn answer_invoke(path: &str, args: &str) -> Option<Value> {
 }
 
 impl<B: Backend> Facade<B> {
+    fn selection_invoke(&self, path: &str, args: &str) -> Option<String> {
+        let name = path.strip_prefix("vehicles.")?;
+        switched_on().then_some(())?;
+        let id = || serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64().and_then(|id| u8::try_from(id).ok());
+        match name {
+            "selectVehicle" => crate::hub::lock().select_vehicle(id()?),
+            "deselectVehicle" => crate::hub::lock().deselect_vehicle(id()?),
+            "deselectAllVehicles" => crate::hub::lock().set_selected(Vec::new()),
+            _ => return None,
+        }
+        Some(self.0.invoke(path, args))
+    }
+
     fn onboard_log_invoke(&self, path: &str, args: &str) -> Option<String> {
         let name = path.strip_prefix("logDownload.")?;
         switched_on().then_some(())?;
@@ -627,6 +650,7 @@ impl<B: Backend> Backend for Facade<B> {
             return tally().to_string();
         }
         let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| crate::hub::lock().listed_count()).flatten().map(|n| json!({ "kind": "value", "value": n }));
+        let count = count.or_else(|| (path == "vehicles.selectedVehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().selected_count() })));
         if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
             return answer.to_string();
         }
@@ -640,6 +664,7 @@ impl<B: Backend> Backend for Facade<B> {
             return json!({ "kind": "value", "value": field }).to_string();
         }
         let absent = (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && crate::hub::lock().active_id().is_none()).then(|| json!({ "kind": "null" }));
+        let absent = absent.or_else(|| (switched_on() && selected_member(path).is_some_and(|(index, _)| crate::hub::lock().selected_member(index).is_none())).then(|| json!({ "kind": "null" })));
         count.or(absent).or_else(|| switched_on().then(|| answer_parameter(path)).flatten()).or_else(|| resolved(path).and_then(|(path, known)| answer_get(&path, &known).or_else(|| answer_scalar(&path, &known)))).map_or_else(
             || {
                 fell_through("get", path);
@@ -768,6 +793,9 @@ impl<B: Backend> Backend for Facade<B> {
     }
     fn invoke(&self, path: &str, args: &str) -> String {
         if let Some(answer) = self.onboard_log_invoke(path, args) {
+            return answer;
+        }
+        if let Some(answer) = self.selection_invoke(path, args) {
             return answer;
         }
         switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(

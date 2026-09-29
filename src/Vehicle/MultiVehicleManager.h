@@ -62,6 +62,7 @@ private:
     bool _vehicleSelected(int vehicleId);
     void _setActiveVehicle(Vehicle *vehicle);
     void _reportVehicleOrder();
+    void _reportSelection();
     void _setActiveVehicleAvailable(bool activeVehicleAvailable);
     void _setParameterReadyVehicleAvailable(bool parametersReady);
 
