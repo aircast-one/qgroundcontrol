@@ -86,6 +86,7 @@ pub mod missionsummary;
 pub mod modes;
 pub mod modeslots;
 pub mod obstacle;
+pub mod onboardlogs;
 pub mod plan;
 pub mod packetradio;
 pub mod params;

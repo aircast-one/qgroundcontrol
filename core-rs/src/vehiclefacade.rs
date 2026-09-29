@@ -316,6 +316,23 @@ const SIMULATED_CAMERA: &str = "Simulated Camera";
 const STORAGE_NOT_SUPPORTED: i64 = 3;
 const CAMERA_INSTANCE: &str = "vehicle.cameraManager.currentCameraInstance";
 
+fn onboard_logs<T>(read: impl FnOnce(&crate::onboardlogs::OnboardLogs) -> T) -> Option<T> {
+    switched_on().then_some(())?;
+    crate::hub::lock().active().map(|v| read(&v.onboard_logs))
+}
+
+fn onboard_log_get(path: &str) -> Option<Value> {
+    match path {
+        "logDownload" => onboard_logs(|logs| logs.controller_json()),
+        "logDownload.model" => onboard_logs(|logs| logs.model_json()),
+        field => {
+            let name = field.strip_prefix("logDownload.")?;
+            let value = onboard_logs(|logs| logs.controller_json().get(name).cloned())??;
+            Some(json!({ "kind": "value", "value": value }))
+        }
+    }
+}
+
 fn current_camera_fields(recording: impl Fn() -> bool) -> Option<serde_json::Map<String, Value>> {
     switched_on().then_some(())?;
     let recording = recording();
@@ -580,12 +597,39 @@ fn answer_invoke(path: &str, args: &str) -> Option<Value> {
     Some(json!({ "ok": true, "result": vehicle.parameter(component, name).is_some() }))
 }
 
+impl<B: Backend> Facade<B> {
+    fn onboard_log_invoke(&self, path: &str, args: &str) -> Option<String> {
+        let name = path.strip_prefix("logDownload.")?;
+        switched_on().then_some(())?;
+        let vehicle = crate::hub::lock().active_id()?;
+        let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+        let first_bool = || given.get(0).and_then(Value::as_bool);
+        let dispatch = |action: Value| self.0.core_guided(&action).map(|started| json!({ "ok": started.is_ok() }).to_string());
+        match name {
+            "refresh" => dispatch(json!({ "action": "logRefresh", "vehicle": vehicle })),
+            "cancel" => dispatch(json!({ "action": "logCancel", "vehicle": vehicle })),
+            "eraseAll" => dispatch(json!({ "action": "logEraseAll", "vehicle": vehicle })),
+            "download" => {
+                let folder = given.get(0).and_then(Value::as_str).filter(|f| !f.is_empty()).map(str::to_string).or_else(crate::settingsstore::log_save_path).unwrap_or_default();
+                dispatch(json!({ "action": "logDownload", "vehicle": vehicle, "folder": folder }))
+            }
+            "selectAll" => crate::hub::lock().with_onboard_logs(|logs| logs.select_all(first_bool().unwrap_or(true))).map(|_| json!({ "ok": true }).to_string()),
+            "setSortAscending" => crate::hub::lock().with_onboard_logs(|logs| logs.set_sort_ascending(first_bool().unwrap_or(false))).map(|_| json!({ "ok": true }).to_string()),
+            "toggleSortByDate" => crate::hub::lock().with_onboard_logs(|logs| logs.set_sort_ascending(!logs.sort_ascending)).map(|_| json!({ "ok": true }).to_string()),
+            _ => None,
+        }
+    }
+}
+
 impl<B: Backend> Backend for Facade<B> {
     fn get(&self, path: &str) -> String {
         if path == "core.qtReads" {
             return tally().to_string();
         }
         let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| crate::hub::lock().listed_count()).flatten().map(|n| json!({ "kind": "value", "value": n }));
+        if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
+            return answer.to_string();
+        }
         if let Some(field) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
             let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
             if let Some(value) = current_camera_fields(recording).and_then(|mut fields| fields.remove(field)) {
@@ -605,6 +649,12 @@ impl<B: Backend> Backend for Facade<B> {
         )
     }
     fn get_fields(&self, asked_path: &str, fields: &str) -> String {
+        if let Some(controller) = (asked_path == "logDownload").then(|| onboard_logs(|logs| logs.controller_json())).flatten() {
+            let wanted = fields_of(fields);
+            let mut object: serde_json::Map<String, Value> = controller.as_object().cloned().unwrap_or_default().into_iter().filter(|(k, _)| wanted.contains(&k.as_str())).collect();
+            object.insert("kind".to_string(), json!("object"));
+            return Value::Object(object).to_string();
+        }
         if asked_path == CAMERA_INSTANCE {
             let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
             if let Some(mut answered) = current_camera_fields(recording) {
@@ -686,6 +736,12 @@ impl<B: Backend> Backend for Facade<B> {
             }
             return self.0.set(path, value);
         }
+        if let Some(index) = crate::logs::selection_index(path).filter(|_| switched_on()) {
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(held) = on.and_then(|on| crate::hub::lock().with_onboard_logs(|logs| logs.select(index, on))) {
+                return json!({ "ok": held }).to_string();
+            }
+        }
         if path == "vehicle.cameraManager.currentCameraInstance.trackingEnabled" && switched_on() {
             let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
             if let Some(on) = on {
@@ -711,6 +767,9 @@ impl<B: Backend> Backend for Facade<B> {
         self.0.set(path, value)
     }
     fn invoke(&self, path: &str, args: &str) -> String {
+        if let Some(answer) = self.onboard_log_invoke(path, args) {
+            return answer;
+        }
         switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(
             || {
                 fell_through("invoke", path);

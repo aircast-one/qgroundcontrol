@@ -382,6 +382,11 @@ fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Stri
     Some(answer.to_string())
 }
 
+pub fn log_save_path() -> Option<String> {
+    let root = stored_text(&key("App", "savePath"))?;
+    Some(child_save_path(&root, "Logs")).filter(|path| !path.is_empty())
+}
+
 fn save_path(path: &str) -> Option<String> {
     let name = path.strip_prefix("settings.appSettings.")?;
     let (_, directory) = SAVE_DIRECTORIES.iter().find(|(n, _)| *n == name)?;

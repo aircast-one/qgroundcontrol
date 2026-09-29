@@ -160,6 +160,7 @@ pub struct Vehicle {
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
     pub cameras: crate::cameraproto::Cameras,
+    pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
@@ -274,6 +275,7 @@ impl Vehicle {
             escs: Escs::default(),
             rc_override: BTreeMap::new(),
             cameras: crate::cameraproto::Cameras::new(),
+            onboard_logs: crate::onboardlogs::OnboardLogs::default(),
             camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
@@ -1100,6 +1102,7 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some(log @ ("logRefresh" | "logDownload" | "logCancel" | "logEraseAll")) => return Ok(self.onboard_log_action(log, action.get("folder").and_then(Value::as_str), now_ms)),
             _ => {}
         }
         if self.guided.running() {
@@ -1199,6 +1202,9 @@ impl Vehicle {
         bytes.extend(self.tick_rc_override(now_ms));
         let camera_due = self.cameras.tick(now_ms);
         bytes.extend(self.camera_commands(camera_due));
+        let was_busy = self.onboard_logs.busy();
+        let log_due = self.onboard_logs.on_timeout(now_ms);
+        bytes.extend(self.onboard_log_outs(was_busy, log_due));
         if self.chunk_due.is_some_and(|due| now_ms >= due) {
             self.chunk_due = None;
             let expired = self.status_text.expire_pending();
@@ -1304,6 +1310,61 @@ impl Vehicle {
         }
         self.link_states.iter_mut().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).for_each(|state| state.2 = true);
         self.update_primary_link();
+    }
+
+    fn log_extension(&self) -> &'static str {
+        match self.autopilot {
+            crate::modes::AUTOPILOT_PX4 if self.parameter(self.component, "SYS_LOGGER").is_some_and(|p| p.as_f64() == 0.0) => ".px4log",
+            crate::modes::AUTOPILOT_PX4 => ".ulg",
+            _ => ".bin",
+        }
+    }
+
+    fn onboard_log_outs(&mut self, was_busy: bool, outs: Vec<crate::onboardlogs::Out>) -> Vec<Vec<u8>> {
+        use crate::onboardlogs::Out;
+        let busy = self.onboard_logs.busy();
+        if busy != was_busy {
+            self.comm_lost_enabled = !busy;
+        }
+        let target = (self.id, self.component);
+        outs.into_iter()
+            .filter_map(|out| {
+                let send = match out {
+                    Out::RequestList { start, end } => Outbound::LogRequestList { target, start, end },
+                    Out::RequestData { id, offset, count } => Outbound::LogRequestData { target, id, offset, count },
+                    Out::RequestEnd => Outbound::LogRequestEnd { target },
+                    Out::Erase => Outbound::LogErase { target },
+                };
+                self.encode(&send)
+            })
+            .collect()
+    }
+
+    pub fn onboard_log_action(&mut self, action: &str, folder: Option<&str>, now_ms: u64) -> Vec<Vec<u8>> {
+        let was_busy = self.onboard_logs.busy();
+        let extension = self.log_extension();
+        let outs = match action {
+            "logRefresh" => self.onboard_logs.refresh(now_ms),
+            "logDownload" => self.onboard_logs.download(std::path::Path::new(folder.unwrap_or("")), extension, now_ms),
+            "logCancel" => self.onboard_logs.cancel(),
+            "logEraseAll" => self.onboard_logs.erase_all(now_ms),
+            _ => Vec::new(),
+        };
+        self.onboard_log_outs(was_busy, outs)
+    }
+
+    fn note_onboard_log(&mut self, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
+        let was_busy = self.onboard_logs.busy();
+        let apm = self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
+        let outs = match message {
+            MavMessage::LOG_ENTRY(d) => {
+                self.onboard_logs.on_entry(apm, d.time_utc, d.size, d.id, d.num_logs, now_ms);
+                Vec::new()
+            }
+            MavMessage::LOG_DATA(d) => self.onboard_logs.on_data(d.ofs, d.id, &d.data[..usize::from(d.count).min(d.data.len())], now_ms),
+            _ => return Vec::new(),
+        };
+        self.onboard_log_outs(was_busy, outs)
     }
 
     fn camera_commands(&mut self, commands: Vec<crate::cameraproto::Command>) -> Vec<Vec<u8>> {
@@ -1698,7 +1759,8 @@ impl Vehicle {
         self.local.apply(message);
         self.local_setpoint.apply_target(message);
         self.estimator.apply(message);
-        self.note_camera(header.component_id, message, now_ms)
+        let camera = self.note_camera(header.component_id, message, now_ms);
+        camera.into_iter().chain(self.note_onboard_log(message, now_ms)).collect()
     }
 
     pub fn snapshot(&self) -> Value {
@@ -1965,6 +2027,10 @@ impl Hub {
             "communicationLostEnabled" => v.comm_lost_enabled = on,
             _ => v.auto_disconnect = on,
         }).is_some()
+    }
+
+    pub fn with_onboard_logs<T>(&mut self, change: impl FnOnce(&mut crate::onboardlogs::OnboardLogs) -> T) -> Option<T> {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| change(&mut v.onboard_logs))
     }
 
     pub fn set_camera_tracking(&mut self, on: bool) -> bool {
