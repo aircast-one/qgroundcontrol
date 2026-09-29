@@ -390,6 +390,43 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const EFI: GroupSpec = GroupSpec {
+    class: "VehicleEFIFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/EFIFact.json"),
+    properties: &[
+        ("health", "health"),
+        ("ecuIndex", "ecuIndex"),
+        ("rpm", "rpm"),
+        ("fuelConsumed", "fuelConsumed"),
+        ("fuelFlow", "fuelFlow"),
+        ("engineLoad", "engineLoad"),
+        ("throttlePos", "throttlePos"),
+        ("sparkTime", "sparkTime"),
+        ("baroPress", "baroPress"),
+        ("intakePress", "intakePress"),
+        ("intakeTemp", "intakeTemp"),
+        ("cylinderTemp", "cylinderTemp"),
+        ("ignTime", "ignTime"),
+        ("injTime", "injTime"),
+        ("exGasTemp", "exGasTemp"),
+        ("throttleOut", "throttleOut"),
+        ("ptComp", "ptComp"),
+        ("ignVoltage", "ignVoltage"),
+        ("fuelPressure", "fuelPressure"),
+    ],
+    added: &[
+        "health", "ecuIndex", "rpm", "fuelConsumed", "fuelFlow", "engineLoad", "sparkTime", "throttlePos", "baroPress", "intakePress", "intakeTemp", "cylinderTemp", "ignTime", "exGasTemp", "injTime", "throttleOut", "ptComp", "ignVoltage", "fuelPressure",
+    ],
+};
+
+pub fn efi_raw(e: &crate::sensorfacts::EfiFacts, name: &str) -> Value {
+    match (name, e.seen) {
+        ("health", _) => json!(e.health),
+        (_, false) => Value::Null,
+        (reading, true) => e.reading(reading).map_or(Value::Null, |v| json!(f64::from(v))),
+    }
+}
+
 pub const GENERATOR: GroupSpec = GroupSpec {
     class: "VehicleGeneratorFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/GeneratorFact.json"),

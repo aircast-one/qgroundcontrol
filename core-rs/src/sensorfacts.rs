@@ -10,6 +10,17 @@ pub struct WindFacts {
     pub seen: [bool; 3],
 }
 
+pub const EFI_READINGS: [&str; 18] = [
+    "ecuIndex", "rpm", "fuelConsumed", "fuelFlow", "engineLoad", "throttlePos", "sparkTime", "baroPress", "intakePress", "intakeTemp", "cylinderTemp", "ignTime", "injTime", "exGasTemp", "throttleOut", "ptComp", "ignVoltage", "fuelPressure",
+];
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct EfiFacts {
+    pub health: u8,
+    pub readings: [f32; 18],
+    pub seen: bool,
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct GeneratorFacts {
     pub status: u64,
@@ -146,6 +157,25 @@ impl WindFacts {
             }
             _ => false,
         }
+    }
+}
+
+impl EfiFacts {
+    pub fn apply(&mut self, message: &MavMessage) -> bool {
+        let MavMessage::EFI_STATUS(d) = message else { return false };
+        *self = EfiFacts {
+            health: if d.health == 127 { 0 } else { d.health },
+            readings: [
+                d.ecu_index, d.rpm, d.fuel_consumed, d.fuel_flow, d.engine_load, d.throttle_position, d.spark_dwell_time, d.barometric_pressure, d.intake_manifold_pressure, d.intake_manifold_temperature,
+                d.cylinder_head_temperature, d.ignition_timing, d.injection_time, d.exhaust_gas_temperature, d.throttle_out, d.pt_compensation, d.ignition_voltage, d.fuel_pressure,
+            ],
+            seen: true,
+        };
+        true
+    }
+
+    pub fn reading(&self, name: &str) -> Option<f32> {
+        EFI_READINGS.iter().position(|n| *n == name).map(|i| self.readings[i])
     }
 }
 
@@ -302,6 +332,14 @@ mod tests {
         assert!(!position.apply(&MavMessage::POSITION_TARGET_LOCAL_NED(target.clone())));
         assert!(position.apply_target(&MavMessage::POSITION_TARGET_LOCAL_NED(target)));
         assert_eq!((position.x, position.vz, position.seen), (1.5, -0.25, true));
+    }
+
+    #[test]
+    fn efi_readings_are_named_in_message_order() {
+        let mut efi = EfiFacts::default();
+        let status = mavlink::dialects::ardupilotmega::EFI_STATUS_DATA { health: 127, rpm: 5200.0, fuel_pressure: 310.5, ..Default::default() };
+        efi.apply(&MavMessage::EFI_STATUS(status));
+        assert_eq!((efi.health, efi.reading("rpm"), efi.reading("fuelPressure"), efi.reading("health")), (0, Some(5200.0), Some(310.5), None));
     }
 
     #[test]
