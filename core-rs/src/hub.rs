@@ -48,6 +48,8 @@ const LANDED_LANDING: u8 = 4;
 pub const CUSTOM_MODE_FLAG: u8 = 1;
 const MAX_MESSAGES: usize = 200;
 const FETCH_PARAMETER_PACK: u8 = 255;
+const PREARM_REPEAT_MS: u64 = 10_000;
+const PREARM_SHOWN_MS: u64 = 35_000;
 const CHUNKED_TEXT_TIMEOUT_MS: u64 = 1000;
 pub const CONNECTION_LOST_US: u64 = 3_500_000;
 pub const RESULT_UNSUPPORTED: u8 = 3;
@@ -150,6 +152,8 @@ pub struct Vehicle {
     pub radio: crate::vehiclefact::RadioStatusFacts,
     pub obstacle: crate::vehiclefact::ObstacleFacts,
     pub rc_rssi: crate::vehiclefact::RcRssi,
+    pub prearm: Option<(String, u64)>,
+    prearm_spoken: BTreeMap<String, u64>,
     pub distance: DistanceSensorFacts,
     pub local: LocalPositionFacts,
     pub estimator: EstimatorStatusFacts,
@@ -235,6 +239,8 @@ impl Vehicle {
             radio: crate::vehiclefact::RadioStatusFacts::default(),
             obstacle: crate::vehiclefact::ObstacleFacts::default(),
             rc_rssi: crate::vehiclefact::RcRssi::default(),
+            prearm: None,
+            prearm_spoken: BTreeMap::new(),
             distance: DistanceSensorFacts::default(),
             local: LocalPositionFacts::default(),
             estimator: EstimatorStatusFacts::default(),
@@ -1072,6 +1078,7 @@ impl Vehicle {
         if self.chunk_due.is_some_and(|due| now_ms >= due) {
             self.chunk_due = None;
             let expired = self.status_text.expire_pending();
+            expired.iter().for_each(|status| self.note_prearm(&status.text, now_ms));
             self.recent.extend(expired);
             let excess = self.recent.len().saturating_sub(MAX_MESSAGES);
             self.recent.drain(..excess);
@@ -1126,6 +1133,21 @@ impl Vehicle {
         snapshot["errors"] = json!(self.errors.iter().rev().take(10).collect::<Vec<_>>());
         snapshot["repositionSupported"] = json!(self.reposition_supported);
         snapshot
+    }
+
+    fn note_prearm(&mut self, text: &str, now_ms: u64) {
+        if self.autopilot != crate::modes::AUTOPILOT_ARDUPILOT || !text.starts_with("PreArm") {
+            return;
+        }
+        let recently = self.prearm_spoken.get(text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
+        if !recently {
+            self.prearm_spoken.insert(text.to_string(), now_ms);
+            self.prearm = Some((text.to_string(), now_ms));
+        }
+    }
+
+    pub fn prearm_error(&self, now_ms: u64) -> String {
+        self.prearm.as_ref().filter(|(_, at)| now_ms.saturating_sub(*at) < PREARM_SHOWN_MS).map_or_else(String::new, |(text, _)| text.clone())
     }
 
     pub fn armed(&self) -> bool {
@@ -1306,6 +1328,7 @@ impl Vehicle {
                 if let Some(status) = received {
                     let actions = self.calibrate.on_text(&status.text, now_ms);
                     let bytes = self.follow_calibration(actions, now_ms);
+                    self.note_prearm(&status.text, now_ms);
                     self.recent.push(status);
                     if self.recent.len() > MAX_MESSAGES {
                         self.recent.remove(0);
@@ -1861,6 +1884,22 @@ mod tests {
         assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
         hub.set_active(Some(7));
         assert_eq!(hub.active().map(|v| v.id), Some(7));
+    }
+
+    #[test]
+    fn a_prearm_complaint_shows_for_35_seconds_and_a_repeat_within_10_does_not_restart_it() {
+        use mavlink::dialects::ardupilotmega::{MavSeverity, STATUSTEXT_DATA};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let text = |words: &str| MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity: MavSeverity::MAV_SEVERITY_CRITICAL, text: mavout::chars(words), ..Default::default() });
+        hub.on_frame(origin(0), &header, &text("PreArm: RC not calibrated"), 1_000_000, 1_000);
+        hub.on_frame(origin(0), &header, &text("PreArm: RC not calibrated"), 9_000_000, 9_000);
+        let vehicle = hub.active().unwrap();
+        assert_eq!(vehicle.prearm_error(35_999), "PreArm: RC not calibrated");
+        assert_eq!(vehicle.prearm_error(36_000), "", "the repeat inside ten seconds did not restart the clock");
+        hub.on_frame(origin(0), &header, &text("Arming motors"), 40_000_000, 40_000);
+        assert_eq!(hub.active().unwrap().prearm_error(40_000), "");
     }
 
     #[test]

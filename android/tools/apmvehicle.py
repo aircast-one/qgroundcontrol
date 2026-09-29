@@ -104,7 +104,7 @@ STATUS_TEXTS = [
     (4, b"GPS glitch cleared"),
     (3, b"EKF variance"),
     (6, b"Batt & temp < 40C"),
-]
+] + ([(2, os.environ["PREARM_TEXT"].encode())] if os.environ.get("PREARM_TEXT") else [])
 CENTRE_SHIFT = (SYSID - 1) * 0.01
 CENTRE_LAT = float(os.environ.get("SIM_LAT", "41.7151"))
 CENTRE_LON = float(os.environ.get("SIM_LON", "44.8271"))

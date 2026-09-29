@@ -232,8 +232,11 @@ fn carried() -> Option<Known> {
         });
         let motors = motor_count(v.vehicle_type, v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64())).map(|count| ("motorCount".to_string(), json!(count)));
         let object = |value: Value| value.as_object().cloned().unwrap_or_default();
+        let prearm = (v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then(|| ("prearmError".to_string(), json!(v.prearm_error(crate::hub::now_ms()))));
         let fields = Value::Object(
             object(fields)
+                .into_iter()
+                .chain(prearm)
                 .into_iter()
                 .chain(object(described))
                 .chain(object(firmware_fields(v.autopilot, v.firmware())))
