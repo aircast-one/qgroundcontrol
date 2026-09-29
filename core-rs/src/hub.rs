@@ -160,6 +160,8 @@ pub struct Vehicle {
     pub rc_override: BTreeMap<u8, u16>,
     pub mission_current: i32,
     pub roi_enabled: bool,
+    pub comm_lost_enabled: bool,
+    pub auto_disconnect: bool,
     pub check_list_state: i64,
     pub mission_last_current: i32,
     mission_cached_last: i32,
@@ -267,6 +269,8 @@ impl Vehicle {
             rc_override: BTreeMap::new(),
             mission_current: -1,
             roi_enabled: false,
+            comm_lost_enabled: true,
+            auto_disconnect: false,
             check_list_state: 0,
             mission_last_current: -1,
             mission_cached_last: -1,
@@ -1811,6 +1815,13 @@ impl Hub {
         })
     }
 
+    pub fn set_link_flag(&mut self, flag: &str, on: bool) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| match flag {
+            "communicationLostEnabled" => v.comm_lost_enabled = on,
+            _ => v.auto_disconnect = on,
+        }).is_some()
+    }
+
     pub fn set_check_list_state(&mut self, state: i64) -> bool {
         self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.check_list_state = state).is_some()
     }
@@ -1824,7 +1835,7 @@ impl Hub {
     }
 
     pub fn expire(&mut self, now_us: u64) -> Vec<u8> {
-        self.vehicles.values_mut().for_each(|v| v.connection_lost = now_us.saturating_sub(v.last_heartbeat_us) > CONNECTION_LOST_US);
+        self.vehicles.values_mut().filter(|v| v.comm_lost_enabled).for_each(|v| v.connection_lost = now_us.saturating_sub(v.last_heartbeat_us) > CONNECTION_LOST_US);
         self.vehicles.values().filter(|v| v.connection_lost).map(|v| v.id).collect()
     }
 
@@ -2117,6 +2128,19 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn a_disabled_comm_lost_check_neither_loses_nor_regains_the_vehicle() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        hub.set_link_flag("communicationLostEnabled", false);
+        hub.expire(CONNECTION_LOST_US * 10);
+        assert!(!hub.active().unwrap().connection_lost, "Qt's check returns early while the check is off");
+        hub.set_link_flag("communicationLostEnabled", true);
+        hub.expire(CONNECTION_LOST_US * 10);
+        assert!(hub.active().unwrap().connection_lost);
     }
 
     #[test]

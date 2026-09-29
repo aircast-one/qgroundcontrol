@@ -276,6 +276,8 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "isROIEnabled": v.roi_enabled,
+        "communicationLostEnabled": v.comm_lost_enabled,
+        "autoDisconnect": v.auto_disconnect,
         "paramCircularFence": circular_fence(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
         "checkListState": v.check_list_state,
         "haveMRSpeedLimits": v.speed_limits().0,
@@ -314,6 +316,8 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("vehicles", "activeVehicleAvailable") => Some(json!(true)),
             ("vehicle.parameterManager", "parametersReady") => Some(json!(known.parameters_ready)),
             ("vehicle.vehicleLinkManager", "communicationLost") => Some(json!(known.lost)),
+            ("vehicle.vehicleLinkManager", "communicationLostEnabled") => known.fields.get("communicationLostEnabled").cloned(),
+            ("vehicle.vehicleLinkManager", "autoDisconnect") => known.fields.get("autoDisconnect").cloned(),
             ("vehicle.supports", capability) => known.supports.get(capability).cloned(),
             ("plan.managerVehicle", "capabilitiesKnown") => Some(json!(known.capabilities.is_some())),
             ("plan.geoFenceController", "supported") => Some(json!(known.capabilities.unwrap_or(0) & crate::connect::CAP_MISSION_FENCE != 0)),
@@ -532,6 +536,14 @@ impl<B: Backend> Backend for Facade<B> {
         }
     }
     fn set(&self, path: &str, value: &str) -> String {
+        let link_flag = path.strip_prefix("vehicle.vehicleLinkManager.").filter(|f| matches!(*f, "communicationLostEnabled" | "autoDisconnect"));
+        if let Some(flag) = link_flag.filter(|_| switched_on()) {
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(on) = on {
+                crate::hub::lock().set_link_flag(flag, on);
+            }
+            return self.0.set(path, value);
+        }
         if path == "vehicle.checkListState" && switched_on() {
             let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
             if let Some(state) = state {
