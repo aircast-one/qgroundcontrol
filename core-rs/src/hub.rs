@@ -47,6 +47,7 @@ const LANDED_TAKEOFF: u8 = 3;
 const LANDED_LANDING: u8 = 4;
 pub const CUSTOM_MODE_FLAG: u8 = 1;
 const MAX_MESSAGES: usize = 200;
+const FETCH_PARAMETER_PACK: u8 = 255;
 const CHUNKED_TEXT_TIMEOUT_MS: u64 = 1000;
 pub const CONNECTION_LOST_US: u64 = 3_500_000;
 pub const RESULT_UNSUPPORTED: u8 = 3;
@@ -161,6 +162,7 @@ pub struct Vehicle {
     pub errors: Vec<String>,
     pub connection_lost: bool,
     pub flying: bool,
+    pub parameter_defaults: BTreeMap<String, ParamValue>,
     ardupilot_components: std::collections::BTreeSet<u8>,
     pub vtol_in_forward_flight: bool,
     armed_now: bool,
@@ -242,6 +244,7 @@ impl Vehicle {
             errors: Vec::new(),
             connection_lost: false,
             flying: false,
+            parameter_defaults: BTreeMap::new(),
             ardupilot_components: std::collections::BTreeSet::new(),
             vtol_in_forward_flight: false,
             armed_now: false,
@@ -587,6 +590,35 @@ impl Vehicle {
         json!({ "mission": mission, "fence": fence, "rally": rally })
     }
 
+    fn stream_parameters(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let actions = self.params.start();
+        self.follow_params(actions, now_ms)
+    }
+
+    fn pack_received(&mut self, bytes: &[u8], now_ms: u64) -> Vec<Vec<u8>> {
+        match params::parse_pack(bytes) {
+            Ok(entries) => {
+                self.parameter_defaults = entries.iter().filter_map(|e| Some((e.name.clone(), e.default?))).collect();
+                let actions = self.params.load_pack(COMP_AUTOPILOT1, &entries);
+                self.follow_params(actions, now_ms)
+            }
+            Err(reason) => {
+                self.note(format!("The parameter file could not be read, so the parameters are streamed instead: {reason}"));
+                self.stream_parameters(now_ms)
+            }
+        }
+    }
+
+    fn fetch_failed(&mut self, kind: u8, reason: String, now_ms: u64) -> Vec<Vec<u8>> {
+        match kind {
+            FETCH_PARAMETER_PACK => self.stream_parameters(now_ms),
+            _ => {
+                self.note(reason);
+                self.step_done(connect::Step::ComponentInformation, now_ms)
+            }
+        }
+    }
+
     fn start_fetch(&mut self, kind: u8, uri: &str, now_ms: u64) -> Vec<Vec<u8>> {
         match Download::start_from(self.component, uri, true, self.ftp_seq) {
             Ok((download, outs)) => {
@@ -626,12 +658,10 @@ impl Vehicle {
                     self.ftp_due = None;
                     let Some(fetch) = self.fetch.take() else { return Vec::new() };
                     self.ftp_seq = fetch.download.expected_seq();
-                    match ok {
-                        false => {
-                            self.note(format!("Component metadata download failed: {error}"));
-                            self.step_done(connect::Step::ComponentInformation, now_ms)
-                        }
-                        true => self.metadata_received(fetch.kind, &fetch.uri, &bytes, now_ms),
+                    match (ok, fetch.kind) {
+                        (false, kind) => self.fetch_failed(kind, format!("Component metadata download failed: {error}"), now_ms),
+                        (true, FETCH_PARAMETER_PACK) => self.pack_received(&bytes, now_ms),
+                        (true, kind) => self.metadata_received(kind, &fetch.uri, &bytes, now_ms),
                     }
                 }
             })
@@ -776,10 +806,14 @@ impl Vehicle {
                     self.follow_modes(outs, now_ms)
                 }
                 Action::RefreshParameters if self.replay => self.step_done(connect::Step::Parameters, now_ms),
-                Action::RefreshParameters => {
-                    let actions = self.params.start();
-                    self.follow_params(actions, now_ms)
-                }
+                Action::RefreshParameters if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT => match Download::start_from(COMP_AUTOPILOT1, params::PACK_URI, false, self.ftp_seq) {
+                    Ok((download, outs)) => {
+                        self.fetch = Some(Fetch { kind: FETCH_PARAMETER_PACK, uri: params::PACK_URI.to_string(), download, started_ms: now_ms, progress: 0.0 });
+                        self.follow_ftp(outs, now_ms)
+                    }
+                    Err(_) => self.stream_parameters(now_ms),
+                },
+                Action::RefreshParameters => self.stream_parameters(now_ms),
                 Action::RequestComponentInformation => {
                     let outs = self.commands.request_message(MSG_COMPONENT_METADATA as u64, self.component, MSG_COMPONENT_METADATA, [0.0; 5], now_ms);
                     self.handle(outs, now_ms)
@@ -1068,14 +1102,13 @@ impl Vehicle {
             let outs = self.fetch.as_mut().map(|f| f.download.on_timeout()).unwrap_or_default();
             bytes.extend(self.follow_ftp(outs, now_ms));
         }
-        let slow = self.fetch.as_ref().is_some_and(|f| compmeta::too_slow(now_ms.saturating_sub(f.started_ms), f.progress));
-        if slow {
+        let slow = self.fetch.as_ref().filter(|f| compmeta::too_slow(now_ms.saturating_sub(f.started_ms), f.progress)).map(|f| f.kind);
+        if let Some(kind) = slow {
             let outs = self.fetch.as_mut().map(|f| f.download.cancel()).unwrap_or_default();
             bytes.extend(self.follow_ftp(outs, now_ms));
             self.fetch = None;
             self.ftp_due = None;
-            self.note("Component metadata download abandoned: too slow.".to_string());
-            bytes.extend(self.step_done(connect::Step::ComponentInformation, now_ms));
+            bytes.extend(self.fetch_failed(kind, "Component metadata download abandoned: too slow.".to_string(), now_ms));
         }
         let emits = self.guided.advance(&self.observed(), now_ms);
         bytes.extend(self.carry(emits, now_ms));
@@ -1900,13 +1933,25 @@ mod tests {
         assert_eq!(hub.guided(None, &json!({ "action": "land" }), 4_100).unwrap()[0].0, 6, "a heartbeat on a new link makes a fresh vehicle bound to it");
     }
 
+    fn refuse_pack(hub: &mut Hub, autopilot: &MavHeader, frames: &[(LinkId, Vec<u8>)], now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
+        let open = frames.iter().map(|(_, bytes)| decode(bytes)).find_map(|m| match m {
+            MavMessage::FILE_TRANSFER_PROTOCOL(f) => ftp::Request::decode(&f.payload),
+            _ => None,
+        });
+        let open = open.expect("ArduPilot's parameters are asked for as a file first");
+        assert_eq!((open.opcode, String::from_utf8_lossy(&open.data).trim_end_matches('\0')), (ftp::CMD_OPEN_FILE_RO, params::PACK_URI));
+        let refused = ftp::Request { seq: open.seq + 1, session: 0, opcode: ftp::RSP_NAK, req_opcode: ftp::CMD_OPEN_FILE_RO, burst_complete: false, offset: 0, data: vec![10] };
+        hub.on_frame(origin(4), autopilot, &ftp_reply(refused), now_ms * 1000, now_ms)
+    }
+
     fn connect_copter(hub: &mut Hub, autopilot: &MavHeader) {
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         hub.on_frame(origin(4), autopilot, &copter_heartbeat(5, false), 0, 0);
         let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(origin(4), autopilot, &refused, 1, 1);
         hub.on_frame(origin(4), autopilot, &refused, 2, 2);
-        hub.on_frame(origin(4), autopilot, &refused, 3, 3);
+        let opened = hub.on_frame(origin(4), autopilot, &refused, 3, 3);
+        refuse_pack(hub, autopilot, &opened, 3);
         hub.on_frame(origin(4), autopilot, &param_value("RTL_ALT", 1, 0, 1500.0), 4, 4);
         let fence_asked = hub.on_frame(origin(4), autopilot, &mission_count(0), 5, 5);
         assert!(matches!(decode(&fence_asked[1].1), MavMessage::MISSION_REQUEST_LIST(r) if r.mission_type as u8 == 1), "ArduPilot's assumed capabilities include the fence, and MAVLink 2 was seen, so the fence is read next");
@@ -1962,7 +2007,8 @@ mod tests {
         let after_modes = hub.on_frame(origin(4), &autopilot, &unsupported, 1_200_000, 1_200);
         assert_eq!(request_of(&after_modes[0].1), (512, 397.0), "modes refused, component metadata asked for next");
         let after_metadata = hub.on_frame(origin(4), &autopilot, &unsupported, 1_250_000, 1_250);
-        assert!(matches!(decode(&after_metadata[0].1), MavMessage::PARAM_REQUEST_LIST(l) if l.target_system == 1 && l.target_component == 0), "metadata refused, parameters requested from every component");
+        let listed_after_pack = refuse_pack(&mut hub, &autopilot, &after_metadata, 1_260);
+        assert!(matches!(decode(&listed_after_pack[0].1), MavMessage::PARAM_REQUEST_LIST(l) if l.target_system == 1 && l.target_component == 0), "metadata refused and no parameter file, so parameters are requested from every component");
         assert_eq!(hub.snapshot()["vehicle"]["connectStep"], "Parameters");
         assert!(hub.on_frame(origin(4), &autopilot, &param_value("RTL_ALT", 2, 0, 1500.0), 1_300_000, 1_300).is_empty());
         assert_eq!(hub.snapshot()["vehicle"]["parameters"]["ready"], false);
@@ -2039,7 +2085,8 @@ mod tests {
         let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &refused, 100_000, 100);
         hub.on_frame(origin(4), &autopilot, &refused, 150_000, 150);
-        let listed = hub.on_frame(origin(4), &autopilot, &refused, 200_000, 200);
+        let opened = hub.on_frame(origin(4), &autopilot, &refused, 200_000, 200);
+        let listed = refuse_pack(&mut hub, &autopilot, &opened, 200);
         assert!(matches!(decode(&listed[0].1), MavMessage::PARAM_REQUEST_LIST(_)));
         assert!(hub.tick(5_199).is_empty());
         let again = hub.tick(5_201);
@@ -2105,6 +2152,36 @@ mod tests {
             }
             other => ack(other, 0, Vec::new(), false),
         }
+    }
+
+    #[test]
+    fn an_ardupilot_loads_its_parameters_and_their_defaults_from_the_parameter_file() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 0, 0);
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &refused, 1, 1);
+        hub.on_frame(origin(4), &autopilot, &refused, 2, 2);
+        let mut pack = vec![0x1C, 0x67, 2, 0, 2, 0];
+        pack.extend([0x13, 6 << 4, b'R', b'T', b'L', b'_', b'A', b'L', b'T']);
+        pack.extend(1500i32.to_le_bytes());
+        pack.extend(1000i32.to_le_bytes());
+        pack.extend([0x04, (4 << 4) | 4, b'S', b'P', b'E', b'E', b'D']);
+        pack.extend(2.5f32.to_le_bytes());
+        let files = BTreeMap::from([(params::PACK_URI.to_string(), pack)]);
+        let mut pending = hub.on_frame(origin(4), &autopilot, &refused, 3, 3);
+        (0..20).for_each(|i| {
+            let Some((_, bytes)) = pending.first().cloned() else { return };
+            if !matches!(decode(&bytes), MavMessage::FILE_TRANSFER_PROTOCOL(_)) {
+                return;
+            }
+            pending = hub.on_frame(origin(4), &autopilot, &ftp_reply(serve(&files, &ftp_request(&bytes))), 10 + i, 10 + i);
+        });
+        let vehicle = hub.active().unwrap();
+        assert!(vehicle.params.ready(), "the file makes the parameters ready without a PARAM_REQUEST_LIST");
+        assert_eq!((vehicle.parameter(1, "RTL_SPEED"), vehicle.parameter_defaults.get("RTL_ALT")), (Some(ParamValue::F32(2.5)), Some(&ParamValue::I32(1000))));
+        assert!(!pending.iter().any(|(_, b)| matches!(decode(b), MavMessage::PARAM_REQUEST_LIST(_))));
     }
 
     #[test]
@@ -2178,8 +2255,9 @@ mod tests {
         let opened = hub.on_frame(origin(4), &autopilot, &metadata, 3, 3);
         assert_eq!(ftp_request(&opened[0].1).opcode, ftp::CMD_OPEN_FILE_RO);
         assert!(hub.tick(1_000).is_empty(), "nothing happens before the one second ack timer");
-        let frames: Vec<MavMessage> = hub.tick(1_100).into_iter().map(|(_, b)| decode(&b)).collect();
-        assert!(matches!(frames.last(), Some(MavMessage::PARAM_REQUEST_LIST(_))), "an unanswered open fails the fetch and the parameters are requested anyway");
+        let timed_out = hub.tick(1_100);
+        let listed: Vec<MavMessage> = refuse_pack(&mut hub, &autopilot, &timed_out, 1_100).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(matches!(listed.last(), Some(MavMessage::PARAM_REQUEST_LIST(_))), "an unanswered open fails the fetch and the parameters are requested anyway");
         assert!(hub.guided_snapshot(None)["guided"]["errors"].as_array().unwrap().iter().any(|e| e.as_str().unwrap().contains("Download failed")));
     }
 

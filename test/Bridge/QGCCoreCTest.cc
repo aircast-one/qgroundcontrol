@@ -894,7 +894,8 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
         peer.writeDatagram(reinterpret_cast<const char *>(frame), len, QHostAddress::LocalHost, port);
     };
     QList<mavlink_message_t> seen;
-    const auto expectRequest = [&peer, &seen](int messageId, uint32_t requested) {
+    mavlink_message_t matched{};
+    const auto expectRequest = [&peer, &seen, &matched](int messageId, uint32_t requested) {
         const auto matches = [messageId, requested](const mavlink_message_t &message) {
             if (message.msgid != static_cast<uint32_t>(messageId)) {
                 return false;
@@ -918,6 +919,7 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
         while (waited.elapsed() < 4000) {
             const int found = static_cast<int>(std::distance(seen.cbegin(), std::find_if(seen.cbegin(), seen.cend(), matches)));
             if (found < seen.count()) {
+                matched = seen.at(found);
                 seen.remove(0, found + 1);
                 return true;
             }
@@ -960,7 +962,21 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     send(ack);
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_COMPONENT_METADATA), "no component metadata request reached the peer");
     send(ack);
-    QVERIFY2(expectRequest(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 0), "no parameter list request reached the peer");
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_FILE_TRANSFER_PROTOCOL, 0), "ArduPilot's parameters were not asked for as a file first");
+    mavlink_file_transfer_protocol_t opened{};
+    mavlink_msg_file_transfer_protocol_decode(&matched, &opened);
+    const uint16_t openedSeq = static_cast<uint16_t>(opened.payload[0] | (opened.payload[1] << 8));
+    uint8_t notFound[MAVLINK_MSG_FILE_TRANSFER_PROTOCOL_FIELD_PAYLOAD_LEN]{};
+    notFound[0] = static_cast<uint8_t>((openedSeq + 1) & 0xFF);
+    notFound[1] = static_cast<uint8_t>((openedSeq + 1) >> 8);
+    notFound[3] = 129;
+    notFound[4] = 1;
+    notFound[5] = opened.payload[3];
+    notFound[12] = 10;
+    mavlink_message_t refused{};
+    mavlink_msg_file_transfer_protocol_pack(11, 1, &refused, 0, 255, MAV_COMP_ID_MISSIONPLANNER, notFound);
+    send(refused);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 0), "no parameter list request reached the peer after the file was not found");
     mavlink_message_t value{};
     mavlink_msg_param_value_pack(11, 1, &value, "RTL_ALT", 1500.0f, MAV_PARAM_TYPE_REAL32, 2, 0);
     send(value);

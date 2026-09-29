@@ -158,7 +158,82 @@ pub struct Params {
     total_count: usize,
 }
 
+pub const PACK_URI: &str = "@PARAM/param.pck?withdefaults=1";
+const PACK_MAGIC: u16 = 0x671B;
+const PACK_MAGIC_WITH_DEFAULTS: u16 = 0x671C;
+
+pub struct PackEntry {
+    pub name: String,
+    pub value: ParamValue,
+    pub default: Option<ParamValue>,
+}
+
+fn pack_value(ptype: u8, bytes: &[u8]) -> Option<(ParamValue, usize)> {
+    Some(match ptype {
+        1 => (ParamValue::I8(*bytes.first()? as i8), 1),
+        2 => (ParamValue::I16(i16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)), 2),
+        3 => (ParamValue::I32(i32::from_le_bytes(bytes.get(..4)?.try_into().ok()?)), 4),
+        4 => (ParamValue::F32(f32::from_le_bytes(bytes.get(..4)?.try_into().ok()?)), 4),
+        _ => return None,
+    })
+}
+
+pub fn parse_pack(bytes: &[u8]) -> Result<Vec<PackEntry>, String> {
+    let word = |at: usize| bytes.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]])).ok_or("the parameter file has no header");
+    let (magic, count, total) = (word(0)?, word(2)?, word(4)?);
+    if magic != PACK_MAGIC && magic != PACK_MAGIC_WITH_DEFAULTS {
+        return Err("the parameter file does not start with the magic number".to_string());
+    }
+    if count != total {
+        return Err(format!("the parameter file holds {count} of {total} parameters"));
+    }
+    let mut entries = Vec::new();
+    let mut at = 6;
+    let mut previous = String::new();
+    loop {
+        while bytes.get(at) == Some(&0) {
+            at += 1;
+        }
+        let Some(&first) = bytes.get(at) else { break };
+        let (ptype, with_default) = (first & 0x0F, (first >> 4) & 0x01 == 1);
+        let lengths = *bytes.get(at + 1).ok_or("the parameter file ends inside a header")?;
+        let (name_len, common_len) = (usize::from((lengths >> 4) & 0x0F) + 1, usize::from(lengths & 0x0F));
+        if name_len + common_len > 16 || common_len > previous.len() {
+            return Err("the parameter file has a malformed name".to_string());
+        }
+        let tail = bytes.get(at + 2..at + 2 + name_len).ok_or("the parameter file ends inside a name")?;
+        let name = format!("{}{}", &previous[..common_len], String::from_utf8_lossy(tail));
+        at += 2 + name_len;
+        let (value, width) = pack_value(ptype, &bytes[at..]).ok_or_else(|| format!("{name} has type {ptype}, which the parameter file cannot carry"))?;
+        at += width;
+        let default = match with_default {
+            true => {
+                let (default, width) = pack_value(ptype, &bytes[at..]).ok_or_else(|| format!("{name} ends before its default"))?;
+                at += width;
+                Some(default)
+            }
+            false => None,
+        };
+        previous = name.clone();
+        entries.push(PackEntry { name, value, default });
+    }
+    match entries.len() == usize::from(count) {
+        true => Ok(entries),
+        false => Err(format!("the parameter file announced {count} parameters and held {}", entries.len())),
+    }
+}
+
 impl Params {
+    pub fn load_pack(&mut self, component: u8, entries: &[PackEntry]) -> Vec<Action> {
+        let values: BTreeMap<String, ParamValue> = entries.iter().map(|e| (e.name.clone(), e.value)).collect();
+        self.counts.insert(component, u16::try_from(values.len()).unwrap_or(u16::MAX));
+        self.total_count += values.len();
+        self.facts.insert(component, values);
+        self.initial_timer_active = false;
+        let added = entries.iter().map(|e| Action::Added { component, name: e.name.clone() });
+        added.chain([Action::StopInitialTimer, Action::Progress(1.0)]).chain(self.check_initial_load_complete()).collect()
+    }
+
     pub fn new(default_component: u8, px4: bool) -> Self {
         Params { default_component, px4, ..Default::default() }
     }
@@ -385,6 +460,31 @@ impl Params {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parameter_pack_shares_name_prefixes_and_carries_defaults() {
+        let mut pack = vec![0x1C, 0x67, 3, 0, 3, 0];
+        pack.extend([0x13, (6 << 4) | 0, b'R', b'T', b'L', b'_', b'A', b'L', b'T']);
+        pack.extend(1500i32.to_le_bytes());
+        pack.extend(1500i32.to_le_bytes());
+        pack.extend([0, 0]);
+        pack.extend([0x04, (4 << 4) | 4, b'S', b'P', b'E', b'E', b'D']);
+        pack.extend(2.5f32.to_le_bytes());
+        pack.extend([0x01, 3 << 4, b'A', b'R', b'M', b'1']);
+        pack.push(0xFF);
+        let entries = parse_pack(&pack).unwrap();
+        let summary: Vec<(String, ParamValue, Option<ParamValue>)> = entries.into_iter().map(|e| (e.name, e.value, e.default)).collect();
+        assert_eq!(summary, vec![
+            ("RTL_ALT".to_string(), ParamValue::I32(1500), Some(ParamValue::I32(1500))),
+            ("RTL_SPEED".to_string(), ParamValue::F32(2.5), None),
+            ("ARM1".to_string(), ParamValue::I8(-1), None),
+        ], "padding is skipped and a name keeps the first common_len characters of the one before");
+        assert!(parse_pack(&pack[..pack.len() - 1]).is_err(), "a truncated file is refused");
+        let mut params = Params::new(1, false);
+        let ready = params.load_pack(1, &parse_pack(&pack).unwrap());
+        assert!(params.ready() && ready.contains(&Action::Ready { missing: false }));
+        assert_eq!(params.value(1, "RTL_SPEED"), Some(ParamValue::F32(2.5)));
+    }
 
     fn deliver(params: &mut Params, names: &[&str], skip: &[u16]) -> Vec<Action> {
         names

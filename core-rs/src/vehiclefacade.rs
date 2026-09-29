@@ -317,7 +317,6 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
 }
 
 fn answer_parameter(path: &str) -> Option<Value> {
-    (std::env::var("QGC_CORE_PARAMETERS").as_deref() == Ok("1")).then_some(())?;
     let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
     let (component, name) = call.split_once(',')?;
     let hub = crate::hub::lock();
@@ -331,11 +330,13 @@ fn answer_parameter(path: &str) -> Option<Value> {
     let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
     let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
     let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
-    let raw = match value {
+    let number = |value: crate::params::ParamValue| match value {
         crate::params::ParamValue::F32(v) => json!(f64::from(v)),
         other => json!(other.as_f64() as i64),
     };
-    let meta = crate::apmmeta::json_metadata(&definitions, name.trim(), value_type);
+    let raw = number(value);
+    let firmware_default = (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name.trim()).copied()).flatten();
+    let meta = crate::factmeta::MetaData { default: firmware_default.map(number), ..crate::apmmeta::json_metadata(&definitions, name.trim(), value_type) };
     let mut described = crate::vehiclefact::fact(&meta, &raw, None);
     if described["typeIsInteger"] == true {
         [("minString", &meta.min), ("maxString", &meta.max)].into_iter().filter_map(|(key, bound)| Some((key, bound.as_ref()?.as_f64()?))).for_each(|(key, bound)| described[key] = json!(crate::control::qt_shortest(bound)));
