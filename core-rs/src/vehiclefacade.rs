@@ -54,6 +54,17 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
     Some(json!({ "kind": "value", "value": value }))
 }
 
+fn answer_invoke(path: &str, args: &str) -> Option<Value> {
+    (path == "vehicle.parameterManager.parameterExists").then_some(())?;
+    let given: Value = serde_json::from_str(args).ok()?;
+    let name = given.get(1)?.as_str()?;
+    let component = given.get(0)?.as_i64()?;
+    let hub = crate::hub::lock();
+    let vehicle = hub.active()?;
+    let component = u8::try_from(component).unwrap_or(vehicle.component);
+    Some(json!({ "ok": true, "result": vehicle.parameter(component, name).is_some() }))
+}
+
 impl<B: Backend> Backend for Facade<B> {
     fn get(&self, path: &str) -> String {
         switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known)).map_or_else(|| self.0.get(path), |v| v.to_string())
@@ -65,7 +76,7 @@ impl<B: Backend> Backend for Facade<B> {
         self.0.set(path, value)
     }
     fn invoke(&self, path: &str, args: &str) -> String {
-        self.0.invoke(path, args)
+        switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(|| self.0.invoke(path, args), |v| v.to_string())
     }
     fn watch(&self, paths: &[String]) {
         self.0.watch(paths);
