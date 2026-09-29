@@ -33,6 +33,12 @@ fn override_refusal(channel: Option<i64>, pwm: Option<i64>, connected: bool, con
     }
 }
 
+fn on_core(backend: &dyn Backend, mut action: Value) -> Option<bool> {
+    crate::vehiclefacade::switched_on().then_some(())?;
+    action["vehicle"] = object(&backend.get("vehicle.id")).get("value").cloned().filter(Value::is_u64)?;
+    backend.core_guided(&action).map(|started| started.is_ok())
+}
+
 pub fn set(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let whole = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.fract() == 0.0).map(|v| v as i64);
@@ -40,7 +46,8 @@ pub fn set(backend: &dyn Backend, path: &str, args: &str) -> Value {
     if let Some((token, reason)) = override_refusal(channel, pwm, connected(backend), &configured_channels(backend)) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
-    let dispatched = flag(&object(&backend.invoke(path, &json!([channel, pwm]).to_string())), "ok");
+    let action = json!({ "action": "rcOverride", "channel": channel, "pwm": pwm });
+    let dispatched = on_core(backend, action).unwrap_or_else(|| flag(&object(&backend.invoke(path, &json!([channel, pwm]).to_string())), "ok"));
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the override.") } })
 }
 
@@ -48,7 +55,7 @@ pub fn clear(backend: &dyn Backend, path: &str) -> Value {
     if !connected(backend) {
         return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected." });
     }
-    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
+    let dispatched = on_core(backend, json!({ "action": "rcRelease" })).unwrap_or_else(|| flag(&object(&backend.invoke(path, "[]")), "ok"));
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the release.") } })
 }
 

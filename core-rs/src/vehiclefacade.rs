@@ -21,7 +21,7 @@ fn tally() -> Value {
     json!({ "kind": "value", "value": FELL_THROUGH.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone() })
 }
 
-fn switched_on() -> bool {
+pub fn switched_on() -> bool {
     std::env::var("QGC_CORE_VEHICLE").map_or(cfg!(not(test)), |v| v == "1")
 }
 
@@ -257,6 +257,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
         "heading": crate::vehiclefact::vehicle_fact("heading", &json!(v.facts.heading)),
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
+        "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "haveMRSpeedLimits": v.speed_limits().0,
         "haveFWSpeedLimits": v.speed_limits().1,
         "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),

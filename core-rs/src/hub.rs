@@ -36,6 +36,9 @@ pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MAV_STATE_ACTIVE: u8 = 4;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
+const RC_OVERRIDE_CHANNEL_COUNT: u8 = 18;
+const RC_OVERRIDE_PERIOD_MS: u64 = 200;
+const RC_OVERRIDE_RELEASE_TICKS: u8 = 3;
 const SENSOR_GPS: u32 = 0x20;
 const SENSOR_MOTOR_OUTPUTS: u32 = 0x8000;
 const SENSOR_PREARM_CHECK: u32 = 0x1000_0000;
@@ -154,6 +157,9 @@ pub struct Vehicle {
     pub efi: EfiFacts,
     pub terrain_blocks: (u16, u16),
     pub escs: Escs,
+    pub rc_override: BTreeMap<u8, u16>,
+    rc_release_ticks: u8,
+    rc_due: Option<u64>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
@@ -250,6 +256,9 @@ impl Vehicle {
             efi: EfiFacts::default(),
             terrain_blocks: (0, 0),
             escs: Escs::default(),
+            rc_override: BTreeMap::new(),
+            rc_release_ticks: 0,
+            rc_due: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
@@ -999,7 +1008,63 @@ impl Vehicle {
         }
     }
 
+    fn send_rc_override(&mut self) -> Vec<Vec<u8>> {
+        if self.commands.high_latency {
+            return Vec::new();
+        }
+        let channels: [u16; 18] = std::array::from_fn(|i| self.rc_override.get(&(i as u8 + 1)).copied().unwrap_or(u16::MAX));
+        let target = (self.id, self.component);
+        self.encode(&Outbound::RcOverride { target, channels }).into_iter().collect()
+    }
+
+    pub fn set_rc_override(&mut self, channel: u8, pwm: i64, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        if !(1..=RC_OVERRIDE_CHANNEL_COUNT).contains(&channel) {
+            return Err(format!("RC channels run from 1 to {RC_OVERRIDE_CHANNEL_COUNT}."));
+        }
+        self.rc_release_ticks = 0;
+        self.rc_override.insert(channel, pwm.clamp(800, 2200) as u16);
+        self.rc_due.get_or_insert(now_ms + RC_OVERRIDE_PERIOD_MS);
+        Ok(self.send_rc_override())
+    }
+
+    pub fn clear_rc_overrides(&mut self) -> Vec<Vec<u8>> {
+        if self.rc_override.is_empty() {
+            return Vec::new();
+        }
+        self.rc_override.values_mut().for_each(|pwm| *pwm = 0);
+        self.rc_release_ticks = RC_OVERRIDE_RELEASE_TICKS;
+        self.send_rc_override()
+    }
+
+    fn tick_rc_override(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        if !self.rc_due.is_some_and(|due| now_ms >= due) {
+            return Vec::new();
+        }
+        self.rc_due = Some(now_ms + RC_OVERRIDE_PERIOD_MS);
+        if self.rc_release_ticks > 0 {
+            self.rc_release_ticks -= 1;
+            if self.rc_release_ticks == 0 {
+                self.rc_due = None;
+                let last = self.send_rc_override();
+                self.rc_override.clear();
+                return last;
+            }
+        }
+        self.send_rc_override()
+    }
+
     pub fn start_guided(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        match action.get("action").and_then(Value::as_str) {
+            Some("rcOverride") => {
+                let whole = |key: &str| action.get(key).and_then(Value::as_i64);
+                let (Some(channel), Some(pwm)) = (whole("channel").and_then(|c| u8::try_from(c).ok()), whole("pwm")) else {
+                    return Err("An RC override takes a channel number and a PWM value.".to_string());
+                };
+                return self.set_rc_override(channel, pwm, now_ms);
+            }
+            Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            _ => {}
+        }
         if self.guided.running() {
             return Err("A guided action is still running.".to_string());
         }
@@ -1094,6 +1159,7 @@ impl Vehicle {
     fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
         let ticked = self.commands.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
+        bytes.extend(self.tick_rc_override(now_ms));
         if self.chunk_due.is_some_and(|due| now_ms >= due) {
             self.chunk_due = None;
             let expired = self.status_text.expire_pending();
@@ -1932,6 +1998,27 @@ mod tests {
         assert!(hub.active().unwrap().flying);
         send(&mut hub, beat(1, false, MavState::MAV_STATE_ACTIVE));
         assert!(!hub.active().unwrap().flying, "a disarmed ArduPilot is on the ground whatever its status");
+    }
+
+    #[test]
+    fn an_rc_override_repeats_every_200_ms_and_a_release_sends_zero_four_times() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let sent = |bytes: &[Vec<u8>]| bytes.iter().filter_map(|b| match decode(b) {
+            MavMessage::RC_CHANNELS_OVERRIDE(o) => Some((o.chan6_raw, o.chan1_raw)),
+            _ => None,
+        }).collect::<Vec<_>>();
+        assert_eq!(sent(&vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 6, "pwm": 2500 }), 1_000).unwrap()), vec![(2200, u16::MAX)], "the PWM is clamped and unheld channels are left to the pilot");
+        assert!(vehicle.rc_override.contains_key(&6));
+        assert!(sent(&vehicle.tick_rc_override(1_100)).is_empty());
+        assert_eq!(sent(&vehicle.tick_rc_override(1_200)), vec![(2200, u16::MAX)]);
+        assert_eq!(sent(&vehicle.start_guided(&json!({ "action": "rcRelease" }), 1_250).unwrap()), vec![(0, u16::MAX)]);
+        let released: Vec<_> = [1_400, 1_600, 1_800, 2_000].into_iter().flat_map(|t| sent(&vehicle.tick_rc_override(t))).collect();
+        assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
+        assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
+        assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
     }
 
     #[test]
