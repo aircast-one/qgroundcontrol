@@ -125,7 +125,10 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         Some(_) => Some(0),
         None => result_integer(&backend.invoke("plan.readyForSaveState", "[]")),
     };
-    let upload = result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]"));
+    let upload = match core {
+        Some(_) => Some(send_precheck(backend)),
+        None => result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]")),
+    };
     json!({
         "kind": "object",
         "class": "PlanStatus",
@@ -174,6 +177,22 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canUndo": crate::coreplan::history().map_or_else(|| flag(&plan, "canUndo"), |(undo, _)| undo && crate::coreplan::undo_tracking()),
         "canRedo": crate::coreplan::history().map_or_else(|| flag(&plan, "canRedo"), |(_, redo)| redo && crate::coreplan::undo_tracking()),
     })
+}
+
+fn send_precheck(backend: &dyn Backend) -> i64 {
+    let manager = crate::hub::lock().active().map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)));
+    let Some((autopilot, vehicle_type)) = manager.filter(|_| !crate::coreplan::offline()) else { return 1 };
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode,missionFlightMode"));
+    let text = |key: &str| vehicle.get(key).and_then(Value::as_str).map(str::to_string);
+    if flag(&vehicle, "armed") && text("flightMode") == text("missionFlightMode") {
+        return 3;
+    }
+    let setting = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64);
+    let (firmware, class) = (setting("offlineEditingFirmwareClass").unwrap_or(0), setting("offlineEditingVehicleClass").unwrap_or(0));
+    match firmware != autopilot || crate::plandoc::vehicle_class(class) != crate::plandoc::vehicle_class(vehicle_type) {
+        true => 2,
+        false => 0,
+    }
 }
 
 fn readiness_json(state: Option<i64>) -> Value {
