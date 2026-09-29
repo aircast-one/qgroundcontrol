@@ -145,6 +145,7 @@ pub struct Transfer {
     to_write: Vec<u16>,
     writing: Vec<Item>,
     pub items: Vec<Item>,
+    pub wrote: bool,
 }
 
 fn result_text(result: u8) -> String {
@@ -194,6 +195,7 @@ impl Transfer {
         self.to_write.clear();
         self.expect = None;
         let transaction = self.transaction.take();
+        self.wrote = success && transaction == Some(Transaction::Write);
         match (transaction, success) {
             (Some(Transaction::Read), false) => self.items.clear(),
             (Some(Transaction::Write), true) => self.items = std::mem::take(&mut self.writing),

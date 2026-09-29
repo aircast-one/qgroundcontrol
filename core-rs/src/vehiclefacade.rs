@@ -52,6 +52,7 @@ struct Known {
     terrain_blocks: (u16, u16),
     escs: crate::sensorfacts::Escs,
     trigger_points: (Vec<(f64, f64, f64)>, bool),
+    mission_indices: (i32, i32, usize),
     sensors: Value,
     supports: Value,
     fields: Value,
@@ -169,6 +170,10 @@ fn has_gripper(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> bool {
     }
 }
 
+pub fn mission_flight_mode(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> String {
+    mode_fields(autopilot, vehicle_type, available).get("missionFlightMode").and_then(Value::as_str).unwrap_or_default().to_string()
+}
+
 fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> serde_json::Map<String, Value> {
     use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4, VehicleClass, px4};
     let listed: Vec<(String, u32, bool, bool)> = if available.is_empty() {
@@ -282,7 +287,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
             .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
             .collect(),
     );
-    Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), orbit: v.orbit_circle, hygrometer: v.hygrometer.clone(), generator: v.generator.clone(), efi: v.efi.clone(), terrain_blocks: v.terrain_blocks, escs: v.escs.clone(), trigger_points: (v.trigger_points.clone(), v.trigger_points_appended), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
+    Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), orbit: v.orbit_circle, hygrometer: v.hygrometer.clone(), generator: v.generator.clone(), efi: v.efi.clone(), terrain_blocks: v.terrain_blocks, escs: v.escs.clone(), trigger_points: (v.trigger_points.clone(), v.trigger_points_appended), mission_indices: (v.current_mission_index(), v.resume_mission_index(), v.fly_items()), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
 }
 
 fn fields_of(fields: &str) -> Vec<&str> {
@@ -301,6 +306,9 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("plan.rallyPointController", "supported") => Some(json!(known.capabilities.unwrap_or(0) & crate::connect::CAP_MISSION_RALLY != 0)),
             ("vehicle", "coordinate") => Some(known.coordinate.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
             ("vehicle", "homePosition") => Some(known.home.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
+            ("planFly.missionController", "currentMissionIndex") => Some(json!(known.mission_indices.0)),
+            ("planFly.missionController", "resumeMissionIndex") => Some(json!(known.mission_indices.1)),
+            ("planFly.missionController.visualItems", "count") => Some(json!(known.mission_indices.2)),
             ("vehicle.cameraTriggerPoints", "count") => Some(json!(known.trigger_points.0.len())),
             ("vehicle", field) => known.fields.get(field).cloned(),
             _ => None,
@@ -585,7 +593,7 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), local_setpoint: Default::default(), wind: Default::default(), setpoint: Default::default(), orbit: None, hygrometer: Default::default(), generator: Default::default(), efi: Default::default(), terrain_blocks: (0, 0), escs: Default::default(), trigger_points: Default::default(), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), local_setpoint: Default::default(), wind: Default::default(), setpoint: Default::default(), orbit: None, hygrometer: Default::default(), generator: Default::default(), efi: Default::default(), terrain_blocks: (0, 0), escs: Default::default(), trigger_points: Default::default(), mission_indices: (-1, 0, 1), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");

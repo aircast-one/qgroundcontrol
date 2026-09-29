@@ -158,6 +158,9 @@ pub struct Vehicle {
     pub terrain_blocks: (u16, u16),
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
+    pub mission_current: i32,
+    pub mission_last_current: i32,
+    mission_cached_last: i32,
     pub trigger_points: Vec<(f64, f64, f64)>,
     pub trigger_points_appended: bool,
     image_captured_seen: bool,
@@ -260,6 +263,9 @@ impl Vehicle {
             terrain_blocks: (0, 0),
             escs: Escs::default(),
             rc_override: BTreeMap::new(),
+            mission_current: -1,
+            mission_last_current: -1,
+            mission_cached_last: -1,
             trigger_points: Vec::new(),
             trigger_points_appended: false,
             image_captured_seen: false,
@@ -522,6 +528,9 @@ impl Vehicle {
                 plantransfer::Out::Done { success, error } => {
                     if kind == plantransfer::PLAN_MISSION {
                         self.clear_trigger_points();
+                        if self.plans[plan].transfer.wrote {
+                            (self.mission_current, self.mission_last_current) = (-1, -1);
+                        }
                     }
                     self.plans[plan].due = None;
                     self.plans[plan].error = (!success).then_some(error.clone());
@@ -1240,6 +1249,44 @@ impl Vehicle {
         }
     }
 
+    fn note_mission_index(&mut self, message: &MavMessage) {
+        let index = match message {
+            MavMessage::MISSION_CURRENT(d) => i32::from(d.seq),
+            MavMessage::HIGH_LATENCY(d) => i32::from(d.wp_num),
+            MavMessage::HIGH_LATENCY2(d) => i32::from(d.wp_num),
+            MavMessage::HEARTBEAT(_) => {
+                if self.mission_cached_last != -1 && self.flight_mode() == crate::vehiclefacade::mission_flight_mode(self.autopilot, self.vehicle_type, &self.flight_modes) {
+                    self.mission_last_current = self.mission_cached_last;
+                    self.mission_cached_last = -1;
+                }
+                return;
+            }
+            _ => return,
+        };
+        self.mission_current = index;
+        if self.mission_current != self.mission_last_current && self.mission_cached_last != self.mission_current {
+            self.mission_cached_last = self.mission_current;
+        }
+    }
+
+    pub fn fly_items(&self) -> usize {
+        let held = self.plans[plantransfer::PLAN_MISSION as usize].transfer.items.len();
+        match self.sends_home() {
+            true => held.max(1),
+            false => held + 1,
+        }
+    }
+
+    pub fn current_mission_index(&self) -> i32 {
+        self.mission_current + i32::from(!self.sends_home())
+    }
+
+    pub fn resume_mission_index(&self) -> i32 {
+        let resume = self.mission_last_current + i32::from(!self.sends_home());
+        let last_sequence = self.fly_items() as i32 - 1;
+        if resume > 1 && resume != last_sequence { resume - 1 } else { 0 }
+    }
+
     fn note_trigger_point(&mut self, message: &MavMessage) {
         let point = match message {
             MavMessage::CAMERA_IMAGE_CAPTURED(d) => {
@@ -1488,6 +1535,7 @@ impl Vehicle {
             self.clear_trigger_points();
         }
         self.note_trigger_point(message);
+        self.note_mission_index(message);
         if let MavMessage::ORBIT_EXECUTION_STATUS(d) = message {
             self.orbit_heard_ms = Some(now_ms);
             self.orbit_circle = Some((d.radius, d.x, d.y));
@@ -2054,6 +2102,23 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn the_resume_index_is_committed_only_by_a_heartbeat_in_the_mission_mode() {
+        use mavlink::dialects::ardupilotmega::MISSION_CURRENT_DATA;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, true), 0, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA { seq: 4, ..Default::default() }), 1, 0);
+        let vehicle = hub.active().unwrap();
+        assert_eq!((vehicle.current_mission_index(), vehicle.mission_last_current), (4, -1), "ArduPilot sends home, so the index is the sequence");
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, true), 2, 0);
+        assert_eq!(hub.active().unwrap().mission_last_current, -1, "a heartbeat outside Auto leaves the jump to a landing sequence uncommitted");
+        hub.on_frame(origin(0), &header, &copter_heartbeat(3, true), 3, 0);
+        assert_eq!(hub.active().unwrap().mission_last_current, 4);
+        assert_eq!(hub.active().unwrap().fly_items(), 1, "with nothing loaded the fly view holds only its settings item");
+        assert_eq!(hub.active().unwrap().resume_mission_index(), 3, "resume at the item before the one it was heading to");
     }
 
     #[test]
