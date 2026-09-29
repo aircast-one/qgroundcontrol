@@ -87,18 +87,58 @@ pub fn battery_fact(id: u8, battery: &BatteryFacts, name: &str, property: Option
     Some(fact(&meta, &battery_raw(id, battery, name), property))
 }
 
-pub fn battery_group(id: u8, battery: &BatteryFacts) -> Value {
-    let facts: Vec<Value> = BATTERY_PROPERTIES.iter().filter_map(|(property, name)| battery_fact(id, battery, name, Some(property))).collect();
+fn group(class: &str, fact_names: &[&str], facts: Vec<Value>, telemetry: bool) -> Value {
     json!({
         "children": [],
-        "class": "BatteryFactGroup",
+        "class": class,
         "factGroupNames": [],
-        "factNames": BATTERY_FACT_NAMES,
+        "factNames": fact_names,
         "facts": facts,
         "kind": "object",
         "objectName": "",
-        "telemetryAvailable": battery.telemetry,
+        "telemetryAvailable": telemetry,
     })
+}
+
+pub fn battery_group(id: u8, battery: &BatteryFacts) -> Value {
+    let facts: Vec<Value> = BATTERY_PROPERTIES.iter().filter_map(|(property, name)| battery_fact(id, battery, name, Some(property))).collect();
+    group("BatteryFactGroup", &BATTERY_FACT_NAMES, facts, battery.telemetry)
+}
+
+const VIBRATION_META: &str = include_str!("../../src/Vehicle/FactGroups/VibrationFact.json");
+const VIBRATION_FACT_NAMES: [&str; 6] = ["xAxis", "yAxis", "zAxis", "clipCount1", "clipCount2", "clipCount3"];
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct VibrationFacts {
+    pub axes: [Option<f64>; 3],
+    pub clipping: [u32; 3],
+    pub telemetry: bool,
+}
+
+impl VibrationFacts {
+    pub fn apply(&mut self, message: &mavlink::dialects::ardupilotmega::MavMessage) {
+        if let mavlink::dialects::ardupilotmega::MavMessage::VIBRATION(v) = message {
+            *self = VibrationFacts { axes: [Some(f64::from(v.vibration_x)), Some(f64::from(v.vibration_y)), Some(f64::from(v.vibration_z))], clipping: [v.clipping_0, v.clipping_1, v.clipping_2], telemetry: true };
+        }
+    }
+
+    fn raw(&self, name: &str) -> Option<Value> {
+        let index = VIBRATION_FACT_NAMES.iter().position(|n| *n == name)?;
+        Some(match index {
+            0..=2 => self.axes[index].map_or(Value::Null, |v| json!(v)),
+            _ => json!(self.clipping[index - 3]),
+        })
+    }
+}
+
+pub fn vibration_fact(vibration: &VibrationFacts, name: &str, property: Option<&str>) -> Option<Value> {
+    let meta = crate::factmeta::from_file(VIBRATION_META).ok()?.remove(name)?;
+    Some(fact(&meta, &vibration.raw(name)?, property))
+}
+
+pub fn vibration_group(vibration: &VibrationFacts) -> Value {
+    let facts = VIBRATION_FACT_NAMES.iter().filter_map(|name| vibration_fact(vibration, name, Some(name))).collect();
+    group("VehicleVibrationFactGroup", &VIBRATION_FACT_NAMES, facts, vibration.telemetry)
 }
 
 pub fn battery_list(batteries: &[(u8, BatteryFacts)]) -> Value {
@@ -163,6 +203,16 @@ mod tests {
         assert_eq!((charge["valueString"].as_str(), charge["enumOrValueString"].as_str()), (Some("1"), Some("Ok")));
         assert_eq!(time_remaining_text(Some(3725.0)), "01H:02M:05S");
         assert_eq!(battery_group(0, &battery)["facts"][1]["property"], "function", "a group lists its facts by the property that holds them");
+    }
+
+    #[test]
+    fn vibration_reads_as_dashes_until_the_first_report() {
+        let quiet = VibrationFacts::default();
+        assert_eq!(vibration_fact(&quiet, "xAxis", None).unwrap()["valueString"], "–.–");
+        assert_eq!(vibration_group(&quiet)["telemetryAvailable"], false);
+        let mut heard = VibrationFacts::default();
+        heard.apply(&mavlink::dialects::ardupilotmega::MavMessage::VIBRATION(mavlink::dialects::ardupilotmega::VIBRATION_DATA { vibration_x: 0.25, clipping_2: 7, ..Default::default() }));
+        assert_eq!((vibration_fact(&heard, "xAxis", None).unwrap()["valueString"].as_str(), vibration_fact(&heard, "clipCount3", None).unwrap()["value"].as_u64()), (Some("0.3"), Some(7)));
     }
 
     #[test]

@@ -145,6 +145,7 @@ pub struct Vehicle {
     pub facts: VehicleFacts,
     pub wind: WindFacts,
     pub temperature: TemperatureFacts,
+    pub vibration: crate::vehiclefact::VibrationFacts,
     pub distance: DistanceSensorFacts,
     pub local: LocalPositionFacts,
     pub estimator: EstimatorStatusFacts,
@@ -224,6 +225,7 @@ impl Vehicle {
             facts: VehicleFacts::for_vehicle(id, component),
             wind: WindFacts::default(),
             temperature: TemperatureFacts::default(),
+            vibration: crate::vehiclefact::VibrationFacts::default(),
             distance: DistanceSensorFacts::default(),
             local: LocalPositionFacts::default(),
             estimator: EstimatorStatusFacts::default(),
@@ -1276,6 +1278,7 @@ impl Vehicle {
         self.facts.apply(from, message);
         self.wind.apply(message);
         self.temperature.apply(message);
+        self.vibration.apply(message);
         self.distance.apply(message);
         self.local.apply(message);
         self.estimator.apply(message);
