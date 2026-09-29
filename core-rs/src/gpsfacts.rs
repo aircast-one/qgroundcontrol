@@ -8,8 +8,10 @@ pub struct GpsFacts {
     pub hdop: Option<f64>,
     pub vdop: Option<f64>,
     pub course_over_ground: Option<f64>,
+    pub yaw: Option<f64>,
     pub lock: u32,
     pub count: u32,
+    pub telemetry: bool,
 }
 
 fn hundredths(raw: u16) -> Option<f64> {
@@ -30,14 +32,16 @@ impl GpsFacts {
                 self.hdop = hundredths(d.eph);
                 self.vdop = hundredths(d.epv);
                 self.course_over_ground = hundredths(d.cog);
+                self.yaw = hundredths(d.yaw);
                 self.lock = d.fix_type as u32;
+                self.telemetry = true;
                 true
             }
             MavMessage::HIGH_LATENCY(d) => {
                 self.latitude = Some(d.latitude as f64 * 1e-7);
                 self.longitude = Some(d.longitude as f64 * 1e-7);
                 self.count = 0;
-                self.lock = d.gps_fix_type as u32;
+                self.telemetry = true;
                 true
             }
             MavMessage::HIGH_LATENCY2(d) => {
@@ -46,8 +50,10 @@ impl GpsFacts {
                 self.count = 0;
                 self.hdop = tenths(d.eph);
                 self.vdop = tenths(d.epv);
+                self.telemetry = true;
                 true
             }
+
             _ => false,
         }
     }

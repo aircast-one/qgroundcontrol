@@ -4,6 +4,8 @@ use crate::batteryfacts::BatteryFacts;
 use crate::factmeta::{MetaData, ValueType};
 
 const BATTERY_META: &str = include_str!("../../src/Vehicle/FactGroups/BatteryFact.json");
+const GPS_META: &str = include_str!("../../src/Vehicle/FactGroups/GPSFact.json");
+const GPS_ANSWERED: [&str; 9] = ["lat", "lon", "mgrs", "hdop", "vdop", "courseOverGround", "yaw", "count", "lock"];
 
 fn invalid_text(value_type: &ValueType, decimals: i64) -> String {
     match value_type {
@@ -116,6 +118,36 @@ pub fn battery_by_property(property: &str) -> Option<&'static str> {
     BATTERY_PROPERTIES.iter().find(|(p, _)| *p == property).map(|(_, n)| *n)
 }
 
+pub fn mgrs(latitude: f64, longitude: f64) -> String {
+    let Ok(position) = geoconvert::LatLon::create(latitude, longitude) else { return String::new() };
+    let packed = geoconvert::Mgrs::from_latlon(&position, 5).to_string();
+    let digits_from = packed.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
+    let half = (packed.len() - digits_from) / 2;
+    format!("{} {} {}", &packed[..digits_from], &packed[digits_from..digits_from + half], &packed[digits_from + half..])
+}
+
+fn gps_raw(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
+    let number = |v: Option<f64>| v.map_or(Value::Null, |n| json!(n));
+    Some(match name {
+        "lat" => number(gps.latitude),
+        "lon" => number(gps.longitude),
+        "mgrs" => json!(gps.latitude.zip(gps.longitude).map_or_else(String::new, |(lat, lon)| mgrs(lat, lon))),
+        "hdop" => number(gps.hdop),
+        "vdop" => number(gps.vdop),
+        "courseOverGround" => number(gps.course_over_ground),
+        "yaw" => number(gps.yaw),
+        "count" => json!(gps.count),
+        "lock" => json!(gps.lock),
+        _ => return None,
+    })
+}
+
+pub fn gps_fact(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
+    GPS_ANSWERED.contains(&name).then_some(())?;
+    let meta = crate::factmeta::from_file(GPS_META).ok()?.remove(name)?;
+    Some(fact(&meta, &gps_raw(gps, name)?, None))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,5 +163,15 @@ mod tests {
         assert_eq!((charge["valueString"].as_str(), charge["enumOrValueString"].as_str()), (Some("1"), Some("Ok")));
         assert_eq!(time_remaining_text(Some(3725.0)), "01H:02M:05S");
         assert_eq!(battery_group(0, &battery)["facts"][1]["property"], "function", "a group lists its facts by the property that holds them");
+    }
+
+    #[test]
+    fn mgrs_is_spelled_as_qgc_spaces_it() {
+        assert_eq!(mgrs(-35.3632616, 149.1652372), "55HFA 96719 84519");
+        assert_eq!(mgrs(417_189_529.0 * 1e-7, 448_281_746.0 * 1e-7), "38TMM 85707 18586", "both pairs read off one snapshot of Qt's vehicle.gps group");
+        let gps = crate::gpsfacts::GpsFacts::default();
+        assert_eq!(gps_fact(&gps, "mgrs").unwrap()["valueString"], "", "no position, no grid reference");
+        assert_eq!(gps_fact(&gps, "lat").unwrap()["valueString"], "–.–––––––");
+        assert!(gps_fact(&gps, "spoofingState").is_none(), "the integrity facts stay with the host until the hub can read GNSS_INTEGRITY");
     }
 }
