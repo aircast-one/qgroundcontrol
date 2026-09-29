@@ -35,6 +35,9 @@ pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MAV_STATE_ACTIVE: u8 = 4;
+const SENSOR_GPS: u32 = 0x20;
+const SENSOR_MOTOR_OUTPUTS: u32 = 0x8000;
+const SENSOR_PREARM_CHECK: u32 = 0x1000_0000;
 const MAV_STATE_CRITICAL: u8 = 5;
 const MAV_STATE_EMERGENCY: u8 = 6;
 const LANDED_ON_GROUND: u8 = 1;
@@ -91,6 +94,38 @@ struct PlanSlot {
     error: Option<String>,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct StatusBits {
+    pub present: u32,
+    pub enabled: u32,
+    pub health: u32,
+    pub ready_to_fly_available: bool,
+    pub ready_to_fly: bool,
+    pub all_healthy: bool,
+}
+
+impl StatusBits {
+    fn after(self, present: u32, enabled: u32, health: u32) -> StatusBits {
+        let prearm = enabled & SENSOR_PREARM_CHECK != 0;
+        StatusBits {
+            present,
+            enabled,
+            health,
+            ready_to_fly_available: self.ready_to_fly_available || prearm,
+            ready_to_fly: if prearm { health & SENSOR_PREARM_CHECK != 0 } else { self.ready_to_fly },
+            all_healthy: enabled & health == enabled,
+        }
+    }
+
+    pub fn unhealthy(self) -> u32 {
+        self.enabled & !self.health
+    }
+
+    pub fn requires_gps_fix(self) -> bool {
+        self.present & SENSOR_GPS != 0
+    }
+}
+
 #[derive(Debug)]
 pub struct Vehicle {
     pub id: u8,
@@ -123,6 +158,8 @@ pub struct Vehicle {
     pub errors: Vec<String>,
     pub connection_lost: bool,
     pub flying: bool,
+    armed_now: bool,
+    pub status_bits: StatusBits,
     pub landing: bool,
     pub replay: bool,
     pub max_proto_version: Option<u32>,
@@ -198,6 +235,8 @@ impl Vehicle {
             errors: Vec::new(),
             connection_lost: false,
             flying: false,
+            armed_now: false,
+            status_bits: StatusBits { all_healthy: true, ..StatusBits::default() },
             landing: false,
             replay,
             max_proto_version: None,
@@ -1041,7 +1080,11 @@ impl Vehicle {
     }
 
     pub fn armed(&self) -> bool {
-        self.base_mode & ARMED_FLAG != 0
+        self.armed_now
+    }
+
+    fn arming_not_required(&self) -> bool {
+        self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT && self.parameter(self.component, "ARMING_REQUIRE").is_some_and(|p| p.as_f64() == 0.0)
     }
 
     #[allow(deprecated)]
@@ -1055,6 +1098,9 @@ impl Vehicle {
                 self.last_heartbeat_us = timestamp_us;
                 self.connection_lost = false;
                 self.base_mode = h.base_mode.bits();
+                if !(self.arming_not_required() && self.status_bits.present & SENSOR_MOTOR_OUTPUTS != 0) {
+                    self.armed_now = self.base_mode & ARMED_FLAG != 0;
+                }
                 self.custom_mode = h.custom_mode;
                 self.system_status = h.system_status as u8;
                 self.vehicle_type = h.mavtype as u8;
@@ -1182,7 +1228,14 @@ impl Vehicle {
                 return self.follow_plan(kind, outs, now_ms);
             }
             MavMessage::SYS_STATUS(s) => {
-                self.sensors.update(s.onboard_control_sensors_present.bits(), s.onboard_control_sensors_enabled.bits(), s.onboard_control_sensors_health.bits());
+                let (present, enabled, health) = (s.onboard_control_sensors_present.bits(), s.onboard_control_sensors_enabled.bits(), s.onboard_control_sensors_health.bits());
+                self.sensors.update(present, enabled, health);
+                if from == (self.id, self.component) {
+                    self.status_bits = self.status_bits.after(present, enabled, health);
+                    if self.arming_not_required() {
+                        self.armed_now = enabled & SENSOR_MOTOR_OUTPUTS != 0;
+                    }
+                }
             }
             MavMessage::STATUSTEXT(t) => {
                 let end = t.text.iter().position(|b| *b == 0).unwrap_or(t.text.len());
@@ -1633,6 +1686,43 @@ mod tests {
         assert_eq!(state(&hub), (true, true), "a PX4 heartbeat does not decide flying and disarming does not clear landing");
         hub.on_frame(origin(0), &header, &landed(MavLandedState::MAV_LANDED_STATE_ON_GROUND), 5, 0);
         assert_eq!(state(&hub), (false, true));
+    }
+
+    #[test]
+    fn ready_to_fly_latches_until_the_prearm_bit_is_reported_again() {
+        let fresh = StatusBits { all_healthy: true, ..StatusBits::default() };
+        let without = fresh.after(0x20, 0x20, 0);
+        assert_eq!((without.ready_to_fly_available, without.ready_to_fly, without.all_healthy, without.unhealthy(), without.requires_gps_fix()), (false, false, false, 0x20, true));
+        let ready = without.after(SENSOR_PREARM_CHECK, SENSOR_PREARM_CHECK, SENSOR_PREARM_CHECK);
+        assert!(ready.ready_to_fly_available && ready.ready_to_fly);
+        let gone = ready.after(0, 0, 0);
+        assert!(gone.ready_to_fly_available && gone.ready_to_fly && gone.all_healthy, "a status without the prearm bit leaves the last answer");
+    }
+
+    #[test]
+    fn an_ardupilot_that_needs_no_arming_is_armed_by_its_motor_outputs() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavSysStatusSensor, MavType, SYS_STATUS_DATA};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut h = HEARTBEAT_DATA::default();
+        h.mavtype = MavType::MAV_TYPE_FIXED_WING;
+        h.autopilot = MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA;
+        h.base_mode = MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED;
+        hub.on_frame(origin(0), &header, &MavMessage::HEARTBEAT(h.clone()), 0, 0);
+        assert!(hub.active().unwrap().armed(), "without ARMING_REQUIRE the heartbeat decides");
+        hub.on_frame(origin(0), &header, &param_value("ARMING_REQUIRE", 1, 0, 0.0), 1, 0);
+        assert!(hub.active().unwrap().parameter(1, "ARMING_REQUIRE").is_some());
+        let motors = |enabled: bool| MavMessage::SYS_STATUS(SYS_STATUS_DATA {
+            onboard_control_sensors_present: MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS,
+            onboard_control_sensors_enabled: if enabled { MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS } else { MavSysStatusSensor::empty() },
+            ..Default::default()
+        });
+        hub.on_frame(origin(0), &header, &motors(false), 1, 0);
+        assert!(!hub.active().unwrap().armed());
+        hub.on_frame(origin(0), &header, &MavMessage::HEARTBEAT(h), 2, 0);
+        assert!(!hub.active().unwrap().armed(), "once motor outputs are reported the heartbeat's armed bit is ignored");
+        hub.on_frame(origin(0), &header, &motors(true), 3, 0);
+        assert!(hub.active().unwrap().armed());
     }
 
     #[test]
