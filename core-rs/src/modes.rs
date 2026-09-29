@@ -103,7 +103,7 @@ pub const PLANE_MODES: [Mode; 26] = [
     Mode { name: "Takeoff", custom_mode: 13, can_be_set: true, advanced: true },
     Mode { name: "Avoid ADSB", custom_mode: 14, can_be_set: true, advanced: true },
     Mode { name: "Guided", custom_mode: 15, can_be_set: true, advanced: false },
-    Mode { name: "Initializing", custom_mode: 16, can_be_set: true, advanced: true },
+    Mode { name: "Initializing", custom_mode: 16, can_be_set: false, advanced: true },
     Mode { name: "QuadPlane Stabilize", custom_mode: 17, can_be_set: true, advanced: true },
     Mode { name: "QuadPlane Hover", custom_mode: 18, can_be_set: true, advanced: true },
     Mode { name: "QuadPlane Loiter", custom_mode: 19, can_be_set: true, advanced: false },
@@ -119,7 +119,7 @@ pub const PLANE_MODES: [Mode; 26] = [
 pub const ROVER_MODES: [Mode; 15] = [
     Mode { name: "Manual", custom_mode: 0, can_be_set: true, advanced: false },
     Mode { name: "Acro", custom_mode: 1, can_be_set: true, advanced: true },
-    Mode { name: "Learning", custom_mode: 2, can_be_set: true, advanced: true },
+    Mode { name: "Learning", custom_mode: 2, can_be_set: false, advanced: true },
     Mode { name: "Steering", custom_mode: 3, can_be_set: true, advanced: false },
     Mode { name: "Hold", custom_mode: 4, can_be_set: true, advanced: false },
     Mode { name: "Loiter", custom_mode: 5, can_be_set: true, advanced: false },
@@ -131,7 +131,7 @@ pub const ROVER_MODES: [Mode; 15] = [
     Mode { name: "RTL", custom_mode: 11, can_be_set: true, advanced: false },
     Mode { name: "Smart RTL", custom_mode: 12, can_be_set: true, advanced: true },
     Mode { name: "Guided", custom_mode: 15, can_be_set: true, advanced: false },
-    Mode { name: "Initializing", custom_mode: 16, can_be_set: true, advanced: true },
+    Mode { name: "Initializing", custom_mode: 16, can_be_set: false, advanced: true },
 ];
 
 pub const SUB_MODES: [Mode; 11] = [
@@ -144,7 +144,7 @@ pub const SUB_MODES: [Mode; 11] = [
     Mode { name: "Circle", custom_mode: 7, can_be_set: true, advanced: true },
     Mode { name: "Surface", custom_mode: 9, can_be_set: true, advanced: false },
     Mode { name: "Position Hold", custom_mode: 16, can_be_set: true, advanced: false },
-    Mode { name: "Motor Detection", custom_mode: 20, can_be_set: true, advanced: true },
+    Mode { name: "Motor Detection", custom_mode: 20, can_be_set: false, advanced: true },
     Mode { name: "Surftrak", custom_mode: 21, can_be_set: true, advanced: true },
 ];
 

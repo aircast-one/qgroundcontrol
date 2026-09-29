@@ -60,6 +60,45 @@ fn supports(autopilot: u8, vehicle_type: u8) -> Value {
     })
 }
 
+fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> serde_json::Map<String, Value> {
+    use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4, VehicleClass, px4};
+    let listed: Vec<(String, u32, bool, bool)> = if available.is_empty() {
+        crate::modes::table(autopilot, vehicle_type).iter().map(|m| (m.name.to_string(), m.custom_mode, m.can_be_set, m.advanced)).collect()
+    } else {
+        available.iter().map(|m| (m.name.clone(), m.custom_mode, m.can_be_set, m.advanced)).collect()
+    };
+    let named = |custom: Option<u32>, fallback: &str| custom.and_then(|c| listed.iter().find(|m| m.1 == c)).map_or_else(|| fallback.to_string(), |m| m.0.clone());
+    let names = |advanced_only: bool| listed.iter().filter(|m| m.2 && (!advanced_only || m.3)).map(|m| m.0.clone()).collect::<Vec<_>>();
+    let apm = |rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str)| {
+        json!({
+            "flightModes": names(false),
+            "advancedFlightModes": names(true),
+            "flightModeSetAvailable": true,
+            "rtlFlightMode": named(rtl, "RTL"),
+            "smartRTLFlightMode": named(smart, "Smart RTL"),
+            "missionFlightMode": named(mission, "Auto"),
+            "landFlightMode": named(land.0, land.1),
+            "pauseFlightMode": named(pause.0, pause.1),
+        })
+    };
+    let fields = match (autopilot, crate::modes::vehicle_class(vehicle_type)) {
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(None, None, Some(3), (None, ""), (None, "")),
+        (AUTOPILOT_PX4, _) => json!({
+            "advancedFlightModes": names(true),
+            "rtlFlightMode": named(Some(px4(4, 5)), ""),
+            "smartRTLFlightMode": "",
+            "missionFlightMode": named(Some(px4(4, 4)), ""),
+            "landFlightMode": named(Some(px4(4, 6)), ""),
+            "pauseFlightMode": named(Some(px4(4, 3)), ""),
+        }),
+        _ => json!({}),
+    };
+    fields.as_object().cloned().unwrap_or_default()
+}
+
 fn carried() -> Option<Known> {
     let hub = crate::hub::lock();
     hub.active().map(|v| {
@@ -82,6 +121,7 @@ fn carried() -> Option<Known> {
             "sub": class == Sub,
             "initialConnectComplete": v.connected,
         });
+        let fields = Value::Object(fields.as_object().cloned().unwrap_or_default().into_iter().chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes)).collect());
         Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
@@ -196,6 +236,23 @@ impl<B: Backend> Backend for Facade<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mode_names_come_from_the_firmware_class_and_what_the_vehicle_announced() {
+        let copter = mode_fields(3, 2, &[]);
+        assert_eq!((copter["pauseFlightMode"].as_str(), copter["landFlightMode"].as_str(), copter["missionFlightMode"].as_str()), (Some("Brake"), Some("Land"), Some("Auto")));
+        assert!(copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Brake")));
+        assert!(!copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Loiter")));
+        let plane = mode_fields(3, 1, &[]);
+        assert!(!plane["flightModes"].as_array().unwrap().contains(&json!("Initializing")), "a mode the vehicle only reports is never offered");
+        assert_eq!((plane["smartRTLFlightMode"].as_str(), plane["landFlightMode"].as_str()), (Some("RTL"), Some("")), "a plane's smart RTL is its RTL and it has no land mode");
+        assert_eq!(mode_fields(3, 12, &[])["rtlFlightMode"], "RTL", "a sub has no RTL number, so the name falls back");
+        let renamed = crate::standardmodes::FlightMode { name: "Return Home".into(), standard_mode: 0, custom_mode: 6, can_be_set: true, advanced: false, fixed_wing: false, multi_rotor: true };
+        let announced = mode_fields(3, 2, &[renamed]);
+        assert_eq!((announced["rtlFlightMode"].as_str(), announced["pauseFlightMode"].as_str()), (Some("Return Home"), Some("Brake")), "an announced list replaces the table and a missing mode falls back");
+        assert!(mode_fields(12, 2, &[]).get("flightModes").is_none(), "PX4's list filters by airframe flags the core does not keep yet");
+        assert!(mode_fields(0, 2, &[]).is_empty());
+    }
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
