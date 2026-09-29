@@ -451,6 +451,43 @@ pub fn local_position_raw(p: &crate::sensorfacts::LocalPositionFacts, name: &str
 
 const VEHICLE_META: &str = include_str!("../../src/Vehicle/FactGroups/VehicleFact.json");
 
+const CIRCLE_META: &str = include_str!("../../src/QmlControls/QGCMapCircle.Facts.json");
+
+fn orbit_center(circle: Option<(f32, i32, i32)>) -> Option<Value> {
+    circle.map(|(_, x, y)| json!({ "altitude": null, "latitude": f64::from(x) / 1e7, "longitude": f64::from(y) / 1e7, "valid": true }))
+}
+
+fn orbit_radius(circle: Option<(f32, i32, i32)>, property: Option<&str>) -> Option<Value> {
+    let meta = crate::factmeta::from_file(CIRCLE_META).ok()?.remove("Radius")?;
+    Some(fact(&meta, &json!(circle.map_or(0.0, |(radius, _, _)| f64::from(radius).abs())), property))
+}
+
+pub fn orbit_circle(circle: Option<(f32, i32, i32)>) -> Option<Value> {
+    Some(json!({
+        "center": orbit_center(circle),
+        "children": [],
+        "class": "QGCMapCircle",
+        "clockwiseRotation": circle.is_none_or(|(radius, _, _)| radius > 0.0),
+        "dirty": circle.is_some(),
+        "facts": [orbit_radius(circle, Some("radius"))?],
+        "interactive": false,
+        "kind": "object",
+        "objectName": "",
+        "showRotation": circle.is_some(),
+    }))
+}
+
+pub fn orbit_circle_part(circle: Option<(f32, i32, i32)>, part: &str) -> Option<Value> {
+    match part {
+        "radius" => orbit_radius(circle, None),
+        "center" => Some(orbit_center(circle).map_or_else(|| json!({ "altitude": null, "kind": "coordinate", "latitude": null, "longitude": null, "valid": false }), |mut c| {
+            c["kind"] = json!("coordinate");
+            c
+        })),
+        field => orbit_circle(circle)?.get(field).filter(|v| v.is_boolean()).map(|v| json!({ "kind": "value", "value": v })),
+    }
+}
+
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
     let meta = crate::factmeta::from_file(VEHICLE_META).ok()?.remove(name)?;
     Some(fact(&meta, raw, None))
@@ -544,6 +581,16 @@ mod tests {
         assert_eq!((charge["valueString"].as_str(), charge["enumOrValueString"].as_str()), (Some("1"), Some("Ok")));
         assert_eq!(time_remaining_text(Some(3725.0)), "01H:02M:05S");
         assert_eq!(battery_group(0, &battery)["facts"][1]["property"], "function", "a group lists its facts by the property that holds them");
+    }
+
+    #[test]
+    fn the_orbit_circle_latches_the_last_status() {
+        let idle = orbit_circle(None).unwrap();
+        assert_eq!((idle["center"].clone(), idle["dirty"].clone(), idle["clockwiseRotation"].clone(), idle["facts"][0]["rawValue"].clone()), (Value::Null, json!(false), json!(true), json!(0.0)));
+        let heard = orbit_circle(Some((-25.0, -353632000, 1491652000))).unwrap();
+        assert_eq!((heard["center"]["latitude"].clone(), heard["clockwiseRotation"].clone(), heard["showRotation"].clone(), heard["facts"][0]["valueString"].clone()), (json!(-35.3632), json!(false), json!(true), json!("25.0")));
+        assert_eq!(orbit_circle_part(None, "center").unwrap()["valid"], false);
+        assert_eq!(orbit_circle_part(None, "radius").unwrap().get("property"), None, "a direct read of the fact names no holder");
     }
 
     #[test]

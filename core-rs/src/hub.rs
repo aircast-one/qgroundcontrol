@@ -155,6 +155,7 @@ pub struct Vehicle {
     pub obstacle: crate::vehiclefact::ObstacleFacts,
     pub rc_rssi: crate::vehiclefact::RcRssi,
     pub orbit_heard_ms: Option<u64>,
+    pub orbit_circle: Option<(f32, i32, i32)>,
     pub prearm: Option<(String, u64)>,
     prearm_spoken: BTreeMap<String, u64>,
     pub distance: DistanceSensorFacts,
@@ -245,6 +246,7 @@ impl Vehicle {
             obstacle: crate::vehiclefact::ObstacleFacts::default(),
             rc_rssi: crate::vehiclefact::RcRssi::default(),
             orbit_heard_ms: None,
+            orbit_circle: None,
             prearm: None,
             prearm_spoken: BTreeMap::new(),
             distance: DistanceSensorFacts::default(),
@@ -1368,8 +1370,9 @@ impl Vehicle {
         self.vibration.apply(message);
         self.radio.apply((header.system_id, header.component_id), message);
         self.obstacle.apply(message, now_ms);
-        if let MavMessage::ORBIT_EXECUTION_STATUS(_) = message {
+        if let MavMessage::ORBIT_EXECUTION_STATUS(d) = message {
             self.orbit_heard_ms = Some(now_ms);
+            self.orbit_circle = Some((d.radius, d.x, d.y));
         }
         self.rc_rssi.apply(message, self.ardupilot_components.contains(&header.component_id));
         self.distance.apply(message);
