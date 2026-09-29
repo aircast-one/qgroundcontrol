@@ -390,6 +390,26 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const LOCAL_POSITION: GroupSpec = GroupSpec {
+    class: "VehicleLocalPositionFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/LocalPositionFact.json"),
+    properties: &[("x", "x"), ("y", "y"), ("z", "z"), ("vx", "vx"), ("vy", "vy"), ("vz", "vz")],
+    added: &["x", "y", "z", "vx", "vy", "vz"],
+};
+
+pub fn local_position_raw(p: &crate::sensorfacts::LocalPositionFacts, name: &str) -> Value {
+    let value = match name {
+        "x" => p.x,
+        "y" => p.y,
+        "z" => p.z,
+        "vx" => p.vx,
+        "vy" => p.vy,
+        "vz" => p.vz,
+        _ => return Value::Null,
+    };
+    if p.seen { json!(value) } else { Value::Null }
+}
+
 const VEHICLE_META: &str = include_str!("../../src/Vehicle/FactGroups/VehicleFact.json");
 
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {

@@ -33,6 +33,7 @@ pub struct LocalPositionFacts {
     pub vx: f64,
     pub vy: f64,
     pub vz: f64,
+    pub seen: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -155,7 +156,7 @@ impl DistanceSensorFacts {
 impl LocalPositionFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
         let MavMessage::LOCAL_POSITION_NED(d) = message else { return false };
-        *self = LocalPositionFacts { x: d.x as f64, y: d.y as f64, z: d.z as f64, vx: d.vx as f64, vy: d.vy as f64, vz: d.vz as f64 };
+        *self = LocalPositionFacts { x: d.x as f64, y: d.y as f64, z: d.z as f64, vx: d.vx as f64, vy: d.vy as f64, vz: d.vz as f64, seen: true };
         true
     }
 }
