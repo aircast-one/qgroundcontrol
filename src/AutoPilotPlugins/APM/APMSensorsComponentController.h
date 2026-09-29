@@ -5,6 +5,7 @@
 #include "QGCMAVLinkTypes.h"
 
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 
 Q_DECLARE_LOGGING_CATEGORY(APMSensorsComponentControllerLog)
 Q_DECLARE_LOGGING_CATEGORY(APMSensorsComponentControllerVerboseLog)
@@ -179,7 +180,7 @@ private:
 
     void _updateAndEmitShowOrientationCalArea(bool show);
 
-    APMSensorsComponent *_sensorsComponent = nullptr;
+    QPointer<APMSensorsComponent> _sensorsComponent;
 
     qreal _calProgress = 0.0;
     bool _nextEnabled = false;

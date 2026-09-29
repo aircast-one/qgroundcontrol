@@ -143,7 +143,6 @@ void APMSensorsComponentController::_resetInternalState()
 
 void APMSensorsComponentController::_stopCalibration(APMSensorsComponentController::StopCalibrationCode code)
 {
-    // Clear mag cal sequencing state first so a reentrant CANCEL ack can't trigger a new START
     _magCalStartAccepted = false;
     _magCalCancelBeforeStartPending = false;
 
@@ -159,7 +158,6 @@ void APMSensorsComponentController::_stopCalibration(APMSensorsComponentControll
     if (_calTypeInProgress == QGCMAVLink::CalibrationMag) {
         _restorePreviousCompassCalFitness();
         if (code == StopCalibrationFailed) {
-            // ArduPilot keeps streaming the failed MAG_CAL_REPORT until cancelled
             _vehicle->sendMavCommand(_vehicle->defaultComponentId(), MAV_CMD_DO_CANCEL_MAG_CAL, false /* showError */);
         }
     }
@@ -193,7 +191,6 @@ void APMSensorsComponentController::_stopCalibration(APMSensorsComponentControll
         _hideAllCalAreas();
         break;
     default:
-        // Assume failed
         _hideAllCalAreas();
         QGC::showAppMessage(tr("Calibration failed. Calibration log will be displayed."));
         break;
@@ -215,8 +212,6 @@ void APMSensorsComponentController::_mavCommandResult(int vehicleId, int compone
     switch (command) {
     case MAV_CMD_DO_CANCEL_MAG_CAL:
         if (_magCalCancelBeforeStartPending) {
-            // Pre-start flush of stale cal state is complete (result doesn't matter - older
-            // firmwares reject CANCEL when no cal is running). Safe to start the new cal now.
             _magCalCancelBeforeStartPending = false;
             _sendStartMagCal();
         }
@@ -284,7 +279,6 @@ void APMSensorsComponentController::calibrateCompass()
         _rgCompassCalFitness[2] = 0;
     }
 
-    // We bump up the fitness value so calibration will always succeed
     const Fact *const compassCalFitness = getParameterFact(ParameterManager::defaultComponentId, _compassCalFitnessParam);
     _restoreCompassCalFitness = true;
     _previousCompassCalFitness = compassCalFitness->rawValue().toFloat();
@@ -293,9 +287,6 @@ void APMSensorsComponentController::calibrateCompass()
     _appendStatusLog(tr("Rotate the vehicle randomly around all axes until the progress bar fills all the way to the right."));
     (void) connect(_vehicle, &Vehicle::mavCommandResult, this, &APMSensorsComponentController::_mavCommandResult, Qt::UniqueConnection);
 
-    // A previously failed cal keeps streaming MAG_CAL_REPORT until cancelled. Flush that stale
-    // state before starting so it can't instantly complete the new calibration. START is sent
-    // from the CANCEL ack handler (_mavCommandResult) so the two commands can't race.
     _magCalCompassBits = compassBits;
     _magCalCancelBeforeStartPending = true;
     _vehicle->sendMavCommand(_vehicle->defaultComponentId(), MAV_CMD_DO_CANCEL_MAG_CAL, false /* showError */);
@@ -306,12 +297,12 @@ void APMSensorsComponentController::_sendStartMagCal()
     _vehicle->sendMavCommand(
         _vehicle->defaultComponentId(),
         MAV_CMD_DO_START_MAG_CAL,
-        true,                // showError
-        _magCalCompassBits,  // which compass(es) to calibrate
-        0,                   // no retry on failure
-        1,                   // save values after complete
-        0,                   // no delayed start
-        0                    // no auto-reboot
+        true,
+        _magCalCompassBits,
+        0,
+        1,
+        0,
+        0
     );
 }
 
@@ -337,7 +328,6 @@ void APMSensorsComponentController::calibrateAccel(bool doSimpleAccelCal)
     _setCancelEnabled(false);
     _setOrientationHelpText(tr("Hold still in the current orientation and press Next when ready"));
 
-    // Reset all progress indication
     _orientationCalDownSideDone = false;
     _orientationCalUpsideDownSideDone = false;
     _orientationCalLeftSideDone = false;
@@ -351,7 +341,6 @@ void APMSensorsComponentController::calibrateAccel(bool doSimpleAccelCal)
     _orientationCalNoseDownSideInProgress = false;
     _orientationCalTailDownSideInProgress = false;
 
-    // Reset all visibility
     _orientationCalDownSideVisible = false;
     _orientationCalUpsideDownSideVisible = false;
     _orientationCalLeftSideVisible = false;
@@ -461,15 +450,12 @@ void APMSensorsComponentController::cancelCalibration()
     _setCancelEnabled(false);
 
     if (_calTypeInProgress == QGCMAVLink::CalibrationMag) {
-        // Clear pending start first so a reentrant CANCEL ack can't trigger a new START
         _magCalCancelBeforeStartPending = false;
         _vehicle->sendMavCommand(_vehicle->defaultComponentId(), MAV_CMD_DO_CANCEL_MAG_CAL, true /* showError */);
         _stopCalibration(StopCalibrationCancelled);
     } else {
         _waitingForCancel = true;
         emit waitingForCancelChanged();
-        // The firmware doesn't always allow us to cancel calibration. The best we can do is wait
-        // for it to timeout.
         _vehicle->stopCalibration(true /* showError */);
     }
 }
@@ -485,12 +471,12 @@ void APMSensorsComponentController::nextClicked()
             MAVLinkProtocol::getComponentId(),
             sharedLink->mavlinkChannel(),
             &msg,
-            0,    // command
-            1,    // result
-            0,    // progress
-            0,    // result_param2
-            0,    // target_system
-            0     // target_component
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
         );
 
         (void) _vehicle->sendMessageOnLinkThreadSafe(sharedLink.get(), msg);
@@ -503,12 +489,12 @@ void APMSensorsComponentController::nextClicked()
 
 bool APMSensorsComponentController::compassSetupNeeded() const
 {
-    return _sensorsComponent->compassSetupNeeded();
+    return _sensorsComponent && _sensorsComponent->compassSetupNeeded();
 }
 
 bool APMSensorsComponentController::accelSetupNeeded() const
 {
-    return _sensorsComponent->accelSetupNeeded();
+    return _sensorsComponent && _sensorsComponent->accelSetupNeeded();
 }
 
 bool APMSensorsComponentController::usingUDPLink() const
@@ -559,7 +545,6 @@ void APMSensorsComponentController::_handleMagCalProgress(const mavlink_message_
                                                      << magCalProgress.cal_mask
                                                      << magCalProgress.completion_pct;
 
-    // How many compasses are we calibrating?
     int compassCalCount = 0;
     for (int i = 0; i < 3; i++) {
         if (magCalProgress.cal_mask & (1 << i)) {
@@ -568,7 +553,6 @@ void APMSensorsComponentController::_handleMagCalProgress(const mavlink_message_
     }
 
     if ((magCalProgress.compass_id < 3) && (compassCalCount != 0)) {
-        // Each compass gets a portion of the overall progress
         _rgCompassCalProgress[magCalProgress.compass_id] = magCalProgress.completion_pct / compassCalCount;
     }
 

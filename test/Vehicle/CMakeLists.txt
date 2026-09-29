@@ -9,6 +9,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         AircastLinkFactGroupTest.h
         APMAirframeComponentControllerTest.cc
         APMAirframeComponentControllerTest.h
+        APMSensorsComponentControllerTest.cc
+        APMSensorsComponentControllerTest.h
         APMStartMissionTest.cc
         APMStartMissionTest.h
         FTPManagerTest.cc
@@ -61,6 +63,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 add_subdirectory(ComponentInformation)
 
 add_qgc_test(APMAirframeComponentControllerTest LABELS Integration Vehicle)
+add_qgc_test(APMSensorsComponentControllerTest LABELS Integration Vehicle)
 add_qgc_test(APMStartMissionTest LABELS Integration Vehicle)
 add_qgc_test(FTPControllerTest LABELS Integration Vehicle RESOURCE_LOCK TempFiles)
 add_qgc_test(FTPManagerTest LABELS Integration Vehicle)
