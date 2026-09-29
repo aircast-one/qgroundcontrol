@@ -52,6 +52,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import one.aircast.android.ui.StatusReadingsInline
 import one.aircast.android.ui.VehicleStateChip
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -63,6 +68,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -173,12 +182,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         QGCBridge.notifyFontScale(newConfig.fontScale)
     }
 
-    override fun setSystemBarAppearance(lightBars: Boolean) {
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = lightBars
-            isAppearanceLightNavigationBars = lightBars
-        }
-    }
+    override fun setSystemBarAppearance(lightBars: Boolean) = Unit
 
     override fun getWindow(): Window =
         if (isDestroyed) live?.takeIf { it !== this }?.window ?: super.getWindow() else super.getWindow()
@@ -282,6 +286,17 @@ fun AircastShell(quickView: QtQuickView) {
         }
     }
 
+    val darkBars = isSystemInDarkTheme()
+    val view = LocalView.current
+    SideEffect {
+        (view.context as? Activity)?.window?.let { window ->
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkBars
+                isAppearanceLightNavigationBars = !darkBars
+            }
+        }
+    }
+
     AircastTheme {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbars) },
@@ -289,6 +304,7 @@ fun AircastShell(quickView: QtQuickView) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
