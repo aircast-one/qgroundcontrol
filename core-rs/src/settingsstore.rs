@@ -327,7 +327,26 @@ pub fn get(backend: &dyn Backend, path: &str) -> Option<String> {
     }
 }
 
+fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<String> {
+    let object = path.strip_prefix("settings.").filter(|rest| !rest.contains('.'))?;
+    let group = OBJECTS.iter().find(|(name, _)| *name == object)?.1;
+    let asked: Vec<&str> = fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect();
+    let facts: Option<Vec<Value>> = asked
+        .iter()
+        .map(|fact| {
+            let fact_path = format!("{path}.{fact}");
+            let at = address(&fact_path)?;
+            Some(crate::vehiclefact::compact(&described(backend, &at, &fact_path), fact))
+        })
+        .collect();
+    let facts = facts.filter(|f| !f.is_empty())?;
+    Some(json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] }).to_string())
+}
+
 pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<String> {
+    if let Some(answered) = object_fields(backend, path, fields) {
+        return Some(answered);
+    }
     let at = address(path)?;
     at.field.is_none().then_some(())?;
     let fact = described(backend, &at, path);
