@@ -34,6 +34,7 @@ struct Known {
     vibration: crate::vehiclefact::VibrationFacts,
     estimator: crate::sensorfacts::EstimatorStatusFacts,
     distance: crate::sensorfacts::DistanceSensorFacts,
+    capabilities: Option<u64>,
     sensors: Value,
     supports: Value,
     fields: Value,
@@ -234,7 +235,7 @@ fn carried() -> Option<Known> {
                 .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
                 .collect(),
         );
-        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
+        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
 
@@ -249,6 +250,9 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("vehicle.parameterManager", "parametersReady") => Some(json!(known.parameters_ready)),
             ("vehicle.vehicleLinkManager", "communicationLost") => Some(json!(known.lost)),
             ("vehicle.supports", capability) => known.supports.get(capability).cloned(),
+            ("plan.managerVehicle", "capabilitiesKnown") => Some(json!(known.capabilities.is_some())),
+            ("plan.geoFenceController", "supported") => Some(json!(known.capabilities.unwrap_or(0) & crate::connect::CAP_MISSION_FENCE != 0)),
+            ("plan.rallyPointController", "supported") => Some(json!(known.capabilities.unwrap_or(0) & crate::connect::CAP_MISSION_RALLY != 0)),
             ("vehicle", "coordinate") => Some(known.coordinate.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
             ("vehicle", field) => known.fields.get(field).cloned(),
             _ => None,
@@ -312,6 +316,13 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
     Some(json!({ "kind": "value", "value": value }))
 }
 
+fn answer_scalar(path: &str, known: &Known) -> Option<Value> {
+    let (parent, leaf) = path.rsplit_once('.')?;
+    let (answered, _) = answer_fields(parent, leaf, known);
+    let value = answered.get(leaf).filter(|v| v.is_boolean() || v.is_number() || v.is_string())?;
+    Some(json!({ "kind": "value", "value": value }))
+}
+
 fn answer_invoke(path: &str, args: &str) -> Option<Value> {
     (path == "vehicle.parameterManager.parameterExists").then_some(())?;
     let given: Value = serde_json::from_str(args).ok()?;
@@ -328,7 +339,7 @@ impl<B: Backend> Backend for Facade<B> {
         if path == "core.qtReads" {
             return tally().to_string();
         }
-        switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known)).map_or_else(
+        switched_on().then(carried).flatten().and_then(|known| answer_get(path, &known).or_else(|| answer_scalar(path, &known))).map_or_else(
             || {
                 fell_through("get", path);
                 self.0.get(path)
@@ -415,7 +426,7 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
@@ -425,6 +436,10 @@ mod tests {
         let placed = Known { coordinate: Some((1.0, 2.0, 3.0)), ..known };
         assert_eq!(answer_get("vehicle.coordinate", &placed).unwrap()["kind"], "coordinate");
         let known = placed;
+        assert_eq!(answer_scalar("plan.managerVehicle.capabilitiesKnown", &known), Some(json!({ "kind": "value", "value": false })), "capabilities are unknown until AUTOPILOT_VERSION answers or is given up on");
+        let rally_only = Known { capabilities: Some(crate::connect::CAP_MISSION_RALLY), ..known };
+        assert_eq!((answer_scalar("plan.geoFenceController.supported", &rally_only), answer_scalar("plan.rallyPointController.supported", &rally_only)), (Some(json!({ "kind": "value", "value": false })), Some(json!({ "kind": "value", "value": true }))));
+        let known = rally_only;
         assert_eq!(answer_get("vehicle.flying", &known), None);
         assert_eq!(answer_get("vehicle.armed", &known), Some(json!({ "kind": "value", "value": false })));
         assert_eq!(answer_fields("vehicle.supports", "guidedTakeoffWithAltitude,orbitMode,smartRTL", &known).0, json!({ "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true }).as_object().unwrap().clone(), "an ArduCopter quad");

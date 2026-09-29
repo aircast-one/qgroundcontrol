@@ -154,6 +154,7 @@ pub struct Vehicle {
     pub recent: Vec<StatusText>,
     pub by_name: BTreeMap<String, u64>,
     pub capabilities: u64,
+    pub capabilities_known: bool,
     pub home_altitude: Option<f64>,
     pub home: Option<(f64, f64, f64)>,
     pub reposition_supported: Option<bool>,
@@ -234,6 +235,7 @@ impl Vehicle {
             recent: Vec::new(),
             by_name: BTreeMap::new(),
             capabilities: 0,
+            capabilities_known: false,
             home_altitude: None,
             home: None,
             reposition_supported: None,
@@ -790,6 +792,7 @@ impl Vehicle {
                 Action::FirstRallyPointLoadComplete => self.step_done(connect::Step::RallyPoints, now_ms),
                 Action::SetCapabilities(capabilities) => {
                     self.capabilities = capabilities;
+                    self.capabilities_known = true;
                     Vec::new()
                 }
                 Action::SetMaxProtoVersion(version) => {
