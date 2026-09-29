@@ -11,6 +11,14 @@ pub struct WindFacts {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct HygrometerFacts {
+    pub temperature: f64,
+    pub humidity: f64,
+    pub id: u8,
+    pub seen: bool,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SetpointFacts {
     pub roll: f64,
     pub pitch: f64,
@@ -121,6 +129,14 @@ impl WindFacts {
             }
             _ => false,
         }
+    }
+}
+
+impl HygrometerFacts {
+    pub fn apply(&mut self, message: &MavMessage) -> bool {
+        let MavMessage::HYGROMETER_SENSOR(d) = message else { return false };
+        *self = HygrometerFacts { temperature: f64::from(f32::from(d.temperature) / 100.0), humidity: f64::from(d.humidity), id: d.id, seen: true };
+        true
     }
 }
 
@@ -246,6 +262,14 @@ mod tests {
         assert!(!position.apply(&MavMessage::POSITION_TARGET_LOCAL_NED(target.clone())));
         assert!(position.apply_target(&MavMessage::POSITION_TARGET_LOCAL_NED(target)));
         assert_eq!((position.x, position.vz, position.seen), (1.5, -0.25, true));
+    }
+
+    #[test]
+    fn hygrometer_temperature_is_centidegrees_in_single_precision() {
+        let mut hygrometer = HygrometerFacts::default();
+        let sensor = mavlink::dialects::ardupilotmega::HYGROMETER_SENSOR_DATA { temperature: 2137, humidity: 4550, id: 2 };
+        hygrometer.apply(&MavMessage::HYGROMETER_SENSOR(sensor));
+        assert_eq!((hygrometer.temperature, hygrometer.humidity, hygrometer.id, hygrometer.seen), (f64::from(21.37f32), 4550.0, 2, true));
     }
 
     #[test]

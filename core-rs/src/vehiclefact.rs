@@ -390,6 +390,22 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const HYGROMETER: GroupSpec = GroupSpec {
+    class: "VehicleHygrometerFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/HygrometerFact.json"),
+    properties: &[("hygroID", "hygrometerid"), ("hygroTemp", "temperature"), ("hygroHumi", "humidity")],
+    added: &["temperature", "humidity", "hygrometerid"],
+};
+
+pub fn hygrometer_raw(h: &crate::sensorfacts::HygrometerFacts, name: &str) -> Value {
+    match (name, h.seen) {
+        ("hygrometerid", _) => json!(h.id),
+        ("temperature", true) => json!(h.temperature),
+        ("humidity", true) => json!(h.humidity),
+        _ => Value::Null,
+    }
+}
+
 pub const SETPOINT: GroupSpec = GroupSpec {
     class: "VehicleSetpointFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/SetpointFact.json"),
