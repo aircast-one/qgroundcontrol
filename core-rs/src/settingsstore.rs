@@ -334,10 +334,40 @@ pub fn get(backend: &dyn Backend, path: &str) -> Option<String> {
     }
 }
 
+const SAVE_DIRECTORIES: [(&str, &str); 9] = [
+    ("parameterSavePath", "Parameters"),
+    ("telemetrySavePath", "Telemetry"),
+    ("missionSavePath", "Missions"),
+    ("logSavePath", "Logs"),
+    ("videoSavePath", "Video"),
+    ("photoSavePath", "Photo"),
+    ("crashSavePath", "CrashLogs"),
+    ("mavlinkActionsSavePath", "MavlinkActions"),
+    ("settingsSavePath", "Settings"),
+];
+
+fn child_save_path(root: &str, directory: &str) -> String {
+    let root = std::path::Path::new(root);
+    match !root.as_os_str().is_empty() && root.is_dir() {
+        true => root.join(directory).to_string_lossy().into_owned(),
+        false => String::new(),
+    }
+}
+
 fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<String> {
     let object = path.strip_prefix("settings.").filter(|rest| !rest.contains('.'))?;
     let group = OBJECTS.iter().find(|(name, _)| *name == object)?.1;
-    let asked: Vec<&str> = fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect();
+    let all: Vec<&str> = fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect();
+    let (paths, asked): (Vec<&str>, Vec<&str>) = all.iter().partition(|f| object == "appSettings" && SAVE_DIRECTORIES.iter().any(|(name, _)| name == *f));
+    let root = match paths.is_empty() {
+        true => None,
+        false => Some(stored_text(&key("App", "savePath"))?),
+    };
+    let saved: serde_json::Map<String, Value> = paths
+        .iter()
+        .filter_map(|name| SAVE_DIRECTORIES.iter().find(|(n, _)| n == name))
+        .map(|(name, directory)| (name.to_string(), json!(child_save_path(root.as_deref().unwrap_or(""), directory))))
+        .collect();
     let facts: Option<Vec<Value>> = asked
         .iter()
         .map(|fact| {
@@ -346,8 +376,17 @@ fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Stri
             Some(crate::vehiclefact::compact(&described(backend, &at, &fact_path), fact))
         })
         .collect();
-    let facts = facts.filter(|f| !f.is_empty())?;
-    Some(json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] }).to_string())
+    let facts = facts.filter(|f| !f.is_empty() || !saved.is_empty())?;
+    let mut answer = json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] });
+    saved.into_iter().for_each(|(name, value)| answer[name] = value);
+    Some(answer.to_string())
+}
+
+fn save_path(path: &str) -> Option<String> {
+    let name = path.strip_prefix("settings.appSettings.")?;
+    let (_, directory) = SAVE_DIRECTORIES.iter().find(|(n, _)| *n == name)?;
+    let root = stored_text(&key("App", "savePath"))?;
+    Some(json!({ "kind": "value", "value": child_save_path(&root, directory) }).to_string())
 }
 
 pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<String> {
@@ -441,7 +480,7 @@ pub struct Owner<B>(pub B);
 
 impl<B: Backend> Backend for Owner<B> {
     fn get(&self, path: &str) -> String {
-        enabled().then(|| crate::units::get(path).or_else(|| get(&self.0, path))).flatten().unwrap_or_else(|| self.0.get(path))
+        enabled().then(|| crate::units::get(path).or_else(|| save_path(path)).or_else(|| get(&self.0, path))).flatten().unwrap_or_else(|| self.0.get(path))
     }
     fn get_fields(&self, path: &str, fields: &str) -> String {
         enabled().then(|| crate::units::fields(path, fields).or_else(|| get_fields(&self.0, path, fields))).flatten().unwrap_or_else(|| self.0.get_fields(path, fields))
@@ -477,6 +516,14 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.iter().map(|(k, v)| (k.clone(), by_value(v))).collect()),
             other => other.clone(),
         }
+    }
+
+    #[test]
+    fn a_child_save_path_exists_only_under_an_existing_root() {
+        let root = std::env::temp_dir();
+        assert_eq!(child_save_path(&root.to_string_lossy(), "Logs"), root.join("Logs").to_string_lossy());
+        assert_eq!(child_save_path("/no/such/qgc/root", "Logs"), "", "Qt answers an empty path when the root folder is missing");
+        assert_eq!(child_save_path("", "Logs"), "");
     }
 
     #[test]
