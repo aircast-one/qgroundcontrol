@@ -390,6 +390,21 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const TERRAIN: GroupSpec = GroupSpec {
+    class: "TerrainFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/TerrainFactGroup.json"),
+    properties: &[("blocksPending", "blocksPending"), ("blocksLoaded", "blocksLoaded")],
+    added: &["blocksPending", "blocksLoaded"],
+};
+
+pub fn terrain_raw((pending, loaded): (u16, u16), name: &str) -> Value {
+    match name {
+        "blocksPending" => json!(pending),
+        "blocksLoaded" => json!(loaded),
+        _ => Value::Null,
+    }
+}
+
 pub const EFI: GroupSpec = GroupSpec {
     class: "VehicleEFIFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/EFIFact.json"),

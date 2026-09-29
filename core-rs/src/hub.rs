@@ -152,6 +152,7 @@ pub struct Vehicle {
     pub hygrometer: HygrometerFacts,
     pub generator: GeneratorFacts,
     pub efi: EfiFacts,
+    pub terrain_blocks: (u16, u16),
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
@@ -246,6 +247,7 @@ impl Vehicle {
             hygrometer: HygrometerFacts::default(),
             generator: GeneratorFacts::default(),
             efi: EfiFacts::default(),
+            terrain_blocks: (0, 0),
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
@@ -1375,6 +1377,9 @@ impl Vehicle {
         self.hygrometer.apply(message);
         self.generator.apply(message);
         self.efi.apply(message);
+        if let MavMessage::TERRAIN_REPORT(d) = message {
+            self.terrain_blocks = (d.pending, d.loaded);
+        }
         self.temperature.apply(message);
         self.vibration.apply(message);
         self.radio.apply((header.system_id, header.component_id), message);
