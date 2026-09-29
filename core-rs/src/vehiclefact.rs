@@ -675,6 +675,52 @@ pub fn trigger_points_part(points: &[(f64, f64, f64)], part: &str) -> Option<Val
     }
 }
 
+const CLOCK_META: &str = include_str!("../../src/Vehicle/FactGroups/ClockFact.json");
+const AIRCAST_LINK_META: &str = include_str!("../../src/Vehicle/FactGroups/AircastLinkFact.json");
+const GPS_PROPERTIES: [&str; 17] = ["lat", "lon", "mgrs", "hdop", "vdop", "courseOverGround", "yaw", "count", "lock", "systemErrors", "spoofingState", "jammingState", "authenticationState", "correctionsQuality", "systemQuality", "gnssSignalQuality", "postProcessingQuality"];
+const VEHICLE_PROPERTIES: [&str; 31] = [
+    "roll", "pitch", "heading", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "airSpeedSetpoint", "climbRate", "altitudeRelative", "altitudeAMSL", "altitudeAboveTerr", "altitudeTuning", "altitudeTuningSetpoint", "xTrackError", "rangeFinderDist", "flightDistance", "distanceToHome", "timeToHome", "missionItemIndex", "headingToNextWP", "distanceToNextWP", "headingToHome", "headingFromHome", "headingFromGCS", "distanceToGCS", "hobbs", "throttlePct", "imuTemp", "rcRSSI",
+];
+
+fn listing<'a>(meta: &str, properties: impl IntoIterator<Item = (&'a str, &'a str)>) -> Value {
+    let described = crate::factmeta::from_file(meta).unwrap_or_default();
+    let facts: Vec<Value> = properties
+        .into_iter()
+        .map(|(property, name)| json!({ "property": property, "name": name, "shortDescription": described.get(name).map_or("", |m| m.short_description.as_str()) }))
+        .collect();
+    json!({ "kind": "object", "facts": facts })
+}
+
+fn same_names<'a>(names: &'a [&'a str]) -> impl Iterator<Item = (&'a str, &'a str)> {
+    names.iter().map(|name| (*name, *name))
+}
+
+pub fn instrument_catalogue() -> (Vec<(&'static str, Value)>, Value) {
+    let spec = |s: &GroupSpec| listing(s.meta, s.properties.iter().copied());
+    let groups = vec![
+        ("orbitMapCircle", listing(CIRCLE_META, [("radius", "Radius")])),
+        ("gps", listing(GPS_META, same_names(&GPS_PROPERTIES))),
+        ("gps2", listing(GPS_META, same_names(&GPS_PROPERTIES))),
+        ("gpsAggregate", listing(GPS_META, same_names(&["spoofingState", "jammingState", "authenticationState", "isStale"]))),
+        ("wind", spec(&WIND)),
+        ("vibration", listing(VIBRATION_META, same_names(&VIBRATION_FACT_NAMES))),
+        ("temperature", spec(&TEMPERATURE)),
+        ("clock", listing(CLOCK_META, same_names(&["currentTime", "currentUTCTime", "currentDate"]))),
+        ("setpoint", spec(&SETPOINT)),
+        ("estimatorStatus", spec(&ESTIMATOR)),
+        ("terrain", spec(&TERRAIN)),
+        ("distanceSensors", spec(&DISTANCE)),
+        ("localPosition", spec(&LOCAL_POSITION)),
+        ("localPositionSetpoint", spec(&LOCAL_POSITION_SETPOINT)),
+        ("hygrometer", spec(&HYGROMETER)),
+        ("generator", spec(&GENERATOR)),
+        ("efi", spec(&EFI)),
+        ("radioStatus", spec(&RADIO)),
+        ("aircastLink", listing(AIRCAST_LINK_META, same_names(&["quality", "radioType", "status", "videoBitrate"]))),
+    ];
+    (groups, listing(VEHICLE_META, same_names(&VEHICLE_PROPERTIES)))
+}
+
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
     let meta = crate::factmeta::from_file(VEHICLE_META).ok()?.remove(name)?;
     Some(fact(&meta, raw, None))
@@ -777,6 +823,15 @@ mod tests {
         let fact = |name: &str| group["facts"].as_array().unwrap().iter().find(|f| f["name"] == name).unwrap().clone();
         assert_eq!((fact("rpm")["valueString"].clone(), fact("rpm")["typeIsInteger"].clone(), fact("rpm")["maxString"].clone()), (json!("2200"), json!(true), json!("3.4028234663852886e+38")));
         assert_eq!((fact("failureFlags")["bitmaskValues"][1].clone(), fact("failureFlags")["enumStrings"].clone()), (json!(2), json!([])), "a bitmask array describes bits, not a list of choices");
+    }
+
+    #[test]
+    fn the_instrument_catalogue_describes_each_group_from_its_metadata() {
+        let (groups, vehicle) = instrument_catalogue();
+        assert_eq!(groups.first().map(|(g, _)| *g), Some("orbitMapCircle"));
+        let aggregate = &groups.iter().find(|(g, _)| *g == "gpsAggregate").unwrap().1["facts"];
+        assert_eq!((aggregate[0]["shortDescription"].as_str(), aggregate[3]["shortDescription"].as_str()), (Some("Signal Spoofing State"), Some("")), "isStale has no metadata in GPSFact.json, so its label falls back to its name");
+        assert_eq!(vehicle["facts"].as_array().map(Vec::len), Some(31));
     }
 
     #[test]

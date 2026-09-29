@@ -32,7 +32,23 @@ fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
     facts_of(&object(&backend.get(&format!("vehicle.{group}"))), &format!("{group}/"))
 }
 
+fn catalogued() -> Option<(Vec<Value>, Value)> {
+    (crate::vehiclefacade::switched_on() && crate::hub::lock().active().is_some()).then_some(())?;
+    let (groups, vehicle) = crate::vehiclefact::instrument_catalogue();
+    let listed = groups
+        .into_iter()
+        .filter_map(|(group, listing)| {
+            let facts = facts_of(&listing, &format!("{group}/"));
+            (!facts.is_empty()).then(|| json!({ "group": group, "title": humanise(group), "facts": facts }))
+        })
+        .collect();
+    Some((listed, vehicle))
+}
+
 pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    if let Some((groups, vehicle)) = catalogued() {
+        return instrument_groups(backend, true, groups, &vehicle);
+    }
     let vehicle = object(&backend.get("vehicle"));
     let available = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let groups: Vec<Value> = vehicle
@@ -50,6 +66,10 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
                 .collect()
         })
         .unwrap_or_default();
+    instrument_groups(backend, available, groups, &vehicle)
+}
+
+fn instrument_groups(backend: &dyn Backend, available: bool, groups: Vec<Value>, vehicle: &Value) -> Value {
     let packs = crate::read::value_number(&backend.get("vehicle.batteries.count")).unwrap_or(0.0).max(0.0) as i64;
     // One group per battery pack, in the same shape as groups so a head decodes both one way. The
     // macOS head named these itself and read each pack raw; the ids stay batteries.<n>, which
@@ -72,7 +92,7 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
         // The Android head read the whole vehicle object raw to list them; they are served here
         // under a bare selection, which view.instruments resolves against the vehicle by default.
         "vehicleFacts": match available {
-            true => facts_of(&vehicle, ""),
+            true => facts_of(vehicle, ""),
             false => Vec::new(),
         },
     })
