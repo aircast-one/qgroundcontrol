@@ -21,6 +21,7 @@ pub struct DistanceSensorFacts {
     pub by_orientation: BTreeMap<u32, f64>,
     pub min_distance: f64,
     pub max_distance: f64,
+    pub seen: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -55,6 +56,7 @@ pub struct EstimatorStatusFacts {
     pub tas_ratio: f64,
     pub horiz_pos_accuracy: f64,
     pub vert_pos_accuracy: f64,
+    pub seen: bool,
 }
 
 pub const DISTANCE_ORIENTATIONS: [MavSensorOrientation; 10] = [
@@ -139,6 +141,7 @@ impl DistanceSensorFacts {
         }
         self.min_distance = d.min_distance as f64 / 100.0;
         self.max_distance = d.max_distance as f64 / 100.0;
+        self.seen = true;
         true
     }
 }
@@ -176,6 +179,7 @@ impl EstimatorStatusFacts {
             tas_ratio: d.tas_ratio as f64,
             horiz_pos_accuracy: d.pos_horiz_accuracy as f64,
             vert_pos_accuracy: d.pos_vert_accuracy as f64,
+            seen: true,
         };
         true
     }

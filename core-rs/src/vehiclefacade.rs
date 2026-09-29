@@ -32,6 +32,8 @@ struct Known {
     batteries: Vec<(u8, crate::batteryfacts::BatteryFacts)>,
     gps: crate::gpsfacts::GpsFacts,
     vibration: crate::vehiclefact::VibrationFacts,
+    estimator: crate::sensorfacts::EstimatorStatusFacts,
+    distance: crate::sensorfacts::DistanceSensorFacts,
     sensors: Value,
     supports: Value,
     fields: Value,
@@ -232,7 +234,7 @@ fn carried() -> Option<Known> {
                 .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
                 .collect(),
         );
-        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
+        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
 
@@ -276,6 +278,14 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         field if field.starts_with("vehicle.") && !field["vehicle.".len()..].contains('.') && known.fields.get(&field["vehicle.".len()..]).is_some() => known.fields[&field["vehicle.".len()..]].clone(),
         capability if capability.starts_with("vehicle.supports.") => known.supports.get(capability.trim_start_matches("vehicle.supports."))?.clone(),
         sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
+        "vehicle.estimatorStatus" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::ESTIMATOR, |n| crate::vehiclefact::estimator_raw(&known.estimator, n), known.estimator.seen)),
+        estimator if estimator.starts_with("vehicle.estimatorStatus.") => {
+            return crate::vehiclefact::spec_property(&crate::vehiclefact::ESTIMATOR, &estimator["vehicle.estimatorStatus.".len()..], |n| crate::vehiclefact::estimator_raw(&known.estimator, n));
+        }
+        "vehicle.distanceSensors" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::DISTANCE, |n| crate::vehiclefact::distance_raw(&known.distance, n, &Value::Null), known.distance.seen)),
+        distance if distance.starts_with("vehicle.distanceSensors.") => {
+            return crate::vehiclefact::spec_property(&crate::vehiclefact::DISTANCE, &distance["vehicle.distanceSensors.".len()..], |n| crate::vehiclefact::distance_raw(&known.distance, n, &Value::Null));
+        }
         "vehicle.vibration" => return Some(crate::vehiclefact::vibration_group(&known.vibration)),
         vibration if vibration.starts_with("vehicle.vibration.") => return crate::vehiclefact::vibration_fact(&known.vibration, &vibration["vehicle.vibration.".len()..], None),
         gps if gps.starts_with("vehicle.gps.") => return crate::vehiclefact::gps_fact(&known.gps, &gps["vehicle.gps.".len()..]),
@@ -405,7 +415,7 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
