@@ -22,7 +22,7 @@ use crate::sensorcal::{self, Calibration};
 use crate::ulogstream::Processor;
 use crate::standardmodes::{self, AvailableMode, FlightMode, MSG_AVAILABLE_MODES, StandardModes};
 use crate::transport::LinkId;
-use crate::sensorfacts::{DistanceSensorFacts, EstimatorStatusFacts, HygrometerFacts, LocalPositionFacts, SetpointFacts, TemperatureFacts, WindFacts};
+use crate::sensorfacts::{DistanceSensorFacts, EstimatorStatusFacts, GeneratorFacts, HygrometerFacts, LocalPositionFacts, SetpointFacts, TemperatureFacts, WindFacts};
 use crate::statustext::{Handler, StatusText};
 use crate::sysstatus::SysStatusSensors;
 use crate::vehiclefacts::VehicleFacts;
@@ -150,6 +150,7 @@ pub struct Vehicle {
     pub wind: WindFacts,
     pub setpoint: SetpointFacts,
     pub hygrometer: HygrometerFacts,
+    pub generator: GeneratorFacts,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
@@ -242,6 +243,7 @@ impl Vehicle {
             wind: WindFacts::default(),
             setpoint: SetpointFacts::default(),
             hygrometer: HygrometerFacts::default(),
+            generator: GeneratorFacts::default(),
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
@@ -1369,6 +1371,7 @@ impl Vehicle {
         self.wind.apply(message);
         self.setpoint.apply(message);
         self.hygrometer.apply(message);
+        self.generator.apply(message);
         self.temperature.apply(message);
         self.vibration.apply(message);
         self.radio.apply((header.system_id, header.component_id), message);

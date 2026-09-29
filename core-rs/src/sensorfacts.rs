@@ -11,6 +11,23 @@ pub struct WindFacts {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct GeneratorFacts {
+    pub status: u64,
+    pub speed: u16,
+    pub battery_current: f32,
+    pub load_current: f32,
+    pub power_generated: f32,
+    pub bus_voltage: f32,
+    pub battery_current_setpoint: f32,
+    pub rectifier_temperature: i16,
+    pub generator_temperature: i16,
+    pub runtime: u32,
+    pub time_until_maintenance: i32,
+    pub status_changed: bool,
+    pub seen: bool,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct HygrometerFacts {
     pub temperature: f64,
     pub humidity: f64,
@@ -129,6 +146,29 @@ impl WindFacts {
             }
             _ => false,
         }
+    }
+}
+
+impl GeneratorFacts {
+    pub fn apply(&mut self, message: &MavMessage) -> bool {
+        let MavMessage::GENERATOR_STATUS(d) = message else { return false };
+        let status = if d.status.bits() == u64::from(u16::MAX) { 0 } else { d.status.bits() };
+        *self = GeneratorFacts {
+            status,
+            speed: if d.generator_speed == u16::MAX { 0 } else { d.generator_speed },
+            battery_current: d.battery_current,
+            load_current: d.load_current,
+            power_generated: d.power_generated,
+            bus_voltage: d.bus_voltage,
+            battery_current_setpoint: d.bat_current_setpoint,
+            rectifier_temperature: if d.rectifier_temperature == i16::MAX { 0 } else { d.rectifier_temperature },
+            generator_temperature: if d.generator_temperature == i16::MAX { 0 } else { d.generator_temperature },
+            runtime: if d.runtime == u32::MAX { 0 } else { d.runtime },
+            time_until_maintenance: if d.time_until_maintenance == i32::MAX { 0 } else { d.time_until_maintenance },
+            status_changed: self.status_changed || status != self.status,
+            seen: true,
+        };
+        true
     }
 }
 
@@ -262,6 +302,18 @@ mod tests {
         assert!(!position.apply(&MavMessage::POSITION_TARGET_LOCAL_NED(target.clone())));
         assert!(position.apply_target(&MavMessage::POSITION_TARGET_LOCAL_NED(target)));
         assert_eq!((position.x, position.vz, position.seen), (1.5, -0.25, true));
+    }
+
+    #[test]
+    fn generator_sentinels_read_as_zero_and_a_status_change_is_remembered() {
+        use mavlink::dialects::ardupilotmega::{GENERATOR_STATUS_DATA, MavGeneratorStatusFlag};
+        let mut generator = GeneratorFacts::default();
+        let unknown = GENERATOR_STATUS_DATA { status: MavGeneratorStatusFlag::from_bits_retain(u64::from(u16::MAX)), generator_speed: u16::MAX, runtime: u32::MAX, rectifier_temperature: i16::MAX, bus_voltage: 48.5, ..Default::default() };
+        generator.apply(&MavMessage::GENERATOR_STATUS(unknown));
+        assert_eq!((generator.status, generator.speed, generator.runtime, generator.rectifier_temperature, generator.bus_voltage, generator.status_changed), (0, 0, 0, 0, 48.5, false));
+        generator.apply(&MavMessage::GENERATOR_STATUS(GENERATOR_STATUS_DATA { status: MavGeneratorStatusFlag::from_bits_retain(4), ..Default::default() }));
+        generator.apply(&MavMessage::GENERATOR_STATUS(GENERATOR_STATUS_DATA { status: MavGeneratorStatusFlag::empty(), ..Default::default() }));
+        assert_eq!((generator.status, generator.status_changed), (0, true));
     }
 
     #[test]

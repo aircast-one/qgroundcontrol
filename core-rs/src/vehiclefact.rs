@@ -390,6 +390,47 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const GENERATOR: GroupSpec = GroupSpec {
+    class: "VehicleGeneratorFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/GeneratorFact.json"),
+    properties: &[
+        ("status", "status"),
+        ("genSpeed", "genSpeed"),
+        ("batteryCurrent", "batteryCurrent"),
+        ("loadCurrent", "loadCurrent"),
+        ("powerGenerated", "powerGenerated"),
+        ("busVoltage", "busVoltage"),
+        ("rectifierTemp", "rectifierTemp"),
+        ("batCurrentSetpoint", "batCurrentSetpoint"),
+        ("genTemp", "genTemp"),
+        ("runtime", "runtime"),
+        ("timeMaintenance", "timeMaintenance"),
+    ],
+    added: &["status", "genSpeed", "batteryCurrent", "loadCurrent", "powerGenerated", "busVoltage", "batCurrentSetpoint", "rectifierTemp", "genTemp", "runtime", "timeMaintenance"],
+};
+
+pub fn generator_raw(g: &crate::sensorfacts::GeneratorFacts, name: &str) -> Value {
+    let measured = |value: f32| if g.seen { json!(f64::from(value)) } else { Value::Null };
+    match name {
+        "status" => json!(g.status),
+        "genSpeed" => json!(g.speed),
+        "batteryCurrent" => measured(g.battery_current),
+        "loadCurrent" => measured(g.load_current),
+        "powerGenerated" => measured(g.power_generated),
+        "busVoltage" => measured(g.bus_voltage),
+        "batCurrentSetpoint" => measured(g.battery_current_setpoint),
+        "rectifierTemp" => json!(g.rectifier_temperature),
+        "genTemp" => json!(g.generator_temperature),
+        "runtime" => json!(g.runtime),
+        "timeMaintenance" => json!(g.time_until_maintenance),
+        _ => Value::Null,
+    }
+}
+
+pub fn generator_flags(g: &crate::sensorfacts::GeneratorFacts) -> Value {
+    json!(if g.status_changed { vec![0; 23] } else { Vec::new() })
+}
+
 pub const HYGROMETER: GroupSpec = GroupSpec {
     class: "VehicleHygrometerFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/HygrometerFact.json"),

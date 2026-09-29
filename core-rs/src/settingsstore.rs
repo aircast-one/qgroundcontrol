@@ -98,6 +98,8 @@ fn type_limits(value_type: &ValueType) -> (f64, f64) {
     }
 }
 
+const I64_RANGE: f64 = 9_223_372_036_854_775_808.0;
+
 fn unsigned_zero(text: String) -> String {
     match text.strip_prefix('-') {
         Some(rest) if rest.chars().all(|c| c == '0' || c == '.') => rest.to_string(),
@@ -110,6 +112,7 @@ fn spelled(value: &Value, decimals: i64, whole: bool) -> String {
         Value::Bool(b) => b.to_string(),
         Value::String(s) => s.clone(),
         other => other.as_f64().map_or_else(String::new, |n| match whole {
+            true if n.abs() > I64_RANGE => format!("{n}"),
             true => format!("{}", n as i64),
             false => unsigned_zero(half_away(n, usize::try_from(decimals).unwrap_or(0))),
         }),
@@ -131,7 +134,7 @@ fn number_json(value: f64, whole: bool) -> Value {
     if !value.is_finite() {
         return Value::Null;
     }
-    match whole || (value.fract() == 0.0 && value.abs() < 1e15) {
+    match (whole && value.abs() <= I64_RANGE) || (value.fract() == 0.0 && value.abs() < 1e15) {
         true => json!(value as i64),
         false => json!(value),
     }
@@ -470,6 +473,13 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.iter().map(|(k, v)| (k.clone(), by_value(v))).collect()),
             other => other.clone(),
         }
+    }
+
+    #[test]
+    fn a_uint64_limit_is_the_double_qt_holds_it_in() {
+        let meta = crate::factmeta::from_file(r#"{"QGC.MetaData.Facts":[{"name":"status","type":"uint64"}]}"#).unwrap().remove("status").unwrap();
+        let fact = fact_json(&meta, &json!(4), None);
+        assert_eq!((fact["max"].as_f64(), fact["maxString"].as_str()), (Some(18_446_744_073_709_551_615.0), Some("18446744073709552000")));
     }
 
     #[test]
