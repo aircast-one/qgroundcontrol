@@ -1151,6 +1151,14 @@ impl Cameras {
         self.cameras.len()
     }
 
+    pub fn models(&self) -> Vec<String> {
+        self.cameras.iter().map(|camera| camera.info.model.clone()).collect()
+    }
+
+    pub fn compid_at(&self, index: usize) -> Option<u8> {
+        self.cameras.get(index).map(|camera| camera.compid)
+    }
+
     pub fn selected_index(&self) -> Option<usize> {
         let chosen = self.chosen_compid()?;
         self.cameras.iter().position(|camera| camera.compid == chosen)

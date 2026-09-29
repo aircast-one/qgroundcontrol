@@ -1964,6 +1964,10 @@ impl Hub {
         }).is_some()
     }
 
+    pub fn select_camera(&mut self, index: usize) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).and_then(|v| v.cameras.compid_at(index).map(|compid| v.cameras.select(compid).is_ok())).unwrap_or(false)
+    }
+
     pub fn set_check_list_state(&mut self, state: i64) -> bool {
         self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.check_list_state = state).is_some()
     }
