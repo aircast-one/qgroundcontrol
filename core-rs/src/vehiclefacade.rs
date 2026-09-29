@@ -36,6 +36,8 @@ struct Known {
     distance: crate::sensorfacts::DistanceSensorFacts,
     capabilities: Option<u64>,
     radio: crate::vehiclefact::RadioStatusFacts,
+    obstacle: crate::vehiclefact::ObstacleFacts,
+    avoidance_enabled: bool,
     sensors: Value,
     supports: Value,
     fields: Value,
@@ -236,7 +238,7 @@ fn carried() -> Option<Known> {
                 .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
                 .collect(),
         );
-        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
+        Known { id: v.id, parameters_ready: v.parameters_ready(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
     })
 }
 
@@ -387,6 +389,19 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answered) = group {
             return answered.to_string();
         }
+        let avoidance = (path == "vehicle.objectAvoidance").then(|| switched_on().then(carried).flatten()).flatten().and_then(|known| {
+            let now = crate::hub::now_ms();
+            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), known.obstacle.field(f, known.avoidance_enabled, now)?))).collect();
+            let mut object = Value::Object(answered?);
+            object["kind"] = json!("object");
+            object["class"] = json!("VehicleObjectAvoidance");
+            object["facts"] = json!([]);
+            object["children"] = json!([]);
+            Some(object)
+        });
+        if let Some(answered) = avoidance {
+            return answered.to_string();
+        }
         let (answered, missing) = switched_on().then(carried).flatten().map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, &known));
         if missing.is_empty() && !answered.is_empty() {
             let mut object = Value::Object(answered);
@@ -465,7 +480,7 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
+        let known = Known { id: 1, parameters_ready: true, lost: false, home: None, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), obstacle: Default::default(), avoidance_enabled: false, sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");

@@ -334,6 +334,45 @@ impl RadioStatusFacts {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ObstacleFacts {
+    pub distances: Vec<i64>,
+    pub increment: f64,
+    pub min_distance: i64,
+    pub max_distance: i64,
+    pub angle_offset: f64,
+    pub updated_ms: Option<u64>,
+}
+
+impl ObstacleFacts {
+    pub fn apply(&mut self, message: &mavlink::dialects::ardupilotmega::MavMessage, now_ms: u64) {
+        let mavlink::dialects::ardupilotmega::MavMessage::OBSTACLE_DISTANCE(o) = message else { return };
+        let fine = f64::from(o.increment_f);
+        *self = ObstacleFacts {
+            distances: o.distances.iter().map(|d| i64::from(*d)).collect(),
+            increment: if fine.is_finite() && fine > 0.0 { fine } else { f64::from(o.increment) },
+            min_distance: i64::from(o.min_distance),
+            max_distance: i64::from(o.max_distance),
+            angle_offset: f64::from(o.angle_offset),
+            updated_ms: Some(now_ms),
+        };
+    }
+
+    pub fn field(&self, name: &str, enabled: bool, now_ms: u64) -> Option<Value> {
+        Some(match name {
+            "available" => json!(!self.distances.is_empty()),
+            "enabled" => json!(enabled),
+            "distances" => json!(self.distances),
+            "increment" => json!(self.increment),
+            "minDistance" => json!(self.min_distance),
+            "maxDistance" => json!(self.max_distance),
+            "angleOffset" => json!(self.angle_offset),
+            "msSinceUpdate" => json!(self.updated_ms.map_or(-1, |at| i64::try_from(now_ms.saturating_sub(at)).unwrap_or(i64::MAX))),
+            _ => return None,
+        })
+    }
+}
+
 pub fn mgrs(latitude: f64, longitude: f64) -> String {
     let Ok(position) = geoconvert::LatLon::create(latitude, longitude) else { return String::new() };
     let packed = geoconvert::Mgrs::from_latlon(&position, 5).to_string();
