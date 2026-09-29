@@ -8849,6 +8849,7 @@
             "view.vehicleLinks",
             "view.coreVehicle",
             "view.coreGuided",
+            "view.coreCameras",
             "view.coreParameter",
             "view.coreParameters",
             "view.coreMission",

@@ -1487,6 +1487,7 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
         { QStringLiteral("view.coreParameter"), QStringLiteral("same, and no vehicle means no parameter name to ask for") },
         { QStringLiteral("view.coreParameters"), QStringLiteral("same") },
         { QStringLiteral("view.coreRemoteId"), QStringLiteral("same") },
+        { QStringLiteral("view.coreCameras"), QStringLiteral("same") },
         { QStringLiteral("view.transports"), QStringLiteral("lists links the core hosts, and it hosts none while coreLinks is off") },
         { QStringLiteral("view.dependencies"), QStringLiteral("describes the registry itself, and its content is already pinned inside other recordings") },
         { QStringLiteral("view.contract"), QStringLiteral("enumerates VIEWS and their enumerations, so recording its shape pins the fixture against itself") },
@@ -1721,6 +1722,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         { QStringLiteral("view.coreMission"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
         { QStringLiteral("view.coreRemoteId"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
         { QStringLiteral("view.coreCalibration"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
+        { QStringLiteral("view.coreCameras"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
     };
     const QJsonArray argumentModes = take(qgc_bridge_get("view.dependencies")).value(QStringLiteral("argumentModes")).toArray();
     QVERIFY2(argumentModes.count() > 20, "the registry parsed, so an empty answer below would mean nothing");
