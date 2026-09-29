@@ -22,7 +22,7 @@ use crate::sensorcal::{self, Calibration};
 use crate::ulogstream::Processor;
 use crate::standardmodes::{self, AvailableMode, FlightMode, MSG_AVAILABLE_MODES, StandardModes};
 use crate::transport::LinkId;
-use crate::sensorfacts::{DistanceSensorFacts, EfiFacts, EstimatorStatusFacts, GeneratorFacts, HygrometerFacts, LocalPositionFacts, SetpointFacts, TemperatureFacts, WindFacts};
+use crate::sensorfacts::{DistanceSensorFacts, EfiFacts, Escs, EstimatorStatusFacts, GeneratorFacts, HygrometerFacts, LocalPositionFacts, SetpointFacts, TemperatureFacts, WindFacts};
 use crate::statustext::{Handler, StatusText};
 use crate::sysstatus::SysStatusSensors;
 use crate::vehiclefacts::VehicleFacts;
@@ -153,6 +153,7 @@ pub struct Vehicle {
     pub generator: GeneratorFacts,
     pub efi: EfiFacts,
     pub terrain_blocks: (u16, u16),
+    pub escs: Escs,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
@@ -248,6 +249,7 @@ impl Vehicle {
             generator: GeneratorFacts::default(),
             efi: EfiFacts::default(),
             terrain_blocks: (0, 0),
+            escs: Escs::default(),
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
@@ -1377,6 +1379,7 @@ impl Vehicle {
         self.hygrometer.apply(message);
         self.generator.apply(message);
         self.efi.apply(message);
+        self.escs.apply(message);
         if let MavMessage::TERRAIN_REPORT(d) = message {
             self.terrain_blocks = (d.pending, d.loaded);
         }

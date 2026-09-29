@@ -10,6 +10,50 @@ pub struct WindFacts {
     pub seen: [bool; 3],
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct EscFacts {
+    pub rpm: i32,
+    pub current: f32,
+    pub voltage: f32,
+    pub count: u8,
+    pub connection_type: u8,
+    pub info: u8,
+    pub failure_flags: u16,
+    pub error_count: u32,
+    pub temperature: i16,
+    pub telemetry: bool,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Escs {
+    pub by_id: std::collections::BTreeMap<u32, EscFacts>,
+}
+
+impl Escs {
+    pub fn apply(&mut self, message: &MavMessage) -> bool {
+        let first = match message {
+            MavMessage::ESC_INFO(_) => 0,
+            MavMessage::ESC_STATUS(d) => u32::from(d.index),
+            _ => return false,
+        };
+        (first..=first + 3).for_each(|id| {
+            self.by_id.entry(id).or_default();
+        });
+        self.by_id.iter_mut().for_each(|(id, esc)| match message {
+            MavMessage::ESC_INFO(d) if (u32::from(d.index)..u32::from(d.index) + 4).contains(id) => {
+                let slot = (*id % 4) as usize;
+                *esc = EscFacts { count: d.count, connection_type: d.connection_type as u8, info: d.info, failure_flags: d.failure_flags[slot], error_count: d.error_count[slot], temperature: d.temperature[slot], telemetry: true, ..esc.clone() };
+            }
+            MavMessage::ESC_STATUS(d) if (u32::from(d.index)..u32::from(d.index) + 4).contains(id) => {
+                let slot = (*id % 4) as usize;
+                *esc = EscFacts { rpm: d.rpm[slot], current: d.current[slot], voltage: d.voltage[slot], telemetry: true, ..esc.clone() };
+            }
+            _ => {}
+        });
+        true
+    }
+}
+
 pub const EFI_READINGS: [&str; 18] = [
     "ecuIndex", "rpm", "fuelConsumed", "fuelFlow", "engineLoad", "throttlePos", "sparkTime", "baroPress", "intakePress", "intakeTemp", "cylinderTemp", "ignTime", "injTime", "exGasTemp", "throttleOut", "ptComp", "ignVoltage", "fuelPressure",
 ];
@@ -332,6 +376,18 @@ mod tests {
         assert!(!position.apply(&MavMessage::POSITION_TARGET_LOCAL_NED(target.clone())));
         assert!(position.apply_target(&MavMessage::POSITION_TARGET_LOCAL_NED(target)));
         assert_eq!((position.x, position.vz, position.seen), (1.5, -0.25, true));
+    }
+
+    #[test]
+    fn esc_info_always_opens_the_first_four_because_qt_reads_its_index_from_the_wrong_message() {
+        use mavlink::dialects::ardupilotmega::{ESC_INFO_DATA, ESC_STATUS_DATA};
+        let mut escs = Escs::default();
+        escs.apply(&MavMessage::ESC_STATUS(ESC_STATUS_DATA { index: 4, rpm: [100, 200, 300, 400], ..Default::default() }));
+        assert_eq!(escs.by_id.keys().copied().collect::<Vec<_>>(), vec![4, 5, 6, 7]);
+        assert_eq!((escs.by_id[&5].rpm, escs.by_id[&5].telemetry), (200, true));
+        escs.apply(&MavMessage::ESC_INFO(ESC_INFO_DATA { index: 4, count: 8, temperature: [0, 3150, 0, 0], ..Default::default() }));
+        assert_eq!(escs.by_id.keys().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!((escs.by_id[&5].temperature, escs.by_id[&5].count, escs.by_id[&5].rpm, escs.by_id[&0].telemetry), (3150, 8, 200, false));
     }
 
     #[test]

@@ -154,14 +154,18 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
     let bound_text = |v: f64| match (bool_typed, if single { f64::from(v as f32) } else { v }.is_finite()) {
         (true, _) => (v != 0.0).to_string(),
         (false, false) => if v > 0.0 { "inf" } else { "-inf" }.to_string(),
-        (false, true) => spelled(&json!(v), decimals, whole || meta.value_type == ValueType::String),
+        (false, true) => spelled(&json!(if single { f64::from(v as f32) } else { v }), decimals, whole || meta.value_type == ValueType::String),
     };
     let real = matches!(meta.value_type, ValueType::Float | ValueType::Double);
     let matches = |v: &Value| v == raw || v.as_f64().zip(raw.as_f64()).is_some_and(|(a, b)| a == b || (real && (a - b).abs() < 1e-6));
     let unknown_label = format!("Unknown: {}", crate::control::raw_text(raw));
-    let unknown = !meta.enums.is_empty() && !meta.enums.iter().any(|e| matches(&e.value));
-    let labels: Vec<String> = meta.enums.iter().map(|e| e.label.clone()).chain(unknown.then(|| unknown_label.clone())).collect();
-    let values: Vec<Value> = meta.enums.iter().map(|e| e.value.clone()).chain(unknown.then(|| raw.clone())).collect();
+    let (listed, bits): (&[crate::factmeta::EnumEntry], &[crate::factmeta::EnumEntry]) = match (meta.bitmask, meta.bits.is_empty()) {
+        (true, true) => (&[], &meta.enums),
+        _ => (&meta.enums, &meta.bits),
+    };
+    let unknown = !listed.is_empty() && !listed.iter().any(|e| matches(&e.value));
+    let labels: Vec<String> = listed.iter().map(|e| e.label.clone()).chain(unknown.then(|| unknown_label.clone())).collect();
+    let values: Vec<Value> = listed.iter().map(|e| e.value.clone()).chain(unknown.then(|| raw.clone())).collect();
     let enum_index = values.iter().position(matches).map_or(-1, |i| i as i64);
     let cook = |given: &Value| match (unit, given.as_f64()) {
         (Some(_), Some(v)) => number_json(cooked(v), whole),
@@ -205,8 +209,8 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         "qgcRebootRequired": meta.qgc_reboot_required,
         "vehicleRebootRequired": meta.vehicle_reboot_required,
         "unknownEnumLabel": unknown_label,
-        "bitmaskStrings": meta.bits.iter().map(|e| e.label.clone()).collect::<Vec<_>>(),
-        "bitmaskValues": meta.bits.iter().map(|e| e.value.clone()).collect::<Vec<_>>(),
+        "bitmaskStrings": bits.iter().map(|e| e.label.clone()).collect::<Vec<_>>(),
+        "bitmaskValues": bits.iter().map(|e| e.value.clone()).collect::<Vec<_>>(),
         "userVisible": true,
         "visible": true,
     })

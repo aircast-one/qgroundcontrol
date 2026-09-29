@@ -390,6 +390,67 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const ESC: GroupSpec = GroupSpec {
+    class: "EscStatusFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/EscStatusFactGroup.json"),
+    properties: &[
+        ("id", "id"),
+        ("rpm", "rpm"),
+        ("current", "current"),
+        ("voltage", "voltage"),
+        ("count", "count"),
+        ("connectionType", "connectionType"),
+        ("info", "info"),
+        ("failureFlags", "failureFlags"),
+        ("errorCount", "errorCount"),
+        ("temperature", "temperature"),
+    ],
+    added: &["id", "rpm", "current", "voltage", "count", "connectionType", "info", "failureFlags", "errorCount", "temperature"],
+};
+
+pub fn esc_raw(id: u32, e: &crate::sensorfacts::EscFacts, name: &str) -> Value {
+    match name {
+        "id" => json!(id),
+        "rpm" => json!(e.rpm),
+        "current" => json!(f64::from(e.current)),
+        "voltage" => json!(f64::from(e.voltage)),
+        "count" => json!(e.count),
+        "connectionType" => json!(e.connection_type),
+        "info" => json!(e.info),
+        "failureFlags" => json!(e.failure_flags),
+        "errorCount" => json!(e.error_count),
+        "temperature" => json!(e.temperature),
+        _ => Value::Null,
+    }
+}
+
+fn esc_group(id: u32, esc: &crate::sensorfacts::EscFacts) -> Value {
+    let mut group = spec_group(&ESC, |n| esc_raw(id, esc, n), esc.telemetry);
+    if let Some(rpm) = group["facts"].as_array_mut().and_then(|facts| facts.iter_mut().find(|f| f["name"] == "rpm")) {
+        let text = esc.rpm.to_string();
+        rpm["typeIsInteger"] = json!(true);
+        rpm["valueString"] = json!(text);
+        rpm["enumOrValueString"] = json!(text);
+        rpm["defaultValueString"] = json!("nan");
+        rpm["minString"] = json!(crate::control::qt_shortest(rpm["min"].as_f64().unwrap_or(f64::NAN)));
+        rpm["maxString"] = json!(crate::control::qt_shortest(rpm["max"].as_f64().unwrap_or(f64::NAN)));
+    }
+    group
+}
+
+pub fn esc_list(escs: &crate::sensorfacts::Escs) -> Value {
+    json!({
+        "children": [],
+        "class": "EscStatusFactGroupListModel",
+        "count": escs.by_id.len(),
+        "dirty": !escs.by_id.is_empty(),
+        "elements": escs.by_id.iter().map(|(id, e)| esc_group(*id, e)).collect::<Vec<_>>(),
+        "facts": [],
+        "kind": "object",
+        "objectName": "",
+    })
+}
+
 pub const TERRAIN: GroupSpec = GroupSpec {
     class: "TerrainFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/TerrainFactGroup.json"),
@@ -690,6 +751,15 @@ mod tests {
         assert_eq!((charge["valueString"].as_str(), charge["enumOrValueString"].as_str()), (Some("1"), Some("Ok")));
         assert_eq!(time_remaining_text(Some(3725.0)), "01H:02M:05S");
         assert_eq!(battery_group(0, &battery)["facts"][1]["property"], "function", "a group lists its facts by the property that holds them");
+    }
+
+    #[test]
+    fn an_esc_rpm_reads_as_the_int32_fact_qt_declares_over_its_float_metadata() {
+        let esc = crate::sensorfacts::EscFacts { rpm: 2200, failure_flags: 3, ..Default::default() };
+        let group = esc_group(5, &esc);
+        let fact = |name: &str| group["facts"].as_array().unwrap().iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!((fact("rpm")["valueString"].clone(), fact("rpm")["typeIsInteger"].clone(), fact("rpm")["maxString"].clone()), (json!("2200"), json!(true), json!("3.4028234663852886e+38")));
+        assert_eq!((fact("failureFlags")["bitmaskValues"][1].clone(), fact("failureFlags")["enumStrings"].clone()), (json!(2), json!([])), "a bitmask array describes bits, not a list of choices");
     }
 
     #[test]
