@@ -36,7 +36,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 
 @Composable
@@ -253,7 +256,7 @@ private fun CalibrationStart(
 fun RadioScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(RADIO_VIEW)
     val view = radioView(json)
-    LaunchedEffect(Unit) { Qgc.invoke(radioCalAction("start")) }
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke(radioCalAction("start")) } }
 
     if (view == null || !view.connected) {
         RadioNotice("Connect a vehicle to check its radio.", modifier)
@@ -273,16 +276,18 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         item(key = "calibration") {
             when {
                 view.calibration.running -> CalibrationStep(view.calibration) { action ->
-                    Qgc.invoke(radioCalAction(action))
+                    offMainDetached { Qgc.invoke(radioCalAction(action)) }
                 }
                 else -> CalibrationStart(
                     view = view,
-                    onAction = { action -> Qgc.invoke(radioCalAction(action)) },
-                    onMode = { mode -> Qgc.set("$RADIO_CAL.transmitterMode", mode) },
+                    onAction = { action -> offMainDetached { Qgc.invoke(radioCalAction(action)) } },
+                    onMode = { mode -> offMainDetached { Qgc.set("$RADIO_CAL.transmitterMode", mode) } },
                     onInvoke = { action, choice ->
-                        when (choice) {
-                            null -> Qgc.invoke(radioCalAction(action))
-                            else -> Qgc.invoke(radioCalAction(action), choice)
+                        offMainDetached {
+                            when (choice) {
+                                null -> Qgc.invoke(radioCalAction(action))
+                                else -> Qgc.invoke(radioCalAction(action), choice)
+                            }
                         }
                     },
                 )
