@@ -84,7 +84,7 @@ fn supports(autopilot: u8, vehicle_type: u8) -> Value {
     })
 }
 
-fn mav_type_text(mav_type: u8) -> &'static str {
+pub fn mav_type_text(mav_type: u8) -> &'static str {
     match mav_type {
         0 => "Generic micro air vehicle",
         1 => "Fixed wing aircraft",

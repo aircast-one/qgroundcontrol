@@ -33,7 +33,28 @@ pub const DEPS: &[&str] = &[
     "settings.appSettings.offlineEditingHoverSpeed",
 ];
 
+fn offline_vehicle(backend: &dyn Backend) -> Value {
+    let setting = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64).unwrap_or(0);
+    let (firmware, class) = (setting("offlineEditingFirmwareClass"), setting("offlineEditingVehicleClass"));
+    let kind = crate::plandoc::vehicle_class(class);
+    json!({
+        "type": u8::try_from(class).map_or("", crate::vehiclefacade::mav_type_text),
+        "firmware": match firmware {
+            12 => "PX4 Pro",
+            3 => "ArduPilot",
+            _ => "Generic",
+        },
+        "multiRotor": kind == crate::cmdinfo::VehicleClass::MultiRotor,
+        "vtol": kind == crate::cmdinfo::VehicleClass::Vtol,
+        "apmFirmware": firmware == 3,
+        "home": null,
+    })
+}
+
 fn planning_for(backend: &dyn Backend) -> Value {
+    if crate::coreplan::enabled() {
+        return offline_vehicle(backend);
+    }
     // type and firmware alone left the reader on plan.controllerVehicle for the three flags it
     // branches on, so the view existed and retired nothing. A view retires a path when it carries
     // every field the reader dereferences, not when it carries the natural summary.
