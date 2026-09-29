@@ -1,6 +1,7 @@
 #include "QGCNetworkHelperTest.h"
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QMap>
 #include <QtNetwork/QNetworkReply>
 #include <QtNetwork/QNetworkRequest>
@@ -10,9 +11,6 @@
 #include "QGCNetworkHelper.h"
 #include "UnitTest.h"
 
-// ============================================================================
-// HTTP Status Code Helpers Tests
-// ============================================================================
 void QGCNetworkHelperTest::_testClassifyHttpStatusInformational()
 {
     QCOMPARE(QGCNetworkHelper::classifyHttpStatus(100), QGCNetworkHelper::HttpStatusClass::Informational);
@@ -111,7 +109,6 @@ void QGCNetworkHelperTest::_testIsHttpServerError()
 
 void QGCNetworkHelperTest::_testHttpStatusText()
 {
-    // Common status codes
     QCOMPARE(QGCNetworkHelper::httpStatusText(200), QStringLiteral("OK"));
     QCOMPARE(QGCNetworkHelper::httpStatusText(201), QStringLiteral("Created"));
     QCOMPARE(QGCNetworkHelper::httpStatusText(204), QStringLiteral("No Content"));
@@ -125,9 +122,7 @@ void QGCNetworkHelperTest::_testHttpStatusText()
     QCOMPARE(QGCNetworkHelper::httpStatusText(500), QStringLiteral("Internal Server Error"));
     QCOMPARE(QGCNetworkHelper::httpStatusText(502), QStringLiteral("Bad Gateway"));
     QCOMPARE(QGCNetworkHelper::httpStatusText(503), QStringLiteral("Service Unavailable"));
-    // Unknown status should return formatted message
     QVERIFY(QGCNetworkHelper::httpStatusText(999).contains("999"));
-    // In-range but unnamed codes must still surface the numeric value
     QVERIFY(QGCNetworkHelper::httpStatusText(218).contains("218"));
     QVERIFY(QGCNetworkHelper::httpStatusText(450).contains("450"));
 }
@@ -135,7 +130,6 @@ void QGCNetworkHelperTest::_testHttpStatusText()
 void QGCNetworkHelperTest::_testHttpStatusTextFromEnum()
 {
     using HttpStatusCode = QGCNetworkHelper::HttpStatusCode;
-    // Test Qt HttpStatusCode enum overload
     QCOMPARE(QGCNetworkHelper::httpStatusText(HttpStatusCode::Continue), QStringLiteral("Continue"));
     QCOMPARE(QGCNetworkHelper::httpStatusText(HttpStatusCode::SwitchingProtocols),
              QStringLiteral("Switching Protocols"));
@@ -164,7 +158,6 @@ void QGCNetworkHelperTest::_testHttpStatusTextFromEnum()
 void QGCNetworkHelperTest::_testHttpStatusCodeEnumRoundTrip()
 {
     using HttpStatusCode = QGCNetworkHelper::HttpStatusCode;
-    // Verify that int and enum overloads produce consistent results
     QCOMPARE(QGCNetworkHelper::httpStatusText(200), QGCNetworkHelper::httpStatusText(HttpStatusCode::Ok));
     QCOMPARE(QGCNetworkHelper::httpStatusText(201), QGCNetworkHelper::httpStatusText(HttpStatusCode::Created));
     QCOMPARE(QGCNetworkHelper::httpStatusText(204), QGCNetworkHelper::httpStatusText(HttpStatusCode::NoContent));
@@ -180,15 +173,11 @@ void QGCNetworkHelperTest::_testHttpStatusCodeEnumRoundTrip()
     QCOMPARE(QGCNetworkHelper::httpStatusText(502), QGCNetworkHelper::httpStatusText(HttpStatusCode::BadGateway));
     QCOMPARE(QGCNetworkHelper::httpStatusText(503),
              QGCNetworkHelper::httpStatusText(HttpStatusCode::ServiceUnavailable));
-    // Verify static_cast round-trip
     QCOMPARE(static_cast<int>(HttpStatusCode::Ok), 200);
     QCOMPARE(static_cast<int>(HttpStatusCode::NotFound), 404);
     QCOMPARE(static_cast<int>(HttpStatusCode::InternalServerError), 500);
 }
 
-// ============================================================================
-// HTTP Methods Tests
-// ============================================================================
 void QGCNetworkHelperTest::_testHttpMethodName()
 {
     QCOMPARE(QGCNetworkHelper::httpMethodName(QGCNetworkHelper::HttpMethod::Get), QStringLiteral("GET"));
@@ -226,25 +215,19 @@ void QGCNetworkHelperTest::_testParseHttpMethodCaseInsensitive()
 
 void QGCNetworkHelperTest::_testParseHttpMethodUnknown()
 {
-    // Unknown methods default to GET
     QCOMPARE(QGCNetworkHelper::parseHttpMethod("UNKNOWN"), QGCNetworkHelper::HttpMethod::Get);
     QCOMPARE(QGCNetworkHelper::parseHttpMethod(""), QGCNetworkHelper::HttpMethod::Get);
     QCOMPARE(QGCNetworkHelper::parseHttpMethod("INVALID"), QGCNetworkHelper::HttpMethod::Get);
 }
 
-// ============================================================================
-// URL Utilities Tests
-// ============================================================================
 void QGCNetworkHelperTest::_testIsValidUrl()
 {
-    // Valid URLs
     QVERIFY(QGCNetworkHelper::isValidUrl(QUrl("http://example.com")));
     QVERIFY(QGCNetworkHelper::isValidUrl(QUrl("https://example.com")));
     QVERIFY(QGCNetworkHelper::isValidUrl(QUrl("file:///path/to/file")));
     QVERIFY(QGCNetworkHelper::isValidUrl(QUrl("qrc:/resource/path")));
-    // Invalid URLs
-    QVERIFY(!QGCNetworkHelper::isValidUrl(QUrl()));                     // Empty URL
-    QVERIFY(!QGCNetworkHelper::isValidUrl(QUrl("ftp://example.com")));  // Unsupported scheme
+    QVERIFY(!QGCNetworkHelper::isValidUrl(QUrl()));
+    QVERIFY(!QGCNetworkHelper::isValidUrl(QUrl("ftp://example.com")));
 }
 
 void QGCNetworkHelperTest::_testIsHttpUrl()
@@ -269,20 +252,16 @@ void QGCNetworkHelperTest::_testIsHttpsUrl()
 
 void QGCNetworkHelperTest::_testNormalizeUrl()
 {
-    // Lowercase scheme and host
     QUrl normalized = QGCNetworkHelper::normalizeUrl(QUrl("HTTP://EXAMPLE.COM/Path"));
     QCOMPARE(normalized.scheme(), QStringLiteral("http"));
     QCOMPARE(normalized.host(), QStringLiteral("example.com"));
-    QCOMPARE(normalized.path(), QStringLiteral("/Path"));  // Path case preserved
-    // Remove default ports
+    QCOMPARE(normalized.path(), QStringLiteral("/Path"));
     QUrl httpWithPort = QGCNetworkHelper::normalizeUrl(QUrl("http://example.com:80/path"));
     QCOMPARE(httpWithPort.port(), -1);
     QUrl httpsWithPort = QGCNetworkHelper::normalizeUrl(QUrl("https://example.com:443/path"));
     QCOMPARE(httpsWithPort.port(), -1);
-    // Keep non-default ports
     QUrl customPort = QGCNetworkHelper::normalizeUrl(QUrl("http://example.com:8080/path"));
     QCOMPARE(customPort.port(), 8080);
-    // Remove trailing slash (except root)
     QUrl trailingSlash = QGCNetworkHelper::normalizeUrl(QUrl("http://example.com/path/"));
     QCOMPARE(trailingSlash.path(), QStringLiteral("/path"));
     QUrl rootPath = QGCNetworkHelper::normalizeUrl(QUrl("http://example.com/"));
@@ -291,13 +270,10 @@ void QGCNetworkHelperTest::_testNormalizeUrl()
 
 void QGCNetworkHelperTest::_testEnsureScheme()
 {
-    // Add default scheme
     QUrl noScheme = QGCNetworkHelper::ensureScheme(QUrl("//example.com/path"));
     QCOMPARE(noScheme.scheme(), QStringLiteral("https"));
-    // Custom default scheme
     QUrl customScheme = QGCNetworkHelper::ensureScheme(QUrl("//example.com/path"), "http");
     QCOMPARE(customScheme.scheme(), QStringLiteral("http"));
-    // Existing scheme preserved
     QUrl existingScheme = QGCNetworkHelper::ensureScheme(QUrl("http://example.com"), "https");
     QCOMPARE(existingScheme.scheme(), QStringLiteral("http"));
 }
@@ -321,12 +297,12 @@ void QGCNetworkHelperTest::_testBuildUrlFromMap()
 void QGCNetworkHelperTest::_testBuildUrlFromList()
 {
     QList<QPair<QString, QString>> params = {
-        {"key1", "value1"}, {"key1", "value2"},  // Duplicate key allowed with list
+        {"key1", "value1"},
+        {"key1", "value2"},
     };
     QUrl url = QGCNetworkHelper::buildUrl("http://example.com/api", params);
     QVERIFY(url.isValid());
     QString query = url.query();
-    // List preserves order and allows duplicates
     QVERIFY(query.contains("key1=value1"));
     QVERIFY(query.contains("key1=value2"));
 }
@@ -343,16 +319,11 @@ void QGCNetworkHelperTest::_testUrlWithoutQuery()
     QVERIFY(result.fragment().isEmpty());
 }
 
-// ============================================================================
-// Request Configuration Tests
-// ============================================================================
 void QGCNetworkHelperTest::_testDefaultUserAgent()
 {
     QString userAgent = QGCNetworkHelper::defaultUserAgent();
     QVERIFY(!userAgent.isEmpty());
-    // Should contain app name
     QVERIFY(userAgent.contains(QCoreApplication::applicationName()));
-    // Should contain Qt version
     QVERIFY(userAgent.contains("Qt"));
 }
 
@@ -509,15 +480,19 @@ void QGCNetworkHelperTest::_testReplyHelpersNullReply()
     QVERIFY(!QGCNetworkHelper::isJsonResponse(nullptr));
 }
 
-// ============================================================================
-// Network Availability Tests
-// ============================================================================
 void QGCNetworkHelperTest::_testIsNetworkAvailable()
 {
-    // Smoke test: network availability query completes without crash
-    // Result depends on system state, so we only verify it returns a valid bool
     const bool available = QGCNetworkHelper::isNetworkAvailable();
     Q_UNUSED(available);
+}
+
+void QGCNetworkHelperTest::_testIsBluetoothAvailableDoesNotBlock()
+{
+    QElapsedTimer timer;
+    timer.start();
+    (void) QGCNetworkHelper::isBluetoothAvailable();
+    (void) QGCNetworkHelper::isBluetoothAvailable();
+    QVERIFY(timer.elapsed() < 500);
 }
 
 void QGCNetworkHelperTest::_testConnectionTypeName()
@@ -534,13 +509,8 @@ void QGCNetworkHelperTest::_testConnectionTypeName()
              QStringLiteral("Bluetooth"));
 }
 
-// ============================================================================
-// SSL Tests
-// ============================================================================
 void QGCNetworkHelperTest::_testIsSslAvailable()
 {
-    // Smoke test: SSL availability query completes without crash
-    // SSL availability depends on system configuration
     const bool available = QGCNetworkHelper::isSslAvailable();
     Q_UNUSED(available);
 }
@@ -548,8 +518,6 @@ void QGCNetworkHelperTest::_testIsSslAvailable()
 void QGCNetworkHelperTest::_testSslVersion()
 {
     const QString version = QGCNetworkHelper::sslVersion();
-    // Version string might be empty if SSL not available
-    // If SSL is available, version should be non-empty
     if (QGCNetworkHelper::isSslAvailable()) {
         QVERIFY(!version.isEmpty());
     }

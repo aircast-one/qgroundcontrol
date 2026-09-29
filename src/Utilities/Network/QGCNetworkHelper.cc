@@ -13,7 +13,9 @@
 #include <QtNetwork/QNetworkProxy>
 #include <QtNetwork/QNetworkProxyFactory>
 #include <QtNetwork/QSslSocket>
+#include <atomic>
 #include <chrono>
+#include <thread>
 
 #include "QGCCompression.h"
 #include "QGCLoggingCategory.h"
@@ -21,10 +23,6 @@
 QGC_LOGGING_CATEGORY(QGCNetworkHelperLog, "Utilities.QGCNetworkHelper")
 
 namespace QGCNetworkHelper {
-
-// ============================================================================
-// HTTP Status Code Helpers
-// ============================================================================
 
 HttpStatusClass classifyHttpStatus(int statusCode)
 {
@@ -50,14 +48,12 @@ HttpStatusClass classifyHttpStatus(int statusCode)
 QString httpStatusText(HttpStatusCode statusCode)
 {
     switch (statusCode) {
-        // 1xx Informational
         case HttpStatusCode::Continue:
             return QStringLiteral("Continue");
         case HttpStatusCode::SwitchingProtocols:
             return QStringLiteral("Switching Protocols");
         case HttpStatusCode::Processing:
             return QStringLiteral("Processing");
-        // 2xx Success
         case HttpStatusCode::Ok:
             return QStringLiteral("OK");
         case HttpStatusCode::Created:
@@ -78,7 +74,6 @@ QString httpStatusText(HttpStatusCode statusCode)
             return QStringLiteral("Already Reported");
         case HttpStatusCode::IMUsed:
             return QStringLiteral("IM Used");
-        // 3xx Redirection
         case HttpStatusCode::MultipleChoices:
             return QStringLiteral("Multiple Choices");
         case HttpStatusCode::MovedPermanently:
@@ -95,7 +90,6 @@ QString httpStatusText(HttpStatusCode statusCode)
             return QStringLiteral("Temporary Redirect");
         case HttpStatusCode::PermanentRedirect:
             return QStringLiteral("Permanent Redirect");
-        // 4xx Client Errors
         case HttpStatusCode::BadRequest:
             return QStringLiteral("Bad Request");
         case HttpStatusCode::Unauthorized:
@@ -152,7 +146,6 @@ QString httpStatusText(HttpStatusCode statusCode)
             return QStringLiteral("Request Header Fields Too Large");
         case HttpStatusCode::UnavailableForLegalReasons:
             return QStringLiteral("Unavailable For Legal Reasons");
-        // 5xx Server Errors
         case HttpStatusCode::InternalServerError:
             return QStringLiteral("Internal Server Error");
         case HttpStatusCode::NotImplemented:
@@ -186,10 +179,6 @@ QString httpStatusText(int statusCode)
 {
     return httpStatusText(static_cast<HttpStatusCode>(statusCode));
 }
-
-// ============================================================================
-// HTTP Methods
-// ============================================================================
 
 QString httpMethodName(HttpMethod method)
 {
@@ -244,10 +233,6 @@ HttpMethod parseHttpMethod(const QString& methodStr)
     return HttpMethod::Get;
 }
 
-// ============================================================================
-// URL Utilities
-// ============================================================================
-
 bool isValidUrl(const QUrl& url)
 {
     if (!url.isValid()) {
@@ -256,7 +241,7 @@ bool isValidUrl(const QUrl& url)
 
     const QString scheme = url.scheme().toLower();
     return scheme == QLatin1String("http") || scheme == QLatin1String("https") || scheme == QLatin1String("file") ||
-           scheme == QLatin1String("qrc") || scheme.isEmpty();  // Relative URL
+           scheme == QLatin1String("qrc") || scheme.isEmpty();
 }
 
 bool isHttpUrl(const QUrl& url)
@@ -342,26 +327,18 @@ QUrl urlWithoutQuery(const QUrl& url)
     return url.adjusted(QUrl::RemoveQuery | QUrl::RemoveFragment);
 }
 
-// ============================================================================
-// Request Configuration
-// ============================================================================
-
 void configureRequest(QNetworkRequest& request, const RequestConfig& config)
 {
-    // Timeout
     request.setTransferTimeout(config.timeoutMs);
 
-    // Redirect policy
     if (config.allowRedirects) {
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     } else {
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     }
 
-    // HTTP/2
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, config.http2Allowed);
 
-    // Caching
     if (config.cacheEnabled) {
         request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferCache);
         request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, true);
@@ -370,7 +347,6 @@ void configureRequest(QNetworkRequest& request, const RequestConfig& config)
         request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
     }
 
-    // Background request
     request.setAttribute(QNetworkRequest::BackgroundRequestAttribute, config.backgroundRequest);
 
     using WK = QHttpHeaders::WellKnownHeader;
@@ -451,10 +427,6 @@ QString defaultUserAgent()
     return userAgent;
 }
 
-// ============================================================================
-// Authentication Helpers
-// ============================================================================
-
 void setBasicAuth(QNetworkRequest& request, const QString& credentials)
 {
     QHttpHeaders headers = request.headers();
@@ -480,10 +452,6 @@ QString createBasicAuthCredentials(const QString& username, const QString& passw
     return QString::fromLatin1(credentials.toUtf8().toBase64());
 }
 
-// ============================================================================
-// Multipart Form Data Helpers
-// ============================================================================
-
 QHttpPart createFormField(const QString& name, const QString& value)
 {
     QHttpPart part;
@@ -506,10 +474,6 @@ QHttpPart createFilePart(const QString& name, const QString& fileName, QIODevice
 {
     return createFilePart(name, fileName, kContentTypeOctetStream, device);
 }
-
-// ============================================================================
-// SSL/TLS Configuration Builders
-// ============================================================================
 
 QSslConfiguration createSslConfig(QSsl::SslProtocol protocol)
 {
@@ -572,10 +536,6 @@ bool loadClientCertAndKey(const QString& certPath, const QString& keyPath, QSslC
     return true;
 }
 
-// ============================================================================
-// JSON Response Helpers
-// ============================================================================
-
 QJsonDocument parseJson(const QByteArray& data, QJsonParseError* error)
 {
     QJsonParseError localError;
@@ -620,7 +580,6 @@ bool looksLikeJson(const QByteArray& data)
         return false;
     }
 
-    // Skip leading whitespace
     for (int i = 0; i < data.size(); ++i) {
         const char c = data.at(i);
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
@@ -631,10 +590,6 @@ bool looksLikeJson(const QByteArray& data)
 
     return false;
 }
-
-// ============================================================================
-// Network Reply Helpers
-// ============================================================================
 
 int httpStatusCode(const QNetworkReply* reply)
 {
@@ -666,12 +621,10 @@ QString errorMessage(const QNetworkReply* reply)
         return QStringLiteral("No reply");
     }
 
-    // Check for network error first
     if (reply->error() != QNetworkReply::NoError) {
         return reply->errorString();
     }
 
-    // Check HTTP status code
     const int status = httpStatusCode(reply);
     if (status >= 400) {
         return QStringLiteral("HTTP %1: %2").arg(status).arg(httpStatusText(status));
@@ -691,7 +644,7 @@ bool isSuccess(const QNetworkReply* reply)
     }
 
     const int status = httpStatusCode(reply);
-    return status == -1 || isHttpSuccess(status);  // -1 means non-HTTP (e.g., file://)
+    return status == -1 || isHttpSuccess(status);
 }
 
 bool isRedirect(const QNetworkReply* reply)
@@ -728,15 +681,11 @@ bool isJsonResponse(const QNetworkReply* reply)
            type.contains(QLatin1String("+json"), Qt::CaseInsensitive);
 }
 
-// ============================================================================
-// Network Availability
-// ============================================================================
-
 bool isNetworkAvailable()
 {
     if (!QNetworkInformation::loadDefaultBackend()) {
         qCDebug(QGCNetworkHelperLog) << "Failed to load network information backend";
-        return true;  // Assume available if we can't check
+        return true;
     }
 
     const QNetworkInformation* netInfo = QNetworkInformation::instance();
@@ -789,8 +738,15 @@ bool isNetworkEthernet()
 
 bool isBluetoothAvailable()
 {
-    const QList<QBluetoothHostInfo> devices = QBluetoothLocalDevice::allDevices();
-    return !devices.isEmpty();
+    static std::atomic<bool> available{false};
+    static std::atomic_flag probing = ATOMIC_FLAG_INIT;
+    if (!probing.test_and_set()) {
+        std::thread([] {
+            available = !QBluetoothLocalDevice::allDevices().isEmpty();
+            probing.clear();
+        }).detach();
+    }
+    return available;
 }
 
 ConnectionType connectionType()
@@ -841,10 +797,6 @@ QString connectionTypeName(ConnectionType type)
     }
 }
 
-// ============================================================================
-// SSL/TLS Helpers
-// ============================================================================
-
 void ignoreSslErrors(QNetworkReply* reply)
 {
     if (!reply) {
@@ -866,7 +818,6 @@ void ignoreSslErrorsIfNeeded(QNetworkReply* reply)
         return;
     }
 
-    // Check for OpenSSL version mismatch: Qt built with 1.x but running with 3.x
     const bool sslLibraryBuildIs1x = ((QSslSocket::sslLibraryBuildVersionNumber() & 0xf0000000) == 0x10000000);
     const bool sslLibraryIs3x = ((QSslSocket::sslLibraryVersionNumber() & 0xf0000000) == 0x30000000);
     if (sslLibraryBuildIs1x && sslLibraryIs3x) {
@@ -886,10 +837,6 @@ QString sslVersion()
 {
     return QSslSocket::sslLibraryVersionString();
 }
-
-// ============================================================================
-// Network Access Manager Helpers
-// ============================================================================
 
 void initializeProxySupport()
 {

@@ -2,13 +2,11 @@
 
 #include "UnitTest.h"
 
-/// Tests for QGCNetworkHelper (networking utility functions)
 class QGCNetworkHelperTest : public UnitTest
 {
     Q_OBJECT
 
 private slots:
-    // HTTP status code helpers tests
     void _testClassifyHttpStatusInformational();
     void _testClassifyHttpStatusSuccess();
     void _testClassifyHttpStatusRedirection();
@@ -23,13 +21,11 @@ private slots:
     void _testHttpStatusTextFromEnum();
     void _testHttpStatusCodeEnumRoundTrip();
 
-    // HTTP methods tests
     void _testHttpMethodName();
     void _testParseHttpMethod();
     void _testParseHttpMethodCaseInsensitive();
     void _testParseHttpMethodUnknown();
 
-    // URL utilities tests
     void _testIsValidUrl();
     void _testIsHttpUrl();
     void _testIsHttpsUrl();
@@ -39,7 +35,6 @@ private slots:
     void _testBuildUrlFromList();
     void _testUrlWithoutQuery();
 
-    // Request configuration tests
     void _testDefaultUserAgent();
     void _testRequestConfigDefaults();
     void _testRequestConfigAttributes();
@@ -57,11 +52,10 @@ private slots:
     void _testParseJsonReplyNull();
     void _testReplyHelpersNullReply();
 
-    // Network availability tests
     void _testIsNetworkAvailable();
+    void _testIsBluetoothAvailableDoesNotBlock();
     void _testConnectionTypeName();
 
-    // SSL tests
     void _testIsSslAvailable();
     void _testSslVersion();
 };
