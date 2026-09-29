@@ -34,6 +34,13 @@ pub const TYPE_ADSB: u8 = 27;
 pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
+const MAV_STATE_ACTIVE: u8 = 4;
+const MAV_STATE_CRITICAL: u8 = 5;
+const MAV_STATE_EMERGENCY: u8 = 6;
+const LANDED_ON_GROUND: u8 = 1;
+const LANDED_IN_AIR: u8 = 2;
+const LANDED_TAKEOFF: u8 = 3;
+const LANDED_LANDING: u8 = 4;
 pub const CUSTOM_MODE_FLAG: u8 = 1;
 const MAX_MESSAGES: usize = 200;
 const CHUNKED_TEXT_TIMEOUT_MS: u64 = 1000;
@@ -115,6 +122,8 @@ pub struct Vehicle {
     pub reposition_supported: Option<bool>,
     pub errors: Vec<String>,
     pub connection_lost: bool,
+    pub flying: bool,
+    pub landing: bool,
     pub replay: bool,
     pub max_proto_version: Option<u32>,
     pub autopilot_version: Option<AutopilotVersion>,
@@ -188,6 +197,8 @@ impl Vehicle {
             reposition_supported: None,
             errors: Vec::new(),
             connection_lost: false,
+            flying: false,
+            landing: false,
             replay,
             max_proto_version: None,
             autopilot_version: None,
@@ -1047,6 +1058,19 @@ impl Vehicle {
                 self.custom_mode = h.custom_mode;
                 self.system_status = h.system_status as u8;
                 self.vehicle_type = h.mavtype as u8;
+                if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT && header.component_id == COMP_AUTOPILOT1 {
+                    self.flying = self.armed() && matches!(self.system_status, MAV_STATE_ACTIVE | MAV_STATE_CRITICAL | MAV_STATE_EMERGENCY);
+                }
+            }
+            MavMessage::EXTENDED_SYS_STATE(e) if from == (self.id, self.component) => {
+                let (flying, landing) = match e.landed_state as u8 {
+                    LANDED_ON_GROUND => (Some(false), Some(false)),
+                    LANDED_TAKEOFF | LANDED_IN_AIR => (Some(true), Some(false)),
+                    LANDED_LANDING => (Some(true), Some(true)),
+                    _ => (None, None),
+                };
+                self.flying = flying.unwrap_or(self.flying);
+                self.landing = landing.filter(|_| self.armed()).unwrap_or(self.landing);
             }
             MavMessage::COMMAND_ACK(a) => {
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
@@ -1582,6 +1606,54 @@ mod tests {
         assert_eq!(count, 1, "the sample log carries one vehicle");
         hub.remove(vehicle.id);
         assert_eq!(hub.snapshot()["available"], false);
+    }
+
+    #[test]
+    fn flying_follows_the_landed_state_and_landing_moves_only_while_armed() {
+        use mavlink::dialects::ardupilotmega::{EXTENDED_SYS_STATE_DATA, HEARTBEAT_DATA, MavAutopilot, MavLandedState, MavModeFlag, MavState, MavType};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let beat = |armed: bool, status: MavState| {
+            let mut h = HEARTBEAT_DATA::default();
+            h.mavtype = MavType::MAV_TYPE_QUADROTOR;
+            h.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+            h.system_status = status;
+            h.base_mode = if armed { MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED } else { MavModeFlag::empty() };
+            MavMessage::HEARTBEAT(h)
+        };
+        let landed = |state: MavLandedState| MavMessage::EXTENDED_SYS_STATE(EXTENDED_SYS_STATE_DATA { landed_state: state, ..Default::default() });
+        let state = |hub: &Hub| (hub.active().unwrap().flying, hub.active().unwrap().landing);
+        hub.on_frame(origin(0), &header, &beat(false, MavState::MAV_STATE_STANDBY), 0, 0);
+        hub.on_frame(origin(0), &header, &landed(MavLandedState::MAV_LANDED_STATE_LANDING), 1, 0);
+        assert_eq!(state(&hub), (true, false), "a disarmed vehicle never starts landing");
+        hub.on_frame(origin(0), &header, &beat(true, MavState::MAV_STATE_ACTIVE), 2, 0);
+        hub.on_frame(origin(0), &header, &landed(MavLandedState::MAV_LANDED_STATE_LANDING), 3, 0);
+        assert_eq!(state(&hub), (true, true));
+        hub.on_frame(origin(0), &header, &beat(false, MavState::MAV_STATE_STANDBY), 4, 0);
+        assert_eq!(state(&hub), (true, true), "a PX4 heartbeat does not decide flying and disarming does not clear landing");
+        hub.on_frame(origin(0), &header, &landed(MavLandedState::MAV_LANDED_STATE_ON_GROUND), 5, 0);
+        assert_eq!(state(&hub), (false, true));
+    }
+
+    #[test]
+    fn an_ardupilot_heartbeat_decides_flying_from_armed_and_status() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavState, MavType};
+        let mut hub = Hub::default();
+        let beat = |component: u8, armed: bool, status: MavState| {
+            let mut h = HEARTBEAT_DATA::default();
+            h.mavtype = MavType::MAV_TYPE_QUADROTOR;
+            h.autopilot = MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA;
+            h.system_status = status;
+            h.base_mode = if armed { MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED } else { MavModeFlag::empty() };
+            (MavHeader { system_id: 1, component_id: component, sequence: 0 }, MavMessage::HEARTBEAT(h))
+        };
+        let send = |hub: &mut Hub, (header, message): (MavHeader, MavMessage)| hub.on_frame(origin(0), &header, &message, 0, 0);
+        send(&mut hub, beat(1, true, MavState::MAV_STATE_STANDBY));
+        assert!(!hub.active().unwrap().flying);
+        send(&mut hub, beat(1, true, MavState::MAV_STATE_CRITICAL));
+        assert!(hub.active().unwrap().flying);
+        send(&mut hub, beat(1, false, MavState::MAV_STATE_ACTIVE));
+        assert!(!hub.active().unwrap().flying, "a disarmed ArduPilot is on the ground whatever its status");
     }
 
     #[test]

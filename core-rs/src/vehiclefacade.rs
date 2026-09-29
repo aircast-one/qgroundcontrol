@@ -70,6 +70,8 @@ fn carried() -> Option<Known> {
         let fields = json!({
             "id": v.id,
             "armed": v.armed(),
+            "flying": v.flying,
+            "landing": v.landing,
             "flightMode": v.flight_mode(),
             "px4Firmware": v.autopilot == crate::modes::AUTOPILOT_PX4,
             "apmFirmware": v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT,
@@ -88,8 +90,7 @@ fn fields_of(fields: &str) -> Vec<&str> {
     fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect()
 }
 
-fn answer_fields(path: &str, fields: &str, known: &Known) -> Option<Value> {
-    let asked = fields_of(fields);
+fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<String, Value>, Vec<String>) {
     let field = |name: &str| -> Option<Value> {
         match (path, name) {
             ("vehicles", "activeVehicleAvailable") => Some(json!(true)),
@@ -100,10 +101,15 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> Option<Value> {
             _ => None,
         }
     };
-    let answered: Option<serde_json::Map<String, Value>> = asked.iter().map(|name| field(name).map(|v| (name.to_string(), v))).collect();
-    let mut object = Value::Object(answered.filter(|a| !a.is_empty())?);
-    object["kind"] = json!("object");
-    Some(object)
+    let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields).into_iter().map(|name| (name, field(name))).partition(|(_, v)| v.is_some());
+    (answered.into_iter().filter_map(|(name, v)| Some((name.to_string(), v?))).collect(), missing.into_iter().map(|(name, _)| name.to_string()).collect())
+}
+
+fn merged(answered: serde_json::Map<String, Value>, host: String) -> String {
+    serde_json::from_str::<Value>(&host).ok().filter(|h| h["kind"] == "object").map_or(host, |mut h| {
+        answered.into_iter().for_each(|(k, v)| h[k.as_str()] = v);
+        h.to_string()
+    })
 }
 
 fn answer_get(path: &str, known: &Known) -> Option<Value> {
@@ -153,13 +159,15 @@ impl<B: Backend> Backend for Facade<B> {
         )
     }
     fn get_fields(&self, path: &str, fields: &str) -> String {
-        switched_on().then(carried).flatten().and_then(|known| answer_fields(path, fields, &known)).map_or_else(
-            || {
-                fell_through("fields", &format!("{path} [{fields}]"));
-                self.0.get_fields(path, fields)
-            },
-            |v| v.to_string(),
-        )
+        let (answered, missing) = switched_on().then(carried).flatten().map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, &known));
+        if missing.is_empty() && !answered.is_empty() {
+            let mut object = Value::Object(answered);
+            object["kind"] = json!("object");
+            return object.to_string();
+        }
+        let asked = if answered.is_empty() { fields.to_string() } else { missing.join(",") };
+        fell_through("fields", &format!("{path} [{asked}]"));
+        merged(answered, self.0.get_fields(path, &asked))
     }
     fn set(&self, path: &str, value: &str) -> String {
         fell_through("set", path);
@@ -192,12 +200,13 @@ mod tests {
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
         let known = Known { id: 1, parameters_ready: true, lost: false, home: None, sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }) };
-        assert_eq!(answer_fields("vehicles", "activeVehicleAvailable", &known), Some(json!({ "kind": "object", "activeVehicleAvailable": true })));
-        assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), None, "one unknown field sends the whole read to the host");
+        assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
+        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
+        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
         assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
         assert_eq!(answer_get("vehicle.flying", &known), None);
         assert_eq!(answer_get("vehicle.armed", &known), Some(json!({ "kind": "value", "value": false })));
-        assert_eq!(answer_fields("vehicle.supports", "guidedTakeoffWithAltitude,orbitMode,smartRTL", &known), Some(json!({ "kind": "object", "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true })), "an ArduCopter quad");
+        assert_eq!(answer_fields("vehicle.supports", "guidedTakeoffWithAltitude,orbitMode,smartRTL", &known).0, json!({ "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true }).as_object().unwrap().clone(), "an ArduCopter quad");
         assert_eq!(supports(12, 1)["guidedTakeoffWithoutAltitude"], true, "a PX4 plane takes off without an altitude");
         assert_eq!(answer_get("vehicle.sysStatusSensorInfo.sensorNames", &known), Some(json!({ "kind": "value", "value": ["GPS"] })));
     }
