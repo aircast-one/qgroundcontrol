@@ -160,6 +160,7 @@ pub struct Vehicle {
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
     pub cameras: crate::cameraproto::Cameras,
+    pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
     pub roi_enabled: bool,
@@ -273,6 +274,7 @@ impl Vehicle {
             escs: Escs::default(),
             rc_override: BTreeMap::new(),
             cameras: crate::cameraproto::Cameras::new(),
+            camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
             roi_enabled: false,
@@ -1383,6 +1385,7 @@ impl Vehicle {
         self.camera_commands(commands)
     }
 
+    #[allow(deprecated)]
     fn note_mission_index(&mut self, message: &MavMessage) {
         let index = match message {
             MavMessage::MISSION_CURRENT(d) => i32::from(d.seq),
@@ -1962,6 +1965,10 @@ impl Hub {
             "communicationLostEnabled" => v.comm_lost_enabled = on,
             _ => v.auto_disconnect = on,
         }).is_some()
+    }
+
+    pub fn set_camera_tracking(&mut self, on: bool) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.camera_tracking_enabled = on).is_some()
     }
 
     pub fn select_camera(&mut self, index: usize) -> bool {

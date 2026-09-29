@@ -645,6 +645,10 @@ impl Camera {
         }
     }
 
+    pub fn storage_status(&self) -> Option<u8> {
+        self.storage.values().max_by_key(|storage| storage.at_ms).map(|storage| storage.status)
+    }
+
     pub fn record_time_ms(&self, now_ms: u64) -> Option<u64> {
         self.record_since_ms.map(|since| now_ms.saturating_sub(since))
     }

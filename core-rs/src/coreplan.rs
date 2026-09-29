@@ -851,7 +851,7 @@ fn fresh_document(backend: &dyn Backend) -> Document {
     }
 }
 
-fn step(backend: &dyn Backend, undoing: bool) -> Value {
+fn step(undoing: bool) -> Value {
     let word = if undoing { "undo" } else { "redo" };
     if !undo_tracking() {
         return json!({ "ok": false, "reason": format!("This plan is not recording edits, so there is nothing to {word}."), "refusal": "notTracking" });
@@ -1270,8 +1270,8 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "mission.insert" => insert_kind(backend, args),
         "mission.remove" | "plan.missionController.removeVisualItem" => remove(args),
         "plan.missionController.setCurrentPlanViewSeqNum" => select(args),
-        "plan.undo" => step(backend, true),
-        "plan.redo" => step(backend, false),
+        "plan.undo" => step(true),
+        "plan.redo" => step(false),
         _ => return None,
     })
 }

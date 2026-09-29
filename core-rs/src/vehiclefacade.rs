@@ -313,6 +313,90 @@ fn fields_of(fields: &str) -> Vec<&str> {
 }
 
 const SIMULATED_CAMERA: &str = "Simulated Camera";
+const STORAGE_NOT_SUPPORTED: i64 = 3;
+const CAMERA_INSTANCE: &str = "vehicle.cameraManager.currentCameraInstance";
+
+fn current_camera_fields(recording: impl Fn() -> bool) -> Option<serde_json::Map<String, Value>> {
+    switched_on().then_some(())?;
+    let recording = recording();
+    let hub = crate::hub::lock();
+    let vehicle = hub.active()?;
+    let camera = vehicle.cameras.selected()?;
+    Some(camera_instance(camera, recording, vehicle.camera_tracking_enabled, crate::hub::now_ms()))
+}
+
+fn big_size_mb(size_mb: u64) -> String {
+    let size = size_mb as f64;
+    match size_mb {
+        0..1024 => format!("{size_mb} MB"),
+        1024..1_048_576 => format!("{:.1} GB", size / 1024.0),
+        _ => format!("{:.2} TB", size / 1_048_576.0),
+    }
+}
+
+fn clock_text(ms: u64) -> String {
+    let seconds = (ms / 1000) % 86_400;
+    format!("{:02}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
+}
+
+fn stored_number(key: &str) -> Option<f64> {
+    crate::settingsstore::stored_text(key).and_then(|text| text.trim().parse().ok())
+}
+
+fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, tracking_enabled: bool, now_ms: u64) -> serde_json::Map<String, Value> {
+    use crate::cameraproto::{CAP_CAPTURE_IMAGE, CAP_CAPTURE_VIDEO, CAP_HAS_BASIC_ZOOM, CAP_HAS_MODES, CAP_HAS_TRACKING_POINT, CAP_HAS_TRACKING_RECTANGLE, CAP_HAS_VIDEO_STREAM, CAP_IMAGE_IN_VIDEO_MODE, CAP_VIDEO_IN_IMAGE_MODE};
+    let info = &camera.info;
+    let flag = |bits: u32| info.flags & bits != 0;
+    let photo = camera.photo_status.map_or(0, |s| if s < 4 { s } else { 255 });
+    let video = camera.video_status.map_or(0, |s| if s < 2 { s } else { 255 });
+    let mode = camera.mode.map_or(-1, i64::from);
+    let has_modes = flag(CAP_HAS_MODES);
+    let streams_or = |bits: u32| flag(bits | CAP_HAS_VIDEO_STREAM);
+    let capture_video = match () {
+        _ if video == 1 || recording => 2,
+        _ if photo != 0 => 0,
+        _ if has_modes && (mode == 0 || mode == 2) => 0,
+        _ if streams_or(CAP_CAPTURE_VIDEO) => 1,
+        _ => 0,
+    };
+    let capture_photos = match photo {
+        1 => 2,
+        2 | 3 => 3,
+        0 if streams_or(CAP_CAPTURE_IMAGE) => 1,
+        _ => 0,
+    };
+    let tracking = flag(CAP_HAS_TRACKING_POINT) || flag(CAP_HAS_TRACKING_RECTANGLE);
+    let plain = [
+        ("modelName", json!(info.model)),
+        ("vendor", json!(info.vendor)),
+        ("cameraMode", json!(mode)),
+        ("capturePhotosState", json!(capture_photos)),
+        ("captureVideoState", json!(capture_video)),
+        ("recordTimeStr", json!(clock_text(camera.record_time_ms(now_ms).unwrap_or(0)))),
+        ("storageStatus", json!(camera.storage_status().map_or(STORAGE_NOT_SUPPORTED, i64::from))),
+        ("storageFreeStr", json!(big_size_mb(camera.free_mib.unwrap_or(0.0).max(0.0) as u64))),
+        ("capturesPhotos", json!(streams_or(CAP_CAPTURE_IMAGE))),
+        ("capturesVideo", json!(streams_or(CAP_CAPTURE_VIDEO))),
+        ("hasModes", json!(has_modes)),
+        ("photosInVideoMode", json!(flag(CAP_IMAGE_IN_VIDEO_MODE))),
+        ("videoInPhotoMode", json!(flag(CAP_VIDEO_IN_IMAGE_MODE))),
+        ("photoCaptureMode", json!(stored_number("PhotoCaptureMode").map_or(0, |v| v as i64))),
+        ("photoLapse", json!(stored_number("PhotoLapse").unwrap_or(1.0))),
+        ("photoLapseCount", json!(stored_number("PhotoLapseCount").map_or(0, |v| v as i64))),
+        ("batteryRemaining", json!(camera.battery_percent.filter(|p| *p >= 0).map_or(-1, i64::from))),
+        ("hasZoom", json!(flag(CAP_HAS_BASIC_ZOOM))),
+        ("zoomLevel", json!(camera.zoom_percent.filter(|z| z.is_finite()).unwrap_or(0.0))),
+        ("hasTracking", json!(tracking)),
+        ("thermalMode", json!(stored_number("ThermalMode").map_or(1, |v| v as i64))),
+        ("thermalOpacity", json!(stored_number("ThermalOpacity").unwrap_or(85.0))),
+        ("trackingEnabled", json!(tracking_enabled)),
+        ("supportsTrackingRect", json!(flag(CAP_HAS_TRACKING_RECTANGLE))),
+        ("supportsTrackingPoint", json!(flag(CAP_HAS_TRACKING_POINT))),
+    ];
+    let unthermal = camera.thermal_stream().is_none().then(|| ("thermalStreamInstance", Value::Null));
+    let untracked = (!tracking).then(|| [("trackingImageIsActive", json!(false)), ("trackingImageRect", Value::Null)]).into_iter().flatten();
+    plain.into_iter().chain(unthermal).chain(untracked).map(|(k, v)| (k.to_string(), v)).collect()
+}
 
 fn link_fields(known: &Known) -> Option<serde_json::Map<String, Value>> {
     let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -502,6 +586,12 @@ impl<B: Backend> Backend for Facade<B> {
             return tally().to_string();
         }
         let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| crate::hub::lock().listed_count()).flatten().map(|n| json!({ "kind": "value", "value": n }));
+        if let Some(field) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
+            let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
+            if let Some(value) = current_camera_fields(recording).and_then(|mut fields| fields.remove(field)) {
+                return json!({ "kind": "value", "value": value }).to_string();
+            }
+        }
         if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(crate::seriallink::links_field) {
             return json!({ "kind": "value", "value": field }).to_string();
         }
@@ -515,6 +605,21 @@ impl<B: Backend> Backend for Facade<B> {
         )
     }
     fn get_fields(&self, asked_path: &str, fields: &str) -> String {
+        if asked_path == CAMERA_INSTANCE {
+            let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
+            if let Some(mut answered) = current_camera_fields(recording) {
+                let wanted = fields_of(fields);
+                let missing: Vec<&str> = wanted.iter().filter(|f| !answered.contains_key(**f)).copied().collect();
+                answered.retain(|k, _| wanted.contains(&k.as_str()));
+                if missing.is_empty() {
+                    let mut object = Value::Object(answered);
+                    object["kind"] = json!("object");
+                    return object.to_string();
+                }
+                fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
+                return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
+            }
+        }
         if asked_path == "links" && switched_on() {
             let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields).into_iter().map(|f| (f, crate::seriallink::links_field(f))).partition(|(_, v)| v.is_some());
             let answered: serde_json::Map<String, Value> = answered.into_iter().filter_map(|(f, v)| Some((f.to_string(), v?))).collect();
@@ -578,6 +683,13 @@ impl<B: Backend> Backend for Facade<B> {
             let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
             if let Some(on) = on {
                 crate::hub::lock().set_link_flag(flag, on);
+            }
+            return self.0.set(path, value);
+        }
+        if path == "vehicle.cameraManager.currentCameraInstance.trackingEnabled" && switched_on() {
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(on) = on {
+                crate::hub::lock().set_camera_tracking(on);
             }
             return self.0.set(path, value);
         }
