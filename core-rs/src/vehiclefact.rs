@@ -390,6 +390,26 @@ pub fn temperature_raw(t: &crate::sensorfacts::TemperatureFacts, name: &str) -> 
     if seen { json!(value) } else { Value::Null }
 }
 
+pub const SETPOINT: GroupSpec = GroupSpec {
+    class: "VehicleSetpointFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/SetpointFact.json"),
+    properties: &[("roll", "roll"), ("pitch", "pitch"), ("yaw", "yaw"), ("rollRate", "rollRate"), ("pitchRate", "pitchRate"), ("yawRate", "yawRate")],
+    added: &["roll", "pitch", "yaw", "rollRate", "pitchRate", "yawRate"],
+};
+
+pub fn setpoint_raw(s: &crate::sensorfacts::SetpointFacts, name: &str) -> Value {
+    let value = match name {
+        "roll" => s.roll,
+        "pitch" => s.pitch,
+        "yaw" => s.yaw,
+        "rollRate" => s.roll_rate,
+        "pitchRate" => s.pitch_rate,
+        "yawRate" => s.yaw_rate,
+        _ => return Value::Null,
+    };
+    if s.seen { json!(value) } else { Value::Null }
+}
+
 pub const WIND: GroupSpec = GroupSpec {
     class: "VehicleWindFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/WindFact.json"),

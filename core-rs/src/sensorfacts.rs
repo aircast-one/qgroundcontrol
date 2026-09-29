@@ -11,6 +11,17 @@ pub struct WindFacts {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct SetpointFacts {
+    pub roll: f64,
+    pub pitch: f64,
+    pub yaw: f64,
+    pub roll_rate: f64,
+    pub pitch_rate: f64,
+    pub yaw_rate: f64,
+    pub seen: bool,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct TemperatureFacts {
     pub temperature1: f64,
     pub temperature2: f64,
@@ -113,6 +124,25 @@ impl WindFacts {
     }
 }
 
+impl SetpointFacts {
+    pub fn apply(&mut self, message: &MavMessage) -> bool {
+        let MavMessage::ATTITUDE_TARGET(d) = message else { return false };
+        let (roll, pitch, yaw) = crate::vehiclefacts::quaternion_to_euler(d.q.map(|q| q as f64));
+        let yaw = if (yaw as f32) < 0.0 { yaw as f32 + 2.0 * std::f32::consts::PI } else { yaw as f32 };
+        let degrees = |radians: f32| radians.to_degrees() as f64;
+        *self = SetpointFacts {
+            roll: degrees(roll as f32),
+            pitch: degrees(pitch as f32),
+            yaw: degrees(yaw),
+            roll_rate: degrees(d.body_roll_rate),
+            pitch_rate: degrees(d.body_pitch_rate),
+            yaw_rate: degrees(d.body_yaw_rate),
+            seen: true,
+        };
+        true
+    }
+}
+
 impl TemperatureFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
         match message {
@@ -202,6 +232,17 @@ impl EstimatorStatusFacts {
 mod tests {
     use super::*;
     use mavlink::dialects::ardupilotmega::{DISTANCE_SENSOR_DATA, ESTIMATOR_STATUS_DATA, HIGH_LATENCY2_DATA, SCALED_PRESSURE2_DATA, WIND_COV_DATA, WIND_DATA};
+
+    #[test]
+    fn setpoint_yaw_is_brought_into_a_heading_range() {
+        let mut setpoint = SetpointFacts::default();
+        let half = std::f32::consts::FRAC_1_SQRT_2;
+        let target = mavlink::dialects::ardupilotmega::ATTITUDE_TARGET_DATA { q: [half, 0.0, 0.0, -half], body_yaw_rate: std::f32::consts::PI, ..Default::default() };
+        setpoint.apply(&MavMessage::ATTITUDE_TARGET(target));
+        assert!(setpoint.seen);
+        assert!((setpoint.yaw - 270.0).abs() < 1e-3, "{}", setpoint.yaw);
+        assert_eq!(setpoint.yaw_rate, 180.0);
+    }
 
     #[test]
     fn high_latency_wind_marks_only_the_facts_it_carries() {
