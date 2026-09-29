@@ -111,6 +111,12 @@ impl Transports {
         self.shared.registry.lock().unwrap().open_ids()
     }
 
+    pub fn describe(&self, id: LinkId) -> Option<(String, String, bool)> {
+        let registry = self.shared.registry.lock().unwrap();
+        let entry = registry.entry(id)?;
+        Some((entry.name.clone(), entry.kind.clone(), self.configs.get(&id).is_some_and(|c| c.high_latency)))
+    }
+
     pub fn local_port(&self, id: LinkId) -> Option<u16> {
         match self.owned.get(&id).map(|l| &**l) {
             Some(Owned::Udp(link)) => Some(link.local_port()),

@@ -199,6 +199,7 @@ fn start_pump() {
                     let mut hub = crate::hub::lock();
                     hub.retain_links(&open);
                     hub.expire(crate::hub::now_us());
+                    hub.check_links(crate::hub::now_ms());
                     hub.tick_with(crate::hub::now_ms(), crate::hub::now_us() / 1_000_000)
                 };
                 deliver(outbound);

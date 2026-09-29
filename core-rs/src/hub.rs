@@ -36,6 +36,7 @@ pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MAV_STATE_ACTIVE: u8 = 4;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
+const LINK_SILENT_MS: u64 = 3500;
 const RC_OVERRIDE_CHANNEL_COUNT: u8 = 18;
 const RC_OVERRIDE_PERIOD_MS: u64 = 200;
 const RC_OVERRIDE_RELEASE_TICKS: u8 = 3;
@@ -161,6 +162,8 @@ pub struct Vehicle {
     pub mission_current: i32,
     pub roi_enabled: bool,
     pub comm_lost_enabled: bool,
+    pub link_states: Vec<(LinkId, u64, bool)>,
+    pub primary_link: Option<LinkId>,
     pub auto_disconnect: bool,
     pub check_list_state: i64,
     pub mission_last_current: i32,
@@ -270,6 +273,8 @@ impl Vehicle {
             mission_current: -1,
             roi_enabled: false,
             comm_lost_enabled: true,
+            link_states: Vec::new(),
+            primary_link: None,
             auto_disconnect: false,
             check_list_state: 0,
             mission_last_current: -1,
@@ -1257,6 +1262,42 @@ impl Vehicle {
         }
     }
 
+    fn update_primary_link(&mut self) {
+        let held = self.primary_link.and_then(|id| self.link_states.iter().find(|(link, _, _)| *link == id));
+        if held.is_some_and(|(_, _, lost)| !lost) {
+            return;
+        }
+        let best = self.link_states.iter().find(|(_, _, lost)| !lost).map(|(link, _, _)| *link);
+        if held.is_some() && best.is_none() {
+            return;
+        }
+        self.primary_link = best;
+    }
+
+    pub fn note_link(&mut self, link: LinkId, now_ms: u64) {
+        match self.link_states.iter_mut().find(|(id, _, _)| *id == link) {
+            Some(state) => {
+                state.1 = now_ms;
+                if state.2 {
+                    state.2 = false;
+                    self.update_primary_link();
+                }
+            }
+            None => {
+                self.link_states.push((link, now_ms, false));
+                self.update_primary_link();
+            }
+        }
+    }
+
+    pub fn check_links(&mut self, now_ms: u64) {
+        if !self.comm_lost_enabled {
+            return;
+        }
+        self.link_states.iter_mut().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).for_each(|state| state.2 = true);
+        self.update_primary_link();
+    }
+
     fn note_mission_index(&mut self, message: &MavMessage) {
         let index = match message {
             MavMessage::MISSION_CURRENT(d) => i32::from(d.seq),
@@ -1662,6 +1703,9 @@ impl Hub {
         }
         let inputs = self.remote_inputs.as_ref();
         let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return Vec::new() };
+        if !matches!(message, MavMessage::RADIO_STATUS(_)) {
+            vehicle.note_link(origin.link, now_ms);
+        }
         if origin.v2 {
             vehicle.max_proto_version = Some(PROTO_MAVLINK2);
         }
@@ -1691,6 +1735,10 @@ impl Hub {
     }
 
     pub fn retain_links(&mut self, open: &[LinkId]) {
+        self.vehicles.values_mut().for_each(|v| {
+            v.link_states.retain(|(link, _, _)| open.contains(link));
+            v.update_primary_link();
+        });
         let gone: Vec<u8> = self.vehicles.values().filter(|v| !open.contains(&v.link)).map(|v| v.id).collect();
         gone.iter().for_each(|id| self.remove(*id));
     }
@@ -1832,6 +1880,10 @@ impl Hub {
 
     pub fn active(&self) -> Option<&Vehicle> {
         self.active.and_then(|id| self.vehicles.get(&id))
+    }
+
+    pub fn check_links(&mut self, now_ms: u64) {
+        self.vehicles.values_mut().for_each(|v| v.check_links(now_ms));
     }
 
     pub fn expire(&mut self, now_us: u64) -> Vec<u8> {
@@ -2128,6 +2180,21 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn the_primary_link_stays_until_it_goes_quiet_and_then_moves_to_a_live_one() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 100);
+        assert_eq!(hub.active().unwrap().primary_link, Some(1), "the first link heard is primary and a second one does not take over");
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_000);
+        hub.check_links(4_000);
+        let vehicle = hub.active().unwrap();
+        assert_eq!((vehicle.primary_link, vehicle.link_states.iter().map(|(_, _, lost)| *lost).collect::<Vec<_>>()), (Some(2), vec![true, false]), "link 1 was silent past 3.5 s");
+        hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 4_100);
+        assert_eq!(hub.active().unwrap().primary_link, Some(2), "a regained link does not take the primary back");
     }
 
     #[test]
