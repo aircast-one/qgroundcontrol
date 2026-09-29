@@ -35,7 +35,13 @@ pub fn write_undo_tracking(backend: &dyn Backend, path: &str, value: &str) -> Va
         return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "Undo tracking is turned on with true and off with false." });
     };
     let answered = flag(&object(&backend.set(path, &json!({ "value": on }).to_string())), "ok");
-    let held = object(&backend.get_fields("plan", "undoTracking")).get("undoTracking").and_then(Value::as_bool);
+    let held = match crate::coreplan::enabled() {
+        true => answered.then(|| {
+            crate::coreplan::note_undo_tracking(on);
+            on
+        }),
+        false => object(&backend.get_fields("plan", "undoTracking")).get("undoTracking").and_then(Value::as_bool),
+    };
     let took = answered && held == Some(on);
     json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The plan did not keep that undo setting.") } })
 }

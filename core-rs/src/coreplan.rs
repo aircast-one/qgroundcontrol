@@ -67,6 +67,20 @@ pub fn enabled() -> bool {
     *ENABLED
 }
 
+static UNDO_TRACKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn undo_tracking() -> bool {
+    UNDO_TRACKING.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn note_undo_tracking(on: bool) {
+    UNDO_TRACKING.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn offline() -> bool {
+    crate::hub::lock().active_id().is_none()
+}
+
 fn changed() {
     let notify = ON_CHANGE.lock().unwrap_or_else(PoisonError::into_inner).clone();
     if let Some(notify) = notify {
@@ -726,7 +740,7 @@ fn plan_speeds(backend: &dyn Backend, file: &str) {
 }
 
 fn plan_for_offline_vehicle(backend: &dyn Backend) {
-    if !crate::read::flag(&crate::read::object(&backend.get_fields("plan", "offline")), "offline") {
+    if !offline() {
         return;
     }
     let Some((firmware, vehicle)) = held().document.as_ref().map(|d| (d.firmware_type, d.vehicle_type)) else { return };
@@ -783,7 +797,7 @@ fn fresh_document(backend: &dyn Backend) -> Document {
 
 fn step(backend: &dyn Backend, undoing: bool) -> Value {
     let word = if undoing { "undo" } else { "redo" };
-    if !crate::read::flag(&crate::read::object(&backend.get_fields("plan", "undoTracking")), "undoTracking") {
+    if !undo_tracking() {
         return json!({ "ok": false, "reason": format!("This plan is not recording edits, so there is nothing to {word}."), "refusal": "notTracking" });
     }
     {

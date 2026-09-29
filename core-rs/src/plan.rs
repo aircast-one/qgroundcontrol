@@ -104,10 +104,13 @@ fn patterns(mission: &Value) -> Vec<Value> {
 }
 
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo,undoTracking"));
-    let mission = object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame"));
-    let offline = flag(&plan, "offline");
     let core = crate::coreplan::plan_state();
+    let plan = match core {
+        Some(_) => json!({}),
+        None => object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo,undoTracking")),
+    };
+    let mission = object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame"));
+    let offline = core.as_ref().map_or_else(|| flag(&plan, "offline"), |_| crate::coreplan::offline());
     let syncing = core.as_ref().map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
     let dirty = core.as_ref().map_or_else(|| flag(&plan, "dirty"), |c| c.dirty);
     let contains_items = core.as_ref().map_or_else(|| flag(&plan, "containsItems"), |c| c.contains_items);
@@ -168,8 +171,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // two reads that could land either side of a change the view had already answered for.
         "containsItems": contains_items,
         "offline": offline,
-        "canUndo": crate::coreplan::history().map_or_else(|| flag(&plan, "canUndo"), |(undo, _)| undo && flag(&plan, "undoTracking")),
-        "canRedo": crate::coreplan::history().map_or_else(|| flag(&plan, "canRedo"), |(_, redo)| redo && flag(&plan, "undoTracking")),
+        "canUndo": crate::coreplan::history().map_or_else(|| flag(&plan, "canUndo"), |(undo, _)| undo && crate::coreplan::undo_tracking()),
+        "canRedo": crate::coreplan::history().map_or_else(|| flag(&plan, "canRedo"), |(_, redo)| redo && crate::coreplan::undo_tracking()),
     })
 }
 
