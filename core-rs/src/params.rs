@@ -151,6 +151,7 @@ pub struct Params {
     batch_active: bool,
     initial_timer_active: bool,
     initial_retry: u32,
+    unanswered: bool,
     initial_complete: bool,
     waiting_for_default: bool,
     ready: bool,
@@ -238,6 +239,10 @@ impl Params {
         Params { default_component, px4, ..Default::default() }
     }
 
+    pub fn unanswered(&self) -> bool {
+        self.unanswered
+    }
+
     pub fn ready(&self) -> bool {
         self.ready
     }
@@ -259,6 +264,7 @@ impl Params {
     }
 
     pub fn refresh_all(&mut self, component: u8) -> Vec<Action> {
+        self.unanswered = false;
         let timer = (!self.initial_complete).then(|| {
             self.initial_timer_active = true;
             Action::StartInitialTimer
@@ -442,6 +448,7 @@ impl Params {
             actions
         } else {
             self.initial_timer_active = false;
+            self.unanswered = true;
             vec![Action::NoResponse]
         }
     }
@@ -600,5 +607,8 @@ mod tests {
         let retries: Vec<Vec<Action>> = (0..5).map(|_| silent.on_initial_timeout()).collect();
         assert!(retries[..4].iter().all(|a| a.contains(&Action::RequestList { component: 0 })));
         assert_eq!(retries[4], vec![Action::NoResponse]);
+        assert!(silent.unanswered(), "requestUnanswered is what the setup page shows once the retries run out");
+        silent.refresh_all(ALL_COMPONENTS);
+        assert!(!silent.unanswered(), "a new download clears it, as _startParameterDownload does");
     }
 }

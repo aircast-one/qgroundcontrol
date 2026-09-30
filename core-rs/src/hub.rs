@@ -839,6 +839,10 @@ impl Vehicle {
         self.params.ready()
     }
 
+    pub fn parameters_unanswered(&self) -> bool {
+        self.params.unanswered()
+    }
+
     pub fn firmware(&self) -> Option<Firmware> {
         self.autopilot_version.as_ref().map(|v| connect::firmware_from(v, self.autopilot == crate::modes::AUTOPILOT_PX4))
     }
