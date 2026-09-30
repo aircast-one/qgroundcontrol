@@ -20,6 +20,7 @@ play {
 val coreCrate = rootProject.file("../core-rs")
 val coreJniLibs = layout.buildDirectory.dir("core/jniLibs")
 val coreBridgeSources = layout.buildDirectory.dir("core/bridge")
+val coreVideoBuild = layout.buildDirectory.dir("core/video/${qgc("abi")}")
 val coreTriples = mapOf(
     "arm64-v8a" to "aarch64-linux-android",
     "armeabi-v7a" to "armv7-linux-androideabi",
@@ -72,6 +73,7 @@ android {
     sourceSets {
         getByName("core") {
             java.srcDir(coreBridgeSources)
+            java.srcDir(coreVideoBuild.map { it.dir("android-build/src") })
             jniLibs.srcDir(coreJniLibs)
         }
     }
@@ -111,7 +113,7 @@ val buildCoreLibrary by tasks.registering(Exec::class) {
 val buildCoreVideo by tasks.registering(Exec::class) {
     val abi = qgc("abi")
     val source = rootProject.file("video")
-    val build = layout.buildDirectory.dir("core/video/$abi").get().asFile
+    val build = coreVideoBuild.get().asFile
     val toolchain = android.ndkDirectory.resolve("build/cmake/android.toolchain.cmake")
     commandLine(
         "sh", "-c",

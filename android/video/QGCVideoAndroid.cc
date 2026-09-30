@@ -1,5 +1,6 @@
 #include "QGCVideoC.h"
 
+#include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <gst/gst.h>
@@ -47,6 +48,22 @@ void drawFrame(const uint8_t *pixels, int width, int height, int stride)
     ANativeWindow_unlockAndPost(window);
 }
 
+void preferHardwareDecoders()
+{
+    GList *const decoders = gst_element_factory_list_get_elements(
+        static_cast<GstElementFactoryListType>(GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO), GST_RANK_NONE);
+    for (GList *item = decoders; item; item = item->next) {
+        GstPluginFeature *const feature = GST_PLUGIN_FEATURE(item->data);
+        const gchar *const name = gst_plugin_feature_get_name(feature);
+        const bool softwareWrapper = name && (g_str_has_prefix(name, "amcviddec-omxgoogle") || g_str_has_prefix(name, "amcviddec-c2android"));
+        if (name && g_str_has_prefix(name, "amcviddec-") && !softwareWrapper) {
+            gst_plugin_feature_set_rank(feature, GST_RANK_PRIMARY + 1);
+            __android_log_print(ANDROID_LOG_INFO, "qgc_video", "hardware decoder %s", name);
+        }
+    }
+    gst_plugin_feature_list_free(decoders);
+}
+
 void setDirectory(const char *name, const std::string &value)
 {
     if (!value.empty()) {
@@ -92,6 +109,7 @@ __attribute__((visibility("default"))) bool qgc_video_android_init(JavaVM *vm, j
         setDirectory("XDG_RUNTIME_DIR", cache);
         gst_init(nullptr, nullptr);
         gst_init_static_plugins();
+        preferHardwareDecoders();
         qgc_video_set_frame_callback(drawFrame);
     });
     return gst_is_initialized();

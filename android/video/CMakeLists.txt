@@ -27,3 +27,4 @@ add_library(qgc_video SHARED
 target_include_directories(qgc_video PRIVATE "${QGC_ROOT}/src/Bridge")
 target_compile_definitions(qgc_video PRIVATE QGC_GST_STREAMING QGC_VIDEO_FORMAT="RGBA")
 target_link_libraries(qgc_video PRIVATE GStreamer::GStreamer GStreamer::mobile android log)
+add_dependencies(qgc_video copyjavasource_${CMAKE_ANDROID_ARCH_ABI})
