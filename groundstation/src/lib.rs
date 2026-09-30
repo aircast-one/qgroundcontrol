@@ -94,6 +94,7 @@ pub mod metacache;
 pub mod noticeboard;
 pub mod nativeargs;
 pub mod mission;
+pub mod missioncomplete;
 pub mod missionitems;
 pub mod missionkinds;
 pub mod missionsummary;

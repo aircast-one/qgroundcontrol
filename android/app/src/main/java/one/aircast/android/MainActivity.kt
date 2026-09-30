@@ -86,6 +86,7 @@ import one.aircast.android.ui.FollowMeReadout
 import one.aircast.android.ui.AttitudeInstrument
 import one.aircast.android.ui.MapClickMenu
 import one.aircast.android.ui.MapPoint
+import one.aircast.android.ui.MissionCompleteDialog
 import one.aircast.android.ui.SetWaypointSheet
 import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
@@ -419,6 +420,7 @@ fun AircastShell(hostView: android.view.View?) {
                 waypointTapped?.takeIf { tab == Tab.Fly }?.let { sequence ->
                     SetWaypointSheet(sequence) { waypointTapped = null }
                 }
+                MissionCompleteDialog()
 
                 key(popEpoch) {
                     when (tab) {

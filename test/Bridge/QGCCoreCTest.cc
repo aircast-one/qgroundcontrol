@@ -1360,7 +1360,7 @@ const char *const kViewPaths[] = {
     "view.settings(General)", "view.surveyStats(4)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
     "view.setup(Flight Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
-    "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.mapClick", "view.landingPattern(6)",
+    "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.mapClick", "view.missionComplete", "view.landingPattern(6)",
     "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",

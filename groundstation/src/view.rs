@@ -45,6 +45,7 @@ use crate::instruments;
 use crate::landing;
 use crate::attitude;
 use crate::mapclick;
+use crate::missioncomplete;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -153,6 +154,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
     View { path: "view.attitude", deps: attitude::DEPS, compute: attitude::attitude_view },
     View { path: "view.mapClick", deps: mapclick::DEPS, compute: mapclick::map_click_view },
+    View { path: "view.missionComplete", deps: missioncomplete::DEPS, compute: missioncomplete::mission_complete_view },
     View { path: "view.landingPattern", deps: landing::DEPS, compute: landing::landing_view },
     View { path: "view.vibration", deps: vibration::DEPS, compute: vibration::vibration_view },
     View { path: "view.sensors", deps: sensors::DEPS, compute: sensors::sensors_view },
@@ -467,6 +469,7 @@ mod deps_cover_reads {
             ("vehiclefact", include_str!("vehiclefact.rs")),
             ("linkremove", include_str!("linkremove.rs")),
             ("mapclick", include_str!("mapclick.rs")),
+            ("missioncomplete", include_str!("missioncomplete.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
