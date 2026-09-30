@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::read::{object, value_number, value_string};
 use crate::remoteid::{GcsFix, Settings};
@@ -15,6 +15,81 @@ pub fn deps() -> Vec<String> {
 
 fn fact_path(name: &str) -> String {
     format!("{GROUP}.{name}.rawValue")
+}
+
+const MANAGER: &str = "vehicle.remoteIDManager";
+const REGION_EU: i64 = 1;
+const DECLARE_HOLD_MS: u64 = 800;
+const CANCEL_HOLD_MS: u64 = 3000;
+
+pub fn status_deps() -> Vec<String> {
+    ["available", "armStatusGoodToArm", "armStatusError", "ridDeviceCommsGood", "gcsPositionUsable", "vehicleReportsBasicIDMissing", "emergencyDeclared"]
+        .iter()
+        .map(|p| format!("{MANAGER}.{p}"))
+        .chain(["vehicles.activeVehicleAvailable".to_string(), format!("{GROUP}.operatorIDValidForRegion")])
+        .chain(["sendBasicID", "sendOperatorID", "sendSelfID", "region"].iter().map(|f| fact_path(f)))
+        .collect()
+}
+
+pub struct Flags {
+    pub connected: bool,
+    pub available: bool,
+    pub comms: bool,
+    pub arm: bool,
+    pub gps: bool,
+    pub basic_id: bool,
+    pub emergency: bool,
+    pub operator_id: bool,
+    pub operator_id_checked: bool,
+    pub broadcasting: bool,
+}
+
+pub fn state(f: &Flags) -> &'static str {
+    match () {
+        _ if !f.connected => "unavailable",
+        _ if !f.comms || !f.arm || f.emergency => "error",
+        _ if !f.gps || !f.basic_id => "warning",
+        _ if f.operator_id_checked && !f.operator_id => "warning",
+        _ => "healthy",
+    }
+}
+
+pub fn status_json(f: &Flags, arm_error: &str) -> Value {
+    json!({
+        "kind": "object",
+        "class": "RemoteIdStatus",
+        "shown": f.connected && f.available && f.broadcasting,
+        "state": state(f),
+        "comms": f.comms,
+        "armStatus": f.arm,
+        "armStatusError": arm_error,
+        "gcsGps": f.gps,
+        "basicId": f.basic_id,
+        "operatorIdShown": f.operator_id_checked,
+        "operatorId": f.operator_id,
+        "emergency": f.emergency,
+        "emergencyHoldMs": if f.emergency { CANCEL_HOLD_MS } else { DECLARE_HOLD_MS },
+    })
+}
+
+pub fn status_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let manager = object(&backend.get(MANAGER));
+    let connected = manager.get("kind").and_then(Value::as_str) == Some("object");
+    let yes = |key: &str| manager.get(key).and_then(Value::as_bool).unwrap_or(false);
+    let set = settings(backend);
+    let flags = Flags {
+        connected,
+        available: yes("available"),
+        comms: yes("ridDeviceCommsGood"),
+        arm: yes("armStatusGoodToArm"),
+        gps: yes("gcsPositionUsable"),
+        basic_id: !yes("vehicleReportsBasicIDMissing"),
+        emergency: yes("emergencyDeclared"),
+        operator_id: set.operator_id_valid,
+        operator_id_checked: set.region == REGION_EU || set.send_operator_id,
+        broadcasting: set.send_basic_id || set.send_operator_id || set.send_self_id,
+    };
+    status_json(&flags, manager.get("armStatusError").and_then(Value::as_str).unwrap_or_default())
 }
 
 pub fn settings(backend: &dyn Backend) -> Settings {
@@ -95,5 +170,20 @@ mod tests {
         assert_eq!(fix(&Fake, 1_700_000_006_000).age_ms, 6_000, "the fix ages from the position manager's own timestamp");
         assert_eq!(deps().len(), 24);
         assert!(deps().contains(&"settings.remoteIDSettings.classEU.rawValue".to_string()));
+    }
+
+    #[test]
+    fn the_indicator_state_follows_remote_id_indicator() {
+        let good = Flags { connected: true, available: true, comms: true, arm: true, gps: true, basic_id: true, emergency: false, operator_id: true, operator_id_checked: true, broadcasting: true };
+        assert_eq!(state(&good), "healthy");
+        assert_eq!(state(&Flags { emergency: true, ..good }), "error", "a declared emergency is an error state");
+        assert_eq!(state(&Flags { comms: false, ..good }), "error");
+        assert_eq!(state(&Flags { gps: false, ..good }), "warning");
+        assert_eq!(state(&Flags { operator_id: false, ..good }), "warning", "an operator id is checked in the EU or when it is broadcast");
+        assert_eq!(state(&Flags { operator_id: false, operator_id_checked: false, ..good }), "healthy");
+        assert_eq!(state(&Flags { connected: false, ..good }), "unavailable");
+        assert_eq!(status_json(&Flags { broadcasting: false, ..good }, "")["shown"], false, "nothing is broadcast, so the indicator stays away");
+        assert_eq!(status_json(&good, "")["emergencyHoldMs"], 800);
+        assert_eq!(status_json(&Flags { emergency: true, ..good }, "")["emergencyHoldMs"], 3000, "cancelling takes the longer hold QGC asks for");
     }
 }
