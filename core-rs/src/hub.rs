@@ -166,6 +166,8 @@ pub struct Vehicle {
     pub events_heard: bool,
     pub message_log: crate::messagelog::MessageLog,
     pub control: crate::operatorcontrol::ControlState,
+    pub rccal: crate::rccal::RcCal,
+    rccal_loaded: bool,
     pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
@@ -286,6 +288,8 @@ impl Vehicle {
             events_heard: false,
             message_log: crate::messagelog::MessageLog::default(),
             control: crate::operatorcontrol::ControlState::default(),
+            rccal: crate::rccal::RcCal::default(),
+            rccal_loaded: false,
             camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
@@ -1112,6 +1116,42 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("rcCal") => {
+                self.load_rccal();
+                let vehicle = self.rccal_vehicle();
+                let mut cal = std::mem::take(&mut self.rccal);
+                let outcomes = {
+                    let lookup = |name: &str| self.params.value(self.component, name).map(|p| p.as_f64());
+                    match action.get("op").and_then(Value::as_str) {
+                        Some("next") => cal.next(&vehicle, &lookup),
+                        Some("cancel") => vec![cal.stop(&vehicle, &lookup)],
+                        _ => Vec::new(),
+                    }
+                };
+                self.rccal = cal;
+                if outcomes.contains(&crate::rccal::Outcome::ThrottleReversed) {
+                    self.note("Attempt to calibrate with a reversed throttle. Reverse the throttle on the transmitter and calibrate again.".to_string());
+                }
+                let target = (self.id, self.component);
+                return Ok(outcomes
+                    .into_iter()
+                    .flat_map(|outcome| match outcome {
+                        crate::rccal::Outcome::StartCalibration => self.encode(&Outbound::CommandLong { target, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0] }).into_iter().collect(),
+                        crate::rccal::Outcome::StopCalibration => self.encode(&Outbound::CommandLong { target, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params: [0.0; 7] }).into_iter().collect(),
+                        crate::rccal::Outcome::Write(writes) => writes
+                            .into_iter()
+                            .flat_map(|(name, value)| {
+                                let written = self.params.value(self.component, &name).and_then(|current| ParamValue::from_f64(current.param_type(), value));
+                                written.map(|written| {
+                                    let actions = self.params.write(self.component, &name, written);
+                                    self.follow_params(actions, now_ms)
+                                }).unwrap_or_default()
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    })
+                    .collect());
+            }
             Some("requestControl") => {
                 let allow = action.get("allowTakeover").and_then(Value::as_bool).unwrap_or(false);
                 let (Some(timeout), Some(safe)) = (action.get("timeout").and_then(Value::as_i64), action.get("safeTimeout").and_then(Value::as_i64)) else {
@@ -1399,6 +1439,23 @@ impl Vehicle {
         if let Some(text) = crate::messagelog::admitted(px4, self.events_heard, status.severity, &status.text) {
             self.message_log.record(status.component, status.severity, text, crate::messagelog::clock_now());
         }
+    }
+
+    pub fn rccal_vehicle(&self) -> crate::rccal::Vehicle {
+        let class = crate::plandoc::vehicle_class(i64::from(self.vehicle_type));
+        crate::rccal::Vehicle { px4: self.autopilot == crate::modes::AUTOPILOT_PX4, multi_rotor: class == crate::cmdinfo::VehicleClass::MultiRotor, helicopter: self.vehicle_type == 4, rover: class == crate::cmdinfo::VehicleClass::Rover }
+    }
+
+    pub fn load_rccal(&mut self) {
+        if self.rccal_loaded || !self.parameters_ready() {
+            return;
+        }
+        let vehicle = self.rccal_vehicle();
+        let mode = crate::settingsstore::stored_text("RadioCalibration/TransmitterMode").and_then(|t| t.trim().parse().ok()).unwrap_or(2);
+        let mut cal = crate::rccal::RcCal::for_vehicle(&vehicle, mode);
+        cal.channel_values(&self.rccal.rc_values(), 0);
+        cal.read_stored(&vehicle, &|name: &str| self.params.value(self.component, name).map(|p| p.as_f64()));
+        (self.rccal, self.rccal_loaded) = (cal, true);
     }
 
     fn note_onboard_log(&mut self, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
@@ -1816,6 +1873,7 @@ impl Vehicle {
             let valid = raw.iter().filter(|v| **v != u16::MAX).count();
             if raw.iter().position(|v| *v == u16::MAX).is_none_or(|at| at == valid) {
                 self.rc_values = raw[..valid].to_vec();
+                self.rccal.channel_values(&crate::rccal::clamped(&raw[..valid]), now_ms);
             }
         }
         if let MavMessage::SERIAL_CONTROL(d) = message {
@@ -2094,6 +2152,16 @@ impl Hub {
             "communicationLostEnabled" => v.comm_lost_enabled = on,
             _ => v.auto_disconnect = on,
         }).is_some()
+    }
+
+    pub fn radio_json(&mut self) -> Option<Value> {
+        let vehicle = self.active.and_then(|id| self.vehicles.get_mut(&id))?;
+        vehicle.load_rccal();
+        Some(vehicle.rccal.json())
+    }
+
+    pub fn set_transmitter_mode(&mut self, mode: i64) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.rccal.transmitter_mode = if (1..=4).contains(&mode) { mode as i32 } else { 2 }).is_some()
     }
 
     pub fn clear_message_log(&mut self) {

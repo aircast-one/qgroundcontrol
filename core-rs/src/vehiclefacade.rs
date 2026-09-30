@@ -731,6 +731,16 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = inspector_get(path) {
             return answer.to_string();
         }
+        if let Some(radio) = path.strip_prefix("radioCal").filter(|_| switched_on()).and_then(|rest| {
+            let radio = crate::hub::lock().radio_json()?;
+            match rest.strip_prefix('.') {
+                None if rest.is_empty() => Some(radio),
+                Some(field) => radio.get(field).cloned().map(|v| json!({ "kind": "value", "value": v })),
+                None => None,
+            }
+        }) {
+            return radio.to_string();
+        }
         if let Some(formatted) = (path == "vehicle.formattedMessages" && switched_on()).then(|| crate::hub::lock().active().map(|v| v.message_log.formatted())).flatten() {
             return json!({ "kind": "value", "value": formatted }).to_string();
         }
@@ -786,8 +796,8 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
             return json!({ "kind": "object", "lines": lines }).to_string();
         }
-        if let Some(values) = (asked_path == "radioCal" && fields_of(fields) == ["rcValues"] && switched_on()).then(|| crate::hub::lock().active().map(|v| v.rc_values.clone())).flatten() {
-            return json!({ "kind": "object", "rcValues": values }).to_string();
+        if let Some(radio) = (asked_path == "radioCal" && switched_on()).then(|| crate::hub::lock().radio_json()).flatten() {
+            return only_fields(radio, &fields_of(fields)).to_string();
         }
         if let Some(report) = (asked_path == "vehicle.healthAndArmingCheckReport").then(unreported_checks).flatten() {
             let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), report.get(f)?.clone()))).collect();
@@ -898,6 +908,12 @@ impl<B: Backend> Backend for Facade<B> {
             let fits = index.and_then(|i| usize::try_from(i).ok()).is_some_and(|i| crate::mavinspect::lock().select(i));
             return json!({ "ok": fits }).to_string();
         }
+        if path == "radioCal.transmitterMode" && switched_on() {
+            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
+            if let Some(held) = mode.map(|m| crate::hub::lock().set_transmitter_mode(m)).filter(|held| *held) {
+                return json!({ "ok": held }).to_string();
+            }
+        }
         if path == "vehicle.checkListState" && switched_on() {
             let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
             if let Some(state) = state {
@@ -917,6 +933,15 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
+        }
+        if let Some(op) = (switched_on() && crate::hub::lock().active().is_some()).then(|| match path {
+            "radioCal.nextButtonClicked" => Some("next"),
+            "radioCal.cancelButtonClicked" => Some("cancel"),
+            _ => None,
+        }).flatten() {
+            let vehicle = crate::hub::lock().active_id();
+            let started = self.0.core_guided(&json!({ "action": "rcCal", "vehicle": vehicle, "op": op }));
+            return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
         if path == "vehicle.requestOperatorControl" && inspector_owned() {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);

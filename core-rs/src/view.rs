@@ -400,6 +400,7 @@ mod deps_cover_reads {
             ("messagelog", include_str!("messagelog.rs")),
             ("terrainservice", include_str!("terrainservice.rs")),
             ("mavinspect", include_str!("mavinspect.rs")),
+            ("rccal", include_str!("rccal.rs")),
             ("cmdinfo", include_str!("cmdinfo.rs")),
             ("compinfo", include_str!("compinfo.rs")),
             ("compmeta", include_str!("compmeta.rs")),

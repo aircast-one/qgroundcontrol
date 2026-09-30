@@ -56,7 +56,8 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .iter()
         .map(|(key, title)| {
             let mapped = truthy(&cal, &format!("{key}ChannelMapped"));
-            let pwm = integer(&cal, &format!("{key}ChannelRCValue")).unwrap_or(0);
+            let capital = format!("{}{}", key[..1].to_uppercase(), &key[1..]);
+            let pwm = integer(&cal, &format!("adjusted{capital}ChannelValue")).unwrap_or(0);
             let value_text = match (mapped, pwm > 0) {
                 (false, _) => "Not mapped".to_string(),
                 (true, true) => pwm.to_string(),
