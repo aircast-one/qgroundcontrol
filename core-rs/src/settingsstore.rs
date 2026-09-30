@@ -573,7 +573,7 @@ fn video_answer(path: &str, args: &str, source: Option<String>, setting: impl Fn
 }
 
 pub fn video_invoke(path: &str, args: &str) -> Option<String> {
-    video_answer(path, args, stored_text("Video/videoSource"), setting_text)
+    video_answer(path, args, Some(stored_text("Video/videoSource").unwrap_or_else(|| VIDEO_DISABLED.to_string())), setting_text)
 }
 
 pub struct Owner<B>(pub B);
@@ -721,7 +721,7 @@ mod tests {
         assert_eq!(ask("sourceEnabled", 1, rtsp), Some(json!(false)));
         assert_eq!(ask("sourceConfigured", 2, rtsp), Some(json!(true)));
         assert_eq!(ask("sourceConfigured", 9, rtsp), Some(json!(false)), "past the extras Qt names the primary source but gives it no URL");
-        assert_eq!(ask("sourceEnabled", 0, None), None, "with no stored source the default is Qt's to compute");
+        assert_eq!(ask("sourceEnabled", 0, Some(VIDEO_DISABLED)), Some(json!(false)), "VideoSettings defaults videoSource to disabled whenever a source exists, and RTSP always does");
     }
 
     #[test]
