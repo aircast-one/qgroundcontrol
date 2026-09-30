@@ -141,10 +141,6 @@ pub fn visible_ports(system_locations: &[String]) -> Vec<String> {
     system_locations.iter().filter(|port| !MACOS_SYSTEM_PORTS.iter().any(|system| port.contains(system))).cloned().collect()
 }
 
-pub fn port_display_name(system_location: &str) -> String {
-    std::path::Path::new(system_location).file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned())
-}
-
 pub fn links_field(field: &str) -> Option<serde_json::Value> {
     let ports = || -> Option<Vec<String>> {
         cfg!(target_os = "macos").then_some(())?;
@@ -155,7 +151,7 @@ pub fn links_field(field: &str) -> Option<serde_json::Value> {
         "linkTypeIds" => serde_json::json!(link_types().map(|(id, _)| *id).collect::<Vec<_>>()),
         "serialBaudRates" if cfg!(target_os = "macos") => serde_json::json!(MACOS_BAUD_RATES.iter().map(u32::to_string).collect::<Vec<_>>()),
         "serialPorts" => serde_json::json!(ports()?),
-        "serialPortStrings" => serde_json::json!(ports()?.iter().map(|p| port_display_name(p)).collect::<Vec<_>>()),
+        "serialPortStrings" => serde_json::json!(ports()?.iter().map(|p| crate::linkconfig::port_display_name(p)).collect::<Vec<_>>()),
         _ => return None,
     })
 }
@@ -166,7 +162,7 @@ mod tests {
     fn macos_system_ports_are_hidden_and_a_port_shows_by_its_device_name() {
         let found = ["/dev/cu.debug-console", "/dev/tty.Bluetooth-Incoming-Port", "/dev/cu.Bluetooth-Incoming-Port", "/dev/tty.usbmodem14101", "/dev/cu.usbmodem14101"].map(String::from);
         assert_eq!(visible_ports(&found), vec!["/dev/cu.debug-console", "/dev/cu.Bluetooth-Incoming-Port", "/dev/cu.usbmodem14101"], "only the tty side of the listed system names is hidden, as QGCSerialPortInfo::isSystemPort matches");
-        assert_eq!(port_display_name("/dev/cu.SpeedyBeeF405Wing-SPP"), "cu.SpeedyBeeF405Wing-SPP");
+        assert_eq!(crate::linkconfig::port_display_name("/dev/cu.SpeedyBeeF405Wing-SPP"), "cu.SpeedyBeeF405Wing-SPP");
     }
 
     use super::*;

@@ -260,7 +260,10 @@ fn unreported_checks() -> Option<Value> {
 fn links_field(name: &str) -> Option<Value> {
     match name {
         "mavlinkSupportForwardingEnabled" => Some(json!(crate::forwarding::support_enabled())),
+        #[cfg(not(target_os = "android"))]
         _ => crate::seriallink::links_field(name),
+        #[cfg(target_os = "android")]
+        _ => None,
     }
 }
 

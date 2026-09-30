@@ -431,7 +431,7 @@ fn serial_ports() -> Vec<crate::boards::PortInfo> {
                 _ => None,
             };
             crate::boards::PortInfo {
-                port_name: crate::seriallink::port_display_name(&p.port_name),
+                port_name: crate::linkconfig::port_display_name(&p.port_name),
                 system_location: p.port_name,
                 description: usb.as_ref().and_then(|u| u.product.clone()).unwrap_or_default(),
                 manufacturer: usb.as_ref().and_then(|u| u.manufacturer.clone()).unwrap_or_default(),
@@ -450,7 +450,7 @@ fn serial_ports() -> Vec<crate::boards::PortInfo> {
 
 pub fn serial_entry(name: &str, port: &str, baud: u32) -> Entry {
     Entry {
-        config: LinkConfig { name: name.to_string(), auto_connect: true, high_latency: false, kind: Kind::Serial { baud: i64::from(baud), data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port.to_string(), port_display_name: crate::seriallink::port_display_name(port) } },
+        config: LinkConfig { name: name.to_string(), auto_connect: true, high_latency: false, kind: Kind::Serial { baud: i64::from(baud), data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port.to_string(), port_display_name: crate::linkconfig::port_display_name(port) } },
         dynamic: true,
     }
 }

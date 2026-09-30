@@ -236,6 +236,10 @@ pub fn from_json(value: &serde_json::Value) -> Result<LinkConfig, String> {
     Ok(LinkConfig { name, auto_connect: value.get("auto").and_then(Value::as_bool).unwrap_or(false), high_latency: value.get("highLatency").and_then(Value::as_bool).unwrap_or(false), kind })
 }
 
+pub fn port_display_name(system_location: &str) -> String {
+    std::path::Path::new(system_location).file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
