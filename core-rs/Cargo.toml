@@ -6,7 +6,7 @@ publish = false
 
 [lib]
 name = "qgc_core"
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 mavlink = { version = "0.18", default-features = false, features = ["dialect-ardupilotmega", "std", "mav2-message-signing", "mav2-message-extensions"] }
