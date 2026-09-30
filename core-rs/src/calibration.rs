@@ -117,7 +117,7 @@ pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "nextEnabled": flag(&cal, "nextEnabled"),
         "cancelEnabled": flag(&cal, "cancelEnabled"),
         "progress": progress,
-        "progressText": format!("{progress:.0}%"),
+        "progressText": format!("{:.0}%", progress * 100.0),
         "helpText": text(&cal, "orientationHelpText"),
         "statusText": text(&cal, "statusText"),
         "accelNeeded": accel_needed,
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn a_running_calibration_reports_its_sides_and_blocks_new_starts() {
         let view = calibration_view(&Fake(json!({
-            "kind": "object", "calibrationInProgress": true, "showOrientationCalArea": true, "calProgress": 33.4,
+            "kind": "object", "calibrationInProgress": true, "showOrientationCalArea": true, "calProgress": 0.334,
             "orientationCalDownSideVisible": true, "orientationCalDownSideDone": true,
             "orientationCalLeftSideVisible": true, "orientationCalLeftSideInProgress": true, "orientationCalLeftSideRotate": true,
         })), &[]);

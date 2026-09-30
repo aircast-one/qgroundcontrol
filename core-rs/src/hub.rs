@@ -1116,6 +1116,7 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("calibrate") => return self.calibrate_request(&action["request"], now_ms),
             Some("rcCal") => {
                 self.load_rccal();
                 let vehicle = self.rccal_vehicle();
@@ -2152,6 +2153,14 @@ impl Hub {
             "communicationLostEnabled" => v.comm_lost_enabled = on,
             _ => v.auto_disconnect = on,
         }).is_some()
+    }
+
+    pub fn sensors_json(&self) -> Option<Value> {
+        let vehicle = self.active()?;
+        (vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then_some(())?;
+        let snapshot = vehicle.calibration_snapshot();
+        let parameter = |name: &str| vehicle.parameter(vehicle.component, name).map(|p| p.as_f64()).unwrap_or(0.0);
+        Some(crate::sensorcal::qt_shape(&snapshot, &parameter))
     }
 
     pub fn radio_json(&mut self) -> Option<Value> {

@@ -250,6 +250,21 @@ fn video_camera_name(index: i64) -> String {
     if name.is_empty() { format!("Camera {}", index + 1) } else { name }
 }
 
+fn sensors_request(path: &str, args: &str) -> Option<Value> {
+    let simple = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_bool()).unwrap_or(false);
+    let start = |kind: &str| Some(json!({ "action": "start", "type": kind }));
+    match path.strip_prefix("sensorsCal.")? {
+        "calibrateAccel" if !simple => start("accelerometer"),
+        "calibrateCompass" => start("compass"),
+        "levelHorizon" => start("levelHorizon"),
+        "calibrateGyro" => start("gyro"),
+        "calibratePressure" => start("pressure"),
+        "nextClicked" => Some(json!({ "action": "next" })),
+        "cancelCalibration" => Some(json!({ "action": "cancel" })),
+        _ => None,
+    }
+}
+
 fn inspector_owned() -> bool {
     switched_on() && crate::hub::lock().active().is_some()
 }
@@ -731,6 +746,16 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = inspector_get(path) {
             return answer.to_string();
         }
+        if let Some(sensors) = path.strip_prefix("sensorsCal").filter(|_| switched_on()).and_then(|rest| {
+            let sensors = crate::hub::lock().sensors_json()?;
+            match rest.strip_prefix('.') {
+                None if rest.is_empty() => Some(sensors),
+                Some(field) => sensors.get(field).cloned().map(|v| json!({ "kind": "value", "value": v })),
+                None => None,
+            }
+        }) {
+            return sensors.to_string();
+        }
         if let Some(radio) = path.strip_prefix("radioCal").filter(|_| switched_on()).and_then(|rest| {
             let radio = crate::hub::lock().radio_json()?;
             match rest.strip_prefix('.') {
@@ -795,6 +820,9 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
             return json!({ "kind": "object", "lines": lines }).to_string();
+        }
+        if let Some(sensors) = (asked_path == "sensorsCal" && switched_on()).then(|| crate::hub::lock().sensors_json()).flatten() {
+            return only_fields(sensors, &fields_of(fields)).to_string();
         }
         if let Some(radio) = (asked_path == "radioCal" && switched_on()).then(|| crate::hub::lock().radio_json()).flatten() {
             return only_fields(radio, &fields_of(fields)).to_string();
@@ -933,6 +961,11 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
+        }
+        if let Some(request) = sensors_request(path, args).filter(|_| switched_on() && crate::hub::lock().sensors_json().is_some()) {
+            let vehicle = crate::hub::lock().active_id();
+            let started = self.0.core_guided(&json!({ "action": "calibrate", "vehicle": vehicle, "request": request }));
+            return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
         if let Some(op) = (switched_on() && crate::hub::lock().active().is_some()).then(|| match path {
             "radioCal.nextButtonClicked" => Some("next"),

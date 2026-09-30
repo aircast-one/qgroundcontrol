@@ -536,9 +536,84 @@ impl Calibration {
     }
 }
 
+pub fn accel_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
+    ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"].iter().all(|name| parameter(name) as f32 == 0.0)
+}
+
+pub fn compass_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
+    [("COMPASS_DEV_ID", "COMPASS_USE", "COMPASS_OFS"), ("COMPASS_DEV_ID2", "COMPASS_USE2", "COMPASS_OFS2"), ("COMPASS_DEV_ID3", "COMPASS_USE3", "COMPASS_OFS3")]
+        .iter()
+        .filter(|(device, used, _)| parameter(device) as i64 != 0 && parameter(used) as i64 != 0)
+        .any(|(_, _, offsets)| ["X", "Y", "Z"].iter().any(|axis| parameter(&format!("{offsets}_{axis}")) as f32 == 0.0))
+}
+
+pub fn qt_shape(snapshot: &Value, parameter: &dyn Fn(&str) -> f64) -> Value {
+    let running = snapshot["running"].as_str();
+    let kind = running.or(snapshot["last"].as_str());
+    let visual = kind == Some("accelerometer");
+    let log = snapshot["log"].as_array().map(|lines| lines.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+    let help = || snapshot["help"].as_str().unwrap_or_default().to_string();
+    let (progress, help_text, status, show, sides_done) = match (running, snapshot["outcome"].as_str()) {
+        (Some(_), _) => (snapshot["progress"].as_f64().unwrap_or(0.0), if visual { help() } else { String::new() }, log, visual && snapshot["showOrientations"] == true, None),
+        (None, Some("success")) if visual => (1.0, "Calibration complete".to_string(), String::new(), snapshot["showOrientations"] == true, Some(true)),
+        (None, Some("success")) => (0.0, String::new(), log, false, Some(false)),
+        (None, Some("cancelled")) => (0.0, if visual { help() } else { String::new() }, String::new(), false, None),
+        (None, Some(_)) => (0.0, String::new(), log, false, None),
+        (None, None) => (0.0, String::new(), String::new(), false, Some(false)),
+    };
+    let sides = snapshot["sides"].as_array().cloned().unwrap_or_default();
+    let side_fields = sides.iter().flat_map(|side| {
+        let key = side["key"].as_str().unwrap_or_default().to_string();
+        let stage = side["stage"].as_str().unwrap_or_default();
+        let (done, in_progress, rotate) = match (visual, sides_done) {
+            (_, Some(done)) => (done, false, false),
+            (true, None) => (stage == "done", stage == "inProgress", side["rotate"] == true),
+            (false, None) => (false, false, false),
+        };
+        [
+            (format!("orientationCal{key}SideDone"), json!(done)),
+            (format!("orientationCal{key}SideInProgress"), json!(in_progress)),
+            (format!("orientationCal{key}SideVisible"), json!(visual && side["visible"] == true)),
+            (format!("orientationCal{key}SideRotate"), json!(rotate)),
+        ]
+    });
+    let compass_fields = snapshot["compasses"].as_array().cloned().unwrap_or_default().into_iter().flat_map(|c| {
+        let n = c["id"].as_u64().unwrap_or(0) + 1;
+        [(format!("compass{n}CalSucceeded"), c["succeeded"].clone()), (format!("compass{n}CalFitness"), c["fitness"].clone())]
+    });
+    let base = json!({
+        "kind": "object",
+        "class": "APMSensorsComponentController",
+        "calProgress": progress,
+        "nextEnabled": snapshot["nextEnabled"],
+        "cancelEnabled": snapshot["cancelEnabled"],
+        "orientationHelpText": help_text,
+        "calibrationInProgress": running.is_some(),
+        "calibrationActive": running.is_some(),
+        "statusText": status,
+        "compassSetupNeeded": compass_setup_needed(parameter),
+        "accelSetupNeeded": accel_setup_needed(parameter),
+        "showOrientationCalArea": show,
+        "waitingForCancel": snapshot["waitingForCancel"],
+    });
+    let mut object = base.as_object().cloned().unwrap_or_default();
+    object.extend(side_fields.chain(compass_fields));
+    Value::Object(object)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_is_needed_for_unset_accel_offsets_and_for_a_used_compass_with_a_zero_offset() {
+        let params = |values: &'static [(&'static str, f64)]| move |name: &str| values.iter().find(|(n, _)| *n == name).map_or(0.0, |(_, v)| *v);
+        assert!(accel_setup_needed(&params(&[])));
+        assert!(!accel_setup_needed(&params(&[("INS_ACCOFFS_Y", 0.01)])), "one nonzero offset is enough to call it calibrated");
+        assert!(!compass_setup_needed(&params(&[])), "no compass device, nothing to calibrate");
+        assert!(compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 1.0), ("COMPASS_OFS_X", 5.0), ("COMPASS_OFS_Y", 3.0)])));
+        assert!(!compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 0.0)])), "an unused compass is not asked for");
+    }
 
     fn stages(cal: &Calibration) -> Vec<&'static str> {
         cal.sides.iter().map(|s| s.stage.name()).collect()
