@@ -41,6 +41,7 @@ pub enum Outbound {
     LogRequestEnd { target: (u8, u8) },
     LogErase { target: (u8, u8) },
     ShellData { target: (u8, u8), data: Vec<u8> },
+    GcsHeartbeat,
 }
 
 pub fn chars<const N: usize>(text: &str) -> CharArray<N> {
@@ -225,6 +226,14 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
                 target_component: target.1,
             }))
         }
+        Outbound::GcsHeartbeat => Some(MavMessage::HEARTBEAT(mavlink::dialects::ardupilotmega::HEARTBEAT_DATA {
+            custom_mode: 0,
+            mavtype: mavlink::dialects::ardupilotmega::MavType::MAV_TYPE_GCS,
+            autopilot: mavlink::dialects::ardupilotmega::MavAutopilot::MAV_AUTOPILOT_INVALID,
+            base_mode: mavlink::dialects::ardupilotmega::MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED | mavlink::dialects::ardupilotmega::MavModeFlag::MAV_MODE_FLAG_MANUAL_INPUT_ENABLED,
+            system_status: mavlink::dialects::ardupilotmega::MavState::MAV_STATE_ACTIVE,
+            mavlink_version: 3,
+        })),
         Outbound::LogErase { target } => Some(MavMessage::LOG_ERASE(LOG_ERASE_DATA { target_system: target.0, target_component: target.1 })),
         Outbound::AccelCalAck => Some(MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: ACCEL_CAL_ACK_COMMAND, result: MavResult::MAV_RESULT_TEMPORARILY_REJECTED, progress: 0, result_param2: 0, target_system: 0, target_component: 0 })),
         Outbound::LoggingAck { target, sequence } => Some(MavMessage::LOGGING_ACK(LOGGING_ACK_DATA { sequence: *sequence, target_system: target.0, target_component: target.1 })),

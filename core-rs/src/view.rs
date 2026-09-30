@@ -396,6 +396,7 @@ mod deps_cover_reads {
             ("onboardlogs", include_str!("onboardlogs.rs")),
             ("shell", include_str!("shell.rs")),
             ("forwarding", include_str!("forwarding.rs")),
+            ("gcsheartbeat", include_str!("gcsheartbeat.rs")),
             ("cmdinfo", include_str!("cmdinfo.rs")),
             ("compinfo", include_str!("compinfo.rs")),
             ("compmeta", include_str!("compmeta.rs")),

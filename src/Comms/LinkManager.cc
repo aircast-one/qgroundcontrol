@@ -540,7 +540,7 @@ void LinkManager::_addUDPAutoConnectLink()
 
 void LinkManager::_addMAVLinkForwardingLink()
 {
-    if (qgc_core_owns_forwarding()) {
+    if (qgc_core_owns_vehicle()) {
         return;
     }
     if (!SettingsManager::instance()->mavlinkSettings()->forwardMavlink()->rawValue().toBool()) {

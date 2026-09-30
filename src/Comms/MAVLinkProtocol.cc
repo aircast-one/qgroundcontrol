@@ -138,7 +138,7 @@ void MAVLinkProtocol::receiveBytes(LinkInterface* link, const QByteArray& data)
             link->reportMavlinkV2Traffic();
             _updateCounters(mavlinkChannel, message);
         }
-        if (!linkPtr->linkConfiguration()->isForwarding() && !qgc_core_owns_forwarding()) {
+        if (!linkPtr->linkConfiguration()->isForwarding() && !qgc_core_owns_vehicle()) {
             _forward(message);
             _forwardSupport(message);
         }

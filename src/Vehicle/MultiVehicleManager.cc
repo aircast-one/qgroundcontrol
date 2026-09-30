@@ -6,6 +6,7 @@
 #include "MavlinkSettings.h"
 #include "FirmwareUpgradeSettings.h"
 #include "QGCCoreC.h"
+#include "CoreLink.h"
 #include "QGCCorePlugin.h"
 #include "QGCOptions.h"
 #include "LinkManager.h"
@@ -273,7 +274,7 @@ void MultiVehicleManager::_sendGCSHeartbeat()
 
     const QList<SharedLinkInterfacePtr> sharedLinks = LinkManager::instance()->links();
     for (const SharedLinkInterfacePtr &link: sharedLinks) {
-        if (!link->isConnected()) {
+        if (!link->isConnected() || (qgc_core_owns_vehicle() && qobject_cast<CoreLink *>(link.get()))) {
             continue;
         }
 

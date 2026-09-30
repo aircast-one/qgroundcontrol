@@ -205,6 +205,7 @@ fn start_pump() {
                 deliver(outbound);
                 if crate::vehiclefacade::switched_on() {
                     crate::forwarding::maintain();
+                    crate::gcsheartbeat::tick(crate::hub::now_ms());
                 }
                 announce_guided();
                 if crate::detections::lock().went_stale(crate::hub::now_ms()) {
@@ -458,7 +459,7 @@ pub extern "C" fn qgc_core_set_vehicle_order(ids: *const i32, count: usize) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn qgc_core_owns_forwarding() -> bool {
+pub extern "C" fn qgc_core_owns_vehicle() -> bool {
     crate::vehiclefacade::switched_on()
 }
 
