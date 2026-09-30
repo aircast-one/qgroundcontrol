@@ -950,6 +950,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "px4-ulog"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d31986c7f5754792e62c15b93cc5e9c5affdd867a33cb868b84e7dea0d8e70e5"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "qgc-core"
 version = "0.1.0"
 dependencies = [
@@ -963,6 +972,7 @@ dependencies = [
  "lzma-rs",
  "mavlink",
  "num-traits",
+ "px4-ulog",
  "regex",
  "roxmltree",
  "rusqlite",

@@ -221,12 +221,57 @@ mod dataflash {
     }
 }
 
+mod ulog {
+    use super::Trigger;
+    use px4_ulog::stream_parser::file_reader::LogParser;
+    use px4_ulog::stream_parser::model::{DataMessage, ParseableFieldType};
+
+    const CAMERA_CAPTURE: &str = "camera_capture";
+    const CAPTURE_SUCCESS: i8 = 1;
+
+    fn field<T: ParseableFieldType>(message: &DataMessage, name: &str) -> Option<T> {
+        message.flattened_format.get_field_parser::<T>(name).ok().map(|parser| parser.parse(message.data))
+    }
+
+    fn trigger(message: &DataMessage) -> Option<Trigger> {
+        let longitude = field::<f64>(message, "lon")?;
+        Some(Trigger {
+            timestamp: (field::<u64>(message, "timestamp")? / 1_000_000) as i64,
+            latitude: field::<f64>(message, "lat")?,
+            longitude: (180.0 + longitude) % 360.0 - 180.0,
+            altitude: f64::from(field::<f32>(message, "alt")?),
+            success: field::<i8>(message, "result").is_none_or(|result| result == CAPTURE_SUCCESS),
+        })
+    }
+
+    pub fn triggers(data: &[u8]) -> Result<Vec<Trigger>, String> {
+        let mut found = Vec::new();
+        let mut collect = |message: &DataMessage| {
+            if message.flattened_format.message_name == CAMERA_CAPTURE {
+                found.extend(trigger(message));
+            }
+        };
+        let (parsed, header) = {
+            let mut parser = LogParser::default();
+            parser.set_data_message_callback(&mut collect);
+            let parsed = parser.consume_bytes(data).is_ok();
+            (parsed, parser.header_complete())
+        };
+        match (parsed, header, found.is_empty()) {
+            (false, _, _) => Err("Could not parse ULog".to_string()),
+            (true, false, _) => Err("Could not parse ULog header".to_string()),
+            (true, true, true) => Err("Could not detect camera_capture packets in ULog".to_string()),
+            (true, true, false) => Ok(found),
+        }
+    }
+}
+
 pub fn parse_log(file: &str, data: &[u8]) -> Result<Vec<Trigger>, String> {
     let lower = file.to_lowercase();
     match lower {
         _ if lower.ends_with(".bin") => dataflash::triggers(data),
-        _ if lower.ends_with(".ulg") => Err("Could not parse ULog".to_string()),
-        _ => dataflash::triggers(data),
+        _ if lower.ends_with(".ulg") => ulog::triggers(data),
+        _ => ulog::triggers(data).or_else(|_| dataflash::triggers(data)),
     }
 }
 
@@ -605,6 +650,26 @@ mod tests {
         assert_eq!(tied.image_indices, vec![1], "QMultiMap hands back the image inserted last among equal offsets");
         let invalid = calibrate(&images, &[Trigger { latitude: 91.0, ..trigger(57) }, trigger(62)], 0, 2);
         assert_eq!(invalid.skipped_triggers, 1);
+    }
+
+    fn ulog_with(captures: &[(u64, f64, i8)]) -> Vec<u8> {
+        let message = |kind: u8, payload: Vec<u8>| [(payload.len() as u16).to_le_bytes().to_vec(), vec![kind], payload].concat();
+        let format = b"camera_capture:uint64_t timestamp;uint32_t seq;double lat;double lon;float alt;int8_t result;uint8_t[3] _padding0;".to_vec();
+        let header = [b"ULog\x01\x12\x35".to_vec(), vec![1], 0u64.to_le_bytes().to_vec(), message(b'B', vec![0; 40]), message(b'F', format), message(b'A', [vec![0], 7u16.to_le_bytes().to_vec(), b"camera_capture".to_vec()].concat())].concat();
+        captures.iter().enumerate().fold(header, |log, (i, (us, lon, result))| {
+            let payload = [7u16.to_le_bytes().to_vec(), us.to_le_bytes().to_vec(), (i as u32).to_le_bytes().to_vec(), (-35.0f64).to_le_bytes().to_vec(), lon.to_le_bytes().to_vec(), 600.0f32.to_le_bytes().to_vec(), vec![*result as u8]].concat();
+            [log, message(b'D', payload)].concat()
+        })
+    }
+
+    #[test]
+    fn a_ulog_camera_capture_is_read_as_ulogparser_reads_it() {
+        let log = ulog_with(&[(57_123_456, 149.0, 1), (62_000_000, -210.5, 1), (64_000_000, 149.0, 0)]);
+        let found = parse_log("flight.ulg", &log).unwrap();
+        assert_eq!(found.iter().map(|t| (t.timestamp, t.longitude, t.success)).collect::<Vec<_>>(), vec![(57, 149.0, true), (62, -210.5, true), (64, 149.0, false)], "fmod keeps the sign, so a longitude below -180 stays out of range as it does in Qt");
+        assert!(!found[1].valid() && !found[2].valid());
+        assert_eq!(parse_log("flight.log", &log).map(|t| t.len()), Ok(3), "an unknown extension tries ULog first");
+        assert_eq!(parse_log("flight.ulg", b"ULog").err().as_deref(), Some("Could not parse ULog header"));
     }
 
     #[test]
