@@ -153,6 +153,7 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     if chosen.autoconnect {
         crate::abi::qgc_core_links_start();
     }
+    crate::abi::start_pump();
     if let Some(port) = chosen.debug_port {
         start_debug_server(port);
     }

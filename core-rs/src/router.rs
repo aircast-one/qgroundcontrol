@@ -154,6 +154,19 @@ impl<B: Backend> Core<B> {
         }
     }
 
+    pub fn poll(&self) -> Vec<(String, String)> {
+        let asked = self.watching.lock().unwrap().asked();
+        let rendered: Vec<(String, String)> = asked
+            .iter()
+            .map(|path| match view::lookup(path) {
+                Some(v) => (path.clone(), v.render(&self.backend, path)),
+                None => (path.clone(), self.get(path)),
+            })
+            .collect();
+        let mut watching = self.watching.lock().unwrap();
+        rendered.into_iter().filter(|(path, json)| watching.last.insert(path.clone(), json.clone()).as_deref() != Some(json.as_str())).collect()
+    }
+
     pub fn on_event(&self, path: &str, json: &str) -> Vec<(String, String)> {
         if crate::coreplan::on_host_event(&self.backend, path, json) {
             let asked = self.watching.lock().unwrap().asked();
@@ -323,6 +336,14 @@ mod tests {
         core.on_event("vehicle.batteries.count", "{\"kind\":\"value\",\"value\":3}");
         let after = core.backend.watched.borrow().clone();
         assert!(after.contains(&"vehicle.batteries.2.voltage".to_string()), "the third pack's facts joined the watch after the count moved");
+    }
+
+    #[test]
+    fn a_poll_delivers_each_watched_path_once_and_again_only_when_it_changes() {
+        let core = Core::new(Fake::default());
+        core.watch("", &["vehicle.armed".to_string()]);
+        assert_eq!(core.poll().len(), 1, "the first poll delivers what the head asked for");
+        assert!(core.poll().is_empty(), "an unchanged value is not delivered twice");
     }
 
     #[test]

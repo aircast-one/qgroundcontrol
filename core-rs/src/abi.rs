@@ -236,7 +236,16 @@ fn announce_guided() {
     }
 }
 
-fn start_pump() {
+const HEADLESS_POLL_MS: u64 = 250;
+static LAST_POLL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn poll_due() -> bool {
+    let now = crate::hub::now_ms();
+    let last = LAST_POLL_MS.load(std::sync::atomic::Ordering::Relaxed);
+    now.saturating_sub(last) >= HEADLESS_POLL_MS && LAST_POLL_MS.compare_exchange(last, now, std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed).is_ok()
+}
+
+pub(crate) fn start_pump() {
     PUMP.get_or_init(|| {
         std::thread::Builder::new()
             .name("qgc-core-pump".to_string())
@@ -264,6 +273,9 @@ fn start_pump() {
                     }
                 }
                 announce_guided();
+                if !crate::qthost::present() && poll_due() {
+                    CORE.poll().iter().for_each(|(path, json)| announce(path, json));
+                }
                 if crate::detections::lock().went_stale(crate::hub::now_ms()) {
                     announce_detections();
                 }
