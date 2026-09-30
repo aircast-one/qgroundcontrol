@@ -84,6 +84,8 @@ import one.aircast.android.ui.CameraControlLayer
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.FollowMeReadout
 import one.aircast.android.ui.AttitudeInstrument
+import one.aircast.android.ui.MapClickMenu
+import one.aircast.android.ui.MapPoint
 import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.OrbitReadout
@@ -212,8 +214,11 @@ fun AircastShell(hostView: android.view.View?) {
             VideoSurface(modifier = mod, expanded = expanded, onClick = { videoExpanded = !videoExpanded })
         }
     }
+    var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
     val flyMap = remember {
-        movableContentOf<Modifier> { mod -> FlyMap(modifier = mod, cameraBottomPx = 0) }
+        movableContentOf<Modifier> { mod ->
+            FlyMap(modifier = mod, cameraBottomPx = 0, onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) })
+        }
     }
     val flyVideoSourceLayer = remember { movableContentOf { VideoSourceLayer() } }
     val flyCameraControlLayer = remember { movableContentOf { CameraControlLayer() } }
@@ -373,6 +378,7 @@ fun AircastShell(hostView: android.view.View?) {
                         FlyMap(
                             modifier = Modifier.fillMaxSize(),
                             cameraBottomPx = if (videoExpanded || !controlsExpanded) 0 else actionsHeightPx,
+                            onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
                         )
                         if (videoExpanded) {
                             Box(
@@ -397,6 +403,10 @@ fun AircastShell(hostView: android.view.View?) {
                         expanded = videoExpanded,
                         onClick = { videoExpanded = !videoExpanded },
                     )
+                }
+
+                mapClickAt?.takeIf { tab == Tab.Fly }?.let { point ->
+                    MapClickMenu(point) { mapClickAt = null }
                 }
 
                 key(popEpoch) {

@@ -294,6 +294,10 @@ fn speed_limits_live(backend: &dyn Backend, px4: bool, apm: bool, forward_flight
     names.iter().all(|name| crate::read::result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string())))
 }
 
+pub fn goto_loiter_radius(backend: &dyn Backend) -> f64 {
+    read_state(backend).goto_loiter_radius
+}
+
 fn read_state(backend: &dyn Backend) -> GuidedState {
     let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
     if !flag(&vehicles, "activeVehicleAvailable") {

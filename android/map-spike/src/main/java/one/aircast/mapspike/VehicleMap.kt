@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -157,7 +158,9 @@ fun VehicleMap(
     onFitFailed: () -> Unit = {},
     centreRequest: Int = 0,
     centreOn: TrackPoint? = null,
+    onMapClick: ((Double, Double) -> Unit)? = null,
 ) {
+    val latestMapClick by rememberUpdatedState(onMapClick)
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
     val fleetJson by mapPath(VEHICLES_VIEW)
     val fleet = remember(fleetJson) { vehicleChoices(fleetJson).choices }
@@ -240,6 +243,12 @@ fun VehicleMap(
                 installMissionLayers(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
                 installVehicleLayer(loadedStyle)
+                if (!editable && onMapClick != null) {
+                    loaded.addOnMapClickListener { at ->
+                        latestMapClick?.invoke(at.latitude, at.longitude)
+                        true
+                    }
+                }
                 if (editable) {
                     attachMissionEditing(
                         mapView, loaded, loadedStyle,

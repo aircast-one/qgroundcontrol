@@ -3144,6 +3144,8 @@
         "view.logs.requestingList",
         "view.logs.savePath",
         "view.logs.savePathReason",
+        "view.mapClick.class",
+        "view.mapClick.kind",
         "view.mapScale(120).available",
         "view.mapScale(120).class",
         "view.mapScale(120).fraction",
@@ -7055,6 +7057,16 @@
         "view.logs.requestingList",
         "view.logs.savePath",
         "view.logs.savePathReason",
+        "view.mapClick.actions.#",
+        "view.mapClick.actions[].confirm",
+        "view.mapClick.actions[].id",
+        "view.mapClick.actions[].label",
+        "view.mapClick.actions[].message",
+        "view.mapClick.actions[].path",
+        "view.mapClick.actions[].title",
+        "view.mapClick.class",
+        "view.mapClick.kind",
+        "view.mapClick.offered",
         "view.mapScale(120).available",
         "view.mapScale(120).class",
         "view.mapScale(120).fraction",
@@ -8798,6 +8810,7 @@
             "view.instrumentGroups",
             "view.obstacle",
             "view.attitude",
+            "view.mapClick",
             "view.landingPattern",
             "view.vibration",
             "view.sensors",
@@ -9942,6 +9955,21 @@
         "requestingList": "bool",
         "savePath": "string",
         "savePathReason": "null"
+    },
+    "view.mapClick": {
+        "actions": [
+            {
+                "confirm": "bool",
+                "id": "string",
+                "label": "string",
+                "message": "string",
+                "path": "string",
+                "title": "string"
+            }
+        ],
+        "class": "string",
+        "kind": "string",
+        "offered": "bool"
     },
     "view.mapScale(120)": {
         "available": "bool",

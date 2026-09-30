@@ -38,7 +38,11 @@ private data class FlownPlan(
 )
 
 @Composable
-fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
+fun FlyMap(
+    modifier: Modifier = Modifier,
+    cameraBottomPx: Int = 0,
+    onMapClick: ((Double, Double) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
     var plan by remember { mutableStateOf(FlownPlan()) }
@@ -92,6 +96,7 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
             surveys = plan.surveys,
             shots = plan.shots,
             editable = false,
+            onMapClick = onMapClick,
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level

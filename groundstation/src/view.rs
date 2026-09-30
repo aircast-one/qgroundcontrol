@@ -44,6 +44,7 @@ use crate::instrumentgroups;
 use crate::instruments;
 use crate::landing;
 use crate::attitude;
+use crate::mapclick;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -151,6 +152,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.instrumentGroups", deps: instrumentgroups::DEPS, compute: instrumentgroups::instrument_groups_view },
     View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
     View { path: "view.attitude", deps: attitude::DEPS, compute: attitude::attitude_view },
+    View { path: "view.mapClick", deps: mapclick::DEPS, compute: mapclick::map_click_view },
     View { path: "view.landingPattern", deps: landing::DEPS, compute: landing::landing_view },
     View { path: "view.vibration", deps: vibration::DEPS, compute: vibration::vibration_view },
     View { path: "view.sensors", deps: sensors::DEPS, compute: sensors::sensors_view },
@@ -573,6 +575,8 @@ mod deps_cover_reads {
         "vehicle.landFlightMode",
         "links.linkTypeStrings",
     "vehicle.supports.roiMode",
+    "vehicle.supports.changeHeading",
+    "vehicle.gotoFlightMode",
     "vehicle.supports.orbitMode",
     "vehicle.supports.radio",
     "links.linkTypeIds",
