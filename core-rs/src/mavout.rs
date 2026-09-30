@@ -7,7 +7,15 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 const ACCEL_CAL_ACK_COMMAND: MavCmd = MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS;
 
-pub const GCS_SYSTEM: u8 = 255;
+pub const DEFAULT_GCS_SYSTEM: u8 = 255;
+
+pub fn gcs_system() -> u8 {
+    crate::settingsstore::raw_setting("settings.mavlinkSettings.gcsMavlinkSystemID").and_then(|v| v.as_u64()).and_then(|id| u8::try_from(id).ok()).filter(|id| *id != 0).unwrap_or(DEFAULT_GCS_SYSTEM)
+}
+
+pub fn for_us(target_system: u8) -> bool {
+    target_system == 0 || target_system == gcs_system()
+}
 pub const GCS_COMPONENT: u8 = 190;
 pub const GUIDED_ITEM_CURRENT: u8 = 2;
 fn plan_type(plan: u8) -> Option<MavMissionType> {
@@ -266,7 +274,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
 }
 
 pub fn encode(sequence: u8, send: &Outbound) -> Option<Vec<u8>> {
-    let header = MavHeader { system_id: GCS_SYSTEM, component_id: GCS_COMPONENT, sequence };
+    let header = MavHeader { system_id: gcs_system(), component_id: GCS_COMPONENT, sequence };
     let mut raw = MAVLinkV2MessageRaw::new();
     match send {
         Outbound::SetMode { system, base_mode, custom_mode } => raw.serialize_message_data(header, &SetModeBits { system: *system, base_mode: *base_mode, custom_mode: *custom_mode }),

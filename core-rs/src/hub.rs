@@ -1647,7 +1647,7 @@ impl Vehicle {
                 let uri = m.uri.to_str().unwrap_or("").to_string();
                 return self.start_fetch(TYPE_GENERAL, &uri, now_ms);
             }
-            MavMessage::FILE_TRANSFER_PROTOCOL(f) if matches!(f.target_system, 0 | mavout::GCS_SYSTEM) => {
+            MavMessage::FILE_TRANSFER_PROTOCOL(f) if mavout::for_us(f.target_system) => {
                 let Some(fetch) = self.fetch.as_mut().filter(|fetch| fetch.download.component == header.component_id) else { return Vec::new() };
                 let outs = fetch.download.on_payload(&f.payload);
                 return self.follow_ftp(outs, now_ms);
@@ -1689,29 +1689,29 @@ impl Vehicle {
                 self.home_altitude = Some(h.altitude as f64 / 1000.0);
                 self.home = Some((h.latitude as f64 / 1e7, h.longitude as f64 / 1e7, h.altitude as f64 / 1000.0));
             }
-            MavMessage::MISSION_COUNT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && (m.mission_type as u8) < 3 => {
+            MavMessage::MISSION_COUNT(m) if mavout::for_us(m.target_system) && (m.mission_type as u8) < 3 => {
                 let kind = m.mission_type as u8;
                 let outs = self.plans[kind as usize].transfer.on_count(m.count);
                 return self.follow_plan(kind, outs, now_ms);
             }
-            MavMessage::MISSION_ITEM_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && (m.mission_type as u8) < 3 => {
+            MavMessage::MISSION_ITEM_INT(m) if mavout::for_us(m.target_system) && (m.mission_type as u8) < 3 => {
                 let kind = m.mission_type as u8;
                 let scale = |v: i32| if m.frame as u8 == plantransfer::FRAME_MISSION { v as f64 } else { v as f64 * 1e-7 };
                 let item = plantransfer::Item { seq: m.seq, frame: m.frame as u8, command: m.command as u32 as u16, current: m.current != 0, auto_continue: m.autocontinue != 0, params: [m.param1 as f64, m.param2 as f64, m.param3 as f64, m.param4 as f64, scale(m.x), scale(m.y), m.z as f64] };
                 let outs = self.plans[kind as usize].transfer.on_item(item);
                 return self.follow_plan(kind, outs, now_ms);
             }
-            MavMessage::MISSION_REQUEST_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && (m.mission_type as u8) < 3 => {
+            MavMessage::MISSION_REQUEST_INT(m) if mavout::for_us(m.target_system) && (m.mission_type as u8) < 3 => {
                 let kind = m.mission_type as u8;
                 let outs = self.plans[kind as usize].transfer.on_request(m.seq);
                 return self.follow_plan(kind, outs, now_ms);
             }
-            MavMessage::MISSION_REQUEST(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && (m.mission_type as u8) < 3 => {
+            MavMessage::MISSION_REQUEST(m) if mavout::for_us(m.target_system) && (m.mission_type as u8) < 3 => {
                 let kind = m.mission_type as u8;
                 let outs = self.plans[kind as usize].transfer.on_request(m.seq);
                 return self.follow_plan(kind, outs, now_ms);
             }
-            MavMessage::MISSION_ACK(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && (m.mission_type as u8) < 3 => {
+            MavMessage::MISSION_ACK(m) if mavout::for_us(m.target_system) && (m.mission_type as u8) < 3 => {
                 let kind = m.mission_type as u8;
                 let outs = self.plans[kind as usize].transfer.on_ack(m.mavtype as u8);
                 return self.follow_plan(kind, outs, now_ms);

@@ -45,6 +45,12 @@ mod tests {
     }
 
     #[test]
+    fn an_unset_station_id_is_255_and_a_frame_for_everyone_or_us_is_ours() {
+        assert_eq!(crate::mavout::gcs_system(), 255);
+        assert!(crate::mavout::for_us(0) && crate::mavout::for_us(255) && !crate::mavout::for_us(254));
+    }
+
+    #[test]
     fn the_heartbeat_says_a_ground_station_is_active() {
         let bytes = crate::mavout::encode(0, &crate::mavout::Outbound::GcsHeartbeat).unwrap();
         let (_, message) = mavlink::read_v2_msg::<mavlink::dialects::ardupilotmega::MavMessage, _>(&mut mavlink::peek_reader::PeekReader::new(bytes.as_slice())).unwrap();

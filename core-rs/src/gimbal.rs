@@ -3,7 +3,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::mavout::{GCS_COMPONENT, GCS_SYSTEM};
+use crate::mavout::{GCS_COMPONENT, gcs_system};
 
 pub const MSG_GIMBAL_MANAGER_INFORMATION: u32 = 280;
 pub const MSG_GIMBAL_MANAGER_STATUS: u32 = 281;
@@ -351,7 +351,7 @@ pub struct Gimbals {
 impl Default for Gimbals {
     fn default() -> Self {
         Gimbals {
-            our_system: GCS_SYSTEM,
+            our_system: gcs_system(),
             our_component: GCS_COMPONENT,
             ready: false,
             gimbals: BTreeMap::new(),
