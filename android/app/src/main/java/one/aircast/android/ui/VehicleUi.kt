@@ -298,7 +298,10 @@ fun FlightActions(modifier: Modifier = Modifier) {
             )
         }
 
-        FlightModePicker { refusal = it }
+        FlightModePicker(
+            onRefusal = { refusal = it },
+            onWithdraw = { refusal = withdrawn(refusal, it) },
+        )
 
         val liveActions = actionsJson?.toString()
         val confirming = pending
@@ -340,6 +343,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                             scope.attemptCommand(
                                 action = if (target) "Arm" else "Disarm",
                                 report = { refusal = it },
+                                withdraw = { refusal = withdrawn(refusal, it) },
                                 reached = { armedNow() == target },
                             ) { Qgc.set("vehicle.armed", target) }
                         }
@@ -656,6 +660,7 @@ private fun flightModeNow(): String = flyState(Qgc.get(FLY_STATE))?.mode.orEmpty
 private fun CoroutineScope.attemptCommand(
     action: String,
     report: (String?) -> Unit,
+    withdraw: (String) -> Unit,
     reached: () -> Boolean,
     call: () -> Unit,
 ) {
@@ -668,17 +673,25 @@ private fun CoroutineScope.attemptCommand(
             }
             true
         } == true
-        report(commandRefusal(action, confirmed))
+        val refused = commandRefusal(action, confirmed) ?: return@launch
+        report(refused)
+        while (!withContext(Dispatchers.Default) { reached() }) {
+            delay(LATE_CONFIRM_POLL_MS)
+        }
+        withdraw(refused)
     }
 }
 
 internal const val COMMAND_SETTLE_MS = 4000L
+internal const val LATE_CONFIRM_POLL_MS = 500L
+
+internal fun withdrawn(shown: String?, late: String): String? = if (shown == late) null else shown
 
 internal fun commandRefusal(action: String, confirmed: Boolean): String? =
     if (confirmed) null else "$action was not confirmed by the aircraft."
 
 @Composable
-private fun FlightModePicker(onRefusal: (String?) -> Unit) {
+private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) -> Unit) {
     val json by qgcPath(FLIGHT_MODES)
     val modes = remember(json) { flightModesView(json) }
     var expanded by remember { mutableStateOf(false) }
@@ -695,6 +708,7 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit) {
         scope.attemptCommand(
             action = mode.name,
             report = onRefusal,
+            withdraw = onWithdraw,
             reached = { flightModeNow() == mode.name },
         ) { Qgc.set("vehicle.flightMode", mode.name) }
     }

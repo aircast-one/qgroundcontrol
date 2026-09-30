@@ -39,6 +39,18 @@ class CommandRefusalTest {
     }
 
     @Test
+    fun `a late confirmation withdraws only its own sentence`() {
+        val late = "Arm was not confirmed by the aircraft."
+        assertNull(withdrawn(late, late))
+        assertEquals(
+            "a newer refusal shown since belongs to another command and stays",
+            "Loiter was not confirmed by the aircraft.",
+            withdrawn("Loiter was not confirmed by the aircraft.", late),
+        )
+        assertNull(withdrawn(null, late))
+    }
+
+    @Test
     fun `the settle window is long enough to be a wait and short enough to be an answer`() {
         assertEquals(4000L, COMMAND_SETTLE_MS)
     }
