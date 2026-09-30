@@ -13,6 +13,7 @@
 #include "QGCFileHelper.h"
 #include "QGCLoggingCategory.h"
 #include "QGCMapEngine.h"
+#include "QGCCoreC.h"
 #include "QGCMapTasks.h"
 #include "QGCMapUrlEngine.h"
 #include "SettingsManager.h"
@@ -156,6 +157,7 @@ void QGCTileCache::_initCache()
     _cachePath = cacheDir;
     if (!_cachePath.isEmpty()) {
         _databaseFilePath = QString(_cachePath + QStringLiteral("/qgcMapCache.db"));
+        qgc_core_set_map_cache_path(_databaseFilePath.toUtf8().constData());
 
         qCDebug(QGCTileCacheLog) << "Map Cache in:" << _databaseFilePath;
     } else {
