@@ -9,6 +9,7 @@ pub const CMD_DO_SET_ROI_NONE: u16 = 197;
 pub const CMD_DO_GRIPPER: u16 = 211;
 pub const CMD_MISSION_START: u16 = 300;
 pub const CMD_DO_VTOL_TRANSITION: u16 = 3000;
+pub const CMD_DO_DIGICAM_CONTROL: u16 = 203;
 pub const VTOL_STATE_MC: u8 = 3;
 pub const VTOL_STATE_FW: u8 = 4;
 pub const MOTOR_TEST_THROTTLE_PERCENT: f64 = 0.0;
@@ -245,6 +246,10 @@ pub fn gripper(action: f64) -> Plan {
         0.0 | 1.0 => Plan::Steps(vec![Step::Command { command: CMD_DO_GRIPPER, params: [0.0, action, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
         _ => Plan::Refused("The gripper is sent 1 to grab or 0 to release.".into()),
     }
+}
+
+pub fn trigger_camera() -> Plan {
+    Plan::Steps(vec![Step::Command { command: CMD_DO_DIGICAM_CONTROL, params: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
 }
 
 pub fn motor_test(motor: f64, percent: f64, seconds: f64) -> Plan {

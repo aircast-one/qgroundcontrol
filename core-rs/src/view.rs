@@ -520,6 +520,7 @@ mod deps_cover_reads {
             ("settingsgroups", include_str!("settingsgroups.rs")),
             ("settingsini", include_str!("settingsini.rs")),
             ("settingsstore", include_str!("settingsstore.rs")),
+            ("simcamera", include_str!("simcamera.rs")),
             ("setup", include_str!("setup.rs")),
             ("shp", include_str!("shp.rs")),
             ("signing", include_str!("signing.rs")),

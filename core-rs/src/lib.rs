@@ -133,6 +133,7 @@ pub mod settings;
 pub mod settingsgroups;
 pub mod settingsini;
 pub mod settingsstore;
+pub mod simcamera;
 pub mod shell;
 pub mod forwarding;
 pub mod gcsheartbeat;

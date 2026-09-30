@@ -372,7 +372,11 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     // silence back one layer down, having just removed it. It also travels as `result`, because
     // that is where QGCBridgeCore puts a return value and a head must not have to learn which
     // paths the core has claimed in order to read one.
-    let took = crate::read::flag(&object(&backend.invoke(&format!("{CAMERA}.{invokable}"), "[]")), "result");
+    let answer = object(&backend.invoke(&format!("{CAMERA}.{invokable}"), "[]"));
+    let took = match path {
+        MODE => crate::read::flag(&answer, "ok"),
+        _ => crate::read::flag(&answer, "result"),
+    };
     // No post-state travels back. setCameraModePhoto and takePhoto set their own status before
     // returning, but startVideoRecording only sends MAV_CMD_VIDEO_START_CAPTURE and waits for
     // CAMERA_CAPTURE_STATUS - so isRecording read here is the value from BEFORE the toggle, while
@@ -964,7 +968,7 @@ mod tests {
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
             fn invoke(&self, path: &str, _a: &str) -> String {
                 self.fired.borrow_mut().push(path.to_string());
-                json!({ "result": true }).to_string()
+                json!({ "ok": true, "result": true }).to_string()
             }
             fn watch(&self, _p: &[String]) {}
         }

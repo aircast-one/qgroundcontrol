@@ -181,6 +181,10 @@ fn served() -> bool {
     !crate::qthost::present()
 }
 
+pub fn has_video() -> bool {
+    get("video.hasVideo").and_then(|v| v.get("value")?.as_bool()).unwrap_or(false)
+}
+
 pub fn native_pipeline() -> Option<String> {
     get("video.nativePipeline")?.get("value")?.as_str().map(str::to_string)
 }

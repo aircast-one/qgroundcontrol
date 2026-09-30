@@ -1064,6 +1064,7 @@ impl Vehicle {
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
             "gripper" => guidedcmd::gripper(number("gripAction")),
             "cancelRoi" => guidedcmd::cancel_roi(&state),
+            "triggerCamera" => guidedcmd::trigger_camera(),
             "motorTest" => guidedcmd::motor_test(number("motor"), number("percent"), number("seconds")),
             "vtolTransition" => guidedcmd::vtol_transition(action.get("forward").and_then(Value::as_bool).unwrap_or(false)),
             "setMode" => guidedcmd::set_mode(&state, action.get("mode").and_then(Value::as_str).unwrap_or("")).map(Plan::Steps).unwrap_or_else(|| Plan::Refused("Unknown flight mode".to_string())),

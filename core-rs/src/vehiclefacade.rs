@@ -477,6 +477,22 @@ fn onboard_log_get(path: &str) -> Option<Value> {
     }
 }
 
+fn simulated_camera() -> Option<(u8, crate::simcamera::Inputs)> {
+    (switched_on() && !crate::qthost::present()).then_some(())?;
+    let vehicle = {
+        let hub = crate::hub::lock();
+        let active = hub.active()?;
+        active.cameras.selected().is_none().then_some(active.id)?
+    };
+    let photos = crate::settingsstore::raw_setting("settings.flyViewSettings.showSimpleCameraControl").and_then(|v| v.as_bool()).unwrap_or(false);
+    Some((vehicle, crate::simcamera::Inputs { captures_video: crate::videohost::has_video(), captures_photos: photos }))
+}
+
+fn simulated_camera_fields() -> Option<serde_json::Map<String, Value>> {
+    let (vehicle, inputs) = simulated_camera()?;
+    Some(crate::simcamera::fields(vehicle, inputs, crate::hub::now_ms()))
+}
+
 fn current_camera_fields(recording: impl Fn() -> bool) -> Option<serde_json::Map<String, Value>> {
     switched_on().then_some(())?;
     let recording = recording();
@@ -917,7 +933,7 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(field) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
             let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
-            if let Some(value) = current_camera_fields(recording).and_then(|mut fields| fields.remove(field)) {
+            if let Some(value) = current_camera_fields(recording).or_else(simulated_camera_fields).and_then(|mut fields| fields.remove(field)) {
                 return json!({ "kind": "value", "value": value }).to_string();
             }
         }
@@ -986,7 +1002,7 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if asked_path == CAMERA_INSTANCE {
             let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
-            if let Some(mut answered) = current_camera_fields(recording) {
+            if let Some(mut answered) = current_camera_fields(recording).or_else(simulated_camera_fields) {
                 let wanted = fields_of(fields);
                 let missing: Vec<&str> = wanted.iter().filter(|f| !answered.contains_key(**f)).copied().collect();
                 answered.retain(|k, _| wanted.contains(&k.as_str()));
@@ -1195,6 +1211,14 @@ impl<B: Backend> Backend for Facade<B> {
     fn invoke(&self, path: &str, args: &str) -> String {
         if let Some(answer) = crate::noticeboard::invoke(path, args) {
             return answer.to_string();
+        }
+        if let Some(name) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
+            if let Some((vehicle, inputs)) = simulated_camera() {
+                let trigger = || self.0.core_guided(&json!({ "action": "triggerCamera", "vehicle": vehicle })).is_some_and(|started| started.is_ok());
+                if let Some(took) = crate::simcamera::invoke(vehicle, inputs, name, crate::hub::now_ms(), &trigger) {
+                    return json!({ "ok": true, "result": took }).to_string();
+                }
+            }
         }
         if path == "vehicle.motorTest" && switched_on() {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
