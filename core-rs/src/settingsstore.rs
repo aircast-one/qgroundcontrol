@@ -491,7 +491,24 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
         }
         persist();
     }
-    Some(backend.set(path, value))
+    match crate::qthost::present() {
+        true => Some(backend.set(path, value)),
+        false => Some(json!({ "ok": true }).to_string()),
+    }
+}
+
+pub fn unit_system_writes(system: i64) -> Vec<(&'static str, Value)> {
+    let presets: [[i64; 5]; 2] = [[1, 1, 1, 1, 0], [0, 0, 5, 2, 1]];
+    let facts = ["horizontalDistanceUnits", "verticalDistanceUnits", "areaUnits", "speedUnits", "temperatureUnits"];
+    let chosen = usize::try_from(system).ok().and_then(|s| presets.get(s)).map(|preset| facts.iter().zip(preset.iter()).map(|(fact, value)| (*fact, json!(value))).collect::<Vec<_>>()).unwrap_or_default();
+    std::iter::once(("customUnits", json!(system == 2))).chain(chosen).collect()
+}
+
+fn owned_invoke(path: &str, args: &str) -> Option<String> {
+    (!crate::qthost::present() && path == "settings.unitsSettings.setUnitSystem").then_some(())?;
+    let system = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0).and_then(Value::as_i64))?;
+    unit_system_writes(system).iter().for_each(|(fact, value)| written(&format!("Units/{fact}"), &value.to_string()));
+    Some(json!({ "ok": true }).to_string())
 }
 
 const EU_PUBLIC_OPERATOR_ID_LENGTH: usize = 16;
@@ -572,7 +589,7 @@ impl<B: Backend> Backend for Owner<B> {
         enabled().then(|| set(&self.0, path, value)).flatten().unwrap_or_else(|| self.0.set(path, value))
     }
     fn invoke(&self, path: &str, args: &str) -> String {
-        enabled().then(|| crate::units::invoke(path, args).or_else(|| video_invoke(path, args))).flatten().unwrap_or_else(|| self.0.invoke(path, args))
+        enabled().then(|| crate::units::invoke(path, args).or_else(|| video_invoke(path, args)).or_else(|| owned_invoke(path, args))).flatten().unwrap_or_else(|| self.0.invoke(path, args))
     }
     fn watch(&self, paths: &[String]) {
         self.0.watch(paths);
@@ -620,6 +637,13 @@ mod tests {
         assert_eq!(child_save_path(&root.to_string_lossy(), "Logs"), root.join("Logs").to_string_lossy());
         assert_eq!(child_save_path("/no/such/qgc/root", "Logs"), "", "Qt answers an empty path when the root folder is missing");
         assert_eq!(child_save_path("", "Logs"), "");
+    }
+
+    #[test]
+    fn a_unit_system_is_unitssettings_preset() {
+        assert_eq!(unit_system_writes(1), vec![("customUnits", json!(false)), ("horizontalDistanceUnits", json!(0)), ("verticalDistanceUnits", json!(0)), ("areaUnits", json!(5)), ("speedUnits", json!(2)), ("temperatureUnits", json!(1))]);
+        assert_eq!(unit_system_writes(0)[3], ("areaUnits", json!(1)));
+        assert_eq!(unit_system_writes(2), vec![("customUnits", json!(true))], "custom keeps whatever units are set");
     }
 
     #[test]

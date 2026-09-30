@@ -40,6 +40,10 @@ impl MessageLog {
         self.items.push(Logged { component: self.multi.then_some(component), severity, time, text });
     }
 
+    pub fn count(&self) -> usize {
+        self.items.len()
+    }
+
     pub fn clear(&mut self) {
         self.items.clear();
     }

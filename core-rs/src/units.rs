@@ -199,7 +199,21 @@ fn kind_of_setting(setting: &str) -> Option<Kind> {
     [Kind::Horizontal, Kind::Vertical, Kind::Area, Kind::Speed, Kind::Temperature, Kind::Weight].into_iter().find(|kind| kind.setting() == setting)
 }
 
+const UNIT_SYSTEM_PRESETS: [[u32; 5]; 2] = [[1, 1, 1, 1, 0], [0, 0, 5, 2, 1]];
+const UNIT_SYSTEM_CUSTOM: usize = 2;
+
+fn unit_system(stored: &impl Fn(&str) -> Option<String>, system: u8) -> usize {
+    if stored("Units/customUnits").is_some_and(|v| v == "true" || v == "1") {
+        return UNIT_SYSTEM_CUSTOM;
+    }
+    let current = [Kind::Horizontal, Kind::Vertical, Kind::Area, Kind::Speed, Kind::Temperature].map(|kind| choice(kind, stored, system));
+    UNIT_SYSTEM_PRESETS.iter().position(|preset| *preset == current).unwrap_or(UNIT_SYSTEM_CUSTOM)
+}
+
 pub fn get(path: &str) -> Option<String> {
+    if path == "settings.unitsSettings.unitSystem" {
+        return Some(json!({ "kind": "value", "value": unit_system(&crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed)) }).to_string());
+    }
     if let Some(setting) = path.strip_prefix("settings.unitsSettings.").and_then(|rest| rest.strip_suffix(".rawValue")) {
         let kind = kind_of_setting(setting)?;
         return Some(json!({ "kind": "value", "value": choice(kind, &crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed)) }).to_string());
@@ -226,6 +240,15 @@ mod tests {
         assert_eq!((choice(Kind::Weight, &nothing, 2), choice(Kind::Weight, &nothing, IMPERIAL_US)), (0, 2), "the UK keeps grams");
         let feet = |key: &str| (key == "Units/verticalDistanceUnits").then(|| "0".to_string());
         assert_eq!(choice(Kind::Vertical, &feet, METRIC), 0);
+    }
+
+    #[test]
+    fn the_unit_system_is_the_preset_every_unit_matches() {
+        let stored = |pairs: &'static [(&'static str, &'static str)]| move |key: &str| pairs.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string());
+        assert_eq!(unit_system(&stored(&[]), METRIC), 0);
+        assert_eq!(unit_system(&stored(&[("Units/horizontalDistanceUnits", "0"), ("Units/verticalDistanceUnits", "0"), ("Units/areaUnits", "5"), ("Units/speedUnits", "2"), ("Units/temperatureUnits", "1")]), METRIC), 1);
+        assert_eq!(unit_system(&stored(&[("Units/speedUnits", "4")]), METRIC), 2, "knots with metric distances is no preset");
+        assert_eq!(unit_system(&stored(&[("Units/customUnits", "true")]), METRIC), 2);
     }
 
     #[test]

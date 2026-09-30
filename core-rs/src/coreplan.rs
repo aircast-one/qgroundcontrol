@@ -815,6 +815,12 @@ pub fn controller_fields(path: &str) -> Option<Value> {
             "sub": class == crate::cmdinfo::VehicleClass::Sub,
             "apmFirmware": firmware == crate::cmdinfo::Firmware::ArduPilot,
             "px4Firmware": firmware == crate::cmdinfo::Firmware::Px4,
+            "firmwareTypeString": match firmware {
+                crate::cmdinfo::Firmware::Px4 => "PX4 Pro",
+                crate::cmdinfo::Firmware::ArduPilot => "ArduPilot",
+                crate::cmdinfo::Firmware::Generic => "Generic",
+            },
+            "vehicleTypeString": u8::try_from(document.vehicle_type).map_or("", crate::vehiclefacade::mav_type_text),
         })),
         "plan.missionController" => {
             let sequence = visual_spans(&document).get(usize::try_from(selected).unwrap_or(0)).map_or(0, |(first, _)| *first);

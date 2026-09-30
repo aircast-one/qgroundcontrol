@@ -394,6 +394,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "isROIEnabled": v.roi_enabled,
         "communicationLostEnabled": v.comm_lost_enabled,
+        "messageCount": v.message_log.count(),
         "autoDisconnect": v.auto_disconnect,
         "paramCircularFence": circular_fence(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
         "checkListState": v.check_list_state,
@@ -1124,6 +1125,18 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::account::invoke(path) {
             return answer.to_string();
         }
+        if path == "vehicle.parameterManager.parameterNames" && switched_on() {
+            let asked = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0).and_then(Value::as_i64)).unwrap_or(-1);
+            let names = crate::hub::lock().active().map(|v| {
+                let component = u8::try_from(asked).ok().filter(|c| *c != 0).unwrap_or(v.component);
+                let mut listed: Vec<String> = v.parameters(component).into_iter().map(|(name, _)| name).collect();
+                listed.sort();
+                listed
+            });
+            if let Some(names) = names {
+                return json!({ "ok": true, "result": names }).to_string();
+            }
+        }
         if let Some(answer) = crate::corelinks::invoke(path, args) {
             return answer.to_string();
         }
@@ -1178,6 +1191,9 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if path == "vehicle.clearMessages" && switched_on() {
             crate::hub::lock().clear_message_log();
+            if !crate::qthost::present() {
+                return json!({ "ok": true }).to_string();
+            }
         }
         if switched_on() {
             match path {
