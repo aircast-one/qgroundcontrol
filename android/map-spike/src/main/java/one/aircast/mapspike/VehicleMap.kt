@@ -160,6 +160,7 @@ fun VehicleMap(
     centreOn: TrackPoint? = null,
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
+    traffic: List<TrafficMark> = emptyList(),
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
@@ -246,6 +247,7 @@ fun VehicleMap(
                 installMissionLayers(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
                 installVehicleLayer(loadedStyle)
+                installTrafficLayer(loadedStyle)
                 if (!editable && onMapClick != null) {
                     loaded.addOnMapClickListener { at ->
                         val screen = loaded.projection.toScreenLocation(at)
@@ -273,6 +275,11 @@ fun VehicleMap(
             }
         }
         onDispose { }
+    }
+
+    LaunchedEffect(style, traffic) {
+        val trafficStyle = style ?: return@LaunchedEffect
+        (trafficStyle.getSource(TRAFFIC_SOURCE) as? GeoJsonSource)?.setGeoJson(trafficFeatures(traffic))
     }
 
     LaunchedEffect(style, shots) {
