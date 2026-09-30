@@ -463,6 +463,7 @@ mod deps_cover_reads {
             ("linkremove", include_str!("linkremove.rs")),
             ("mapclick", include_str!("mapclick.rs")),
             ("commandtree", include_str!("commandtree.rs")),
+            ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
             ("components", include_str!("components.rs")),
             ("mapurls", include_str!("mapurls.rs")),

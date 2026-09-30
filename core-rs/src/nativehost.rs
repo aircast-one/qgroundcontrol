@@ -192,7 +192,12 @@ fn setup_from_device(host: &str) {
         let via = crate::devicesetup::fetch(host, crate::devicesetup::WATCH_VIA).unwrap_or(Value::Null);
         crate::devicesetup::camera_writes(host, &config, &via).iter().for_each(|(path, value)| write_setting(path, value));
     }
-    if let Some(link) = crate::devicesetup::fetch(host, crate::devicesetup::TELEMETRY_CONFIG).and_then(|config| crate::devicesetup::telemetry_link(host, &config)) {
+    let Some(telemetry) = crate::devicesetup::fetch(host, crate::devicesetup::TELEMETRY_CONFIG) else { return };
+    if let Some((api_base, link)) = crate::devicesetup::cloud_link(host, &telemetry) {
+        crate::account::set_api_base(&api_base);
+        crate::corelinks::replace_and_connect(link);
+    }
+    if let Some(link) = crate::devicesetup::telemetry_link(host, &telemetry) {
         crate::corelinks::replace_and_connect(link);
     }
 }

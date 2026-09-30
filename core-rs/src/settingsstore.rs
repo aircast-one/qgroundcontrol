@@ -245,6 +245,13 @@ pub fn written(key: &str, text: &str) {
     persist();
 }
 
+pub fn forgotten(key: &str) {
+    if let Some(values) = stored().as_mut() {
+        values.remove(key);
+    }
+    persist();
+}
+
 pub fn open(path: &std::path::Path) {
     *stored() = Some(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default()));
     *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());

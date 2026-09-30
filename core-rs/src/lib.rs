@@ -3,6 +3,7 @@
 mod abi;
 #[cfg(all(feature = "native-host", not(test)))]
 pub mod nativehost;
+pub mod account;
 pub mod actions;
 pub mod adsb;
 pub mod altitude;

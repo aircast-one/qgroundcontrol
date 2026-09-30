@@ -837,6 +837,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::noticeboard::get(path) {
             return answer.to_string();
         }
+        if let Some(answer) = crate::account::get(path) {
+            return answer.to_string();
+        }
         if let Some(answer) = crate::corelinks::get(path) {
             return answer.to_string();
         }
@@ -1062,6 +1065,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::corelinks::set(path, value) {
             return answer.to_string();
         }
+        if let Some(answer) = crate::account::set(path, value) {
+            return answer.to_string();
+        }
         let link_flag = path.strip_prefix("vehicle.vehicleLinkManager.").filter(|f| matches!(*f, "communicationLostEnabled" | "autoDisconnect"));
         if let Some(flag) = link_flag.filter(|_| switched_on()) {
             let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
@@ -1113,6 +1119,9 @@ impl<B: Backend> Backend for Facade<B> {
     }
     fn invoke(&self, path: &str, args: &str) -> String {
         if let Some(answer) = crate::noticeboard::invoke(path, args) {
+            return answer.to_string();
+        }
+        if let Some(answer) = crate::account::invoke(path) {
             return answer.to_string();
         }
         if let Some(answer) = crate::corelinks::invoke(path, args) {

@@ -42,6 +42,14 @@ pub fn telemetry_link(host: &str, config: &Value) -> Option<LinkConfig> {
     Some(LinkConfig { name: format!("Aircast {bare}"), auto_connect: true, high_latency: false, kind })
 }
 
+pub fn cloud_link(host: &str, config: &Value) -> Option<(String, LinkConfig)> {
+    let cloud = config.get("cloud")?;
+    let text = |key: &str| cloud.get(key).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    let (api_base, device_id) = (text("api")?, text("deviceId")?);
+    let link = LinkConfig { name: format!("Aircast {} (cloud)", bare_host(host)), auto_connect: true, high_latency: false, kind: Kind::AircastCloud { api_base: api_base.clone(), device_id } };
+    Some((api_base, link))
+}
+
 pub fn fetch(host: &str, path: &str) -> Option<Value> {
     serde_json::from_str(&ureq::get(&format!("http://{host}{path}")).call().ok()?.body_mut().read_to_string().ok()?).ok()
 }
@@ -61,6 +69,14 @@ mod tests {
         let cloud = camera_writes("10.0.0.5:8080", &config, &json!({ "front": "cloudflare" }));
         assert_eq!(cloud[0], ("settings.videoSettings.whepUrl", "http://10.0.0.5:8080/whep/cloudflare/front".to_string()), "the cloudflare path goes through the device's own port");
         assert!(camera_writes("h", &json!({ "paths": {} }), &json!({})).is_empty(), "no camera, nothing written");
+    }
+
+    #[test]
+    fn a_device_with_a_cloud_account_names_its_backup_link() {
+        let (api, link) = cloud_link("10.0.0.5:8080", &json!({ "cloud": { "api": " https://api.aircast.one ", "deviceId": "d-7", "sfu": "x" } })).unwrap();
+        assert_eq!((api.as_str(), link.name.as_str(), link.auto_connect), ("https://api.aircast.one", "Aircast 10.0.0.5 (cloud)", true));
+        assert_eq!(link.kind, Kind::AircastCloud { api_base: "https://api.aircast.one".into(), device_id: "d-7".into() });
+        assert_eq!(cloud_link("h", &json!({ "cloud": { "api": "https://a" } })), None, "no device id, no cloud link");
     }
 
     #[test]
