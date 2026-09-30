@@ -63,6 +63,10 @@ public final class QGCBridge {
         nativeWatch(String.join(",", union));
     }
 
+    public static native int start(String[] args);
+
+    public static native void shutdown();
+
     public static native String get(String path);
 
     public static native String getFields(String path, String fieldsCsv);

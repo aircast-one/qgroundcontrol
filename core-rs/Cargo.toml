@@ -14,6 +14,7 @@ required-features = ["native-host"]
 
 [features]
 native-host = []
+jni-host = ["native-host", "dep:jni"]
 
 [dependencies]
 mavlink = { version = "0.18", default-features = false, features = ["dialect-ardupilotmega", "std", "mav2-message-signing", "mav2-message-extensions"] }
@@ -40,6 +41,7 @@ geographiclib-rs = "0.2.7"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 little_exif = "0.6.23"
 px4-ulog = "0.6.1"
+jni = { version = "0.21.1", optional = true }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"
