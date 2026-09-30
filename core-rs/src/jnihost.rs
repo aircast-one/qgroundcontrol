@@ -1,14 +1,20 @@
+use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
-use jni::objects::{GlobalRef, JClass, JObject, JObjectArray, JString, JValue};
+use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueOwned};
 use jni::sys::{JNI_VERSION_1_6, jboolean, jfloat, jint, jlong, jstring};
 use jni::{JNIEnv, JavaVM};
 
 const BRIDGE_CLASS: &str = "org/mavlink/qgroundcontrol/QGCBridge";
+const USB_SERIAL_CLASS: &str = "org/mavlink/qgroundcontrol/QGCUsbSerialManager";
+const USB_WRITE_TIMEOUT_MS: i32 = 1000;
+const BAD_DEVICE_ID: i32 = 0;
 
 static VM: OnceLock<JavaVM> = OnceLock::new();
 static BRIDGE: OnceLock<GlobalRef> = OnceLock::new();
+static USB_SERIAL: OnceLock<GlobalRef> = OnceLock::new();
+static USB_DEVICES: Mutex<BTreeMap<u32, i32>> = Mutex::new(BTreeMap::new());
 
 fn text_of(env: &mut JNIEnv, value: &JString) -> CString {
     let read = match value.is_null() {
@@ -43,11 +49,120 @@ unsafe extern "C" fn relay(path: *const c_char, json: *const c_char) {
     }
 }
 
+enum Arg<'a> {
+    Int(i32),
+    Long(i64),
+    Text(&'a str),
+    Bytes(&'a [u8]),
+}
+
+fn usb_call(name: &str, signature: &str, arguments: &[Arg]) -> Option<JValueOwned<'static>> {
+    let (vm, class) = (VM.get()?, USB_SERIAL.get()?);
+    let mut env = vm.attach_current_thread_as_daemon().ok()?;
+    let answer = env
+        .with_local_frame(8, |env| -> jni::errors::Result<JValueOwned<'static>> {
+            let objects: Vec<Option<JObject>> = arguments
+                .iter()
+                .map(|argument| match argument {
+                    Arg::Text(text) => env.new_string(text).map(|value| Some(value.into())),
+                    Arg::Bytes(bytes) => env.byte_array_from_slice(bytes).map(|value| Some(value.into())),
+                    _ => Ok(None),
+                })
+                .collect::<jni::errors::Result<_>>()?;
+            let null = JObject::null();
+            let given: Vec<JValue> = arguments
+                .iter()
+                .zip(&objects)
+                .map(|(argument, object)| match (argument, object) {
+                    (Arg::Int(value), _) => JValue::Int(*value),
+                    (Arg::Long(value), _) => JValue::Long(*value),
+                    (_, Some(object)) => JValue::Object(object),
+                    (_, None) => JValue::Object(&null),
+                })
+                .collect();
+            let class: &JClass = class.as_obj().into();
+            Ok(match env.call_static_method(class, name, signature, &given)? {
+                JValueOwned::Int(value) => JValueOwned::Int(value),
+                JValueOwned::Bool(value) => JValueOwned::Bool(value),
+                _ => JValueOwned::Void,
+            })
+        })
+        .ok();
+    if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_clear();
+    }
+    answer
+}
+
+fn usb_device(id: u32) -> Option<i32> {
+    USB_DEVICES.lock().unwrap_or_else(PoisonError::into_inner).get(&id).copied()
+}
+
+fn usb_open(id: u32, name: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64) -> bool {
+    let opened = usb_call("open", "(Ljava/lang/String;J)I", &[Arg::Text(name), Arg::Long(i64::from(id))])
+        .and_then(|value| value.i().ok())
+        .filter(|device| *device != BAD_DEVICE_ID);
+    let Some(device) = opened else { return false };
+    USB_DEVICES.lock().unwrap_or_else(PoisonError::into_inner).insert(id, device);
+    let parity = crate::platformserial::android_parity(parity);
+    let configured = usb_call("setParameters", "(IIIII)Z", &[Arg::Int(device), Arg::Int(baud as i32), Arg::Int(data_bits as i32), Arg::Int(stop_bits as i32), Arg::Int(parity as i32)])
+        .and_then(|value| value.z().ok())
+        .unwrap_or(false);
+    let started = configured && usb_call("startIoManager", "(I)Z", &[Arg::Int(device)]).and_then(|value| value.z().ok()).unwrap_or(false);
+    if !started {
+        usb_close(id);
+    }
+    started
+}
+
+fn usb_write(id: u32, bytes: &[u8]) -> bool {
+    let Some(device) = usb_device(id) else { return false };
+    let length = bytes.len() as i32;
+    usb_call("write", "(I[BII)I", &[Arg::Int(device), Arg::Bytes(bytes), Arg::Int(length), Arg::Int(USB_WRITE_TIMEOUT_MS)])
+        .and_then(|value| value.i().ok())
+        .is_some_and(|written| written == length)
+}
+
+fn usb_close(id: u32) {
+    let Some(device) = USB_DEVICES.lock().unwrap_or_else(PoisonError::into_inner).remove(&id) else { return };
+    usb_call("stopIoManager", "(I)Z", &[Arg::Int(device)]);
+    usb_call("close", "(I)Z", &[Arg::Int(device)]);
+}
+
+fn usb_ports() -> Vec<crate::boards::PortInfo> {
+    let (Some(vm), Some(class)) = (VM.get(), USB_SERIAL.get()) else { return Vec::new() };
+    let Ok(mut env) = vm.attach_current_thread_as_daemon() else { return Vec::new() };
+    let ports = env
+        .with_local_frame(8, |env| -> jni::errors::Result<Vec<String>> {
+            let class: &JClass = class.as_obj().into();
+            let array = JObjectArray::from(env.call_static_method(class, "availableDevicesInfo", "()[Ljava/lang/String;", &[])?.l()?);
+            let count = if array.is_null() { 0 } else { env.get_array_length(&array)? };
+            Ok((0..count)
+                .filter_map(|i| {
+                    let element = env.get_object_array_element(&array, i).ok()?;
+                    env.get_string(&JString::from(element)).ok().map(String::from)
+                })
+                .collect())
+        })
+        .unwrap_or_default();
+    if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_clear();
+    }
+    ports.iter().filter_map(|line| crate::platformserial::port_from_info(line)).collect()
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _reserved: *mut c_void) -> jint {
     let Ok(mut env) = vm.get_env() else { return JNI_VERSION_1_6 };
     if let Some(bridge) = env.find_class(BRIDGE_CLASS).ok().and_then(|class| env.new_global_ref(class).ok()) {
         let _ = BRIDGE.set(bridge);
+    }
+    if let Some(serial) = env.find_class(USB_SERIAL_CLASS).ok().and_then(|class| env.new_global_ref(class).ok()) {
+        let _ = USB_SERIAL.set(serial);
+        crate::platformserial::install(crate::platformserial::Hooks { open: usb_open, write: usb_write, close: usb_close, ports: usb_ports });
+    }
+    if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_clear();
     }
     let _ = VM.set(vm);
     unsafe { crate::nativehost::qgc_bridge_set_event_handler(Some(relay)) };
@@ -149,4 +264,23 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoCopyFrame(
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoSetSurface(_env: JNIEnv, _class: JClass, _surface: JObject) -> jboolean {
     0
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCUsbSerialManager_nativeDeviceNewData(env: JNIEnv, _class: JClass, pointer: jlong, data: JByteArray) {
+    if let Ok(bytes) = env.convert_byte_array(&data) {
+        crate::platformserial::received(pointer as u32, bytes);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCUsbSerialManager_nativeDeviceHasDisconnected(_env: JNIEnv, _class: JClass, pointer: jlong) {
+    USB_DEVICES.lock().unwrap_or_else(PoisonError::into_inner).remove(&(pointer as u32));
+    crate::platformserial::closed(pointer as u32, "The USB device was disconnected.");
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCUsbSerialManager_nativeDeviceException(mut env: JNIEnv, _class: JClass, pointer: jlong, message: JString) {
+    let message = text_of(&mut env, &message).to_string_lossy().into_owned();
+    crate::platformserial::closed(pointer as u32, &message);
 }

@@ -280,7 +280,7 @@ fn links_field(name: &str) -> Option<Value> {
         #[cfg(not(target_os = "android"))]
         _ => crate::seriallink::links_field(name),
         #[cfg(target_os = "android")]
-        _ => None,
+        _ => crate::platformserial::links_field(name),
     }
 }
 

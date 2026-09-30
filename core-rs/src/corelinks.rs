@@ -443,7 +443,12 @@ fn serial_ports() -> Vec<crate::boards::PortInfo> {
         .collect()
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(target_os = "android")]
+fn serial_ports() -> Vec<crate::boards::PortInfo> {
+    crate::platformserial::ports()
+}
+
+#[cfg(target_os = "ios")]
 fn serial_ports() -> Vec<crate::boards::PortInfo> {
     Vec::new()
 }

@@ -1,0 +1,137 @@
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+
+use crate::boards::PortInfo;
+
+pub struct Hooks {
+    pub open: fn(u32, &str, u32, i64, i64, i64) -> bool,
+    pub write: fn(u32, &[u8]) -> bool,
+    pub close: fn(u32),
+    pub ports: fn() -> Vec<PortInfo>,
+}
+
+pub enum Event {
+    Bytes(Vec<u8>),
+    Disconnected(String),
+}
+
+type Receiver = Arc<dyn Fn(Event) + Send + Sync>;
+
+static HOOKS: OnceLock<Hooks> = OnceLock::new();
+static RECEIVERS: Mutex<BTreeMap<u32, Receiver>> = Mutex::new(BTreeMap::new());
+
+pub fn install(hooks: Hooks) {
+    let _ = HOOKS.set(hooks);
+}
+
+pub fn ports() -> Vec<PortInfo> {
+    HOOKS.get().map(|hooks| (hooks.ports)()).unwrap_or_default()
+}
+
+pub fn port_from_info(info: &str) -> Option<PortInfo> {
+    let fields: Vec<&str> = info.split('\t').collect();
+    let text = |i: usize| fields.get(i).map(|f| f.trim()).filter(|f| !f.is_empty() && *f != "null").unwrap_or_default().to_string();
+    let location = text(0);
+    (fields.len() >= 6 && !location.is_empty()).then(|| PortInfo {
+        port_name: location.strip_prefix("/dev/").unwrap_or(&location).to_string(),
+        system_location: location.clone(),
+        description: text(1),
+        manufacturer: text(2),
+        serial_number: text(3),
+        product_id: text(4).parse().ok(),
+        vendor_id: text(5).parse().ok(),
+    })
+}
+
+const ANDROID_BAUD_RATES: [u32; 30] = [
+    50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 500000, 576000, 921600, 1000000, 1152000, 1500000, 2000000, 2500000, 3000000,
+    3500000, 4000000,
+];
+
+pub fn android_parity(qt_parity: i64) -> i64 {
+    match qt_parity {
+        2 => 2,
+        3 => 1,
+        4 => 4,
+        5 => 3,
+        _ => 0,
+    }
+}
+
+pub fn display_name(port: &PortInfo) -> String {
+    match [port.description.as_str(), port.manufacturer.as_str()].into_iter().find(|name| !name.is_empty()) {
+        Some(name) => format!("{name} ({})", port.port_name),
+        None => port.port_name.clone(),
+    }
+}
+
+pub fn links_field(field: &str) -> Option<serde_json::Value> {
+    match field {
+        "linkTypeStrings" | "linkTypeIds" => crate::linkconfig::link_type_field(field),
+        "serialBaudRates" => Some(serde_json::json!(ANDROID_BAUD_RATES.iter().map(u32::to_string).collect::<Vec<_>>())),
+        "serialPorts" => Some(serde_json::json!(ports().iter().map(|p| p.system_location.clone()).collect::<Vec<_>>())),
+        "serialPortStrings" => Some(serde_json::json!(ports().iter().map(display_name).collect::<Vec<_>>())),
+        _ => None,
+    }
+}
+
+fn receiver(id: u32) -> Option<Receiver> {
+    RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).get(&id).cloned()
+}
+
+pub fn received(id: u32, bytes: Vec<u8>) {
+    if let Some(deliver) = receiver(id) {
+        deliver(Event::Bytes(bytes));
+    }
+}
+
+pub fn closed(id: u32, reason: &str) {
+    let taken = RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
+    if let Some(deliver) = taken {
+        deliver(Event::Disconnected(reason.to_string()));
+    }
+}
+
+pub struct PlatformSerial {
+    id: u32,
+}
+
+impl PlatformSerial {
+    pub fn open(id: u32, port_name: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64, on_event: impl Fn(Event) + Send + Sync + 'static) -> Result<PlatformSerial, String> {
+        let hooks = HOOKS.get().ok_or_else(|| "this build has no serial host".to_string())?;
+        RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).insert(id, Arc::new(on_event));
+        match (hooks.open)(id, port_name, baud, data_bits, stop_bits, parity) {
+            true => Ok(PlatformSerial { id }),
+            false => {
+                RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
+                Err(format!("{port_name} could not be opened"))
+            }
+        }
+    }
+
+    pub fn write(&self, bytes: &[u8]) -> bool {
+        HOOKS.get().is_some_and(|hooks| (hooks.write)(self.id, bytes))
+    }
+
+    pub fn close(&self) {
+        RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.id);
+        if let Some(hooks) = HOOKS.get() {
+            (hooks.close)(self.id);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_device_info_line_reads_as_androidserial_splits_it() {
+        let port = port_from_info("/dev/bus/usb/001/002\tPixhawk6X\tHolybro\tnull\t54\t12346").unwrap();
+        assert_eq!((port.system_location.as_str(), port.port_name.as_str(), port.description.as_str(), port.manufacturer.as_str()), ("/dev/bus/usb/001/002", "bus/usb/001/002", "Pixhawk6X", "Holybro"));
+        assert_eq!((port.serial_number.as_str(), port.product_id, port.vendor_id), ("", Some(54), Some(12346)), "a null serial number is no serial number");
+        assert!(port_from_info("short\tline").is_none(), "AndroidSerial skips a line with fewer than six fields");
+        assert_eq!(display_name(&port), "Pixhawk6X (bus/usb/001/002)", "cleanPortDisplayName on Android: description, then the port name to keep entries unique");
+        assert_eq!([0, 2, 3, 4, 5].map(android_parity), [0, 2, 1, 4, 3], "QSerialPort parity to AndroidSerial parity, as _parityToAndroidParity maps it");
+    }
+}

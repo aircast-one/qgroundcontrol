@@ -4,6 +4,7 @@ import android.app.Activity
 import android.view.View
 import java.io.File
 import org.mavlink.qgroundcontrol.QGCBridge
+import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 
 private const val CORE_LIBRARY = "qgc_core"
 private const val ORGANIZATION = "Aircast"
@@ -17,6 +18,7 @@ object HostPlatform {
         if (started) return null
         started = true
         System.loadLibrary(CORE_LIBRARY)
+        QGCUsbSerialManager.initialize(activity)
         val folder = File(activity.filesDir, "settings/$ORGANIZATION").apply { mkdirs() }
         val settings = folder.listFiles { file -> file.extension == "ini" }?.minByOrNull { it.name }
             ?: File(folder, "$DEFAULT_APPLICATION.ini")
@@ -32,6 +34,8 @@ object HostPlatform {
     }
 
     fun stop(activity: Activity) {
-        if (activity.isFinishing) QGCBridge.shutdown()
+        if (!activity.isFinishing) return
+        QGCBridge.shutdown()
+        QGCUsbSerialManager.cleanup(activity)
     }
 }

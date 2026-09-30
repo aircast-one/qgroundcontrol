@@ -20,6 +20,8 @@ pub enum Owned {
     Tcp(TcpLink),
     #[cfg(not(target_os = "android"))]
     Serial(crate::seriallink::SerialLink),
+    #[cfg(target_os = "android")]
+    PlatformSerial(crate::platformserial::PlatformSerial),
     Cloud(crate::cloudlink::CloudLink),
 }
 
@@ -30,6 +32,8 @@ impl Owned {
             Owned::Tcp(link) => link.write(bytes).is_ok(),
             #[cfg(not(target_os = "android"))]
             Owned::Serial(link) => link.write(bytes).is_ok(),
+            #[cfg(target_os = "android")]
+            Owned::PlatformSerial(link) => link.write(bytes),
             Owned::Cloud(link) => link.write(bytes),
         }
     }
@@ -40,6 +44,8 @@ impl Owned {
             Owned::Tcp(link) => link.close(),
             #[cfg(not(target_os = "android"))]
             Owned::Serial(link) => link.close(),
+            #[cfg(target_os = "android")]
+            Owned::PlatformSerial(link) => link.close(),
             Owned::Cloud(link) => link.close(),
         }
     }
@@ -232,6 +238,16 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             )
             .map(Owned::Serial)
             .map_err(|e| Failure::retry(e.to_string()))
+        }
+        #[cfg(target_os = "android")]
+        Kind::Serial { baud, data_bits, stop_bits, parity, port_name, .. } => {
+            let shared = shared.clone();
+            crate::platformserial::PlatformSerial::open(id, port_name, *baud as u32, *data_bits, *stop_bits, *parity, move |event| match event {
+                crate::platformserial::Event::Bytes(bytes) => shared.deliver(id, &bytes),
+                crate::platformserial::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
+            })
+            .map(Owned::PlatformSerial)
+            .map_err(Failure::retry)
         }
         Kind::AircastCloud { api_base, device_id } => {
             let url = crate::cloudlink::relay_url(api_base, device_id).ok_or_else(|| Failure::edit_address(format!("{} has no device to reach.", config.name)))?;

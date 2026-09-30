@@ -240,6 +240,17 @@ pub fn port_display_name(system_location: &str) -> String {
     std::path::Path::new(system_location).file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned())
 }
 
+const LINK_TYPES: [(&str, &str); 7] = [("serial", "Serial"), ("udp", "UDP"), ("tcp", "TCP"), ("bluetooth", "Bluetooth"), ("mock", "Mock Link"), ("logReplay", "Log Replay"), ("aircastCloud", "Aircast Cloud")];
+
+pub fn link_type_field(field: &str) -> Option<serde_json::Value> {
+    let listed = LINK_TYPES.iter().filter(|(id, _)| cfg!(debug_assertions) || *id != "mock");
+    match field {
+        "linkTypeStrings" => Some(serde_json::json!(listed.map(|(_, label)| *label).collect::<Vec<_>>())),
+        "linkTypeIds" => Some(serde_json::json!(listed.map(|(id, _)| *id).collect::<Vec<_>>())),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

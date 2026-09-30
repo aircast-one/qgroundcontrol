@@ -129,13 +129,8 @@ impl Drop for SerialLink {
     }
 }
 
-const LINK_TYPES: [(&str, &str); 7] = [("serial", "Serial"), ("udp", "UDP"), ("tcp", "TCP"), ("bluetooth", "Bluetooth"), ("mock", "Mock Link"), ("logReplay", "Log Replay"), ("aircastCloud", "Aircast Cloud")];
 const MACOS_SYSTEM_PORTS: [&str; 5] = ["tty.MALS", "tty.SOC", "tty.Bluetooth-Incoming-Port", "tty.usbserial", "tty.usbmodem"];
 const MACOS_BAUD_RATES: [u32; 25] = [50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 7200, 9600, 14400, 19200, 28800, 38400, 57600, 76800, 115200, 230400, 460800, 500000, 921600];
-
-fn link_types() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
-    LINK_TYPES.iter().filter(|(id, _)| cfg!(debug_assertions) || *id != "mock")
-}
 
 pub fn visible_ports(system_locations: &[String]) -> Vec<String> {
     system_locations.iter().filter(|port| !MACOS_SYSTEM_PORTS.iter().any(|system| port.contains(system))).cloned().collect()
@@ -147,8 +142,7 @@ pub fn links_field(field: &str) -> Option<serde_json::Value> {
         Some(visible_ports(&serialport::available_ports().ok()?.into_iter().map(|p| p.port_name).collect::<Vec<_>>()))
     };
     Some(match field {
-        "linkTypeStrings" => serde_json::json!(link_types().map(|(_, label)| *label).collect::<Vec<_>>()),
-        "linkTypeIds" => serde_json::json!(link_types().map(|(id, _)| *id).collect::<Vec<_>>()),
+        "linkTypeStrings" | "linkTypeIds" => crate::linkconfig::link_type_field(field)?,
         "serialBaudRates" if cfg!(target_os = "macos") => serde_json::json!(MACOS_BAUD_RATES.iter().map(u32::to_string).collect::<Vec<_>>()),
         "serialPorts" => serde_json::json!(ports()?),
         "serialPortStrings" => serde_json::json!(ports()?.iter().map(|p| crate::linkconfig::port_display_name(p)).collect::<Vec<_>>()),

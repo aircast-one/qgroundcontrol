@@ -498,6 +498,7 @@ mod deps_cover_reads {
             ("plandoc", include_str!("plandoc.rs")),
             ("planitems", include_str!("planitems.rs")),
             ("plankml", include_str!("plankml.rs")),
+            ("platformserial", include_str!("platformserial.rs")),
             ("planselect", include_str!("planselect.rs")),
             ("plantransfer", include_str!("plantransfer.rs")),
             ("preflight", include_str!("preflight.rs")),
