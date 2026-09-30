@@ -181,11 +181,11 @@ jobs:
         working-directory: ${{ runner.temp }}/build
         run: cmake --build . --target aar --config Release
 
-      - name: Set up JDK 17 for the native head
+      - name: Set up the pinned JDK for the native head
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ steps.setup.outputs.android_java_version }}
 
       - name: Build the native head
         working-directory: ${{ github.workspace }}/android

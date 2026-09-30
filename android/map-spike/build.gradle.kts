@@ -4,25 +4,31 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+fun qgc(key: String): String = extra["qgc.$key"] as String?
+    ?: error(
+        "android/qgc.properties has no $key. Run `just android` to generate it" +
+            (extra.properties["qgc.$key.env"]?.let { ", or set $it" } ?: "") + "."
+    )
+
 android {
     namespace = "one.aircast.mapspike"
-    compileSdk = 34
+    compileSdk = qgc("compileSdk").toInt()
 
     defaultConfig {
-        minSdk = 28
+        minSdk = qgc("minSdk").toInt()
     }
 
     buildFeatures { compose = true }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.toVersion(qgc("javaVersion"))
+        targetCompatibility = JavaVersion.toVersion(qgc("javaVersion"))
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions { jvmTarget = qgc("javaVersion") }
 }
 
 dependencies {
-    compileOnly(files(System.getenv("AIRCAST_QGC_AAR") ?: "../../build-android/android-build/AircastQGC.aar"))
+    compileOnly(files(qgc("aar")))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))

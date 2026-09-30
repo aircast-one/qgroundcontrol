@@ -180,6 +180,40 @@ The release CI uploads `qgc-macos-sdk`: that prefix plus the deployed bundle's `
 `PlugIns` and `Resources` (Qt, GStreamer, wfb and the QML modules, already relinked by
 `macdeployqt`), which is everything an `aircast-macos` app has to embed.
 
+**The app opens in Xcode (2026-09-20).** `just xcode` runs `tools/macos/xcode.py`, which generates
+`macos/AircastQGC.xcodeproj` from `macos/project.yml` (XcodeGen). The app target compiles
+`macos/Sources/*.swift` plus `macos/App/main.swift`, imports the bridge through
+`-Xcc -fmodule-map-file=src/Bridge/module.modulemap` and links `-lAircastQGC` out of a
+`QGC_HEADLESS_CORE=ON` build dir (`build-hl` by default, or `QGC_CORE_BUILD_DIR`); the generator
+configures one if it is absent, at the Qt version `.github/build-config.json` pins and refusing any
+other. Nothing is copied: the executable's rpath points at the CMake build dir and the core dylib
+carries its own rpaths for Qt and GStreamer, so ⌘B rebuilds the C++ through a pre-build
+`cmake --build` phase and the Swift through Xcode.
+
+**The bundle identity has one source.** `Info.plist` is rendered from the same
+`deploy/macos/MacOSXBundleInfo.plist.in` CMake uses, substituted from the build dir's CMakeCache,
+with `QGCNativeUI` added — so a Finder or Xcode launch draws the native windows without
+`--native-window`, and nothing about the bundle is retyped. `CFBundleExecutable` and
+`CFBundleIdentifier` stay as `$(...)` for Xcode to fill; the generator refuses a template variable
+it does not know rather than emitting an empty key. The project, `Info.plist` and `Local.xcconfig`
+are generated, so they are gitignored.
+
+**Debug is the only configuration, deliberately.** The app finds the core through an absolute rpath
+into a developer's build directory, so an archived Release bundle would die at launch on any other
+machine. Distribution stays with CPack and `cmake/install/SignMacBundle.cmake`; signing here is
+ad-hoc with no entitlements, matching the CMake dev build.
+
+**The checks target is what the Xcode move unblocked.** `AircastQGCChecks` compiles every
+`macos/Sources` file plus `macos/Tests/main.swift` — the thing a CMake Swift executable target could
+not do (`cannotResolveTempPath` on a shared-source swiftmodule), and the reason
+`tools/macos/swift-checks.sh` carries a hand-maintained list of 85 files that goes stale in silence.
+`just xcode-checks` builds and runs it: 2,283 assertions, exactly the floor that file declares.
+`swift-checks.sh` stays as the portable gate — it needs no Xcode — but it is no longer the only
+thing compiling those sources.
+
+Verified: both targets build, the app launches with Qt on its own thread, `/native/windows` reports
+one `Fly` window and no Qt shell, and `/native/probe` lists 32 probes.
+
 Open: the `aircast-macos` repo itself. It consumes the SDK tarball, owns the bundle, Info.plist,
 entitlements, icon, menus and signing, and pins a QGC version; `macos/Sources/*.swift` moves there
 when it exists. The C bridge headers stay here permanently — they are the macOS `QGCBridge.java`.
@@ -5129,3 +5163,27 @@ and means something else. So the options are:
 
 Not implemented either way yet. Recorded rather than guessed at because the two produce visibly
 different screens, and the port is not finished while a screen can do less than the QML it replaces.
+
+## A bitmask parameter is a bare number field everywhere except the Settings window (open, 2026-09-14)
+
+`drawsBits` has exactly one consumer in this head — `SettingsWindow.swift:257`. `ParameterRow`, which
+is what Vehicle Setup draws (`VehicleSetupWindow.swift:48` and `:650`) and what the controls list at
+`ParameterRow.swift:168` draws, has no bits branch at all: its editor shows a picker when the fact
+has options and a plain number field otherwise. So `ARMING_CHECK` reads `8190` on a setup page and
+reads as named checkboxes one window over.
+
+QGC draws the checkboxes for any bitmask fact — `ParameterEditorDialog.qml`'s `bitmaskColumn` is
+visible whenever `fact.bitmaskStrings.length > 0`, with no page-by-page distinction.
+
+**The fix is a migration, not a decode, which is why it is recorded rather than done here.** The
+rows Vehicle Setup draws are `Parameter`, built from a RAW fact read, and a raw fact carries
+`bitmaskStrings` and `bitmaskValues` — two parallel lists with no `set` flag. Deriving `set` from
+`value & bit` here would put the core's composition in the head, which is the thing this port keeps
+removing; `view.control` already serves `bits` as `{label, raw, set}` and `SettingsControl` already
+decodes it. So the work is moving `Parameter` onto `view.control(<path>)`, which is on the raw-reads
+list anyway and brings `valueMeters` and the gated bounds with it. The open question is cost: that
+is one parameterised view read per parameter against a list that runs to about a thousand, and this
+rig serves none, so it cannot be measured here.
+
+**Not a defect in the meantime:** the number field can set any value, so nothing is unreachable. It
+is unlabelled rather than wrong.

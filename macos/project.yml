@@ -1,0 +1,100 @@
+name: AircastQGC
+
+options:
+  createIntermediateGroups: true
+  minimumXcodeGenVersion: "2.42.0"
+
+configs:
+  Debug: debug
+
+settingGroups:
+  core:
+    SWIFT_VERSION: "5.0"
+    ALWAYS_SEARCH_USER_PATHS: NO
+    CLANG_ENABLE_MODULES: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    OTHER_SWIFT_FLAGS: -Xcc -fmodule-map-file=$(QGC_BRIDGE_DIR)/module.modulemap -Xcc -I$(QGC_BRIDGE_DIR)
+    LIBRARY_SEARCH_PATHS: $(inherited) $(QGC_CORE_LIB_DIR)
+    OTHER_LDFLAGS: $(inherited) -l$(QGC_APP_NAME)
+    LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/../Frameworks $(QGC_CORE_LIB_DIR)
+
+targets:
+  AircastQGC:
+    type: application
+    platform: macOS
+
+    configFiles:
+      Debug: Local.xcconfig
+
+    sources:
+      - path: App/main.swift
+      - path: Sources
+      - path: ../deploy/macos/qgroundcontrol.icns
+        buildPhase: resources
+
+    settings:
+      groups: [core]
+      base:
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+
+    preBuildScripts:
+      - name: QGC core
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        script: '"$QGC_CMAKE" --build "$QGC_CORE_BUILD_DIR" --target "$QGC_APP_NAME"'
+
+  AircastQGCChecks:
+    type: tool
+    platform: macOS
+
+    configFiles:
+      Debug: Local.xcconfig
+
+    sources:
+      - path: Sources
+      - path: Tests/main.swift
+
+    settings:
+      groups: [core]
+
+    preBuildScripts:
+      - name: QGC core
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        script: '"$QGC_CMAKE" --build "$QGC_CORE_BUILD_DIR" --target "$QGC_APP_NAME"'
+
+schemes:
+  AircastQGC:
+    build:
+      targets:
+        AircastQGC: all
+    run:
+      config: Debug
+      environmentVariables:
+        QGC_DEBUG_API_PORT: "8779"
+      commandLineArguments:
+        "--allow-multiple": true
+    archive:
+      config: Debug
+    profile:
+      config: Debug
+    analyze:
+      config: Debug
+
+  AircastQGCChecks:
+    build:
+      targets:
+        AircastQGCChecks: all
+    run:
+      config: Debug
+      environmentVariables:
+        QGC_ROOT: ${QGC_ROOT}
+    archive:
+      config: Debug
+    profile:
+      config: Debug
+    analyze:
+      config: Debug

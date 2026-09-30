@@ -168,6 +168,7 @@ endif()
 
 target_compile_options(QGCNativeUI PRIVATE
     "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-target ${QGC_SWIFT_ARCH}-apple-macosx${CMAKE_OSX_DEPLOYMENT_TARGET}>"
+    "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-swift-version 5>"
 )
 
 set(QGC_BRIDGE_DIR ${CMAKE_SOURCE_DIR}/src/Bridge)

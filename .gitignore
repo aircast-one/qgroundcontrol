@@ -243,3 +243,16 @@ core-rs/manifest.json
 # androiddeployqt runs gradle inside the package template
 deploy/android/.gradle/
 deploy/android/build/
+
+# Generated standalone macOS Xcode project (see tools/macos/xcode.py)
+macos/AircastQGC.xcodeproj/
+macos/Info.plist
+macos/Local.xcconfig
+
+# Generated Android head configuration (see tools/android/studio.py)
+android/qgc.properties
+
+# GStreamer byproducts the Android configure copies into the package source dir
+deploy/android/assets/fontconfig/
+deploy/android/assets/ssl/
+deploy/android/src/org/freedesktop/

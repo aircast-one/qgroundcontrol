@@ -5,6 +5,12 @@ plugins {
     id("com.github.triplet.play")
 }
 
+fun qgc(key: String): String = extra["qgc.$key"] as String?
+    ?: error(
+        "android/qgc.properties has no $key. Run `just android` to generate it" +
+            (extra.properties["qgc.$key.env"]?.let { ", or set $it" } ?: "") + "."
+    )
+
 play {
     serviceAccountCredentials.set(file(System.getenv("AIRCAST_PLAY_SERVICE_ACCOUNT") ?: "${System.getProperty("user.home")}/.config/aircast/play-service-account.json"))
     track.set(System.getenv("AIRCAST_PLAY_TRACK") ?: "internal")
@@ -17,15 +23,16 @@ android {
     }
 
     namespace = "one.aircast.android"
-    compileSdk = 36
+    compileSdk = qgc("compileSdk").toInt()
+    ndkVersion = qgc("ndkVersion")
 
     defaultConfig {
         applicationId = "one.aircast.app"
-        minSdk = 28
-        targetSdk = 36
-        versionCode = (System.getenv("AIRCAST_VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("AIRCAST_VERSION_NAME") ?: "0.1"
-        ndk { abiFilters += "arm64-v8a" }
+        minSdk = qgc("minSdk").toInt()
+        targetSdk = qgc("targetSdk").toInt()
+        versionCode = qgc("versionCode").toInt()
+        versionName = qgc("versionName")
+        ndk { abiFilters += qgc("abi") }
     }
 
     signingConfigs {
@@ -52,14 +59,14 @@ android {
     androidResources { noCompress += "rcc" }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.toVersion(qgc("javaVersion"))
+        targetCompatibility = JavaVersion.toVersion(qgc("javaVersion"))
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions { jvmTarget = qgc("javaVersion") }
 }
 
 dependencies {
-    implementation(files(System.getenv("AIRCAST_QGC_AAR") ?: "../../build-android/android-build/AircastQGC.aar"))
+    implementation(files(qgc("aar")))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
     implementation("androidx.activity:activity-compose:1.9.3")

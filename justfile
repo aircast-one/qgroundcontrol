@@ -97,6 +97,27 @@ check: lint test
 run:
     ./{{build_dir}}/{{build_type}}/QGroundControl
 
+# Generate and open the standalone macOS Xcode project (needs a QGC_HEADLESS_CORE build dir; made if absent)
+xcode:
+    ./tools/macos/xcode.py
+    open macos/AircastQGC.xcodeproj
+
+# Build and run the Swift checks through the Xcode project (compiles every macos/Sources file)
+xcode-checks:
+    ./tools/macos/xcode.py
+    cd macos && xcodebuild -project AircastQGC.xcodeproj -scheme AircastQGCChecks -configuration Debug -derivedDataPath {{justfile_directory()}}/build-hl/xcode-dd build
+    QGC_ROOT={{justfile_directory()}} {{justfile_directory()}}/build-hl/xcode-dd/Build/Products/Debug/AircastQGCChecks
+
+# Build the Android core aar, wire the Gradle head to it, and open Android Studio
+android:
+    ./tools/android/studio.py
+    if [ -d "/Applications/Android Studio.app" ]; then open -a "Android Studio" android; else echo "Android Studio is not installed; open the android/ folder in it once it is"; fi
+
+# Run the Android head's Kotlin unit tests
+android-checks:
+    ./tools/android/studio.py
+    ./tools/android/gradle.sh :app:test :map-spike:test
+
 # Build documentation
 docs:
     npm run docs:build
