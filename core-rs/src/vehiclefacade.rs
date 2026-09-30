@@ -827,6 +827,9 @@ impl<B: Backend> Backend for Facade<B> {
         if path == "core.qtReads" {
             return tally().to_string();
         }
+        if let Some(answer) = crate::noticeboard::get(path) {
+            return answer.to_string();
+        }
         let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().fleet_count() }));
         let count = count.or_else(|| (path == "vehicles.selectedVehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().selected_count() })));
         if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
@@ -931,6 +934,9 @@ impl<B: Backend> Backend for Facade<B> {
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
             }
+        }
+        if asked_path == "host" {
+            return only_fields(crate::noticeboard::lock().object(), &fields_of(fields)).to_string();
         }
         if let Some((component, None)) = vehicle_component(asked_path) {
             return only_fields(component, &fields_of(fields)).to_string();
@@ -1087,6 +1093,9 @@ impl<B: Backend> Backend for Facade<B> {
         self.0.set(path, value)
     }
     fn invoke(&self, path: &str, args: &str) -> String {
+        if let Some(answer) = crate::noticeboard::invoke(path, args) {
+            return answer.to_string();
+        }
         if let Some(answer) = self.onboard_log_invoke(path, args) {
             return answer;
         }

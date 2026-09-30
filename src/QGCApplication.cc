@@ -164,6 +164,8 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
     settings.setValue(_settingsVersionKey, QGC_SETTINGS_VERSION);
     settings.sync();
     qgc_core_settings_open(settings.fileName().toUtf8().constData());
+    qgc_core_set_application_name(QCoreApplication::applicationName().toUtf8().constData());
+    qgc_core_host_posts_vehicle_notices();
     qgc_core_measurement_system(static_cast<uint8_t>(QLocale::system().measurementSystem()));
 
     if (fClearCache) {
@@ -477,7 +479,7 @@ void QGCApplication::showCriticalVehicleMessage(const QString& message)
         return;
     }
 
-    QGCHostNotices::instance()->post(QGCHostNotices::VehicleError, applicationName(), message);
+    QGCHostNotices::post(QGCHostNotices::VehicleError, applicationName(), message);
 
     QObject *const rootQmlObject = _rootQmlObject();
     if (rootQmlObject && _showErrorsInToolbar) {
@@ -495,7 +497,7 @@ void QGCApplication::showCriticalVehicleMessage(const QString& message)
 void QGCApplication::showAppMessage(const QString& message, const QString& title)
 {
     const QString dialogTitle = title.isEmpty() ? applicationName() : title;
-    QGCHostNotices::instance()->post(QGCHostNotices::Message, dialogTitle, message);
+    QGCHostNotices::post(QGCHostNotices::Message, dialogTitle, message);
 
     if (runningUnitTests()) {
         qCDebug(QGCAppMessageLog) << "showAppMessage:" << dialogTitle << "-" << message;
@@ -588,7 +590,7 @@ QQuickWindow* QGCApplication::mainRootWindow()
 
 void QGCApplication::showVehicleConfig()
 {
-    QGCHostNotices::instance()->post(QGCHostNotices::Navigation, QStringLiteral("setup"), QString());
+    QGCHostNotices::post(QGCHostNotices::Navigation, QStringLiteral("setup"), QString());
     if (_rootQmlObject()) {
       QMetaObject::invokeMethod(_rootQmlObject(), "showVehicleConfig");
     }

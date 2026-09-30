@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, integer, object};
 use crate::router::Backend;
 
-const KINDS: &[&str] = &["message", "vehicleError", "navigation"];
+use crate::noticeboard::KINDS;
 
 fn listed_ids(backend: &dyn Backend) -> Vec<i64> {
     object(&backend.get_fields("host", "notices")).get("notices").and_then(Value::as_array).map(|n| n.iter().filter_map(|notice| notice.get("id")?.as_i64()).collect()).unwrap_or_default()

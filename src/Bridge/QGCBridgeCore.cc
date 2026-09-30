@@ -3,7 +3,6 @@
 #include <QElapsedTimer>
 #include <QScopeGuard>
 #include "QGCCorePlugin.h"
-#include "QGCHostNotices.h"
 
 #include <QtCore/QVariantMap>
 #include <QtCore/QtNumeric>
@@ -88,9 +87,6 @@ QObject *rootObject(const QString &name)
             plan->start();
         }
         return plan;
-    }
-    if (name == QLatin1String("host")) {
-        return QGCHostNotices::instance();
     }
     if (name == QLatin1String("planFly")) {
         // missionItemCount and currentMissionIndex answer only in the fly view, and the plan root's

@@ -15,7 +15,7 @@ fn routine_ids_or_null() -> Vec<Value> {
 
 pub const ORDERS: [&str; 1] = ["oldestFirst"];
 
-pub const NOTICE_KINDS: [&str; 3] = ["message", "vehicleError", "navigation"];
+pub const NOTICE_KINDS: [&str; 3] = crate::noticeboard::KINDS;
 
 pub fn enumerations() -> Value {
     json!({

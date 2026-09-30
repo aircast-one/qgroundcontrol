@@ -35,6 +35,7 @@ pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MAV_STATE_ACTIVE: u8 = 4;
+const SEVERITY_ERROR: u8 = 3;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const LINK_SILENT_MS: u64 = 3500;
 const RC_OVERRIDE_CHANNEL_COUNT: u8 = 18;
@@ -162,6 +163,7 @@ pub struct Vehicle {
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
+    pending_notices: Vec<(&'static str, String)>,
     pub rc_values: Vec<u16>,
     pub events_heard: bool,
     pub message_log: crate::messagelog::MessageLog,
@@ -284,6 +286,7 @@ impl Vehicle {
             cameras: crate::cameraproto::Cameras::new(),
             onboard_logs: crate::onboardlogs::OnboardLogs::default(),
             shell: crate::shell::Shell::default(),
+            pending_notices: Vec::new(),
             rc_values: Vec::new(),
             events_heard: false,
             message_log: crate::messagelog::MessageLog::default(),
@@ -1237,6 +1240,7 @@ impl Vehicle {
                 Out::Send { command, command_int: false, params, .. } => self.encode(&Outbound::CommandLong { target, command, params }).into_iter().collect(),
                 Out::Send { command, command_int: true, frame, params, x, y, .. } => self.encode(&Outbound::CommandInt { target, command, frame, params, x, y }).into_iter().collect(),
                 Out::ShowError(text) => {
+                    self.pending_notices.push((crate::noticeboard::MESSAGE, text.clone()));
                     self.note(text);
                     Vec::new()
                 }
@@ -1442,6 +1446,9 @@ impl Vehicle {
     fn log_status(&mut self, status: &StatusText) {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
         if let Some(text) = crate::messagelog::admitted(px4, self.events_heard, status.severity, &status.text) {
+            if status.severity <= SEVERITY_ERROR {
+                self.pending_notices.push((crate::noticeboard::VEHICLE_ERROR, text.clone()));
+            }
             self.message_log.record(status.component, status.severity, text, crate::messagelog::clock_now());
         }
     }
@@ -2030,6 +2037,20 @@ impl Hub {
         });
         let gone: Vec<u8> = self.vehicles.values().filter(|v| !open.contains(&v.link)).map(|v| v.id).collect();
         gone.iter().for_each(|id| self.remove(*id));
+    }
+
+    pub fn take_notices(&mut self) -> Vec<(&'static str, String)> {
+        let prefixed = self.fleet_count() > 1;
+        self.vehicles
+            .values_mut()
+            .flat_map(|v| {
+                let id = v.id;
+                std::mem::take(&mut v.pending_notices).into_iter().map(move |(kind, text)| match (kind, prefixed) {
+                    (crate::noticeboard::VEHICLE_ERROR, true) => (kind, format!("Vehicle {id}: {text}")),
+                    _ => (kind, text),
+                })
+            })
+            .collect()
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {

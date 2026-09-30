@@ -95,7 +95,32 @@ pub unsafe extern "C" fn qgc_core_set(path: *const c_char, value_json: *const c_
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_invoke(path: *const c_char, args_json: *const c_char) -> *mut c_char {
-    give(CORE.invoke(&text(path), &text(args_json)))
+    let answer = CORE.invoke(&text(path), &text(args_json));
+    announce_notices();
+    give(answer)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_post_notice(kind: *const c_char, title: *const c_char, body: *const c_char) -> bool {
+    let posted = crate::noticeboard::post(&text(kind), &text(title), &text(body));
+    announce_notices();
+    posted
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_set_application_name(name: *const c_char) {
+    crate::noticeboard::set_application_name(&text(name));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_host_posts_vehicle_notices() {
+    crate::noticeboard::host_posts_vehicle_notices();
+}
+
+fn announce_notices() {
+    if crate::noticeboard::take_changed() {
+        CORE.on_event(crate::noticeboard::NOTICES_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -204,6 +229,10 @@ fn start_pump() {
                     hub.tick_with(crate::hub::now_ms(), crate::hub::now_us() / 1_000_000)
                 };
                 deliver(outbound);
+                crate::hub::lock().take_notices().iter().for_each(|(kind, body)| {
+                    crate::noticeboard::post_from_vehicle(kind, body);
+                });
+                announce_notices();
                 if crate::vehiclefacade::switched_on() {
                     crate::forwarding::maintain();
                     crate::gcsheartbeat::tick(crate::hub::now_ms());

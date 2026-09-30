@@ -7,7 +7,7 @@ use crate::router::Backend;
 // id it had acknowledged, the destination the last navigation notice names, which notices become a
 // banner (every kind but navigation), and one banner per distinct line. The rules are served here;
 // the thirty-second repeat window stays with the head, because it is about what the head last drew.
-pub const DEPS: &[&str] = &["host.notices", "host.dropped"];
+pub const DEPS: &[&str] = &[crate::noticeboard::NOTICES_CHANGED];
 const NAVIGATION_NOTICE: &str = "navigation";
 
 fn banner(title: &str, text: &str) -> String {
