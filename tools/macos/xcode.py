@@ -141,6 +141,7 @@ def write_xcconfig(values: dict[str, str], build: Path) -> None:
         "QGC_CORE_BUILD_DIR": str(build),
         "QGC_CORE_LIB_DIR": str(build / values["CMAKE_BUILD_TYPE"]),
         "QGC_BRIDGE_DIR": str(ROOT / "src/Bridge"),
+        "QGC_CARGO": shutil.which("cargo") or "cargo",
         "PRODUCT_BUNDLE_IDENTIFIER": values["QGC_MACOS_BUNDLE_ID"],
         "MACOSX_DEPLOYMENT_TARGET": values["CMAKE_OSX_DEPLOYMENT_TARGET"],
         "MARKETING_VERSION": ".".join(

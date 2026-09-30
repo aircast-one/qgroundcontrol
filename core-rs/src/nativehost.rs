@@ -297,6 +297,70 @@ impl Host for CoreOnly {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NativeDebugHooks {
+    windows: Option<unsafe extern "C" fn() -> *mut c_char>,
+    click: Option<unsafe extern "C" fn(*const c_char, f64, f64) -> *mut c_char>,
+    type_text: Option<unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_char>,
+    probe: Option<unsafe extern "C" fn(*const c_char, *const c_char, *const c_char) -> *mut c_char>,
+    menu: Option<unsafe extern "C" fn() -> *mut c_char>,
+    menu_invoke: Option<unsafe extern "C" fn(*const c_char) -> *mut c_char>,
+    bridge_stats: Option<unsafe extern "C" fn() -> *mut c_char>,
+}
+
+static NATIVE_HOOKS: Mutex<Option<NativeDebugHooks>> = Mutex::new(None);
+
+unsafe extern "C" {
+    fn free(pointer: *mut c_void);
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_native_debug_install(hooks: *const NativeDebugHooks) {
+    *NATIVE_HOOKS.lock().unwrap_or_else(PoisonError::into_inner) = if hooks.is_null() { None } else { Some(unsafe { *hooks }) };
+}
+
+fn hook_answer(raw: *mut c_char) -> String {
+    let answer = if raw.is_null() { "{}".to_string() } else { read(raw) };
+    if !raw.is_null() {
+        unsafe { free(raw.cast()) };
+    }
+    answer
+}
+
+fn native_route(path: &str, query: &str) -> (u16, String) {
+    let refuse = |message: &str| (400, json!({ "error": message }).to_string());
+    let Some(hooks) = *NATIVE_HOOKS.lock().unwrap_or_else(PoisonError::into_inner) else {
+        return refuse("this build has no native UI installed");
+    };
+    let pairs = crate::debugapi::query_pairs(query);
+    let value = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+    let called = match path {
+        "/native/windows" => hooks.windows.map(|f| unsafe { f() }),
+        "/native/menu" => hooks.menu.map(|f| unsafe { f() }),
+        "/native/bridge" => hooks.bridge_stats.map(|f| unsafe { f() }),
+        "/native/menu/invoke" => match value("path").filter(|p| !p.is_empty()) {
+            Some(item) => hooks.menu_invoke.map(|f| unsafe { f(text(&item).as_ptr()) }),
+            None => return refuse("path is required, e.g. path=Window/Native Telemetry"),
+        },
+        "/native/probe" => {
+            let args: serde_json::Map<String, Value> = pairs.iter().filter(|(k, _)| k != "id" && k != "action").map(|(k, v)| (k.clone(), json!(v))).collect();
+            let (id, action, args) = (text(&value("id").unwrap_or_default()), text(&value("action").unwrap_or_default()), text(&Value::Object(args).to_string()));
+            hooks.probe.map(|f| unsafe { f(id.as_ptr(), action.as_ptr(), args.as_ptr()) })
+        }
+        "/native/type" => match value("window").filter(|w| !w.is_empty()) {
+            Some(window) => hooks.type_text.map(|f| unsafe { f(text(&window).as_ptr(), text(&value("text").unwrap_or_default()).as_ptr()) }),
+            None => return refuse("window is required"),
+        },
+        "/native/click" => match (value("window").filter(|w| !w.is_empty()), value("x").and_then(|x| x.parse::<f64>().ok()), value("y").and_then(|y| y.parse::<f64>().ok())) {
+            (Some(window), Some(x), Some(y)) => hooks.click.map(|f| unsafe { f(text(&window).as_ptr(), x, y) }),
+            _ => return refuse("window, x and y are required"),
+        },
+        _ => return refuse(&format!("unknown native route: {path}")),
+    };
+    (200, called.map_or_else(|| "{}".to_string(), hook_answer))
+}
+
 fn serve(stream: std::net::TcpStream, api: &DebugApi) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = String::new();
@@ -308,10 +372,15 @@ fn serve(stream: std::net::TcpStream, api: &DebugApi) -> std::io::Result<()> {
     let mut parts = request.split_whitespace();
     let (method, target) = (parts.next().unwrap_or(""), parts.next().unwrap_or("/"));
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    let response = api.dispatch(&CoreOnly, method, path, query, "");
-    let body = response.body_text();
+    let (status, body) = match path.starts_with("/native/") {
+        true => native_route(path, query),
+        false => {
+            let response = api.dispatch(&CoreOnly, method, path, query, "");
+            (response.status, response.body_text())
+        }
+    };
     let mut stream = stream;
-    write!(stream, "HTTP/1.1 {} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", response.status, body.len())
+    write!(stream, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
 }
 
 fn start_debug_server(port: u16) {

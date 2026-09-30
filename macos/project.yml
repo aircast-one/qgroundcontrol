@@ -46,6 +46,43 @@ targets:
         showEnvVars: false
         script: '"$QGC_CMAKE" --build "$QGC_CORE_BUILD_DIR" --target "$QGC_APP_NAME"'
 
+  AircastCore:
+    type: application
+    platform: macOS
+
+    configFiles:
+      Debug: Local.xcconfig
+
+    sources:
+      - path: App/main.swift
+      - path: Sources
+      - path: ../src/Bridge/QGCVideoC.cc
+      - path: ../src/Bridge/QGCSpeechC.cc
+      - path: ../deploy/macos/qgroundcontrol.icns
+        buildPhase: resources
+
+    settings:
+      base:
+        PRODUCT_NAME: AircastCore
+        SWIFT_VERSION: "5.0"
+        ALWAYS_SEARCH_USER_PATHS: NO
+        CLANG_ENABLE_MODULES: YES
+        CLANG_CXX_LANGUAGE_STANDARD: c++20
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        OTHER_SWIFT_FLAGS: -Xcc -fmodule-map-file=$(QGC_BRIDGE_DIR)/module.modulemap -Xcc -I$(QGC_BRIDGE_DIR)
+        HEADER_SEARCH_PATHS: $(QGC_BRIDGE_DIR)
+        OTHER_LDFLAGS: $(inherited) $(QGC_ROOT)/core-rs/target/release/libqgc_core.a -framework Security -framework SystemConfiguration -framework IOKit -framework CoreFoundation
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+
+    preBuildScripts:
+      - name: Rust core
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        script: '"$QGC_CARGO" build --release --features native-host --lib --manifest-path "$QGC_ROOT/core-rs/Cargo.toml"'
+
   AircastQGCChecks:
     type: tool
     platform: macOS
@@ -77,6 +114,21 @@ schemes:
         QGC_DEBUG_API_PORT: "8779"
       commandLineArguments:
         "--allow-multiple": true
+    archive:
+      config: Debug
+    profile:
+      config: Debug
+    analyze:
+      config: Debug
+
+  AircastCore:
+    build:
+      targets:
+        AircastCore: all
+    run:
+      config: Debug
+      environmentVariables:
+        QGC_DEBUG_API_PORT: "8780"
     archive:
       config: Debug
     profile:
