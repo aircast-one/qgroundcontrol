@@ -772,17 +772,70 @@ pub fn view(backend: &dyn Backend) -> Value {
         .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
 }
 
+pub(crate) fn visual_spans(document: &Document) -> Vec<(i64, i64)> {
+    std::iter::once((0usize, document.settings_sections.len()))
+        .chain(document.items.iter().scan(document.settings_sections.len() + 1, |next, item| {
+            let start = *next;
+            let span = match item {
+                plandoc::Item::Simple(s) => 1 + s.sections.len(),
+                plandoc::Item::Complex { item_count, .. } => *item_count,
+            };
+            *next += span;
+            Some((start, start + span - 1))
+        }))
+        .map(|(first, last)| (first as i64, last as i64))
+        .collect()
+}
+
 fn visual_index_of_sequence(document: &Document, sequence: i64) -> Option<i64> {
-    let starts = std::iter::once((0usize, document.settings_sections.len())).chain(document.items.iter().scan(document.settings_sections.len() + 1, |next, item| {
-        let start = *next;
-        let span = match item {
-            plandoc::Item::Simple(s) => 1 + s.sections.len(),
-            plandoc::Item::Complex { item_count, .. } => *item_count,
-        };
-        *next += span;
-        Some((start, start + span - 1))
-    }));
-    starts.enumerate().find(|(_, (first, last))| (*first as i64..=*last as i64).contains(&sequence)).map(|(i, _)| i as i64)
+    visual_spans(document).iter().position(|(first, last)| (*first..=*last).contains(&sequence)).map(|i| i as i64)
+}
+
+fn planning_setting(name: &str, unset: bool) -> bool {
+    crate::settingsstore::raw_setting(&format!("settings.planViewSettings.{name}")).and_then(|v| v.as_bool()).unwrap_or(unset)
+}
+
+pub fn controller_fields(path: &str) -> Option<Value> {
+    if !enabled() {
+        return None;
+    }
+    let (document, selected) = {
+        let state = held();
+        (state.document.clone().unwrap_or_else(empty_document), state.selected)
+    };
+    let class = plandoc::vehicle_class(document.vehicle_type);
+    let firmware = plandoc::firmware(document.firmware_type);
+    match path {
+        "plan.controllerVehicle" => Some(json!({
+            "kind": "object",
+            "multiRotor": class == crate::cmdinfo::VehicleClass::MultiRotor,
+            "fixedWing": class == crate::cmdinfo::VehicleClass::FixedWing,
+            "vtol": class == crate::cmdinfo::VehicleClass::Vtol,
+            "rover": class == crate::cmdinfo::VehicleClass::Rover,
+            "sub": class == crate::cmdinfo::VehicleClass::Sub,
+            "apmFirmware": firmware == crate::cmdinfo::Firmware::ArduPilot,
+            "px4Firmware": firmware == crate::cmdinfo::Firmware::Px4,
+        })),
+        "plan.missionController" => {
+            let sequence = visual_spans(&document).get(usize::try_from(selected).unwrap_or(0)).map_or(0, |(first, _)| *first);
+            let rules = crate::missionkinds::Rules { takeoff_not_required: planning_setting("takeoffItemNotRequired", false), multiple_landings: planning_setting("allowMultipleLandingPatterns", true) };
+            let state = crate::missionkinds::insert_state(&document, &visual_spans(&document), sequence, &rules);
+            Some(json!({
+                "kind": "object",
+                "containsItems": !document.items.is_empty(),
+                "homePositionSet": state.home_set,
+                "currentPlanViewSeqNum": sequence,
+                "currentPlanViewVIIndex": selected,
+                "onlyInsertTakeoffValid": state.only_takeoff,
+                "isInsertTakeoffValid": state.takeoff,
+                "isInsertLandValid": state.land,
+                "isInsertROIValid": state.roi,
+                "flyThroughCommandsAllowed": state.fly_through,
+                "globalAltitudeFrame": document.global_altitude_mode,
+            }))
+        }
+        _ => None,
+    }
 }
 
 fn plan_speeds(backend: &dyn Backend, file: &str) {

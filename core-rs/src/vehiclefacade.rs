@@ -774,6 +774,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
             return answer.to_string();
         }
+        if let Some(value) = path.rsplit_once('.').and_then(|(object, field)| crate::coreplan::controller_fields(object)?.get(field).cloned()) {
+            return json!({ "kind": "value", "value": value }).to_string();
+        }
         if let Some(field) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
             let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
             if let Some(value) = current_camera_fields(recording).and_then(|mut fields| fields.remove(field)) {
@@ -857,6 +860,20 @@ impl<B: Backend> Backend for Facade<B> {
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
             }
+        }
+        if let Some(Value::Object(mut answered)) = crate::coreplan::controller_fields(asked_path) {
+            let wanted = fields_of(fields);
+            let missing: Vec<&str> = wanted.iter().filter(|f| !answered.contains_key(**f)).copied().collect();
+            answered.retain(|k, _| wanted.contains(&k.as_str()) || k == "kind");
+            if missing.is_empty() {
+                return Value::Object(answered).to_string();
+            }
+            fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
+            let host: Value = serde_json::from_str(&self.0.get_fields(asked_path, &missing.join(","))).unwrap_or(Value::Null);
+            host.as_object().filter(|h| h.get("kind") == Some(&json!("object"))).into_iter().flatten().for_each(|(k, v)| {
+                answered.entry(k.clone()).or_insert_with(|| v.clone());
+            });
+            return Value::Object(answered).to_string();
         }
         if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
             return json!({ "kind": "object", "lines": lines }).to_string();

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.supports.terrainFrame", "plan.missionController.containsItems", "corePlugin.options.showMissionAbsoluteAltitude"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.supports.terrainFrame", "plan.missionController.containsItems", crate::coreplan::CHANGED, "corePlugin.options.showMissionAbsoluteAltitude"];
 
 pub const MIXED: i64 = 0;
 pub const RELATIVE: i64 = 1;

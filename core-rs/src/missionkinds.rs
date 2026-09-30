@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{object, refused};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed"];
+pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed", crate::coreplan::CHANGED, "settings.planViewSettings.takeoffItemNotRequired", "settings.planViewSettings.allowMultipleLandingPatterns"];
 const DEFAULT_AREA_METRES: f64 = 150.0;
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -68,6 +68,58 @@ impl Insertable {
             (Some(name), Some(offered)) => offered.iter().any(|held| held == name),
             _ => true,
         }
+    }
+}
+
+pub struct Rules {
+    pub takeoff_not_required: bool,
+    pub multiple_landings: bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct InsertState {
+    pub home_set: bool,
+    pub only_takeoff: bool,
+    pub takeoff: bool,
+    pub land: bool,
+    pub roi: bool,
+    pub fly_through: bool,
+}
+
+const LANDING_COMMANDS: [i64; 4] = [21, 85, 189, 20];
+
+pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], sequence: i64, rules: &Rules) -> InsertState {
+    use crate::cmdinfo::{Firmware, VehicleClass};
+    use crate::plandoc::Item;
+    let class = crate::plandoc::vehicle_class(document.vehicle_type);
+    let firmware = crate::plandoc::firmware(document.firmware_type);
+    let commands = crate::cmdinfo::tree(firmware, class);
+    let flown = |item: &Item| match item {
+        Item::Simple(simple) => commands.get(&simple.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate),
+        Item::Complex { .. } => true,
+    };
+    let takes_off = |item: &Item| matches!(item, Item::Simple(simple) if commands.get(&simple.command).is_some_and(|c| c.is_takeoff));
+    let lands = |item: &Item| match item {
+        Item::Simple(simple) => LANDING_COMMANDS.contains(&simple.command),
+        Item::Complex { kind, .. } => kind == crate::landingpattern::FIXED_WING_PATTERN,
+    };
+    let numbered: Vec<(i64, &Item)> = spans.iter().skip(1).map(|(first, _)| *first).zip(&document.items).collect();
+    let takeoff_at = numbered.iter().filter(|(_, item)| takes_off(item)).map(|(at, _)| *at).last();
+    let land_at = numbered.iter().find(|(_, item)| lands(item)).map(|(at, _)| *at);
+    let last_flown = numbered.iter().filter(|(_, item)| flown(item)).map(|(at, _)| *at).last();
+    let takeoff_capable = firmware != Firmware::Generic && matches!(class, VehicleClass::FixedWing | VehicleClass::MultiRotor | VehicleClass::Vtol);
+    let only_takeoff = takeoff_capable && !rules.takeoff_not_required && document.items.is_empty();
+    let multiple_landings = matches!(class, VehicleClass::FixedWing | VehicleClass::Vtol) && rules.multiple_landings && firmware != Firmware::Px4;
+    let before_takeoff = takeoff_at.is_some_and(|at| sequence < at);
+    let single_land = land_at.filter(|_| !multiple_landings);
+    let home_set = document.home.is_some();
+    InsertState {
+        home_set,
+        only_takeoff,
+        takeoff: home_set && sequence == 0 && takeoff_at.is_none(),
+        land: home_set && !only_takeoff && !before_takeoff && !last_flown.is_some_and(|at| sequence < at) && single_land.is_none(),
+        roi: home_set && !only_takeoff,
+        fly_through: home_set && !only_takeoff && !before_takeoff && !single_land.is_some_and(|at| sequence >= at),
     }
 }
 
@@ -188,6 +240,33 @@ pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insert_state_follows_mission_controller_for_the_selected_sequence() {
+        let item = |command: i64, seq: i64| json!({ "type": "SimpleItem", "command": command, "frame": 3, "doJumpId": seq, "params": [0, 0, 0, 0, 47.0, 8.0, 30] });
+        let plan = |firmware: i64, vehicle: i64, home: bool, items: Vec<Value>| {
+            let loaded = crate::plandoc::load(&json!({ "fileType": "Plan", "mission": { "firmwareType": firmware, "vehicleType": vehicle, "plannedHomePosition": [47.0, 8.0, 0], "items": items } }).to_string()).unwrap();
+            crate::plandoc::Document { home: loaded.home.filter(|_| home), ..loaded }
+        };
+        let rules = Rules { takeoff_not_required: false, multiple_landings: true };
+        let at = |document: &crate::plandoc::Document, sequence: i64| insert_state(document, &crate::coreplan::visual_spans(document), sequence, &rules);
+        let state = |home_set, only_takeoff, takeoff, land, roi, fly_through| InsertState { home_set, only_takeoff, takeoff, land, roi, fly_through };
+
+        let empty = plan(12, 2, true, Vec::new());
+        assert_eq!(at(&empty, 0), state(true, true, true, false, false, false), "an empty ground-start mission offers only a takeoff");
+        assert_eq!(at(&plan(12, 10, true, Vec::new()), 0), state(true, false, true, true, true, true), "a rover never needs a takeoff first");
+        assert_eq!(at(&plan(12, 2, false, Vec::new()), 0), state(false, true, false, false, false, false), "nothing is insertable before home is set");
+
+        let flown = plan(12, 2, true, vec![item(22, 1), item(16, 2), item(21, 3)]);
+        assert_eq!(at(&flown, 0), state(true, false, false, false, true, false), "before the takeoff neither a landing nor a fly-through fits");
+        assert_eq!(at(&flown, 2), state(true, false, false, false, true, true), "a copter holds one landing, so a second is refused");
+        assert_eq!(at(&flown, 3), state(true, false, false, false, true, false), "after the landing nothing flies through");
+
+        let plane = plan(3, 1, true, vec![item(22, 1), item(16, 2), item(21, 3)]);
+        assert_eq!(at(&plane, 3), state(true, false, false, true, true, true), "an ArduPilot plane may carry several landing sequences");
+        assert_eq!(at(&plan(12, 1, true, vec![item(22, 1), item(16, 2), item(21, 3)]), 3), state(true, false, false, false, true, false), "PX4 never takes a second landing");
+        assert_eq!(at(&plane, 1), state(true, false, false, false, true, true), "a landing goes after the last place flown through");
+    }
 
     #[test]
     fn every_kind_that_names_a_geometry_has_a_seed_that_answers_and_every_kind_without_one_refuses() {
