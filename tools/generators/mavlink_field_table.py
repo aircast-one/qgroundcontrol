@@ -4,8 +4,8 @@
 Usage: mavlink_field_table.py <xml_dir> <dialect> <output_json>
 
 Each message maps to its name, its fields in XML order (the order mavlink_message_info_t lists
-them and the inspector shows them) with type, array length and wire offset, and its instance
-field if one is marked.
+them and the inspector shows them) with type, array length and wire offset, its instance field
+if one is marked, its CRC extra and its minimum wire length.
 """
 
 import json
@@ -32,7 +32,7 @@ def table(xmls: list) -> dict:
                 continue
             instance = next((f.name for f in message.fields if getattr(f, "instance", False)), None)
             fields = [[f.name, f.type, f.array_length, f.wire_offset] for f in message.fields]
-            messages[message.id] = [message.name, fields, instance]
+            messages[message.id] = [message.name, fields, instance, message.crc_extra, message.wire_min_length]
     return {str(key): messages[key] for key in sorted(messages)}
 
 

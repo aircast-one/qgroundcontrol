@@ -39,12 +39,22 @@ pub struct Entry {
     pub reason: String,
     pub stats: Stats,
     buffer: Vec<u8>,
+    extras: Vec<Extra>,
 }
 
 #[derive(Debug, Default)]
 pub struct Registry {
     next: LinkId,
     links: BTreeMap<LinkId, Entry>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Extra {
+    pub link: LinkId,
+    pub v2: bool,
+    pub header: MavHeader,
+    pub msgid: u32,
+    pub raw: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,7 +67,7 @@ pub struct Frame {
     pub raw: Vec<u8>,
 }
 
-fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId, replay: bool) -> Vec<Frame> {
+fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, extras: &mut Vec<Extra>, link: LinkId, replay: bool) -> Vec<Frame> {
     let mut frames = Vec::new();
     let mut at = 0usize;
     while at < buffer.len() {
@@ -79,7 +89,13 @@ fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId, replay: bool) ->
                 at += length;
             }
             None => {
-                stats.dropped += 1;
+                match crate::mavinspect::undecoded(raw, version == MavlinkVersion::V2) {
+                    Some((header, msgid)) => {
+                        stats.frames_in += 1;
+                        extras.push(Extra { link, v2: version == MavlinkVersion::V2, header, msgid, raw: raw.to_vec() });
+                    }
+                    None => stats.dropped += 1,
+                }
                 at += length;
             }
         }
@@ -97,7 +113,7 @@ impl Registry {
     pub fn open(&mut self, owner: Owner, kind: &str, name: &str) -> LinkId {
         self.next += 1;
         let id = self.next;
-        self.links.insert(id, Entry { id, kind: kind.to_string(), name: name.to_string(), owner, state: State::Open, reason: String::new(), stats: Stats::default(), buffer: Vec::new() });
+        self.links.insert(id, Entry { id, kind: kind.to_string(), name: name.to_string(), owner, state: State::Open, reason: String::new(), stats: Stats::default(), buffer: Vec::new(), extras: Vec::new() });
         id
     }
 
@@ -106,7 +122,11 @@ impl Registry {
         entry.stats.bytes_in += bytes.len() as u64;
         entry.buffer.extend_from_slice(bytes);
         let replay = entry.kind == "logReplay";
-        drain(&mut entry.buffer, &mut entry.stats, id, replay)
+        drain(&mut entry.buffer, &mut entry.stats, &mut entry.extras, id, replay)
+    }
+
+    pub fn take_extras(&mut self, id: LinkId) -> Vec<Extra> {
+        self.links.get_mut(&id).map(|entry| std::mem::take(&mut entry.extras)).unwrap_or_default()
     }
 
     pub fn wrote(&mut self, id: LinkId, len: usize) -> bool {
@@ -198,6 +218,21 @@ mod tests {
             let entry = registry.entry(id).unwrap();
             assert_eq!((seen as u64, entry.stats.frames_in, entry.stats.dropped, entry.stats.bytes_in), (expected, expected, 0, stream.len() as u64), "chunk {chunk}");
         }
+    }
+
+    #[test]
+    fn a_valid_frame_the_dialect_cannot_decode_is_handed_on_rather_than_dropped() {
+        let mut raw = vec![0xFD, 2, 0, 0, 9, 1, 1, 0x00, 0x02, 0x00, 0x02, 255];
+        let covered: Vec<u8> = raw[1..].iter().copied().chain([21u8]).collect();
+        raw.extend(crate::mavinspect::x25(&covered).to_le_bytes());
+        let mut registry = Registry::default();
+        let id = registry.open(Owner::Core, "udp", "UDP Link");
+        assert!(registry.bytes_in(id, &raw).is_empty(), "CONTROL_STATUS is not in the ardupilotmega dialect the core decodes");
+        let extras = registry.take_extras(id);
+        assert_eq!(extras.iter().map(|e| (e.msgid, e.header.system_id)).collect::<Vec<_>>(), vec![(512, 1)]);
+        let entry = registry.entry(id).unwrap();
+        assert_eq!((entry.stats.frames_in, entry.stats.dropped), (1, 0), "a frame with a good checksum is traffic, not a drop");
+        assert!(registry.take_extras(id).is_empty());
     }
 
     #[test]

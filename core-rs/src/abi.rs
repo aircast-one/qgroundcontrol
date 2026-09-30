@@ -318,6 +318,16 @@ fn install_hub_sink() {
             }
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
+        let extra: crate::linkhost::ExtraSink = std::sync::Arc::new(|extra: &crate::transport::Extra| {
+            if crate::vehiclefacade::switched_on() {
+                let (vehicles, active) = {
+                    let hub = crate::hub::lock();
+                    (hub.vehicle_ids(), hub.active_id())
+                };
+                crate::mavinspect::lock().observe_extra(extra, &vehicles, active);
+            }
+        });
+        crate::linkhost::TRANSPORTS.lock().unwrap().set_extra_sink(Some(extra));
     });
 }
 

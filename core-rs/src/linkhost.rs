@@ -12,6 +12,7 @@ pub type FrameSink = Arc<dyn Fn(&Frame) + Send + Sync>;
 pub type StateHook = Arc<dyn Fn() + Send + Sync>;
 pub type BytesSink = Arc<dyn Fn(LinkId, &[u8]) + Send + Sync>;
 pub type StateSink = Arc<dyn Fn(LinkId, bool, &str) + Send + Sync>;
+pub type ExtraSink = Arc<dyn Fn(&crate::transport::Extra) + Send + Sync>;
 const KEEP_CLOSED: usize = 16;
 
 pub enum Owned {
@@ -48,11 +49,16 @@ pub struct Shared {
     state_hook: Arc<Mutex<Option<StateHook>>>,
     bytes_sink: Arc<Mutex<Option<BytesSink>>>,
     state_sink: Arc<Mutex<Option<StateSink>>>,
+    extra_sink: Arc<Mutex<Option<ExtraSink>>>,
 }
 
 impl Shared {
     fn deliver(&self, id: LinkId, bytes: &[u8]) {
-        let frames = self.registry.lock().unwrap().bytes_in(id, bytes);
+        let (frames, extras) = {
+            let mut registry = self.registry.lock().unwrap();
+            let frames = registry.bytes_in(id, bytes);
+            (frames, registry.take_extras(id))
+        };
         let raw = self.bytes_sink.lock().unwrap().clone();
         if let Some(raw) = raw {
             raw(id, bytes);
@@ -60,6 +66,10 @@ impl Shared {
         let sink = self.sink.lock().unwrap().clone();
         if let Some(sink) = sink {
             frames.iter().for_each(|f| sink(f));
+        }
+        let extra = self.extra_sink.lock().unwrap().clone();
+        if let Some(extra) = extra {
+            extras.iter().for_each(|e| extra(e));
         }
     }
 
@@ -101,6 +111,10 @@ impl Transports {
 
     pub fn set_bytes_sink(&mut self, sink: Option<BytesSink>) {
         *self.shared.bytes_sink.lock().unwrap() = sink;
+    }
+
+    pub fn set_extra_sink(&mut self, sink: Option<ExtraSink>) {
+        *self.shared.extra_sink.lock().unwrap() = sink;
     }
 
     pub fn set_state_sink(&mut self, sink: Option<StateSink>) {

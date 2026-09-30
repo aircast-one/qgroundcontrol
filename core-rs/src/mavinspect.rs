@@ -25,6 +25,7 @@ struct Info {
     name: String,
     fields: Vec<Field>,
     instance: Option<String>,
+    crc_extra: u8,
 }
 
 static TABLE: LazyLock<BTreeMap<u32, Info>> = LazyLock::new(|| {
@@ -35,10 +36,32 @@ static TABLE: LazyLock<BTreeMap<u32, Info>> = LazyLock::new(|| {
             let fields = entry.get(1)?.as_array()?.iter().filter_map(|f| {
                 Some(Field { name: f.get(0)?.as_str()?.to_string(), kind: f.get(1)?.as_str()?.to_string(), array: usize::try_from(f.get(2)?.as_u64()?).ok()?, offset: usize::try_from(f.get(3)?.as_u64()?).ok()? })
             });
-            Some((id.parse().ok()?, Info { name: entry.get(0)?.as_str()?.to_string(), fields: fields.collect(), instance: entry.get(2).and_then(Value::as_str).map(str::to_string) }))
+            let crc_extra = u8::try_from(entry.get(3)?.as_u64()?).ok()?;
+            Some((id.parse().ok()?, Info { name: entry.get(0)?.as_str()?.to_string(), fields: fields.collect(), instance: entry.get(2).and_then(Value::as_str).map(str::to_string), crc_extra }))
         })
         .collect()
 });
+
+pub fn x25(bytes: &[u8]) -> u16 {
+    bytes.iter().fold(0xFFFF_u16, |crc, byte| {
+        let t = byte ^ (crc & 0xFF) as u8;
+        let t = t ^ (t << 4);
+        (crc >> 8) ^ (u16::from(t) << 8) ^ (u16::from(t) << 3) ^ (u16::from(t) >> 4)
+    })
+}
+
+pub fn undecoded(raw: &[u8], v2: bool) -> Option<(mavlink::MavHeader, u32)> {
+    let header = if v2 { V2_HEADER } else { V1_HEADER };
+    let length = usize::from(*raw.get(1)?);
+    let msgid = match v2 {
+        true => u32::from(*raw.get(7)?) | (u32::from(*raw.get(8)?) << 8) | (u32::from(*raw.get(9)?) << 16),
+        false => u32::from(*raw.get(5)?),
+    };
+    let (sequence, system_id, component_id) = if v2 { (*raw.get(4)?, *raw.get(5)?, *raw.get(6)?) } else { (*raw.get(2)?, *raw.get(3)?, *raw.get(4)?) };
+    let covered: Vec<u8> = raw.get(1..header + length)?.iter().copied().chain([TABLE.get(&msgid)?.crc_extra]).collect();
+    let sent = u16::from_le_bytes([*raw.get(header + length)?, *raw.get(header + length + 1)?]);
+    (x25(&covered) == sent).then_some((mavlink::MavHeader { system_id, component_id, sequence }, msgid))
+}
 
 pub fn payload(raw: &[u8], v2: bool) -> Vec<u8> {
     let header = if v2 { V2_HEADER } else { V1_HEADER };
@@ -269,7 +292,14 @@ impl Inspector {
         }
     }
 
-    pub fn observe(&mut self, frame: &crate::transport::Frame, vehicles: &[u8], active_vehicle: Option<u8>) {
+    pub fn observe_extra(&mut self, extra: &crate::transport::Extra, vehicles: &[u8], active_vehicle: Option<u8>) {
+        self.sync(vehicles, active_vehicle);
+        if extra.v2 {
+            self.receive(extra.header.system_id, extra.header.component_id, extra.msgid, payload(&extra.raw, true));
+        }
+    }
+
+    fn sync(&mut self, vehicles: &[u8], active_vehicle: Option<u8>) {
         vehicles.iter().filter(|id| !self.vehicles.contains(id)).copied().collect::<Vec<_>>().into_iter().for_each(|id| self.vehicle_added(id));
         self.vehicles.iter().filter(|id| !vehicles.contains(id)).copied().collect::<Vec<_>>().into_iter().for_each(|id| self.vehicle_removed(id));
         self.vehicles = vehicles.to_vec();
@@ -277,6 +307,10 @@ impl Inspector {
             self.followed = active_vehicle;
             self.follow_vehicle(active_vehicle);
         }
+    }
+
+    pub fn observe(&mut self, frame: &crate::transport::Frame, vehicles: &[u8], active_vehicle: Option<u8>) {
+        self.sync(vehicles, active_vehicle);
         let msgid = mavlink::Message::message_id(&frame.message);
         if !frame.v2 && msgid != HEARTBEAT && msgid != RADIO_STATUS {
             return;
@@ -382,6 +416,27 @@ impl Inspector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn signed(msgid: u32, payload: &[u8]) -> Vec<u8> {
+        let mut raw = vec![0xFD, payload.len() as u8, 0, 0, 7, 1, 1, msgid as u8, (msgid >> 8) as u8, (msgid >> 16) as u8];
+        raw.extend_from_slice(payload);
+        let covered: Vec<u8> = raw[1..].iter().copied().chain([TABLE[&msgid].crc_extra]).collect();
+        raw.extend(x25(&covered).to_le_bytes());
+        raw
+    }
+
+    #[test]
+    fn a_frame_outside_the_decoded_dialect_is_kept_when_its_checksum_holds() {
+        let control = signed(512, &[0x02, 255]);
+        let (header, msgid) = undecoded(&control, true).unwrap();
+        assert_eq!((header.system_id, header.component_id, header.sequence, msgid), (1, 1, 7, 512));
+        let mut corrupt = control.clone();
+        corrupt[10] ^= 1;
+        assert_eq!(undecoded(&corrupt, true), None, "a flipped byte fails the checksum and stays dropped");
+        assert_eq!(x25(b"123456789"), 0x6F91, "MCRF4XX check value");
+        let listed = fields(512, &payload(&control, true));
+        assert_eq!((listed[0]["value"].as_str(), listed[1]["value"].as_str()), (Some("2"), Some("255")));
+    }
 
     #[test]
     fn g_format_writes_doubles_the_way_qstring_number_g_does() {
