@@ -163,6 +163,7 @@ pub struct Vehicle {
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
     pub rc_values: Vec<u16>,
+    pub events_heard: bool,
     pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
@@ -280,6 +281,7 @@ impl Vehicle {
             onboard_logs: crate::onboardlogs::OnboardLogs::default(),
             shell: crate::shell::Shell::default(),
             rc_values: Vec::new(),
+            events_heard: false,
             camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
@@ -1771,6 +1773,9 @@ impl Vehicle {
         self.local.apply(message);
         self.local_setpoint.apply_target(message);
         self.estimator.apply(message);
+        if matches!(message, MavMessage::EVENT(_) | MavMessage::CURRENT_EVENT_SEQUENCE(_)) {
+            self.events_heard = true;
+        }
         if let MavMessage::RC_CHANNELS(c) = message {
             let raw = [c.chan1_raw, c.chan2_raw, c.chan3_raw, c.chan4_raw, c.chan5_raw, c.chan6_raw, c.chan7_raw, c.chan8_raw, c.chan9_raw, c.chan10_raw, c.chan11_raw, c.chan12_raw, c.chan13_raw, c.chan14_raw, c.chan15_raw, c.chan16_raw, c.chan17_raw, c.chan18_raw];
             let valid = raw.iter().filter(|v| **v != u16::MAX).count();
@@ -2519,6 +2524,17 @@ mod tests {
         assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
         hub.set_active(Some(7));
         assert_eq!(hub.active().map(|v| v.id), Some(7));
+    }
+
+    #[test]
+    fn a_vehicle_speaks_the_events_protocol_once_it_sends_an_event_sequence() {
+        use mavlink::dialects::ardupilotmega::CURRENT_EVENT_SEQUENCE_DATA;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        assert_eq!(hub.active().map(|v| v.events_heard), Some(false));
+        hub.on_frame(origin(0), &header, &MavMessage::CURRENT_EVENT_SEQUENCE(CURRENT_EVENT_SEQUENCE_DATA::default()), 1, 1);
+        assert_eq!(hub.active().map(|v| v.events_heard), Some(true));
     }
 
     #[test]

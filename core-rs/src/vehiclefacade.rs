@@ -227,6 +227,13 @@ fn fleet_member(path: &str) -> Option<(usize, &str)> {
     Some((index.parse().ok()?, tail))
 }
 
+fn unreported_checks() -> Option<Value> {
+    switched_on().then_some(())?;
+    let hub = crate::hub::lock();
+    let vehicle = hub.active()?;
+    (!vehicle.events_heard).then(|| json!({ "supported": false, "canArm": true, "canTakeoff": true, "canStartMission": true, "hasWarningsOrErrors": false }))
+}
+
 fn shell_lines() -> Option<Vec<String>> {
     switched_on().then_some(())?;
     crate::hub::lock().active().map(|vehicle| vehicle.shell.lines())
@@ -673,6 +680,9 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "kind": "value", "value": value }).to_string();
             }
         }
+        if let Some(value) = path.strip_prefix("vehicle.healthAndArmingCheckReport.").and_then(|name| unreported_checks()?.get(name).cloned()) {
+            return json!({ "kind": "value", "value": value }).to_string();
+        }
         if let Some(lines) = (path == "mavlinkConsole.lines").then(shell_lines).flatten() {
             return json!({ "kind": "value", "value": lines }).to_string();
         }
@@ -727,6 +737,13 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(values) = (asked_path == "radioCal" && fields_of(fields) == ["rcValues"] && switched_on()).then(|| crate::hub::lock().active().map(|v| v.rc_values.clone())).flatten() {
             return json!({ "kind": "object", "rcValues": values }).to_string();
+        }
+        if let Some(report) = (asked_path == "vehicle.healthAndArmingCheckReport").then(unreported_checks).flatten() {
+            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), report.get(f)?.clone()))).collect();
+            if let Some(mut object) = answered.map(Value::Object) {
+                object["kind"] = json!("object");
+                return object.to_string();
+            }
         }
         if asked_path == "positionManager" && switched_on() {
             let position = crate::gcsposition::lock();
