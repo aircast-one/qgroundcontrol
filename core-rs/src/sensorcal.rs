@@ -26,6 +26,11 @@ const HELP_ALREADY: &str = "Orientation already completed, place your vehicle in
 const HELP_APM_ACCEL: &str = "Hold still in the current orientation and press Next when ready";
 const HELP_APM_COMPASS: &str = "Rotate the vehicle randomly around all axes until the progress bar fills all the way to the right.";
 const HELP_COMPLETE: &str = "Calibration complete";
+const COMPASSMOT_STEPS: [&str; 3] = [
+    "Raise the throttle slowly to between 50% ~ 75% (the props will spin!) for 5 ~ 10 seconds.",
+    "Quickly bring the throttle back down to zero",
+    "Press the Next button to complete the calibration",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -35,6 +40,7 @@ pub enum Kind {
     LevelHorizon,
     Pressure,
     Airspeed,
+    CompassMot,
 }
 
 pub const KINDS: &[(Kind, &str, &str)] = &[
@@ -44,6 +50,7 @@ pub const KINDS: &[(Kind, &str, &str)] = &[
     (Kind::Gyro, "gyro", "Gyro"),
     (Kind::Pressure, "pressure", "Pressure"),
     (Kind::Airspeed, "airspeed", "Airspeed"),
+    (Kind::CompassMot, "compassMot", "CompassMot"),
 ];
 
 impl Kind {
@@ -62,7 +69,7 @@ impl Kind {
     fn supported(self, px4: bool) -> bool {
         match self {
             Kind::Airspeed => px4,
-            Kind::Pressure => !px4,
+            Kind::Pressure | Kind::CompassMot => !px4,
             _ => true,
         }
     }
@@ -74,7 +81,8 @@ impl Kind {
             Kind::Pressure => [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
             Kind::Accelerometer => [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             Kind::LevelHorizon => [0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0],
-            Kind::Airspeed => [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            Kind::Airspeed => [0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0],
+            Kind::CompassMot => [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
         }
     }
 
@@ -271,6 +279,11 @@ impl Calibration {
                 self.help = HELP_APM_ACCEL;
                 Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
             }
+            Kind::CompassMot => {
+                COMPASSMOT_STEPS.iter().for_each(|step| self.note(*step));
+                self.next_enabled = true;
+                Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
+            }
             Kind::LevelHorizon => {
                 self.note("Hold the vehicle in its level flight position.");
                 Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
@@ -298,6 +311,7 @@ impl Calibration {
     pub fn next(&mut self) -> Result<Vec<Action>, String> {
         match (self.px4, self.running, self.next_enabled) {
             (false, Some(Kind::Accelerometer), true) => Ok(vec![Action::Ack]),
+            (false, Some(Kind::CompassMot), true) => Ok(std::iter::once(Action::Ack).chain(self.stop(Outcome::Success)).collect()),
             _ => Err("Nothing is waiting for the next step.".to_string()),
         }
     }
@@ -643,7 +657,7 @@ mod tests {
         assert_eq!(cal.running, None);
         assert_eq!(cal.outcome, Some(Outcome::Success));
         assert!(cal.sides.iter().all(|s| s.stage == Stage::Done));
-        assert_eq!(cal.snapshot()["routines"].as_array().unwrap().len(), 5);
+        assert_eq!(cal.snapshot()["routines"].as_array().unwrap().len(), 5, "PX4 has no CompassMot");
         assert!(cal.snapshot()["routines"][0]["enabled"].as_bool().unwrap());
     }
 
@@ -696,6 +710,21 @@ mod tests {
         assert_eq!(cal.log.len(), 3);
         assert!(cal.snapshot()["usingLog"].as_bool().unwrap());
         assert!(cal.start(Kind::Pressure, Inputs::default(), 0).is_err(), "pressure is an ArduPilot routine");
+    }
+
+    #[test]
+    fn compassmot_logs_the_steps_and_next_acknowledges_and_completes() {
+        let mut cal = Calibration::new(false);
+        let inputs = Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false };
+        assert_eq!(cal.start(Kind::CompassMot, inputs, 0).unwrap(), vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0], show_error: false }]);
+        assert_eq!(cal.log.len(), 3);
+        assert!(cal.snapshot()["nextEnabled"].as_bool().unwrap());
+        assert!(cal.cancel().is_err(), "APMSensorsComponentController enables Cancel only for the compass");
+        cal.on_text("Starting calibration", 10);
+        assert_eq!(cal.next().unwrap(), vec![Action::Ack]);
+        assert_eq!((cal.running, cal.outcome, cal.progress), (None, Some(Outcome::Success), 1.0));
+        assert!(Calibration::new(true).start(Kind::CompassMot, Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false }, 0).is_err(), "PX4 has no CompassMot");
+        assert_eq!(Kind::Airspeed.params()[5], 2.0, "PX4 deprecated param6 = 1 for airspeed");
     }
 
     #[test]
@@ -849,6 +878,6 @@ mod tests {
         cal.on_ack(CMD_PREFLIGHT_CALIBRATION, 4, 0);
         assert_eq!(cal.outcome, Some(Outcome::Failed));
         assert!(cal.start(Kind::Airspeed, Inputs::default(), 0).is_err(), "airspeed is a PX4 routine");
-        assert_eq!(cal.snapshot()["routines"].as_array().unwrap().len(), 5);
+        assert_eq!(cal.snapshot()["routines"].as_array().unwrap().len(), 6, "CompassMot is the sixth ArduPilot routine");
     }
 }
