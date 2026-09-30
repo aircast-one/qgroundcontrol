@@ -223,22 +223,6 @@ pub unsafe extern "C" fn qgc_map_current_type() -> *mut c_char {
     given(&format!("{} {}", value("settings.flightMapSettings.mapProvider.rawValue"), value("settings.flightMapSettings.mapType.rawValue")))
 }
 
-pub(crate) fn map_keys() -> crate::mapurls::Keys {
-    let setting = |name: &str| crate::settingsstore::raw_setting(&format!("settings.appSettings.{name}")).and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
-    let language = std::env::var("LANG").ok().and_then(|lang| lang.split('.').next().map(|l| l.replace('_', "-"))).filter(|l| !l.is_empty() && l != "C").unwrap_or_else(|| "en-US".to_string());
-    crate::mapurls::Keys {
-        mapbox_token: setting("mapboxToken"),
-        mapbox_account: setting("mapboxAccount"),
-        mapbox_style: setting("mapboxStyle"),
-        esri_token: setting("esriToken"),
-        custom_url: setting("customURL"),
-        tianditu_token: setting("tiandituToken"),
-        openaip_token: setting("openaipToken"),
-        vworld_token: setting("vworldToken"),
-        language,
-    }
-}
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y: c_int, zoom: c_int, handler: Option<unsafe extern "C" fn(*const u8, c_int, *mut c_void)>, context: *mut c_void) {
     let Some(handler) = handler else { return };
@@ -247,7 +231,7 @@ pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y
     std::thread::spawn(move || {
         let cache = crate::terrainservice::cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok());
         let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
-        let image = crate::maptiles::fetch(&provider, x, y, zoom, &map_keys(), cache.as_ref(), persist, &crate::maptiles::fetch_over_http);
+        let image = crate::maptiles::fetch(&provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache.as_ref(), persist, &crate::maptiles::fetch_over_http);
         match image {
             Some(image) => unsafe { handler(image.as_ptr(), c_int::try_from(image.len()).unwrap_or(0), context as *mut c_void) },
             None => unsafe { handler(std::ptr::null(), 0, context as *mut c_void) },

@@ -93,6 +93,8 @@ fn recovering_a_journal(error: &rusqlite::Error) -> bool {
     matches!(error.sqlite_error_code(), Some(rusqlite::ErrorCode::ReadOnly))
 }
 
+const UNIQUE_TILES: &str = "SELECT A.tileID FROM SetTiles A JOIN SetTiles B ON A.tileID = B.tileID WHERE B.setID = ?1 GROUP BY A.tileID HAVING COUNT(A.tileID) = 1";
+
 pub struct Cache {
     connection: Connection,
 }
@@ -246,6 +248,84 @@ impl Cache {
             self.connection.execute("DELETE FROM Tiles WHERE tileID = ?1", params![id]).map(|_| ())
         })?;
         Ok(doomed.len() as i64)
+    }
+
+    pub fn create_set(&self, set: &TileSet, tiles: &[(i32, i32, i32)]) -> rusqlite::Result<i64> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "INSERT INTO TileSets(name, typeStr, topleftLat, topleftLon, bottomRightLat, bottomRightLon, minZoom, maxZoom, type, numTiles, date) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![set.name, set.type_str, set.top_left.0, set.top_left.1, set.bottom_right.0, set.bottom_right.1, set.min_zoom, set.max_zoom, set.kind, set.tiles, now_secs()],
+        )?;
+        let id = transaction.last_insert_rowid();
+        tiles.iter().try_for_each(|(x, y, z)| {
+            let hash = tile_hash(set.kind, *x, *y, *z);
+            let linked = transaction.execute("INSERT OR IGNORE INTO SetTiles(tileID, setID) SELECT tileID, ?1 FROM Tiles WHERE hash = ?2", params![id, hash])?;
+            match linked {
+                0 => transaction
+                    .execute("INSERT OR IGNORE INTO TilesDownload(setID, hash, type, x, y, z, state) VALUES(?1, ?2, ?3, ?4, ?5, ?6, 0)", params![id, hash, set.kind, x, y, z])
+                    .map(|_| ()),
+                _ => Ok(()),
+            }
+        })?;
+        transaction.commit()?;
+        Ok(id)
+    }
+
+    pub fn delete_set(&self, set: i64) -> rusqlite::Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute("DELETE FROM TilesDownload WHERE setID = ?1", params![set])?;
+        let unique: Vec<i64> = transaction
+            .prepare(&format!("SELECT tileID FROM SetTiles WHERE tileID IN ({UNIQUE_TILES})"))?
+            .query_map(params![set], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        transaction.execute("DELETE FROM SetTiles WHERE setID = ?1", params![set])?;
+        unique.iter().try_for_each(|id| transaction.execute("DELETE FROM Tiles WHERE tileID = ?1", params![id]).map(|_| ()))?;
+        transaction.execute("DELETE FROM TileSets WHERE setID = ?1", params![set])?;
+        transaction.commit()
+    }
+
+    pub fn reset(&self) -> rusqlite::Result<()> {
+        self.connection.execute_batch("BEGIN; DELETE FROM TilesDownload; DELETE FROM SetTiles; DELETE FROM Tiles; DELETE FROM TileSets WHERE defaultSet = 0; COMMIT;")
+    }
+
+    pub fn rename_set(&self, set: i64, name: &str) -> rusqlite::Result<()> {
+        self.connection.execute("UPDATE TileSets SET name = ?1 WHERE setID = ?2", params![name, set]).map(|_| ())
+    }
+
+    pub fn pending(&self, set: i64, count: usize) -> rusqlite::Result<Vec<(String, i32, i32, i32)>> {
+        self.connection
+            .prepare("SELECT hash, x, y, z FROM TilesDownload WHERE setID = ?1 AND state = 0 LIMIT ?2")?
+            .query_map(params![set, count as i64], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
+            .collect()
+    }
+
+    pub fn mark_error(&self, set: i64, hash: &str) -> rusqlite::Result<()> {
+        self.connection.execute("UPDATE TilesDownload SET state = 2 WHERE setID = ?1 AND hash = ?2", params![set, hash]).map(|_| ())
+    }
+
+    pub fn complete(&self, set: i64, tile: &Tile) -> rusqlite::Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO Tiles(hash, format, tile, size, type, date) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+            params![tile.hash, tile.format, tile.image, tile.image.len() as i64, tile.kind, now_secs()],
+        )?;
+        transaction.execute("INSERT OR IGNORE INTO SetTiles(tileID, setID) SELECT tileID, ?1 FROM Tiles WHERE hash = ?2", params![set, tile.hash])?;
+        transaction.execute("DELETE FROM TilesDownload WHERE setID = ?1 AND hash = ?2", params![set, tile.hash])?;
+        transaction.commit()
+    }
+
+    pub fn retry_errors(&self, set: i64) -> rusqlite::Result<()> {
+        self.connection.execute("UPDATE TilesDownload SET state = 0 WHERE setID = ?1", params![set]).map(|_| ())
+    }
+
+    pub fn errors(&self, set: i64) -> rusqlite::Result<i64> {
+        self.connection.query_row("SELECT COUNT(*) FROM TilesDownload WHERE setID = ?1 AND state = 2", params![set], |row| row.get(0))
+    }
+
+    pub fn unique(&self, set: i64) -> rusqlite::Result<(i64, i64)> {
+        self.connection.query_row(&format!("SELECT COUNT(size), SUM(size) FROM Tiles WHERE tileID IN ({UNIQUE_TILES})"), params![set], |row| {
+            Ok((row.get(0)?, row.get::<_, Option<i64>>(1)?.unwrap_or(0)))
+        })
     }
 
     pub fn saved(&self, set: i64) -> rusqlite::Result<(i64, i64)> {

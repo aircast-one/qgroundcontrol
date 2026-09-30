@@ -131,9 +131,6 @@ internal val NOT_BUILT_HERE = mapOf(
     "showAzimuthIndicatorOnMap" to "this head draws no gimbal azimuth indicator",
     "toolbarIndicatorShowAzimuth" to "this head has no toolbar to indicate on",
     "toolbarIndicatorShowAcquireReleaseControl" to "this head has no gimbal buttons panel",
-    "minZoomLevelDownload" to "this head downloads no offline map tiles",
-    "maxZoomLevelDownload" to "this head downloads no offline map tiles",
-    "maxTilesForDownload" to "this head downloads no offline map tiles",
     "maxCacheDiskSize" to "this head does not use QGC's tile cache",
     "maxCacheMemorySize" to "this head does not use QGC's tile cache",
 )
@@ -375,6 +372,7 @@ private fun SettingsControls(
             ?.let { FootNote(it) }
         if (section.group == VIDEO_GROUP && page.showsVideoSources) ExtraVideoSourcesEditor()
         if (section.group == FLY_VIEW_GROUP) RcControlsEditor()
+        if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
     }
 }
 

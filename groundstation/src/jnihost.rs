@@ -204,7 +204,7 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_mapTile(mut env
     let cache_path = text_of(&mut env, &cache_file).to_string_lossy().into_owned();
     let cache = (!cache_path.is_empty()).then(|| crate::tilecache::Cache::open(std::path::Path::new(&cache_path)).ok()).flatten();
     let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
-    let image = crate::maptiles::fetch(&provider, x, y, zoom, &crate::nativehost::map_keys(), cache.as_ref(), persist, &crate::maptiles::fetch_over_http);
+    let image = crate::maptiles::fetch(&provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache.as_ref(), persist, &crate::maptiles::fetch_over_http);
     image.and_then(|bytes| env.byte_array_from_slice(&bytes).ok()).map_or(std::ptr::null_mut(), JByteArray::into_raw)
 }
 

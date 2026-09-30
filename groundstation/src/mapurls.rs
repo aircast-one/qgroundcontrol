@@ -269,6 +269,22 @@ fn component(part: &str) -> String {
         .collect()
 }
 
+pub fn keys_from_settings() -> Keys {
+    let setting = |name: &str| crate::settingsstore::raw_setting(&format!("settings.appSettings.{name}")).and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    let language = std::env::var("LANG").ok().and_then(|lang| lang.split('.').next().map(|l| l.replace('_', "-"))).filter(|l| !l.is_empty() && l != "C").unwrap_or_else(|| "en-US".to_string());
+    Keys {
+        mapbox_token: setting("mapboxToken"),
+        mapbox_account: setting("mapboxAccount"),
+        mapbox_style: setting("mapboxStyle"),
+        esri_token: setting("esriToken"),
+        custom_url: setting("customURL"),
+        tianditu_token: setting("tiandituToken"),
+        openaip_token: setting("openaipToken"),
+        vworld_token: setting("vworldToken"),
+        language,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

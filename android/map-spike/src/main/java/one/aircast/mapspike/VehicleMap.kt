@@ -337,10 +337,18 @@ fun VehicleMap(
         settings.setAttributionMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
     }
 
-    LaunchedEffect(centreRequest) {
+    LaunchedEffect(centreRequest, map) {
         if (centreRequest == 0) return@LaunchedEffect
         val at = centreOn?.takeIf { isPlottable(it.latitude, it.longitude) } ?: return@LaunchedEffect
-        map?.animateCamera(CameraUpdateFactory.newLatLng(LatLng(at.latitude, at.longitude)))
+        val loaded = map ?: return@LaunchedEffect
+        val target = LatLng(at.latitude, at.longitude)
+        loaded.animateCamera(
+            if (loaded.cameraPosition.zoom > 1.0) {
+                CameraUpdateFactory.newLatLng(target)
+            } else {
+                CameraUpdateFactory.newLatLngZoom(target, DEFAULT_ZOOM)
+            },
+        )
     }
 
     LaunchedEffect(fitRequest) {

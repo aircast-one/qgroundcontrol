@@ -11,7 +11,9 @@
 #include "SettingsManager.h"
 #include "AppSettings.h"
 #include "SettingsFact.h"
+#include "MapProvider.h"
 #include "QGCMapUrlEngine.h"
+#include "QGCTileSet.h"
 #include "Vehicle.h"
 #include "QmlObjectListModel.h"
 #include "Fact.h"
@@ -1360,7 +1362,7 @@ const char *const kViewPaths[] = {
     "view.settings(General)", "view.surveyStats(4)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
     "view.setup(Flight Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
-    "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.mapClick", "view.missionComplete", "view.parameterTools", "view.gimbalIndicator", "view.escs", "view.remoteIdStatus", "view.gcsBattery(54,false)", "view.gpsResilience", "view.firstRun", "view.appLog(1,hub,link,1,0)", "view.landingPattern(6)",
+    "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.mapClick", "view.missionComplete", "view.parameterTools", "view.gimbalIndicator", "view.escs", "view.remoteIdStatus", "view.gcsBattery(54,false)", "view.gpsResilience", "view.firstRun", "view.appLog(1,hub,link,1,0)", "view.offlineMaps(Google Satellite,8.5,47.4,8.6,47.35,13,14)", "view.landingPattern(6)",
     "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)", "view.positionForms(47.397,8.546)", "view.mgrsToGeo(32TMN6461447152)",
@@ -2517,7 +2519,21 @@ void QGCCoreCTest::_mapProvidersMatchTheRecordedHashes()
         }
     }
 
-    const QJsonObject recorded { { QStringLiteral("providers"), providers }, { QStringLiteral("tileHashes"), samples } };
+    QJsonObject averageSizes;
+    for (const QString &name : UrlFactory::getProviderTypes()) {
+        averageSizes[name] = static_cast<qint64>(UrlFactory::getMapProviderFromProviderType(name)->getAverageSize());
+    }
+
+    QJsonObject tileCounts;
+    const QList<QList<double>> regions = { { 8.50, 47.40, 8.60, 47.35 }, { -122.52, 37.81, -122.35, 37.70 }, { 139.60, 35.75, 139.85, 35.60 } };
+    for (const QList<double> &region : regions) {
+        for (int zoom = 1; zoom <= 20; zoom++) {
+            const QGCTileSet set = UrlFactory::getTileCount(zoom, region[0], region[1], region[2], region[3], QStringLiteral("Google Satellite"));
+            tileCounts[QStringLiteral("%1,%2,%3,%4 z%5").arg(region[0]).arg(region[1]).arg(region[2]).arg(region[3]).arg(zoom)] = static_cast<qint64>(set.tileCount);
+        }
+    }
+
+    const QJsonObject recorded { { QStringLiteral("providers"), providers }, { QStringLiteral("tileHashes"), samples }, { QStringLiteral("averageSizes"), averageSizes }, { QStringLiteral("tileCounts"), tileCounts } };
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/tile-providers.json"));
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT") || qEnvironmentVariableIsSet("QGC_RECORD_TILE_PROVIDERS")) {
         QFile out(fixture);
@@ -2535,6 +2551,8 @@ void QGCCoreCTest::_mapProvidersMatchTheRecordedHashes()
     const QJsonObject expectedProviders = expected.value(QStringLiteral("providers")).toObject();
     QCOMPARE(QJsonDocument(providers).toJson(QJsonDocument::Compact), QJsonDocument(expectedProviders).toJson(QJsonDocument::Compact));
     QCOMPARE(QJsonDocument(samples).toJson(QJsonDocument::Compact), QJsonDocument(expected.value(QStringLiteral("tileHashes")).toObject()).toJson(QJsonDocument::Compact));
+    QCOMPARE(QJsonDocument(averageSizes).toJson(QJsonDocument::Compact), QJsonDocument(expected.value(QStringLiteral("averageSizes")).toObject()).toJson(QJsonDocument::Compact));
+    QCOMPARE(QJsonDocument(tileCounts).toJson(QJsonDocument::Compact), QJsonDocument(expected.value(QStringLiteral("tileCounts")).toObject()).toJson(QJsonDocument::Compact));
 }
 
 void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()

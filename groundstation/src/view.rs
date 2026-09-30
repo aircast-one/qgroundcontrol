@@ -53,6 +53,7 @@ use crate::gcsbattery;
 use crate::gpsresilience;
 use crate::firstrun;
 use crate::applog;
+use crate::offlinemaps;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -137,6 +138,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.positionForms", "<latitude>,<longitude>"),
     ("view.gcsBattery", "<percent>,<charging>"),
     ("view.appLog", "<level>,<category>,<text>,<regex>,<after>"),
+    ("view.offlineMaps", "<mapType>,<topLeftLon>,<topLeftLat>,<bottomRightLon>,<bottomRightLat>,<minZoom>,<maxZoom>"),
     ("view.mgrsToGeo", "<mgrs>"),
     ("view.coreVehicle", "<vehicle id>"),
     ("view.coreGuided", "<vehicle id>"),
@@ -169,6 +171,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.gpsResilience", deps: gpsresilience::DEPS, compute: gpsresilience::resilience_view },
     View { path: "view.gcsBattery", deps: &[], compute: gcsbattery::gcs_battery_view },
     View { path: "view.appLog", deps: &[], compute: applog::log_view },
+    View { path: "view.offlineMaps", deps: offlinemaps::DEPS, compute: offlinemaps::offline_maps_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
     View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
     View { path: "view.gimbalIndicator", deps: gimbalindicator::DEPS, compute: gimbalindicator::indicator_view },
@@ -500,6 +503,7 @@ mod deps_cover_reads {
             ("gpsresilience", include_str!("gpsresilience.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
+            ("offlinemaps", include_str!("offlinemaps.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
