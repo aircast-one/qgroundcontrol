@@ -248,3 +248,82 @@ internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
         }
     }
 }
+
+internal data class LoiterOffer(
+    val latitude: Double,
+    val longitude: Double,
+    val title: String,
+    val message: String,
+    val defaultRadius: Double,
+    val clockwise: Boolean,
+)
+
+internal fun loiterOffer(view: JSONObject?): LoiterOffer? =
+    view?.optJSONObject("loiter")?.let {
+        LoiterOffer(
+            latitude = it.optDouble("latitude"),
+            longitude = it.optDouble("longitude"),
+            title = it.optText("title"),
+            message = it.optText("message"),
+            defaultRadius = it.optDouble("defaultRadius", 0.0),
+            clockwise = it.optBoolean("clockwise", true),
+        )
+    }
+
+internal fun mapClickUnits(view: JSONObject?): OrbitDefaults = orbitDefaults(view)
+
+internal fun signedLoiterRadius(metres: Double, clockwise: Boolean): Double =
+    if (clockwise) kotlin.math.abs(metres) else -kotlin.math.abs(metres)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LoiterRadiusSheet(offer: LoiterOffer, units: OrbitDefaults, onDismiss: () -> Unit) {
+    var radiusText by remember(offer) { mutableStateOf("") }
+    var clockwise by remember(offer) { mutableStateOf(offer.clockwise) }
+    var refusal by remember(offer) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val defaults = units.copy(radius = offer.defaultRadius)
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(offer.title, style = MaterialTheme.typography.titleMedium)
+            Text(offer.message, style = MaterialTheme.typography.bodyMedium)
+            OutlinedTextField(
+                value = radiusText,
+                onValueChange = { radiusText = it },
+                label = { Text(listOf("Radius", defaults.unit).filter { it.isNotBlank() }.joinToString(" ")) },
+                placeholder = { Text(defaults.radius.toString()) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Clockwise", Modifier.weight(1f))
+                Switch(checked = clockwise, onCheckedChange = { clockwise = it })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlideToConfirm(label = "Slide to confirm", modifier = Modifier.weight(1f)) {
+                    val metres = radiusMetres(radiusText, defaults)
+                    if (metres == null) {
+                        refusal = "Enter a radius."
+                    } else {
+                        scope.launch {
+                            val refused = withContext(Dispatchers.Default) {
+                                Qgc.refusalOf(
+                                    "vehicle.guidedModeGotoLocation",
+                                    JSONObject().put("latitude", offer.latitude).put("longitude", offer.longitude),
+                                    signedLoiterRadius(metres, clockwise),
+                                )
+                            }
+                            if (refused == null) onDismiss() else refusal = refused
+                        }
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}

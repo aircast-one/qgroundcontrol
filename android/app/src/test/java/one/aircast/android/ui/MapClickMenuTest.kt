@@ -43,4 +43,14 @@ class MapClickMenuTest {
         assertEquals(4, waypointTarget(4))
         assertEquals("Adjust current waypoint to 4", setWaypointMessage(4))
     }
+
+    @Test
+    fun `a loiter change re-sends the goto point with the direction as the sign`() {
+        val offer = loiterOffer(JSONObject("""{"loiter":{"latitude":47.4,"longitude":8.5,"title":"Change Loiter Radius","message":"m","defaultRadius":80,"clockwise":true}}"""))!!
+        assertEquals(47.4, offer.latitude, 0.0)
+        assertEquals(80.0, offer.defaultRadius, 0.0)
+        assertEquals(-80.0, signedLoiterRadius(80.0, clockwise = false), 0.0)
+        assertEquals(80.0, signedLoiterRadius(-80.0, clockwise = true), 0.0)
+        assertEquals(null, loiterOffer(JSONObject("""{"loiter":null}""")))
+    }
 }

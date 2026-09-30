@@ -228,8 +228,8 @@ ONLY_IN = {
 
 ACCEPTED = {
     "ok": "the invoke envelope, not a view field",
-    "message": "a field of armingChecks, which the contract records as NULL - a null parent pins "
-        "its name and never its shape, so none of its children are here. Read in VehicleMessages.kt",
+    "defaultRadius": "a field of view.mapClick.loiter, which the contract records as NULL because "
+        "the rig never has a fixed wing loitering after a goto. Read in MapClickMenu.kt",
     "simulated": "served per contact at adsb.rs:386 and invisible here because"
         "view.adsbTraffic.contacts records EMPTY - the same blind spot this check already"
         "prints above. Read in TrafficView.kt since 457dbdda7",

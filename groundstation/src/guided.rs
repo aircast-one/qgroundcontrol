@@ -294,6 +294,10 @@ fn speed_limits_live(backend: &dyn Backend, px4: bool, apm: bool, forward_flight
     names.iter().all(|name| crate::read::result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string())))
 }
 
+pub fn forward_flight(backend: &dyn Backend) -> bool {
+    read_state(backend).forward_flight
+}
+
 pub fn resume_offer(backend: &dyn Backend) -> Option<i64> {
     let state = read_state(backend);
     state.can_resume().then_some(state.resume_from_sequence)

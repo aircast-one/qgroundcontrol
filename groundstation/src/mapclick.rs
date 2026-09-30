@@ -43,9 +43,35 @@ pub const DEPS: &[&str] = &[
     "vehicle.landing",
     "settings.unitsSettings.horizontalDistanceUnits",
     "vehicle.px4Firmware",
+    "vehicle.orbitActive",
+    "vehicle.fixedWing",
+    "vehicle.vtolInFwdFlight",
 ];
 
 const ORBIT_DEFAULT_RADIUS_METRES: f64 = 30.0;
+
+static LAST_GOTO: std::sync::Mutex<Option<(f64, f64)>> = std::sync::Mutex::new(None);
+
+fn last_goto() -> Option<(f64, f64)> {
+    *LAST_GOTO.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn remember_goto(at: Option<(f64, f64)>) {
+    *LAST_GOTO.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = at;
+}
+
+fn loiter_offer(backend: &dyn Backend) -> Option<(f64, f64)> {
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode"));
+    let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
+    if !in_goto_mode {
+        remember_goto(None);
+        return None;
+    }
+    let guided = flag(&object(&backend.get_fields("vehicle.supports", "guidedMode")), "guidedMode");
+    let shown = flag(&vehicle, "armed") && flag(&vehicle, "flying") && guided && !flag(&vehicle, "px4Firmware") && !flag(&vehicle, "orbitActive")
+        && crate::guided::forward_flight(backend) && !crate::guided::mission_active(backend);
+    last_goto().filter(|_| shown)
+}
 
 struct Offer {
     id: &'static str,
@@ -97,6 +123,14 @@ pub fn map_click_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "message": o.message,
             "confirm": o.confirm,
         })).collect::<Vec<_>>(),
+        "loiter": loiter_offer(backend).map(|(latitude, longitude)| json!({
+            "latitude": latitude,
+            "longitude": longitude,
+            "title": "Change Loiter Radius",
+            "message": "Change the forward flight loiter radius",
+            "defaultRadius": unit.show(crate::guided::goto_loiter_radius(backend)),
+            "clockwise": true,
+        })),
         "orbitDefaultRadius": unit.show(ORBIT_DEFAULT_RADIUS_METRES),
         "orbitRadiusUnit": unit.name,
         "orbitMetresPerUnit": 1.0 / unit.factor,
@@ -160,8 +194,8 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
     let forwarded = match click {
         Click::GoTo => match given.get(1).map(Value::as_f64) {
             None => json!([at, crate::guided::goto_loiter_radius(backend)]),
-            Some(Some(radius)) if radius.is_finite() && radius >= 0.0 => json!([at, radius]),
-            Some(_) => return refused("badRadius", "A loiter radius is zero or more metres."),
+            Some(Some(radius)) if radius.is_finite() => json!([at, radius]),
+            Some(_) => return refused("badRadius", "A loiter radius is a number of metres; its sign is the direction."),
         },
         _ => json!([at]),
     };
@@ -176,7 +210,11 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
         Click::SetHome => Some(json!({ "action": "setHome", "latitude": latitude, "longitude": longitude, "terrain": crate::terrainservice::height_now(latitude, longitude).ok().flatten() })),
         Click::Roi => Some(roi_action(backend, latitude, longitude, at.get("altitude").and_then(Value::as_f64).unwrap_or(0.0))),
     };
-    crate::guided::dispatch(backend, core, crate::guided::active_id(backend), path, &forwarded.to_string())
+    let sent = crate::guided::dispatch(backend, core, crate::guided::active_id(backend), path, &forwarded.to_string());
+    if click == Click::GoTo && flag(&sent, "ok") {
+        remember_goto(Some((latitude, longitude)));
+    }
+    sent
 }
 
 #[cfg(test)]
@@ -220,8 +258,11 @@ mod tests {
         fn watch(&self, _p: &[String]) {}
     }
 
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn the_menu_offers_what_qgc_offers() {
+        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let labels = |b: &Offered| map_click_view(b, &[])["actions"].as_array().unwrap().iter().map(|a| a["label"].as_str().unwrap().to_string()).collect::<Vec<_>>();
         let flying = Offered { flying: true, sensors: 32, mode: "Loiter", roi: true, confirm_in_guided: 0.0, orbit: false };
         assert_eq!(labels(&flying), ["Go to location", "ROI at location", "Set home here", "Set Heading"]);
@@ -257,11 +298,14 @@ mod tests {
 
     #[test]
     fn the_point_and_radius_are_checked_before_anything_is_sent() {
+        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let vehicle = Vehicle(RefCell::new(Vec::new()));
         assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5,"altitude":0},25]"#)["ok"], true);
-        assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5},-5]"#)["refusal"], "badRadius");
+        assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5},"wide"]"#)["refusal"], "badRadius");
         assert_eq!(send(&vehicle, Click::Roi, "vehicle.guidedModeROI", r#"[{"latitude":99,"longitude":8.5}]"#)["refusal"], "badCoordinate");
         assert_eq!(send(&vehicle, Click::EstimatorOrigin, "vehicle.setEstimatorOrigin", r#"[{"latitude":47.4,"longitude":8.5}]"#)["refusal"], "hasGps");
         assert_eq!(vehicle.0.borrow().as_slice(), &[r#"[{"altitude":0.0,"latitude":47.4,"longitude":8.5},25.0]"#.to_string()]);
+        assert_eq!(last_goto(), Some((47.4, 8.5)), "a goto that went out is the point a loiter radius change re-sends");
+        assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5},-40]"#)["ok"], true, "the sign of the radius is the loiter direction, as QGC sends it");
     }
 }

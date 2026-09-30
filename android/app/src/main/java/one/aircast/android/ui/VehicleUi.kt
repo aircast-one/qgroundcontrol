@@ -236,6 +236,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
     var altitudePauses by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    var editingLoiter by remember { mutableStateOf<LoiterOffer?>(null) }
+    val mapClickJson by qgcPath(MAP_CLICK_PATH)
+    val loiter = remember(mapClickJson) { loiterOffer(mapClickJson) }
     var showChecklist by remember { mutableStateOf(false) }
     val enforceChecklist by qgcBool(settingControl("settings.appSettings.enforceChecklist"))
     var popupShownFor by remember { mutableStateOf<Int?>(null) }
@@ -547,6 +550,10 @@ fun FlightActions(modifier: Modifier = Modifier) {
         }
     }
 
+    editingLoiter?.let { offer ->
+        LoiterRadiusSheet(offer, mapClickUnits(mapClickJson)) { editingLoiter = null }
+    }
+
     if (showMore) {
         AlertDialog(
             onDismissRequest = { showMore = false },
@@ -575,6 +582,21 @@ fun FlightActions(modifier: Modifier = Modifier) {
                                 text = checklistPast ?: preflightSummary(checks, checklistTicked),
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                        }
+                    }
+
+                    loiter?.let { offer ->
+                        TextButton(
+                            onClick = {
+                                showMore = false
+                                editingLoiter = offer
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(offer.title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(offer.message, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
 
