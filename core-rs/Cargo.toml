@@ -29,6 +29,7 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 geoconvert = "1.0.2"
+geographiclib-rs = "0.2.7"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"

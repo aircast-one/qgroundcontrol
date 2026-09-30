@@ -86,9 +86,90 @@ pub fn points(model: &Value) -> Vec<Point> {
         .unwrap_or_default()
 }
 
+pub const TILE_SPACING_M: f64 = 30.0;
+const MAX_SAMPLES: usize = 10_000;
+const EARTH_MEAN_RADIUS_M: f64 = 6_371_007.2;
+
+pub fn qt_distance(from: (f64, f64), to: (f64, f64)) -> f64 {
+    let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
+    let half = |delta: f64| (delta / 2.0).sin().powi(2);
+    let y = half((to.0 - from.0).to_radians()) + lat1.cos() * lat2.cos() * half((to.1 - from.1).to_radians());
+    2.0 * y.sqrt().asin() * EARTH_MEAN_RADIUS_M
+}
+
+fn geodesic_distance(from: (f64, f64), to: (f64, f64)) -> f64 {
+    use geographiclib_rs::InverseGeodesic;
+    let distance: f64 = geographiclib_rs::Geodesic::wgs84().inverse(from.0, from.1, to.0, to.1);
+    distance
+}
+
+pub fn samples(from: (f64, f64), to: (f64, f64)) -> Vec<(f64, f64)> {
+    use geographiclib_rs::{DirectGeodesic, InverseGeodesic};
+    let geodesic = geographiclib_rs::Geodesic::wgs84();
+    let (total, azimuth, _, _): (f64, f64, f64, f64) = geodesic.inverse(from.0, from.1, to.0, to.1);
+    let count = ((total / TILE_SPACING_M).ceil() as usize + 1).clamp(2, MAX_SAMPLES);
+    match from == to {
+        true => vec![from; count],
+        false => (0..count).map(|i| geodesic.direct(from.0, from.1, azimuth, total * i as f64 / (count - 1) as f64)).collect(),
+    }
+}
+
+pub fn segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
+    let points = samples(from, to);
+    let between = geodesic_distance(points[0], points[1]);
+    let last_between = geodesic_distance(points[points.len() - 2], points[points.len() - 1]);
+    let heights: Option<Vec<f64>> = points.iter().map(|(lat, lon)| height(*lat, *lon)).collect();
+    let total = qt_distance(from, to);
+    let heights = heights.unwrap_or_default();
+    let slope = (to_alt - from_alt) / total;
+    let collision = heights
+        .iter()
+        .enumerate()
+        .scan(0.0, |x, (i, ground)| {
+            let here = *x;
+            *x += if i + 2 == heights.len() { last_between } else { between };
+            Some(*ground > slope * here + from_alt)
+        })
+        .any(|hit| hit);
+    json!({
+        "kind": "object",
+        "coord1AMSLAlt": from_alt,
+        "coord2AMSLAlt": to_alt,
+        "amslTerrainHeights": heights,
+        "totalDistance": total,
+        "distanceBetween": if heights.is_empty() { 0.0 } else { between },
+        "finalDistanceBetween": if heights.is_empty() { 0.0 } else { last_between },
+        "terrainCollision": collision,
+    })
+}
+
+pub fn transect_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Option<Vec<Value>> {
+    let kind = item.get("complexItemType").and_then(Value::as_str)?;
+    (kind == "survey" || kind == "CorridorScan").then_some(())?;
+    let transect = item.get("TransectStyleComplexItem")?;
+    let calc = transect.get("CameraCalc")?;
+    let surface = calc.get("DistanceToSurface")?.as_f64()?;
+    let amsl = match calc.get("DistanceMode")?.as_i64()? {
+        crate::altitudemodes::RELATIVE => surface + home_altitude,
+        crate::altitudemodes::ABSOLUTE => surface,
+        _ => return None,
+    };
+    let points: Vec<(f64, f64)> = transect.get("VisualTransectPoints")?.as_array()?.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect();
+    Some(points.windows(2).map(|pair| segment(pair[0], amsl, pair[1], amsl, height)).collect())
+}
+
+fn core_segments(index: usize) -> Option<Vec<Value>> {
+    (crate::vehiclefacade::switched_on() && crate::coreplan::enabled()).then_some(())?;
+    let document = crate::coreplan::current_document();
+    let crate::plandoc::Item::Complex { json, .. } = document.items.get(index.checked_sub(1)?)? else { return None };
+    transect_segments(json, document.home.map_or(0.0, |h| h[2]), &crate::terrainservice::height)
+}
+
 pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start: f64) -> Vec<Point> {
-    let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision"));
-    let Some(listed) = segments.get("elements").and_then(Value::as_array) else { return Vec::new() };
+    let listed = core_segments(index).unwrap_or_else(|| {
+        let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision"));
+        segments.get("elements").and_then(Value::as_array).cloned().unwrap_or_default()
+    });
     listed
         .iter()
         .scan(start, |walked, segment| {
@@ -160,7 +241,14 @@ fn core_model(backend: &dyn Backend) -> Value {
     let range = summary.get("maxAMSLAltitude").and_then(Value::as_f64).zip(summary.get("minAMSLAltitude").and_then(Value::as_f64)).map_or(0.0, |(high, low)| high - low);
     let elements: Vec<Value> = reads
         .iter()
-        .map(|item| {
+        .enumerate()
+        .map(|(index, item)| {
+            if item.get("isSimpleItem") == Some(&Value::Bool(false)) && item.get("homePosition") != Some(&Value::Bool(true)) {
+                let collides = core_segments(index).is_some_and(|segments| segments.iter().any(|s| s["terrainCollision"] == true));
+                let mut element = json!({ "terrainAltitude": Value::Null, "terrainCollision": collides });
+                FIELDS.split(',').filter(|f| !matches!(*f, "terrainAltitude" | "terrainCollision")).for_each(|f| element[f] = item.get(f).cloned().unwrap_or(Value::Null));
+                return element;
+            }
             let coordinate = item.get("coordinate");
             let at = |key: &str| coordinate.and_then(|c| c.get(key)).and_then(Value::as_f64);
             let placed = item.get("specifiesCoordinate").and_then(Value::as_bool) == Some(true);
@@ -269,6 +357,21 @@ mod tests {
         assert!(!collides(530.0, Some(520.0), 40.0));
         assert!(!collides(500.0, None, 40.0), "unknown ground is not a collision");
         assert!(!collides(500.0, Some(520.0), 0.0), "MissionFlightStatusCalculator clears every collision when the mission has no altitude range");
+    }
+
+    #[test]
+    fn a_segment_samples_every_thirty_metres_and_collides_where_the_ground_rises_above_the_line() {
+        let from = (-35.3632621, 149.1652375);
+        let to = (-35.3632621, 149.1662375);
+        let total = qt_distance(from, to);
+        assert!((total - 90.7).abs() < 0.2, "a thousandth of a degree east at this latitude is about 90.7 m, got {total}");
+        assert_eq!(samples(from, to).len(), 5, "ceil(90.7 / 30) + 1");
+        let flat = segment(from, 600.0, to, 600.0, &|_, _| Some(590.0));
+        assert_eq!((flat["terrainCollision"].as_bool(), flat["amslTerrainHeights"].as_array().map(Vec::len)), (Some(false), Some(5)));
+        let rising = segment(from, 600.0, to, 600.0, &|_, lon| Some(if lon > 149.1661 { 610.0 } else { 590.0 }));
+        assert_eq!(rising["terrainCollision"], true);
+        let unknown = segment(from, 600.0, to, 600.0, &|_, lon| (lon < 149.1660).then_some(590.0));
+        assert_eq!((unknown["terrainCollision"].as_bool(), unknown["amslTerrainHeights"].as_array().map(Vec::len)), (Some(false), Some(0)), "a path query with a missing tile answers nothing, as TerrainTileManager does");
     }
 
     #[test]
