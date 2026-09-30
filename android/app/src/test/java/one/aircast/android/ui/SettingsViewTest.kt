@@ -13,11 +13,21 @@ class SettingsViewTest {
     @Test
     fun `a page the head draws nothing for is not offered`() {
         val view = pages(
-            """{"title":"About","showsAbout":true,"sections":[]}""",
+            """{"title":"Empty","sections":[]}""",
             """{"title":"Connections","showsLinks":true,"sections":[{"title":"Auto Connect","group":"autoConnectSettings"}]}""",
             """{"title":"Maps","sections":[{"title":"Maps","group":"mapsSettings"}]}""",
         )
         assertEquals(listOf("Connections", "Maps"), settingsPages(view).map { it.title })
+    }
+
+    @Test
+    fun `the about page is offered with the help links the core serves`() {
+        val view = pages(
+            """{"title":"About","showsAbout":true,"sections":[],"helpLinks":[{"name":"QGroundControl User Guide","url":"https://docs.qgroundcontrol.com","host":"docs.qgroundcontrol.com"}]}""",
+        )
+        val about = settingsPages(view).single()
+        assertEquals("About", about.title)
+        assertEquals("docs.qgroundcontrol.com", about.helpLinks.single().host)
     }
 
     @Test

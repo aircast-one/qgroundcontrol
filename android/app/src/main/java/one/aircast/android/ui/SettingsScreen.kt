@@ -95,11 +95,15 @@ internal val PAGE_NOTES = mapOf(
     "RTK GPS" to "Base station accuracy and position",
 )
 
+internal data class HelpLink(val name: String, val url: String, val host: String)
+
 internal data class SettingsPageEntry(
     val title: String,
     val showsLinks: Boolean,
     val showsVideoSources: Boolean,
     val sectionCount: Int,
+    val showsAbout: Boolean = false,
+    val helpLinks: List<HelpLink> = emptyList(),
 )
 
 internal data class SettingsBlock(val title: String, val facts: List<Fact>)
@@ -155,11 +159,17 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
                 showsLinks = page.optBoolean("showsLinks"),
                 showsVideoSources = page.optBoolean("showsVideoSources"),
                 sectionCount = page.optJSONArray("sections")?.length() ?: 0,
+                showsAbout = page.optBoolean("showsAbout"),
+                helpLinks = page.optJSONArray("helpLinks")?.let { links ->
+                    (0 until links.length()).mapNotNull { i ->
+                        links.optJSONObject(i)?.let { HelpLink(it.optText("name"), it.optText("url"), it.optText("host")) }
+                    }
+                } ?: emptyList(),
             )
         }
     }.filter {
         it.title.isNotBlank() && it.title !in PAGES_WITHOUT_A_SCREEN.keys &&
-            (it.sectionCount > 0 || it.showsLinks)
+            (it.sectionCount > 0 || it.showsLinks || it.showsAbout)
     }
 }
 
@@ -313,6 +323,11 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
 
     if (page.showsLinks) {
         LinksScreen(modifier) { SettingsControls(page, sections) { reloads++ } }
+        return
+    }
+
+    if (page.showsAbout) {
+        AboutPage(page.helpLinks, modifier)
         return
     }
 

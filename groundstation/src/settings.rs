@@ -85,8 +85,23 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
     ]),
 ];
 
+const HELP_LINKS: [(&str, &str); 4] = [
+    ("QGroundControl User Guide", "https://docs.qgroundcontrol.com"),
+    ("PX4 Users Discussion Forum", "http://discuss.px4.io/c/qgroundcontrol"),
+    ("ArduPilot Users Discussion Forum", "https://discuss.ardupilot.org/c/ground-control-software/qgroundcontrol"),
+    ("QGroundControl Discord Channel", "https://discord.com/channels/1022170275984457759/1022185820683255908"),
+];
+
+fn link_host(url: &str) -> &str {
+    url.split_once("://").map_or(url, |(_, rest)| rest).split('/').next().unwrap_or(url)
+}
+
 fn page_json(page: &Page, with_controls: Option<&dyn Backend>) -> Value {
     json!({
+        "helpLinks": match page.shows_about {
+            true => HELP_LINKS.iter().map(|(name, url)| json!({ "name": name, "url": url, "host": link_host(url) })).collect::<Vec<_>>(),
+            false => Vec::new(),
+        },
         "title": page.title,
         "showsLinks": page.shows_links,
         "showsAbout": page.shows_about,
@@ -437,5 +452,14 @@ mod tests {
 
         let single = named_apart(vec![json!({ "name": "audioMuted", "label": "Mute audio output" })]);
         assert_eq!(single[0]["label"], "Mute audio output", "a label nothing else claims is the one the metadata wrote");
+    }
+
+    #[test]
+    fn the_about_page_carries_help_settings_links() {
+        let about = PAGES.iter().find(|p| p.shows_about).map(|p| page_json(p, None)).unwrap();
+        assert_eq!(about["helpLinks"][0]["name"], "QGroundControl User Guide");
+        assert_eq!(about["helpLinks"][1]["host"], "discuss.px4.io", "the link text is the host, as HelpSettings shows it");
+        let general = PAGES.iter().find(|p| !p.shows_about).map(|p| page_json(p, None)).unwrap();
+        assert!(general["helpLinks"].as_array().unwrap().is_empty());
     }
 }
