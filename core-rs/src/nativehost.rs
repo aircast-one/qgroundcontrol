@@ -5,7 +5,7 @@ use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
 use serde_json::{Value, json};
 
 use crate::debugapi::{DebugApi, Host};
-use crate::nativeargs::{deep_link_writes, options};
+use crate::nativeargs::{deep_link_device, deep_link_writes, options};
 
 static QUIT: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 static DEBUG_SERVER: OnceLock<u16> = OnceLock::new();
@@ -156,6 +156,9 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     if let Some(port) = chosen.debug_port {
         start_debug_server(port);
     }
+    if let Some(link) = arguments.iter().skip(1).find(|a| a.starts_with("aircast-qgc://")) {
+        unsafe { qgc_handle_deep_link(text(link).as_ptr()) };
+    }
     0
 }
 
@@ -179,16 +182,32 @@ pub extern "C" fn qgc_shutdown() {
     crate::settingsstore::persist();
 }
 
+fn write_setting(path: &str, value: &str) {
+    let payload = json!({ "value": value }).to_string();
+    taken(unsafe { crate::abi::qgc_core_set(text(path).as_ptr(), text(&payload).as_ptr()) });
+}
+
+fn setup_from_device(host: &str) {
+    if let Some(config) = crate::devicesetup::fetch(host, crate::devicesetup::STREAM_CONFIG) {
+        let via = crate::devicesetup::fetch(host, crate::devicesetup::WATCH_VIA).unwrap_or(Value::Null);
+        crate::devicesetup::camera_writes(host, &config, &via).iter().for_each(|(path, value)| write_setting(path, value));
+    }
+    if let Some(link) = crate::devicesetup::fetch(host, crate::devicesetup::TELEMETRY_CONFIG).and_then(|config| crate::devicesetup::telemetry_link(host, &config)) {
+        crate::corelinks::replace_and_connect(link);
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_handle_deep_link(link: *const c_char) {
-    let Some((debug, writes)) = deep_link_writes(&read(link)) else { return };
+    let link = read(link);
+    if let Some(host) = deep_link_device(&link) {
+        std::thread::spawn(move || setup_from_device(&host));
+    }
+    let Some((debug, writes)) = deep_link_writes(&link) else { return };
     if let Some(port) = debug {
         start_debug_server(port);
     }
-    writes.iter().for_each(|(path, value)| {
-        let payload = json!({ "value": value }).to_string();
-        taken(unsafe { crate::abi::qgc_core_set(text(path).as_ptr(), text(&payload).as_ptr()) });
-    });
+    writes.iter().for_each(|(path, value)| write_setting(path, value));
 }
 
 #[unsafe(no_mangle)]

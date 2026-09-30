@@ -100,6 +100,7 @@ pub mod params;
 pub mod planfile;
 pub mod corelinks;
 pub mod coreplan;
+pub mod devicesetup;
 pub mod plandoc;
 pub mod planitems;
 pub mod planselect;

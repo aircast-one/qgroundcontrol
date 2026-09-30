@@ -144,6 +144,14 @@ pub fn add(config: LinkConfig) -> bool {
     true
 }
 
+pub fn replace_and_connect(config: LinkConfig) -> bool {
+    let name = config.name.clone();
+    if let Some(index) = listed().iter().position(|e| e.config.name == name) {
+        remove(index);
+    }
+    add(config) && listed().iter().position(|e| e.config.name == name).is_some_and(connect)
+}
+
 pub fn created(kind: &str, name: &str, host: &str, port: i64) -> Option<LinkConfig> {
     let port = u16::try_from(port).ok().filter(|p| *p > 0)?;
     let config = |kind| LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind };

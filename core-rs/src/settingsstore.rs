@@ -62,7 +62,7 @@ pub fn runtime_fields(path: &str) -> Option<&'static [&'static str]> {
 }
 
 pub fn served_by_host(path: &str) -> bool {
-    path.strip_prefix("settings.").is_some_and(|short| RUNTIME_WHOLE.contains(&short))
+    crate::qthost::present() && path.strip_prefix("settings.").is_some_and(|short| RUNTIME_WHOLE.contains(&short))
 }
 
 pub fn locate(path: &str) -> Option<(&'static str, &str)> {
@@ -652,7 +652,7 @@ mod tests {
             .filter_map(|(path, expected)| {
                 let Some((group, fact)) = locate(path) else { return Some(format!("{path}: no group")) };
                 let Some(meta) = metadata(group, fact) else { return Some(format!("{path}: no metadata")) };
-                if served_by_host(path) {
+                if path.strip_prefix("settings.").is_some_and(|short| RUNTIME_WHOLE.contains(&short)) {
                     return None;
                 }
                 let mine = by_value(&fact_json(&meta, &expected["rawValue"], crate::units::for_fact(&meta, crate::units::metric)));

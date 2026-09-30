@@ -467,6 +467,7 @@ mod deps_cover_reads {
             ("mapurls", include_str!("mapurls.rs")),
             ("maptiles", include_str!("maptiles.rs")),
             ("corelinks", include_str!("corelinks.rs")),
+            ("devicesetup", include_str!("devicesetup.rs")),
             ("paramnames", include_str!("paramnames.rs")),
             ("logs", include_str!("logs.rs")),
             ("mappolygon", include_str!("mappolygon.rs")),

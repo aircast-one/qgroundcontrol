@@ -46,10 +46,18 @@ pub fn options(arguments: &[String]) -> Options {
     }
 }
 
+pub fn deep_link_device(link: &str) -> Option<String> {
+    let parsed = url::Url::parse(link).ok().filter(|u| u.scheme() == DEEP_LINK_SCHEME)?;
+    parsed.query_pairs().find(|(k, _)| k == "host").map(|(_, v)| v.into_owned()).filter(|v| !v.is_empty())
+}
+
 pub fn deep_link_writes(link: &str) -> Option<(Option<u16>, Vec<(&'static str, String)>)> {
     let parsed = url::Url::parse(link).ok().filter(|u| u.scheme() == DEEP_LINK_SCHEME)?;
     let query = |key: &str| parsed.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned()).filter(|v| !v.is_empty());
     let debug = query("debug").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0);
+    if query("host").is_some() {
+        return Some((debug, Vec::new()));
+    }
     let source = match (query("whep"), query("rtsp")) {
         (Some(whep), _) => vec![("settings.videoSettings.whepUrl", whep), ("settings.videoSettings.videoSource", VIDEO_SOURCE_WEBRTC.to_string())],
         (None, Some(rtsp)) => vec![("settings.videoSettings.rtspUrl", rtsp), ("settings.videoSettings.videoSource", VIDEO_SOURCE_RTSP.to_string())],
@@ -71,6 +79,8 @@ mod tests {
         assert_eq!(deep_link_writes("aircast-qgc://open?rtsp=rtsp%3A%2F%2Fh%3A8554%2Flive").unwrap().1[1].1, VIDEO_SOURCE_RTSP);
         assert_eq!(deep_link_writes("https://example.com/?whep=x"), None, "only the app's own scheme is honoured");
         assert_eq!(deep_link_writes("aircast-qgc://open?debug=0"), Some((None, Vec::new())));
+        assert_eq!(deep_link_writes("aircast-qgc://open?host=10.0.0.5%3A8080&whep=x"), Some((None, Vec::new())), "a device host sets up from the device and ignores a stream given alongside it");
+        assert_eq!(deep_link_device("aircast-qgc://open?host=10.0.0.5%3A8080").as_deref(), Some("10.0.0.5:8080"));
     }
 
     #[test]
