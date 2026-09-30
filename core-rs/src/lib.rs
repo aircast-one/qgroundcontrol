@@ -43,6 +43,7 @@ pub mod firmwareinfo;
 pub mod ftp;
 pub mod gcsposition;
 pub mod geotag;
+pub mod geotagcontroller;
 pub mod geotagjob;
 pub mod gimbal;
 pub mod geo;

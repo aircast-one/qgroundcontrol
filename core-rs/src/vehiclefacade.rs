@@ -841,6 +841,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::account::get(path) {
             return answer.to_string();
         }
+        if let Some(answer) = crate::geotagcontroller::get(path) {
+            return answer.to_string();
+        }
         if let Some(answer) = crate::corelinks::get(path) {
             return answer.to_string();
         }
@@ -949,7 +952,7 @@ impl<B: Backend> Backend for Facade<B> {
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
             }
         }
-        if let Some(element) = crate::corelinks::get(asked_path).filter(|e| e["kind"] == "object") {
+        if let Some(element) = crate::corelinks::get(asked_path).or_else(|| crate::geotagcontroller::get(asked_path)).filter(|e| e["kind"] == "object") {
             return only_fields(element, &fields_of(fields)).to_string();
         }
         if asked_path == "host" {
@@ -1069,6 +1072,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::account::set(path, value) {
             return answer.to_string();
         }
+        if let Some(answer) = crate::geotagcontroller::set(path, value) {
+            return answer.to_string();
+        }
         let link_flag = path.strip_prefix("vehicle.vehicleLinkManager.").filter(|f| matches!(*f, "communicationLostEnabled" | "autoDisconnect"));
         if let Some(flag) = link_flag.filter(|_| switched_on()) {
             let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
@@ -1127,6 +1133,9 @@ impl<B: Backend> Backend for Facade<B> {
     }
     fn invoke(&self, path: &str, args: &str) -> String {
         if let Some(answer) = crate::noticeboard::invoke(path, args) {
+            return answer.to_string();
+        }
+        if let Some(answer) = crate::geotagcontroller::invoke(path) {
             return answer.to_string();
         }
         if let Some(answer) = crate::account::invoke(path) {

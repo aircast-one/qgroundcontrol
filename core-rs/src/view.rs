@@ -430,6 +430,7 @@ mod deps_cover_reads {
             ("gcsposition", include_str!("gcsposition.rs")),
             ("geo", include_str!("geo.rs")),
             ("geotag", include_str!("geotag.rs")),
+            ("geotagcontroller", include_str!("geotagcontroller.rs")),
             ("geotagjob", include_str!("geotagjob.rs")),
             ("gimbal", include_str!("gimbal.rs")),
             ("gpsfacts", include_str!("gpsfacts.rs")),
