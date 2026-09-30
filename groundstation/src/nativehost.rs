@@ -222,7 +222,7 @@ pub unsafe extern "C" fn qgc_map_current_type() -> *mut c_char {
     given(&format!("{} {}", value("settings.flightMapSettings.mapProvider.rawValue"), value("settings.flightMapSettings.mapType.rawValue")))
 }
 
-fn map_keys() -> crate::mapurls::Keys {
+pub(crate) fn map_keys() -> crate::mapurls::Keys {
     let setting = |name: &str| crate::settingsstore::raw_setting(&format!("settings.appSettings.{name}")).and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
     let language = std::env::var("LANG").ok().and_then(|lang| lang.split('.').next().map(|l| l.replace('_', "-"))).filter(|l| !l.is_empty() && l != "C").unwrap_or_else(|| "en-US".to_string());
     crate::mapurls::Keys {

@@ -5,7 +5,6 @@ import android.database.sqlite.SQLiteDatabase
 import java.io.File
 
 const val QGC_TILE_HOST = "qgc.tiles"
-const val QGC_TILE_URL = "https://$QGC_TILE_HOST/{z}/{x}/{y}"
 
 private const val CACHE_DIR = "QGCMapCache300"
 private const val CACHE_FILE = "qgcMapCache.db"

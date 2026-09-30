@@ -133,8 +133,6 @@ internal val NOT_BUILT_HERE = mapOf(
     "minZoomLevelDownload" to "this head downloads no offline map tiles",
     "maxZoomLevelDownload" to "this head downloads no offline map tiles",
     "maxTilesForDownload" to "this head downloads no offline map tiles",
-    "mapProvider" to "this head draws OpenStreetMap through MapLibre",
-    "mapType" to "this head draws OpenStreetMap through MapLibre",
     "maxCacheDiskSize" to "this head does not use QGC's tile cache",
     "maxCacheMemorySize" to "this head does not use QGC's tile cache",
 )

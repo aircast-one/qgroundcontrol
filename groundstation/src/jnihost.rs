@@ -3,7 +3,7 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use jni::objects::{GlobalRef, JByteArray, JByteBuffer, JClass, JObject, JObjectArray, JString, JValue, JValueOwned};
-use jni::sys::{JNI_VERSION_1_6, jboolean, jfloat, jint, jlong, jstring};
+use jni::sys::{JNI_VERSION_1_6, jboolean, jbyteArray, jfloat, jint, jlong, jstring};
 use jni::{JNIEnv, JavaVM};
 
 const BRIDGE_CLASS: &str = "org/mavlink/qgroundcontrol/QGCBridge";
@@ -196,6 +196,16 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_get(mut env: JN
     let path = text_of(&mut env, &path);
     let raw = unsafe { crate::nativehost::qgc_bridge_get(path.as_ptr()) };
     answered(&mut env, raw)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_mapTile(mut env: JNIEnv, _class: JClass, map_type: JString, x: jint, y: jint, zoom: jint, cache_file: JString) -> jbyteArray {
+    let provider = text_of(&mut env, &map_type).to_string_lossy().into_owned();
+    let cache_path = text_of(&mut env, &cache_file).to_string_lossy().into_owned();
+    let cache = (!cache_path.is_empty()).then(|| crate::tilecache::Cache::open(std::path::Path::new(&cache_path)).ok()).flatten();
+    let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
+    let image = crate::maptiles::fetch(&provider, x, y, zoom, &crate::nativehost::map_keys(), cache.as_ref(), persist, &crate::maptiles::fetch_over_http);
+    image.and_then(|bytes| env.byte_array_from_slice(&bytes).ok()).map_or(std::ptr::null_mut(), JByteArray::into_raw)
 }
 
 #[unsafe(no_mangle)]

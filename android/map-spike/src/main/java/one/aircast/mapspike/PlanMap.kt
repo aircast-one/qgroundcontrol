@@ -10,19 +10,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import org.maplibre.android.MapLibre
 
-internal var installedStyle: String? = null
+private var tileSourceInstalled = false
 
 @Synchronized
-internal fun planMapStyle(context: Context): String =
-    installedStyle ?: run {
+internal fun planMapStyle(context: Context): String {
+    if (!tileSourceInstalled) {
         MapBridge.start()
         MapLibre.getInstance(context)
-        installQgcTileSource(context).also {
-            if (it != OSM_RASTER_STYLE) {
-                installedStyle = it
-            }
-        }
+        installQgcTileSource(context)
+        tileSourceInstalled = true
     }
+    return qgcRasterStyle(currentMapType())
+}
 
 @Composable
 fun PlanMapScreen(

@@ -96,6 +96,8 @@ public final class QGCBridge {
 
     public static native boolean videoSetSurface(android.view.Surface surface);
 
+    public static native byte[] mapTile(String mapType, int x, int y, int zoom, String cacheFile);
+
     public static void onSystemBarAppearance(final boolean lightBars) {
         final Host current = host;
         if (current == null) {

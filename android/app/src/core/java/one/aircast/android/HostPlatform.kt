@@ -3,6 +3,7 @@ package one.aircast.android
 import android.app.Activity
 import android.view.View
 import java.io.File
+import one.aircast.mapspike.MapTileHost
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 
@@ -30,6 +31,8 @@ object HostPlatform {
             "--map-cache", File(mapCache, "qgcMapCache.db").absolutePath,
         ) + if (BuildConfig.DEBUG) listOf("--port", DEBUG_API_PORT) else emptyList()
         QGCBridge.start(arguments.toTypedArray())
+        val tileCache = File(mapCache, "qgcMapCache.db").absolutePath
+        MapTileHost.fetch = { mapType, x, y, zoom -> QGCBridge.mapTile(mapType, x, y, zoom, tileCache) }
         return null
     }
 

@@ -45,7 +45,7 @@ fun FlyMap(
     onMissionItemClick: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val style = remember(context) { planMapStyle(context) }
+    var style by remember(context) { mutableStateOf(planMapStyle(context)) }
     var plan by remember { mutableStateOf(FlownPlan()) }
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
@@ -64,6 +64,7 @@ fun FlyMap(
                     if (raw != null) {
                         MapBridge.markReachable()
                     }
+                    planMapStyle(context).takeIf { it != style }?.let { style = it }
                     FlownPlan(
                         items = missionItems(raw),
                         linkStartToHome = linksStartToHome(raw),
