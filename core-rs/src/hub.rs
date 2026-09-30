@@ -2025,6 +2025,10 @@ impl Hub {
         }
     }
 
+    pub fn heard_on(&self, link: LinkId) -> bool {
+        self.vehicles.values().any(|v| v.link == link || v.link_states.iter().any(|(id, _, _)| *id == link))
+    }
+
     pub fn link_closed(&mut self, link: LinkId) {
         let gone: Vec<u8> = self.vehicles.values().filter(|v| v.link == link).map(|v| v.id).collect();
         gone.iter().for_each(|id| self.remove(*id));

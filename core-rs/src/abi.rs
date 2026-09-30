@@ -54,7 +54,21 @@ impl Backend for QtBackend {
     }
 }
 
-static CORE: LazyLock<Core<crate::settingsstore::Owner<crate::vehiclefacade::Facade<QtBackend>>>> = LazyLock::new(|| Core::new(crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend))));
+static CORE: LazyLock<Core<crate::settingsstore::Owner<crate::vehiclefacade::Facade<QtBackend>>>> = LazyLock::new(|| {
+    crate::corelinks::set_hooks(registry_open, registry_close);
+    Core::new(crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)))
+});
+
+fn registry_open(config: crate::linkconfig::LinkConfig) -> Result<crate::transport::LinkId, (String, &'static str)> {
+    install_hub_sink();
+    start_pump();
+    crate::linkhost::open(&crate::linkhost::TRANSPORTS, config, &[]).map_err(|failure| (failure.reason, failure.remedy))
+}
+
+fn registry_close(id: crate::transport::LinkId) {
+    crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, "disconnected by the operator");
+    crate::hub::lock().link_closed(id);
+}
 static HEAD: Mutex<EventFn> = Mutex::new(None);
 
 fn c(text: &str) -> CString {

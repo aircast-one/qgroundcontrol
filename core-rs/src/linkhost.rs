@@ -131,6 +131,10 @@ impl Transports {
         Some((entry.name.clone(), entry.kind.clone(), self.configs.get(&id).is_some_and(|c| c.high_latency)))
     }
 
+    pub fn config(&self, id: LinkId) -> Option<LinkConfig> {
+        self.configs.get(&id).cloned()
+    }
+
     pub fn local_port(&self, id: LinkId) -> Option<u16> {
         match self.owned.get(&id).map(|l| &**l) {
             Some(Owned::Udp(link)) => Some(link.local_port()),

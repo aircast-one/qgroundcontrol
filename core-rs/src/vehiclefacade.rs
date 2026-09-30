@@ -1102,6 +1102,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::noticeboard::invoke(path, args) {
             return answer.to_string();
         }
+        if let Some(answer) = crate::corelinks::invoke(path, args) {
+            return answer.to_string();
+        }
         if let Some(answer) = self.onboard_log_invoke(path, args) {
             return answer;
         }
