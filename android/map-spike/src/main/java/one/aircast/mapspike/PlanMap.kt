@@ -29,7 +29,7 @@ fun PlanMapScreen(
     modifier: Modifier = Modifier,
     onClear: (() -> Unit)? = null,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemEditor: (@Composable (Int, () -> Unit) -> Unit)? = null,
+    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }

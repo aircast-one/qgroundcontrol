@@ -143,6 +143,32 @@ pub fn utm_to_geo_view(_backend: &dyn Backend, args: &[String]) -> Value {
     }
 }
 
+pub fn mgrs_to_geo(text: &str) -> Option<(f64, f64)> {
+    let packed: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let at = geoconvert::Mgrs::parse_str(&packed).ok()?.to_latlon();
+    Some((at.latitude(), at.longitude()))
+}
+
+pub fn position_forms_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let Some(v) = numbers(args, 2) else { return crate::read::refused("this needs two numbers: latitude and longitude") };
+    let (zone, easting, northing) = geo_to_utm(v[0], v[1]);
+    json!({
+        "kind": "object",
+        "class": "PositionForms",
+        "latitude": v[0],
+        "longitude": v[1],
+        "utm": (1..=60).contains(&zone).then(|| json!({ "zone": zone, "southern": v[0] < 0.0, "easting": easting, "northing": northing })),
+        "mgrs": crate::vehiclefact::mgrs(v[0], v[1]),
+    })
+}
+
+pub fn mgrs_to_geo_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    match args.first().and_then(|text| mgrs_to_geo(text)) {
+        Some((lat, lon)) => json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": 0.0 }),
+        None => json!({ "kind": "coordinate", "valid": false }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +216,24 @@ mod wraptests {
         assert_eq!(clamp_latitude(90.4), 90.0, "there is no latitude past the pole to seed a mission item at");
         assert_eq!(clamp_latitude(-90.4), -90.0);
         assert_eq!(wrap(47.4, 8.5), (47.4, 8.5));
+    }
+
+    struct NoBackend;
+    impl Backend for NoBackend {
+        fn get(&self, _p: &str) -> String { String::new() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn position_forms_round_trip() {
+        let forms = position_forms_view(&NoBackend, &["47.3764".to_string(), "8.5481".to_string()]);
+        assert_eq!(forms["utm"]["zone"], 32);
+        let (lat, lon) = mgrs_to_geo(forms["mgrs"].as_str().unwrap()).unwrap();
+        assert!((lat - 47.3764).abs() < 1e-3 && (lon - 8.5481).abs() < 1e-3, "an MGRS grid square read back lands within its metre of precision");
+        assert!(mgrs_to_geo("not a grid").is_none());
+        assert_eq!(mgrs_to_geo_view(&NoBackend, &["32TMN".to_string()])["valid"], true);
     }
 }

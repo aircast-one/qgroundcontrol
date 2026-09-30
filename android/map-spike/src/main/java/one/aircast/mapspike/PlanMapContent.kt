@@ -127,10 +127,10 @@ internal fun MapSpikeScreen(
     mapStyle: String,
     onClear: (() -> Unit)? = null,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemEditor: (@Composable (Int, () -> Unit) -> Unit)? = null,
+    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
 ) {
     var follow by remember { mutableStateOf(true) }
-    var editingItem by remember { mutableStateOf<Int?>(null) }
+    var editingItem by remember { mutableStateOf<MissionItem?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
     var loadArmed by remember { mutableStateOf(false) }
     var clearArmed by remember { mutableStateOf(false) }
@@ -700,7 +700,7 @@ internal fun MapSpikeScreen(
 
                         waypoint?.let { item ->
                             if (itemEditor != null) {
-                                TextButton(onClick = { editingItem = item.index }) { Text("Edit item") }
+                                TextButton(onClick = { editingItem = item }) { Text("Edit item") }
                             }
                             var cameraRevision by remember(item.index) { mutableStateOf(0) }
                             val camera by produceState<JSONObject?>(null, item.index, cameraRevision) {
@@ -1002,8 +1002,8 @@ internal fun MapSpikeScreen(
             }
         }
     }
-    editingItem?.let { index ->
-        itemEditor?.invoke(index) { editingItem = null }
+    editingItem?.let { item ->
+        itemEditor?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }) { editingItem = null }
     }
 }
 

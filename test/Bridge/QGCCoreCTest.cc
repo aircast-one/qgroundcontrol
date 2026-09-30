@@ -1363,7 +1363,7 @@ const char *const kViewPaths[] = {
     "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.mapClick", "view.missionComplete", "view.parameterTools", "view.landingPattern(6)",
     "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
-    "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
+    "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)", "view.positionForms(47.397,8.546)", "view.mgrsToGeo(32TMN6461447152)",
     "view.adsbTraffic", "view.followMe", "view.frame", "view.gcsPosition", "view.gimbal",
     "view.cameraProtocol", "view.joystickMapping",
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",

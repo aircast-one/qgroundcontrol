@@ -3167,6 +3167,11 @@
         "view.messages.class",
         "view.messages.kind",
         "view.messages.order",
+        "view.mgrsToGeo(32TMN6461447152).altitude",
+        "view.mgrsToGeo(32TMN6461447152).kind",
+        "view.mgrsToGeo(32TMN6461447152).latitude",
+        "view.mgrsToGeo(32TMN6461447152).longitude",
+        "view.mgrsToGeo(32TMN6461447152).valid",
         "view.missionComplete.batteryWarning",
         "view.missionComplete.class",
         "view.missionComplete.id",
@@ -3761,6 +3766,15 @@
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).plan",
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).readable",
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).valid",
+        "view.positionForms(47.397,8.546).class",
+        "view.positionForms(47.397,8.546).kind",
+        "view.positionForms(47.397,8.546).latitude",
+        "view.positionForms(47.397,8.546).longitude",
+        "view.positionForms(47.397,8.546).mgrs",
+        "view.positionForms(47.397,8.546).utm.easting",
+        "view.positionForms(47.397,8.546).utm.northing",
+        "view.positionForms(47.397,8.546).utm.southern",
+        "view.positionForms(47.397,8.546).utm.zone",
         "view.preflight.class",
         "view.preflight.groups.#",
         "view.preflight.groups.0.checks.#",
@@ -7113,6 +7127,11 @@
         "view.messages.items[].time",
         "view.messages.kind",
         "view.messages.order",
+        "view.mgrsToGeo(32TMN6461447152).altitude",
+        "view.mgrsToGeo(32TMN6461447152).kind",
+        "view.mgrsToGeo(32TMN6461447152).latitude",
+        "view.mgrsToGeo(32TMN6461447152).longitude",
+        "view.mgrsToGeo(32TMN6461447152).valid",
         "view.missionComplete.batteryWarning",
         "view.missionComplete.class",
         "view.missionComplete.id",
@@ -7759,6 +7778,15 @@
         "view.polygon(plan.geoFenceController.polygons.0).vertices.#",
         "view.polygon(plan.geoFenceController.polygons.0).vertices[].latitude",
         "view.polygon(plan.geoFenceController.polygons.0).vertices[].longitude",
+        "view.positionForms(47.397,8.546).class",
+        "view.positionForms(47.397,8.546).kind",
+        "view.positionForms(47.397,8.546).latitude",
+        "view.positionForms(47.397,8.546).longitude",
+        "view.positionForms(47.397,8.546).mgrs",
+        "view.positionForms(47.397,8.546).utm.easting",
+        "view.positionForms(47.397,8.546).utm.northing",
+        "view.positionForms(47.397,8.546).utm.southern",
+        "view.positionForms(47.397,8.546).utm.zone",
         "view.preflight.airframe",
         "view.preflight.blocked.#",
         "view.preflight.blocked[]",
@@ -8923,6 +8951,8 @@
             "view.nedToGeo",
             "view.geoToUtm",
             "view.utmToGeo",
+            "view.positionForms",
+            "view.mgrsToGeo",
             "view.terrainTile",
             "view.gps",
             "view.terrainDownload",
@@ -10052,6 +10082,13 @@
         "kind": "string",
         "order": "string"
     },
+    "view.mgrsToGeo(32TMN6461447152)": {
+        "altitude": "number",
+        "kind": "string",
+        "latitude": "number",
+        "longitude": "number",
+        "valid": "bool"
+    },
     "view.missionComplete": {
         "batteryWarning": "bool",
         "class": "string",
@@ -10874,6 +10911,19 @@
                 "longitude": "number"
             }
         ]
+    },
+    "view.positionForms(47.397,8.546)": {
+        "class": "string",
+        "kind": "string",
+        "latitude": "number",
+        "longitude": "number",
+        "mgrs": "string",
+        "utm": {
+            "easting": "number",
+            "northing": "number",
+            "southern": "bool",
+            "zone": "number"
+        }
     },
     "view.preflight": {
         "airframe": "string",
