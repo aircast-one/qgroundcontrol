@@ -48,7 +48,7 @@ const SENSOR_PREARM_CHECK: u32 = 0x1000_0000;
 const MAV_STATE_CRITICAL: u8 = 5;
 const MAV_STATE_EMERGENCY: u8 = 6;
 const LANDED_ON_GROUND: u8 = 1;
-const VTOL_STATE_FW: u8 = 4;
+use crate::guidedcmd::VTOL_STATE_FW;
 const LANDED_IN_AIR: u8 = 2;
 const LANDED_TAKEOFF: u8 = 3;
 const LANDED_LANDING: u8 = 4;
@@ -1064,6 +1064,7 @@ impl Vehicle {
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
             "gripper" => guidedcmd::gripper(number("gripAction")),
             "cancelRoi" => guidedcmd::cancel_roi(&state),
+            "vtolTransition" => guidedcmd::vtol_transition(action.get("forward").and_then(Value::as_bool).unwrap_or(false)),
             "setMode" => guidedcmd::set_mode(&state, action.get("mode").and_then(Value::as_str).unwrap_or("")).map(Plan::Steps).unwrap_or_else(|| Plan::Refused("Unknown flight mode".to_string())),
             other => Plan::Refused(format!("Unknown guided action {other:?}")),
         }
