@@ -37,7 +37,7 @@ SOURCES = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "macos/Sour
 # a confident zero about a head with 53 of them. Derived from the tree rather than passed, so the
 # two cannot disagree.
 SUFFIX = "*.kt" if any(SOURCES.rglob("*.kt")) else "*.swift"
-CORE = ROOT / "core-rs/src"
+CORE = ROOT / "groundstation/src"
 
 # A raw read kept on purpose. Each reason names what the view does NOT cover, and a view that
 # grows to cover it has to move this line with it.

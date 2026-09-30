@@ -17,7 +17,7 @@ play {
     defaultToAppBundles.set(true)
 }
 
-val coreCrate = rootProject.file("../core-rs")
+val coreCrate = rootProject.file("../groundstation")
 val coreJniLibs = layout.buildDirectory.dir("core/jniLibs")
 val coreBridgeSources = layout.buildDirectory.dir("core/bridge")
 val coreVideoBuild = layout.buildDirectory.dir("core/video/${qgc("abi")}")
@@ -104,7 +104,7 @@ val buildCoreLibrary by tasks.registering(Exec::class) {
     commandLine("cargo", "ndk", "--target", abi, "--platform", qgc("minSdk"), "rustc", "--lib", "--release", "--features", "jni-host", "--crate-type", "cdylib")
     doLast {
         copy {
-            from(coreCrate.resolve("target/$triple/release/libqgc_core.so"))
+            from(coreCrate.resolve("target/$triple/release/libgroundstation.so"))
             into(coreJniLibs.get().dir(abi))
         }
     }

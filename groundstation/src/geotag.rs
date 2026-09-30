@@ -1620,7 +1620,7 @@ mod tests {
         let bytes = tlog::record(1_700_000_000_000_000, &frame(camera_feedback(1_700_000_000_000_000, 470_000_000, CameraFeedbackFlags::CAMERA_FEEDBACK_PHOTO)));
         assert_eq!(triggers_from_tlog_at(&bytes, 1_800_000_000_000_000).triggers.len(), 1, "the parser finds it, which is the premise of the rest");
 
-        let path = std::env::temp_dir().join("qgc-core-geotag-no-images.tlog");
+        let path = std::env::temp_dir().join("groundstation-geotag-no-images.tlog");
         std::fs::write(&path, &bytes).unwrap();
         let view = geotag_view(&Ignored, &[path.display().to_string()]);
         std::fs::remove_file(&path).ok();

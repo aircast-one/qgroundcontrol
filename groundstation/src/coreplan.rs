@@ -477,7 +477,7 @@ fn carried() -> bool {
 }
 
 fn host_file() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("qgc-core-plan-{}.plan", std::process::id()))
+    std::env::temp_dir().join(format!("groundstation-plan-{}.plan", std::process::id()))
 }
 
 fn send_through_host(backend: &dyn Backend) -> Value {

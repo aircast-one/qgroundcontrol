@@ -5,7 +5,7 @@
 # binary: piping ninja into head sends SIGPIPE and kills the build mid-link; a
 # SIGTERM'd Qt app can outlive a short sleep and keep the debug port, so the new
 # instance fails to bind and every request answers from the old one; and a build can
-# succeed without relinking the Rust archive into the dylib at all -- core-rs declared
+# succeed without relinking the Rust archive into the dylib at all -- groundstation declared
 # no output for a while, so ninja had no edge to rebuild across and a core-only change
 # never reached the app. A green build was not evidence, which is why the check below
 # compares the artefacts rather than the exit status.
@@ -37,9 +37,9 @@ if grep -qE 'error:|FAILED' "$log"; then grep -E 'error:|FAILED' "$log" | tail -
 # cannot either: it reads the head and the core through the same process, so a stale
 # core makes both sides agree on the same stale answer.
 dylib="$root/build-test/Debug/AircastQGC.app/Contents/Frameworks/libAircastQGC.dylib"
-archive=$(ls -t "$root"/build-test/core-rs/*/libqgc_core.a 2>/dev/null | head -1)
+archive=$(ls -t "$root"/build-test/groundstation/*/libgroundstation.a 2>/dev/null | head -1)
 if [[ -n "$archive" && -f "$dylib" && "$archive" -nt "$dylib" ]]; then
-    echo "libqgc_core.a is newer than the dylib it should be inside: the Rust change did not reach the app" >&2
+    echo "libgroundstation.a is newer than the dylib it should be inside: the Rust change did not reach the app" >&2
     exit 1
 fi
 

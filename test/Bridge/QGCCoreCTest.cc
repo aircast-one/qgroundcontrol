@@ -1243,13 +1243,13 @@ QStringList fieldsThatNeverVaried(const QList<QJsonObject> &states)
 
 QString sharedTileCache()
 {
-    static const QString path = QDir::temp().filePath(QStringLiteral("qgc-core-tilecache-%1.db").arg(QCoreApplication::applicationPid()));
+    static const QString path = QDir::temp().filePath(QStringLiteral("groundstation-tilecache-%1.db").arg(QCoreApplication::applicationPid()));
     static bool started = false;
     if (!started) {
         started = true;
         QFile::remove(path);
         const QDateTime stale = QDateTime::currentDateTime().addSecs(-3600);
-        for (const QFileInfo &left : QDir::temp().entryInfoList({ QStringLiteral("qgc-core-tilecache-*.db") }, QDir::Files)) {
+        for (const QFileInfo &left : QDir::temp().entryInfoList({ QStringLiteral("groundstation-tilecache-*.db") }, QDir::Files)) {
             if (left.lastModified() < stale) {
                 QFile::remove(left.absoluteFilePath());
             }
@@ -2190,7 +2190,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         setFact(item + QStringLiteral(".turnAroundDistance"), QJsonValue(survey.turnAround));
         setFact(item + QStringLiteral(".gridAngle"), QJsonValue(survey.gridAngle));
 
-        const QString planFile = QDir::temp().filePath(QStringLiteral("qgc-core-survey-%1.plan").arg(QCoreApplication::applicationPid()));
+        const QString planFile = QDir::temp().filePath(QStringLiteral("groundstation-survey-%1.plan").arg(QCoreApplication::applicationPid()));
         QFile::remove(planFile);
         QVERIFY2(take(qgc_bridge_invoke("plan.saveToFile", compact(QJsonArray { planFile }).constData())).value(QStringLiteral("result")).toBool(false), qPrintable(planFile));
         QFile saved(planFile);
@@ -2246,7 +2246,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         setFact(item + QStringLiteral(".corridorWidth"), QJsonValue(corridor.width));
         setFact(item + QStringLiteral(".turnAroundDistance"), QJsonValue(corridor.turnAround));
 
-        const QString planFile = QDir::temp().filePath(QStringLiteral("qgc-core-corridor-%1.plan").arg(QCoreApplication::applicationPid()));
+        const QString planFile = QDir::temp().filePath(QStringLiteral("groundstation-corridor-%1.plan").arg(QCoreApplication::applicationPid()));
         QFile::remove(planFile);
         QVERIFY(take(qgc_bridge_invoke("plan.saveToFile", compact(QJsonArray { planFile }).constData())).value(QStringLiteral("result")).toBool(false));
         QFile saved(planFile);
@@ -2408,7 +2408,7 @@ void QGCCoreCTest::_planWrittenFromWaypointsLoadsInCpp()
 
 void QGCCoreCTest::_missionFileAgreesWithTheCppLoader()
 {
-    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../core-rs/tests/fixtures/OldFileFormat.mission"));
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../groundstation/tests/fixtures/OldFileFormat.mission"));
     const QJsonObject read = take(qgc_bridge_get(QStringLiteral("view.missionFile(%1)").arg(fixture).toUtf8().constData()));
     QCOMPARE(read.value(QStringLiteral("valid")).toBool(false), true);
     const int rustCount = read.value(QStringLiteral("itemCount")).toInt();
@@ -4229,7 +4229,7 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
 void QGCCoreCTest::_qtReadsBackEveryValueTheRustWriterSpells()
 {
     const QString golden = QFileInfo(QString::fromUtf8(__FILE__)).dir()
-        .filePath(QStringLiteral("../../core-rs/tests/fixtures/writer-golden.ini"));
+        .filePath(QStringLiteral("../../groundstation/tests/fixtures/writer-golden.ini"));
     QVERIFY2(QFile::exists(golden), qPrintable(QStringLiteral("the writer golden is missing: ") + golden));
 
     QTemporaryDir scratch;
@@ -4263,7 +4263,7 @@ void QGCCoreCTest::_qtReadsBackEveryValueTheRustWriterSpells()
 void QGCCoreCTest::_qtSeesTheSameSettingsAfterTheCoreRewritesThem()
 {
     const QDir here = QFileInfo(QString::fromUtf8(__FILE__)).dir();
-    const QString original = here.filePath(QStringLiteral("../../core-rs/tests/fixtures/qgc-settings.ini"));
+    const QString original = here.filePath(QStringLiteral("../../groundstation/tests/fixtures/qgc-settings.ini"));
     const QString rewritten = here.filePath(QStringLiteral("fixtures/qgc-settings-rewritten.ini"));
     QVERIFY2(QFile::exists(original), qPrintable(QStringLiteral("missing: ") + original));
     QVERIFY2(QFile::exists(rewritten), qPrintable(QStringLiteral("missing: ") + rewritten));

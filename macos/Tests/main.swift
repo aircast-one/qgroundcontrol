@@ -4332,7 +4332,7 @@ func checkCameraControl() {
     let busy = CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
                               "canChangeMode": false as NSNumber])
     expect(busy.hasModes && !busy.canChangeMode,
-           "a camera mid-capture still HAS modes and will not accept one now - core-rs video.rs "
+           "a camera mid-capture still HAS modes and will not accept one now - groundstation video.rs "
            + "computes canChangeMode as present && hasModes && can_change_mode(mode, photo, video), "
            + "and this head used to gate the mode change on hasModes, so the picker stayed live "
            + "while recording and the command fired into a camera that would refuse it")
@@ -7005,7 +7005,7 @@ func checkViewContract() {
     expect(InstrumentSelection.defaults.map(\.factName).joined(separator: ","),
            "altitudeRelative,groundSpeed,climbRate,distanceToHome,heading,altitudeAMSL",
            "this head keeps its own copy of the six default readings, because they are needed "
-           + "before a bridge read is safe; core-rs instruments::DEFAULTS is the same list in the "
+           + "before a bridge read is safe; groundstation instruments::DEFAULTS is the same list in the "
            + "same order, and this pins the copy so the two cannot drift apart unnoticed")
 
     let sensorStates = recorded("view.sensors.sensors[].state")
@@ -7535,7 +7535,7 @@ func checkMessageRate() {
            + "and draw blank, which is the failure this pins rather than the fallback value")
     expect(choices.map(\.rate).map(String.init).joined(separator: ","),
            "-1,0,1,2,3,4,5,6,7,8,9,10,25,50,100",
-           "and the fifteen are core-rs inspector.rs RATE_CHOICES in its order, so this fixture "
+           "and the fifteen are groundstation inspector.rs RATE_CHOICES in its order, so this fixture "
            + "cannot quietly stop being what the core actually sends")
 
     expect(MessageRateChoice(["title": "5 Hz"]) == nil, "a choice with no rate is dropped")

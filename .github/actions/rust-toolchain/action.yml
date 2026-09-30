@@ -1,5 +1,5 @@
 name: Rust Toolchain
-description: Make cargo able to build core-rs for this job's targets. The Rust core is part of the application, so every platform build needs it.
+description: Make cargo able to build groundstation for this job's targets. The Rust core is part of the application, so every platform build needs it.
 
 inputs:
   targets:
@@ -33,7 +33,7 @@ runs:
     - name: Add Rust targets
       if: inputs.targets != ''
       shell: bash
-      working-directory: core-rs
+      working-directory: groundstation
       env:
         TARGETS: ${{ inputs.targets }}
       run: |
@@ -47,7 +47,7 @@ runs:
     - name: Add Rust Android targets
       if: inputs.android-abis != ''
       shell: bash
-      working-directory: core-rs
+      working-directory: groundstation
       env:
         ABIS: ${{ inputs.android-abis }}
       run: |

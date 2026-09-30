@@ -419,6 +419,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "groundstation"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "flate2",
+ "geoconvert",
+ "geographiclib-rs",
+ "html-escape",
+ "if-addrs",
+ "jni",
+ "little_exif",
+ "lzma-rs",
+ "mavlink",
+ "num-traits",
+ "px4-ulog",
+ "regex",
+ "roxmltree",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serialport",
+ "sha2",
+ "shapefile",
+ "socket2",
+ "tungstenite",
+ "ureq",
+ "url",
+ "utm",
+ "zip",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1016,38 +1048,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d31986c7f5754792e62c15b93cc5e9c5affdd867a33cb868b84e7dea0d8e70e5"
 dependencies = [
  "byteorder",
-]
-
-[[package]]
-name = "qgc-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "flate2",
- "geoconvert",
- "geographiclib-rs",
- "html-escape",
- "if-addrs",
- "jni",
- "little_exif",
- "lzma-rs",
- "mavlink",
- "num-traits",
- "px4-ulog",
- "regex",
- "roxmltree",
- "rusqlite",
- "serde",
- "serde_json",
- "serialport",
- "sha2",
- "shapefile",
- "socket2",
- "tungstenite",
- "ureq",
- "url",
- "utm",
- "zip",
 ]
 
 [[package]]

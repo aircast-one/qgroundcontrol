@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn a_file_path_carrying_a_comma_survives_routing_and_reaches_the_file() {
-        let dir = std::env::temp_dir().join("qgc-core-router-comma");
+        let dir = std::env::temp_dir().join("groundstation-router-comma");
         std::fs::create_dir_all(&dir).unwrap();
         let awkward = dir.join("Flights, 2026 (2).tlog");
         std::fs::write(&awkward, b"not a real tlog, but a real file").unwrap();

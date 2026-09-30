@@ -42,7 +42,7 @@ def head_reads():
 def flagged():
     read = head_reads()
     out = []
-    for path in sorted((QGC / "core-rs/src").rglob("*.rs")):
+    for path in sorted((QGC / "groundstation/src").rglob("*.rs")):
         body = path.read_text(errors="ignore").split("#[cfg(test)]")[0]
         for key in sorted(set(re.findall(r'"([a-zA-Z_]\w*)"\s*:', body))):
             if READINESS.match(key) and key not in read:
@@ -68,9 +68,9 @@ def selftest():
 
 
 def core_is_present():
-    if (QGC / "core-rs/src").is_dir():
+    if (QGC / "groundstation/src").is_dir():
         return True
-    print(f"REFUSING: no core-rs under {QGC} - this sweep checked nothing")
+    print(f"REFUSING: no groundstation under {QGC} - this sweep checked nothing")
     return False
 
 

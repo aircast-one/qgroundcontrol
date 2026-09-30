@@ -1,6 +1,6 @@
 use std::ffi::{CString, c_char, c_int};
 
-use qgc_core::nativehost::{qgc_run, qgc_shutdown, qgc_start};
+use groundstation::nativehost::{qgc_run, qgc_shutdown, qgc_start};
 
 fn main() {
     let given: Vec<String> = std::env::args().collect();

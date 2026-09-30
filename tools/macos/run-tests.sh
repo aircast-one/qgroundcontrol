@@ -134,7 +134,7 @@ fi
 
 # The gate above only looks at the START. A foreign suite that begins a second after it passes is
 # invisible to it, which is how a 705/2 arrived with no cause I could name: I reached for
-# libqgc_core.a's mtime as evidence of interference and it was this script's OWN build step
+# libgroundstation.a's mtime as evidence of interference and it was this script's OWN build step
 # finishing. Checking again at the END cannot prevent the overlap - the peer running build-f has
 # the same one-sided gate and said so - but it turns "unexplained reds" into "reds with a measured
 # overlap beside them", which is the difference between diagnosing and guessing.

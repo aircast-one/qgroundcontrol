@@ -29,7 +29,7 @@ predicate: a quoted literal whose text is one of 23 bridge roots followed by a d
 
 `raw Qt total` is the number to read. It already excludes every write and invoke the core keeps
 -- asked of the core itself through the ignored `claims_for_qtpaths` test in
-`core-rs/src/actions.rs`, so a claim made by pattern (a fact under `settings.`, a mission item's
+`groundstation/src/actions.rs`, so a claim made by pattern (a fact under `settings.`, a mission item's
 field) counts as well as a named one -- plus SwiftUI symbol names and the core's own `view.*`. A
 path that is also read, or used in a way the tool cannot classify, stays listed. The interpolated
 TEMPLATES below each expand to an unknown number of runtime paths.

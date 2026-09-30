@@ -3,8 +3,8 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-GROUPS = ROOT / "core-rs/src/settingsgroups.rs"
-PAGES = ROOT / "core-rs/src/settings.rs"
+GROUPS = ROOT / "groundstation/src/settingsgroups.rs"
+PAGES = ROOT / "groundstation/src/settings.rs"
 HEAD = ROOT / "android/app/src/main/java/one/aircast/android/ui/SettingsScreen.kt"
 
 

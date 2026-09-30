@@ -651,7 +651,7 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
         && let Some(source) = source
     {
         let generation = traffic.generation;
-        std::thread::Builder::new().name("qgc-core-adsb".to_string()).spawn(move || follow(source, generation)).expect("adsb thread");
+        std::thread::Builder::new().name("groundstation-adsb".to_string()).spawn(move || follow(source, generation)).expect("adsb thread");
     }
     traffic.expire(now_ms);
     with_last_units(|last| *last = Some(units.clone()));

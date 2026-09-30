@@ -1001,7 +1001,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 
 ### R1 status
 
-- 2026-09-08: `core-rs/` landed. Every `qgc_bridge_*` call passes through Rust on single-arch
+- 2026-09-08: `groundstation/` landed. Every `qgc_bridge_*` call passes through Rust on single-arch
   macOS; `view.messages` is the first view-state path; `qgc_bridge_watch_client(client, paths)`
   gives each store its own watch set with the union going to Qt. `QGCCoreCTest` is the C ABI
   suite. Without cargo, or on universal and non-macOS builds, the bridge routes straight to Qt.
@@ -1124,7 +1124,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: remote ID broadcasts run in the core for core-served vehicles (arm status starts the one-second SYSTEM/BASIC_ID/SELF_ID/OPERATOR_ID cycle, 2.5 s of silence stops it); `view.coreRemoteId` feeds the settings and GCS fix from the Qt side and reports the state; `qgc_core_remote_id` declares an emergency.
 - 2026-09-09: `view.messages` items carry `level` (error, warning, normal) read from the Qt handler's style token, so heads bucket without depending on the translated severity word, and an `index` to key on.
 - 2026-09-09: PX4 MAVLink log streaming runs in the core for core-served vehicles (`qgc_core_log` start/stop/autoStart, file named as the Qt processor names it, acks, denial handling); `view.coreVehicle.log` reports it.
-- Sensor calibration moved into the Rust core (`core-rs/src/sensorcal.rs`). The PX4 `[cal]` status-text protocol and the ArduPilot compass and accelerometer flows both run there; `view.coreCalibration(id)` serves the orientations, progress, outcome and log, and `qgc_core_calibrate` takes start/cancel/next. `view.setup.groups[].pages[].completes` is gone: it encoded a head's capability, not the core's knowledge, and the two heads had already diverged on Radio.
+- Sensor calibration moved into the Rust core (`groundstation/src/sensorcal.rs`). The PX4 `[cal]` status-text protocol and the ArduPilot compass and accelerometer flows both run there; `view.coreCalibration(id)` serves the orientations, progress, outcome and log, and `qgc_core_calibrate` takes start/cancel/next. `view.setup.groups[].pages[].completes` is gone: it encoded a head's capability, not the core's knowledge, and the two heads had already diverged on Radio.
 - Review of the calibration slice caught two defects with physical consequences: a PX4 gyro calibration asked the operator to rotate the airframe through all six orientations during a bias measurement (it shows Down only, as `SensorsComponentController.cc` does), and a PX4 stop went out unretried so one dropped datagram wedged the vehicle for the life of the link. A stalled run now ends itself after ten minutes of silence instead of refusing every later calibration.
 - `view.flyState` serves link loss from the core: connected, armed, flying, `contactLost`, the state line and the stale notice, with the precedence that lost contact outranks armed and flying. Both heads had hand-written that sentence and that rule; they now read one. Guided offers are deliberately not gated on it, matching upstream `GuidedActionsController`.
 - `view.guidedActions` carries the two VTOL transitions, the largest functional gap in the guided set; a head performs one by writing `vehicle.vtolInFwdFlight`. They require the vehicle to be flying, because `MainStatusIndicator.qml` only opens that drawer in the air and `setVtolInFwdFlight` has no armed check of its own. Separately, `view.video.cameras[].configured` no longer compares a `tr()` string: `VideoSettings::sourceConfigured` and a new `sourceEnabled` are `Q_INVOKABLE`, so neither the core nor a head keeps a string equality against translated text.
@@ -1151,9 +1151,9 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - `LinkManager::createSerialConfiguration` lets a head make a serial link, which neither could before: the Qt flow passes a configuration pointer between four calls and a path-based head has nowhere to hold one. It registers without connecting, so parity and flow control stay ordinary property writes and the existing `createConnectedLink` finishes the job from a path. Serial is compiled in on Android where a USB radio is a mainstream way to reach an aircraft.
 - A `Q_INVOKABLE` with a Qt typedef parameter is fine: `moc` normalises `quint16` to `ushort`, which is what the metatype says too, and both spellings invoke. `int32_t` fails one line earlier instead, at the metatype conversion, because `<cstdint>` names are neither normalised nor registered. Pinned by a test that goes red if Qt stops normalising.
 - `LinkManager::commitLinkConfigurations` gives a head a way to persist a link it edited; nothing reachable wrote the list to disk before, so an edit took effect and vanished at restart. Editing stays ordinary property writes and the commit is the transaction boundary, rather than a wide edit signature that three link types with different fields cannot share. Two core tests that drained the socket once now wait for the message they expect.
-- A failed plan save cleared the dirty flag, so both heads and QML reported a plan saved that never reached the disk. Measured by the macOS session on the running app. The first test for it passed with the fix reverted, because the fence polygon it used to dirty the plan could not be un-dirtied: clearing a fence child re-announced it through the list model, whose handler ORs an incoming value into a flag it never lowers, into a controller slot that ignores the value. One defect was hiding under another. Both fixed, each proven by reverting it. `core-rs` also gains the structure scan generator, unit tested; its recorded oracle waits on a way to read back items a structure scan never writes into the saved plan.
+- A failed plan save cleared the dirty flag, so both heads and QML reported a plan saved that never reached the disk. Measured by the macOS session on the running app. The first test for it passed with the fix reverted, because the fence polygon it used to dirty the plan could not be un-dirtied: clearing a fence child re-announced it through the list model, whose handler ORs an incoming value into a flag it never lowers, into a controller slot that ignores the value. One defect was hiding under another. Both fixed, each proven by reverting it. `groundstation` also gains the structure scan generator, unit tested; its recorded oracle waits on a way to read back items a structure scan never writes into the saved plan.
 - The tile cache is ported to `rusqlite` and keyed identically to Qt, so an existing `qgcMapCache.db` serves rather than re-downloads. The core does not reimplement Qt's string hash: Qt's `qHashBits` is dispatched on CPU features, so a port that guessed it would look right and silently miss every tile. The 37 provider names are recorded with the integers Qt hashes them to, and a provider Qt adds later fails the test instead of quietly missing. The schema oracle is read back out of a database the real map engine created, not copied from the source, so it compares the file Qt writes rather than the statements it was asked to write.
-- A structure scan could be planned inside the structure. Which side the vehicle flies depended on the vertex order, because the offset walks edges to one side of their direction and `verifyClockwiseWinding` is called from QML only, on vertex drag. A polygon from a KML file or from a native head over the bridge was never wound, so both new heads could plan a scan into the tower. The flight polygon is wound before it is offset; the oracle carries three shapes in both windings. Also: the tile cache pruned tiles belonging to downloaded offline sets, read a broken database as an empty one, and misread the provider out of four of the 37 hashes. `core-rs` gains the polyline module and polygon area, containment, splitting and winding against a recorded oracle.
+- A structure scan could be planned inside the structure. Which side the vehicle flies depended on the vertex order, because the offset walks edges to one side of their direction and `verifyClockwiseWinding` is called from QML only, on vertex drag. A polygon from a KML file or from a native head over the bridge was never wound, so both new heads could plan a scan into the tower. The flight polygon is wound before it is offset; the oracle carries three shapes in both windings. Also: the tile cache pruned tiles belonging to downloaded offline sets, read a broken database as an empty one, and misread the provider out of four of the 37 hashes. `groundstation` gains the polyline module and polygon area, containment, splitting and winding against a recorded oracle.
 - `host.notices` gives a head with no QML root the operator messages and navigation requests `QGCApplication` currently delivers by invoking QML methods by name. On the Android head those invokes fail silently, so all 140 `showAppMessage` call sites are mute, and the setup-incomplete case jumps the operator to the Setup tab with no message explaining why. It is a queue the head drains by id rather than a latest-value property, because two messages in quick succession must both be seen; it is capped and counts what it dropped. The QML path still runs.
 - A name the core hands a head to interpolate into a path now has to resolve. The macOS session found the class: a path built from runtime data where the interpolated segment is a core-supplied string, so a wrong name in the core becomes a silent default in the head with no error in between, because a misspelled property and a null one are byte-identical. Every mission kind is now inserted through the invokable the core names and its geometry property resolved down to the vertices. Also fixed a race in the tile cache schema test that only a full-suite run exposed: it waited for the database file to be non-empty, which happens after the first table, then queried the last one.
 - The structure scan generator is now checked against what a vehicle actually received. Survey and corridor were matched against Qt from the start; structure scan could not be, because it never writes its generated items into the saved plan, so every assertion about it was hand-derived from reading the C++. A MockLink is connected, three scans are uploaded, and the items are read back off the mission manager. Reading them off the wire rather than the plan file is what makes it an oracle rather than a restatement.
@@ -1181,7 +1181,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - `QGCHostNotices.cc` and `.h` were committed and the CMakeLists line compiling them was not, so a clean checkout would fail to link against the notice channel both heads adopted tonight. Every build on this machine worked because the change sat in the shared working tree, where all three sessions saw it. A thing that works everywhere it is looked at, because everywhere it is looked at shares the state that makes it work. Found by reading `git status`, not by anything failing.
 - `view.modeSlots` read `rawValue` out of a serialised fact and `vehicleType` off the vehicle, and the bridge sends neither: a fact carries `value`, and `Vehicle` has `fixedWing`/`rover`/`vtol` but no `vehicleType`. So the mode channel was never read, every vehicle fell back to channel five, and the view lit whatever was on it — the same defect the view was added to fix, one layer down. My tests passed because the fixture invented both keys, and one of them was asserting the bug as correct. Which parameters name the slots is now decided by asking the vehicle which ones it has, as the Qt controller does. The regression test reads the channel off a real ArduPilot vehicle and compares all six slot names against their parameters.
 - A code review found eight defects in the mission actions and the item list, the worst of which could delete an operator's waypoint: the insert invokables return void, so a call that added nothing looked like one that worked, and the rollback then removed whatever the selection still named. The insert now requires the plan to have grown. Also: an orbit height was unbounded where the slider offers 2 to 122 metres, a vehicle that cannot orbit was asked anyway, the insert index reached the model unvalidated, the question was asked one slot late, an unreadable item classified as complex, and an altitude below sea level printed as a dash. Two more from the macOS session: a terrain wait was reported as a blocked item, and an unplaced takeoff carried a coordinate Qt calls valid at zero, zero.
-- Registering an event handler no longer starts the link pump. `qgc_core_set_event_handler` did three things under one name and the third was spawning a thread that wakes every 100 ms, takes the transports and hub locks, and can never be stopped. The macOS session wired the first Swift consumer of the push channel and found `qgc-core-pump` in their process having never asked for a link. It now starts where there is something to service. Their second finding needs no code and matters more: `announce()` calls the head's handler from the pump thread, so events do **not** all arrive on Qt's thread — the Watcher's do and the pump's do not, for `view.coreGuided`, `view.detections` and `view.transports`.
+- Registering an event handler no longer starts the link pump. `qgc_core_set_event_handler` did three things under one name and the third was spawning a thread that wakes every 100 ms, takes the transports and hub locks, and can never be stopped. The macOS session wired the first Swift consumer of the push channel and found `groundstation-pump` in their process having never asked for a link. It now starts where there is something to service. Their second finding needs no code and matters more: `announce()` calls the head's handler from the pump thread, so events do **not** all arrive on Qt's thread — the Watcher's do and the pump's do not, for `view.coreGuided`, `view.detections` and `view.transports`.
 - Every list the core serves runs oldest-first now, and each says so in an `order` field. `view.messages` ran newest-first because `StatusTextHandler` prepends, while host notices and the track append, so `last()` meant the newest on two of three lists and the oldest on the other. The Android session found it by taking the last error for the newest and watching it name the first one forever; their test passed because the fixture was built in the order they assumed. Normalising rather than documenting, on their argument: a head that gets it wrong gets a plausible wrong answer, and a comment in a view does not reach a head.
 - `view.missionItems` names the paths a head writes an item's fields to, closing the write half of the interpolation problem the Android session identified as the worse half: a read that resolves to nothing draws a default, a write that resolves to nothing does not happen. The test writes to every path the view names, for four item kinds, and found the defect on its first run — a serialised fact's `name` is its display name and the property name is under `property`, so 22 paths had spaces in them and named nothing. Also opts the tile cache reader out of SQLite's shared cache, which the Qt worker enables: joining it produced an intermittent disk I/O error and a row that read successfully and then went missing on the next identical query.
 - An item now says whether the vehicle flies a leg to it, and the editable fields can be asked for per item rather than only for the selection. Both were what the Android session needed before adopting `view.missionItems`, and both were things they declined to guess: their map's `isFlownLeg` needs `isIncomplete`, which is on complex items only and is what a survey carries until it has its area, and their head edits whichever waypoint the operator tapped rather than whichever is current. Asking for fields costs an unfiltered read per item, so it is an argument rather than the default. `blocked` does not cover `incomplete`: one is an item missing something the operator must supply, the other is a complex item without its geometry yet.
@@ -1197,7 +1197,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 
 ### Stream F · Core
 
-Owns `core-rs/`, the generated `QGCBridgeC.h`, the golden dump and fixtures, the router in
+Owns `groundstation/`, the generated `QGCBridgeC.h`, the golden dump and fixtures, the router in
 `QGCBridgeCore.cc`, and this section. B, C and D consume Rust view-state paths as F publishes
 them and delete their model files in the same commit. E records every hardware gate.
 
@@ -1337,7 +1337,7 @@ inversion is **what can change without an edit at all** — a fact the window wo
 re-read because nothing the operator did caused it to change.
 
 Run over every view the Plan window reads, against the `DEPS` each one declares in
-`core-rs`:
+`groundstation`:
 
 | view | deps | verdict |
 |---|---|---|
@@ -1676,7 +1676,7 @@ journal the writer has open mid-transaction must roll it back before it can read
 back is a write. Reported; the database and its reader are the core's.
 
 **Two attributions abandoned on the way, both mine and both plausible.** First that a leftover app
-was writing the same file — the database is `QDir::temp()/qgc-core-tilecache-<applicationPid>.db`,
+was writing the same file — the database is `QDir::temp()/groundstation-tilecache-<applicationPid>.db`,
 created fresh per test process, so nothing outside the suite can touch it. Second, and more
 tempting, that this stream's habit of `kill -9` on the app left hot journals behind: same
 refutation, and it would have been a satisfying story about a runbook instruction causing a bug.
@@ -1807,7 +1807,7 @@ and is it frozen or live?* — to the rest of the head found one more:
     VehicleSetupWindow.swift:856  page.name      == "Sensors" && !sensors.failing.isEmpty   <- safe
 
 **Only the first of those two is a defect, and grouping them was the same error again.** They
-look identical and read different sources. A *page* name comes from `PAGES` in `core-rs/setup.rs`,
+look identical and read different sources. A *page* name comes from `PAGES` in `groundstation/setup.rs`,
 a core-owned static of English literals, so line 856 compares a core literal against a head
 literal and is correct in every locale. A *component* name comes from QGC's `VehicleComponent`.
 Two lines one apart, matching the same string, and only one of them crosses a translation
@@ -1851,7 +1851,7 @@ setting a key the model never reads is a defect — is wrong. It flagged nine, a
 fixture faithfully carrying a key the producer really emits and the model has no need for:
 `inserted` and `refused` on an insert answer, `removed` and `remaining` on a remove,
 `compId` on a MAVLink message, `mode`, `storageStatus`, `shots` and `batteryRemaining` on a
-camera. All nine verified against `core-rs`. Mirroring the producer is exactly what a fixture
+camera. All nine verified against `groundstation`. Mirroring the producer is exactly what a fixture
 should do, so the check punishes the right behaviour.
 
 **And it caught the motivating bug by accident.** Reintroduced, the flat-`latitude` fixture is
@@ -1867,7 +1867,7 @@ is what makes it invisible to review, because the key looks right.
 Two smaller things worth keeping. The first version used a bare `"([^"]+)"` to find keys and
 paired the closing quote of one literal with the opening quote of the next, reporting the code
 *between* keys as a key and declaring 247 fixtures broken — a tool crying wolf at maximum volume
-on its first run. And checking the four camera keys against `core-rs/src/camera.rs` alone
+on its first run. And checking the four camera keys against `groundstation/src/camera.rs` alone
 returned zero for all of them; the file is `cameracalc.rs` and the keys are elsewhere in the
 crate. Concluding from one file would have been a four-finding phantom inside the investigation
 of a tool built to prevent phantoms.
@@ -3002,7 +3002,7 @@ tool rather than remembered, and it is the check I would most want to have writt
 **The suite is 706/1/89 and the one failure is not mine.** The core added
 `altitudeFrame` to `view.missionItems` — **the field I asked for when I reported the
 mixed-frame column** — and the recorded contract has not caught up; both
-`core-rs/src/missionitems.rs` and `test/Bridge/fixtures/view-shapes.json` are modified
+`groundstation/src/missionitems.rs` and `test/Bridge/fixtures/view-shapes.json` are modified
 in their working tree right now. My change touches no view shape. Their values are
 `"launch"` and `"amsl"`: **a key rather than a phrase**, which is what Android asked
 for so neither head matches on a translated string. Reading it is the next cycle's work.
@@ -3133,7 +3133,7 @@ measure rather than a gap I have judged.**
 Suite: the full run gave 706/1/89 on
 `AircastDeviceSetupTest::_reapplyReplacesExistingLink`. **Re-run alone it is 6/0** —
 seventh sighting of that known flake, under the documented condition, with
-`core-rs/src/fences.rs` modified in the core's tree so a concurrent Rust rebuild was
+`groundstation/src/fences.rs` modified in the core's tree so a concurrent Rust rebuild was
 live during the full run.
 
 ### The rig had a step that had never once succeeded, 2026-09-12
@@ -4291,7 +4291,7 @@ neither — degrees are degrees — which is why that one stayed in the head.**
 
 ### (uu) The guard I had just called dead was live one file over
 
-`Measure.format` carried a comment saying it *"spells a number the way core-rs read.rs
+`Measure.format` carried a comment saying it *"spells a number the way groundstation read.rs
 format_measure does"*. **It did not.** The core wraps its number in **`settled()`**, which
 strips the sign when every printed digit is a zero. This head's copy had no such guard, so at
 the measured shape — a vehicle on the ground reporting **-0.04** — it drew **`"-0.0 m"`**
@@ -4493,7 +4493,7 @@ focused, the app draws **27–42% of one core**. The head runs **eleven repeatin
 | `QPlatformWindow::deliverUpdateRequest` | 475 / 1262 | **1200 / 1262** |
 | `QSGGuiThreadRenderLoop::renderWindow` | 363 / 1262 | **975 / 1262** |
 | **`QGCNativeUI` — the Swift head** | **0** | **0** |
-| **`libqgc_core` — the Rust core** | **0** | — |
+| **`libgroundstation` — the Rust core** | **0** | — |
 
 **The QML scene graph is repainting continuously**, and neither the Swift head nor the Rust
 core appears in the main thread's profile **at all**. The head's polling costs nothing this
@@ -4703,13 +4703,13 @@ are what made it attributable.**
 known cause and a fix already in the author's tree. **Re-running after their commit lands is
 next cycle's confirmation, not tonight's claim.**
 
-### (zz) My attribution reached the right fix and the wrong owner — `core-rs` has more than two authors
+### (zz) My attribution reached the right fix and the wrong owner — `groundstation` has more than two authors
 
 **Correcting `c07491b54`.** I wrote that `view.cameraDefinition` was *"one of the three views
 the core added in `4c52eae2d` — their own guard catching their own new view."* **The guard is
 theirs. The view is not.** The Rust session did not write `cameradef.rs`, `cameraproto.rs` or
 `joystick.rs`, and did not add those three views — nor the four in `268105172` before them.
-**Both landed in `core-rs` from a session neither of us had accounted for, and they found out
+**Both landed in `groundstation` from a session neither of us had accounted for, and they found out
 the way I did: a test going red and HEAD having moved underneath.**
 
 **The reasoning was sound and still reached the wrong owner**, which sharpens the lesson rather
@@ -4787,7 +4787,7 @@ correctly **ignores the ordinary app** started with `--allow-multiple`.
 script both **SIGKILLs on entry** and **excludes from the gate**. **A third session adopting
 that name would be killed by my runner and invisible to it at the same time**, which is the
 collision `build-run.sh`'s header describes arriving from the other direction. **Not
-hypothetical any more: `core-rs` turned out to have a third author tonight.**
+hypothetical any more: `groundstation` turned out to have a third author tonight.**
 
 **Recorded rather than changed.** Making the clone name vary with the build directory would
 close it, but the runner is shared tooling that works, and **the two runners in existence today
@@ -4880,7 +4880,7 @@ worth recording with the reason it was negative.
 
 ### Staleness fails in both directions and neither reading looks stale
 
-**My app was 28 minutes behind the core library** — process at 20:24, `libqgc_core.a` at 20:43. I
+**My app was 28 minutes behind the core library** — process at 20:24, `libgroundstation.a` at 20:43. I
 read `view.guidedAltitude`, saw no `rangeText`, and **nearly reported the core as having failed
 to ship a field it had shipped.** The view is `available:false` with no vehicle, so **absent keys
 look exactly like a correct unavailable state** — the same shape that cost me the firmware fence.
@@ -4902,7 +4902,7 @@ was the eighth sighting.** Re-run alone: **`PASS=6 FAIL=0 suites=1`**. So the re
 **What is new is the evidence, not the conclusion.** The previous seven sightings rested on
 co-occurrence — the test failed, a peer was probably building, the pattern held. This time the
 overlap is a measurement: the run spanned **21:07 to 21:17** and
-`build-test/core-rs/debug/libqgc_core.a` carries an mtime of **21:09:09**, inside the window. A
+`build-test/groundstation/debug/libgroundstation.a` carries an mtime of **21:09:09**, inside the window. A
 peer relinked the core under a running suite.
 
 **Co-occurrence seen eight times is still not a mechanism.** It was the right call to keep
@@ -5094,7 +5094,7 @@ translation keeps `%1` last, which is not guaranteed.
 **The ask, and it is small:** one computed property on the C++ side — `unknownEnumLabel`, returning
 `tr("Unknown: %1").arg(rawValue())` — evaluated in the same translation context as the entry it
 describes. Then head and core compare strings that are equal by construction in every locale
-instead of guessing. `core-rs` cannot do this itself: it is Rust and has no `tr()`.
+instead of guessing. `groundstation` cannot do this itself: it is Rust and has no `tr()`.
 
 **Resolved in `2d680fdf0`, exactly as asked.** `Fact::unknownEnumLabel` returns the `tr("Unknown: %1").arg(rawValue())` expression, and `enumIndex()` now BUILDS the synthetic entry from that same function rather than from a second copy of it - so the label a consumer compares against and the label that was added are one expression, not two that agree today. `ParameterModel` keys on it and the English prefix is gone.
 

@@ -166,7 +166,7 @@ ACCEPTED_FUNCTIONS = {
         "eraseWarning", "requestingList", "savePath", "savePathReason",
     }), "the else arm cannot be entered either, and for a structurally different reason than "
         "Mission's: view.logs is a compile-time entry in the core's view registry "
-        "(core-rs/src/view.rs:418), so the path always resolves. MEASURED ON THE RIG: with no "
+        "(groundstation/src/view.rs:418), so the path always resolves. MEASURED ON THE RIG: with no "
         "vehicle view.logs still answers kind 'object' -- connected false, every capability flag "
         "false, emptyText 'Connect a vehicle to list its logs.' -- and a view that genuinely does "
         "not exist answers kind 'null' with a reason naming it. So the ordinary disconnect takes "

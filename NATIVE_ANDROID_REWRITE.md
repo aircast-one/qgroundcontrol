@@ -808,7 +808,7 @@ my setup dispatch had it. One instance left, and it is not only mine.
 `Fact::unknownEnumLabel()` is `tr("Unknown: %1")`, synthesised when a fact's
 value is not among its declared ones. Two consumers match that English prefix:
 
-- `core-rs/src/control.rs:41` filters it out of the options a picker offers.
+- `groundstation/src/control.rs:41` filters it out of the options a picker offers.
 - `Qgc.kt:41` derives `valueIsOffTheEnumList` from it, and
   `SettingsScreen.kt:225` uses that to choose between a picker and a raw field.
 
@@ -906,7 +906,7 @@ standing.
 vehicle to verify", which carried one closed route into a claim about the whole
 job. What needs a flight is the end-to-end check that the polyline draws the
 same line. The rules themselves are already unit-tested on both sides without a
-vehicle - `core-rs/src/track.rs` has its own `mod tests`, and the head has
+vehicle - `groundstation/src/track.rs` has its own `mod tests`, and the head has
 `map-spike/src/test/.../VehicleTrackTest.kt` - so the migration can be written,
 its behaviour pinned, and `VehicleTrack` deleted entirely off-device. Only the
 last confirmation waits on hardware, and that is a different sentence from the
@@ -1780,12 +1780,12 @@ asserts a string the head built is a test that the head is answering a question 
 the useful part.** It reports that the Android AAR "produces a core older than its own sources",
 because `strings` on the built library could not find `bandText` while finding its neighbours.
 
-Round one: the core session was editing `core-rs/src/terrain.rs` while I built from it, so every build
+Round one: the core session was editing `groundstation/src/terrain.rs` while I built from it, so every build
 raced an edit. I withdrew — correctly for those runs, and wrongly as a general conclusion, because one
 mechanism explaining some of the evidence does not account for the rest.
 
 Round two: I held the source still for twelve minutes, rebuilt, confirmed cargo printed
-`Compiling qgc-core`, and added a control — `lowestText` and `highestText` from **lines 172 and 173 of
+`Compiling groundstation`, and added a control — `lowestText` and `highestText` from **lines 172 and 173 of
 the same `json!`** were in the archive, and line 174 was not. Re-raised.
 
 Round three, from the core session, settles it: a marker inserted on the line *immediately above*
@@ -2550,7 +2550,7 @@ which is why the first migration was chosen to be one whose absence is visible. 
 no-argument form has no commas and is correct meanwhile.
 
 **The Rust core runs on the handset.** The first AAR built with `QGC_RUST_CORE` on (cargo-ndk
-cross-compiling `libqgc_core.a` into `libAircastQGC`) starts, and the whole regression passes
+cross-compiling `libgroundstation.a` into `libAircastQGC`) starts, and the whole regression passes
 against it: battery, RC, sats, HDOP, the vibration bands, four status texts, the log list and
 both camera components. Eight `qgc_core_` and eight `qgc_bridge_` symbols are exported from the
 shipped `.so`. This was the one check the core session could not run, and it is the gate for
@@ -4103,9 +4103,9 @@ same row bold and reads "Connected · UDP port 14999". Neither sentence exists i
 
 ### An iteration lost to `git status`, in a tree where it cannot be believed
 
-I deferred this work for an iteration because `git status` showed `MM core-rs/src/links.rs` and I
+I deferred this work for an iteration because `git status` showed `MM groundstation/src/links.rs` and I
 read that as another session editing the file. It was not. Measured:
-`git show HEAD:core-rs/src/links.rs | diff -q -` reports identical, and in the same minute
+`git show HEAD:groundstation/src/links.rs | diff -q -` reports identical, and in the same minute
 **`git status --short` claimed 42 modified files while `git diff HEAD --name-only` listed one.**
 
 The rule that this tree's shared index makes `git diff` unreliable was already written down. It
@@ -4399,7 +4399,7 @@ that took `completes` out of the core.
 
 **One safety property was nearly lost in the move.** A head-side test asserted that no offered
 calibration spins a propeller. With the list now coming from the core, that assertion had nothing
-left to check — so it moved to `core-rs/src/calibration.rs`, where the list lives, rather than
+left to check — so it moved to `groundstation/src/calibration.rs`, where the list lives, rather than
 being deleted with the code it guarded.
 
 Verified on the handset in both directions, which needed a new lever: with the accelerometer
@@ -6572,7 +6572,7 @@ entering 50 for a climb needs that to be their unit; it is.
 
 The flight-strip defect came from a `Q_PROPERTY` declared `CONSTANT`, so the
 obvious question is how many more there are. Extracted all **151 dep paths** from
-every `DEPS` in `core-rs`, resolved the 128 distinct leaf properties against
+every `DEPS` in `groundstation`, resolved the 128 distinct leaf properties against
 QGC's headers, and classified them.
 
 **Nothing else.** Sixteen are `CONSTANT`, and every one is either a pointer to a
@@ -7991,7 +7991,7 @@ same thing.
 
 ### A pushed view is not the view it names, 2026-09-15
 
-Four paths in `core-rs/src/abi.rs` are pushed by an `announce_*` rather than by
+Four paths in `groundstation/src/abi.rs` are pushed by an `announce_*` rather than by
 the router. Every one of them emits the *producer's snapshot*, not the view the
 router computes for the same path - so a head watching the path and a head
 reading it see two different answers, and the frequent one is the unchecked one.
@@ -8250,7 +8250,7 @@ The discriminator - connect, stay on Fly for 75 s, never touch Plan - found
 kills "opening Plan forces it". The reason is one dependency:
 
 ```
-core-rs/src/guided.rs      view.guidedActions deps include "plan.missionController.containsItems"
+groundstation/src/guided.rs      view.guidedActions deps include "plan.missionController.containsItems"
 QGCBridgeCore rootObject   resolving "plan" CONSTRUCTS PlanMasterController and start()s it
 ```
 
@@ -8792,9 +8792,9 @@ name, since a name-grep on this head is clean by construction.
 | `JoystickIndicator` | missing, `view.joystick` served and unread |
 | `RTKGPSIndicator` | missing, `view.gpsRtkBase` served and unread |
 | `GCSBatteryIndicator` | missing, core-blocked - nothing serves the ground station's own battery |
-| `RcOverrideIndicator` | missing, core-blocked - `rcChannelOverrideActive` appears nowhere in `core-rs` |
-| `TelemetryRSSIIndicator` | missing, core-blocked - `telemetryLRSSI` and its siblings appear nowhere in `core-rs` |
-| `RemoteIDIndicator` | missing, core-blocked - `remoteIDManager` appears nowhere in `core-rs` |
+| `RcOverrideIndicator` | missing, core-blocked - `rcChannelOverrideActive` appears nowhere in `groundstation` |
+| `TelemetryRSSIIndicator` | missing, core-blocked - `telemetryLRSSI` and its siblings appear nowhere in `groundstation` |
+| `RemoteIDIndicator` | missing, core-blocked - `remoteIDManager` appears nowhere in `groundstation` |
 
 **Ten of eighteen exist, four are core-blocked, one is dead in Qt itself, and the
 three that are buildable are not Fly-screen work.** `gimbal` is the one Fly

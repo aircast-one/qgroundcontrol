@@ -68,7 +68,7 @@ enum BridgeWatch {
 
         // Two producers call this, and only one of them is Qt's thread. QGCBridgeCore's watcher
         // emits from the Qt thread, which drives this process's main thread; the core's own
-        // qgc-core-pump thread calls the same handler for view.coreGuided, view.detections and
+        // groundstation-pump thread calls the same handler for view.coreGuided, view.detections and
         // view.transports. So this hop is not a precaution against a thread that never happens --
         // remove it and those three write @Published from a background thread.
         guard Thread.isMainThread else {

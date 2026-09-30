@@ -97,7 +97,7 @@ def texts(value):
     return set()
 
 
-registry = re.findall(r'View\s*\{\s*path:\s*"([^"]+)"', (ROOT / "core-rs/src/view.rs").read_text())
+registry = re.findall(r'View\s*\{\s*path:\s*"([^"]+)"', (ROOT / "groundstation/src/view.rs").read_text())
 # SOURCES is sys.argv[1] and the glob below is not, so an Android root scanned for *.swift matched
 # nothing and the head read as drawing nothing. text-fields printed "-1 drawn, 29 undrawn" -- a
 # negative count is at least unbelievable, but it came with 29 false UNDRAWN findings. Refuse

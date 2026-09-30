@@ -1,10 +1,10 @@
 # shellcheck shell=sh
-# Rust toolchain for core-rs, which every variant builds as part of the application
-# (core-rs/CMakeLists.txt stops configure when cargo is not on PATH).
+# Rust toolchain for groundstation, which every variant builds as part of the application
+# (groundstation/CMakeLists.txt stops configure when cargo is not on PATH).
 #   install-rust.sh <channel> [target...]    install rustup + <channel> (+ targets)
 #   install-rust.sh --targets <target...>     add targets to the installed channel
-# <channel> comes from core-rs/rust-toolchain.toml so the image holds exactly the
-# toolchain a cargo run in /project/source/core-rs selects; the mapped runtime UID
+# <channel> comes from groundstation/rust-toolchain.toml so the image holds exactly the
+# toolchain a cargo run in /project/source/groundstation selects; the mapped runtime UID
 # could not install a missing one. rustup-init is fetched with python3 because curl
 # is not in every base image, and RUSTUP_HOME/CARGO_HOME are world-writable so that
 # UID can write cargo's registry and build cache.
@@ -21,7 +21,7 @@ if [ "${1:-}" = "--targets" ]; then
     shift
     channel="$(rustup default | cut -d' ' -f1)"
 else
-    channel="${1:?install-rust.sh needs the toolchain channel from core-rs/rust-toolchain.toml}"
+    channel="${1:?install-rust.sh needs the toolchain channel from groundstation/rust-toolchain.toml}"
     shift
     host="$(uname -m)-unknown-linux-gnu"
     retry python3 -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])" \

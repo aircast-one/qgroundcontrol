@@ -22,7 +22,7 @@ pub fn path() -> String {
         if let Some(path) = std::env::var_os(OVERRIDE) {
             return path.to_string_lossy().into_owned();
         }
-        let path = std::env::temp_dir().join(format!("qgc-core-sample-{}.tlog", std::process::id()));
+        let path = std::env::temp_dir().join(format!("groundstation-sample-{}.tlog", std::process::id()));
         std::fs::write(&path, bytes()).expect("the synthesized sample log written to the temp directory");
         path.to_string_lossy().into_owned()
     })

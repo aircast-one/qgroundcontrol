@@ -33,10 +33,10 @@ TOTALS_RE = re.compile(r"^Totals:\s*(\d+) passed, (\d+) failed, (\d+) skipped, (
 
 
 def newest_source_mtime():
-    roots = (REPO / "src", REPO / "test", REPO / "core-rs" / "src")
+    roots = (REPO / "src", REPO / "test", REPO / "groundstation" / "src")
     files = (p for root in roots for p in root.rglob("*")
              if p.suffix in {".cc", ".h", ".qml", ".txt", ".rs"} and p.is_file())
-    manifests = (p for p in (REPO / "core-rs" / "Cargo.toml", REPO / "core-rs" / "Cargo.lock")
+    manifests = (p for p in (REPO / "groundstation" / "Cargo.toml", REPO / "groundstation" / "Cargo.lock")
                  if p.is_file())
     return max((p.stat().st_mtime for p in (*files, *manifests)), default=0.0)
 

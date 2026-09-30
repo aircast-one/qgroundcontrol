@@ -300,10 +300,10 @@ stale += [f"{key!r} is accepted for {model}, and {model} no longer falls back on
 # known artefact. A written-down reason to dismiss a finding decays exactly like an acceptance does,
 # and nothing was checking this one. Those four are now in ACCEPTED with reasons that name the
 # producer's line, so the next reader argues with the current code instead of with this comment.
-dirty = subprocess.run(["git", "status", "--porcelain", "--", "core-rs/"],
+dirty = subprocess.run(["git", "status", "--porcelain", "--", "groundstation/"],
                        capture_output=True, text=True).stdout.strip()
 if dirty:
-    print(f"  UNCOMMITTED PRODUCER: core-rs has {len(dirty.splitlines())} modified file(s), so the "
+    print(f"  UNCOMMITTED PRODUCER: groundstation has {len(dirty.splitlines())} modified file(s), so the "
           f"running app may serve a shape that is NOT at HEAD. Check `git show HEAD:<file>` before "
           f"acting on anything below -- a hit against an uncommitted producer is not a finding.",
           file=sys.stderr)

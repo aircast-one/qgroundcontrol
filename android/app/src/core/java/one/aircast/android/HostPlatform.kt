@@ -6,7 +6,7 @@ import java.io.File
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 
-private const val CORE_LIBRARY = "qgc_core"
+private const val CORE_LIBRARY = "groundstation"
 private const val ORGANIZATION = "Aircast"
 private const val DEFAULT_APPLICATION = "Aircast QGC"
 private const val DEBUG_API_PORT = "8777"

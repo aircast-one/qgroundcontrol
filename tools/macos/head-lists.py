@@ -79,7 +79,7 @@ def swift_cases(path, anchor):
     return set(re.findall(r'case "([^"]+)"', text[start:text.index("default:", start)]))
 
 
-served = rust_array("core-rs/src/noticeboard.rs", "KINDS")
+served = rust_array("groundstation/src/noticeboard.rs", "KINDS")
 decoded = swift_cases("macos/Sources/HostNoticeModel.swift", "init(_ token: String?)")
 
 if not served or not decoded:

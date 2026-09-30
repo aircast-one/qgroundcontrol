@@ -3,8 +3,8 @@ name: Rust Core
 on:
   pull_request:
     paths:
-      - 'core-rs/**'
-      - '.github/workflows/core-rs.yml'
+      - 'groundstation/**'
+      - '.github/workflows/groundstation.yml'
       - '.github/actions/rust-toolchain/**'
   push:
     branches:
@@ -12,8 +12,8 @@ on:
       - master
       - 'Stable*'
     paths:
-      - 'core-rs/**'
-      - '.github/workflows/core-rs.yml'
+      - 'groundstation/**'
+      - '.github/workflows/groundstation.yml'
       - '.github/actions/rust-toolchain/**'
   merge_group:
   workflow_dispatch:
@@ -55,10 +55,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            core-rs/target
-          key: core-rs-${{ runner.os }}-${{ hashFiles('core-rs/rust-toolchain.toml', 'core-rs/Cargo.lock') }}
-          restore-keys: core-rs-${{ runner.os }}-
+            groundstation/target
+          key: groundstation-${{ runner.os }}-${{ hashFiles('groundstation/rust-toolchain.toml', 'groundstation/Cargo.lock') }}
+          restore-keys: groundstation-${{ runner.os }}-
 
       - name: Test
-        working-directory: core-rs
+        working-directory: groundstation
         run: cargo test --locked

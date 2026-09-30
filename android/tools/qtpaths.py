@@ -18,7 +18,7 @@ look like paths are not counted, which is why this reads call sites rather than
 grepping for quoted strings.
 
 Which writes and invokes the core keeps is asked of the core itself, through the
-ignored `claims_for_qtpaths` test in `core-rs/src/actions.rs`, which answers with the
+ignored `claims_for_qtpaths` test in `groundstation/src/actions.rs`, which answers with the
 same `owns` and `owns_write` the router consults. `mission.insert` looks exactly like
 a Qt path and never reaches Qt, and neither does a write to any fact under
 `settings.` - a claim made by pattern, which a list of names copied out of
@@ -91,7 +91,7 @@ def core_claims(asked_for: set[tuple[str, str]]) -> set[tuple[str, str]]:
     try:
         run = subprocess.run(
             ["cargo", "test", "--locked", "-q", "--lib", "claims_for_qtpaths", "--", "--ignored", "--nocapture"],
-            cwd=ROOT / "core-rs", capture_output=True, text=True, env={**os.environ, "QTPATHS_QUERY": query.name},
+            cwd=ROOT / "groundstation", capture_output=True, text=True, env={**os.environ, "QTPATHS_QUERY": query.name},
         )
     finally:
         os.unlink(query.name)
@@ -118,7 +118,7 @@ def core_serves(path: str) -> bool:
 
 
 def router_predicate() -> str:
-    source = (ROOT / "core-rs/src/view.rs").read_text()
+    source = (ROOT / "groundstation/src/view.rs").read_text()
     body = source.split("pub fn owns(path: &str) -> bool {", 1)[1].split("}", 1)[0]
     return " ".join(body.split())
 

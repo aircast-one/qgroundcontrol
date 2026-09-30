@@ -194,7 +194,7 @@ BRIDGE_ROOT = re.compile(r'name == QLatin1String\("([a-zA-Z][A-Za-z0-9_]*)"\)')
 # Four the bridge does not register and that still have to match. "view" is the CORE's namespace --
 # served by Rust, never dispatched by QGCBridgeCore -- and it is the migration's numerator, so a
 # derived-only set would stop counting what the head has already migrated. The other three are
-# action roots owned by core-rs/src/actions.rs (camera.setMode and its siblings), which have to
+# action roots owned by groundstation/src/actions.rs (camera.setMode and its siblings), which have to
 # match for the claimed-action exclusion to see them at all.
 NOT_DISPATCHED = {"view": "the core's own namespace, served by Rust",
                   "camera": "core action root (actions.rs)",
@@ -373,7 +373,7 @@ def claimed_actions():
     # that is indistinguishable from a core claiming nothing, which was true last week. Hence the
     # refusal below: this instrument reads someone else's source, so it has to notice when that
     # source stops looking like anything it knows.
-    source = subprocess.run(["git", "show", "HEAD:core-rs/src/actions.rs"],
+    source = subprocess.run(["git", "show", "HEAD:groundstation/src/actions.rs"],
                             capture_output=True, text=True)
     if source.returncode != 0:
         return set()
@@ -430,7 +430,7 @@ def core_claims(asked):
     try:
         run = subprocess.run(
             ["cargo", "test", "--locked", "-q", "--lib", "claims_for_qtpaths", "--", "--ignored", "--nocapture"],
-            cwd=anchored("core-rs"), capture_output=True, text=True, env={**os.environ, "QTPATHS_QUERY": query.name})
+            cwd=anchored("groundstation"), capture_output=True, text=True, env={**os.environ, "QTPATHS_QUERY": query.name})
     finally:
         os.unlink(query.name)
     answers = [line.split("\t")[1:] for line in run.stdout.splitlines() if line.startswith("CLAIM\t")]
@@ -492,7 +492,7 @@ def declarations(seen):
 
 
 def core_views():
-    return (anchored("core-rs/src/view.rs")).read_text()
+    return (anchored("groundstation/src/view.rs")).read_text()
 
 
 def kept_by_core(uses, named):
@@ -595,9 +595,9 @@ def main():
     # than against what this head reads: an entry matching no read is armed and waiting, which is
     # the point of it, while an entry matching no served view can never fire again. Only the
     # second is a fault, and nothing told them apart until this ran.
-    core = subprocess.run(["git", "show", "HEAD:core-rs/src/view.rs"], capture_output=True, text=True)
+    core = subprocess.run(["git", "show", "HEAD:groundstation/src/view.rs"], capture_output=True, text=True)
     if core.returncode != 0:
-        print("  CANNOT CHECK core-rs/src/view.rs is unreadable, so whether every HUB-GATED entry "
+        print("  CANNOT CHECK groundstation/src/view.rs is unreadable, so whether every HUB-GATED entry "
               "still names a view is unmeasured rather than clean")
     else:
         names = {path.split(".", 1)[1] for path in re.findall(r'"(view\.[A-Za-z0-9_]+)"', core.stdout)}

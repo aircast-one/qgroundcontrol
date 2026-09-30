@@ -392,7 +392,7 @@ mod tests {
 
     #[test]
     fn a_database_another_writer_owns_is_opened_without_writing_to_it() {
-        let scratch = std::env::temp_dir().join(format!("qgc-core-serve-{}.db", std::process::id()));
+        let scratch = std::env::temp_dir().join(format!("groundstation-serve-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&scratch);
         let hash = hash_for(8523);
         {
@@ -402,7 +402,7 @@ mod tests {
         let reader = Cache::serve(&scratch).unwrap();
         assert_eq!(reader.tile(&hash).unwrap().unwrap().image.len(), 512);
         assert!(reader.save(&tile(&hash_for(1), 10), None).is_err(), "a reader must not be able to write into a database it does not own");
-        assert!(Cache::serve(&std::env::temp_dir().join("qgc-core-not-here.db")).is_err(), "and it must not create one that is not there");
+        assert!(Cache::serve(&std::env::temp_dir().join("groundstation-not-here.db")).is_err(), "and it must not create one that is not there");
         let odd = std::env::temp_dir().join(format!("qgc core serve?{}.db", std::process::id()));
         let _ = std::fs::remove_file(&odd);
         Cache::open(&odd).unwrap().save(&tile(&hash, 8), None).unwrap();

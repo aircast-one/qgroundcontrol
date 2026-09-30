@@ -47,10 +47,10 @@ COPY tools/pyproject.toml tools/uv.lock /tmp/qgc-tools/
 RUN PIP_CMAKE="${PIP_CMAKE}" sh /usr/local/lib/qgc/setup-venv.sh && \
     rm -rf /tmp/qgc-tools /usr/local/bin/uv
 
-# Rust for core-rs, which every variant links (core-rs/CMakeLists.txt refuses to
-# configure without cargo). The channel is the one core-rs/rust-toolchain.toml pins;
+# Rust for groundstation, which every variant links (groundstation/CMakeLists.txt refuses to
+# configure without cargo). The channel is the one groundstation/rust-toolchain.toml pins;
 # variants add their cross targets below.
-COPY core-rs/rust-toolchain.toml /tmp/rust-toolchain.toml
+COPY groundstation/rust-toolchain.toml /tmp/rust-toolchain.toml
 RUN channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' /tmp/rust-toolchain.toml) && \
     sh /usr/local/lib/qgc/install-rust.sh "${channel}" && \
     rm -f /tmp/rust-toolchain.toml
@@ -131,7 +131,7 @@ RUN python3 /tmp/tools/setup/install_dependencies --platform debian && \
     rm -rf /var/lib/apt/lists/*
 
 # The arm64 Rust target and cargo-ndk, at the version build-config.json pins, for the
-# Android build of core-rs. After install_dependencies: building cargo-ndk needs a C toolchain.
+# Android build of groundstation. After install_dependencies: building cargo-ndk needs a C toolchain.
 RUN sh /usr/local/lib/qgc/install-rust.sh --targets aarch64-linux-android && \
     . /etc/profile.d/rust.sh && \
     cargo install cargo-ndk --locked --version "$(python3 /tmp/tools/setup/read_config.py --get rust.cargo_ndk_version)" && \

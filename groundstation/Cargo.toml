@@ -1,11 +1,11 @@
 [package]
-name = "qgc-core"
+name = "groundstation"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 [lib]
-name = "qgc_core"
+name = "groundstation"
 crate-type = ["staticlib", "rlib"]
 
 [[bin]]

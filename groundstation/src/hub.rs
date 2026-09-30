@@ -3365,7 +3365,7 @@ mod tests {
         px4.base_mode = MavModeFlag::from_bits_retain(0x01);
         let mut hub = Hub::default();
         hub.on_frame(origin(4), &autopilot, &MavMessage::HEARTBEAT(px4.clone()), 0, 0);
-        let dir = std::env::temp_dir().join(format!("qgc-core-log-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("groundstation-log-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let request = json!({ "action": "start", "path": dir.to_string_lossy(), "extension": "ulg" });
         let started = hub.log_request(Some(3), &request, 1_000).unwrap();
@@ -3414,7 +3414,7 @@ mod tests {
             h.base_mode = MavModeFlag::from_bits_retain(if armed { 0x81 } else { 0x01 });
             MavMessage::HEARTBEAT(h)
         };
-        let dir = std::env::temp_dir().join(format!("qgc-core-log-auto-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("groundstation-log-auto-{}", std::process::id()));
         let mut hub = Hub::default();
         hub.log_request(None, &json!({ "autoStart": true }), 0).unwrap();
         hub.on_frame(origin(4), &MavHeader { system_id: 9, component_id: 1, sequence: 0 }, &heartbeat(false), 0, 0);

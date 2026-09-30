@@ -74,7 +74,7 @@ targets:
         GCC_PREPROCESSOR_DEFINITIONS: $(inherited) QGC_GST_STREAMING=1
         FRAMEWORK_SEARCH_PATHS: $(inherited) /Library/Frameworks
         LD_RUNPATH_SEARCH_PATHS: $(inherited) /Library/Frameworks
-        OTHER_LDFLAGS: $(inherited) $(QGC_ROOT)/core-rs/target/release/libqgc_core.a -framework GStreamer -framework Security -framework SystemConfiguration -framework IOKit -framework CoreFoundation
+        OTHER_LDFLAGS: $(inherited) $(QGC_ROOT)/groundstation/target/release/libgroundstation.a -framework GStreamer -framework Security -framework SystemConfiguration -framework IOKit -framework CoreFoundation
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
@@ -84,7 +84,7 @@ targets:
       - name: Rust core
         basedOnDependencyAnalysis: false
         showEnvVars: false
-        script: '"$QGC_CARGO" build --release --features native-host --lib --manifest-path "$QGC_ROOT/core-rs/Cargo.toml"'
+        script: '"$QGC_CARGO" build --release --features native-host --lib --manifest-path "$QGC_ROOT/groundstation/Cargo.toml"'
 
   AircastQGCChecks:
     type: tool

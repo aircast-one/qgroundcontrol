@@ -10,7 +10,7 @@ back with getString in the test that proves it (fit, orientation). Validate a
 hit against the producer before changing anything.
 
 The failure this exists to catch shipped once: LogDownloadScreen read timeText,
-core-rs emitted time and timeState, and the head's own fixture invented timeText
+groundstation emitted time and timeState, and the head's own fixture invented timeText
 so both suites stayed green while every log row rendered a blank date.
 """
 import re
@@ -32,7 +32,7 @@ def sources(kind):
 
 def produced():
     keys = set()
-    for path in (QGC / "core-rs/src").rglob("*.rs"):
+    for path in (QGC / "groundstation/src").rglob("*.rs"):
         body = path.read_text(errors="ignore").split("#[cfg(test)]")[0]
         keys |= set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:', body))
         # json["key"] = ... is emission too. gcsposition.rs and missionkinds.rs both build that
@@ -89,9 +89,9 @@ def selftest():
 
 
 def core_is_present():
-    if (QGC / "core-rs/src").is_dir():
+    if (QGC / "groundstation/src").is_dir():
         return True
-    print(f"REFUSING: no core-rs under {QGC} - this sweep checked nothing")
+    print(f"REFUSING: no groundstation under {QGC} - this sweep checked nothing")
     return False
 
 

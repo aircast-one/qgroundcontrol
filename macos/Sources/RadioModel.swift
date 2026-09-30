@@ -33,7 +33,7 @@ struct RadioStick: Identifiable, Equatable {
 
     var id: String { key }
 
-    // The core serves the boolean and no word for it (core-rs/src/radio.rs:65 reads
+    // The core serves the boolean and no word for it (groundstation/src/radio.rs:65 reads
     // <key>ChannelReversed), so the head composes this one -- but in a file swift-checks compiles
     // rather than at the row. The empty arm is the normal stick: a channel that is not reversed
     // has nothing to say about itself, and saying "Normal" beside every other stick would be

@@ -17,7 +17,7 @@ It compares DECLARATIONS on both sides and needs no running app, which matters:
 the alternative -- diffing against a live payload -- cries wolf on every field the
 core emits only in a state the current plan is not in, blockedReason being one.
 
-The view-to-module half is parsed out of core-rs/src/view.rs rather than written
+The view-to-module half is parsed out of groundstation/src/view.rs rather than written
 here, so it cannot drift. The model-to-view half is written here and each entry is
 checked against that table; a view path this file invents is reported, not ignored.
 
@@ -47,7 +47,7 @@ def refuse_on_empty_inputs(swift, rust):
           f"views -- every view would otherwise be reported as unread and every model as unchecked.",
           file=sys.stderr)
     sys.exit(2)
-CORE = ROOT / "core-rs/src"
+CORE = ROOT / "groundstation/src"
 
 
 # A subscript on the decoded dictionary, or a literal handed to a helper closing over it.
@@ -240,7 +240,7 @@ gone, unchecked, inline_read, beside = [], [], [], []
 for model, view in sorted(MODELS.items()):
     modules = [registry.get(one) or registry.get(one.split("(")[0]) for one in views(view)]
     if any(module is None for module in modules):
-        unchecked.append(f"{model}: this file names {view}, which core-rs/src/view.rs does not serve")
+        unchecked.append(f"{model}: this file names {view}, which groundstation/src/view.rs does not serve")
         continue
     sources = [CORE / f"{module}.rs" for module in modules]
     if any(not source.exists() for source in sources):

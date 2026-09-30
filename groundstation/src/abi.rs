@@ -248,7 +248,7 @@ fn poll_due() -> bool {
 pub(crate) fn start_pump() {
     PUMP.get_or_init(|| {
         std::thread::Builder::new()
-            .name("qgc-core-pump".to_string())
+            .name("groundstation-pump".to_string())
             .spawn(|| loop {
                 std::thread::sleep(PUMP_PERIOD);
                 let open = crate::linkhost::TRANSPORTS.lock().unwrap().open_ids();

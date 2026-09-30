@@ -447,7 +447,7 @@ if(QGC_HEADLESS_CORE)
 endif()
 
 add_subdirectory(src)
-add_subdirectory(core-rs)
+add_subdirectory(groundstation)
 
 if(MACOS)
     add_subdirectory(macos)

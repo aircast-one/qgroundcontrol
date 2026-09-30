@@ -42,7 +42,7 @@ COINCIDENCE = {
         "-- as a FLIGHT MODE in modes.rs and flightmodes.rs, and as a preflight check name. "
         "Different subject, same nine letters, which is the whole reason this checker cannot "
         "read a collision on its own. What holds is the narrow claim: no view serves the plan's "
-        "tab names. Retake it with: grep -rn '\"Mission\"' core-rs/src/*.rs and read which "
+        "tab names. Retake it with: grep -rn '\"Mission\"' groundstation/src/*.rs and read which "
         "subject each hit belongs to",
     ("PlanWindow.swift", "Rally"): "the same head-owned PLAN TAB vocabulary as 'Mission', with "
         "the same narrow claim: no view serves the plan's tab names",

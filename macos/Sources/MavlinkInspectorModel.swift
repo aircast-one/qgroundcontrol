@@ -76,7 +76,7 @@ struct MessageRateChoice: Identifiable, Equatable {
         ((json as? [Any]) ?? []).compactMap(MessageRateChoice.init)
     }
 
-    // core-rs inspector.rs RATE_DISABLED and RATE_DEFAULT, which it titles Off and Default.
+    // groundstation inspector.rs RATE_DISABLED and RATE_DEFAULT, which it titles Off and Default.
     static let offRate = -1
     static let defaultRate = 0
 
