@@ -228,6 +228,8 @@ ONLY_IN = {
 
 ACCEPTED = {
     "ok": "the invoke envelope, not a view field",
+    "onScreen": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
+    "clickAndDrag": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "controlLabel": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "controlOffered": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "deviceId": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",

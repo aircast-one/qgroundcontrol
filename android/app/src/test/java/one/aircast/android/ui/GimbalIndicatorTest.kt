@@ -20,4 +20,17 @@ class GimbalIndicatorTest {
         assertEquals(154, state.gimbals[0].deviceId)
         assertNull(gimbalIndicator(JSONObject("""{"shown":false}""")))
     }
+
+    @Test
+    fun `a tap maps to QGC's cooked screen fractions`() {
+        val centre = screenFraction(50f, 50f, 100, 100)
+        assertEquals(0f, centre.first, 0f)
+        assertEquals(0f, centre.second, 0f)
+        val corner = screenFraction(100f, 0f, 100, 100)
+        assertEquals(1f, corner.first, 0f)
+        assertEquals(1f, corner.second, 0f)
+        assertEquals(-1f, screenFraction(0f, 100f, 100, 100).second, 0f)
+        assertEquals(OnScreenGimbal(true, true), onScreenGimbal(JSONObject("""{"shown":true,"onScreen":{"enabled":true,"clickAndDrag":true}}""")))
+        assertNull(onScreenGimbal(JSONObject("""{"shown":true,"onScreen":{"enabled":false,"clickAndDrag":true}}""")))
+    }
 }

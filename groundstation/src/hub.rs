@@ -2002,6 +2002,14 @@ impl Vehicle {
                 "yawLock" => gimbals.set_yaw_lock(flag("lock"), now_ms),
                 "acquire" => gimbals.acquire_control(),
                 "release" => gimbals.release_control(),
+                "onScreen" => {
+                    let number = |key: &str| action.get(key).and_then(Value::as_f64).map(|v| v as f32);
+                    let screen = match flag("point") {
+                        true => crate::gimbal::Screen::Point { h_fov: number("hFov").unwrap_or(0.0), v_fov: number("vFov").unwrap_or(0.0) },
+                        false => crate::gimbal::Screen::Drag { slide_speed: number("slide").unwrap_or(0.0) },
+                    };
+                    gimbals.on_screen_control(number("pan").unwrap_or(0.0), number("tilt").unwrap_or(0.0), screen, now_ms)
+                }
                 "select" => {
                     let number = |key: &str| action.get(key).and_then(Value::as_u64).and_then(|v| u8::try_from(v).ok());
                     match number("managerCompid").zip(number("deviceId")) {

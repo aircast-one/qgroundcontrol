@@ -1,6 +1,10 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -127,4 +134,54 @@ internal fun GimbalIndicatorCell() {
             }
         }
     }
+}
+
+internal const val GIMBAL_DRAG_REPEAT_MS = 100L
+
+internal fun screenFraction(x: Float, y: Float, width: Int, height: Int): Pair<Float, Float> =
+    ((x / width) * 2f - 1f) to -((y / height) * 2f - 1f)
+
+internal data class OnScreenGimbal(val enabled: Boolean, val clickAndDrag: Boolean)
+
+internal fun onScreenGimbal(view: JSONObject?): OnScreenGimbal? =
+    view?.takeIf { it.optBoolean("shown") }?.optJSONObject("onScreen")?.let {
+        OnScreenGimbal(it.optBoolean("enabled"), it.optBoolean("clickAndDrag"))
+    }?.takeIf { it.enabled }
+
+@Composable
+internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
+    val view by qgcPath(GIMBAL_INDICATOR_PATH)
+    val control = remember(view) { onScreenGimbal(view) } ?: return
+    val scope = rememberCoroutineScope()
+    val send = { pan: Float, tilt: Float, point: Boolean ->
+        scope.launch(Dispatchers.Default) { Qgc.refusalOf("gimbal.onScreen", pan.toDouble(), tilt.toDouble(), point) }
+        Unit
+    }
+    Box(
+        modifier.pointerInput(control) {
+            when (control.clickAndDrag) {
+                false -> detectTapGestures { at ->
+                    val (pan, tilt) = screenFraction(at.x, at.y, size.width, size.height)
+                    send(pan, tilt, true)
+                }
+                true -> awaitEachGesture {
+                    val down = awaitFirstDown()
+                    val start = screenFraction(down.position.x, down.position.y, size.width, size.height)
+                    var latest = down.position
+                    val repeating = scope.launch {
+                        while (isActive) {
+                            delay(GIMBAL_DRAG_REPEAT_MS)
+                            val now = screenFraction(latest.x, latest.y, size.width, size.height)
+                            send(now.first - start.first, now.second - start.second, false)
+                        }
+                    }
+                    do {
+                        val event = awaitPointerEvent()
+                        event.changes.firstOrNull()?.let { latest = it.position }
+                    } while (event.changes.any { it.pressed })
+                    repeating.cancel()
+                }
+            }
+        },
+    )
 }
