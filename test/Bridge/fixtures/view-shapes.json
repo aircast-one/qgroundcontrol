@@ -8597,6 +8597,7 @@
                 "pressure",
                 "airspeed",
                 "compassMot",
+                "accelSimple",
                 null
             ],
             "view.coreCalibration.calibration.outcome": [
@@ -8612,7 +8613,8 @@
                 "gyro",
                 "pressure",
                 "airspeed",
-                "compassMot"
+                "compassMot",
+                "accelSimple"
             ],
             "view.coreCalibration.calibration.running": [
                 "accelerometer",
@@ -8622,6 +8624,7 @@
                 "pressure",
                 "airspeed",
                 "compassMot",
+                "accelSimple",
                 null
             ],
             "view.coreCalibration.calibration.sides[].stage": [

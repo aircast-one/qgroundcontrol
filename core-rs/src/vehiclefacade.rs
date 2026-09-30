@@ -277,7 +277,8 @@ fn sensors_request(path: &str, args: &str) -> Option<Value> {
     let simple = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_bool()).unwrap_or(false);
     let start = |kind: &str| Some(json!({ "action": "start", "type": kind }));
     match path.strip_prefix("sensorsCal.")? {
-        "calibrateAccel" if !simple => start("accelerometer"),
+        "calibrateAccel" if simple => start("accelSimple"),
+        "calibrateAccel" => start("accelerometer"),
         "calibrateCompass" => start("compass"),
         "levelHorizon" => start("levelHorizon"),
         "calibrateGyro" => start("gyro"),

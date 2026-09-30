@@ -41,6 +41,7 @@ pub enum Kind {
     Pressure,
     Airspeed,
     CompassMot,
+    AccelSimple,
 }
 
 pub const KINDS: &[(Kind, &str, &str)] = &[
@@ -51,6 +52,7 @@ pub const KINDS: &[(Kind, &str, &str)] = &[
     (Kind::Pressure, "pressure", "Pressure"),
     (Kind::Airspeed, "airspeed", "Airspeed"),
     (Kind::CompassMot, "compassMot", "CompassMot"),
+    (Kind::AccelSimple, "accelSimple", "Simple Accelerometer"),
 ];
 
 impl Kind {
@@ -69,7 +71,7 @@ impl Kind {
     fn supported(self, px4: bool) -> bool {
         match self {
             Kind::Airspeed => px4,
-            Kind::Pressure | Kind::CompassMot => !px4,
+            Kind::Pressure | Kind::CompassMot | Kind::AccelSimple => !px4,
             _ => true,
         }
     }
@@ -83,6 +85,7 @@ impl Kind {
             Kind::LevelHorizon => [0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0],
             Kind::Airspeed => [0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0],
             Kind::CompassMot => [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            Kind::AccelSimple => [0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0],
         }
     }
 
@@ -284,6 +287,7 @@ impl Calibration {
                 self.next_enabled = true;
                 Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
             }
+            Kind::AccelSimple => Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }]),
             Kind::LevelHorizon => {
                 self.note("Hold the vehicle in its level flight position.");
                 Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
@@ -443,15 +447,15 @@ impl Calibration {
                 self.note("Compass calibration could not start");
                 self.stop(Outcome::Failed)
             }
-            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure), CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS) => {
+            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple), CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS) => {
                 self.note("In progress");
                 Vec::new()
             }
-            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure), CMD_PREFLIGHT_CALIBRATION, RESULT_ACCEPTED) => {
+            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple), CMD_PREFLIGHT_CALIBRATION, RESULT_ACCEPTED) => {
                 self.note("Successfully completed");
                 self.stop(Outcome::Success)
             }
-            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure), CMD_PREFLIGHT_CALIBRATION, _) => {
+            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple), CMD_PREFLIGHT_CALIBRATION, _) => {
                 self.note("Failed");
                 self.stop(Outcome::Failed)
             }
@@ -545,7 +549,7 @@ impl Calibration {
             "sides": SIDES.iter().zip(self.sides.iter()).map(|((key, title, _, _), side)| json!({ "key": key, "title": title, "visible": side.visible, "stage": side.stage.name(), "rotate": side.rotate })).collect::<Vec<_>>(),
             "compasses": self.compasses.iter().enumerate().map(|(i, c)| json!({ "id": i, "progress": c.progress as f64 / 100.0, "complete": c.complete, "succeeded": c.succeeded, "fitness": c.fitness })).collect::<Vec<_>>(),
             "log": self.log,
-            "routines": KINDS.iter().filter(|(k, _, _)| k.supported(self.px4)).map(|(_, id, title)| json!({ "id": id, "title": title, "enabled": running.is_none() && !self.waiting_for_cancel })).collect::<Vec<_>>(),
+            "routines": KINDS.iter().filter(|(k, _, _)| k.supported(self.px4) && *k != Kind::AccelSimple).map(|(_, id, title)| json!({ "id": id, "title": title, "enabled": running.is_none() && !self.waiting_for_cancel })).collect::<Vec<_>>(),
         })
     }
 }
@@ -710,6 +714,16 @@ mod tests {
         assert_eq!(cal.log.len(), 3);
         assert!(cal.snapshot()["usingLog"].as_bool().unwrap());
         assert!(cal.start(Kind::Pressure, Inputs::default(), 0).is_err(), "pressure is an ArduPilot routine");
+    }
+
+    #[test]
+    fn simple_accel_is_one_command_finished_by_its_ack() {
+        let mut cal = Calibration::new(false);
+        assert_eq!(cal.start(Kind::AccelSimple, Inputs::default(), 0).unwrap(), vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0], show_error: false }]);
+        assert!(cal.log.is_empty() && !cal.next_enabled);
+        cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_ACCEPTED, 0);
+        assert_eq!((cal.outcome, cal.log.last().map(String::as_str)), (Some(Outcome::Success), Some("Successfully completed")));
+        assert!(cal.snapshot()["routines"].as_array().unwrap().iter().all(|r| r["id"] != "accelSimple"), "it is a way to run the accelerometer routine, not a routine of its own");
     }
 
     #[test]
