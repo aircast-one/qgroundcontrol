@@ -135,7 +135,7 @@ fn name_taken(name: &str) -> bool {
     listed().iter().any(|e| e.config.name == name)
 }
 
-fn add_saved(config: LinkConfig) -> bool {
+pub fn add(config: LinkConfig) -> bool {
     if config.name.is_empty() || name_taken(&config.name) {
         return false;
     }
@@ -156,7 +156,7 @@ pub fn created(kind: &str, name: &str, host: &str, port: i64) -> Option<LinkConf
 
 fn create_and_connect(kind: &str, name: &str, host: &str, port: i64) -> bool {
     let Some(config) = created(kind, name, host, port) else { return false };
-    if !add_saved(config) {
+    if !add(config) {
         return false;
     }
     let index = listed().iter().position(|e| e.config.name == name).unwrap_or(0);
@@ -167,7 +167,7 @@ fn create_serial(name: &str, port_name: &str, baud: i64) -> bool {
     if table().code(crate::linkconfig::LinkKind::Serial).is_none() || port_name.is_empty() || baud <= 0 {
         return false;
     }
-    add_saved(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port_name.to_string(), port_display_name: String::new() } })
+    add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port_name.to_string(), port_display_name: String::new() } })
 }
 
 fn remove(index: usize) -> bool {

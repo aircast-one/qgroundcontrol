@@ -1,6 +1,8 @@
 #![recursion_limit = "256"]
 #[cfg(not(test))]
 mod abi;
+#[cfg(all(feature = "native-host", not(test)))]
+pub mod nativehost;
 pub mod actions;
 pub mod adsb;
 pub mod altitude;
@@ -81,6 +83,7 @@ pub mod mavout;
 pub mod messages;
 pub mod metacache;
 pub mod noticeboard;
+pub mod nativeargs;
 pub mod mission;
 pub mod missionitems;
 pub mod missionkinds;
