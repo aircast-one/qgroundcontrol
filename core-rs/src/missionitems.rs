@@ -124,6 +124,7 @@ struct Survey {
     entry: (f64, f64),
     exit: (f64, f64),
     amsl: f64,
+    exit_amsl: f64,
     lowest: f64,
     highest: f64,
     shots: i64,
@@ -142,6 +143,7 @@ fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         entry,
         exit: entry,
         amsl: plan.entrance_alt + home_altitude,
+        exit_amsl: plan.entrance_alt + home_altitude,
         lowest: bottom.min(plan.entrance_alt) + home_altitude,
         highest: top.max(plan.entrance_alt) + home_altitude,
         shots: crate::structurescan::camera_shots(&flight, plan.adjusted_side, plan.layers),
@@ -159,6 +161,7 @@ fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         entry: row.approach,
         exit: row.land,
         amsl: row.approach_altitude + base,
+        exit_amsl: row.land_altitude + base,
         lowest: row.land_altitude + base,
         highest: row.approach_altitude + base,
         shots: 0,
@@ -184,10 +187,29 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     };
     let calc = transect.get("CameraCalc").ok_or("A survey has no camera settings.")?;
     let surface = calc.get("DistanceToSurface").and_then(Value::as_f64).ok_or("A survey has no distance to the surface.")?;
-    let amsl = match calc.get("DistanceMode").and_then(Value::as_i64) {
-        Some(crate::altitudemodes::RELATIVE) => surface + home_altitude,
-        Some(crate::altitudemodes::ABSOLUTE) => surface,
-        _ => return Err("The core cannot describe a survey flown above terrain yet.".to_string()),
+    let generic = crate::cmdinfo::tree(crate::cmdinfo::Firmware::Generic, crate::cmdinfo::VehicleClass::Generic);
+    let saved: Vec<(f64, f64, f64)> = transect
+        .get("Items")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| item.get("command").and_then(Value::as_i64).and_then(|c| generic.get(&c)).is_some_and(|info| info.specifies_coordinate && !info.standalone_coordinate))
+                .filter_map(|item| {
+                    let params = item.get("params")?.as_array()?;
+                    Some((params.get(4)?.as_f64()?, params.get(5)?.as_f64()?, params.get(6)?.as_f64()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let terrain = |at: Option<&(f64, f64, f64)>| at.and_then(|(latitude, longitude, altitude)| crate::terrainservice::height(*latitude, *longitude).map(|ground| altitude + ground)).unwrap_or(f64::NAN);
+    let saved_band = saved.iter().fold((f64::NAN, f64::NAN), |(low, high), (_, _, altitude)| (low.min(*altitude), high.max(*altitude)));
+    let (amsl, exit_amsl, lowest, highest) = match calc.get("DistanceMode").and_then(Value::as_i64) {
+        Some(crate::altitudemodes::RELATIVE) => (surface + home_altitude, surface + home_altitude, surface + home_altitude, surface + home_altitude),
+        Some(crate::altitudemodes::ABSOLUTE) => (surface, surface, surface, surface),
+        Some(crate::altitudemodes::CALC_ABOVE_TERRAIN) => (saved.first().map_or(f64::NAN, |p| p.2), saved.last().map_or(f64::NAN, |p| p.2), saved_band.0, saved_band.1),
+        Some(crate::altitudemodes::TERRAIN_FRAME) => (terrain(saved.first()), terrain(saved.last()), surface, surface),
+        _ => return Err("A survey has an unknown altitude mode.".to_string()),
     };
     Ok(Survey {
         unfinished: false,
@@ -196,8 +218,9 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         entry,
         exit,
         amsl,
-        lowest: amsl,
-        highest: amsl,
+        exit_amsl,
+        lowest,
+        highest,
         shots: transect.get("CameraShots").and_then(Value::as_i64).unwrap_or(0),
         distance: points.windows(2).map(|pair| crate::surveygrid::distance_between(pair[0], pair[1])).sum(),
     })
@@ -207,6 +230,7 @@ struct Flight {
     entry: (f64, f64),
     exit: (f64, f64),
     amsl: f64,
+    exit_amsl: f64,
     band: (f64, f64),
     is_land: bool,
     within: f64,
@@ -219,10 +243,10 @@ fn flight(item: &crate::plandoc::Item, commands: &std::collections::BTreeMap<i64
             (info.specifies_coordinate && !info.standalone_coordinate).then(|| {
                 let at = (s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0));
                 let amsl = amsl_entry(s, home_altitude);
-                Flight { entry: at, exit: at, amsl, band: (amsl, amsl), is_land: info.is_land, within: 0.0 }
+                Flight { entry: at, exit: at, amsl, exit_amsl: amsl, band: (amsl, amsl), is_land: info.is_land, within: 0.0 }
             })
         }
-        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, band: (v.lowest, v.highest), is_land: v.landing, within: v.distance }),
+        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, exit_amsl: v.exit_amsl, band: (v.lowest, v.highest), is_land: v.landing, within: v.distance }),
     }
 }
 
@@ -256,7 +280,7 @@ fn legs(doc: &crate::plandoc::Document, commands: &std::collections::BTreeMap<i6
                 None => unflown(),
             };
             walk.total += f.within;
-            walk.last = Some((f.exit, f.amsl, f.is_land));
+            walk.last = Some((f.exit, f.exit_amsl, f.is_land));
             Some(leg)
         })
         .collect()
@@ -412,7 +436,7 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
                     }
                     w.status.total_distance += f.within;
                 }
-                w.last = Some((f.exit, f.amsl, f.is_land));
+                w.last = Some((f.exit, f.exit_amsl, f.is_land));
             }
         }
         let own_speed = |s: &crate::plandoc::Simple| (s.command == 178).then_some(s.params[1]).flatten().filter(|speed| *speed > 0.0);
