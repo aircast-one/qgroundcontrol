@@ -1142,6 +1142,7 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("refreshParameters") => {
                 let actions = self.params.refresh_all(params::ALL_COMPONENTS);
                 return Ok(self.follow_params(actions, now_ms));
@@ -1927,7 +1928,91 @@ impl Vehicle {
             }
         }
         let camera = self.note_camera(header.component_id, message, now_ms);
-        camera.into_iter().chain(self.note_onboard_log(message, now_ms)).collect()
+        let gimbal = self.note_gimbal(header.component_id, message, now_ms);
+        camera.into_iter().chain(gimbal).chain(self.note_onboard_log(message, now_ms)).collect()
+    }
+
+    fn note_gimbal(&mut self, compid: u8, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
+        use crate::gimbal::{DeviceAttitude, ManagerInformation, ManagerStatus};
+        let outs = {
+            let mut gimbals = crate::gimbal::lock();
+            match message {
+                MavMessage::HEARTBEAT(_) => {
+                    gimbals.set_ready(self.connected);
+                    gimbals.set_heading(Some(self.facts.heading as f32).filter(|h| h.is_finite()), now_ms);
+                    gimbals.on_heartbeat(compid, now_ms)
+                }
+                MavMessage::GIMBAL_MANAGER_INFORMATION(d) => gimbals.on_manager_information(
+                    ManagerInformation { compid, device_id: d.gimbal_device_id, capability_flags: d.cap_flags.bits(), limits_rad: Some([d.roll_min, d.roll_max, d.pitch_min, d.pitch_max, d.yaw_min, d.yaw_max]) },
+                    now_ms,
+                ),
+                MavMessage::GIMBAL_MANAGER_STATUS(d) => gimbals.on_manager_status(
+                    ManagerStatus { compid, device_id: d.gimbal_device_id, primary_sysid: d.primary_control_sysid, primary_compid: d.primary_control_compid, secondary_sysid: d.secondary_control_sysid, secondary_compid: d.secondary_control_compid },
+                    now_ms,
+                ),
+                MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(d) => gimbals.on_device_attitude_status(
+                    DeviceAttitude {
+                        compid,
+                        device_id: d.gimbal_device_id,
+                        flags: u32::from(d.flags.bits()),
+                        q: d.q,
+                        angular_velocity_rad_s: Some([d.angular_velocity_x, d.angular_velocity_y, d.angular_velocity_z]),
+                        failure_flags: d.failure_flags.bits(),
+                        delta_yaw_rad: Some(d.delta_yaw).filter(|v| v.is_finite()),
+                    },
+                    now_ms,
+                ),
+                _ => return Vec::new(),
+            }
+        };
+        self.gimbal_outs(outs).unwrap_or_default()
+    }
+
+    fn gimbal_outs(&mut self, outs: Vec<crate::gimbal::Out>) -> Result<Vec<Vec<u8>>, String> {
+        use crate::gimbal::Out;
+        const MAV_CMD_REQUEST_MESSAGE: u16 = 512;
+        const MAV_CMD_SET_MESSAGE_INTERVAL: u16 = 511;
+        if let Some(reason) = outs.iter().find_map(|out| match out {
+            Out::Refused { reason, .. } => Some(*reason),
+            _ => None,
+        }) {
+            return Err(reason.to_string());
+        }
+        let target = self.id;
+        Ok(outs
+            .into_iter()
+            .filter_map(|out| match out {
+                Out::Command { component, command, params, .. } => Some(Outbound::CommandLong { target: (target, component), command, params }),
+                Out::RequestMessage { component, message } => Some(Outbound::CommandLong { target: (target, component), command: MAV_CMD_REQUEST_MESSAGE, params: [f64::from(message), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }),
+                Out::MessageInterval { component, message, interval_us } => Some(Outbound::CommandLong { target: (target, component), command: MAV_CMD_SET_MESSAGE_INTERVAL, params: [f64::from(message), interval_us, 0.0, 0.0, 0.0, 0.0, 0.0] }),
+                _ => None,
+            })
+            .filter_map(|send| self.encode(&send))
+            .collect())
+    }
+
+    fn gimbal_action(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        let outs = {
+            let mut gimbals = crate::gimbal::lock();
+            let flag = |key: &str| action.get(key).and_then(Value::as_bool).unwrap_or(false);
+            match action.get("op").and_then(Value::as_str).unwrap_or("") {
+                "center" => gimbals.center(now_ms),
+                "tilt90" => gimbals.send_pitch_body_yaw(-90.0, 0.0, true, now_ms),
+                "retract" => gimbals.set_retract(true, now_ms),
+                "yawLock" => gimbals.set_yaw_lock(flag("lock"), now_ms),
+                "acquire" => gimbals.acquire_control(),
+                "release" => gimbals.release_control(),
+                "select" => {
+                    let number = |key: &str| action.get(key).and_then(Value::as_u64).and_then(|v| u8::try_from(v).ok());
+                    match number("managerCompid").zip(number("deviceId")) {
+                        Some((manager_compid, device_id)) => gimbals.set_active(crate::gimbal::PairId { manager_compid, device_id }),
+                        None => return Err("Name the gimbal by its manager component and device id.".to_string()),
+                    }
+                }
+                other => return Err(format!("Unknown gimbal action {other:?}")),
+            }
+        };
+        self.gimbal_outs(outs)
     }
 
     pub fn snapshot(&self) -> Value {
@@ -2918,8 +3003,8 @@ mod tests {
         assert_eq!((arm.command, arm.param1), (MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0));
         assert!(hub.tick(2_500).is_empty());
         let takeoff = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(4, true), 3_000_000, 3000);
-        let MavMessage::COMMAND_LONG(t) = decode(&takeoff[0].1) else { panic!() };
-        assert_eq!((t.command, t.param7), (MavCmd::MAV_CMD_NAV_TAKEOFF, 10.0));
+        let sent: Vec<(MavCmd, f32)> = takeoff.iter().filter_map(|(_, bytes)| match decode(bytes) { MavMessage::COMMAND_LONG(c) => Some((c.command, c.param7)), _ => None }).collect();
+        assert!(sent.contains(&(MavCmd::MAV_CMD_NAV_TAKEOFF, 10.0)), "the takeoff goes out beside the gimbal manager discovery QGC sends on every heartbeat: {sent:?}");
         assert_eq!(hub.guided_snapshot(Some(1))["guided"]["state"], "done");
         let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_NAV_TAKEOFF, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &denied, 3_100_000, 3100);

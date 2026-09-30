@@ -2216,6 +2216,9 @@
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
         "view.gimbal.ready",
+        "view.gimbalIndicator.class",
+        "view.gimbalIndicator.kind",
+        "view.gimbalIndicator.shown",
         "view.gps.class",
         "view.gps.kind",
         "view.gpsRtkBase(trimble).baud",
@@ -6579,6 +6582,9 @@
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
         "view.gimbal.ready",
+        "view.gimbalIndicator.class",
+        "view.gimbalIndicator.kind",
+        "view.gimbalIndicator.shown",
         "view.gps.available",
         "view.gps.class",
         "view.gps.kind",
@@ -8877,6 +8883,7 @@
             "view.obstacle",
             "view.attitude",
             "view.mapClick",
+            "view.gimbalIndicator",
             "view.parameterTools",
             "view.missionComplete",
             "view.landingPattern",
@@ -9343,6 +9350,11 @@
         ],
         "rateUnits": "string",
         "ready": "bool"
+    },
+    "view.gimbalIndicator": {
+        "class": "string",
+        "kind": "string",
+        "shown": "bool"
     },
     "view.gps": {
         "available": "bool",

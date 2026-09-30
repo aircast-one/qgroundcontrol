@@ -147,6 +147,7 @@ pub mod mavinspect;
 pub mod rccal;
 pub mod shp;
 pub mod attitude;
+pub mod gimbalindicator;
 pub mod paramfile;
 pub mod paramtools;
 pub mod setup;
