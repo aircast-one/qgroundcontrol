@@ -28,4 +28,19 @@ class ParameterToolsTest {
         assertFalse(parameterShown("RTL_SPEED", "", "", modifiedOnly = true, modified = setOf("RTL_ALT")))
         assertTrue(parameterShown("RTL_SPEED", "", "rtl", modifiedOnly = false, modified = emptySet()))
     }
+
+    @Test
+    fun `a review lists the rows and warns about another vehicle`() {
+        val review = parameterReview(
+            JSONObject(
+                """{"otherVehicle":true,"multipleComponents":false,"rows":[""" +
+                    """{"name":"RTL_ALT","fileValue":"2000","vehicleValue":"1500","units":"cm","cannotSend":false},""" +
+                    """{"name":"MP_ONLY","fileValue":"4","vehicleValue":"","units":"","cannotSend":true}]}""",
+            ),
+        )!!
+        assertEquals(listOf("RTL_ALT", "MP_ONLY"), review.rows.map { it.name })
+        assertEquals(listOf("The parameters in the file are from a different vehicle."), reviewWarnings(review))
+        assertEquals("Vehicle 1500 · File 2000 · cm", diffLine(review.rows[0]))
+        assertTrue(diffLine(review.rows[1]).contains("cannot send"))
+    }
 }

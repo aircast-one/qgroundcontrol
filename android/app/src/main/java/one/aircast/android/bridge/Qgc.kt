@@ -190,7 +190,7 @@ object Qgc {
 
     fun refusalOf(path: String, vararg args: Any?): String? = refusal(call(path, *args))
 
-    private fun call(path: String, vararg args: Any?): JSONObject? {
+    fun call(path: String, vararg args: Any?): JSONObject? {
         val array = JSONArray().apply { args.forEach { put(it) } }
         return timed("invoke $path") {
             runCatching { JSONObject(QGCBridge.invoke(path, array.toString())) }.getOrNull()

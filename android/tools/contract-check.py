@@ -228,6 +228,12 @@ ONLY_IN = {
 
 ACCEPTED = {
     "ok": "the invoke envelope, not a view field",
+    "result": "the invoke envelope, not a view field",
+    "otherVehicle": "parameterFile.review's answer, an invoke result rather than a view",
+    "multipleComponents": "parameterFile.review's answer, an invoke result rather than a view",
+    "fileValue": "a parameterFile.review row, an invoke result rather than a view",
+    "vehicleValue": "a parameterFile.review row, an invoke result rather than a view",
+    "cannotSend": "a parameterFile.review row, an invoke result rather than a view",
     "defaultRadius": "a field of view.mapClick.loiter, which the contract records as NULL because "
         "the rig never has a fixed wing loitering after a goto. Read in MapClickMenu.kt",
     "simulated": "served per contact at adsb.rs:386 and invisible here because"

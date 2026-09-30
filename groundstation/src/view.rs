@@ -473,6 +473,7 @@ mod deps_cover_reads {
             ("mapclick", include_str!("mapclick.rs")),
             ("missioncomplete", include_str!("missioncomplete.rs")),
             ("paramtools", include_str!("paramtools.rs")),
+            ("paramfile", include_str!("paramfile.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),

@@ -8,6 +8,7 @@
 #include <QtCore/QtNumeric>
 
 #include "Fact.h"
+#include "ParameterManager.h"
 #include "LinkManager.h"
 #include "MAVLinkConsoleController.h"
 #include "APMSensorsComponentController.h"
@@ -396,10 +397,27 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("longDescription"),
         QStringLiteral("visible"),
         QStringLiteral("userVisible"),
+        QStringLiteral("componentId"),
     };
 
     QJsonObject json;
     json.insert(QStringLiteral("kind"), QStringLiteral("fact"));
+    switch (fact->type()) {
+    case FactMetaData::valueTypeUint8:
+    case FactMetaData::valueTypeInt8:
+    case FactMetaData::valueTypeUint16:
+    case FactMetaData::valueTypeInt16:
+    case FactMetaData::valueTypeUint32:
+    case FactMetaData::valueTypeInt32:
+    case FactMetaData::valueTypeUint64:
+    case FactMetaData::valueTypeInt64:
+    case FactMetaData::valueTypeFloat:
+    case FactMetaData::valueTypeDouble:
+        json.insert(QStringLiteral("mavType"), static_cast<int>(ParameterManager::factTypeToMavType(fact->type())));
+        break;
+    default:
+        break;
+    }
     const bool defaultAvailable = fact->defaultValueAvailable();
     for (const QString &property : kFactProperties) {
         // Both default keys are dropped when there is no default. FactMetaData::rawDefaultValue

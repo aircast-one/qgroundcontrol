@@ -812,6 +812,8 @@ fn answer_parameter(path: &str) -> Option<Value> {
     let firmware_default = (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name.trim()).copied()).flatten();
     let meta = crate::factmeta::MetaData { default: firmware_default.map(number), ..crate::apmmeta::json_metadata(&definitions, name.trim(), value_type) };
     let mut described = crate::vehiclefact::fact(&meta, &raw, None);
+    described["mavType"] = json!(value.param_type());
+    described["componentId"] = json!(component);
     if described["typeIsInteger"] == true {
         [("minString", &meta.min), ("maxString", &meta.max)].into_iter().filter_map(|(key, bound)| Some((key, bound.as_ref()?.as_f64()?))).for_each(|(key, bound)| described[key] = json!(crate::control::qt_shortest(bound)));
     }

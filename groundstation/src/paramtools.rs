@@ -31,6 +31,8 @@ pub fn parameter_tools_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let apm = flag(&vehicle, "apmFirmware");
     let tools: Vec<Value> = [
         Some(tool(REFRESH, "Refresh", "", "")),
+        Some(tool(crate::paramfile::FILE_REVIEW, "Load from file for review...", "", "")),
+        Some(tool(crate::paramfile::FILE_SAVE, "Save to file...", "", "")),
         Some(tool(RESET_DEFAULTS, "Reset all to firmware's defaults", "Reset All", "Select Reset to reset all parameters to their defaults.\n\nNote that this will also completely reset everything, including UAVCAN nodes, all vehicle settings, setup and calibrations.")),
         (!apm && autoconfig_exists(backend)).then(|| tool(RESET_VEHICLE_CONFIG, "Reset to vehicle's configuration defaults", "Reset All", "Select Reset to reset all parameters to the vehicle's configuration defaults.")),
         Some(tool(REBOOT, "Reboot Vehicle", "Reboot Vehicle", "Select Ok to reboot vehicle.")),
@@ -91,12 +93,12 @@ mod tests {
 
     #[test]
     fn the_menu_matches_the_parameter_editor() {
-        assert_eq!(labels(&Fake { apm: true, autoconfig: false, ready: true }), ["Refresh", "Reset all to firmware's defaults", "Reboot Vehicle"], "ArduPilot has no vehicle configuration reset");
-        assert_eq!(labels(&Fake { apm: false, autoconfig: true, ready: true })[2], "Reset to vehicle's configuration defaults");
+        assert_eq!(labels(&Fake { apm: true, autoconfig: false, ready: true }), ["Refresh", "Load from file for review...", "Save to file...", "Reset all to firmware's defaults", "Reboot Vehicle"], "ArduPilot has no vehicle configuration reset");
+        assert_eq!(labels(&Fake { apm: false, autoconfig: true, ready: true })[4], "Reset to vehicle's configuration defaults");
         assert!(labels(&Fake { apm: false, autoconfig: true, ready: false }).is_empty(), "nothing to act on until the parameters are in");
         let tools = parameter_tools_view(&Fake { apm: true, autoconfig: false, ready: true }, &[]);
         assert_eq!(tools["tools"][0]["confirm"], false, "Refresh is immediate");
-        assert_eq!(tools["tools"][1]["confirm"], true, "the resets ask first");
+        assert_eq!(tools["tools"][3]["confirm"], true, "the resets ask first");
     }
 
     #[test]
