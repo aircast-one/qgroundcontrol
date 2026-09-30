@@ -8591,7 +8591,8 @@
                 "choice",
                 "bitmask",
                 "text",
-                "number"
+                "number",
+                "label"
             ],
             "view.coreCalibration.calibration.last": [
                 "accelerometer",

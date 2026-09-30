@@ -85,6 +85,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         maxIsDefaultForType = control.isNull("maximumText"),
         defaultValueString = control.optText("defaultText"),
         qgcRebootRequired = control.optBoolean("applicationRestartRequired"),
+        warning = control.optBoolean("warning"),
     )
 }
 
@@ -150,7 +151,17 @@ internal fun ParameterForm(
                 }
             }
             items(section.facts.size, key = { section.facts[it].path }) { index ->
-                FactRow(section.facts[index]) { reloads++ }
+                val fact = section.facts[index]
+                if (fact.controlKind == LABEL_CONTROL) {
+                    Text(
+                        text = fact.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (fact.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                } else {
+                    FactRow(fact) { reloads++ }
+                }
             }
         }
         item(key = "refresh") {
@@ -172,7 +183,9 @@ internal fun bitmaskSummary(fact: Fact): String {
     }
 }
 
-internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number")
+internal const val LABEL_CONTROL = "label"
+
+internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number", LABEL_CONTROL)
 
 internal fun controlIsUnderstood(kind: String): Boolean =
     kind.isBlank() || kind in KNOWN_CONTROL_KINDS

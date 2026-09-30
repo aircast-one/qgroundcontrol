@@ -7,8 +7,8 @@ use crate::sensors;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
-const PX4_ONLY: &[&str] = &["Flight Behavior"];
-const APM_ONLY: &[&str] = &["Camera", "Lights", "Remote Support"];
+const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
+const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Camera", "Lights", "Remote Support"];
 
 /// Which component backs each page. The join is on the KnownVehicleComponent enum where the
 /// firmware declares one and on the C++ class name otherwise - both untranslated, where the
@@ -22,6 +22,9 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Radio", &["known:radio"]),
     ("Flight Modes", &["known:flightModes"]),
     ("Safety", &["known:safety"]),
+    ("Flight Safety", &["known:safety"]),
+    ("Failsafes", &["APMFailsafesComponent"]),
+    ("Logging", &["APMLoggingComponent"]),
     ("Power", &["known:power"]),
     ("Frame", &["AirframeComponent", "APMAirframeComponent", "APMSubFrameComponent"]),
     ("Motors", &["MotorComponent", "APMMotorComponent"]),
@@ -70,8 +73,8 @@ pub fn page_absence(px4: bool) -> &'static str {
 
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
-    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Motors", "Actuators", "Heli", "Tuning", "Camera", "Lights", "Flight Behavior", "Follow Me"]),
-    ("Advanced", &["Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
+    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Motors", "Actuators", "Heli", "Tuning", "Camera", "Lights", "Flight Behavior", "Follow Me"]),
+    ("Advanced", &["Logging", "Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
 ];
 
 pub struct Section {
@@ -80,35 +83,6 @@ pub struct Section {
     pub parameters: &'static [&'static str],
 }
 
-const SAFETY_APM: &[Section] = &[
-    Section { title: "Throttle and link failsafe", note: "What the vehicle does when it stops hearing from the transmitter or the ground station.", parameters: &["FS_THR_ENABLE", "FS_THR_VALUE", "FS_GCS_ENABLE", "FS_OPTIONS"] },
-    Section { title: "Battery failsafe", note: "Thresholds and the action taken when the pack runs low.", parameters: &["BATT_MONITOR", "BATT_FS_LOW_ACT", "BATT_FS_CRT_ACT", "BATT_LOW_VOLT", "BATT_LOW_MAH", "BATT_CRT_VOLT", "BATT_CRT_MAH"] },
-    Section { title: "Second battery", note: "", parameters: &["BATT2_MONITOR", "BATT2_FS_LOW_ACT", "BATT2_FS_CRT_ACT", "BATT2_LOW_VOLT", "BATT2_LOW_MAH", "BATT2_CRT_VOLT", "BATT2_CRT_MAH"] },
-    Section { title: "Geofence", note: "The boundary the vehicle will not cross, and what it does at the edge.", parameters: &["FENCE_ENABLE", "FENCE_TYPE", "FENCE_ACTION", "FENCE_ALT_MAX", "FENCE_RADIUS", "FENCE_MARGIN"] },
-    Section { title: "Return and land", note: "The path home when a failsafe or the operator triggers a return.", parameters: &["RTL_ALT", "RTL_ALT_FINAL", "RTL_LOIT_TIME", "LAND_SPEED"] },
-    Section { title: "Arming", note: "Which pre-arm checks must pass before the vehicle will arm.", parameters: &["ARMING_CHECK"] },
-];
-const SAFETY_PX4: &[Section] = &[
-    Section { title: "Link failsafe", note: "What the vehicle does when it stops hearing from the transmitter or the ground station.", parameters: &["NAV_RCL_ACT", "COM_RC_LOSS_T", "NAV_DLL_ACT", "COM_DL_LOSS_T"] },
-    Section { title: "Battery failsafe", note: "Thresholds and the action taken when the pack runs low.", parameters: &["COM_LOW_BAT_ACT", "BAT_LOW_THR", "BAT_CRIT_THR", "BAT_EMERGEN_THR"] },
-    Section { title: "Geofence", note: "The boundary the vehicle will not cross, and what it does at the edge.", parameters: &["GF_ACTION", "GF_MAX_HOR_DIST", "GF_MAX_VER_DIST"] },
-    Section { title: "Return and land", note: "The path home when a failsafe or the operator triggers a return.", parameters: &["RTL_RETURN_ALT", "RTL_DESCEND_ALT", "RTL_LAND_DELAY", "MPC_LAND_SPEED", "COM_DISARM_LAND"] },
-];
-const POWER_APM: &[Section] = &[
-    Section { title: "Battery 1", note: "How the pack is measured. Compare the readings against a meter and correct the multipliers until they agree.", parameters: &["BATT_MONITOR", "BATT_CAPACITY", "BATT_VOLT_PIN", "BATT_CURR_PIN", "BATT_VOLT_MULT", "BATT_AMP_PERVLT", "BATT_AMP_OFFSET", "BATT_ARM_VOLT"] },
-    Section { title: "Battery 2", note: "A second pack. The rest of its settings appear once a monitor is chosen.", parameters: &["BATT2_MONITOR", "BATT2_CAPACITY", "BATT2_VOLT_PIN", "BATT2_CURR_PIN", "BATT2_VOLT_MULT", "BATT2_AMP_PERVLT", "BATT2_AMP_OFFSET", "BATT2_ARM_VOLT"] },
-];
-const POWER_PX4: &[Section] = &[
-    Section { title: "Battery", note: "", parameters: &["BAT_N_CELLS", "BAT_V_CHARGED", "BAT_V_EMPTY", "BAT_CAPACITY", "BAT1_N_CELLS", "BAT1_V_CHARGED", "BAT1_V_EMPTY", "BAT1_CAPACITY"] },
-    Section { title: "Sensor calibration", note: "Measured during calibration. The calibration wizard is not here yet, so these are the raw values it would write.", parameters: &["BAT_V_DIV", "BAT_A_PER_V", "BAT1_V_DIV", "BAT1_A_PER_V"] },
-];
-const TUNING_APM: &[Section] = &[
-    Section { title: "Stick feel", note: "How long the vehicle takes to follow the stick. Shorter is crisper, longer is softer.", parameters: &["ATC_INPUT_TC"] },
-    Section { title: "Angle gains", note: "How hard the controller leans to reach the angle the stick asks for.", parameters: &["ATC_ANG_RLL_P", "ATC_ANG_PIT_P", "ATC_ANG_YAW_P"] },
-    Section { title: "Rate gains", note: "How hard it works to hold that rate once it is turning. Raise until the vehicle is crisp, then back off before it oscillates.", parameters: &["ATC_RAT_RLL_P", "ATC_RAT_RLL_I", "ATC_RAT_RLL_D", "ATC_RAT_PIT_P", "ATC_RAT_PIT_I", "ATC_RAT_PIT_D", "ATC_RAT_YAW_P", "ATC_RAT_YAW_I"] },
-    Section { title: "Climb", note: "How aggressively the vehicle chases a change in height.", parameters: &["PSC_ACCZ_P", "PSC_ACCZ_I"] },
-    Section { title: "Motor thrust", note: "Minimum thrust should sit above spin-while-armed, or the vehicle cannot move once it is armed.", parameters: &["MOT_SPIN_ARM", "MOT_SPIN_MIN", "MOT_THST_HOVER"] },
-];
 const FRAME_APM: &[Section] = &[
     Section { title: "Airframe", note: "The class picks the layout, the type picks how its arms are oriented. Changing either changes motor numbering and direction; re-check motor order before flying.", parameters: &["FRAME_CLASS", "FRAME_TYPE"] },
 ];
@@ -142,11 +116,6 @@ const FLIGHT_BEHAVIOR_PX4: &[Section] = &[
 
 pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     match (page, px4) {
-        ("Safety", true) => Some(SAFETY_PX4),
-        ("Safety", false) => Some(SAFETY_APM),
-        ("Power", true) => Some(POWER_PX4),
-        ("Power", false) => Some(POWER_APM),
-        ("Tuning", false) => Some(TUNING_APM),
         ("Frame", false) => Some(FRAME_APM),
         ("Flight Modes", true) => Some(FLIGHT_MODES_PX4),
         ("Flight Modes", false) => Some(FLIGHT_MODES_APM),
@@ -191,6 +160,7 @@ pub fn setup_view(backend: &dyn Backend, args: &[String]) -> Value {
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let px4 = flag(&vehicle, "px4Firmware");
     match args.first() {
+        Some(page) if crate::vehicleconfig::has(page, px4) => crate::vehicleconfig::page(backend, page, px4),
         Some(page) => page_json(backend, page, px4),
         None => overview(backend, connected, px4),
     }
@@ -301,7 +271,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             "title": title,
             "pages": pages.iter().filter(|p| page_exists(p, px4)).map(|p| {
                 let blocked = page_block(p, &components);
-                json!({ "name": p, "parameterSections": sections_for(p, px4).is_some(), "openable": blocked.is_none(), "blockedReason": blocked })
+                json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() || crate::vehicleconfig::has(p, px4), "openable": blocked.is_none(), "blockedReason": blocked })
             }).collect::<Vec<_>>(),
             "omitted": pages.iter().filter(|p| !page_exists(p, px4)).map(|p| json!({ "name": p, "reason": page_absence(px4) })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
@@ -316,17 +286,9 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
         present.then(|| decode(&fact, &path))
     };
-    let shown = |s: &Section, controls: Vec<Value>| -> Vec<Value> {
-        let Some(monitor) = s.parameters.first().filter(|p| p.ends_with("_MONITOR")) else { return controls };
-        let chosen = |c: &Value| c["name"] != **monitor || c["value"].as_f64() != Some(0.0);
-        match controls.iter().all(chosen) {
-            true => controls,
-            false => controls.into_iter().filter(|c| c["name"] == **monitor).collect(),
-        }
-    };
     let listed: Vec<Value> = sections
         .iter()
-        .map(|s| json!({ "title": s.title, "note": s.note, "controls": shown(s, s.parameters.iter().filter_map(|p| read(p)).collect::<Vec<_>>()) }))
+        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter_map(|p| read(p)).collect::<Vec<_>>() }))
         .filter(|s| !s["controls"].as_array().unwrap().is_empty())
         .collect();
     json!({ "kind": "object", "class": "SetupPage", "page": page, "firmware": if px4 { "px4" } else { "apm" }, "available": !listed.is_empty(), "sections": listed })
@@ -344,7 +306,11 @@ mod tests {
             assert!(page_exists(page, false), "{page} is registered by APMAutoPilotPlugin");
             assert!(!page_exists(page, true), "{page} has no component in PX4AutoPilotPlugin, so offering it made every head drop it silently");
         });
-        ["Sensors", "Radio", "Flight Modes", "Safety", "Power", "Motors", "Tuning", "Frame", "Parameters"].iter().for_each(|page| {
+        ["Flight Safety", "Failsafes", "Logging"].iter().for_each(|page| {
+            assert!(page_exists(page, false) && !page_exists(page, true), "{page} is an APMAutoPilotPlugin component with its own VehicleConfig definition");
+        });
+        assert!(page_exists("Safety", true) && !page_exists("Safety", false), "ArduPilot's safety component is Flight Safety; APMSafetyComponent is never constructed");
+        ["Sensors", "Radio", "Flight Modes", "Power", "Motors", "Tuning", "Frame", "Parameters"].iter().for_each(|page| {
             assert!(page_exists(page, true), "{page} is registered by both plugins");
             assert!(page_exists(page, false));
         });
@@ -383,15 +349,16 @@ mod tests {
 
     #[test]
     fn pages_follow_the_firmware() {
-        assert!(sections_for("Tuning", false).is_some());
-        assert!(sections_for("Tuning", true).is_none());
+        assert!(crate::vehicleconfig::has("Tuning", false), "APMTuningComponent reads APMTuningCopter.VehicleConfig.json");
+        assert!(!crate::vehicleconfig::has("Tuning", true) && sections_for("Tuning", true).is_none());
+        assert!(crate::vehicleconfig::has("Safety", true) && crate::vehicleconfig::has("Flight Safety", false));
         assert!(sections_for("Flight Behavior", true).is_some());
     }
 
     #[test]
     fn a_page_says_whether_the_core_can_describe_it_and_never_whether_a_head_has_built_it() {
         let described = |page: &str, px4: bool| sections_for(page, px4).is_some();
-        assert!(described("Safety", false), "the core can lay out APM safety as parameter sections");
+        assert!(described("Camera", false), "the core can lay out APM camera and mount parameters as sections");
         assert!(!described("Radio", false), "and it cannot lay out radio calibration, which is a screen rather than a list of parameters");
         assert!(!described("Motors", false), "nor motors, which is the page a head opened because this view once claimed it had one");
     }
@@ -401,7 +368,7 @@ mod tests {
         struct Fake;
         impl Backend for Fake {
             fn get(&self, path: &str) -> String {
-                match (path.contains("RTL_ALT)") || path.contains("ARMING_CHECK"), path.contains("LAND_SPEED")) {
+                match (path.contains("CAM1_TYPE)") || path.contains("CAM_AUTO_ONLY"), path.contains("MNT_TYPE")) {
                     (true, _) => json!({ "kind": "fact", "name": path.rsplit(',').next().unwrap().trim_end_matches(')'), "value": 30, "min": 0, "max": 100, "minIsDefaultForType": false, "maxIsDefaultForType": false }),
                     (false, true) => json!({ "kind": "fact", "name": "", "value": 0, "valueString": "0", "decimalPlaces": 3 }),
                     _ => json!({ "kind": "null" }),
@@ -413,43 +380,15 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let page = setup_view(&Fake, &["Safety".to_string()]);
+        let page = setup_view(&Fake, &["Camera".to_string()]);
         let sections = page["sections"].as_array().unwrap();
         assert_eq!(sections.len(), 2);
-        assert_eq!(sections[0]["title"], "Return and land");
-        assert_eq!(sections[0]["controls"][0]["name"], "RTL_ALT");
+        assert_eq!(sections[0]["title"], "Camera");
+        assert_eq!(sections[0]["controls"][0]["name"], "CAM1_TYPE");
         assert_eq!(sections[0]["controls"].as_array().unwrap().len(), 1);
         assert_eq!(sections[0]["controls"][0]["control"], "number");
-        assert_eq!(sections[1]["title"], "Arming");
+        assert_eq!(sections[1]["title"], "Triggering");
         assert_eq!(setup_view(&Fake, &["Nope".to_string()])["kind"], "null");
-    }
-
-    #[test]
-    fn a_battery_section_offers_only_its_monitor_until_one_is_chosen() {
-        struct Packs(i64);
-        impl Backend for Packs {
-            fn get(&self, path: &str) -> String {
-                let name = path.rsplit(',').next().unwrap().trim_end_matches(')');
-                match name.starts_with("BATT") {
-                    true => json!({ "kind": "fact", "name": name, "value": if name.ends_with("_MONITOR") { self.0 } else { 7 }, "valueString": "7" }),
-                    false => json!({ "kind": "null" }),
-                }
-                .to_string()
-            }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "px4Firmware": false, "apmFirmware": true }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
-            fn watch(&self, _p: &[String]) {}
-        }
-        let controls = |monitor: i64| {
-            let page = setup_view(&Packs(monitor), &["Power".to_string()]);
-            page["sections"].as_array().unwrap().iter()
-                .map(|s| s["controls"].as_array().unwrap().len())
-                .collect::<Vec<_>>()
-        };
-
-        assert_eq!(controls(0), vec![1, 1], "a pack with no monitor has nothing to calibrate, and QGC hides the rest too");
-        assert_eq!(controls(4), vec![8, 8], "once one is chosen every setting for that pack is offered");
     }
 
     #[test]

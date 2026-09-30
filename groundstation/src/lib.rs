@@ -146,6 +146,7 @@ pub mod mavinspect;
 pub mod rccal;
 pub mod shp;
 pub mod setup;
+pub mod vehicleconfig;
 pub mod signing;
 pub mod speed;
 pub mod standardmodes;

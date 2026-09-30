@@ -39,6 +39,7 @@ data class Fact(
     val defaultValueString: String = "",
     val vehicleRebootRequired: Boolean = false,
     val qgcRebootRequired: Boolean = false,
+    val warning: Boolean = false,
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()

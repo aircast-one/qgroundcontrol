@@ -523,6 +523,7 @@ mod deps_cover_reads {
             ("settingsstore", include_str!("settingsstore.rs")),
             ("simcamera", include_str!("simcamera.rs")),
             ("setup", include_str!("setup.rs")),
+            ("vehicleconfig", include_str!("vehicleconfig.rs")),
             ("shp", include_str!("shp.rs")),
             ("signing", include_str!("signing.rs")),
             ("speed", include_str!("speed.rs")),
