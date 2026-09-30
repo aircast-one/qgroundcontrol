@@ -405,6 +405,24 @@ fn save(file: &str) -> Value {
     }
 }
 
+fn save_kml(file: &str) -> Value {
+    let Some(plan) = held().document.as_ref().map(plandoc::save) else {
+        return refused("There is no plan to export.");
+    };
+    let (firmware_type, vehicle_type) = planned_types();
+    let planned = crate::plankml::Planned {
+        firmware: plandoc::firmware(firmware_type),
+        class: plandoc::vehicle_class(vehicle_type),
+        application: crate::noticeboard::application_name(),
+        vertical: crate::units::cooking("vertical m"),
+    };
+    let target = crate::plankml::with_extension(file);
+    match crate::plankml::document(&plan, &planned).and_then(|kml| std::fs::write(&target, kml).map_err(|e| e.to_string())) {
+        Ok(()) => json!({ "ok": true }),
+        Err(e) => refused(format!("KML save error {file} : {e}")),
+    }
+}
+
 fn deliver(outbound: Vec<(u32, Vec<u8>)>) {
     outbound.iter().for_each(|(link, bytes)| {
         crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
@@ -795,6 +813,17 @@ fn planning_setting(name: &str, unset: bool) -> bool {
     crate::settingsstore::raw_setting(&format!("settings.planViewSettings.{name}")).and_then(|v| v.as_bool()).unwrap_or(unset)
 }
 
+fn offline_type(name: &str) -> i64 {
+    crate::settingsstore::raw_setting(&format!("settings.appSettings.{name}")).and_then(|v| v.as_i64()).unwrap_or(0)
+}
+
+fn planned_types() -> (i64, i64) {
+    crate::hub::lock()
+        .active()
+        .map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)))
+        .unwrap_or_else(|| (offline_type("offlineEditingFirmwareClass"), offline_type("offlineEditingVehicleClass")))
+}
+
 pub fn controller_fields(path: &str) -> Option<Value> {
     if !enabled() {
         return None;
@@ -803,8 +832,9 @@ pub fn controller_fields(path: &str) -> Option<Value> {
         let state = held();
         (state.document.clone().unwrap_or_else(empty_document), state.selected)
     };
-    let class = plandoc::vehicle_class(document.vehicle_type);
-    let firmware = plandoc::firmware(document.firmware_type);
+    let (firmware_type, vehicle_type) = planned_types();
+    let class = plandoc::vehicle_class(vehicle_type);
+    let firmware = plandoc::firmware(firmware_type);
     match path {
         "plan.controllerVehicle" => Some(json!({
             "kind": "object",
@@ -820,7 +850,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
                 crate::cmdinfo::Firmware::ArduPilot => "ArduPilot",
                 crate::cmdinfo::Firmware::Generic => "Generic",
             },
-            "vehicleTypeString": u8::try_from(document.vehicle_type).map_or("", crate::vehiclefacade::mav_type_text),
+            "vehicleTypeString": u8::try_from(vehicle_type).map_or("", crate::vehiclefacade::mav_type_text),
         })),
         "plan.missionController" => {
             let sequence = visual_spans(&document).get(usize::try_from(selected).unwrap_or(0)).map_or(0, |(first, _)| *first);
@@ -1320,6 +1350,7 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
             opened
         }),
         "plan.saveToFile" => first_text(args).map_or_else(|| refused("Save needs a path to write the plan to."), |file| save(&file)),
+        "plan.saveToKml" => first_text(args).map_or_else(|| refused("Export needs a path to write the KML to."), |file| save_kml(&file)),
         "plan.saveToCurrent" => current().map_or_else(|| refused("This plan has not been saved to a file yet."), |file| save(&file)),
         "plan.sendToVehicle" if !carried() => send_through_host(backend),
         "plan.loadFromVehicle" if !carried() => fetch_through_host(backend),

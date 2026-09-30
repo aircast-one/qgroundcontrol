@@ -106,6 +106,7 @@ fn overlay(base: Layered, entry: &Map<String, Value>) -> Layered {
         .info
         .into_iter()
         .chain(entry.iter().filter(|(k, _)| param_index(k).is_none() && *k != "paramRemove").map(|(k, v)| (k.clone(), v.clone())))
+        .chain((!params_now.is_empty()).then(|| ("friendlyEdit".to_string(), Value::Bool(true))))
         .collect();
     let removed = base.removed.union(&removed_now).copied().filter(|i| !params_now.contains_key(i)).collect();
     let params = base.params.into_iter().chain(params_now).collect();
@@ -181,6 +182,7 @@ mod tests {
         assert!(base[&22].is_takeoff && base[&21].is_land && base[&17].is_loiter);
         assert_eq!(base[&220].friendly_name, base[&220].raw_name);
         assert_eq!(base[&23].category, "Advanced");
+        assert!(base[&178].friendly_edit, "MissionCommandUIInfo assumes friendly edit for any entry with params");
     }
 
     #[test]

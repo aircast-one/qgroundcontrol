@@ -105,6 +105,7 @@ pub mod coreplan;
 pub mod devicesetup;
 pub mod plandoc;
 pub mod planitems;
+pub mod plankml;
 pub mod planselect;
 pub mod plantransfer;
 pub mod preflight;

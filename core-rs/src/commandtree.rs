@@ -1,45 +1,104 @@
 use serde_json::{Value, json};
 
+use crate::cmdinfo::{Command, Firmware, VehicleClass};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-// MissionItemEditor.qml hands MissionCommandDialog masterController.controllerVehicle, which the plan
-// always has - offline it is the vehicle being planned for. The macOS head passed @vehicle instead,
-// the ACTIVE vehicle, which differs from the plan's while planning offline or for another airframe,
-// and with nothing connected does not resolve at all: the bridge then answers {"ok":false} with no
-// reason and the picker drew empty. MissionCommandTree::_firmwareAndVehicleClassInfo also
-// dereferences the vehicle it is given without a null check, so the plan's vehicle is not only the
-// faithful argument but the only one that is always safe to pass.
 const PLAN_VEHICLE: &str = "plan.controllerVehicle";
+const ALL_COMMANDS: &str = "All commands";
+const CONDITION_GATE: i64 = 4501;
+const ITEM_COMMANDS: &str = "plan.missionController.visualItems.";
 
 fn refused(token: &str, reason: &str) -> Value {
     json!({ "ok": false, "result": Value::Null, "refusal": token, "reason": reason })
 }
 
-fn plan_vehicle_ready(backend: &dyn Backend) -> bool {
-    object(&backend.get_fields(PLAN_VEHICLE, "firmwareTypeString")).get("kind").and_then(Value::as_str) == Some("object")
+fn answered(result: Value) -> Value {
+    json!({ "ok": true, "result": result, "refusal": Value::Null, "reason": Value::Null })
 }
 
-fn listed(backend: &dyn Backend, path: &str, args: Value, what: &str) -> Value {
-    let answer = object(&backend.invoke(path, &args.to_string()));
-    let result = answer.get("result").filter(|r| r.is_array()).cloned();
-    let took = flag(&answer, "ok") && result.is_some();
+fn planned_for(backend: &dyn Backend) -> Option<(Firmware, VehicleClass)> {
+    let vehicle = object(&backend.get_fields(PLAN_VEHICLE, "apmFirmware,px4Firmware,fixedWing,multiRotor,vtol,rover,sub"));
+    (vehicle.get("kind").and_then(Value::as_str) == Some("object")).then_some(())?;
+    let firmware = match (flag(&vehicle, "apmFirmware"), flag(&vehicle, "px4Firmware")) {
+        (true, _) => Firmware::ArduPilot,
+        (false, true) => Firmware::Px4,
+        _ => Firmware::Generic,
+    };
+    let class = [("fixedWing", VehicleClass::FixedWing), ("multiRotor", VehicleClass::MultiRotor), ("vtol", VehicleClass::Vtol), ("rover", VehicleClass::Rover), ("sub", VehicleClass::Sub)]
+        .into_iter()
+        .find(|(key, _)| flag(&vehicle, key))
+        .map_or(VehicleClass::Generic, |(_, class)| class);
+    Some((firmware, class))
+}
+
+pub fn supported_commands(firmware: Firmware, class: VehicleClass, condition_gate: bool) -> Vec<i64> {
+    let base: &[i64] = match firmware {
+        Firmware::ArduPilot => &[16, 17, 18, 19, 20, 30, 31, 82, 92, 93, 112, 114, 115, 176, 177, 178, 179, 181, 182, 183, 184, 189, 201, 202, 203, 205, 1000, 206, 2000, 2001, 2500, 2501, 207, 208, 210, 211, 222, 212],
+        Firmware::Px4 => &[16, 17, 19, 20, 177, 203, 206, 183, 187, 178, 179, 189, 195, 196, 197, 204, 205, 530, 2000, 2001, 2500, 2501, 93, 115, 31, 211],
+        Firmware::Generic => return Vec::new(),
+    };
+    let vtol: &[i64] = match class {
+        VehicleClass::Generic | VehicleClass::Vtol => &[84, 85, 3000],
+        _ => &[],
+    };
+    let flight: &[i64] = match class {
+        VehicleClass::Generic | VehicleClass::Vtol | VehicleClass::FixedWing | VehicleClass::MultiRotor => &[21, 22],
+        _ => &[],
+    };
+    let gate: &[i64] = if condition_gate { &[CONDITION_GATE] } else { &[] };
+    [base, vtol, flight, gate].concat()
+}
+
+fn condition_gate() -> bool {
+    crate::settingsstore::raw_setting("settings.planViewSettings.useConditionGate").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+fn offered(firmware: Firmware, class: VehicleClass) -> Vec<Command> {
+    let plugin_for_class = !(firmware == Firmware::ArduPilot && class == VehicleClass::Generic);
+    let supported = if plugin_for_class { supported_commands(firmware, class, condition_gate()) } else { Vec::new() };
+    crate::cmdinfo::tree(firmware, class).into_values().filter(|c| supported.is_empty() || supported.contains(&c.id)).collect()
+}
+
+pub fn category_names(firmware: Firmware, class: VehicleClass) -> Vec<String> {
+    let supported = supported_commands(firmware, class, condition_gate());
+    let named = crate::cmdinfo::tree(firmware, class)
+        .into_values()
+        .filter(|c| supported.contains(&c.id))
+        .fold(Vec::<String>::new(), |seen, c| if seen.contains(&c.category) { seen } else { [seen, vec![c.category]].concat() });
+    [named, vec![ALL_COMMANDS.to_string()]].concat()
+}
+
+fn ui_info(c: &Command) -> Value {
     json!({
-        "ok": took,
-        "result": result.unwrap_or(Value::Null),
-        "refusal": Value::Null,
-        "reason": match took { true => Value::Null, false => json!(format!("The command tree did not list the {what}.")) },
+        "kind": "object",
+        "class": "MissionCommandUIInfo",
+        "objectName": "",
+        "children": [],
+        "facts": [],
+        "command": c.id,
+        "rawName": c.raw_name,
+        "friendlyName": c.friendly_name,
+        "description": c.description,
+        "category": c.category,
+        "friendlyEdit": c.friendly_edit,
+        "specifiesCoordinate": c.specifies_coordinate,
+        "specifiesAltitudeOnly": c.specifies_altitude_only,
+        "isStandaloneCoordinate": c.standalone_coordinate,
+        "isTakeoffCommand": c.is_takeoff,
+        "isLandCommand": c.is_land,
+        "isLoiterCommand": c.is_loiter,
     })
 }
 
-pub fn categories(backend: &dyn Backend, path: &str) -> Value {
-    if !plan_vehicle_ready(backend) {
-        return refused("noPlan", "There is no plan to list mission commands for.");
+pub fn categories(backend: &dyn Backend, _path: &str) -> Value {
+    match planned_for(backend) {
+        Some((firmware, class)) => answered(json!(category_names(firmware, class))),
+        None => refused("noPlan", "There is no plan to list mission commands for."),
     }
-    listed(backend, path, json!([format!("@{PLAN_VEHICLE}")]), "categories")
 }
 
-pub fn commands(backend: &dyn Backend, path: &str, args: &str) -> Value {
+pub fn commands(backend: &dyn Backend, _path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some(category) = given.get(1).and_then(Value::as_str).filter(|c| !c.trim().is_empty()) else {
         return refused("noCategory", "Name the category to list, as categoriesForVehicle spelled it.");
@@ -49,38 +108,23 @@ pub fn commands(backend: &dyn Backend, path: &str, args: &str) -> Value {
         Some(Value::Bool(b)) => *b,
         Some(_) => return refused("malformed", "Whether to list fly-through commands is true or false."),
     };
-    if !plan_vehicle_ready(backend) {
+    let Some((firmware, class)) = planned_for(backend) else {
         return refused("noPlan", "There is no plan to list mission commands for.");
-    }
-    listed(backend, path, json!([format!("@{PLAN_VEHICLE}"), category, fly_through]), "commands")
+    };
+    let listed: Vec<Value> = offered(firmware, class)
+        .iter()
+        .filter(|c| (c.category == category || category == ALL_COMMANDS) && (fly_through || !c.specifies_coordinate || c.standalone_coordinate))
+        .map(ui_info)
+        .collect();
+    answered(Value::Array(listed))
 }
-
-// SimpleMissionItem::setCommand takes any integer, so a command written to an item was stored whether
-// or not the vehicle it is planned for flies it - and one it does not fly is dropped by the autopilot
-// on upload, or rejected there, far from the edit that caused it. The core accepts only a command the
-// plan's own command tree lists, the list the picker was drawn from, and only on an item that has a
-// command to change (the planned home and the complex items have none).
-const ITEM_COMMANDS: &str = "plan.missionController.visualItems.";
 
 pub fn command_target(path: &str) -> Option<usize> {
     path.strip_prefix(ITEM_COMMANDS)?.strip_suffix(".command")?.parse().ok()
 }
 
 fn offered_commands(backend: &dyn Backend) -> Option<Vec<i64>> {
-    let at = json!([format!("@{PLAN_VEHICLE}")]).to_string();
-    let categories = object(&backend.invoke("missionCommandTree.categoriesForVehicle", &at)).get("result")?.as_array()?.iter().filter_map(|c| c.as_str().map(str::to_string)).collect::<Vec<_>>();
-    let mut commands: Vec<i64> = categories
-        .iter()
-        .filter_map(|category| {
-            let asked = json!([format!("@{PLAN_VEHICLE}"), category, true]).to_string();
-            object(&backend.invoke("missionCommandTree.getCommandsForCategory", &asked)).get("result").and_then(Value::as_array).cloned()
-        })
-        .flatten()
-        .filter_map(|c| c.get("command").and_then(Value::as_i64))
-        .collect();
-    commands.sort_unstable();
-    commands.dedup();
-    (!commands.is_empty()).then_some(commands)
+    planned_for(backend).map(|(firmware, class)| offered(firmware, class).iter().map(|c| c.id).collect())
 }
 
 pub fn write_command(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -98,11 +142,8 @@ pub fn write_command(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let Some(asked) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64()) else {
         return refused("malformed", "A command is its MAV_CMD number.".to_string());
     };
-    if !plan_vehicle_ready(backend) {
-        return refused("noPlan", "There is no plan to change a command in.".to_string());
-    }
     match offered_commands(backend) {
-        None => return refused("unanswered", "The command tree did not list this vehicle's commands.".to_string()),
+        None => return refused("noPlan", "There is no plan to change a command in.".to_string()),
         Some(offered) if !offered.contains(&asked) => return refused("notOffered", format!("Command {asked} is not one this vehicle flies in a mission.")),
         Some(_) => {}
     }
@@ -110,9 +151,6 @@ pub fn write_command(backend: &dyn Backend, path: &str, value: &str) -> Value {
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The item did not take the command.") } })
 }
 
-// SimpleMissionItem copies this hint into param5 and param6 when a command without a coordinate is
-// changed to one with, so a point off the globe became the item's position on the next command
-// change, unchecked. It is refused here, and only an item with a command takes a hint.
 pub fn hint_target(path: &str) -> Option<usize> {
     path.strip_prefix(ITEM_COMMANDS)?.strip_suffix(".setMapCenterHintForCommandChange")?.parse().ok()
 }
@@ -140,47 +178,45 @@ mod tests {
     use std::cell::RefCell;
 
     struct Tree {
-        plan: bool,
-        calls: RefCell<Vec<(String, String)>>,
+        vehicle: Value,
+        calls: RefCell<Vec<String>>,
     }
 
     impl Backend for Tree {
         fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-        fn get_fields(&self, _p: &str, _f: &str) -> String {
-            match self.plan {
-                true => json!({ "kind": "object", "firmwareTypeString": "PX4 Pro" }),
-                false => json!({ "kind": "null" }),
-            }
-            .to_string()
-        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { self.vehicle.to_string() }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, p: &str, a: &str) -> String {
-            self.calls.borrow_mut().push((p.to_string(), a.to_string()));
-            json!({ "ok": true, "result": ["Basic", "Advanced"] }).to_string()
+        fn invoke(&self, p: &str, _a: &str) -> String {
+            self.calls.borrow_mut().push(p.to_string());
+            String::new()
         }
         fn watch(&self, _p: &[String]) {}
     }
 
-    #[test]
-    fn the_command_tree_is_asked_about_the_plans_vehicle_as_qgc_asks_it() {
-        let tree = Tree { plan: true, calls: RefCell::new(Vec::new()) };
-        let listed = categories(&tree, "missionCommandTree.categoriesForVehicle");
-        assert_eq!((&listed["ok"], &listed["result"]), (&json!(true), &json!(["Basic", "Advanced"])), "the head reads result as a list, so the claim keeps Qt's key");
-        let _ = commands(&tree, "missionCommandTree.getCommandsForCategory", r#"["@vehicle","Basic",true]"#);
-        assert_eq!(
-            tree.calls.borrow().as_slice(),
-            &[
-                ("missionCommandTree.categoriesForVehicle".to_string(), r#"["@plan.controllerVehicle"]"#.to_string()),
-                ("missionCommandTree.getCommandsForCategory".to_string(), r#"["@plan.controllerVehicle","Basic",true]"#.to_string()),
-            ],
-            "@vehicle is the active vehicle, not the one being planned for, and does not resolve at all offline"
-        );
-        assert_eq!(commands(&tree, "missionCommandTree.getCommandsForCategory", r#"["@vehicle",""]"#)["refusal"], "noCategory");
-        assert_eq!(commands(&tree, "missionCommandTree.getCommandsForCategory", r#"["@vehicle","Basic","yes"]"#)["refusal"], "malformed");
+    fn names(listed: &Value) -> Vec<i64> {
+        listed["result"].as_array().unwrap().iter().map(|c| c["command"].as_i64().unwrap()).collect()
+    }
 
-        let none = Tree { plan: false, calls: RefCell::new(Vec::new()) };
-        assert_eq!(categories(&none, "missionCommandTree.categoriesForVehicle")["refusal"], "noPlan");
-        assert!(none.calls.borrow().is_empty(), "nothing reaches a command tree that would dereference a vehicle it was not given");
+    #[test]
+    fn the_command_tree_lists_what_qgc_lists_for_the_plans_vehicle() {
+        let quad = Tree { vehicle: json!({ "kind": "object", "apmFirmware": true, "multiRotor": true }), calls: RefCell::new(Vec::new()) };
+        assert_eq!(categories(&quad, "")["result"], json!(["Basic", "Loiter", "Flight control", "Advanced", "Conditionals", "Camera", "Safety", "All commands"]));
+        assert_eq!(names(&commands(&quad, "", r#"["@vehicle","Basic",true]"#)), vec![16, 20, 21, 22, 82, 112]);
+        assert_eq!(names(&commands(&quad, "", r#"["@vehicle","Basic",false]"#)), vec![20, 22, 112], "fly-through commands hide the ones that fly to a coordinate");
+        assert_eq!(names(&commands(&quad, "", r#"["@vehicle","All commands",true]"#)).len(), 40);
+        assert!(quad.calls.borrow().is_empty(), "the list is the core's, no Qt command tree is asked");
+
+        let vtol = Tree { vehicle: json!({ "kind": "object", "px4Firmware": true, "vtol": true }), calls: RefCell::new(Vec::new()) };
+        assert_eq!(categories(&vtol, "")["result"], json!(["Basic", "Loiter", "Advanced", "Conditionals", "Flight control", "Camera", "VTOL", "All commands"]));
+        let generic = Tree { vehicle: json!({ "kind": "object", "multiRotor": true }), calls: RefCell::new(Vec::new()) };
+        assert_eq!(categories(&generic, "")["result"], json!(["All commands"]), "a firmware with no supported list offers only the whole tree");
+        let apm_generic = Tree { vehicle: json!({ "kind": "object", "apmFirmware": true }), calls: RefCell::new(Vec::new()) };
+        assert_eq!(names(&commands(&apm_generic, "", r#"["@vehicle","Advanced",true]"#)).len(), 53, "ArduPilot has no plugin for a generic airframe, so its list is not filtered");
+
+        assert_eq!(commands(&quad, "", r#"["@vehicle",""]"#)["refusal"], "noCategory");
+        assert_eq!(commands(&quad, "", r#"["@vehicle","Basic","yes"]"#)["refusal"], "malformed");
+        let none = Tree { vehicle: json!({ "kind": "null" }), calls: RefCell::new(Vec::new()) };
+        assert_eq!(categories(&none, "")["refusal"], "noPlan");
     }
 
     struct Plan(RefCell<Vec<String>>);
@@ -189,7 +225,7 @@ mod tests {
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
                 "plan" => json!({ "kind": "object", "syncInProgress": false }),
-                "plan.controllerVehicle" => json!({ "kind": "object", "firmwareTypeString": "PX4 Pro" }),
+                "plan.controllerVehicle" => json!({ "kind": "object", "px4Firmware": true, "multiRotor": true }),
                 "plan.missionController.visualItems.0" => json!({ "kind": "object" }),
                 "plan.missionController.visualItems.2" => json!({ "kind": "object", "command": 16 }),
                 _ => json!({ "kind": "null" }),
@@ -200,14 +236,7 @@ mod tests {
             self.0.borrow_mut().push(p.to_string());
             json!({ "ok": true }).to_string()
         }
-        fn invoke(&self, p: &str, a: &str) -> String {
-            match p {
-                "missionCommandTree.categoriesForVehicle" => json!({ "ok": true, "result": ["Basic", "Loiter"] }),
-                _ if a.contains("Basic") => json!({ "ok": true, "result": [{ "command": 16 }, { "command": 21 }] }),
-                _ => json!({ "ok": true, "result": [{ "command": 19 }] }),
-            }
-            .to_string()
-        }
+        fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
         fn watch(&self, _p: &[String]) {}
     }
 

@@ -496,6 +496,7 @@ mod deps_cover_reads {
             ("coreplan", include_str!("coreplan.rs")),
             ("plandoc", include_str!("plandoc.rs")),
             ("planitems", include_str!("planitems.rs")),
+            ("plankml", include_str!("plankml.rs")),
             ("planselect", include_str!("planselect.rs")),
             ("plantransfer", include_str!("plantransfer.rs")),
             ("preflight", include_str!("preflight.rs")),

@@ -1,4 +1,5 @@
-use crate::surveygrid::{at_distance_and_azimuth, azimuth_to, crossing_point, distance_between, flatten, line_angle, set_angle, set_length, to_geo};
+use crate::surveygrid::{at_distance_and_azimuth, azimuth_to, crossing_point, distance_between, flatten, line_angle, set_angle, set_length};
+use crate::geo::ned_to_geo;
 
 type Point = (f64, f64);
 type Line = (Point, Point);
@@ -8,6 +9,10 @@ pub fn length(polyline: &[Point]) -> f64 {
 }
 
 pub fn offset(polyline: &[Point], distance: f64) -> Vec<Point> {
+    offset_on_ellipsoid(polyline, distance).into_iter().map(|(lat, lon, _)| (lat, lon)).collect()
+}
+
+pub fn offset_on_ellipsoid(polyline: &[Point], distance: f64) -> Vec<(f64, f64, f64)> {
     if polyline.len() < 2 {
         return Vec::new();
     }
@@ -28,7 +33,7 @@ pub fn offset(polyline: &[Point], distance: f64) -> Vec<Point> {
     std::iter::once(edges[0].0)
         .chain(joints)
         .chain(std::iter::once(edges[edges.len() - 1].1))
-        .map(|point| to_geo(point, origin))
+        .map(|point| ned_to_geo(point.1, point.0, 0.0, (origin.0, origin.1, 0.0)))
         .collect()
 }
 

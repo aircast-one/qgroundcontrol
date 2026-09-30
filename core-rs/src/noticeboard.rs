@@ -79,6 +79,10 @@ static BOARD: LazyLock<Mutex<Board>> = LazyLock::new(|| Mutex::new(Board::defaul
 static CHANGED_SINCE: AtomicBool = AtomicBool::new(false);
 static APPLICATION_NAME: Mutex<String> = Mutex::new(String::new());
 
+pub fn application_name() -> String {
+    APPLICATION_NAME.lock().unwrap_or_else(PoisonError::into_inner).clone()
+}
+
 pub fn set_application_name(name: &str) {
     *APPLICATION_NAME.lock().unwrap_or_else(PoisonError::into_inner) = name.to_string();
 }
@@ -88,7 +92,7 @@ fn silenced(kind: &str, text: &str) -> bool {
 }
 
 pub fn post_from_vehicle(kind: &str, text: &str) -> bool {
-    let title = APPLICATION_NAME.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let title = application_name();
     !crate::qthost::present() && !silenced(kind, text) && post(kind, &title, text)
 }
 
