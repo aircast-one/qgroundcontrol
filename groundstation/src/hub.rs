@@ -175,6 +175,7 @@ pub struct Vehicle {
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
     pub roi_enabled: bool,
+    pub roi_coord: Option<(f64, f64, f64)>,
     pub comm_lost_enabled: bool,
     pub link_states: Vec<(LinkId, u64, bool)>,
     pub primary_link: Option<LinkId>,
@@ -298,6 +299,7 @@ impl Vehicle {
             camera_sent: BTreeMap::new(),
             mission_current: -1,
             roi_enabled: false,
+            roi_coord: None,
             comm_lost_enabled: true,
             link_states: Vec::new(),
             primary_link: None,
@@ -1213,6 +1215,10 @@ impl Vehicle {
             Plan::Refused(reason) => Err(reason),
             Plan::Steps(steps) => {
                 self.errors.clear();
+                if action.get("action").and_then(Value::as_str) == Some("roi") {
+                    let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
+                    self.roi_coord = Some((number("latitude"), number("longitude"), number("altitude")));
+                }
                 let emits = self.guided.start(steps, &self.observed(), now_ms);
                 Ok(self.carry(emits, now_ms))
             }
@@ -1713,7 +1719,10 @@ impl Vehicle {
                 if a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
                     match a.command {
                         mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_LOCATION => self.roi_enabled = true,
-                        mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_NONE => self.roi_enabled = false,
+                        mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_NONE => {
+                            self.roi_enabled = false;
+                            self.roi_coord = None;
+                        }
                         _ => {}
                     }
                 }
@@ -2642,12 +2651,15 @@ mod tests {
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
         let ack = |command, result| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command, result, ..Default::default() });
+        hub.guided(None, &json!({ "action": "roi", "latitude": 47.4, "longitude": 8.5, "altitude": 0.0, "frame": 3 }), 1).unwrap();
+        assert_eq!(hub.active().unwrap().roi_coord, Some((47.4, 8.5, 0.0)), "Vehicle::guidedModeROI records the point when it sends, before any ack");
         hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_LOCATION, MavResult::MAV_RESULT_DENIED), 1, 0);
         assert!(!hub.active().unwrap().roi_enabled);
         hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_LOCATION, MavResult::MAV_RESULT_ACCEPTED), 2, 0);
         assert!(hub.active().unwrap().roi_enabled);
         hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_NONE, MavResult::MAV_RESULT_ACCEPTED), 3, 0);
         assert!(!hub.active().unwrap().roi_enabled);
+        assert_eq!(hub.active().unwrap().roi_coord, None, "an accepted ROI_NONE clears the point, as Vehicle::_handleCommandAck does");
     }
 
     #[test]
