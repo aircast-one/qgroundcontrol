@@ -237,8 +237,8 @@ fn kind_name(kind: &Kind) -> &'static str {
         Kind::Serial { .. } => "serial",
         Kind::Bluetooth { .. } => "bluetooth",
         Kind::Mock { .. } => "mock",
-        Kind::AirLink => "airlink",
         Kind::LogReplay { .. } => "logReplay",
+        Kind::AircastCloud { .. } => "aircastCloud",
     }
 }
 

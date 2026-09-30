@@ -830,6 +830,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::noticeboard::get(path) {
             return answer.to_string();
         }
+        if let Some(answer) = crate::corelinks::get(path) {
+            return answer.to_string();
+        }
         let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().fleet_count() }));
         let count = count.or_else(|| (path == "vehicles.selectedVehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().selected_count() })));
         if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
@@ -934,6 +937,9 @@ impl<B: Backend> Backend for Facade<B> {
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
             }
+        }
+        if let Some(element) = crate::corelinks::get(asked_path).filter(|e| e["kind"] == "object") {
+            return only_fields(element, &fields_of(fields)).to_string();
         }
         if asked_path == "host" {
             return only_fields(crate::noticeboard::lock().object(), &fields_of(fields)).to_string();

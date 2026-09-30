@@ -246,6 +246,11 @@ pub fn open(path: &std::path::Path) {
     *stored() = Some(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default()));
 }
 
+pub fn entries_under(group: &str) -> BTreeMap<String, Setting> {
+    let prefix = format!("{group}/");
+    stored().as_ref().map(|values| values.iter().filter(|(key, _)| key.starts_with(&prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default()
+}
+
 pub fn stored_text(key: &str) -> Option<String> {
     match stored().as_ref()?.get(key)? {
         Setting::Text(text) => Some(text.clone()),

@@ -93,6 +93,7 @@ pub mod plan;
 pub mod packetradio;
 pub mod params;
 pub mod planfile;
+pub mod corelinks;
 pub mod coreplan;
 pub mod plandoc;
 pub mod planitems;

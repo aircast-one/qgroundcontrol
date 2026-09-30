@@ -11,8 +11,8 @@ pub enum LinkKind {
     Tcp,
     Bluetooth,
     Mock,
-    AirLink,
     LogReplay,
+    AircastCloud,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,15 +21,15 @@ pub struct TypeTable {
 }
 
 impl TypeTable {
-    pub fn new(serial: bool, bluetooth: bool, mock: bool, airlink: bool) -> Self {
+    pub fn new(serial: bool, mock: bool) -> Self {
         let order = [
             serial.then_some(LinkKind::Serial),
             Some(LinkKind::Udp),
             Some(LinkKind::Tcp),
-            bluetooth.then_some(LinkKind::Bluetooth),
+            Some(LinkKind::Bluetooth),
             mock.then_some(LinkKind::Mock),
-            airlink.then_some(LinkKind::AirLink),
             Some(LinkKind::LogReplay),
+            Some(LinkKind::AircastCloud),
         ]
         .into_iter()
         .flatten()
@@ -53,8 +53,8 @@ pub enum Kind {
     Tcp { host: String, port: u16 },
     Bluetooth { device_name: String, address: String },
     Mock { firmware_type: i64, vehicle_type: i64, send_status_text: bool, increment_vehicle_id: bool, failure_mode: i64 },
-    AirLink,
     LogReplay { file: String },
+    AircastCloud { api_base: String, device_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,8 +117,8 @@ fn kind(settings: &BTreeMap<String, Setting>, root: &str, link: LinkKind, defaul
             increment_vehicle_id: text(settings, &key("IncrementVehicleId")).map(|v| v == "true" || v == "1").unwrap_or(true),
             failure_mode: number(settings, &key("FailureMode")).unwrap_or(0),
         },
-        LinkKind::AirLink => Kind::AirLink,
         LinkKind::LogReplay => Kind::LogReplay { file: text(settings, &key("logFilename")).unwrap_or_default() },
+        LinkKind::AircastCloud => Kind::AircastCloud { api_base: text(settings, &key("apiBase")).unwrap_or_default(), device_id: text(settings, &key("deviceId")).unwrap_or_default() },
     }
 }
 
@@ -134,15 +134,15 @@ pub fn load(settings: &BTreeMap<String, Setting>, table: &TypeTable, defaults: &
         .collect()
 }
 
-fn link_kind(kind: &Kind) -> LinkKind {
+pub fn kind_of(kind: &Kind) -> LinkKind {
     match kind {
         Kind::Serial { .. } => LinkKind::Serial,
         Kind::Udp { .. } => LinkKind::Udp,
         Kind::Tcp { .. } => LinkKind::Tcp,
         Kind::Bluetooth { .. } => LinkKind::Bluetooth,
         Kind::Mock { .. } => LinkKind::Mock,
-        Kind::AirLink => LinkKind::AirLink,
         Kind::LogReplay { .. } => LinkKind::LogReplay,
+        Kind::AircastCloud { .. } => LinkKind::AircastCloud,
     }
 }
 
@@ -171,13 +171,13 @@ fn entries(root: &str, kind: &Kind) -> Vec<(String, String)> {
             key("IncrementVehicleId", increment_vehicle_id.to_string()),
             key("FailureMode", failure_mode.to_string()),
         ],
-        Kind::AirLink => Vec::new(),
         Kind::LogReplay { file } => vec![key("logFilename", file.clone())],
+        Kind::AircastCloud { api_base, device_id } => vec![key("apiBase", api_base.clone()), key("deviceId", device_id.clone())],
     }
 }
 
 pub fn save(configs: &[LinkConfig], table: &TypeTable) -> BTreeMap<String, Setting> {
-    let saved: Vec<(usize, &LinkConfig, i64)> = configs.iter().filter_map(|c| table.code(link_kind(&c.kind)).map(|code| (c, code))).enumerate().map(|(i, (c, code))| (i, c, code)).collect();
+    let saved: Vec<(usize, &LinkConfig, i64)> = configs.iter().filter_map(|c| table.code(kind_of(&c.kind)).map(|code| (c, code))).enumerate().map(|(i, (c, code))| (i, c, code)).collect();
     saved
         .iter()
         .flat_map(|(i, config, code)| {
@@ -204,8 +204,8 @@ pub fn to_json(config: &LinkConfig) -> serde_json::Value {
         Kind::Tcp { host, port } => json!({ "kind": "tcp", "host": host, "port": port }),
         Kind::Bluetooth { device_name, address } => json!({ "kind": "bluetooth", "deviceName": device_name, "address": address }),
         Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, failure_mode } => json!({ "kind": "mock", "firmwareType": firmware_type, "vehicleType": vehicle_type, "sendStatusText": send_status_text, "incrementVehicleId": increment_vehicle_id, "failureMode": failure_mode }),
-        Kind::AirLink => json!({ "kind": "airlink" }),
         Kind::LogReplay { file } => json!({ "kind": "logReplay", "logFilename": file }),
+        Kind::AircastCloud { api_base, device_id } => json!({ "kind": "aircastCloud", "apiBase": api_base, "deviceId": device_id }),
     };
     let mut object = kind;
     object["name"] = json!(config.name);
@@ -229,8 +229,8 @@ pub fn from_json(value: &serde_json::Value) -> Result<LinkConfig, String> {
         Some("tcp") => Kind::Tcp { host: text("host").ok_or("tcp link without a host")?, port: port("port").ok_or("tcp link without a port")? },
         Some("bluetooth") => Kind::Bluetooth { device_name: text("deviceName").unwrap_or_default(), address: text("address").unwrap_or_default() },
         Some("mock") => Kind::Mock { firmware_type: int("firmwareType", 12), vehicle_type: int("vehicleType", 2), send_status_text: value.get("sendStatusText").and_then(Value::as_bool).unwrap_or(false), increment_vehicle_id: value.get("incrementVehicleId").and_then(Value::as_bool).unwrap_or(true), failure_mode: int("failureMode", 0) },
-        Some("airlink") => Kind::AirLink,
         Some("logReplay") => Kind::LogReplay { file: text("logFilename").unwrap_or_default() },
+        Some("aircastCloud") => Kind::AircastCloud { api_base: text("apiBase").unwrap_or_default(), device_id: text("deviceId").unwrap_or_default() },
         other => return Err(format!("unknown link kind {other:?}")),
     };
     Ok(LinkConfig { name, auto_connect: value.get("auto").and_then(Value::as_bool).unwrap_or(false), high_latency: value.get("highLatency").and_then(Value::as_bool).unwrap_or(false), kind })
@@ -246,17 +246,17 @@ mod tests {
 
     #[test]
     fn the_type_code_follows_the_build_flags() {
-        let desktop = TypeTable::new(true, false, true, true);
-        assert_eq!((desktop.code(LinkKind::Serial), desktop.code(LinkKind::Udp), desktop.code(LinkKind::LogReplay)), (Some(0), Some(1), Some(5)));
-        let android = TypeTable::new(true, true, false, true);
-        assert_eq!((android.kind(3), android.kind(4), android.kind(5)), (Some(LinkKind::Bluetooth), Some(LinkKind::AirLink), Some(LinkKind::LogReplay)));
-        let ios = TypeTable::new(false, false, false, false);
-        assert_eq!((ios.kind(0), ios.kind(2), ios.kind(3), ios.code(LinkKind::Serial)), (Some(LinkKind::Udp), Some(LinkKind::LogReplay), None, None));
+        let debug = TypeTable::new(true, true);
+        assert_eq!((debug.code(LinkKind::Serial), debug.code(LinkKind::Tcp), debug.code(LinkKind::LogReplay), debug.code(LinkKind::AircastCloud)), (Some(0), Some(2), Some(5), Some(6)));
+        let release = TypeTable::new(true, false);
+        assert_eq!((release.kind(3), release.kind(4), release.kind(5)), (Some(LinkKind::Bluetooth), Some(LinkKind::LogReplay), Some(LinkKind::AircastCloud)), "LinkConfiguration::LinkType drops TypeMock outside QT_DEBUG and keeps TypeBluetooth unconditionally");
+        let no_serial = TypeTable::new(false, false);
+        assert_eq!((no_serial.kind(0), no_serial.kind(3), no_serial.code(LinkKind::Serial)), (Some(LinkKind::Udp), Some(LinkKind::LogReplay), None));
     }
 
     #[test]
     fn a_saved_list_reads_back_and_links_the_build_lacks_are_dropped() {
-        let table = TypeTable::new(true, true, false, false);
+        let table = TypeTable::new(true, false);
         let configs = vec![
             LinkConfig { name: "Field UDP".into(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: 14550, hosts: vec![("192.168.4.1".into(), 14550), ("10.0.0.2".into(), 14551)] } },
             LinkConfig { name: "SITL".into(), auto_connect: false, high_latency: false, kind: Kind::Tcp { host: "127.0.0.1".into(), port: 5760 } },
@@ -270,14 +270,14 @@ mod tests {
         assert_eq!(saved[&format!("{ROOT}/Link2/high_latency")], Setting::Text("true".into()));
         let loaded = load(&saved, &table, &defaults());
         assert_eq!(loaded, configs.iter().filter(|c| !matches!(c.kind, Kind::Mock { .. })).cloned().collect::<Vec<_>>());
-        let debug = TypeTable::new(true, false, true, false);
+        let debug = TypeTable::new(true, true);
         let mock_only: Vec<LinkConfig> = configs.iter().filter(|c| matches!(c.kind, Kind::Mock { .. })).cloned().collect();
         assert_eq!(load(&save(&mock_only, &debug), &debug, &defaults()), mock_only);
     }
 
     #[test]
     fn the_json_shape_round_trips_every_kind() {
-        let table = TypeTable::new(true, true, true, true);
+        let table = TypeTable::new(true, true);
         let configs = vec![
             LinkConfig { name: "u".into(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: 14550, hosts: vec![("10.0.0.1".into(), 14550)] } },
             LinkConfig { name: "t".into(), auto_connect: false, high_latency: true, kind: Kind::Tcp { host: "127.0.0.1".into(), port: 5760 } },
@@ -285,10 +285,11 @@ mod tests {
             LinkConfig { name: "b".into(), auto_connect: false, high_latency: false, kind: Kind::Bluetooth { device_name: "r".into(), address: "aa:bb".into() } },
             LinkConfig { name: "m".into(), auto_connect: false, high_latency: false, kind: Kind::Mock { firmware_type: 3, vehicle_type: 2, send_status_text: true, increment_vehicle_id: false, failure_mode: 1 } },
             LinkConfig { name: "r".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/tmp/x.tlog".into() } },
+            LinkConfig { name: "c".into(), auto_connect: true, high_latency: false, kind: Kind::AircastCloud { api_base: "https://api.aircast.one".into(), device_id: "d-1".into() } },
         ];
         for config in &configs {
             assert_eq!(from_json(&to_json(config)).unwrap(), *config);
-            assert!(table.code(link_kind(&config.kind)).is_some());
+            assert!(table.code(kind_of(&config.kind)).is_some());
         }
         assert!(from_json(&serde_json::json!({ "kind": "udp", "name": "x" })).is_err());
         assert!(from_json(&serde_json::json!({ "kind": "warp", "name": "x" })).is_err());
@@ -298,7 +299,7 @@ mod tests {
     fn a_qt_written_file_loads_with_defaults_for_what_is_missing() {
         let ini = "[LinkConfigurations]\ncount=3\nLink0\\name=\"Old UDP\"\nLink0\\type=1\nLink0\\auto=true\nLink0\\high_latency=false\nLink0\\hostCount=1\nLink0\\host0=192.168.1.10\nLink0\\port0=14550\nLink1\\name=\nLink1\\type=2\nLink2\\name=\"Bad\"\nLink2\\type=99\n";
         let settings = crate::settingsini::read(ini);
-        let loaded = load(&settings, &TypeTable::new(true, false, false, false), &defaults());
+        let loaded = load(&settings, &TypeTable::new(true, false), &defaults());
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].kind, Kind::Udp { local_port: 14550, hosts: vec![("192.168.1.10".into(), 14550)] });
         assert!(loaded[0].auto_connect && !loaded[0].high_latency);

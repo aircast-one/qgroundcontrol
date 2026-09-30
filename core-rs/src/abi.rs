@@ -113,6 +113,11 @@ pub unsafe extern "C" fn qgc_core_set_application_name(name: *const c_char) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_host_owns_links() {
+    crate::corelinks::host_owns_links();
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_host_posts_vehicle_notices() {
     crate::noticeboard::host_posts_vehicle_notices();
 }

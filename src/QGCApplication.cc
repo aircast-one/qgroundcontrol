@@ -166,6 +166,7 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
     qgc_core_settings_open(settings.fileName().toUtf8().constData());
     qgc_core_set_application_name(QCoreApplication::applicationName().toUtf8().constData());
     qgc_core_host_posts_vehicle_notices();
+    qgc_core_host_owns_links();
     qgc_core_measurement_system(static_cast<uint8_t>(QLocale::system().measurementSystem()));
 
     if (fClearCache) {
