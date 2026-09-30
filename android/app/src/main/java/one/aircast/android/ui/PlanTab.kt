@@ -207,6 +207,6 @@ fun PlanTab(modifier: Modifier = Modifier) {
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
-        PlanMapScreen(Modifier.weight(1f))
+        PlanMapScreen(Modifier.weight(1f), itemEditor = { index, close -> ItemEditor(index, close) })
     }
 }
