@@ -2229,6 +2229,19 @@
         "view.gimbalIndicator.shown",
         "view.gps.class",
         "view.gps.kind",
+        "view.gpsResilience.authentication.colour",
+        "view.gpsResilience.authentication.shown",
+        "view.gpsResilience.class",
+        "view.gpsResilience.interference.colour",
+        "view.gpsResilience.interference.shown",
+        "view.gpsResilience.kind",
+        "view.gpsResilience.sections.#",
+        "view.gpsResilience.sections.0.rows.#",
+        "view.gpsResilience.sections.0.rows.0.label",
+        "view.gpsResilience.sections.0.rows.1.label",
+        "view.gpsResilience.sections.0.rows.2.label",
+        "view.gpsResilience.sections.0.title",
+        "view.gpsResilience.shown",
         "view.gpsRtkBase(trimble).baud",
         "view.gpsRtkBase(trimble).class",
         "view.gpsRtkBase(trimble).driver",
@@ -6634,6 +6647,18 @@
         "view.gps.rows[].label",
         "view.gps.rows[].value",
         "view.gps.satellites",
+        "view.gpsResilience.authentication.colour",
+        "view.gpsResilience.authentication.shown",
+        "view.gpsResilience.class",
+        "view.gpsResilience.interference.colour",
+        "view.gpsResilience.interference.shown",
+        "view.gpsResilience.kind",
+        "view.gpsResilience.sections.#",
+        "view.gpsResilience.sections[].rows.#",
+        "view.gpsResilience.sections[].rows[].label",
+        "view.gpsResilience.sections[].rows[].text",
+        "view.gpsResilience.sections[].title",
+        "view.gpsResilience.shown",
         "view.gpsRtkBase(trimble).baud",
         "view.gpsRtkBase(trimble).class",
         "view.gpsRtkBase(trimble).driver",
@@ -8936,6 +8961,7 @@
             "view.obstacle",
             "view.attitude",
             "view.mapClick",
+            "view.gpsResilience",
             "view.gcsBattery",
             "view.remoteIdStatus",
             "view.escs",
@@ -9454,6 +9480,30 @@
             }
         ],
         "satellites": "null|number"
+    },
+    "view.gpsResilience": {
+        "authentication": {
+            "colour": "string",
+            "shown": "bool"
+        },
+        "class": "string",
+        "interference": {
+            "colour": "string",
+            "shown": "bool"
+        },
+        "kind": "string",
+        "sections": [
+            {
+                "rows": [
+                    {
+                        "label": "string",
+                        "text": "string"
+                    }
+                ],
+                "title": "string"
+            }
+        ],
+        "shown": "bool"
     },
     "view.gpsRtkBase(trimble)": {
         "baud": "number",

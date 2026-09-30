@@ -150,6 +150,7 @@ pub mod attitude;
 pub mod escview;
 pub mod gcsbattery;
 pub mod gimbalindicator;
+pub mod gpsresilience;
 pub mod paramfile;
 pub mod paramtools;
 pub mod setup;
