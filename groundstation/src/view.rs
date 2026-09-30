@@ -51,6 +51,7 @@ use crate::gimbalindicator;
 use crate::escview;
 use crate::gcsbattery;
 use crate::gpsresilience;
+use crate::firstrun;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -162,6 +163,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
     View { path: "view.attitude", deps: attitude::DEPS, compute: attitude::attitude_view },
     View { path: "view.mapClick", deps: mapclick::DEPS, compute: mapclick::map_click_view },
+    View { path: "view.firstRun", deps: firstrun::DEPS, compute: firstrun::first_run_view },
     View { path: "view.gpsResilience", deps: gpsresilience::DEPS, compute: gpsresilience::resilience_view },
     View { path: "view.gcsBattery", deps: &[], compute: gcsbattery::gcs_battery_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
@@ -493,6 +495,7 @@ mod deps_cover_reads {
             ("escview", include_str!("escview.rs")),
             ("gcsbattery", include_str!("gcsbattery.rs")),
             ("gpsresilience", include_str!("gpsresilience.rs")),
+            ("firstrun", include_str!("firstrun.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),

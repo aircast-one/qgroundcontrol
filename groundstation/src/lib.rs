@@ -149,6 +149,7 @@ pub mod shp;
 pub mod attitude;
 pub mod escview;
 pub mod gcsbattery;
+pub mod firstrun;
 pub mod gimbalindicator;
 pub mod gpsresilience;
 pub mod paramfile;
