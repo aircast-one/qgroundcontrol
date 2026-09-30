@@ -347,6 +347,13 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
         "longitude": v.facts.coordinate.map(|(_, longitude, _)| f64::from(longitude as f32)),
     });
+    let fields = match (fields, v.control.fields()) {
+        (Value::Object(mut mine), Value::Object(control)) => {
+            mine.extend(control);
+            Value::Object(mine)
+        }
+        (fields, _) => fields,
+    };
     let described = json!({
         "vehicleTypeString": mav_type_text(v.vehicle_type),
         "airship": v.vehicle_type == 7,
@@ -910,6 +917,17 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
+        }
+        if path == "vehicle.requestOperatorControl" && inspector_owned() {
+            let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+            let allow = given.get(0).and_then(Value::as_bool).unwrap_or(false);
+            let timeout = given.get(1).and_then(Value::as_i64).unwrap_or(0);
+            let meta = crate::settingsstore::metadata("FlyView", "requestControlTimeout");
+            let limit = |value: Option<&Value>, fallback: i64| value.and_then(Value::as_i64).unwrap_or(fallback);
+            let safe = crate::operatorcontrol::safe_timeout(timeout, (limit(meta.as_ref().and_then(|m| m.min.as_ref()), 3), limit(meta.as_ref().and_then(|m| m.max.as_ref()), 60)), limit(meta.as_ref().and_then(|m| m.default.as_ref()), 10));
+            let vehicle = crate::hub::lock().active_id();
+            let started = self.0.core_guided(&json!({ "action": "requestControl", "vehicle": vehicle, "allowTakeover": allow, "timeout": timeout, "safeTimeout": safe }));
+            return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
         if path == "mavlinkInspector.setMessageInterval" && inspector_owned() {
             let rate = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0)?.as_i64());

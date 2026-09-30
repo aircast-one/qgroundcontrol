@@ -319,6 +319,7 @@ fn install_hub_sink() {
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
         let extra: crate::linkhost::ExtraSink = std::sync::Arc::new(|extra: &crate::transport::Extra| {
+            crate::hub::lock().on_extra(&extra.header, extra.msgid, &crate::mavinspect::payload(&extra.raw, extra.v2));
             if crate::vehiclefacade::switched_on() {
                 let (vehicles, active) = {
                     let hub = crate::hub::lock();

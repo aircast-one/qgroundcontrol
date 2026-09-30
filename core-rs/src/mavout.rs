@@ -29,6 +29,7 @@ pub enum Outbound {
     CommandLong { target: (u8, u8), command: u16, params: [f64; 7] },
     CommandInt { target: (u8, u8), command: u16, frame: u8, params: [f64; 7], x: i32, y: i32 },
     SetMode { system: u8, base_mode: u8, custom_mode: u32 },
+    RawCommandLong { target: (u8, u8), command: u16, params: [f64; 7] },
     PositionTargetLocalNed { target: (u8, u8), frame: u8, type_mask: u16, x: f64, y: f64, z: f64 },
     GuidedMissionItem { target: (u8, u8), latitude: f64, longitude: f64, altitude_relative: f64 },
     ParamRequestList { target: (u8, u8) },
@@ -67,6 +68,36 @@ pub fn frame_known(frame: u8) -> bool {
 
 pub fn param_id(name: &str) -> CharArray<16> {
     chars(name)
+}
+
+pub struct CommandLongBits {
+    pub target: (u8, u8),
+    pub command: u16,
+    pub params: [f32; 7],
+}
+
+impl MessageData for CommandLongBits {
+    type Message = MavMessage;
+    const ID: u32 = 76;
+    const NAME: &'static str = "COMMAND_LONG";
+    const EXTRA_CRC: u8 = 152;
+    const ENCODED_LEN: usize = 33;
+
+    fn ser(&self, _version: MavlinkVersion, payload: &mut [u8]) -> usize {
+        self.params.iter().enumerate().for_each(|(i, p)| payload[i * 4..i * 4 + 4].copy_from_slice(&p.to_le_bytes()));
+        payload[28..30].copy_from_slice(&self.command.to_le_bytes());
+        payload[30] = self.target.0;
+        payload[31] = self.target.1;
+        payload[32] = 0;
+        Self::ENCODED_LEN
+    }
+
+    fn deser(_version: MavlinkVersion, input: &[u8]) -> Result<Self, mavlink::error::ParserError> {
+        let mut payload = [0u8; 33];
+        payload[..input.len().min(33)].copy_from_slice(&input[..input.len().min(33)]);
+        let param = |i: usize| f32::from_le_bytes([payload[i * 4], payload[i * 4 + 1], payload[i * 4 + 2], payload[i * 4 + 3]]);
+        Ok(CommandLongBits { target: (payload[30], payload[31]), command: u16::from_le_bytes([payload[28], payload[29]]), params: std::array::from_fn(param) })
+    }
 }
 
 pub struct SetModeBits {
@@ -127,7 +158,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
             current: 0,
             autocontinue: 0,
         })),
-        Outbound::SetMode { .. } => None,
+        Outbound::SetMode { .. } | Outbound::RawCommandLong { .. } => None,
         Outbound::ParamRequestList { target } => Some(MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1 })),
         Outbound::ParamRequestRead { target, name, index } => Some(MavMessage::PARAM_REQUEST_READ(PARAM_REQUEST_READ_DATA { param_index: if name.is_some() { -1 } else { *index }, target_system: target.0, target_component: target.1, param_id: param_id(name.as_deref().unwrap_or("")) })),
         Outbound::MissionRequestList { target, plan } => Some(MavMessage::MISSION_REQUEST_LIST(MISSION_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)? })),
@@ -278,6 +309,7 @@ pub fn encode(sequence: u8, send: &Outbound) -> Option<Vec<u8>> {
     let mut raw = MAVLinkV2MessageRaw::new();
     match send {
         Outbound::SetMode { system, base_mode, custom_mode } => raw.serialize_message_data(header, &SetModeBits { system: *system, base_mode: *base_mode, custom_mode: *custom_mode }),
+        Outbound::RawCommandLong { target, command, params } => raw.serialize_message_data(header, &CommandLongBits { target: *target, command: *command, params: params.map(|p| p as f32) }),
         other => raw.serialize_message(header, &message(other)?),
     }
     Some(raw.raw_bytes().to_vec())

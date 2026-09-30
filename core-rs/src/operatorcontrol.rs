@@ -13,6 +13,71 @@ pub const DEPS: &[&str] = &[
     "settings.mavlinkSettings.gcsMavlinkSystemID",
 ];
 
+pub const TAKEOVER_TIMEOUT_MSECS: i64 = 10_000;
+pub const REQUEST_OPERATOR_CONTROL: u16 = 32100;
+pub const CONTROL_STATUS: u32 = 512;
+const FLAG_SYSTEM_MANAGER: u8 = 1;
+const FLAG_TAKEOVER_ALLOWED: u8 = 2;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ControlState {
+    pub gcs_main: u8,
+    pub flags: u8,
+    pub first: bool,
+    pub request_allowed: bool,
+    allowed_again_ms: Option<u64>,
+}
+
+impl Default for ControlState {
+    fn default() -> Self {
+        ControlState { gcs_main: 0, flags: 0, first: false, request_allowed: true, allowed_again_ms: None }
+    }
+}
+
+impl ControlState {
+    pub fn system_manager(&self) -> bool {
+        self.flags & FLAG_SYSTEM_MANAGER != 0
+    }
+
+    pub fn takeover_allowed(&self) -> bool {
+        self.flags & FLAG_TAKEOVER_ALLOWED != 0
+    }
+
+    pub fn on_status(&mut self, flags: u8, gcs_main: u8) {
+        (self.flags, self.gcs_main, self.first) = (flags, gcs_main, true);
+        if !self.request_allowed && self.takeover_allowed() {
+            (self.request_allowed, self.allowed_again_ms) = (true, None);
+        }
+    }
+
+    pub fn requested(&mut self, timeout_secs: i64, now_ms: u64) {
+        if timeout_secs > 0 {
+            (self.request_allowed, self.allowed_again_ms) = (false, Some(now_ms + timeout_secs as u64 * 1000));
+        }
+    }
+
+    pub fn tick(&mut self, now_ms: u64) {
+        if self.allowed_again_ms.is_some_and(|at| now_ms >= at) {
+            (self.request_allowed, self.allowed_again_ms) = (true, None);
+        }
+    }
+
+    pub fn fields(&self) -> Value {
+        json!({
+            "gcsMain": self.gcs_main,
+            "gcsControlStatusFlags_SystemManager": self.system_manager(),
+            "gcsControlStatusFlags_TakeoverAllowed": self.takeover_allowed(),
+            "firstControlStatusReceived": self.first,
+            "sendControlRequestAllowed": self.request_allowed,
+            "operatorControlTakeoverTimeoutMsecs": TAKEOVER_TIMEOUT_MSECS,
+        })
+    }
+}
+
+pub fn safe_timeout(asked: i64, bounds: (i64, i64), default: i64) -> i64 {
+    if (bounds.0..=bounds.1).contains(&asked) { asked } else { default }
+}
+
 const FIELDS: &str = "gcsMain,gcsControlStatusFlags_SystemManager,gcsControlStatusFlags_TakeoverAllowed,firstControlStatusReceived,sendControlRequestAllowed,operatorControlTakeoverTimeoutMsecs";
 
 fn integer(read: &Value, key: &str) -> Option<i64> {
@@ -62,6 +127,42 @@ pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_request_waits_out_its_timeout_unless_the_holder_allows_takeover_first() {
+        let mut control = ControlState::default();
+        assert_eq!((control.first, control.request_allowed), (false, true));
+        control.requested(10, 1_000);
+        assert!(!control.request_allowed);
+        control.tick(10_999);
+        assert!(!control.request_allowed);
+        control.on_status(FLAG_TAKEOVER_ALLOWED, 7);
+        assert!(control.request_allowed, "a holder that allows takeover answers the request early");
+        assert_eq!((control.gcs_main, control.first, control.system_manager()), (7, true, false));
+        control.requested(5, 20_000);
+        control.on_status(FLAG_SYSTEM_MANAGER, 7);
+        assert!(!control.request_allowed);
+        control.tick(25_000);
+        assert!(control.request_allowed);
+        control.requested(0, 30_000);
+        assert!(control.request_allowed, "a no-wait request does not block the next one");
+    }
+
+    #[test]
+    fn a_timeout_outside_the_setting_limits_is_sent_as_the_default() {
+        assert_eq!((safe_timeout(10, (3, 60), 10), safe_timeout(0, (3, 60), 10), safe_timeout(90, (3, 60), 10)), (10, 10, 10));
+        assert_eq!(safe_timeout(30, (3, 60), 10), 30);
+    }
+
+    #[test]
+    fn the_request_goes_out_as_a_command_the_decoded_dialect_cannot_name() {
+        let bytes = crate::mavout::encode(3, &crate::mavout::Outbound::RawCommandLong { target: (1, 1), command: REQUEST_OPERATOR_CONTROL, params: [0.0, 1.0, 1.0, 10.0, 0.0, 0.0, 0.0] }).unwrap();
+        let (header, msgid) = crate::mavinspect::undecoded(&bytes, true).expect("a COMMAND_LONG with a good checksum");
+        assert_eq!((msgid, header.sequence), (76, 3));
+        let fields = crate::mavinspect::fields(76, &crate::mavinspect::payload(&bytes, true));
+        let value = |name: &str| fields.iter().find(|f| f["name"] == name).and_then(|f| f["value"].as_str()).unwrap_or("").to_string();
+        assert_eq!((value("command"), value("param2"), value("param3"), value("param4"), value("target_system")), ("32100".into(), "1".into(), "1".into(), "10".into(), "1".into()));
+    }
 
     struct Station {
         known: bool,

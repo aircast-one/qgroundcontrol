@@ -165,6 +165,7 @@ pub struct Vehicle {
     pub rc_values: Vec<u16>,
     pub events_heard: bool,
     pub message_log: crate::messagelog::MessageLog,
+    pub control: crate::operatorcontrol::ControlState,
     pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
@@ -284,6 +285,7 @@ impl Vehicle {
             rc_values: Vec::new(),
             events_heard: false,
             message_log: crate::messagelog::MessageLog::default(),
+            control: crate::operatorcontrol::ControlState::default(),
             camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
@@ -1110,6 +1112,15 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("requestControl") => {
+                let allow = action.get("allowTakeover").and_then(Value::as_bool).unwrap_or(false);
+                let (Some(timeout), Some(safe)) = (action.get("timeout").and_then(Value::as_i64), action.get("safeTimeout").and_then(Value::as_i64)) else {
+                    return Err("A control request names how long to wait.".to_string());
+                };
+                let send = Outbound::RawCommandLong { target: (self.id, self.component), command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params: [0.0, 1.0, if allow { 1.0 } else { 0.0 }, safe as f64, 0.0, 0.0, 0.0] };
+                self.control.requested(timeout, now_ms);
+                return Ok(self.encode(&send).into_iter().collect());
+            }
             Some("messageInterval") => {
                 let whole = |key: &str| action.get(key).and_then(Value::as_i64);
                 let (Some(component), Some(message), Some(rate)) = (whole("component").and_then(|c| u8::try_from(c).ok()), whole("message"), whole("rate")) else {
@@ -1224,6 +1235,7 @@ impl Vehicle {
 
     fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
         let ticked = self.commands.tick(now_ms);
+        self.control.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
         bytes.extend(self.tick_rc_override(now_ms));
         let camera_due = self.cameras.tick(now_ms);
@@ -2174,6 +2186,15 @@ impl Hub {
 
     pub fn listed(&self, index: usize) -> Option<&Vehicle> {
         self.listed.as_ref().unwrap_or(&self.arrival).get(index).and_then(|id| self.vehicles.get(id))
+    }
+
+    pub fn on_extra(&mut self, header: &MavHeader, msgid: u32, payload: &[u8]) {
+        if msgid != crate::operatorcontrol::CONTROL_STATUS {
+            return;
+        }
+        if let (Some(vehicle), Some(flags), Some(main)) = (self.vehicles.get_mut(&header.system_id), payload.first(), payload.get(1)) {
+            vehicle.control.on_status(*flags, *main);
+        }
     }
 
     pub fn vehicle_ids(&self) -> Vec<u8> {
