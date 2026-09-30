@@ -725,6 +725,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
             return json!({ "kind": "object", "lines": lines }).to_string();
         }
+        if let Some(values) = (asked_path == "radioCal" && fields_of(fields) == ["rcValues"] && switched_on()).then(|| crate::hub::lock().active().map(|v| v.rc_values.clone())).flatten() {
+            return json!({ "kind": "object", "rcValues": values }).to_string();
+        }
         if asked_path == "positionManager" && switched_on() {
             let position = crate::gcsposition::lock();
             let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), position.property(f)?))).collect();

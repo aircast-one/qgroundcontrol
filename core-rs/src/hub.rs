@@ -162,6 +162,7 @@ pub struct Vehicle {
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
+    pub rc_values: Vec<u16>,
     pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
@@ -278,6 +279,7 @@ impl Vehicle {
             cameras: crate::cameraproto::Cameras::new(),
             onboard_logs: crate::onboardlogs::OnboardLogs::default(),
             shell: crate::shell::Shell::default(),
+            rc_values: Vec::new(),
             camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
@@ -1769,6 +1771,13 @@ impl Vehicle {
         self.local.apply(message);
         self.local_setpoint.apply_target(message);
         self.estimator.apply(message);
+        if let MavMessage::RC_CHANNELS(c) = message {
+            let raw = [c.chan1_raw, c.chan2_raw, c.chan3_raw, c.chan4_raw, c.chan5_raw, c.chan6_raw, c.chan7_raw, c.chan8_raw, c.chan9_raw, c.chan10_raw, c.chan11_raw, c.chan12_raw, c.chan13_raw, c.chan14_raw, c.chan15_raw, c.chan16_raw, c.chan17_raw, c.chan18_raw];
+            let valid = raw.iter().filter(|v| **v != u16::MAX).count();
+            if raw.iter().position(|v| *v == u16::MAX).is_none_or(|at| at == valid) {
+                self.rc_values = raw[..valid].to_vec();
+            }
+        }
         if let MavMessage::SERIAL_CONTROL(d) = message {
             if d.device == mavlink::dialects::ardupilotmega::SerialControlDev::SERIAL_CONTROL_DEV_SHELL {
                 if let Some(data) = d.data.get(..usize::from(d.count)) {
@@ -2510,6 +2519,20 @@ mod tests {
         assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
         hub.set_active(Some(7));
         assert_eq!(hub.active().map(|v| v.id), Some(7));
+    }
+
+    #[test]
+    fn rc_values_keep_the_contiguous_channels_and_ignore_a_frame_with_a_gap() {
+        use mavlink::dialects::ardupilotmega::RC_CHANNELS_DATA;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let unused = u16::MAX;
+        let rc = |c1, c2, c3| MavMessage::RC_CHANNELS(RC_CHANNELS_DATA { chan1_raw: c1, chan2_raw: c2, chan3_raw: c3, chan4_raw: unused, chan5_raw: unused, chan6_raw: unused, chan7_raw: unused, chan8_raw: unused, chan9_raw: unused, chan10_raw: unused, chan11_raw: unused, chan12_raw: unused, chan13_raw: unused, chan14_raw: unused, chan15_raw: unused, chan16_raw: unused, chan17_raw: unused, chan18_raw: unused, ..Default::default() });
+        hub.on_frame(origin(0), &header, &rc(1100, 1500, 1900), 1, 1);
+        assert_eq!(hub.active().map(|v| v.rc_values.clone()), Some(vec![1100, 1500, 1900]));
+        hub.on_frame(origin(0), &header, &rc(1200, unused, 1800), 2, 2);
+        assert_eq!(hub.active().map(|v| v.rc_values.clone()), Some(vec![1100, 1500, 1900]), "Vehicle.cc publishes nothing from a frame whose channels are not contiguous");
     }
 
     #[test]
