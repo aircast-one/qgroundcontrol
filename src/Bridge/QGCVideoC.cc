@@ -11,9 +11,14 @@
 #include <gst/video/videooverlay.h>
 #endif
 
+#ifndef QGC_VIDEO_FORMAT
+#define QGC_VIDEO_FORMAT "BGRA"
+#endif
+
 namespace {
 
 std::mutex frameMutex;
+qgc_video_frame_callback frameCallback = nullptr;
 std::mutex overlayMutex;
 void *overlayWindow = nullptr;
 std::vector<uint8_t> latestFrame;
@@ -47,6 +52,9 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
             frameStride = static_cast<int>(GST_VIDEO_INFO_PLANE_STRIDE(&info, 0));
             latestFrame.assign(map.data, map.data + map.size);
             frameCount += 1;
+            if (frameCallback) {
+                frameCallback(latestFrame.data(), frameWidth, frameHeight, frameStride);
+            }
             gst_buffer_unmap(buffer, &map);
         }
     }
@@ -57,6 +65,12 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
 #endif
 
 } // namespace
+
+void qgc_video_set_frame_callback(qgc_video_frame_callback callback)
+{
+    const std::lock_guard<std::mutex> lock(frameMutex);
+    frameCallback = callback;
+}
 
 bool qgc_video_set_window(void *native_window)
 {
@@ -111,7 +125,7 @@ bool qgc_video_attach_appsink(void *appsink)
     }
 
     GstAppSink *const adopted = GST_APP_SINK(appsink);
-    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", nullptr);
+    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, QGC_VIDEO_FORMAT, nullptr);
     gst_app_sink_set_caps(adopted, caps);
     gst_caps_unref(caps);
     gst_app_sink_set_max_buffers(adopted, 1);
@@ -192,7 +206,7 @@ bool qgc_video_start(const char *pipelineDescription)
         return false;
     }
 
-    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", nullptr);
+    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, QGC_VIDEO_FORMAT, nullptr);
     gst_app_sink_set_caps(GST_APP_SINK(sink), caps);
     gst_caps_unref(caps);
     gst_app_sink_set_max_buffers(GST_APP_SINK(sink), 1);

@@ -4,6 +4,8 @@ mod abi;
 #[cfg(all(feature = "native-host", not(test)))]
 pub mod nativehost;
 #[cfg(all(feature = "jni-host", not(test)))]
+mod androidvideo;
+#[cfg(all(feature = "jni-host", not(test)))]
 mod jnihost;
 pub mod account;
 pub mod actions;

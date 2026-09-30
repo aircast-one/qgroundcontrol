@@ -108,8 +108,26 @@ val buildCoreLibrary by tasks.registering(Exec::class) {
     }
 }
 
+val buildCoreVideo by tasks.registering(Exec::class) {
+    val abi = qgc("abi")
+    val source = rootProject.file("video")
+    val build = layout.buildDirectory.dir("core/video/$abi").get().asFile
+    val toolchain = android.ndkDirectory.resolve("build/cmake/android.toolchain.cmake")
+    commandLine(
+        "sh", "-c",
+        "cmake -S \"$source\" -B \"$build\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=\"$toolchain\" " +
+            "-DANDROID_ABI=$abi -DANDROID_PLATFORM=${qgc("minSdk")} && cmake --build \"$build\"",
+    )
+    doLast {
+        copy {
+            from(build.resolve("libqgc_video.so"))
+            into(coreJniLibs.get().dir(abi))
+        }
+    }
+}
+
 tasks.matching { it.name.startsWith("preCore") && it.name.endsWith("Build") }.configureEach {
-    dependsOn(copyCoreBridge, buildCoreLibrary)
+    dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo)
 }
 
 dependencies {
