@@ -1115,6 +1115,13 @@ impl<B: Backend> Backend for Facade<B> {
             }
             return self.0.set(path, value);
         }
+        if path == "vehicle.flightMode" && switched_on() {
+            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string));
+            let vehicle = crate::hub::lock().active_id();
+            if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| self.0.core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))) {
+                return json!({ "ok": started.is_ok() }).to_string();
+            }
+        }
         fell_through("set", path);
         self.0.set(path, value)
     }

@@ -34,7 +34,10 @@ pub fn write_undo_tracking(backend: &dyn Backend, path: &str, value: &str) -> Va
     let Some(on) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
         return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "Undo tracking is turned on with true and off with false." });
     };
-    let answered = flag(&object(&backend.set(path, &json!({ "value": on }).to_string())), "ok");
+    let answered = match crate::coreplan::enabled() && !crate::qthost::present() {
+        true => true,
+        false => flag(&object(&backend.set(path, &json!({ "value": on }).to_string())), "ok"),
+    };
     let held = match crate::coreplan::enabled() {
         true => answered.then(|| {
             crate::coreplan::note_undo_tracking(on);
