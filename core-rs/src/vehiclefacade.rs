@@ -535,6 +535,11 @@ fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, trackin
     plain.into_iter().chain(unthermal).chain(untracked).map(|(k, v)| (k.to_string(), v)).collect()
 }
 
+fn no_vehicle() -> bool {
+    let hub = crate::hub::lock();
+    hub.active_id().is_none() || (!crate::qthost::present() && hub.active().is_none())
+}
+
 fn link_fields(known: &Known) -> Option<serde_json::Map<String, Value>> {
     let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let described: Option<Vec<(u32, String, bool)>> = known.links.0.iter().map(|(link, lost)| transports.describe(*link).filter(|(_, kind, high_latency)| matches!(kind.as_str(), "udp" | "tcp") && !high_latency).map(|(name, _, _)| (*link, name, *lost))).collect();
@@ -906,7 +911,7 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(links_field) {
             return json!({ "kind": "value", "value": field }).to_string();
         }
-        let absent = (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && crate::hub::lock().active_id().is_none()).then(|| json!({ "kind": "null" }));
+        let absent = (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && no_vehicle()).then(|| json!({ "kind": "null" }));
         let absent = absent.or_else(|| (switched_on() && selected_member(path).is_some_and(|(index, _)| crate::hub::lock().selected_member(index).is_none())).then(|| json!({ "kind": "null" })));
         count.or(absent).or_else(|| switched_on().then(|| answer_parameter(path)).flatten()).or_else(|| resolved(path).and_then(|(path, known)| answer_get(&path, &known).or_else(|| answer_scalar(&path, &known)))).map_or_else(
             || {
@@ -949,6 +954,9 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(options) = (asked_path == "corePlugin.options").then(|| fields_of(fields).into_iter().map(|f| Some((f.to_string(), json!(core_option(f)?)))).collect::<Option<serde_json::Map<String, Value>>>()).flatten() {
             return object_of(options).to_string();
+        }
+        if switched_on() && (asked_path == "vehicle" || asked_path.starts_with("vehicle.")) && no_vehicle() {
+            return json!({ "kind": "null" }).to_string();
         }
         if let Some(Value::Object(mut answered)) = crate::coreplan::controller_fields(asked_path) {
             let wanted = fields_of(fields);
