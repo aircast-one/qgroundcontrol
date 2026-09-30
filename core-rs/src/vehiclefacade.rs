@@ -1142,6 +1142,15 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::noticeboard::invoke(path, args) {
             return answer.to_string();
         }
+        if path == "vehicle.motorTest" && switched_on() {
+            let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+            let number = |i: usize| given.get(i).and_then(Value::as_f64);
+            let vehicle = crate::hub::lock().active_id();
+            let asked = number(0).zip(number(1)).zip(number(2)).zip(vehicle);
+            if let Some(started) = asked.and_then(|(((motor, percent), seconds), vehicle)| self.0.core_guided(&json!({ "action": "motorTest", "vehicle": vehicle, "motor": motor, "percent": percent, "seconds": seconds }))) {
+                return json!({ "ok": started.is_ok() }).to_string();
+            }
+        }
         if let Some(answer) = crate::geotagcontroller::invoke(path) {
             return answer.to_string();
         }

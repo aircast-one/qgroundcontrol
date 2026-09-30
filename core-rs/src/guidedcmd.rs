@@ -11,6 +11,8 @@ pub const CMD_MISSION_START: u16 = 300;
 pub const CMD_DO_VTOL_TRANSITION: u16 = 3000;
 pub const VTOL_STATE_MC: u8 = 3;
 pub const VTOL_STATE_FW: u8 = 4;
+pub const MOTOR_TEST_THROTTLE_PERCENT: f64 = 0.0;
+pub const MOTOR_TEST_ORDER_BOARD: f64 = 2.0;
 pub const CMD_COMPONENT_ARM_DISARM: u16 = 400;
 pub const REPOSITION_CHANGE_MODE: f64 = 1.0;
 pub const FRAME_GLOBAL: u8 = 0;
@@ -245,6 +247,10 @@ pub fn gripper(action: f64) -> Plan {
     }
 }
 
+pub fn motor_test(motor: f64, percent: f64, seconds: f64) -> Plan {
+    Plan::Steps(vec![Step::Command { command: crate::mavcmd::CMD_DO_MOTOR_TEST, params: [motor, MOTOR_TEST_THROTTLE_PERCENT, percent, seconds, 0.0, MOTOR_TEST_ORDER_BOARD, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
+}
+
 pub fn vtol_transition(forward: bool) -> Plan {
     let state = f64::from(if forward { VTOL_STATE_FW } else { VTOL_STATE_MC });
     Plan::Steps(vec![Step::Command { command: CMD_DO_VTOL_TRANSITION, params: [state, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
@@ -307,6 +313,8 @@ mod tests {
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[0]), (CMD_DO_GO_AROUND, 30.0));
         let Plan::Steps(steps) = gripper(1.0) else { panic!() };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[..2].to_vec()), (CMD_DO_GRIPPER, vec![0.0, 1.0]));
+        let Plan::Steps(steps) = motor_test(3.0, 20.0, 5.0) else { panic!("a motor test is always sent") };
+        assert_eq!(command(&steps[0]).1, [3.0, 0.0, 20.0, 5.0, 0.0, 2.0, 0.0], "Vehicle::motorTest sends a throttle percent in board order");
         let Plan::Steps(steps) = vtol_transition(true) else { panic!("a transition is always sent") };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[0]), (CMD_DO_VTOL_TRANSITION, f64::from(VTOL_STATE_FW)), "setVtolInFwdFlight sends MAV_VTOL_STATE_FW for forward flight");
         assert!(matches!(gripper(2.0), Plan::Refused(_)));
