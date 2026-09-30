@@ -103,6 +103,7 @@ internal data class SettingsPageEntry(
     val showsVideoSources: Boolean,
     val sectionCount: Int,
     val showsAbout: Boolean = false,
+    val showsConsole: Boolean = false,
     val helpLinks: List<HelpLink> = emptyList(),
 )
 
@@ -158,6 +159,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
                 showsVideoSources = page.optBoolean("showsVideoSources"),
                 sectionCount = page.optJSONArray("sections")?.length() ?: 0,
                 showsAbout = page.optBoolean("showsAbout"),
+                showsConsole = page.optBoolean("showsConsole"),
                 helpLinks = page.optJSONArray("helpLinks")?.let { links ->
                     (0 until links.length()).mapNotNull { i ->
                         links.optJSONObject(i)?.let { HelpLink(it.optText("name"), it.optText("url"), it.optText("host")) }
@@ -167,7 +169,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
         }
     }.filter {
         it.title.isNotBlank() && it.title !in PAGES_WITHOUT_A_SCREEN.keys &&
-            (it.sectionCount > 0 || it.showsLinks || it.showsAbout)
+            (it.sectionCount > 0 || it.showsLinks || it.showsAbout || it.showsConsole)
     }
 }
 
@@ -326,6 +328,11 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
 
     if (page.showsAbout) {
         AboutPage(page.helpLinks, modifier)
+        return
+    }
+
+    if (page.showsConsole) {
+        AppLogPage(modifier)
         return
     }
 

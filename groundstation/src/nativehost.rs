@@ -142,6 +142,7 @@ pub extern "C" fn qgc_set_host_provides_ui(_provides: c_int) {}
 pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c_int {
     let arguments: Vec<String> = (0..usize::try_from(argc).unwrap_or(0)).map(|i| read(if argv.is_null() { std::ptr::null() } else { unsafe { *argv.add(i) } })).collect();
     let chosen = options(&arguments);
+    crate::applog::install();
     unsafe {
         crate::abi::qgc_core_settings_open(text(&chosen.settings.to_string_lossy()).as_ptr());
         crate::abi::qgc_core_set_application_name(text(&chosen.application).as_ptr());

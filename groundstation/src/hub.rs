@@ -941,6 +941,7 @@ impl Vehicle {
                     Vec::new()
                 }
                 Action::InitialConnectComplete => {
+                    log::info!("Initial connect complete for vehicle {}", self.id);
                     self.connected = true;
                     self.connect_progress = 1.0;
                     Vec::new()
@@ -1413,6 +1414,7 @@ impl Vehicle {
                 state.1 = now_ms;
                 if state.2 {
                     state.2 = false;
+                    log::info!("Communication regained on link {link}");
                     self.update_primary_link();
                 }
             }
@@ -1427,7 +1429,10 @@ impl Vehicle {
         if !self.comm_lost_enabled {
             return;
         }
-        self.link_states.iter_mut().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).for_each(|state| state.2 = true);
+        self.link_states.iter_mut().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).for_each(|state| {
+            state.2 = true;
+            log::warn!("Communication lost on link {}", state.0);
+        });
         self.update_primary_link();
     }
 

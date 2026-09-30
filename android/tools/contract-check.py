@@ -293,6 +293,7 @@ ACCEPTED = {
     "icaoAddress": "view.adsbTraffic recorded with contacts[] empty; adsb.rs serves it",
     "altitudeType": "view.adsbTraffic recorded with contacts[] empty; adsb.rs serves it",
     "headingDegrees": "view.adsbTraffic recorded with contacts[] empty; adsb.rs serves it",
+    "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
     "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",
 }

@@ -430,6 +430,7 @@ dependencies = [
  "if-addrs",
  "jni",
  "little_exif",
+ "log",
  "lzma-rs",
  "mavlink",
  "num-traits",

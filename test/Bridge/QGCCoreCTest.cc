@@ -519,7 +519,7 @@ void QGCCoreCTest::_aCameraActionIsRoutedByTheCoreAndNotThePassthrough()
 
 void QGCCoreCTest::_settingsPagesDecodeTheirControls()
 {
-    QCOMPARE(take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray().count(), 15);
+    QCOMPARE(take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray().count(), 16);
     const QJsonObject general = take(qgc_bridge_get("view.settings(General)"));
     const QJsonArray sections = general.value(QStringLiteral("sections")).toArray();
     QCOMPARE(sections.count(), 3);
@@ -1360,7 +1360,7 @@ const char *const kViewPaths[] = {
     "view.settings(General)", "view.surveyStats(4)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
     "view.setup(Flight Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
-    "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.mapClick", "view.missionComplete", "view.parameterTools", "view.gimbalIndicator", "view.escs", "view.remoteIdStatus", "view.gcsBattery(54,false)", "view.gpsResilience", "view.firstRun", "view.landingPattern(6)",
+    "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.mapClick", "view.missionComplete", "view.parameterTools", "view.gimbalIndicator", "view.escs", "view.remoteIdStatus", "view.gcsBattery(54,false)", "view.gpsResilience", "view.firstRun", "view.appLog(1,hub,link,1,0)", "view.landingPattern(6)",
     "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)", "view.positionForms(47.397,8.546)", "view.mgrsToGeo(32TMN6461447152)",
