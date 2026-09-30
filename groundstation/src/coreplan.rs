@@ -866,6 +866,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
                 "onlyInsertTakeoffValid": state.only_takeoff,
                 "isInsertTakeoffValid": state.takeoff,
                 "isInsertLandValid": state.land,
+                "hasLandItem": crate::missionkinds::has_land(&document),
                 "isInsertROIValid": state.roi,
                 "flyThroughCommandsAllowed": state.fly_through,
                 "globalAltitudeFrame": document.global_altitude_mode,

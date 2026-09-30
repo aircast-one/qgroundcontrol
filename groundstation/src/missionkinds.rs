@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{object, refused};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed", crate::coreplan::CHANGED, "settings.planViewSettings.takeoffItemNotRequired", "settings.planViewSettings.allowMultipleLandingPatterns"];
+pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed", "plan.missionController.hasLandItem", "plan.controllerVehicle.multiRotor", crate::coreplan::CHANGED, "settings.planViewSettings.takeoffItemNotRequired", "settings.planViewSettings.allowMultipleLandingPatterns"];
 const DEFAULT_AREA_METRES: f64 = 150.0;
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -60,6 +60,8 @@ pub struct Insertable {
     pub land: bool,
     pub fly_through: bool,
     pub patterns: Option<Vec<String>>,
+    pub has_land: bool,
+    pub multi_rotor: bool,
 }
 
 impl Insertable {
@@ -87,6 +89,13 @@ pub struct InsertState {
 }
 
 const LANDING_COMMANDS: [i64; 4] = [21, 85, 189, 20];
+
+pub fn has_land(document: &crate::plandoc::Document) -> bool {
+    document.items.iter().any(|item| match item {
+        crate::plandoc::Item::Simple(simple) => LANDING_COMMANDS.contains(&simple.command),
+        crate::plandoc::Item::Complex { kind, .. } => kind == crate::landingpattern::FIXED_WING_PATTERN,
+    })
+}
 
 pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], sequence: i64, rules: &Rules) -> InsertState {
     use crate::cmdinfo::{Firmware, VehicleClass};
@@ -126,7 +135,7 @@ pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], s
 pub fn insertable(backend: &dyn Backend) -> Insertable {
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        if crate::coreplan::enabled() { "homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed" } else { "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed" },
+        if crate::coreplan::enabled() { "homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem" } else { "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem" },
     ));
     let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
@@ -136,6 +145,8 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         takeoff: answered("isInsertTakeoffValid", true),
         land: answered("isInsertLandValid", false),
         fly_through: answered("flyThroughCommandsAllowed", true),
+        has_land: answered("hasLandItem", false),
+        multi_rotor: crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "multiRotor")), "multiRotor"),
         patterns: if crate::coreplan::enabled() { Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect()) } else { mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
             names.iter().filter_map(|name| name.as_str().or_else(|| name.get("canonicalName").and_then(Value::as_str))).map(str::to_string).collect()
         }) },
@@ -176,9 +187,20 @@ fn kind_json(kind: &Kind) -> Value {
     })
 }
 
+pub fn land_title(multi_rotor: bool, land_insertable: bool, has_land: bool) -> &'static str {
+    match (multi_rotor, land_insertable && has_land) {
+        (true, _) => "Return",
+        (false, true) => "Alt Land",
+        (false, false) => "Land",
+    }
+}
+
 fn offered(kind: &Kind, insertable: &Insertable) -> Value {
     let refused = refusal(kind, insertable);
     let mut json = kind_json(kind);
+    if kind.id == "land" {
+        json["title"] = json!(land_title(insertable.multi_rotor, insertable.land, insertable.has_land));
+    }
     let asked = insertable.at_sequence.is_some();
     json["enabled"] = if asked { json!(refused.is_none()) } else { Value::Null };
     json["disabledReason"] = match asked {
@@ -240,6 +262,14 @@ pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_land_button_reads_as_plan_view_labels_it() {
+        assert_eq!(land_title(true, true, true), "Return", "a multirotor's land button inserts a return");
+        assert_eq!(land_title(false, true, true), "Alt Land", "a second landing where multiple patterns are allowed");
+        assert_eq!(land_title(false, false, true), "Land");
+        assert_eq!(land_title(false, true, false), "Land");
+    }
 
     #[test]
     fn insert_state_follows_mission_controller_for_the_selected_sequence() {

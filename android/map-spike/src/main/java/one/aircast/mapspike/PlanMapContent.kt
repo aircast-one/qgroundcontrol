@@ -639,7 +639,7 @@ internal fun MapSpikeScreen(
                             val at = placeAt()
                             addMissionItem(KIND_LAND, "Adding a landing", at, insertAfter(selected, allItems))
                         },
-                    ) { Text("Land") }
+                    ) { Text(kindLabel(insertable, KIND_LAND)) }
 
                     blockedReason(insertable)?.let {
                         GroupBreak()

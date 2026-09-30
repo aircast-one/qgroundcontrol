@@ -19,34 +19,32 @@ const val KIND_ROI = "roi"
 data class MissionKind(
     val id: String,
     val label: String,
+    val title: String,
     val enabled: Boolean,
     val disabledReason: String,
 )
 
-// view.missionKinds names every kind, says which are patterns, and says whether
-// the plan will take one right now and why not. Spelling any of that here would
-// be a second opinion that goes stale the day the core adds a fourth pattern.
 fun missionKinds(view: JSONObject?): List<MissionKind> {
     val kinds = view?.optJSONArray("kinds") ?: return emptyList()
     return (0 until kinds.length()).mapNotNull { kinds.optJSONObject(it) }.map { kind ->
         MissionKind(
             id = kind.optText("id"),
             label = kind.optText("complexName"),
+            title = kind.optText("title"),
             enabled = kind.optBoolean("enabled", true),
             disabledReason = kind.optText("disabledReason"),
         )
     }
 }
 
-// A pattern is a kind the core gave a complexName to; nothing else distinguishes
-// one, and inventing a second test here is how the hardcoded list started.
 fun scanPatterns(kinds: List<MissionKind>): List<MissionKind> =
     kinds.filter { it.label.isNotBlank() }
 
-// A kind the core has not spoken about is offered, because withholding a
-// control on silence removes something that works - see the fence gate.
 fun kindAllows(kinds: List<MissionKind>, id: String): Boolean =
     kinds.firstOrNull { it.id == id }?.enabled ?: true
+
+fun kindLabel(kinds: List<MissionKind>, id: String): String =
+    kinds.firstOrNull { it.id == id }?.title?.ifBlank { null } ?: id.replaceFirstChar { it.uppercase() }
 
 fun blockedReason(kinds: List<MissionKind>): String? =
     kinds.firstOrNull { !it.enabled && it.disabledReason.isNotBlank() }?.disabledReason

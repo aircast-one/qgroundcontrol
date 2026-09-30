@@ -88,4 +88,11 @@ class RemoveRefusalTest {
         assertEquals("The plan did not answer.", outcome("""{"ok":false}""").reason)
         assertEquals("The plan did not answer.", insertOutcome(null).reason)
     }
+
+    @Test
+    fun `the land button carries the title the core serves`() {
+        val kinds = missionKinds(JSONObject("""{"kinds":[{"id":"land","title":"Return","enabled":true}]}"""))
+        assertEquals("Return", kindLabel(kinds, "land"))
+        assertEquals("Land", kindLabel(emptyList(), "land"))
+    }
 }
