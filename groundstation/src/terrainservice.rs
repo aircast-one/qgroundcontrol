@@ -91,6 +91,20 @@ pub fn height(latitude: f64, longitude: f64) -> Option<f64> {
     }
 }
 
+pub fn height_now(latitude: f64, longitude: f64) -> Result<Option<f64>, String> {
+    let lookup = TABLE.lock().unwrap_or_else(PoisonError::into_inner).lookup(latitude, longitude, crate::hub::now_ms());
+    match lookup {
+        Lookup::Known(height) => Ok(height),
+        Lookup::Waiting | Lookup::Fetch(_) => {
+            let key = crate::terrainquery::tile_xy(latitude, longitude);
+            let fetched = load(key, cache_path().as_deref(), &crate::terrainquery::fetch_over_http);
+            let height = fetched.as_ref().map(|tile| tile.elevation(latitude, longitude)).map_err(Clone::clone);
+            TABLE.lock().unwrap_or_else(PoisonError::into_inner).store(key, fetched, crate::hub::now_ms());
+            height
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

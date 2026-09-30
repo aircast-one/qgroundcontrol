@@ -11,6 +11,13 @@ pub const CMD_MISSION_START: u16 = 300;
 pub const CMD_DO_VTOL_TRANSITION: u16 = 3000;
 pub const CMD_DO_DIGICAM_CONTROL: u16 = 203;
 pub const CMD_DO_SET_MISSION_CURRENT: u16 = 224;
+pub const CMD_DO_SET_HOME: u16 = 179;
+pub const CMD_DO_SET_ROI_LOCATION: u16 = 195;
+pub const CMD_CONDITION_YAW: u16 = 115;
+pub const FRAME_GLOBAL_RELATIVE_ALT: u8 = 3;
+pub const SET_HOME_TERRAIN_MIN: f64 = -500.0;
+pub const SET_HOME_TERRAIN_MAX: f64 = 10000.0;
+pub const APM_ROI_ALTITUDE_LIMIT: f64 = 83000.0;
 pub const CMD_DO_ORBIT: u16 = 34;
 pub const CMD_DO_SET_GLOBAL_ORIGIN: u16 = 611;
 pub const ORBIT_YAW_BEHAVIOUR_UNCHANGED: f64 = 5.0;
@@ -150,6 +157,46 @@ pub fn orbit(state: &VehicleState, latitude: f64, longitude: f64, radius: f64, a
 
 pub fn estimator_origin(latitude: f64, longitude: f64, altitude: f64) -> Plan {
     Plan::Steps(vec![Step::Command { command: CMD_DO_SET_GLOBAL_ORIGIN, params: [0.0, 0.0, 0.0, 0.0, latitude, longitude, altitude], command_int: true, frame: FRAME_GLOBAL, show_error: false }])
+}
+
+pub fn set_home(latitude: f64, longitude: f64, terrain_amsl: Option<f64>) -> Plan {
+    match terrain_amsl {
+        None => Plan::Refused("Set Home failed, terrain data not available for selected coordinate".into()),
+        Some(height) if !(SET_HOME_TERRAIN_MIN..=SET_HOME_TERRAIN_MAX).contains(&height) => Plan::Refused("Set Home failed, the terrain height there is out of range".into()),
+        Some(height) => Plan::Steps(vec![Step::Command { command: CMD_DO_SET_HOME, params: [0.0, 0.0, 0.0, nan(), latitude, longitude, height], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+    }
+}
+
+pub fn roi(state: &VehicleState, latitude: f64, longitude: f64, altitude: f64, frame: u8) -> Plan {
+    if state.autopilot != AUTOPILOT_PX4 && altitude.abs() >= APM_ROI_ALTITUDE_LIMIT {
+        return Plan::Refused("That ROI altitude is beyond what ArduPilot accepts.".into());
+    }
+    let command_int = state.capabilities & CAP_COMMAND_INT != 0;
+    Plan::Steps(vec![Step::Command { command: CMD_DO_SET_ROI_LOCATION, params: [nan(), nan(), nan(), nan(), latitude, longitude, altitude], command_int, frame, show_error: true }])
+}
+
+pub fn initial_bearing(from: (f64, f64), to: (f64, f64)) -> f64 {
+    let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
+    let delta = (to.1 - from.1).to_radians();
+    let y = delta.sin() * lat2.cos();
+    let x = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * delta.cos();
+    y.atan2(x).to_degrees().rem_euclid(360.0)
+}
+
+pub fn change_heading(state: &VehicleState, vehicle_at: Option<(f64, f64)>, target: (f64, f64), max_yaw_rate: Option<f64>) -> Plan {
+    let Some(from) = vehicle_at else { return Plan::Refused("The vehicle position is not known, so there is no heading to the point.".into()) };
+    let bearing = initial_bearing(from, target);
+    match state.autopilot {
+        AUTOPILOT_PX4 => Plan::Steps(vec![Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, 0.0, bearing.to_radians(), nan(), nan(), nan()], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+        AUTOPILOT_ARDUPILOT => {
+            let current = state.current_heading.unwrap_or(0.0);
+            let raw = bearing - current;
+            let diff = if raw < -180.0 { raw + 360.0 } else if raw > 180.0 { raw - 360.0 } else { raw };
+            let direction = if diff > 0.0 { 1.0 } else { -1.0 };
+            Plan::Steps(vec![Step::Command { command: CMD_CONDITION_YAW, params: [diff.abs(), max_yaw_rate.unwrap_or(0.0), direction, 1.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
+        }
+        _ => Plan::Refused("Vehicle does not support guided rotate".into()),
+    }
 }
 
 pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: f64) -> Plan {
@@ -354,6 +401,20 @@ mod tests {
         assert!(matches!(steps[0], Step::Command { command: CMD_DO_ORBIT, params, .. } if params[0] == -30.0 && params[2] == ORBIT_YAW_BEHAVIOUR_UNCHANGED && params[6] == 520.0));
         let Plan::Steps(steps) = estimator_origin(47.4, 8.5, 480.0) else { panic!() };
         assert!(matches!(steps[0], Step::Command { command: CMD_DO_SET_GLOBAL_ORIGIN, command_int: true, .. }));
+        assert!((initial_bearing((47.0, 8.0), (48.0, 8.0)) - 0.0).abs() < 1e-9);
+        assert!((initial_bearing((0.0, 0.0), (0.0, 1.0)) - 90.0).abs() < 1e-9);
+        let facing = |heading: f64| VehicleState { current_heading: Some(heading), ..copter() };
+        let Plan::Steps(steps) = change_heading(&facing(350.0), Some((0.0, 0.0)), (0.0, 1.0), Some(90.0)) else { panic!() };
+        assert!(matches!(steps[0], Step::Command { command: CMD_CONDITION_YAW, params, .. } if (params[0] - 100.0).abs() < 1e-9 && params[1] == 90.0 && params[2] == 1.0 && params[3] == 1.0), "ArduPilot turns the short way, relative, at ATC_RATE_Y_MAX");
+        let Plan::Steps(steps) = change_heading(&px4(), Some((0.0, 0.0)), (0.0, 1.0), None) else { panic!() };
+        assert!(matches!(steps[0], Step::Command { command: CMD_DO_REPOSITION, params, .. } if (params[3] - std::f64::consts::FRAC_PI_2).abs() < 1e-9));
+        assert!(matches!(set_home(47.0, 8.0, None), Plan::Refused(_)), "QGC refuses a home with no terrain height under it");
+        assert!(matches!(set_home(47.0, 8.0, Some(20000.0)), Plan::Refused(_)));
+        let Plan::Steps(steps) = set_home(47.0, 8.0, Some(410.0)) else { panic!() };
+        assert!(matches!(steps[0], Step::Command { command: CMD_DO_SET_HOME, params, .. } if params[6] == 410.0));
+        let Plan::Steps(steps) = roi(&copter(), 47.0, 8.0, 0.0, FRAME_GLOBAL_RELATIVE_ALT) else { panic!() };
+        assert!(matches!(steps[0], Step::Command { command: CMD_DO_SET_ROI_LOCATION, frame: FRAME_GLOBAL_RELATIVE_ALT, .. }));
+        assert!(matches!(roi(&copter(), 47.0, 8.0, 90000.0, FRAME_GLOBAL_RELATIVE_ALT), Plan::Refused(_)));
         let Plan::Steps(steps) = cancel_roi(&px4()) else { panic!() };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).2), (CMD_DO_SET_ROI_NONE, true));
         let Plan::Steps(steps) = cancel_roi(&copter()) else { panic!() };

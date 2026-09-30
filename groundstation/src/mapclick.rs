@@ -42,6 +42,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.homePosition",
     "vehicle.landing",
     "settings.unitsSettings.horizontalDistanceUnits",
+    "vehicle.px4Firmware",
 ];
 
 const ORBIT_DEFAULT_RADIUS_METRES: f64 = 30.0;
@@ -135,6 +136,17 @@ fn click_refusal(click: Click, a: Aircraft) -> Option<(&'static str, &'static st
     }
 }
 
+fn roi_action(backend: &dyn Backend, latitude: f64, longitude: f64, altitude: f64) -> Value {
+    match flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware") {
+        true => {
+            let home = object(&backend.get("vehicle.homePosition")).get("altitude").and_then(Value::as_f64).unwrap_or(0.0);
+            let terrain = crate::terrainservice::height_now(latitude, longitude).ok().flatten().unwrap_or(home);
+            json!({ "action": "roi", "latitude": latitude, "longitude": longitude, "altitude": terrain, "frame": crate::guidedcmd::FRAME_GLOBAL })
+        }
+        false => json!({ "action": "roi", "latitude": latitude, "longitude": longitude, "altitude": altitude, "frame": crate::guidedcmd::FRAME_GLOBAL_RELATIVE_ALT }),
+    }
+}
+
 pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Value {
     let refused = |token: &str, reason: &str| json!({ "ok": false, "refusal": token, "reason": reason });
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
@@ -159,7 +171,10 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
     let core = match click {
         Click::GoTo => Some(json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1] })),
         Click::EstimatorOrigin => Some(json!({ "action": "estimatorOrigin", "latitude": latitude, "longitude": longitude, "altitude": at.get("altitude").cloned().unwrap_or(json!(0.0)) })),
-        Click::Roi | Click::SetHome | Click::Heading => None,
+        _ if crate::qthost::present() => None,
+        Click::Heading => Some(json!({ "action": "heading", "latitude": latitude, "longitude": longitude })),
+        Click::SetHome => Some(json!({ "action": "setHome", "latitude": latitude, "longitude": longitude, "terrain": crate::terrainservice::height_now(latitude, longitude).ok().flatten() })),
+        Click::Roi => Some(roi_action(backend, latitude, longitude, at.get("altitude").and_then(Value::as_f64).unwrap_or(0.0))),
     };
     crate::guided::dispatch(backend, core, crate::guided::active_id(backend), path, &forwarded.to_string())
 }
