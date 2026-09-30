@@ -8,7 +8,7 @@ use crate::sensors;
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
-const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Camera", "Lights", "Remote Support"];
+const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Lights", "Remote Support"];
 
 /// Which component backs each page. The join is on the KnownVehicleComponent enum where the
 /// firmware declares one and on the C++ class name otherwise - both untranslated, where the
@@ -29,7 +29,7 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Frame", &["AirframeComponent", "APMAirframeComponent", "APMSubFrameComponent"]),
     ("Motors", &["MotorComponent", "APMMotorComponent"]),
     ("Tuning", &["APMTuningComponent", "PX4TuningComponent"]),
-    ("Camera", &["APMCameraComponent"]),
+    ("Gimbal", &["APMGimbalComponent"]),
     ("Lights", &["APMLightsComponent"]),
     ("Flight Behavior", &["PX4FlightBehavior"]),
     ("Remote Support", &["APMRemoteSupportComponent"]),
@@ -73,7 +73,7 @@ pub fn page_absence(px4: bool) -> &'static str {
 
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
-    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Motors", "Actuators", "Heli", "Tuning", "Camera", "Lights", "Flight Behavior", "Follow Me"]),
+    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Motors", "Actuators", "Heli", "Tuning", "Gimbal", "Lights", "Flight Behavior", "Follow Me"]),
     ("Advanced", &["Logging", "Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
 ];
 
@@ -96,16 +96,6 @@ const FLIGHT_MODES_PX4: &[Section] = &[
     Section { title: "Mode slots", note: "", parameters: &["COM_FLTMODE1", "COM_FLTMODE2", "COM_FLTMODE3", "COM_FLTMODE4", "COM_FLTMODE5", "COM_FLTMODE6"] },
     Section { title: "Single function switches", note: "", parameters: &["RC_MAP_RETURN_SW", "RC_MAP_KILL_SW", "RC_MAP_ARM_SW", "RC_MAP_LOITER_SW", "RC_MAP_OFFB_SW", "RC_MAP_GEAR_SW", "RC_MAP_TRANS_SW"] },
 ];
-const CAMERA_APM: &[Section] = &[
-    Section { title: "Gimbal", note: "Choose a mount type and its own settings appear under MNT1 in Parameters.", parameters: &["MNT_TYPE", "MNT1_TYPE", "MNT2_TYPE", "MNT_DEFLT_MODE"] },
-    Section { title: "Camera", note: "Choose a camera type and its trigger settings appear under CAM1 in Parameters.", parameters: &["CAM1_TYPE", "CAM2_TYPE"] },
-    Section { title: "Triggering", note: "How photos are taken, whichever camera is wired.", parameters: &["CAM_AUTO_ONLY", "CAM_MAX_ROLL", "CAM_RC_TYPE"] },
-    Section { title: "Angle limits", note: "", parameters: &["MNT_ANGMIN_PAN", "MNT_ANGMAX_PAN", "MNT_ANGMIN_ROL", "MNT_ANGMAX_ROL", "MNT_ANGMIN_TIL", "MNT_ANGMAX_TIL"] },
-    Section { title: "Neutral angles", note: "", parameters: &["MNT_NEUTRAL_X", "MNT_NEUTRAL_Y", "MNT_NEUTRAL_Z"] },
-    Section { title: "Retract angles", note: "", parameters: &["MNT_RETRACT_X", "MNT_RETRACT_Y", "MNT_RETRACT_Z"] },
-    Section { title: "Stabilisation", note: "", parameters: &["MNT_STAB_PAN", "MNT_STAB_ROLL", "MNT_STAB_TILT"] },
-    Section { title: "RC input", note: "", parameters: &["MNT_RC_IN_PAN", "MNT_RC_IN_ROLL", "MNT_RC_IN_TILT"] },
-];
 const LIGHTS_APM: &[Section] = &[
     Section { title: "Light channels", note: "", parameters: &["SERVO5_FUNCTION", "SERVO6_FUNCTION", "SERVO7_FUNCTION", "SERVO8_FUNCTION", "SERVO9_FUNCTION", "SERVO10_FUNCTION", "SERVO11_FUNCTION", "SERVO12_FUNCTION", "SERVO13_FUNCTION", "SERVO14_FUNCTION", "SERVO15_FUNCTION", "SERVO16_FUNCTION"] },
     Section { title: "Brightness steps", note: "", parameters: &["JS_LIGHTS_STEPS", "JS_LIGHTS_STEP", "BRD_PWM_COUNT"] },
@@ -120,7 +110,6 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
         ("Flight Modes", true) => Some(FLIGHT_MODES_PX4),
         ("Flight Modes", false) => Some(FLIGHT_MODES_APM),
         ("Lights", false) => Some(LIGHTS_APM),
-        ("Camera", false) => Some(CAMERA_APM),
         ("Flight Behavior", true) => Some(FLIGHT_BEHAVIOR_PX4),
         _ => None,
     }
@@ -302,7 +291,7 @@ mod tests {
     fn a_page_only_one_firmware_has_is_offered_only_to_that_firmware() {
         assert!(page_exists("Flight Behavior", true), "PX4AutoPilotPlugin constructs PX4FlightBehavior and nothing under APM does");
         assert!(!page_exists("Flight Behavior", false));
-        ["Camera", "Lights", "Remote Support"].iter().for_each(|page| {
+        ["Gimbal", "Lights", "Remote Support"].iter().for_each(|page| {
             assert!(page_exists(page, false), "{page} is registered by APMAutoPilotPlugin");
             assert!(!page_exists(page, true), "{page} has no component in PX4AutoPilotPlugin, so offering it made every head drop it silently");
         });
@@ -323,9 +312,9 @@ mod tests {
 
     #[test]
     fn the_firmware_table_answers_only_what_a_firmware_can_never_have() {
-        assert!(page_exists("Camera", false), "APMAutoPilotPlugin builds the camera component only when MNT1_TYPE exists, and Lights only for sub(); PX4 builds Flight Behavior only when SYS_VEHICLE_RESP exists");
+        assert!(page_exists("Gimbal", false), "APMAutoPilotPlugin builds the gimbal component only when MNT1_TYPE exists, and Lights only for sub(); PX4 builds Flight Behavior only when SYS_VEHICLE_RESP exists");
         assert!(page_exists("Lights", false), "so an ArduPilot copter with no gimbal has neither, and this table cannot say so - a firmware flag cannot express a parameter or a vehicle type");
-        assert!(!page_exists("Camera", true), "what it does say is sound in the other direction: PX4 has no camera component under any condition");
+        assert!(!page_exists("Gimbal", true), "what it does say is sound in the other direction: PX4 has no gimbal component under any condition");
         assert!(!page_exists("Flight Behavior", false));
         assert!(page_exists("Remote Support", false), "and Remote Support is the one entry that is purely firmware - APM builds it unconditionally and PX4 has none");
 
@@ -358,7 +347,7 @@ mod tests {
     #[test]
     fn a_page_says_whether_the_core_can_describe_it_and_never_whether_a_head_has_built_it() {
         let described = |page: &str, px4: bool| sections_for(page, px4).is_some();
-        assert!(described("Camera", false), "the core can lay out APM camera and mount parameters as sections");
+        assert!(described("Lights", false), "the core can lay out APM lights as parameter sections");
         assert!(!described("Radio", false), "and it cannot lay out radio calibration, which is a screen rather than a list of parameters");
         assert!(!described("Motors", false), "nor motors, which is the page a head opened because this view once claimed it had one");
     }
@@ -368,7 +357,7 @@ mod tests {
         struct Fake;
         impl Backend for Fake {
             fn get(&self, path: &str) -> String {
-                match (path.contains("CAM1_TYPE)") || path.contains("CAM_AUTO_ONLY"), path.contains("MNT_TYPE")) {
+                match (path.contains("SERVO5_FUNCTION)") || path.contains("JS_LIGHTS_STEPS"), path.contains("SERVO6_FUNCTION")) {
                     (true, _) => json!({ "kind": "fact", "name": path.rsplit(',').next().unwrap().trim_end_matches(')'), "value": 30, "min": 0, "max": 100, "minIsDefaultForType": false, "maxIsDefaultForType": false }),
                     (false, true) => json!({ "kind": "fact", "name": "", "value": 0, "valueString": "0", "decimalPlaces": 3 }),
                     _ => json!({ "kind": "null" }),
@@ -380,14 +369,14 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let page = setup_view(&Fake, &["Camera".to_string()]);
+        let page = setup_view(&Fake, &["Lights".to_string()]);
         let sections = page["sections"].as_array().unwrap();
         assert_eq!(sections.len(), 2);
-        assert_eq!(sections[0]["title"], "Camera");
-        assert_eq!(sections[0]["controls"][0]["name"], "CAM1_TYPE");
+        assert_eq!(sections[0]["title"], "Light channels");
+        assert_eq!(sections[0]["controls"][0]["name"], "SERVO5_FUNCTION");
         assert_eq!(sections[0]["controls"].as_array().unwrap().len(), 1);
         assert_eq!(sections[0]["controls"][0]["control"], "number");
-        assert_eq!(sections[1]["title"], "Triggering");
+        assert_eq!(sections[1]["title"], "Brightness steps");
         assert_eq!(setup_view(&Fake, &["Nope".to_string()])["kind"], "null");
     }
 

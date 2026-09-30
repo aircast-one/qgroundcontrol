@@ -14,7 +14,10 @@ const APM_TUNING_COPTER: &str = include_str!("../../src/AutoPilotPlugins/APM/Veh
 const PX4_SAFETY: &str = include_str!("../../src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json");
 const PX4_POWER: &str = include_str!("../../src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json");
 
+const APM_GIMBAL: &str = include_str!("vehicleconfig/APMGimbal.VehicleConfig.json");
+
 const CONFIGS: &[(&str, bool, &str)] = &[
+    ("Gimbal", false, APM_GIMBAL),
     ("Flight Safety", false, APM_FLIGHT_SAFETY),
     ("Failsafes", false, APM_FAILSAFES),
     ("Logging", false, APM_LOGGING),
@@ -493,7 +496,8 @@ fn instances(scope: &Scope, section: &Value) -> Vec<Instance> {
                     repeat: Some(Repeat { prefix }),
                     index,
                     heading: match (title.contains("{index}"), many) {
-                        (true, _) => title.replace("{index}", &label),
+                        (true, true) => title.replace("{index}", &label),
+                        (true, false) => title.replace(" {index}", "").replace("{index} ", "").replace("{index}", ""),
                         (false, true) => format!("{title} {label}"),
                         (false, false) => title.to_string(),
                     },
@@ -512,6 +516,22 @@ fn instance_enabled(scope: &Scope, repeat: &Value) -> bool {
             !strict_equal(&current, &disabled)
         }
     }
+}
+
+fn channels(scope: &Scope, template: &str) -> Vec<usize> {
+    (1..=32).take_while(|n| scope.exists(&template.replace('#', &n.to_string()))).collect()
+}
+
+fn channel_for(scope: &Scope, template: &str, function: f64) -> Option<usize> {
+    channels(scope, template).into_iter().find(|n| scope.fact_member(&template.replace('#', &n.to_string()), "rawValue").number() == Some(function))
+}
+
+fn channel_param(control: &Value, scope: &Scope) -> Option<String> {
+    let of = control.get("channelOf")?;
+    let template = of["channelParam"].as_str()?;
+    let channel = channel_for(scope, template, of["functionValue"].as_f64()?)?;
+    let prefix = template.split('#').next().unwrap_or_default();
+    Some(format!("{prefix}{channel}_{}", control["param"].as_str().unwrap_or_default()))
 }
 
 fn row_path(page: &str, id: &str) -> String {
@@ -542,7 +562,33 @@ fn rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
     if kind == "label" {
         return vec![json!({ "control": "label", "name": name, "label": label, "warning": flag(control, "warning"), "path": path })];
     }
+    if kind == "channelFunction" {
+        let template = control["channelParam"].as_str().unwrap_or_default();
+        let listed = channels(scope, template);
+        let current = control["functionValue"].as_f64().and_then(|f| channel_for(scope, template, f));
+        let options: Vec<Value> = std::iter::once("Disabled".to_string())
+            .chain(listed.iter().map(|n| format!("Channel {n}")))
+            .enumerate()
+            .map(|(i, label)| json!({ "label": label, "raw": i.to_string() }))
+            .collect();
+        return match listed.is_empty() {
+            true => vec![],
+            false => vec![json!({
+                "control": "choice",
+                "name": name,
+                "label": label,
+                "options": options,
+                "display": current.map_or_else(|| "Disabled".to_string(), |n| format!("Channel {n}")),
+                "enabled": enabled,
+                "path": path,
+            })],
+        };
+    }
     let (fact_path, fact) = match (control["param"].as_str(), control["setting"].as_str()) {
+        (Some(_), _) if control.get("channelOf").is_some() => match channel_param(control, scope) {
+            Some(name) => (parameter_path(&name), scope.fact(&name)),
+            None => (String::new(), None),
+        },
         (Some(param), _) => {
             let name = scope.full_name(param);
             (parameter_path(&name), scope.fact(&name))
@@ -637,12 +683,13 @@ pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         .iter()
         .enumerate()
         .flat_map(|(section_index, section)| {
-            let shown: Vec<Value> = match base.shown(section, "showWhen") {
-                false => vec![],
-                true => instances(&base, section)
+            let shown: Vec<Value> = instances(&base, section)
                     .into_iter()
-                    .map(|instance| {
+                    .filter_map(|instance| {
                         let scope = base.with(instance.repeat, BTreeMap::new());
+                        if !scope.shown(section, "showWhen") {
+                            return None;
+                        }
                         let enabled = section.get("repeat").is_none_or(|r| instance_enabled(&scope, r));
                         let controls: Vec<Value> = match enabled {
                             false => vec![],
@@ -655,10 +702,9 @@ pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
                                 .flat_map(|(control_index, control)| rows(&scope, page, &format!("{section_index}.{}.{control_index}", instance.index), control))
                                 .collect(),
                         };
-                        json!({ "title": instance.heading, "note": "", "controls": controls })
+                        Some(json!({ "title": instance.heading, "note": "", "controls": controls }))
                     })
-                    .collect(),
-            };
+                    .collect();
             shown.into_iter().chain(disabled_companion(&base, page, section_index, section))
         })
         .filter(|s| s["controls"].as_array().is_some_and(|c| c.iter().any(|row| row["control"] != "label")))
@@ -773,6 +819,16 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
             let raw = scope.fact_member(&name, "rawValue").number().unwrap_or(0.0) as i64;
             let bit = control["bitMask"].as_i64().unwrap_or(0);
             write_parameter(backend, &name, true, (if checked { raw | bit } else { raw & !bit }) as f64)
+        }
+        (_, "channelFunction", true) => {
+            let template = control["channelParam"].as_str().unwrap_or_default();
+            let function = control["functionValue"].as_f64().unwrap_or(f64::NAN);
+            let chosen = asked.as_u64().or_else(|| asked.as_str().and_then(|s| s.parse().ok())).map(|i| i as usize);
+            match chosen {
+                Some(0) => channel_for(&scope, template, function).map_or(Ok(()), |n| write_parameter(backend, &template.replace('#', &n.to_string()), true, 0.0)),
+                Some(n) if channels(&scope, template).contains(&n) => write_parameter(backend, &template.replace('#', &n.to_string()), true, function),
+                _ => Err("Choose one of the listed channels.".to_string()),
+            }
         }
         (_, "radiogroup", true) => {
             let name = scope.full_name(control["param"].as_str().unwrap_or_default());
@@ -927,6 +983,33 @@ mod tests {
                 assert!(c["label"].as_str().is_some_and(|l| !l.is_empty()), "{name}: {c}");
             });
         });
+    }
+
+    #[test]
+    fn the_gimbal_page_follows_the_mount_and_its_channels() {
+        let fake = Fake::new(&[("MNT1_TYPE", 1.0), ("MNT1_DEFLT_MODE", 3.0), ("MNT1_NEUTRAL_Y", 0.0), ("MNT1_RC_RATE", 0.0), ("RC1_OPTION", 0.0), ("RC2_OPTION", 213.0), ("SERVO1_FUNCTION", 0.0), ("SERVO2_FUNCTION", 7.0), ("SERVO2_REVERSED", 0.0), ("SERVO2_MIN", 1100.0), ("SERVO2_MAX", 1900.0)]);
+        let served = page(&fake, "Gimbal", false);
+        let titles: Vec<&str> = served["sections"].as_array().unwrap().iter().map(|s| s["title"].as_str().unwrap()).collect();
+        assert_eq!(titles[0], "Gimbal", "one mount carries no number, as QGC hides the tab bar");
+        assert!(titles.contains(&"Gimbal servo controlled gimbal"), "{titles:?}");
+        let rows: Vec<Value> = served["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().unwrap().clone()).collect();
+        let pitch_rc = rows.iter().find(|r| r["label"] == "Pitch" && r["control"] == "choice").unwrap();
+        assert_eq!(pitch_rc["display"], "Channel 2", "the RC channel whose option is Mount1 pitch");
+        assert!(rows.iter().any(|r| r["name"] == "SERVO2_MIN"), "servo rows follow the channel carrying the pitch function");
+        assert!(!rows.iter().any(|r| r["label"] == "Yaw min PWM"), "an axis with no output channel has no servo rows");
+        assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", pitch_rc["path"].as_str().unwrap()), r#"{"value":1}"#)["ok"], true);
+        assert_eq!((fake.params.borrow()["RC1_OPTION"], fake.params.borrow()["RC2_OPTION"]), (213.0, 213.0), "choosing a channel sets its option; QGC leaves the old one to the operator");
+        assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", pitch_rc["path"].as_str().unwrap()), r#"{"value":0}"#)["ok"], true);
+        assert_eq!(fake.params.borrow()["RC1_OPTION"], 0.0, "Disabled clears the first channel carrying the function");
+    }
+
+    #[test]
+    fn a_mount_that_needs_a_reboot_says_so() {
+        let fake = Fake::new(&[("MNT1_TYPE", 1.0)]);
+        let served = page(&fake, "Gimbal", false);
+        let rows: Vec<Value> = served["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().unwrap().clone()).collect();
+        assert!(rows.iter().any(|r| r["label"] == "Gimbal settings will be available after rebooting the vehicle."));
+        assert_eq!(served["sections"].as_array().unwrap().len(), 1, "until the mount's parameters appear only its type is offered");
     }
 
     #[test]

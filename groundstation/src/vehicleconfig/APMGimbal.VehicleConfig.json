@@ -1,0 +1,84 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "sections": [
+        {
+            "title": "Gimbal {index}",
+            "repeat": { "paramPrefix": "MNT", "probePostfix": "_TYPE", "startIndex": 1 },
+            "controls": [
+                { "param": "_TYPE", "label": "Gimbal Type", "control": "combobox" },
+                { "param": "_DEFLT_MODE", "label": "Default Mode", "control": "combobox", "optional": true },
+                { "control": "label", "label": "Gimbal settings will be available after rebooting the vehicle.", "showWhen": "controller.getParameterFact(-1, _fullParamName(\"_TYPE\")).rawValue !== 0 && !controller.parameterExists(-1, _fullParamName(\"_DEFLT_MODE\"))" }
+            ]
+        },
+        {
+            "title": "Gimbal {index} neutral position",
+            "repeat": { "paramPrefix": "MNT", "probePostfix": "_TYPE", "startIndex": 1 },
+            "showWhen": "controller.parameterExists(-1, _fullParamName(\"_DEFLT_MODE\"))",
+            "controls": [
+                { "param": "_NEUTRAL_Y", "label": "Pitch" },
+                { "param": "_NEUTRAL_Z", "label": "Yaw" },
+                { "param": "_NEUTRAL_X", "label": "Roll" }
+            ]
+        },
+        {
+            "title": "Gimbal {index} retracted position",
+            "repeat": { "paramPrefix": "MNT", "probePostfix": "_TYPE", "startIndex": 1 },
+            "showWhen": "controller.parameterExists(-1, _fullParamName(\"_DEFLT_MODE\"))",
+            "controls": [
+                { "param": "_RETRACT_Y", "label": "Pitch" },
+                { "param": "_RETRACT_Z", "label": "Yaw" },
+                { "param": "_RETRACT_X", "label": "Roll" }
+            ]
+        },
+        {
+            "title": "Gimbal {index} axis constraints",
+            "repeat": { "paramPrefix": "MNT", "probePostfix": "_TYPE", "startIndex": 1 },
+            "showWhen": "controller.parameterExists(-1, _fullParamName(\"_DEFLT_MODE\"))",
+            "controls": [
+                { "param": "_PITCH_MIN", "label": "Pitch min angle" },
+                { "param": "_PITCH_MAX", "label": "Pitch max angle" },
+                { "param": "_YAW_MIN", "label": "Yaw min angle" },
+                { "param": "_YAW_MAX", "label": "Yaw max angle" },
+                { "param": "_ROLL_MIN", "label": "Roll min angle" },
+                { "param": "_ROLL_MAX", "label": "Roll max angle" }
+            ]
+        },
+        {
+            "title": "Gimbal {index} RC targetting",
+            "repeat": { "paramPrefix": "MNT", "probePostfix": "_TYPE", "startIndex": 1 },
+            "showWhen": "controller.parameterExists(-1, _fullParamName(\"_DEFLT_MODE\"))",
+            "controls": [
+                { "control": "channelFunction", "label": "Pitch", "channelParam": "RC#_OPTION", "functionValue": 213 },
+                { "control": "channelFunction", "label": "Yaw", "channelParam": "RC#_OPTION", "functionValue": 214 },
+                { "control": "channelFunction", "label": "Roll", "channelParam": "RC#_OPTION", "functionValue": 212 },
+                { "param": "_RC_RATE", "label": "Control", "control": "radiogroup", "raw": true, "options": [
+                    { "label": "Angle Control", "value": "0", "checked": "!(controller.getParameterFact(-1, _fullParamName(\"_RC_RATE\")).rawValue > 0)" },
+                    { "label": "Rate Control", "value": "90", "checked": "controller.getParameterFact(-1, _fullParamName(\"_RC_RATE\")).rawValue > 0" }
+                ] },
+                { "param": "_RC_RATE", "label": "Rate" }
+            ]
+        },
+        {
+            "title": "Gimbal {index} servo controlled gimbal",
+            "repeat": { "paramPrefix": "MNT", "probePostfix": "_TYPE", "startIndex": 1 },
+            "showWhen": "controller.parameterExists(-1, _fullParamName(\"_DEFLT_MODE\")) && controller.getParameterFact(-1, _fullParamName(\"_TYPE\")).rawValue === 1",
+            "controls": [
+                { "control": "channelFunction", "label": "Pitch output channel", "channelParam": "SERVO#_FUNCTION", "functionValue": 7 },
+                { "param": "REVERSED", "label": "Pitch servo reversed", "control": "checkbox", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 7 } },
+                { "param": "_LEAD_PTCH", "label": "Pitch stabilization lead", "optional": true },
+                { "param": "MIN", "label": "Pitch min PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 7 } },
+                { "param": "MAX", "label": "Pitch max PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 7 } },
+                { "control": "channelFunction", "label": "Yaw output channel", "channelParam": "SERVO#_FUNCTION", "functionValue": 6 },
+                { "param": "REVERSED", "label": "Yaw servo reversed", "control": "checkbox", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 6 } },
+                { "param": "MIN", "label": "Yaw min PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 6 } },
+                { "param": "MAX", "label": "Yaw max PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 6 } },
+                { "control": "channelFunction", "label": "Roll output channel", "channelParam": "SERVO#_FUNCTION", "functionValue": 8 },
+                { "param": "REVERSED", "label": "Roll servo reversed", "control": "checkbox", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 8 } },
+                { "param": "_LEAD_RLL", "label": "Roll stabilization lead", "optional": true },
+                { "param": "MIN", "label": "Roll min PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 8 } },
+                { "param": "MAX", "label": "Roll max PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 8 } }
+            ]
+        }
+    ]
+}
