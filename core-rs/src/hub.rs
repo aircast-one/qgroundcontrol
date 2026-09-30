@@ -2257,6 +2257,10 @@ impl Hub {
         self.selected.get(index).and_then(|id| self.vehicles.get(id))
     }
 
+    pub fn fleet_count(&self) -> usize {
+        self.listed.as_ref().unwrap_or(&self.arrival).len()
+    }
+
     pub fn listed_count(&self) -> Option<usize> {
         self.listed.as_ref().map(Vec::len)
     }

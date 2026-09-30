@@ -114,15 +114,22 @@ fn spelled(value: &Value, decimals: i64, whole: bool) -> String {
         other => other.as_f64().map_or_else(String::new, |n| match whole {
             true if n.abs() > I64_RANGE => format!("{n}"),
             true => format!("{}", n as i64),
-            false => unsigned_zero(half_away(n, usize::try_from(decimals).unwrap_or(0))),
+            false => unsigned_zero(fixed_as_qt(n, usize::try_from(decimals).unwrap_or(0))),
         }),
     }
 }
 
-fn half_away(n: f64, decimals: usize) -> String {
+const TIE_DIGITS: usize = 30;
+
+fn fixed_as_qt(n: f64, decimals: usize) -> String {
+    let expanded = format!("{:.*}", decimals + TIE_DIGITS, n.abs());
+    let beyond = &expanded[expanded.len() - TIE_DIGITS..];
+    let tie = beyond.starts_with('5') && beyond[1..].bytes().all(|b| b == b'0');
     let scale = 10f64.powi(i32::try_from(decimals).unwrap_or(0));
-    let rounded = (n * scale).round() / scale;
-    format!("{:.decimals$}", if rounded.is_finite() { rounded } else { n })
+    match tie && n.is_finite() {
+        true => format!("{:.decimals$}", n.signum() * ((n.abs() * scale).floor() + 1.0) / scale),
+        false => format!("{n:.decimals$}"),
+    }
 }
 
 fn decimal_places(meta: &MetaData, cooked: impl Fn(f64) -> f64) -> i64 {
@@ -517,6 +524,18 @@ impl<B: Backend> Backend for Owner<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_number_is_written_as_qt_arg_f_writes_it_from_its_exact_binary_value() {
+        assert_eq!(fixed_as_qt(584.05, 1), "584.0", "584.05 is 584.0499... in binary, so it rounds down, as QString::arg does");
+        assert_eq!(fixed_as_qt(0.15, 1), "0.1");
+        assert_eq!(fixed_as_qt(1.005, 2), "1.00");
+        assert_eq!(fixed_as_qt(0.125, 2), "0.13", "an exact tie rounds away from zero, where Rust's formatter would round to even");
+        assert_eq!(fixed_as_qt(2.5, 0), "3");
+        assert_eq!(fixed_as_qt(-2.5, 0), "-3");
+        assert_eq!(fixed_as_qt(0.5, 0), "1");
+        assert_eq!(fixed_as_qt(12.34, 1), "12.3");
+    }
+
     use super::*;
 
     fn by_value(value: &Value) -> Value {

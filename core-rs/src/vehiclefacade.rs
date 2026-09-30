@@ -4,7 +4,29 @@ use crate::router::Backend;
 
 pub struct Facade<B>(pub B);
 
-const VEHICLE_FACTS: [&str; 2] = ["rcRSSI", "heading"];
+const VEHICLE_FACTS: [&str; 17] = ["rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome"];
+
+pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
+    let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
+    let dlon = (to.1 - from.1).to_radians();
+    let y = dlon.sin() * lat2.cos();
+    let x = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * dlon.cos();
+    let azimuth = y.atan2(x).to_degrees() + 360.0;
+    ((azimuth.trunc() as i64 + 360) % 360) as f64 + azimuth.fract()
+}
+
+fn home_facts(coordinate: Option<(f64, f64, f64)>, home: Option<(f64, f64, f64)>) -> (f64, f64, f64) {
+    match coordinate.zip(home) {
+        None => (f64::NAN, f64::NAN, f64::NAN),
+        Some((here, home)) => {
+            let distance = crate::terrain::qt_distance((here.0, here.1), (home.0, home.1));
+            match distance > 1.0 {
+                true => (distance, qt_azimuth((here.0, here.1), (home.0, home.1)), qt_azimuth((home.0, home.1), (here.0, here.1))),
+                false => (distance, f64::NAN, f64::NAN),
+            }
+        }
+    }
+}
 
 static FELL_THROUGH: std::sync::Mutex<std::collections::BTreeMap<String, u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
@@ -350,6 +372,21 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "initialConnectComplete": v.connected,
         "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
         "heading": crate::vehiclefact::vehicle_fact("heading", &json!(v.facts.heading)),
+        "roll": crate::vehiclefact::vehicle_fact("roll", &json!(v.facts.roll)),
+        "pitch": crate::vehiclefact::vehicle_fact("pitch", &json!(v.facts.pitch)),
+        "rollRate": crate::vehiclefact::vehicle_fact("rollRate", &json!(v.facts.roll_rate)),
+        "pitchRate": crate::vehiclefact::vehicle_fact("pitchRate", &json!(v.facts.pitch_rate)),
+        "yawRate": crate::vehiclefact::vehicle_fact("yawRate", &json!(v.facts.yaw_rate)),
+        "groundSpeed": crate::vehiclefact::vehicle_fact("groundSpeed", &json!(v.facts.ground_speed)),
+        "airSpeed": crate::vehiclefact::vehicle_fact("airSpeed", &json!(v.facts.air_speed)),
+        "climbRate": crate::vehiclefact::vehicle_fact("climbRate", &json!(v.facts.climb_rate)),
+        "altitudeRelative": crate::vehiclefact::vehicle_fact("altitudeRelative", &json!(v.facts.altitude_relative)),
+        "altitudeAMSL": crate::vehiclefact::vehicle_fact("altitudeAMSL", &json!(v.facts.altitude_amsl)),
+        "throttlePct": crate::vehiclefact::vehicle_fact("throttlePct", &json!(v.facts.throttle_pct)),
+        "distanceToNextWP": crate::vehiclefact::vehicle_fact("distanceToNextWP", &json!(v.facts.distance_to_next_wp)),
+        "distanceToHome": crate::vehiclefact::vehicle_fact("distanceToHome", &json!(home_facts(v.facts.coordinate, v.home).0)),
+        "headingToHome": crate::vehiclefact::vehicle_fact("headingToHome", &json!(home_facts(v.facts.coordinate, v.home).1)),
+        "headingFromHome": crate::vehiclefact::vehicle_fact("headingFromHome", &json!(home_facts(v.facts.coordinate, v.home).2)),
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "isROIEnabled": v.roi_enabled,
@@ -559,8 +596,11 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
             known.sensors.as_object()?.iter().for_each(|(k, v)| object[k.as_str()] = v.clone());
             return Some(object);
         }
-        "vehicle.rcRSSI" => return known.fields.get("rcRSSI").cloned(),
-        "vehicle.heading" => return known.fields.get("heading").cloned(),
+        fact if fact.strip_prefix("vehicle.").is_some_and(|name| VEHICLE_FACTS.contains(&name)) => return known.fields.get(&fact["vehicle.".len()..]).cloned().filter(|f| !f.is_null()),
+        property if property.strip_prefix("vehicle.").and_then(|rest| rest.split_once('.')).is_some_and(|(name, _)| VEHICLE_FACTS.contains(&name)) => {
+            let (name, field) = property["vehicle.".len()..].split_once('.')?;
+            return known.fields.get(name)?.get(field).cloned().map(|v| json!({ "kind": "value", "value": v }));
+        }
         field if field.starts_with("vehicle.") && !field["vehicle.".len()..].contains('.') && known.fields.get(&field["vehicle.".len()..]).is_some() => known.fields[&field["vehicle.".len()..]].clone(),
         capability if capability.starts_with("vehicle.supports.") => known.supports.get(capability.trim_start_matches("vehicle.supports."))?.clone(),
         sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
@@ -729,7 +769,7 @@ impl<B: Backend> Backend for Facade<B> {
         if path == "core.qtReads" {
             return tally().to_string();
         }
-        let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| crate::hub::lock().listed_count()).flatten().map(|n| json!({ "kind": "value", "value": n }));
+        let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().fleet_count() }));
         let count = count.or_else(|| (path == "vehicles.selectedVehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().selected_count() })));
         if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
             return answer.to_string();
