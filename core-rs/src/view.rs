@@ -464,6 +464,8 @@ mod deps_cover_reads {
             ("mapclick", include_str!("mapclick.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("components", include_str!("components.rs")),
+            ("mapurls", include_str!("mapurls.rs")),
+            ("maptiles", include_str!("maptiles.rs")),
             ("corelinks", include_str!("corelinks.rs")),
             ("paramnames", include_str!("paramnames.rs")),
             ("logs", include_str!("logs.rs")),

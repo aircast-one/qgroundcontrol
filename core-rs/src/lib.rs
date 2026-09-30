@@ -69,6 +69,8 @@ pub mod links;
 pub mod linkconnect;
 pub mod linkremove;
 pub mod mapclick;
+pub mod mapurls;
+pub mod maptiles;
 pub mod commandtree;
 pub mod components;
 pub mod paramnames;

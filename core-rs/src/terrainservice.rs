@@ -55,6 +55,10 @@ pub fn set_cache_path(path: Option<std::path::PathBuf>) {
     *CACHE_PATH.lock().unwrap_or_else(PoisonError::into_inner) = path;
 }
 
+pub fn cache_path() -> Option<std::path::PathBuf> {
+    CACHE_PATH.lock().unwrap_or_else(PoisonError::into_inner).clone()
+}
+
 pub fn load(key: Key, cache_path: Option<&std::path::Path>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<Tile, String> {
     let cache = cache_path.and_then(|path| crate::tilecache::Cache::open(path).ok());
     crate::terrainquery::load_tile(key.0, key.1, cache.as_ref(), fetch)
