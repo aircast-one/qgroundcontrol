@@ -122,6 +122,7 @@ pub mod forwarding;
 pub mod gcsheartbeat;
 pub mod messagelog;
 pub mod terrainservice;
+pub mod mavinspect;
 pub mod shp;
 pub mod setup;
 pub mod signing;

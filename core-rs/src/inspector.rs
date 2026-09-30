@@ -9,7 +9,7 @@ use crate::router::Backend;
 // have both received no messages serialise to the same JSON, the poll sees no change, nothing emits,
 // and the view keeps serving the previous system's id beside the new system's empty message list.
 pub const DEPS: &[&str] =
-    &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages", "mavlinkInspector@activeSystemChanged"];
+    &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages", "mavlinkInspector@activeSystemChanged", crate::mavinspect::INSPECTOR_CHANGED];
 const FIELDS: &str = "id,compId,name,count,actualRateHz,targetRateHz,selected";
 const RATE_DISABLED: i64 = -1;
 const RATE_DEFAULT: i64 = 0;

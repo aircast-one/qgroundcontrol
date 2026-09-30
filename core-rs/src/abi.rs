@@ -207,6 +207,9 @@ fn start_pump() {
                 if crate::vehiclefacade::switched_on() {
                     crate::forwarding::maintain();
                     crate::gcsheartbeat::tick(crate::hub::now_ms());
+                    if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
+                        CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                    }
                 }
                 announce_guided();
                 if crate::detections::lock().went_stale(crate::hub::now_ms()) {
@@ -307,6 +310,11 @@ fn install_hub_sink() {
             deliver(outbound);
             if crate::vehiclefacade::switched_on() {
                 crate::forwarding::forward(frame);
+                let (vehicles, active) = {
+                    let hub = crate::hub::lock();
+                    (hub.vehicle_ids(), hub.active_id())
+                };
+                crate::mavinspect::lock().observe(frame, &vehicles, active);
             }
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));

@@ -1110,6 +1110,16 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("messageInterval") => {
+                let whole = |key: &str| action.get(key).and_then(Value::as_i64);
+                let (Some(component), Some(message), Some(rate)) = (whole("component").and_then(|c| u8::try_from(c).ok()), whole("message"), whole("rate")) else {
+                    return Err("A message rate names a component, a message and a rate.".to_string());
+                };
+                let interval = if rate > 0 { 1_000_000.0 / rate as f64 } else { rate as f64 };
+                let set = Outbound::CommandLong { target: (self.id, component), command: 511, params: [message as f64, interval, 0.0, 0.0, 0.0, 0.0, 0.0] };
+                let ask = Outbound::CommandLong { target: (self.id, component), command: 512, params: [244.0, message as f64, 0.0, 0.0, 0.0, 0.0, 0.0] };
+                return Ok([set, ask].iter().filter_map(|send| self.encode(send)).collect());
+            }
             Some("shellCommand") => {
                 let Some(command) = action.get("command").and_then(Value::as_str) else {
                     return Err("A console command is text.".to_string());
@@ -2164,6 +2174,10 @@ impl Hub {
 
     pub fn listed(&self, index: usize) -> Option<&Vehicle> {
         self.listed.as_ref().unwrap_or(&self.arrival).get(index).and_then(|id| self.vehicles.get(id))
+    }
+
+    pub fn vehicle_ids(&self) -> Vec<u8> {
+        self.arrival.clone()
     }
 
     pub fn in_arrival_order(&self) -> Vec<&Vehicle> {

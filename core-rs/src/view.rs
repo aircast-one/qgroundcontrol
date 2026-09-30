@@ -399,6 +399,7 @@ mod deps_cover_reads {
             ("gcsheartbeat", include_str!("gcsheartbeat.rs")),
             ("messagelog", include_str!("messagelog.rs")),
             ("terrainservice", include_str!("terrainservice.rs")),
+            ("mavinspect", include_str!("mavinspect.rs")),
             ("cmdinfo", include_str!("cmdinfo.rs")),
             ("compinfo", include_str!("compinfo.rs")),
             ("compmeta", include_str!("compmeta.rs")),

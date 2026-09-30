@@ -250,6 +250,28 @@ fn video_camera_name(index: i64) -> String {
     if name.is_empty() { format!("Camera {}", index + 1) } else { name }
 }
 
+fn inspector_owned() -> bool {
+    switched_on() && crate::hub::lock().active().is_some()
+}
+
+fn inspector_get(path: &str) -> Option<Value> {
+    inspector_owned().then_some(())?;
+    crate::mavinspect::lock().get(path)
+}
+
+fn only_fields(answer: Value, wanted: &[&str]) -> Value {
+    let keep = |object: &Value| -> Value {
+        let mut kept: serde_json::Map<String, Value> = object.as_object().map(|o| o.iter().filter(|(k, _)| wanted.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
+        kept.insert("kind".to_string(), json!("object"));
+        Value::Object(kept)
+    };
+    match answer.get("elements").and_then(Value::as_array) {
+        Some(elements) => json!({ "kind": "object", "count": elements.len(), "elements": elements.iter().map(keep).collect::<Vec<_>>() }),
+        None if answer["kind"] == "object" => keep(&answer),
+        None => answer,
+    }
+}
+
 fn shell_lines() -> Option<Vec<String>> {
     switched_on().then_some(())?;
     crate::hub::lock().active().map(|vehicle| vehicle.shell.lines())
@@ -699,6 +721,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(value) = path.strip_prefix("vehicle.healthAndArmingCheckReport.").and_then(|name| unreported_checks()?.get(name).cloned()) {
             return json!({ "kind": "value", "value": value }).to_string();
         }
+        if let Some(answer) = inspector_get(path) {
+            return answer.to_string();
+        }
         if let Some(formatted) = (path == "vehicle.formattedMessages" && switched_on()).then(|| crate::hub::lock().active().map(|v| v.message_log.formatted())).flatten() {
             return json!({ "kind": "value", "value": formatted }).to_string();
         }
@@ -763,6 +788,9 @@ impl<B: Backend> Backend for Facade<B> {
                 object["kind"] = json!("object");
                 return object.to_string();
             }
+        }
+        if let Some(answer) = inspector_get(asked_path) {
+            return only_fields(answer, &fields_of(fields)).to_string();
         }
         if asked_path == "positionManager" && switched_on() {
             let position = crate::gcsposition::lock();
@@ -858,6 +886,11 @@ impl<B: Backend> Backend for Facade<B> {
             }
             return self.0.set(path, value);
         }
+        if path == "mavlinkInspector.activeSystem.selected" && inspector_owned() {
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
+            let fits = index.and_then(|i| usize::try_from(i).ok()).is_some_and(|i| crate::mavinspect::lock().select(i));
+            return json!({ "ok": fits }).to_string();
+        }
         if path == "vehicle.checkListState" && switched_on() {
             let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
             if let Some(state) = state {
@@ -877,6 +910,12 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
+        }
+        if path == "mavlinkInspector.setMessageInterval" && inspector_owned() {
+            let rate = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0)?.as_i64());
+            let target = crate::mavinspect::lock().selected_target();
+            let started = rate.zip(target).and_then(|(rate, (vehicle, component, message))| self.0.core_guided(&json!({ "action": "messageInterval", "vehicle": vehicle, "component": component, "message": message, "rate": rate })));
+            return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
         if let Some(index) = (path == "video.cameraName" && switched_on()).then(|| serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64()).flatten() {
             return json!({ "ok": true, "result": video_camera_name(index) }).to_string();
