@@ -76,6 +76,7 @@ struct VideoStatus: Equatable {
     let anyConnecting: Bool
     let summary: String
     let cameras: [VideoCamera]
+    let nativePipeline: String?
 
     static let unavailable = VideoStatus()
 
@@ -91,6 +92,7 @@ struct VideoStatus: Equatable {
         anyConnecting = false
         summary = ""
         cameras = []
+        nativePipeline = nil
     }
 
     init(_ json: [String: Any]) {
@@ -106,6 +108,7 @@ struct VideoStatus: Equatable {
         anyConnecting = flag("anyConnecting")
         summary = (json["summary"] as? String) ?? ""
         cameras = ((json["cameras"] as? [Any]) ?? []).compactMap(VideoCamera.init)
+        nativePipeline = (json["nativePipeline"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     var configuredCameras: [VideoCamera] { cameras.filter(\.configured) }

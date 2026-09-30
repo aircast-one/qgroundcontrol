@@ -174,6 +174,7 @@ pub mod vibration;
 pub mod vehicles;
 pub mod vehicleselect;
 pub mod video;
+pub mod videohost;
 pub mod videosource;
 pub mod videostate;
 pub mod vehiclefacts;

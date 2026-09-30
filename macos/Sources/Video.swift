@@ -84,6 +84,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         refreshes += 1
         let read = VideoStatus(Bridge.group("view.video"))
         if read != status { status = read }
+        drive(read.nativePipeline)
         pollNative()
         loadCamera()
     }
@@ -195,6 +196,20 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         pollNative()
     }
 
+    private var drivenPipeline: String?
+    private var reported: [Int] = []
+
+    private func drive(_ pipeline: String?) {
+        guard pipeline != drivenPipeline else { return }
+        let wasDriving = drivenPipeline != nil
+        drivenPipeline = pipeline
+        if let pipeline, qgc_video_available() {
+            _ = startNative(pipeline)
+        } else if wasDriving {
+            stopNative()
+        }
+    }
+
     func pollNative() {
         let frames = Int(qgc_video_frames())
         if frames != nativeFrames { nativeFrames = frames }
@@ -202,6 +217,11 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         let height = Int(qgc_video_height())
         let size = width > 0 && height > 0 ? "\(width)\u{00D7}\(height)" : ""
         if size != nativeSize { nativeSize = size }
+        guard drivenPipeline != nil else { return }
+        let state = [nativeRunning ? 1 : 0, min(frames, 1), width, height]
+        guard state != reported else { return }
+        reported = state
+        Bridge.invoke("video.reportNative", [nativeRunning, frames, width, height, nativeError])
     }
 
     func probeState() -> [String: Any] {

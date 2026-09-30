@@ -172,6 +172,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "summary": video_summary(flag(&video, "gstreamerEnabled"), available, decoding, recording, any_connecting, configured),
         "cameras": cameras,
         "extraSources": extra_sources(backend),
+        "nativePipeline": crate::videohost::native_pipeline(),
     })
 }
 

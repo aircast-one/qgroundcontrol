@@ -775,6 +775,18 @@ impl VideoState {
         }
     }
 
+    pub fn receiver_status(&self, index: usize) -> Option<Status> {
+        self.receiver_for(index).map(|state| match (state.decoding, state.streaming) {
+            (true, _) => Status::Decoding,
+            (false, true) => Status::WaitingForFrames,
+            (false, false) => state.status.unwrap_or(Status::NotStarted),
+        })
+    }
+
+    pub fn main_camera(&self) -> Option<usize> {
+        self.settings.camera_index_for_receiver(MAIN_RECEIVER)
+    }
+
     pub fn camera_connecting(&self, index: usize) -> bool {
         self.receiver_for(index).is_some_and(|state| !state.decoding && (state.streaming || state.connecting))
     }

@@ -872,6 +872,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::geotagcontroller::get(path) {
             return answer.to_string();
         }
+        if let Some(answer) = crate::videohost::get(path) {
+            return answer.to_string();
+        }
         if let Some(fact) = (path == "plan.geoFenceController.breachReturnAltitude").then(crate::coreplan::breach_altitude_fact).flatten() {
             return fact.to_string();
         }
@@ -996,7 +999,7 @@ impl<B: Backend> Backend for Facade<B> {
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
             }
         }
-        if let Some(element) = crate::corelinks::get(asked_path).or_else(|| crate::geotagcontroller::get(asked_path)).filter(|e| e["kind"] == "object") {
+        if let Some(element) = crate::corelinks::get(asked_path).or_else(|| crate::geotagcontroller::get(asked_path)).or_else(|| crate::videohost::get(asked_path)).filter(|e| e["kind"] == "object") {
             return only_fields(element, &fields_of(fields)).to_string();
         }
         if asked_path == "host" {
@@ -1201,6 +1204,9 @@ impl<B: Backend> Backend for Facade<B> {
             if let Some(started) = asked.and_then(|(((motor, percent), seconds), vehicle)| self.0.core_guided(&json!({ "action": "motorTest", "vehicle": vehicle, "motor": motor, "percent": percent, "seconds": seconds }))) {
                 return json!({ "ok": started.is_ok() }).to_string();
             }
+        }
+        if let Some(answer) = crate::videohost::invoke(path, args) {
+            return answer.to_string();
         }
         if let Some(answer) = crate::geotagcontroller::invoke(path) {
             return answer.to_string();

@@ -70,8 +70,11 @@ targets:
         CLANG_CXX_LANGUAGE_STANDARD: c++20
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         OTHER_SWIFT_FLAGS: -Xcc -fmodule-map-file=$(QGC_BRIDGE_DIR)/module.modulemap -Xcc -I$(QGC_BRIDGE_DIR)
-        HEADER_SEARCH_PATHS: $(QGC_BRIDGE_DIR)
-        OTHER_LDFLAGS: $(inherited) $(QGC_ROOT)/core-rs/target/release/libqgc_core.a -framework Security -framework SystemConfiguration -framework IOKit -framework CoreFoundation
+        HEADER_SEARCH_PATHS: $(QGC_BRIDGE_DIR) /Library/Frameworks/GStreamer.framework/Headers
+        GCC_PREPROCESSOR_DEFINITIONS: $(inherited) QGC_GST_STREAMING=1
+        FRAMEWORK_SEARCH_PATHS: $(inherited) /Library/Frameworks
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) /Library/Frameworks
+        OTHER_LDFLAGS: $(inherited) $(QGC_ROOT)/core-rs/target/release/libqgc_core.a -framework GStreamer -framework Security -framework SystemConfiguration -framework IOKit -framework CoreFoundation
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
