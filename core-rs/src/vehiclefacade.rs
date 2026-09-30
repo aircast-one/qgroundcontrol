@@ -241,6 +241,15 @@ fn links_field(name: &str) -> Option<Value> {
     }
 }
 
+fn video_camera_name(index: i64) -> String {
+    let setting = |name: &str| crate::settingsstore::raw_setting(&format!("settings.videoSettings.{name}")).and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    let name = match usize::try_from(index - 1) {
+        Err(_) => setting("primaryCameraName"),
+        Ok(extra) => serde_json::from_str::<Value>(&setting("extraVideoSources")).ok().and_then(|sources| sources.get(extra)?.get("name")?.as_str().map(str::to_string)).unwrap_or_default(),
+    };
+    if name.is_empty() { format!("Camera {}", index + 1) } else { name }
+}
+
 fn shell_lines() -> Option<Vec<String>> {
     switched_on().then_some(())?;
     crate::hub::lock().active().map(|vehicle| vehicle.shell.lines())
@@ -869,6 +878,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
         }
+        if let Some(index) = (path == "video.cameraName" && switched_on()).then(|| serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64()).flatten() {
+            return json!({ "ok": true, "result": video_camera_name(index) }).to_string();
+        }
         if path == "vehicle.clearMessages" && switched_on() {
             crate::hub::lock().clear_message_log();
         }
@@ -960,6 +972,11 @@ mod tests {
         assert_eq!(fleet_member("vehicles.vehicles.12.gps.lat"), Some((12, "gps.lat")));
         assert_eq!(fleet_member("vehicles.vehicles.#.supports"), None, "a wildcard is the host's to expand");
         assert_eq!(fleet_member("vehicles.vehicles.count"), None);
+    }
+
+    #[test]
+    fn an_unnamed_camera_is_called_by_its_slot() {
+        assert_eq!((video_camera_name(0), video_camera_name(2)), ("Camera 1".to_string(), "Camera 3".to_string()));
     }
 
     #[test]
