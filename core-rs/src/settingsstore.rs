@@ -338,6 +338,9 @@ pub fn get(backend: &dyn Backend, path: &str) -> Option<String> {
     if unexposed(path) {
         return Some(json!({ "found": false, "kind": "value", "value": null }).to_string());
     }
+    if path == "settings.remoteIDSettings.operatorIDValidForRegion" {
+        return Some(json!({ "kind": "value", "value": operator_id_valid_for_region() }).to_string());
+    }
     let at = address(path)?;
     let fact = described(backend, &at, path);
     match &at.field {
@@ -442,11 +445,36 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
             Value::String(text) => text.clone(),
             other => other.to_string(),
         };
+        let before = raw(at.group, &at.fact, &at.meta);
         if let Some(values) = stored().as_mut() {
             values.insert(key(at.group, &at.fact), Setting::Text(spelled));
+            follow_ups(at.group, &at.fact, &new).into_iter().filter(|_| before != new).for_each(|(fact, value)| {
+                values.insert(key(at.group, fact), Setting::Text(value));
+            });
         }
     }
     Some(backend.set(path, value))
+}
+
+const EU_PUBLIC_OPERATOR_ID_LENGTH: usize = 16;
+
+fn follow_ups(group: &str, fact: &str, new: &Value) -> Vec<(&'static str, String)> {
+    match (group, fact) {
+        ("RemoteID", "region") if new.as_i64() == Some(crate::remoteid::REGION_EU) => vec![("sendOperatorID", "true".to_string())],
+        ("RemoteID", "region") if new.as_i64() == Some(crate::remoteid::REGION_FAA) => vec![("locationType", crate::remoteid::LOCATION_LIVE.to_string())],
+        ("RemoteID", "operatorIDEU") => new
+            .as_str()
+            .filter(|id| id.chars().count() > EU_PUBLIC_OPERATOR_ID_LENGTH && crate::remoteid::eu_operator_id_valid(id))
+            .map(|id| vec![("operatorIDEU", id.chars().take(EU_PUBLIC_OPERATOR_ID_LENGTH).collect())])
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn operator_id_valid_for_region() -> bool {
+    let eu = raw_setting("settings.remoteIDSettings.region").and_then(|r| r.as_i64()) == Some(crate::remoteid::REGION_EU);
+    let fact = if eu { "operatorIDEU" } else { "operatorIDFAA" };
+    raw_setting(&format!("settings.remoteIDSettings.{fact}")).and_then(|id| id.as_str().map(|id| !id.is_empty())).unwrap_or(false)
 }
 
 const VIDEO_DISABLED: &str = "Video Stream Disabled";
@@ -553,6 +581,18 @@ mod tests {
         assert_eq!(child_save_path(&root.to_string_lossy(), "Logs"), root.join("Logs").to_string_lossy());
         assert_eq!(child_save_path("/no/such/qgc/root", "Logs"), "", "Qt answers an empty path when the root folder is missing");
         assert_eq!(child_save_path("", "Logs"), "");
+    }
+
+    #[test]
+    fn remote_id_writes_carry_the_follow_ups_remote_id_settings_applies() {
+        assert_eq!(follow_ups("RemoteID", "region", &json!(1)), vec![("sendOperatorID", "true".to_string())], "EU regulation requires broadcasting the operator ID");
+        assert_eq!(follow_ups("RemoteID", "region", &json!(0)), vec![("locationType", "1".to_string())], "the FAA requires the live operator position");
+        let number = "87astrdge12k";
+        let check = crate::remoteid::luhn_mod36(&format!("{number}xyz")).unwrap();
+        let full = format!("FIN{number}{check}-xyz");
+        assert_eq!(follow_ups("RemoteID", "operatorIDEU", &json!(full)), vec![("operatorIDEU", format!("FIN{number}{check}"))], "the three secret characters are never stored");
+        assert!(follow_ups("RemoteID", "operatorIDEU", &json!("FIN87astrdge12kQ-abc")).is_empty(), "an invalid ID is kept as written, as Qt does");
+        assert!(follow_ups("App", "region", &json!(1)).is_empty());
     }
 
     #[test]
