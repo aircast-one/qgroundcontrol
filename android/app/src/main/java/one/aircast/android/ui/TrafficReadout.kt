@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.aircast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,7 +38,7 @@ fun TrafficReadout(modifier: Modifier = Modifier) {
     val urgent = MaterialTheme.colorScheme.error
     val summaryColour = when (trafficLevel(reading)) {
         TrafficLevel.Critical, TrafficLevel.Warning -> urgent
-        TrafficLevel.Caution -> MaterialTheme.colorScheme.tertiary
+        TrafficLevel.Caution -> MaterialTheme.aircast.warning
         TrafficLevel.Good -> MaterialTheme.colorScheme.onSurface
     }
 

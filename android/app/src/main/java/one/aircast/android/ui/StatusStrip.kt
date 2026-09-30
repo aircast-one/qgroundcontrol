@@ -1,29 +1,30 @@
 package one.aircast.android.ui
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
-import org.json.JSONObject
+import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
+import org.json.JSONObject
 
 private const val BATTERY = "view.battery"
 private const val GPS_VIEW = "view.gps"
@@ -78,21 +79,18 @@ internal fun satsText(fix: FixLevel, count: String): String = when (fix) {
     FixLevel.Good -> if (count.isBlank()) "" else "$count sats"
 }
 
-
-private val CAUTION = Color(0xFFFFD54F)
-private val WARNING = Color(0xFFFFB74D)
-private val CRITICAL = Color(0xFFFF5252)
-
+@Composable
 private fun batteryLevelColour(level: BatteryLevel): Color = when (level) {
     BatteryLevel.Normal -> Color.Unspecified
-    BatteryLevel.Caution -> CAUTION
-    BatteryLevel.Warning -> WARNING
-    BatteryLevel.Critical -> CRITICAL
+    BatteryLevel.Caution -> MaterialTheme.aircast.warning
+    BatteryLevel.Warning -> MaterialTheme.aircast.alert
+    BatteryLevel.Critical -> MaterialTheme.colorScheme.error
 }
 
+@Composable
 private fun gpsColour(fix: FixLevel): Color = when (fix) {
-    FixLevel.None -> CRITICAL
-    FixLevel.TwoD -> CAUTION
+    FixLevel.None -> MaterialTheme.colorScheme.error
+    FixLevel.TwoD -> MaterialTheme.aircast.warning
     FixLevel.Good -> Color.Unspecified
 }
 
@@ -128,11 +126,11 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
                 InlineCell(it, gpsColour(level)) { detail = StripDetail.Gps }
             }
         }
-        rcCell(state)?.let { InlineCell(it.text, if (it.lost) CRITICAL else Color.Unspecified) }
-        overrideCell(state)?.let { InlineCell(it.text, CAUTION) }
+        rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified) }
+        overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) }
         telemetryCell(state)?.let { InlineCell(it, Color.Unspecified) { detail = StripDetail.Telemetry } }
         links?.let {
-            InlineCell(it.text, if (it.degraded) CAUTION else Color.Unspecified) { detail = StripDetail.Links }
+            InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified) { detail = StripDetail.Links }
         }
     }
 

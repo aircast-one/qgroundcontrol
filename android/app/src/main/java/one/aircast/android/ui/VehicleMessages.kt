@@ -29,9 +29,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
+import org.json.JSONObject
 
 internal const val MESSAGES = "view.messages"
 
@@ -125,7 +126,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     val urgent = blocker != null || hasError
     val tint = when {
         urgent -> MaterialTheme.colorScheme.error
-        hasWarning -> MaterialTheme.colorScheme.tertiary
+        hasWarning -> MaterialTheme.aircast.warning
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
@@ -181,7 +182,7 @@ private fun VehicleMessageLog(
                                 color = if (check.severity == "error") {
                                     MaterialTheme.colorScheme.error
                                 } else {
-                                    MaterialTheme.colorScheme.tertiary
+                                    MaterialTheme.aircast.warning
                                 },
                             )
                             if (check.description.isNotBlank()) {
@@ -203,7 +204,7 @@ private fun VehicleMessageLog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = when (message.level) {
                                     MessageSeverity.Error -> MaterialTheme.colorScheme.error
-                                    MessageSeverity.Warning -> MaterialTheme.colorScheme.tertiary
+                                    MessageSeverity.Warning -> MaterialTheme.aircast.warning
                                     MessageSeverity.Normal -> MaterialTheme.colorScheme.onSurface
                                 },
                             )

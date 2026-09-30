@@ -16,22 +16,20 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import one.aircast.android.bridge.qgcPath
-import org.json.JSONObject
 import one.aircast.android.bridge.qgcDouble
+import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
+import org.json.JSONObject
 
-private val VIBE_HIGH_COLOR = Color(0xFFFF5252)
-private val VIBE_WARN_COLOR = Color(0xFFFFA000)
 
 internal const val VIBRATION_VIEW = "view.vibration"
 private const val SCALE_STEPS = 4
@@ -134,8 +132,8 @@ internal fun scaleLabels(scaleMaximum: Double, warningLevel: Double, dangerLevel
 
 @Composable
 private fun colorFor(severity: String?) = when (severity) {
-    "danger" -> VIBE_HIGH_COLOR
-    "warning" -> VIBE_WARN_COLOR
+    "danger" -> MaterialTheme.colorScheme.error
+    "warning" -> MaterialTheme.aircast.warning
     "normal" -> MaterialTheme.colorScheme.primary
     else -> MaterialTheme.colorScheme.surfaceVariant
 }

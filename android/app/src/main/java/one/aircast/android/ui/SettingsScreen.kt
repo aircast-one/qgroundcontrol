@@ -5,20 +5,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -28,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -44,19 +44,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.floor
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
+import org.json.JSONObject
 
 private const val SETTINGS_VIEW = "view.settings"
 private const val SEARCH_SETTLE_MS = 250L
@@ -606,10 +607,6 @@ internal fun factRebootNote(fact: Fact): String? = when {
     else -> null
 }
 
-// Qgc.set returns false when the bridge refuses the write, and the reason it carries
-// names a property and a class — true, and no use to a pilot. So the row says only what
-// is known: the change did not take. Without this a refused switch flips back on the
-// next poll and reads as the app glitching.
 internal fun writeRefusal(accepted: Boolean): String? =
     if (accepted) null else "That change was not accepted."
 
@@ -650,9 +647,6 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
                                 rejection = refused
                                 return@launch
                             }
-                            // Validation only says the value is well formed. The bridge can
-                            // still refuse the write, and the fact then reads back unchanged,
-                            // which is indistinguishable from a value accepted as-is.
                             val accepted = withContext(Dispatchers.Default) {
                                 Qgc.set(fact.path, committed)
                             }
@@ -686,7 +680,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.tertiary,
+                color = MaterialTheme.aircast.warning,
             )
         }
     }
