@@ -78,11 +78,6 @@ impl Board {
 static BOARD: LazyLock<Mutex<Board>> = LazyLock::new(|| Mutex::new(Board::default()));
 static CHANGED_SINCE: AtomicBool = AtomicBool::new(false);
 static APPLICATION_NAME: Mutex<String> = Mutex::new(String::new());
-static HOST_POSTS_VEHICLE_NOTICES: AtomicBool = AtomicBool::new(false);
-
-pub fn host_posts_vehicle_notices() {
-    HOST_POSTS_VEHICLE_NOTICES.store(true, Ordering::SeqCst);
-}
 
 pub fn set_application_name(name: &str) {
     *APPLICATION_NAME.lock().unwrap_or_else(PoisonError::into_inner) = name.to_string();
@@ -94,7 +89,7 @@ fn silenced(kind: &str, text: &str) -> bool {
 
 pub fn post_from_vehicle(kind: &str, text: &str) -> bool {
     let title = APPLICATION_NAME.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    !HOST_POSTS_VEHICLE_NOTICES.load(Ordering::SeqCst) && !silenced(kind, text) && post(kind, &title, text)
+    !crate::qthost::present() && !silenced(kind, text) && post(kind, &title, text)
 }
 
 pub fn lock() -> MutexGuard<'static, Board> {

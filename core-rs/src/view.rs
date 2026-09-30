@@ -399,6 +399,7 @@ mod deps_cover_reads {
             ("gcsheartbeat", include_str!("gcsheartbeat.rs")),
             ("messagelog", include_str!("messagelog.rs")),
             ("noticeboard", include_str!("noticeboard.rs")),
+            ("qthost", include_str!("qthost.rs")),
             ("terrainservice", include_str!("terrainservice.rs")),
             ("mavinspect", include_str!("mavinspect.rs")),
             ("rccal", include_str!("rccal.rs")),

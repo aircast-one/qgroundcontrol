@@ -100,6 +100,7 @@ pub mod planitems;
 pub mod planselect;
 pub mod plantransfer;
 pub mod preflight;
+pub mod qthost;
 pub mod px4meta;
 pub mod radio;
 pub mod rallyedit;

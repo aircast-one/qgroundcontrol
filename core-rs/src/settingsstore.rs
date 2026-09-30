@@ -236,14 +236,39 @@ fn stored() -> std::sync::MutexGuard<'static, Option<BTreeMap<String, Setting>>>
     STORED.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+static PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+
 pub fn written(key: &str, text: &str) {
     if let Some(values) = stored().as_mut() {
         values.insert(key.to_string(), Setting::Text(text.to_string()));
     }
+    persist();
 }
 
 pub fn open(path: &std::path::Path) {
     *stored() = Some(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default()));
+    *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());
+}
+
+pub fn persist() {
+    if crate::qthost::present() {
+        return;
+    }
+    let Some(path) = PATH.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
+    let Some(text) = stored().as_ref().map(crate::settingsini::write) else { return };
+    let staged = path.with_extension("ini.saving");
+    if std::fs::write(&staged, text).is_ok() {
+        let _ = std::fs::rename(&staged, &path);
+    }
+}
+
+pub fn replace_group(group: &str, entries: BTreeMap<String, Setting>) {
+    let prefix = format!("{group}/");
+    if let Some(values) = stored().as_mut() {
+        values.retain(|key, _| !key.starts_with(&prefix));
+        values.extend(entries);
+    }
+    persist();
 }
 
 pub fn entries_under(group: &str) -> BTreeMap<String, Setting> {
@@ -457,6 +482,7 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
                 values.insert(key(at.group, fact), Setting::Text(value));
             });
         }
+        persist();
     }
     Some(backend.set(path, value))
 }
@@ -551,6 +577,7 @@ impl<B: Backend> Backend for Owner<B> {
         if let Some(values) = stored().as_mut() {
             values.insert(key.to_string(), Setting::Text(value.as_str().map_or_else(|| value.to_string(), str::to_string)));
         }
+        persist();
         self.0.remember_setting(key, value);
     }
 }

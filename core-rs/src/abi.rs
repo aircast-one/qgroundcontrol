@@ -135,13 +135,8 @@ pub extern "C" fn qgc_core_links_start() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn qgc_core_host_owns_links() {
-    crate::corelinks::host_owns_links();
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn qgc_core_host_posts_vehicle_notices() {
-    crate::noticeboard::host_posts_vehicle_notices();
+pub extern "C" fn qgc_core_qt_host_present() {
+    crate::qthost::declare();
 }
 
 fn announce_notices() {

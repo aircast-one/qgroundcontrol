@@ -20,7 +20,6 @@ type Opener = fn(LinkConfig) -> Result<crate::transport::LinkId, (String, &'stat
 type Closer = fn(crate::transport::LinkId);
 
 static ENTRIES: LazyLock<Mutex<Option<Vec<Entry>>>> = LazyLock::new(|| Mutex::new(None));
-static HOST_OWNS_LINKS: AtomicBool = AtomicBool::new(false);
 static HOOKS: Mutex<Option<(Opener, Closer)>> = Mutex::new(None);
 static LAST_ERRORS: LazyLock<Mutex<std::collections::BTreeMap<String, (String, &'static str)>>> = LazyLock::new(|| Mutex::new(std::collections::BTreeMap::new()));
 static RUNTIME: LazyLock<Mutex<std::collections::BTreeMap<String, Runtime>>> = LazyLock::new(|| Mutex::new(std::collections::BTreeMap::new()));
@@ -98,12 +97,8 @@ pub struct State {
     pub reconnecting: bool,
 }
 
-pub fn host_owns_links() {
-    HOST_OWNS_LINKS.store(true, Ordering::SeqCst);
-}
-
 pub fn owned() -> bool {
-    !HOST_OWNS_LINKS.load(Ordering::SeqCst)
+    !crate::qthost::present()
 }
 
 pub fn table() -> TypeTable {
@@ -119,13 +114,114 @@ fn entries() -> MutexGuard<'static, Option<Vec<Entry>>> {
     ENTRIES.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn saved() -> Vec<Entry> {
+fn with_saved<T>(change: impl FnOnce(&mut Vec<Entry>) -> T) -> T {
     let mut held = entries();
-    held.get_or_insert_with(|| {
+    change(held.get_or_insert_with(|| {
         let saved = crate::settingsstore::entries_under(crate::linkconfig::ROOT);
         crate::linkconfig::load(&saved, &table(), &defaults()).into_iter().map(|config| Entry { config, dynamic: false }).collect()
-    })
-    .clone()
+    }))
+}
+
+fn saved() -> Vec<Entry> {
+    with_saved(|entries| entries.clone())
+}
+
+fn save() {
+    let configs: Vec<LinkConfig> = saved().into_iter().map(|e| e.config).collect();
+    crate::settingsstore::replace_group(crate::linkconfig::ROOT, crate::linkconfig::save(&configs, &table()));
+}
+
+fn name_taken(name: &str) -> bool {
+    listed().iter().any(|e| e.config.name == name)
+}
+
+fn add_saved(config: LinkConfig) -> bool {
+    if config.name.is_empty() || name_taken(&config.name) {
+        return false;
+    }
+    with_saved(|entries| entries.push(Entry { config, dynamic: false }));
+    save();
+    true
+}
+
+pub fn created(kind: &str, name: &str, host: &str, port: i64) -> Option<LinkConfig> {
+    let port = u16::try_from(port).ok().filter(|p| *p > 0)?;
+    let config = |kind| LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind };
+    match kind.to_lowercase().as_str() {
+        "udp" => Some(config(Kind::Udp { local_port: port, hosts: if host.is_empty() { Vec::new() } else { vec![(host.to_string(), port)] } })),
+        "tcp" if !host.is_empty() => Some(config(Kind::Tcp { host: host.to_string(), port })),
+        _ => None,
+    }
+}
+
+fn create_and_connect(kind: &str, name: &str, host: &str, port: i64) -> bool {
+    let Some(config) = created(kind, name, host, port) else { return false };
+    if !add_saved(config) {
+        return false;
+    }
+    let index = listed().iter().position(|e| e.config.name == name).unwrap_or(0);
+    connect(index)
+}
+
+fn create_serial(name: &str, port_name: &str, baud: i64) -> bool {
+    if table().code(crate::linkconfig::LinkKind::Serial).is_none() || port_name.is_empty() || baud <= 0 {
+        return false;
+    }
+    add_saved(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port_name.to_string(), port_display_name: String::new() } })
+}
+
+fn remove(index: usize) -> bool {
+    let Some(entry) = listed().into_iter().nth(index) else { return false };
+    let hooks = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((id, (_, close))) = state_of(&entry.config.name, &live()).link.zip(hooks) {
+        close(id);
+    }
+    with_saved(|entries| entries.retain(|e| e.config.name != entry.config.name));
+    DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner).retain(|e| e.config.name != entry.config.name);
+    RUNTIME.lock().unwrap_or_else(PoisonError::into_inner).remove(&entry.config.name);
+    save();
+    true
+}
+
+pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkConfig> {
+    let text = value.as_str().map(|t| t.trim().to_string());
+    let port = value.as_u64().and_then(|p| u16::try_from(p).ok());
+    let kind = match (&config.kind, field) {
+        (_, "name") => return text.filter(|t| !t.is_empty()).map(|name| LinkConfig { name, ..config.clone() }),
+        (Kind::Tcp { port, .. }, "host") => Kind::Tcp { host: text?, port: *port },
+        (Kind::Tcp { host, .. }, "port") => Kind::Tcp { host: host.clone(), port: port? },
+        (Kind::Udp { hosts, .. }, "localPort") => Kind::Udp { local_port: port?, hosts: hosts.clone() },
+        (Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_display_name, .. }, "portName") => {
+            Kind::Serial { baud: *baud, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name: text?, port_display_name: port_display_name.clone() }
+        }
+        (Kind::Serial { data_bits, flow_control, stop_bits, parity, port_name, port_display_name, .. }, "baud") => {
+            Kind::Serial { baud: value.as_i64()?, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name: port_name.clone(), port_display_name: port_display_name.clone() }
+        }
+        _ => return None,
+    };
+    Some(LinkConfig { kind, ..config.clone() })
+}
+
+pub fn set(path: &str, value: &str) -> Option<Value> {
+    owned().then_some(())?;
+    let (index, field) = path.strip_prefix(MODEL)?.strip_prefix('.')?.split_once('.')?;
+    let index: usize = index.parse().ok()?;
+    let given = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let name = saved().into_iter().nth(index)?.config.name;
+    let changed = with_saved(|entries| {
+        let entry = entries.get_mut(index)?;
+        let updated = edited(&entry.config, field, &given)?;
+        entry.config = updated;
+        Some(())
+    });
+    let renamed = saved().into_iter().nth(index).map(|e| e.config.name).unwrap_or_else(|| name.clone());
+    if changed.is_some() && renamed != name {
+        let mut runtime = RUNTIME.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(run) = runtime.remove(&name) {
+            runtime.insert(renamed, run);
+        }
+    }
+    Some(json!({ "ok": changed.is_some() }))
 }
 
 pub fn listed_with(known: Vec<Entry>, live: &[(crate::transport::LinkId, LinkConfig)]) -> Vec<Entry> {
@@ -330,9 +426,18 @@ pub fn tick(now_ms: u64) {
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
     owned().then_some(())?;
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let text = |i: usize| given.get(i).and_then(Value::as_str).unwrap_or_default().to_string();
+    let whole = |i: usize| given.get(i).and_then(Value::as_i64).unwrap_or(0);
     let result = match path {
-        "links.createConnectedLink" => connect(given.get(0).and_then(Value::as_str).and_then(indexed)?),
-        _ => disconnect(path.strip_prefix(MODEL)?.strip_prefix('.')?.strip_suffix(".link.disconnect")?.parse().ok()?),
+        "links.createConnectedLink" => json!(connect(given.get(0).and_then(Value::as_str).and_then(indexed)?)),
+        "links.createAndConnectLink" => json!(create_and_connect(&text(0), &text(1), &text(2), whole(3))),
+        "links.createSerialConfiguration" => json!(create_serial(&text(0), &text(1), whole(2))),
+        "links.removeConfiguration" => json!(remove(given.get(0).and_then(Value::as_str).and_then(indexed)?)),
+        "links.commitLinkConfigurations" => {
+            save();
+            Value::Null
+        }
+        _ => json!(disconnect(path.strip_prefix(MODEL)?.strip_prefix('.')?.strip_suffix(".link.disconnect")?.parse().ok()?)),
     };
     Some(json!({ "ok": true, "result": result }))
 }
@@ -340,6 +445,21 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_created_link_follows_create_and_connect_link_and_an_edit_changes_only_its_field() {
+        assert_eq!(created("TCP", "Bench", "", 5760), None, "a TCP link needs the address to call");
+        assert_eq!(created("tcp", "Bench", "10.0.0.5", 0), None);
+        assert_eq!(created("bluetooth", "B", "x", 1), None);
+        let udp = created("UDP", "Field", "192.168.4.1", 14550).unwrap();
+        assert_eq!(udp.kind, Kind::Udp { local_port: 14550, hosts: vec![("192.168.4.1".into(), 14550)] }, "createAndConnectLink listens on the port it sends to");
+        let tcp = created("tcp", "Bench", "10.0.0.5", 5760).unwrap();
+        assert_eq!(edited(&tcp, "host", &json!(" 10.0.0.6 ")).unwrap().kind, Kind::Tcp { host: "10.0.0.6".into(), port: 5760 });
+        assert_eq!(edited(&tcp, "port", &json!(5761)).unwrap().kind, Kind::Tcp { host: "10.0.0.5".into(), port: 5761 });
+        assert_eq!(edited(&tcp, "name", &json!("Bench 2")).unwrap().name, "Bench 2");
+        assert_eq!(edited(&tcp, "localPort", &json!(1)), None, "a field the kind does not carry is not written");
+        assert_eq!(edited(&tcp, "port", &json!(70000)), None);
+    }
 
     #[test]
     fn a_failing_auto_link_backs_off_to_five_seconds_and_a_stable_connection_resets_it() {
