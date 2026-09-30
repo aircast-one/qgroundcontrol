@@ -83,6 +83,7 @@ import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.CameraControlLayer
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.FollowMeReadout
+import one.aircast.android.ui.AttitudeInstrument
 import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.OrbitReadout
@@ -217,6 +218,7 @@ fun AircastShell(hostView: android.view.View?) {
     val flyVideoSourceLayer = remember { movableContentOf { VideoSourceLayer() } }
     val flyCameraControlLayer = remember { movableContentOf { CameraControlLayer() } }
     val flyObstacleArc = remember { movableContentOf { ObstacleArc() } }
+    val flyAttitude = remember { movableContentOf { AttitudeInstrument() } }
     val flyOrbitReadout = remember { movableContentOf { OrbitReadout() } }
     val flyFollowMeReadout = remember { movableContentOf { FollowMeReadout() } }
     val flyTrafficReadout = remember { movableContentOf { TrafficReadout() } }
@@ -345,6 +347,7 @@ fun AircastShell(hostView: android.view.View?) {
                         keyRowEnd = { emergencyStop() },
                         videoAiming = videoAiming,
                         overlays = {
+                            flyAttitude()
                             ObstacleReadout()
                             flyOrbitReadout()
                             flyFollowMeReadout()
@@ -419,6 +422,7 @@ fun AircastShell(hostView: android.view.View?) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         emergencyStop()
+                        flyAttitude()
                         ObstacleReadout()
                         flyObstacleArc()
                         flyOrbitReadout()

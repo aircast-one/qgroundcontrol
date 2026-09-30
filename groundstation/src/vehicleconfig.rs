@@ -538,8 +538,9 @@ fn rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
     let kind = control["control"].as_str().unwrap_or("");
     let label = control["label"].clone();
     let path = row_path(page, id);
+    let name = control["param"].as_str().map_or_else(|| format!("{page}.{id}"), |param| scope.full_name(param));
     if kind == "label" {
-        return vec![json!({ "control": "label", "label": label, "warning": flag(control, "warning"), "path": path })];
+        return vec![json!({ "control": "label", "name": name, "label": label, "warning": flag(control, "warning"), "path": path })];
     }
     let (fact_path, fact) = match (control["param"].as_str(), control["setting"].as_str()) {
         (Some(param), _) => {
@@ -556,19 +557,20 @@ fn rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
     match (kind, fact) {
         ("toggleCheckbox", _) => {
             let checked = scope.eval_text(control["toggleCheckbox"]["checked"].as_str().unwrap_or("false")).truthy();
-            vec![json!({ "control": "toggle", "label": label, "value": checked, "enabled": enabled, "path": path })]
+            vec![json!({ "control": "toggle", "name": name, "label": label, "value": checked, "enabled": enabled, "path": path })]
         }
         (_, None) => vec![],
         ("bitmaskCheckbox", Some(fact)) => {
             let raw = fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).unwrap_or(0.0) as i64;
             let bit = control["bitMask"].as_i64().unwrap_or(0);
-            vec![json!({ "control": "toggle", "label": label, "value": raw & bit != 0, "enabled": enabled, "path": path })]
+            vec![json!({ "control": "toggle", "name": name, "label": label, "value": raw & bit != 0, "enabled": enabled, "path": path })]
         }
         ("radiogroup", Some(_)) => {
             let options: Vec<&Value> = control["options"].as_array().map(|o| o.iter().collect()).unwrap_or_default();
             let chosen = options.iter().find(|o| scope.eval_text(o["checked"].as_str().unwrap_or("false")).truthy());
             vec![json!({
                 "control": "choice",
+                "name": name,
                 "label": label,
                 "options": options.iter().enumerate().map(|(i, o)| json!({ "label": o["label"], "raw": i.to_string() })).collect::<Vec<_>>(),
                 "display": chosen.map_or(Value::Null, |o| o["label"].clone()),
@@ -587,7 +589,7 @@ fn rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
                         true => row,
                         false => labelled(row, control, false),
                     };
-                    vec![json!({ "control": "toggle", "label": label, "value": checked, "enabled": enabled, "path": format!("{path}.enable") }), gated]
+                    vec![json!({ "control": "toggle", "name": format!("{name}.enable"), "label": label, "value": checked, "enabled": enabled, "path": format!("{path}.enable") }), gated]
                 }
             }
         }
@@ -616,7 +618,7 @@ fn disabled_companion(scope: &Scope, page: &str, section_index: usize, section: 
             strict_equal(&from_json(&fact["value"]), &disabled).then(|| {
                 let heading = if many { format!("{title} {label}") } else { title.to_string() };
                 match companion.get("enabledParamValue") {
-                    Some(_) => json!({ "control": "toggle", "label": heading, "value": false, "path": row_path(page, &format!("{section_index}.{index}.disabled")) }),
+                    Some(_) => json!({ "control": "toggle", "name": name, "label": heading, "value": false, "path": row_path(page, &format!("{section_index}.{index}.disabled")) }),
                     None => labelled(decode(&fact, &parameter_path(&name)), &json!({ "label": heading }), true),
                 }
             })
@@ -914,6 +916,17 @@ mod tests {
         let circle = fence["sections"].as_array().unwrap().iter().find(|s| s["title"] == "GeoFence").unwrap()["controls"].as_array().unwrap().iter().find(|c| c["label"] == "Circle centered on Home").unwrap().clone();
         assert_eq!(write(&fake, circle["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["FENCE_TYPE"], 2.0, "a bitmask checkbox sets only its own bit");
+    }
+
+    #[test]
+    fn every_row_is_named_and_labelled() {
+        let fake = Fake::new(&[("FS_GCS_ENABLE", 1.0), ("FS_GCS_TIMEOUT", 5.0), ("FS_OPTIONS", 0.0), ("FS_THR_ENABLE", 1.0), ("FS_THR_VALUE", 975.0), ("ARMING_CHECK", 1.0), ("FENCE_ENABLE", 1.0), ("FENCE_TYPE", 3.0), ("RTL_ALT_M", 15.0), ("RTL_LOIT_TIME", 5.0)]);
+        ["Failsafes", "Flight Safety"].iter().for_each(|name| {
+            page(&fake, name, false)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().unwrap().clone()).for_each(|c| {
+                assert!(c["name"].as_str().is_some_and(|n| !n.is_empty()), "{name}: {c}");
+                assert!(c["label"].as_str().is_some_and(|l| !l.is_empty()), "{name}: {c}");
+            });
+        });
     }
 
     #[test]

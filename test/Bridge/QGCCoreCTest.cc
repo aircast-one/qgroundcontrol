@@ -555,7 +555,7 @@ void QGCCoreCTest::_setupOverviewFollowsTheVehicle()
     const QJsonObject offline = take(qgc_bridge_get("view.setup"));
     QCOMPARE(offline.value(QStringLiteral("headline")).toString(), QStringLiteral("No vehicle connected"));
     QCOMPARE(offline.value(QStringLiteral("groups")).toArray().count(), 3);
-    QCOMPARE(take(qgc_bridge_get("view.setup(Safety)")).value(QStringLiteral("class")).toString(), QStringLiteral("SetupPage"));
+    QCOMPARE(take(qgc_bridge_get("view.setup(Flight Safety)")).value(QStringLiteral("class")).toString(), QStringLiteral("SetupPage"));
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.setup")).value(QStringLiteral("connected")).toBool(false), true, 5000);
     const QJsonObject online = take(qgc_bridge_get("view.setup"));
@@ -570,7 +570,7 @@ void QGCCoreCTest::_setupPageServesApmParameters()
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 90000);
     const QJsonObject raw = take(qgc_bridge_get("vehicle.parameterManager.getParameter(-1,RTL_ALT_M)"));
     QCOMPARE(raw.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT_M"));
-    const QJsonObject page = take(qgc_bridge_get("view.setup(Safety)"));
+    const QJsonObject page = take(qgc_bridge_get("view.setup(Flight Safety)"));
     QCOMPARE(page.value(QStringLiteral("firmware")).toString(), QStringLiteral("apm"));
     QCOMPARE(page.value(QStringLiteral("available")).toBool(false), true);
     const QJsonArray sections = page.value(QStringLiteral("sections")).toArray();
@@ -1358,9 +1358,9 @@ const char *const kViewPaths[] = {
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
     "view.settings(General)", "view.surveyStats(4)", "view.fences", "view.polygon(plan.geoFenceController.polygons.0)", "view.setup",
-    "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
+    "view.setup(Flight Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
-    "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(6)",
+    "view.missionItems(geometry)", "view.obstacle", "view.attitude", "view.landingPattern(6)",
     "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",

@@ -1,0 +1,109 @@
+use serde_json::{Value, json};
+
+use crate::read::object;
+use crate::router::Backend;
+
+pub const DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.roll",
+    "vehicle.pitch",
+    "vehicle.heading",
+    "vehicle.headingToHome",
+    "vehicle.headingToNextWP",
+    "vehicle.groundSpeed",
+    "vehicle.gps.courseOverGround",
+    "settings.flyViewSettings.showAdditionalIndicatorsCompass",
+    "settings.flyViewSettings.lockNoseUpCompass",
+];
+
+const COG_MINIMUM_SPEED: f64 = 0.5;
+
+fn raw(backend: &dyn Backend, path: &str) -> Option<f64> {
+    let fact = object(&backend.get(path));
+    fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite())
+}
+
+fn setting(backend: &dyn Backend, name: &str) -> bool {
+    let fact = object(&backend.get(&format!("settings.flyViewSettings.{name}")));
+    fact.get("value").is_some_and(|v| v.as_bool().unwrap_or_else(|| v.as_f64().is_some_and(|n| n != 0.0)))
+}
+
+pub fn heading_text(heading: f64) -> String {
+    format!("{:03}°", heading.round() as i64)
+}
+
+pub fn attitude_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    if object(&backend.get_fields("vehicle", "heading")).get("kind").and_then(Value::as_str) != Some("object") {
+        return json!({ "kind": "object", "class": "Attitude", "available": false });
+    }
+    let heading = raw(backend, "vehicle.heading").unwrap_or(0.0);
+    let additional = setting(backend, "showAdditionalIndicatorsCompass");
+    let moving = raw(backend, "vehicle.groundSpeed").is_some_and(|s| s >= COG_MINIMUM_SPEED);
+    let shown = |value: Option<f64>, when: bool| value.filter(|_| when).map_or(Value::Null, |v| json!(v));
+    json!({
+        "kind": "object",
+        "class": "Attitude",
+        "available": true,
+        "roll": raw(backend, "vehicle.roll").unwrap_or(0.0),
+        "pitch": raw(backend, "vehicle.pitch").unwrap_or(0.0),
+        "heading": heading,
+        "headingText": heading_text(heading),
+        "courseOverGround": shown(raw(backend, "vehicle.gps.courseOverGround"), additional && moving),
+        "headingToHome": shown(raw(backend, "vehicle.headingToHome"), additional),
+        "headingToNextWaypoint": shown(raw(backend, "vehicle.headingToNextWP"), additional),
+        "noseUp": setting(backend, "lockNoseUpCompass"),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    struct Fake(BTreeMap<&'static str, Value>);
+
+    impl Backend for Fake {
+        fn get(&self, path: &str) -> String {
+            self.0.get(path).map_or_else(|| json!({ "kind": "null" }), |v| json!({ "kind": "fact", "rawValue": v, "value": v })).to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            match (p, self.0.contains_key("vehicles.activeVehicleAvailable")) {
+                ("vehicle", true) => json!({ "kind": "object" }).to_string(),
+                _ => self.get(p),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn vehicle(extra: &[(&'static str, Value)]) -> Fake {
+        let base = [("vehicles.activeVehicleAvailable", json!(true)), ("vehicle.roll", json!(-12.5)), ("vehicle.pitch", json!(4.0)), ("vehicle.heading", json!(7.4)), ("vehicle.groundSpeed", json!(3.0)), ("vehicle.gps.courseOverGround", json!(15.0)), ("vehicle.headingToHome", json!(190.0)), ("vehicle.headingToNextWP", Value::Null)];
+        Fake(base.into_iter().chain(extra.iter().cloned()).collect())
+    }
+
+    #[test]
+    fn serves_the_angles_qgc_draws() {
+        let view = attitude_view(&vehicle(&[]), &[]);
+        assert_eq!((view["roll"].as_f64(), view["pitch"].as_f64(), view["heading"].as_f64()), (Some(-12.5), Some(4.0), Some(7.4)));
+        assert_eq!(view["headingText"], "007°", "QGCAttitudeWidget pads the heading to three digits");
+        assert_eq!(view["courseOverGround"], Value::Null, "the extra pointers are off until showAdditionalIndicatorsCompass is set");
+    }
+
+    #[test]
+    fn extra_indicators_follow_the_compass_rules() {
+        let on = vehicle(&[("settings.flyViewSettings.showAdditionalIndicatorsCompass", json!(true))]);
+        let view = attitude_view(&on, &[]);
+        assert_eq!(view["courseOverGround"], 15.0);
+        assert_eq!(view["headingToHome"], 190.0);
+        assert_eq!(view["headingToNextWaypoint"], Value::Null, "a NaN bearing (no next waypoint) hides its pointer");
+        let slow = vehicle(&[("settings.flyViewSettings.showAdditionalIndicatorsCompass", json!(true)), ("vehicle.groundSpeed", json!(0.4))]);
+        assert_eq!(attitude_view(&slow, &[])["courseOverGround"], Value::Null, "course over ground means nothing below 0.5 m/s, so QGC hides it");
+    }
+
+    #[test]
+    fn no_vehicle_is_unavailable() {
+        assert_eq!(attitude_view(&Fake(BTreeMap::new()), &[])["available"], false);
+        assert_eq!(heading_text(359.6), "360°", "QGC rounds with toFixed(0) and never wraps");
+    }
+}

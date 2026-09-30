@@ -145,6 +145,7 @@ pub mod terrainservice;
 pub mod mavinspect;
 pub mod rccal;
 pub mod shp;
+pub mod attitude;
 pub mod setup;
 pub mod vehicleconfig;
 pub mod signing;
