@@ -127,6 +127,14 @@ pub unsafe extern "C" fn qgc_core_set_application_name(name: *const c_char) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_links_start() {
+    LazyLock::force(&CORE);
+    install_hub_sink();
+    start_pump();
+    crate::corelinks::start();
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_host_owns_links() {
     crate::corelinks::host_owns_links();
 }
@@ -252,6 +260,7 @@ fn start_pump() {
                     crate::noticeboard::post_from_vehicle(kind, body);
                 });
                 announce_notices();
+                crate::corelinks::tick(crate::hub::now_ms());
                 if crate::vehiclefacade::switched_on() {
                     crate::forwarding::maintain();
                     crate::gcsheartbeat::tick(crate::hub::now_ms());

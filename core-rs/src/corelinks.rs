@@ -23,6 +23,63 @@ static ENTRIES: LazyLock<Mutex<Option<Vec<Entry>>>> = LazyLock::new(|| Mutex::ne
 static HOST_OWNS_LINKS: AtomicBool = AtomicBool::new(false);
 static HOOKS: Mutex<Option<(Opener, Closer)>> = Mutex::new(None);
 static LAST_ERRORS: LazyLock<Mutex<std::collections::BTreeMap<String, (String, &'static str)>>> = LazyLock::new(|| Mutex::new(std::collections::BTreeMap::new()));
+static RUNTIME: LazyLock<Mutex<std::collections::BTreeMap<String, Runtime>>> = LazyLock::new(|| Mutex::new(std::collections::BTreeMap::new()));
+static DYNAMIC: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
+static AUTOCONNECTING: AtomicBool = AtomicBool::new(false);
+static LAST_TICK_MS: Mutex<u64> = Mutex::new(0);
+const RECONNECT_BASE_MS: u64 = 1000;
+const RECONNECT_MAX_MS: u64 = 5000;
+const RECONNECT_STABLE_MS: u64 = 2000;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Runtime {
+    pub started: bool,
+    pub suppressed: bool,
+    attempts: u32,
+    next_ms: u64,
+    connected_at: Option<u64>,
+}
+
+impl Runtime {
+    pub fn connect_requested(&mut self) {
+        self.started = true;
+        self.suppressed = false;
+        self.attempts = 0;
+        self.next_ms = 0;
+    }
+
+    pub fn reconnect_due(&self, now_ms: u64) -> bool {
+        self.started && !self.suppressed && now_ms >= self.next_ms
+    }
+
+    pub fn note_attempt(&mut self, now_ms: u64) {
+        let exponent = self.attempts.min(16);
+        self.attempts = (self.attempts + 1).min(17);
+        self.next_ms = now_ms + (RECONNECT_BASE_MS << exponent).min(RECONNECT_MAX_MS);
+    }
+
+    pub fn note_link(&mut self, up: bool, now_ms: u64) {
+        match (up, self.connected_at) {
+            (true, None) => self.connected_at = Some(now_ms),
+            (false, Some(since)) => {
+                if now_ms.saturating_sub(since) >= RECONNECT_STABLE_MS {
+                    self.attempts = 0;
+                    self.next_ms = 0;
+                }
+                self.connected_at = None;
+            }
+            _ => {}
+        }
+    }
+}
+
+fn runtime(name: &str) -> Runtime {
+    RUNTIME.lock().unwrap_or_else(PoisonError::into_inner).get(name).copied().unwrap_or_default()
+}
+
+fn update_runtime(name: &str, change: impl FnOnce(&mut Runtime)) {
+    change(RUNTIME.lock().unwrap_or_else(PoisonError::into_inner).entry(name.to_string()).or_default());
+}
 
 pub fn set_hooks(open: Opener, close: Closer) {
     *HOOKS.lock().unwrap_or_else(PoisonError::into_inner) = Some((open, close));
@@ -38,6 +95,7 @@ pub struct State {
     pub link: Option<crate::transport::LinkId>,
     pub heard: bool,
     pub error: Option<(String, &'static str)>,
+    pub reconnecting: bool,
 }
 
 pub fn host_owns_links() {
@@ -70,18 +128,23 @@ fn saved() -> Vec<Entry> {
     .clone()
 }
 
-pub fn listed_with(saved: Vec<Entry>, live: &[(crate::transport::LinkId, LinkConfig)]) -> Vec<Entry> {
-    let transient: Vec<Entry> = live.iter().filter(|(_, config)| !saved.iter().any(|e| e.config.name == config.name)).map(|(_, config)| Entry { config: config.clone(), dynamic: true }).collect();
-    saved.into_iter().chain(transient).collect()
+pub fn listed_with(known: Vec<Entry>, live: &[(crate::transport::LinkId, LinkConfig)]) -> Vec<Entry> {
+    let transient: Vec<Entry> = live.iter().filter(|(_, config)| !known.iter().any(|e| e.config.name == config.name)).map(|(_, config)| Entry { config: config.clone(), dynamic: true }).collect();
+    known.into_iter().chain(transient).collect()
+}
+
+fn known() -> Vec<Entry> {
+    saved().into_iter().chain(DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner).iter().cloned()).collect()
 }
 
 pub fn listed() -> Vec<Entry> {
-    listed_with(saved(), &live())
+    listed_with(known(), &live())
 }
 
 fn state_of(name: &str, live: &[(crate::transport::LinkId, LinkConfig)]) -> State {
     let link = live.iter().find(|(_, config)| config.name == name).map(|(id, _)| *id);
-    State { link, heard: link.is_some_and(|id| crate::hub::lock().heard_on(id)), error: LAST_ERRORS.lock().unwrap_or_else(PoisonError::into_inner).get(name).cloned() }
+    let run = runtime(name);
+    State { link, heard: link.is_some_and(|id| crate::hub::lock().heard_on(id)), error: LAST_ERRORS.lock().unwrap_or_else(PoisonError::into_inner).get(name).cloned(), reconnecting: run.started && !run.suppressed }
 }
 
 fn kind_fields(kind: &Kind) -> (&'static str, &'static str, &'static str, String, Value) {
@@ -134,7 +197,7 @@ pub fn element(entry: &Entry, table: &TypeTable, state: &State) -> Value {
         "lastError": state.error.as_ref().map_or("", |(reason, _)| reason.as_str()),
         "lastErrorRemedy": i64::from(state.error.as_ref().is_some_and(|(_, remedy)| *remedy == "editAddress")),
         "heardVehicle": state.heard,
-        "linkActive": state.link.is_some(),
+        "linkActive": state.link.is_some() || (entry.config.auto_connect && state.reconnecting),
     });
     let mut merged = common;
     fields.as_object().into_iter().flatten().for_each(|(k, v)| merged[k.as_str()] = v.clone());
@@ -148,7 +211,7 @@ pub fn element(entry: &Entry, table: &TypeTable, state: &State) -> Value {
 pub fn model() -> Value {
     let table = table();
     let live = live();
-    let elements: Vec<Value> = listed_with(saved(), &live).iter().map(|entry| element(entry, &table, &state_of(&entry.config.name, &live))).collect();
+    let elements: Vec<Value> = listed_with(known(), &live).iter().map(|entry| element(entry, &table, &state_of(&entry.config.name, &live))).collect();
     json!({ "kind": "object", "class": "QmlObjectListModel", "objectName": "", "children": [], "facts": [], "dirty": false, "count": elements.len(), "elements": elements })
 }
 
@@ -164,7 +227,7 @@ pub fn get(path: &str) -> Option<Value> {
         return Some(json!({ "kind": "value", "value": listed().len() }));
     }
     let live = live();
-    let entry = listed_with(saved(), &live).into_iter().nth(index.parse().ok()?)?;
+    let entry = listed_with(known(), &live).into_iter().nth(index.parse().ok()?)?;
     let element = element(&entry, &table(), &state_of(&entry.config.name, &live));
     Some(match field {
         None => element,
@@ -181,6 +244,11 @@ fn indexed(reference: &str) -> Option<usize> {
 
 fn connect(index: usize) -> bool {
     let Some(entry) = listed().into_iter().nth(index) else { return false };
+    update_runtime(&entry.config.name, Runtime::connect_requested);
+    open_entry(&entry)
+}
+
+fn open_entry(entry: &Entry) -> bool {
     let Some((open, _)) = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner) else { return false };
     if state_of(&entry.config.name, &live()).link.is_some() {
         return true;
@@ -202,6 +270,7 @@ fn connect(index: usize) -> bool {
 fn disconnect(index: usize) -> bool {
     let Some(entry) = listed().into_iter().nth(index) else { return false };
     let Some((_, close)) = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner) else { return false };
+    update_runtime(&entry.config.name, |run| run.suppressed = true);
     match state_of(&entry.config.name, &live()).link {
         Some(id) => {
             close(id);
@@ -209,6 +278,53 @@ fn disconnect(index: usize) -> bool {
         }
         None => false,
     }
+}
+
+fn udp_autoconnect_entry() -> Option<Entry> {
+    let wanted = crate::settingsstore::raw_setting("settings.autoConnectSettings.autoConnectUDP").and_then(|v| v.as_bool()).unwrap_or(true);
+    wanted.then(|| Entry {
+        config: LinkConfig { name: crate::autoconnect::DEFAULT_UDP_LINK_NAME.to_string(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: defaults().udp_port, hosts: Vec::new() } },
+        dynamic: true,
+    })
+}
+
+pub fn start() {
+    AUTOCONNECTING.store(true, Ordering::SeqCst);
+    saved().iter().filter(|e| e.config.auto_connect).for_each(|entry| {
+        update_runtime(&entry.config.name, |run| run.started = true);
+        open_entry(entry);
+    });
+}
+
+pub fn tick(now_ms: u64) {
+    if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) {
+        return;
+    }
+    {
+        let mut last = LAST_TICK_MS.lock().unwrap_or_else(PoisonError::into_inner);
+        if now_ms.saturating_sub(*last) < crate::autoconnect::UPDATE_INTERVAL_MS as u64 {
+            return;
+        }
+        *last = now_ms;
+    }
+    let live = live();
+    if let Some(udp) = udp_autoconnect_entry().filter(|udp| !live.iter().any(|(_, c)| c.name == udp.config.name && matches!(c.kind, Kind::Udp { .. }))) {
+        {
+            let mut dynamic = DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner);
+            if !dynamic.iter().any(|e| e.config.name == udp.config.name) {
+                dynamic.push(udp.clone());
+            }
+        }
+        open_entry(&udp);
+    }
+    saved().iter().filter(|e| e.config.auto_connect).for_each(|entry| {
+        let up = live.iter().any(|(_, c)| c.name == entry.config.name);
+        update_runtime(&entry.config.name, |run| run.note_link(up, now_ms));
+        if !up && runtime(&entry.config.name).reconnect_due(now_ms) {
+            update_runtime(&entry.config.name, |run| run.note_attempt(now_ms));
+            open_entry(entry);
+        }
+    });
 }
 
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
@@ -226,6 +342,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_failing_auto_link_backs_off_to_five_seconds_and_a_stable_connection_resets_it() {
+        let mut run = Runtime::default();
+        assert!(!run.reconnect_due(0), "a link nobody started is not reconnected");
+        run.connect_requested();
+        let gaps: Vec<u64> = (0..5).map(|_| {
+            let at = run.next_ms;
+            run.note_attempt(at);
+            run.next_ms - at
+        }).collect();
+        assert_eq!(gaps, vec![1000, 2000, 4000, 5000, 5000]);
+        run.note_link(true, 100_000);
+        run.note_link(false, 101_000);
+        assert_eq!(run.attempts, 5, "one second up is not a working link");
+        run.note_link(true, 110_000);
+        run.note_link(false, 112_000);
+        assert_eq!((run.attempts, run.reconnect_due(112_000)), (0, true));
+        run.suppressed = true;
+        assert!(!run.reconnect_due(200_000), "an operator disconnect stops reconnecting until a manual connect");
+    }
+
+    #[test]
     fn a_link_opened_outside_the_saved_list_is_listed_as_dynamic_after_it() {
         let tcp = |name: &str| LinkConfig { name: name.into(), auto_connect: false, high_latency: false, kind: Kind::Tcp { host: "127.0.0.1".into(), port: 5760 } };
         let saved = vec![Entry { config: tcp("SITL"), dynamic: false }];
@@ -237,16 +374,16 @@ mod tests {
     fn an_element_reads_as_the_qt_configuration_does() {
         let table = TypeTable::new(true, true);
         let tcp = Entry { config: LinkConfig { name: "iter7".into(), auto_connect: false, high_latency: false, kind: Kind::Tcp { host: "145.223.98.65".into(), port: 5760 } }, dynamic: false };
-        let idle = State { link: None, heard: false, error: None };
+        let idle = State { link: None, heard: false, error: None, reconnecting: false };
         let shown = element(&tcp, &table, &idle);
         assert_eq!((shown["class"].as_str(), shown["linkType"].as_i64(), shown["summary"].as_str(), shown["settingsURL"].as_str()), (Some("TCPConfiguration"), Some(2), Some("145.223.98.65:5760"), Some("TcpSettings.qml")));
         let udp = Entry { config: LinkConfig { name: "u".into(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: 14550, hosts: vec![("10.0.0.2".into(), 14551)] } }, dynamic: true };
-        let shown = element(&udp, &table, &State { link: Some(3), heard: true, error: None });
+        let shown = element(&udp, &table, &State { link: Some(3), heard: true, error: None, reconnecting: false });
         assert_eq!((shown["summary"].as_str(), shown["hostList"][0].as_str(), shown["localPort"].as_u64()), (Some("UDP port 14550"), Some("10.0.0.2:14551"), Some(14550)));
         assert_eq!((shown["linkActive"].as_bool(), shown["children"][0].as_str(), shown.get("link"), shown["heardVehicle"].as_bool()), (Some(true), Some("link"), None, Some(true)), "a connected configuration carries its link as a child object, as the bridge walks it");
         let serial = Entry { config: LinkConfig { name: "s".into(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud: 57600, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: "/dev/cu.usbmodem1".into(), port_display_name: String::new() } }, dynamic: false };
         assert_eq!(element(&serial, &table, &idle)["summary"], "/dev/cu.usbmodem1 at 57600 baud", "the port name stands in when there is no display name");
-        let refused = element(&tcp, &table, &State { link: None, heard: false, error: Some(("Reached host but nothing is listening on port 5760.".into(), "editAddress")) });
+        let refused = element(&tcp, &table, &State { link: None, heard: false, error: Some(("Reached host but nothing is listening on port 5760.".into(), "editAddress")), reconnecting: false });
         assert_eq!((refused["lastErrorRemedy"].as_i64(), refused["link"].is_null(), refused["children"].as_array().map(Vec::len)), (Some(1), true, Some(0)));
     }
 }

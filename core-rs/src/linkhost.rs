@@ -347,6 +347,9 @@ pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
 pub const DEPS: &[&str] = &["links.linkConfigurations"];
 
 pub fn qt_links(backend: &dyn crate::router::Backend) -> Vec<Value> {
+    if crate::corelinks::owned() {
+        return Vec::new();
+    }
     let model = crate::read::object(&backend.get("links.linkConfigurations"));
     model
         .get("elements")

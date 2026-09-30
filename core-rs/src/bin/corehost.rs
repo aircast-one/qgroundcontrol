@@ -14,6 +14,7 @@ unsafe extern "C" {
     fn qgc_core_set_map_cache_path(path: *const c_char);
     fn qgc_core_gcs_position_source(token: *const c_char);
     fn qgc_core_set_application_name(name: *const c_char);
+    fn qgc_core_links_start();
     fn qgc_core_free(text: *mut c_char);
 }
 
@@ -143,6 +144,9 @@ fn main() {
     unsafe { qgc_core_set_application_name(text(&option("--app-name").unwrap_or_else(|| "corehost".to_string())).as_ptr()) };
     let position = option("--position-source").unwrap_or_else(|| "none".to_string());
     unsafe { qgc_core_gcs_position_source(text(&position).as_ptr()) };
+    if arguments.iter().any(|a| a == "--autoconnect") {
+        unsafe { qgc_core_links_start() };
+    }
     let port = option("--port").and_then(|p| p.parse::<u16>().ok()).unwrap_or(8777);
     let listener = std::net::TcpListener::bind(("127.0.0.1", port)).expect("the debug API port is free");
     let api = DebugApi::new();
