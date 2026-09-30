@@ -219,12 +219,14 @@ fn known_component(component: &Value) -> Option<String> {
     }
 }
 
-const KNOWN_COMPONENTS: [&str; 6] = [
+const KNOWN_COMPONENTS: [&str; 8] = [
     "KnownRadioVehicleComponent",
     "KnownFlightModesVehicleComponent",
     "KnownSensorsVehicleComponent",
     "KnownSafetyVehicleComponent",
     "KnownPowerVehicleComponent",
+    "KnownJoystickVehicleComponent",
+    "KnownESCVehicleComponent",
     "UnknownVehicleComponent",
 ];
 

@@ -68,6 +68,7 @@ pub mod linkconnect;
 pub mod linkremove;
 pub mod mapclick;
 pub mod commandtree;
+pub mod components;
 pub mod paramnames;
 pub mod linkconfig;
 pub mod linkhost;

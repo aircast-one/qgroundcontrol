@@ -581,6 +581,29 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
     (answered.into_iter().filter_map(|(name, v)| Some((name.to_string(), v?))).collect(), missing.into_iter().map(|(name, _)| name.to_string()).collect())
 }
 
+const VEHICLE_COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
+
+fn vehicle_components() -> Option<Vec<Value>> {
+    if !switched_on() {
+        return None;
+    }
+    let hub = crate::hub::lock();
+    let v = hub.active().filter(|v| v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)?;
+    if !v.parameters_ready() {
+        return Some(Vec::new());
+    }
+    let parameter = |component: u8, name: &str| v.parameter(component, name).map(|p| p.as_f64());
+    let version = v.firmware().and_then(|f| f.version).map(|(major, minor, patch, _)| (major, minor, patch));
+    Some(crate::components::ardupilot(&crate::components::Vehicle { vehicle_type: v.vehicle_type, version, parameter: &parameter, default_component: v.component }))
+}
+
+fn vehicle_component(path: &str) -> Option<(Value, Option<&str>)> {
+    let rest = path.strip_prefix(VEHICLE_COMPONENTS)?.strip_prefix('.')?;
+    let (index, field) = rest.split_once('.').map_or((rest, None), |(i, f)| (i, Some(f)));
+    let component = vehicle_components()?.into_iter().nth(index.parse().ok()?)?;
+    Some((component, field))
+}
+
 const CORE_OPTIONS: [(&str, bool); 1] = [("showMissionAbsoluteAltitude", true)];
 
 fn object_of(mut fields: serde_json::Map<String, Value>) -> Value {
@@ -809,6 +832,16 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
             return answer.to_string();
         }
+        if let Some(list) = (path == VEHICLE_COMPONENTS).then(vehicle_components).flatten() {
+            return json!({ "kind": "value", "value": list }).to_string();
+        }
+        if let Some((component, Some(field))) = vehicle_component(path) {
+            return match component.get(field).filter(|_| field != "class") {
+                Some(value) => json!({ "kind": "value", "value": value }),
+                None => json!({ "kind": "value", "value": null, "found": false }),
+            }
+            .to_string();
+        }
         if let Some(value) = path.strip_prefix("corePlugin.options.").and_then(core_option) {
             return json!({ "kind": "value", "value": value }).to_string();
         }
@@ -898,6 +931,9 @@ impl<B: Backend> Backend for Facade<B> {
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
             }
+        }
+        if let Some((component, None)) = vehicle_component(asked_path) {
+            return only_fields(component, &fields_of(fields)).to_string();
         }
         if let Some(options) = (asked_path == "corePlugin.options").then(|| fields_of(fields).into_iter().map(|f| Some((f.to_string(), json!(core_option(f)?)))).collect::<Option<serde_json::Map<String, Value>>>()).flatten() {
             return object_of(options).to_string();
