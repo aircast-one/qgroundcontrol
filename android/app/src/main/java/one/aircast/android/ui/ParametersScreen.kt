@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -18,6 +19,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -40,20 +42,26 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
     var search by remember { mutableStateOf("") }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
     var descriptions by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var modified by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var modifiedOnly by remember { mutableStateOf(false) }
+    var reads by remember { mutableStateOf(0) }
 
-    LaunchedEffect(ready) {
+    LaunchedEffect(ready, reads) {
         names = if (!ready) emptyList() else withContext(Dispatchers.Default) { parameterNames() }
         descriptions = emptyMap()
+        modified = emptySet()
     }
 
     LaunchedEffect(names) {
         if (names.isNotEmpty()) {
-            descriptions = withContext(Dispatchers.Default) { parameterDescriptions(names) }
+            val summary = withContext(Dispatchers.Default) { parameterSummary(names) }
+            descriptions = summary.descriptions
+            modified = summary.modified
         }
     }
 
-    val matches = remember(names, descriptions, search) {
-        names.filter { parameterMatches(it, descriptions[it].orEmpty(), search) }
+    val matches = remember(names, descriptions, modified, search, modifiedOnly) {
+        names.filter { parameterShown(it, descriptions[it].orEmpty(), search, modifiedOnly, modified) }
     }
     Column(modifier.fillMaxSize()) {
         OutlinedTextField(
@@ -69,11 +77,19 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
             return@Column
         }
 
-        Text(
-            "${matches.size} parameter${if (matches.size == 1) "" else "s"}",
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "${matches.size} parameter${if (matches.size == 1) "" else "s"}",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Checkbox(checked = modifiedOnly, onCheckedChange = { modifiedOnly = it })
+            Text("Modified", style = MaterialTheme.typography.labelLarge)
+            ParameterToolsMenu(onRefreshed = { reads++ })
+        }
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(matches, key = { it }) { name ->
@@ -106,6 +122,9 @@ private fun ParameterRow(name: String) {
     }
 }
 
+internal fun parameterShown(name: String, description: String, search: String, modifiedOnly: Boolean, modified: Set<String>): Boolean =
+    parameterMatches(name, description, search) && (!modifiedOnly || name in modified)
+
 internal fun parameterMatches(name: String, description: String, search: String): Boolean =
     search.isBlank() ||
         name.contains(search, ignoreCase = true) ||
@@ -120,10 +139,15 @@ private fun parameterNames(): List<String> {
     return (0 until result.length()).map { result.optText(it) }.sorted()
 }
 
-private fun parameterDescriptions(names: List<String>): Map<String, String> =
-    names.mapNotNull { name ->
-        parameterFact(name)?.description?.takeIf { it.isNotBlank() }?.let { name to it }
-    }.toMap()
+internal data class ParameterSummary(val descriptions: Map<String, String>, val modified: Set<String>)
+
+private fun parameterSummary(names: List<String>): ParameterSummary {
+    val facts = names.mapNotNull { name -> parameterFact(name)?.let { name to it } }
+    return ParameterSummary(
+        descriptions = facts.filter { it.second.description.isNotBlank() }.associate { it.first to it.second.description },
+        modified = facts.filter { it.second.changedFromDefault }.map { it.first }.toSet(),
+    )
+}
 
 private fun parameterFact(name: String): Fact? =
     factFromParameter(name, Qgc.get(parameterPath(name)))

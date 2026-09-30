@@ -144,12 +144,7 @@ pub fn reboot(backend: &dyn Backend, path: &str) -> Value {
     if let Some((token, reason)) = reboot_refusal(view["state"].as_str().unwrap_or("notConnected")) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
-    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
-    json!({
-        "ok": dispatched,
-        "refusal": Value::Null,
-        "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not asked to reboot.") },
-    })
+    crate::guided::dispatch(backend, Some(json!({ "action": "reboot" })), crate::guided::active_id(backend), path, "[]")
 }
 
 #[cfg(test)]

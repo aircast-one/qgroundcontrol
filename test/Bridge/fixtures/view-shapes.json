@@ -3573,6 +3573,8 @@
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).videoOverridden",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).videoPackets",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).videoPort",
+        "view.parameterTools.class",
+        "view.parameterTools.kind",
         "view.plan.actions.addFence",
         "view.plan.actions.addRally",
         "view.plan.actions.newPlan",
@@ -7566,6 +7568,15 @@
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).videoOverridden",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).videoPackets",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).videoPort",
+        "view.parameterTools.available",
+        "view.parameterTools.class",
+        "view.parameterTools.kind",
+        "view.parameterTools.tools.#",
+        "view.parameterTools.tools[].confirm",
+        "view.parameterTools.tools[].confirmMessage",
+        "view.parameterTools.tools[].confirmTitle",
+        "view.parameterTools.tools[].label",
+        "view.parameterTools.tools[].path",
         "view.plan.actions.addFence",
         "view.plan.actions.addRally",
         "view.plan.actions.clearMission",
@@ -8839,6 +8850,7 @@
             "view.obstacle",
             "view.attitude",
             "view.mapClick",
+            "view.parameterTools",
             "view.missionComplete",
             "view.landingPattern",
             "view.vibration",
@@ -10606,6 +10618,20 @@
         "videoOverridden": "bool",
         "videoPackets": "null",
         "videoPort": "number"
+    },
+    "view.parameterTools": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string",
+        "tools": [
+            {
+                "confirm": "bool",
+                "confirmMessage": "string",
+                "confirmTitle": "string",
+                "label": "string",
+                "path": "string"
+            }
+        ]
     },
     "view.plan": {
         "actions": {

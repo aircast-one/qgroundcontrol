@@ -12,6 +12,8 @@ pub const CMD_DO_VTOL_TRANSITION: u16 = 3000;
 pub const CMD_DO_DIGICAM_CONTROL: u16 = 203;
 pub const CMD_DO_SET_MISSION_CURRENT: u16 = 224;
 pub const CMD_DO_SET_HOME: u16 = 179;
+pub const CMD_PREFLIGHT_STORAGE: u16 = 245;
+pub const CMD_PREFLIGHT_REBOOT_SHUTDOWN: u16 = 246;
 pub const CMD_DO_SET_ROI_LOCATION: u16 = 195;
 pub const CMD_CONDITION_YAW: u16 = 115;
 pub const FRAME_GLOBAL_RELATIVE_ALT: u8 = 3;
@@ -157,6 +159,14 @@ pub fn orbit(state: &VehicleState, latitude: f64, longitude: f64, radius: f64, a
 
 pub fn estimator_origin(latitude: f64, longitude: f64, altitude: f64) -> Plan {
     Plan::Steps(vec![Step::Command { command: CMD_DO_SET_GLOBAL_ORIGIN, params: [0.0, 0.0, 0.0, 0.0, latitude, longitude, altitude], command_int: true, frame: FRAME_GLOBAL, show_error: false }])
+}
+
+pub fn reboot() -> Plan {
+    Plan::Steps(vec![Step::Command { command: CMD_PREFLIGHT_REBOOT_SHUTDOWN, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
+}
+
+pub fn reset_parameters() -> Plan {
+    Plan::Steps(vec![Step::Command { command: CMD_PREFLIGHT_STORAGE, params: [2.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
 }
 
 pub fn set_home(latitude: f64, longitude: f64, terrain_amsl: Option<f64>) -> Plan {
@@ -401,6 +411,8 @@ mod tests {
         assert!(matches!(steps[0], Step::Command { command: CMD_DO_ORBIT, params, .. } if params[0] == -30.0 && params[2] == ORBIT_YAW_BEHAVIOUR_UNCHANGED && params[6] == 520.0));
         let Plan::Steps(steps) = estimator_origin(47.4, 8.5, 480.0) else { panic!() };
         assert!(matches!(steps[0], Step::Command { command: CMD_DO_SET_GLOBAL_ORIGIN, command_int: true, .. }));
+        assert!(matches!(&reboot(), Plan::Steps(s) if matches!(s[0], Step::Command { command: CMD_PREFLIGHT_REBOOT_SHUTDOWN, params, .. } if params[0] == 1.0)));
+        assert!(matches!(&reset_parameters(), Plan::Steps(s) if matches!(s[0], Step::Command { command: CMD_PREFLIGHT_STORAGE, params, .. } if params[0] == 2.0 && params[1] == -1.0)), "reset params to default, leave mission storage alone");
         assert!((initial_bearing((47.0, 8.0), (48.0, 8.0)) - 0.0).abs() < 1e-9);
         assert!((initial_bearing((0.0, 0.0), (0.0, 1.0)) - 90.0).abs() < 1e-9);
         let facing = |heading: f64| VehicleState { current_heading: Some(heading), ..copter() };

@@ -40,6 +40,7 @@ data class Fact(
     val vehicleRebootRequired: Boolean = false,
     val qgcRebootRequired: Boolean = false,
     val warning: Boolean = false,
+    val changedFromDefault: Boolean = false,
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
@@ -240,6 +241,7 @@ object Qgc {
             defaultValueString = json.text("defaultValueString"),
             vehicleRebootRequired = json.optBoolean("vehicleRebootRequired"),
             qgcRebootRequired = json.optBoolean("qgcRebootRequired"),
+            changedFromDefault = json.optBoolean("defaultValueAvailable") && !json.optBoolean("valueEqualsDefault", true),
         )
     }
 }

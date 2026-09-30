@@ -1066,6 +1066,8 @@ impl Vehicle {
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
             "gripper" => guidedcmd::gripper(number("gripAction")),
             "cancelRoi" => guidedcmd::cancel_roi(&state),
+            "reboot" => guidedcmd::reboot(),
+            "resetParameters" => guidedcmd::reset_parameters(),
             "setCurrentMission" => guidedcmd::set_current_mission(&state, number("sequence")),
             "orbit" => guidedcmd::orbit(&state, number("latitude"), number("longitude"), number("radius"), number("altitudeAmsl")),
             "setHome" => guidedcmd::set_home(number("latitude"), number("longitude"), action.get("terrain").and_then(Value::as_f64)),
@@ -1140,6 +1142,10 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("refreshParameters") => {
+                let actions = self.params.refresh_all(params::ALL_COMPONENTS);
+                return Ok(self.follow_params(actions, now_ms));
+            }
             Some("calibrate") => return self.calibrate_request(&action["request"], now_ms),
             Some("rcCal") => {
                 self.load_rccal();

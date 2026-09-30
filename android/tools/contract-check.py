@@ -192,11 +192,9 @@ ACCEPTED_ON = {
     ("view.missionItems", "altitudeFrame"): "the head reads altitudeFrameText",
     ("view.plan", "defaultValue"): "the head reads defaultText and only ever SHOWS a default, never writes one",
     ("view.settings", "defaultValue"): "see view.plan",
-    ("view.setup", "defaultValue"): "see view.plan",
     ("view.plan", "valueMeters"): "the geometry half of value. MEASURED: no consumer on this head feeds a "
         "control value into geometry - settings round-trip through Qgc.set, which is cooked and correct",
     ("view.settings", "valueMeters"): "see view.plan",
-    ("view.setup", "valueMeters"): "see view.plan",
     ("view.settings", "showsPacketRadio"): "this head has no packet radio screen at all",
     ("view.mavlinkConsole", "last"): "the console draws every line; last is for a head that shows one",
     ("view.vehicleLinks", "primary"): "b0ba82f11 - link names live on view.links behind Connections",
@@ -223,6 +221,8 @@ ONLY_IN = {
     "maxString": {"Qgc.kt"},
     "minString": {"Qgc.kt"},
     "unknownEnumLabel": {"Qgc.kt"},
+    "defaultValueAvailable": {"Qgc.kt"},
+    "valueEqualsDefault": {"Qgc.kt"},
     "message": {"VehicleMessages.kt"},
 }
 
@@ -240,6 +240,8 @@ ACCEPTED = {
         "picker cannot draw them as chosen or let them be turned off. The macOS head builds the"
         "same group the same way",
     "defaultValueString": "Fact metadata read by path",
+    "defaultValueAvailable": "Fact metadata read by path, for the parameter editor's Modified filter",
+    "valueEqualsDefault": "Fact metadata read by path, for the parameter editor's Modified filter",
     "maxString": "Fact metadata read by path",
     "minString": "Fact metadata read by path",
     "unknownEnumLabel": "Fact metadata read by path",
