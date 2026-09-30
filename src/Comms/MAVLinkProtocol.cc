@@ -1,4 +1,5 @@
 #include "MAVLinkProtocol.h"
+#include "QGCCoreC.h"
 
 #include <QtCore/QApplicationStatic>
 #include <QtCore/QDir>
@@ -137,7 +138,7 @@ void MAVLinkProtocol::receiveBytes(LinkInterface* link, const QByteArray& data)
             link->reportMavlinkV2Traffic();
             _updateCounters(mavlinkChannel, message);
         }
-        if (!linkPtr->linkConfiguration()->isForwarding()) {
+        if (!linkPtr->linkConfiguration()->isForwarding() && !qgc_core_owns_forwarding()) {
             _forward(message);
             _forwardSupport(message);
         }

@@ -273,6 +273,11 @@ fn default_of(meta: &MetaData) -> Option<Value> {
     meta.default.as_ref().map(|d| typed(&meta.value_type, d).unwrap_or_else(|| d.clone()))
 }
 
+pub fn raw_setting(path: &str) -> Option<Value> {
+    let at = address(path)?;
+    Some(raw(at.group, &at.fact, &at.meta))
+}
+
 fn raw(group: &str, fact: &str, meta: &MetaData) -> Value {
     let held = match stored().as_ref().and_then(|values| values.get(&key(group, fact)).cloned()) {
         Some(Setting::Text(text)) => typed(&meta.value_type, &Value::String(text)),

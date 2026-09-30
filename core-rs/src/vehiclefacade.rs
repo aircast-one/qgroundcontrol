@@ -234,6 +234,13 @@ fn unreported_checks() -> Option<Value> {
     (!vehicle.events_heard).then(|| json!({ "supported": false, "canArm": true, "canTakeoff": true, "canStartMission": true, "hasWarningsOrErrors": false }))
 }
 
+fn links_field(name: &str) -> Option<Value> {
+    match name {
+        "mavlinkSupportForwardingEnabled" => Some(json!(crate::forwarding::support_enabled())),
+        _ => crate::seriallink::links_field(name),
+    }
+}
+
 fn shell_lines() -> Option<Vec<String>> {
     switched_on().then_some(())?;
     crate::hub::lock().active().map(|vehicle| vehicle.shell.lines())
@@ -697,7 +704,7 @@ impl<B: Backend> Backend for Facade<B> {
             }
             .to_string();
         }
-        if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(crate::seriallink::links_field) {
+        if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(links_field) {
             return json!({ "kind": "value", "value": field }).to_string();
         }
         let absent = (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && crate::hub::lock().active_id().is_none()).then(|| json!({ "kind": "null" }));
@@ -754,7 +761,7 @@ impl<B: Backend> Backend for Facade<B> {
             }
         }
         if asked_path == "links" && switched_on() {
-            let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields).into_iter().map(|f| (f, crate::seriallink::links_field(f))).partition(|(_, v)| v.is_some());
+            let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields).into_iter().map(|f| (f, links_field(f))).partition(|(_, v)| v.is_some());
             let answered: serde_json::Map<String, Value> = answered.into_iter().filter_map(|(f, v)| Some((f.to_string(), v?))).collect();
             if missing.is_empty() {
                 let mut object = Value::Object(answered);
@@ -858,6 +865,16 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
+        }
+        if switched_on() {
+            match path {
+                "links.createMavlinkForwardingSupportLink" => return json!({ "ok": crate::forwarding::start_support() }).to_string(),
+                "links.endMavlinkForwardingSupportLink" => {
+                    crate::forwarding::end_support();
+                    return json!({ "ok": true }).to_string();
+                }
+                _ => {}
+            }
         }
         switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(
             || {

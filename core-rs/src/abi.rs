@@ -203,6 +203,9 @@ fn start_pump() {
                     hub.tick_with(crate::hub::now_ms(), crate::hub::now_us() / 1_000_000)
                 };
                 deliver(outbound);
+                if crate::vehiclefacade::switched_on() {
+                    crate::forwarding::maintain();
+                }
                 announce_guided();
                 if crate::detections::lock().went_stale(crate::hub::now_ms()) {
                     announce_detections();
@@ -300,6 +303,9 @@ fn install_hub_sink() {
         let sink: crate::linkhost::FrameSink = std::sync::Arc::new(|frame: &crate::transport::Frame| {
             let outbound = crate::hub::lock().on_frame(crate::hub::Origin { link: frame.link, replay: frame.replay, v2: frame.v2 }, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
             deliver(outbound);
+            if crate::vehiclefacade::switched_on() {
+                crate::forwarding::forward(frame);
+            }
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
     });
@@ -449,6 +455,11 @@ pub extern "C" fn qgc_core_set_active_vehicle(id: i32) {
 pub extern "C" fn qgc_core_set_vehicle_order(ids: *const i32, count: usize) {
     let listed = if ids.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(ids, count) } };
     crate::hub::lock().set_listed(listed.iter().filter_map(|id| u8::try_from(*id).ok()).collect());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_owns_forwarding() -> bool {
+    crate::vehiclefacade::switched_on()
 }
 
 #[unsafe(no_mangle)]

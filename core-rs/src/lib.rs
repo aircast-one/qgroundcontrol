@@ -118,6 +118,7 @@ pub mod settingsgroups;
 pub mod settingsini;
 pub mod settingsstore;
 pub mod shell;
+pub mod forwarding;
 pub mod shp;
 pub mod setup;
 pub mod signing;

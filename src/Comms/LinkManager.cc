@@ -1,4 +1,5 @@
 #include "LinkManager.h"
+#include "QGCCoreC.h"
 #include "LogReplayLink.h"
 #include "QGCNetworkHelper.h"
 #include "MAVLinkProtocol.h"
@@ -539,6 +540,9 @@ void LinkManager::_addUDPAutoConnectLink()
 
 void LinkManager::_addMAVLinkForwardingLink()
 {
+    if (qgc_core_owns_forwarding()) {
+        return;
+    }
     if (!SettingsManager::instance()->mavlinkSettings()->forwardMavlink()->rawValue().toBool()) {
         return;
     }
