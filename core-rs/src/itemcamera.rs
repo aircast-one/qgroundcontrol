@@ -39,7 +39,7 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.trim().parse::<usize>().ok()) else {
         return json!({ "kind": "object", "class": "ItemCamera", "available": false, "reason": "A mission item index is required." });
     };
-    let section = object(&backend.get(&format!("plan.missionController.visualItems.{index}.cameraSection")));
+    let section = crate::coreplan::camera_section(index).unwrap_or_else(|| object(&backend.get(&format!("plan.missionController.visualItems.{index}.cameraSection"))));
     let present = section.get("kind").and_then(Value::as_str) == Some("object");
     // The angles are Facts and always carry a number, so a head reading them alone is told the
     // gimbal points somewhere for an item that never touches it. specifyGimbal is a plain bool

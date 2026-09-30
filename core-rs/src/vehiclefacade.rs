@@ -4,6 +4,21 @@ use crate::router::Backend;
 
 pub struct Facade<B>(pub B);
 
+const VEHICLE_OBJECT_FIELDS: &str = "id,flightMode,armed,flying,landing,gotoFlightMode,landFlightMode,rtlFlightMode,smartRTLFlightMode,missionFlightMode,pauseFlightMode,sensorsPresentBits,coordinate,homePosition";
+
+fn offline_field(path: &str, field: &str) -> Option<Value> {
+    match (path, field) {
+        ("vehicles", "activeVehicleAvailable") => Some(json!(false)),
+        ("plan.geoFenceController" | "plan.rallyPointController", "supported") => Some(json!(true)),
+        ("plan.managerVehicle", "capabilitiesKnown") => Some(json!(true)),
+        ("plan.geoFenceController", "paramCircularFence") => Some(json!(0)),
+        ("planFly.missionController", "currentMissionIndex") => Some(json!(-1)),
+        ("planFly.missionController", "resumeMissionIndex") => Some(json!(0)),
+        ("planFly.missionController.visualItems", "count") => Some(json!(1)),
+        _ => None,
+    }
+}
+
 const VEHICLE_FACTS: [&str; 17] = ["rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome"];
 
 pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
@@ -208,7 +223,7 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
     };
     let named = |custom: Option<u32>, fallback: &str| custom.and_then(|c| listed.iter().find(|m| m.1 == c)).map_or_else(|| fallback.to_string(), |m| m.0.clone());
     let names = |advanced_only: bool| listed.iter().filter(|m| m.2 && (!advanced_only || m.3)).map(|m| m.0.clone()).collect::<Vec<_>>();
-    let apm = |rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str)| {
+    let apm = |guided: u32, rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str)| {
         json!({
             "flightModes": names(false),
             "advancedFlightModes": names(true),
@@ -219,13 +234,14 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
             "landFlightMode": named(land.0, land.1),
             "pauseFlightMode": named(pause.0, pause.1),
             "followFlightMode": named(follow.0, follow.1),
+            "gotoFlightMode": named(Some(guided), "Guided"),
         })
     };
     let fields = match (autopilot, crate::modes::vehicle_class(vehicle_type)) {
-        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake"), (Some(23), "Follow")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter"), (None, "")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(None, None, Some(3), (None, ""), (None, ""), (None, "")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(4, Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake"), (Some(23), "Follow")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(15, Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter"), (None, "")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(15, Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(4, None, None, Some(3), (None, ""), (None, ""), (None, "")),
         (AUTOPILOT_PX4, _) => json!({
             "advancedFlightModes": names(true),
             "rtlFlightMode": named(Some(px4(4, 5)), ""),
@@ -234,6 +250,7 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
             "landFlightMode": named(Some(px4(4, 6)), ""),
             "pauseFlightMode": named(Some(px4(4, 3)), ""),
             "followFlightMode": named(Some(px4(4, 8)), ""),
+            "gotoFlightMode": named(Some(px4(4, 3)), ""),
         }),
         _ => json!({}),
     };
@@ -429,6 +446,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
             .chain(object(firmware_fields(v.autopilot, v.firmware())))
             .chain(motors)
             .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
+            .chain([("sensorsPresentBits".to_string(), json!(v.status_bits.present))])
             .collect(),
     );
     Known { id: v.id, parameters_ready: v.parameters_ready(), parameters_unanswered: v.parameters_unanswered(), lost: v.connection_lost, home: v.home, coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), orbit: v.orbit_circle, hygrometer: v.hygrometer.clone(), generator: v.generator.clone(), efi: v.efi.clone(), terrain_blocks: v.terrain_blocks, escs: v.escs.clone(), trigger_points: (v.trigger_points.clone(), v.trigger_points_appended), mission_indices: (v.current_mission_index(), v.resume_mission_index(), v.fly_items()), links: (v.link_states.iter().map(|(link, _, lost)| (*link, *lost)).collect(), v.primary_link), cameras: (v.cameras.models(), v.cameras.selected_index().unwrap_or(0)), sensors, supports: supports(v.autopilot, v.vehicle_type), fields }
@@ -719,18 +737,25 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         "vehicle.batteries.count" => json!(known.batteries.len()),
         battery if battery.starts_with("vehicle.batteries.") => {
             let mut parts = battery["vehicle.batteries.".len()..].splitn(2, '.');
-            let (id, facts) = known.batteries.get(parts.next()?.parse::<usize>().ok()?)?;
+            let index = parts.next()?.parse::<usize>().ok()?;
+            let Some((id, facts)) = known.batteries.get(index) else {
+                return (!crate::qthost::present()).then(|| json!({ "kind": "null" }));
+            };
             return match parts.next() {
                 None => Some(crate::vehiclefact::battery_group(*id, facts)),
                 Some(name) => crate::vehiclefact::battery_fact(*id, facts, crate::vehiclefact::battery_by_property(name)?, None),
             };
         }
         "vehicle.coordinate" => {
-            let (latitude, longitude, altitude) = known.coordinate?;
+            let Some((latitude, longitude, altitude)) = known.coordinate else {
+                return (!crate::qthost::present()).then(|| json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }));
+            };
             return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
         }
         "vehicle.homePosition" => {
-            let (latitude, longitude, altitude) = known.home?;
+            let Some((latitude, longitude, altitude)) = known.home else {
+                return (!crate::qthost::present()).then(|| json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }));
+            };
             return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
         }
         _ => return None,
@@ -846,6 +871,22 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(answer) = crate::geotagcontroller::get(path) {
             return answer.to_string();
+        }
+        if let Some(fact) = (path == "plan.geoFenceController.breachReturnAltitude").then(crate::coreplan::breach_altitude_fact).flatten() {
+            return fact.to_string();
+        }
+        if path == "vehicle" && switched_on() && !crate::qthost::present() {
+            if no_vehicle() {
+                return json!({ "kind": "null" }).to_string();
+            }
+            let mut whole: Value = serde_json::from_str(&self.get_fields("vehicle", &format!("{VEHICLE_OBJECT_FIELDS},{}", VEHICLE_FACTS.join(",")))).unwrap_or(Value::Null);
+            whole["class"] = json!("Vehicle");
+            return whole.to_string();
+        }
+        if let Some((prefix, field)) = path.rsplit_once('.').filter(|(prefix, _)| switched_on() && !crate::qthost::present() && no_vehicle() && !prefix.starts_with("vehicle")) {
+            if let Some(value) = offline_field(prefix, field) {
+                return json!({ "kind": "value", "value": value }).to_string();
+            }
         }
         if let Some(answer) = crate::corelinks::get(path) {
             return answer.to_string();
@@ -969,6 +1010,13 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if switched_on() && (asked_path == "vehicle" || asked_path.starts_with("vehicle.")) && no_vehicle() {
             return json!({ "kind": "null" }).to_string();
+        }
+        if switched_on() && !crate::qthost::present() && no_vehicle() {
+            let offline: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), offline_field(asked_path, f)?))).collect();
+            if let Some(mut object) = offline.map(Value::Object) {
+                object["kind"] = json!("object");
+                return object.to_string();
+            }
         }
         if let Some(Value::Object(mut answered)) = crate::coreplan::controller_fields(asked_path) {
             let wanted = fields_of(fields);
@@ -1295,6 +1343,7 @@ mod tests {
         assert!(!plane["flightModes"].as_array().unwrap().contains(&json!("Initializing")), "a mode the vehicle only reports is never offered");
         assert_eq!((plane["smartRTLFlightMode"].as_str(), plane["landFlightMode"].as_str()), (Some("RTL"), Some("")), "a plane's smart RTL is its RTL and it has no land mode");
         assert_eq!(mode_fields(3, 12, &[])["rtlFlightMode"], "RTL", "a sub has no RTL number, so the name falls back");
+        assert_eq!((copter["gotoFlightMode"].as_str(), plane["gotoFlightMode"].as_str()), (Some("Guided"), Some("Guided")), "APMFirmwarePlugin::gotoFlightMode is guidedFlightMode");
         let renamed = crate::standardmodes::FlightMode { name: "Return Home".into(), standard_mode: 0, custom_mode: 6, can_be_set: true, advanced: false, fixed_wing: false, multi_rotor: true };
         let announced = mode_fields(3, 2, &[renamed]);
         assert_eq!((announced["rtlFlightMode"].as_str(), announced["pauseFlightMode"].as_str()), (Some("Return Home"), Some("Brake")), "an announced list replaces the table and a missing mode falls back");
@@ -1346,7 +1395,7 @@ mod tests {
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
         assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
         assert_eq!(answer_fields("vehicle", "coordinate", &known).0.get("coordinate"), Some(&Value::Null), "an unknown position reads as null nested, as the bridge spells it");
-        assert_eq!(answer_get("vehicle.coordinate", &known), None, "a direct read of an unknown position stays with the host");
+        assert_eq!(answer_get("vehicle.coordinate", &known), Some(json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null })), "with no Qt host a direct read of an unknown position is the invalid coordinate QGCBridgeCore spells");
         let placed = Known { coordinate: Some((1.0, 2.0, 3.0)), ..known };
         assert_eq!(answer_get("vehicle.coordinate", &placed).unwrap()["kind"], "coordinate");
         let known = placed;

@@ -29,7 +29,7 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
         return refused("view.landingPattern needs the index of the item in the plan, as view.landingPattern(4)");
     };
     let path = format!("plan.missionController.visualItems.{index}");
-    let item = object(&backend.get_fields(&path, FIELDS));
+    let (item, facts) = crate::coreplan::landing_inputs(index).unwrap_or_else(|| (object(&backend.get_fields(&path, FIELDS)), object(&backend.get(&path))));
     if crate::read::flag(&item, "isSimpleItem") {
         return refused("that item draws no landing pattern; only a fixed wing or a VTOL gets one, and a multirotor land is a plain return");
     }
@@ -37,7 +37,6 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
         return refused("that item is not a landing pattern; being complex is not the same as being one, and the launch row and every survey are complex too");
     }
     let (landing, slope_start, approach) = (place(&item, "landingCoordinate"), place(&item, "slopeStartCoordinate"), place(&item, "finalApproachCoordinate"));
-    let facts = object(&backend.get(&path));
     let fact = |property: &str| {
         facts
             .get("facts")

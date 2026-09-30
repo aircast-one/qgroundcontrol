@@ -573,6 +573,46 @@ fn camera_match(rest: &[Simple], found: &[Found]) -> Option<(Found, usize)> {
     }
 }
 
+const CAMERA_ACTIONS: [(&str, i64); 7] = [("No change", 0), ("Take photo", 6), ("Take photos (time)", 1), ("Take photos (distance)", 2), ("Stop taking photos", 3), ("Start recording video", 4), ("Stop recording video", 5)];
+
+pub fn camera_section(sections: &[Simple]) -> Value {
+    let gimbal = sections.iter().find(|s| s.command == CMD_DO_MOUNT_CONTROL);
+    let action = sections.iter().enumerate().find_map(|(i, item)| {
+        let next = sections.get(i + 1);
+        match item.command {
+            CMD_IMAGE_START_CAPTURE if p(item, 2) == 1.0 => Some(6),
+            CMD_IMAGE_START_CAPTURE => Some(1),
+            CMD_DO_SET_CAM_TRIGG_DIST if zero(item, 0) && next.is_some_and(|n| n.command == CMD_IMAGE_STOP_CAPTURE) => Some(3),
+            CMD_DO_SET_CAM_TRIGG_DIST => Some(2),
+            CMD_VIDEO_START_CAPTURE => Some(4),
+            CMD_VIDEO_STOP_CAPTURE => Some(5),
+            _ => None,
+        }
+    });
+    let action = action.unwrap_or(0);
+    let degrees = |property: &str, value: f64| json!({ "property": property, "value": value, "valueString": format!("{value:.0}"), "enumOrValueString": format!("{value:.0}"), "units": "deg" });
+    let chosen = CAMERA_ACTIONS.iter().position(|(_, v)| *v == action).unwrap_or(0);
+    json!({
+        "kind": "object",
+        "class": "CameraSection",
+        "specifyGimbal": gimbal.is_some(),
+        "facts": [
+            degrees("gimbalPitch", -gimbal.map_or(0.0, |g| p(g, 0))),
+            degrees("gimbalYaw", gimbal.map_or(0.0, |g| p(g, 2))),
+            {
+                "property": "cameraAction",
+                "value": action,
+                "valueString": action.to_string(),
+                "enumOrValueString": CAMERA_ACTIONS[chosen].0,
+                "enumStrings": CAMERA_ACTIONS.iter().map(|(label, _)| *label).collect::<Vec<_>>(),
+                "enumValues": CAMERA_ACTIONS.iter().map(|(_, v)| *v).collect::<Vec<_>>(),
+                "enumIndex": chosen,
+                "units": "",
+            },
+        ],
+    })
+}
+
 fn camera_span(rest: &[Simple], found: Vec<Found>) -> usize {
     match camera_match(rest, &found) {
         Some((kind, taken)) => taken + camera_span(&rest[taken..], found.into_iter().chain(std::iter::once(kind)).collect()),

@@ -852,6 +852,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
             },
             "vehicleTypeString": u8::try_from(vehicle_type).map_or("", crate::vehiclefacade::mav_type_text),
         })),
+        "plan.missionController.visualItems" => Some(json!({ "kind": "object", "count": visual_spans(&document).len() })),
         "plan.missionController" => {
             let sequence = visual_spans(&document).get(usize::try_from(selected).unwrap_or(0)).map_or(0, |(first, _)| *first);
             let rules = crate::missionkinds::Rules { takeoff_not_required: planning_setting("takeoffItemNotRequired", false), multiple_landings: planning_setting("allowMultipleLandingPatterns", true) };
@@ -1665,37 +1666,90 @@ fn speed_in_force(document: &Document, before: usize, hover: f64, cruise: f64) -
     changes.fold(start, |speed, sections| sections.iter().find(|s| s.command == 178).and_then(|s| s.params[1]).unwrap_or(speed))
 }
 
+const BREACH_RETURN_META: &str = include_str!("../../src/MissionManager/BreachReturn.FactMetaData.json");
+const BREACH_RETURN_DEFAULT_ALTITUDE: f64 = 75.0;
+
+pub fn breach_altitude_fact() -> Option<Value> {
+    if !enabled() {
+        return None;
+    }
+    let fence = held().document.as_ref().map(|d| d.fence.clone()).unwrap_or(Value::Null);
+    let altitude = fence.get("breachReturn").and_then(Value::as_array).and_then(|b| b.get(2)).and_then(Value::as_f64).unwrap_or(BREACH_RETURN_DEFAULT_ALTITUDE);
+    let meta = crate::factmeta::from_file(BREACH_RETURN_META).ok()?.remove("Altitude")?;
+    let mut fact = crate::settingsstore::fact_json(&meta, &json!(altitude), crate::units::cooking("vertical m"));
+    ["defaultValueString", "userVisible", "visible"].iter().for_each(|key| fact[*key] = Value::Null);
+    Some(fact)
+}
+
+pub fn camera_section(index: usize) -> Option<Value> {
+    if !enabled() {
+        return None;
+    }
+    let document = held().document.clone().unwrap_or_else(empty_document);
+    Some(match index.checked_sub(1).map(|at| document.items.get(at)) {
+        None => plandoc::camera_section(&document.settings_sections),
+        Some(Some(plandoc::Item::Simple(simple))) => plandoc::camera_section(&simple.sections),
+        _ => json!({ "kind": "null" }),
+    })
+}
+
+pub fn landing_inputs(index: usize) -> Option<(Value, Value)> {
+    if !enabled() {
+        return None;
+    }
+    let item = held().document.clone().zip(index.checked_sub(1)).and_then(|(document, at)| document.items.get(at).cloned());
+    Some(match item {
+        Some(plandoc::Item::Complex { json: pattern, .. }) => crate::landingpattern::view_inputs(&pattern).unwrap_or((json!({ "kind": "object", "isSimpleItem": false }), json!({ "kind": "null" }))),
+        Some(_) => (json!({ "kind": "object", "isSimpleItem": true }), json!({ "kind": "null" })),
+        None => (json!({ "kind": "object", "isSimpleItem": false }), json!({ "kind": "null" })),
+    })
+}
+
 pub fn survey_stats_inputs(backend: &dyn Backend, index: usize) -> Option<(Value, Value)> {
     if !enabled() {
         return None;
     }
-    let document = held().document.clone()?;
-    let at = index.checked_sub(1)?;
-    let plandoc::Item::Complex { json: survey, .. } = document.items.get(at)? else {
-        return Some((json!({ "kind": "object", "isSurveyItem": false }), json!({ "kind": "null" })));
-    };
+    let not_survey = || Some((json!({ "kind": "object", "isSurveyItem": false }), json!({ "kind": "null" })));
+    let Some((document, at)) = held().document.clone().zip(index.checked_sub(1)) else { return not_survey() };
+    let Some(plandoc::Item::Complex { json: item, .. }) = document.items.get(at) else { return not_survey() };
+    let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("");
     let setting = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
     let speed = speed_in_force(&document, at, setting("offlineEditingHoverSpeed", 5.0), setting("offlineEditingCruiseSpeed", 15.0));
-    let transect = &survey["TransectStyleComplexItem"];
-    let calc = &transect["CameraCalc"];
     let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
-    let visual: Vec<(f64, f64)> = transect["VisualTransectPoints"].as_array().map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default();
-    let frontal = number(calc, "AdjustedFootprintFrontal");
+    let per_second = |metres: f64| if speed == 0.0 { 0.0 } else { metres / speed };
     let horizontal = crate::read::Unit::horizontal(backend);
     let metres_fact = |property: &str, metres: f64| json!({ "property": property, "value": horizontal.show(metres), "rawValue": metres, "units": horizontal.name });
-    let stats = json!({
-        "kind": "object",
-        "isSurveyItem": true,
-        "cameraShots": number(transect, "CameraShots"),
-        "timeBetweenShots": if speed == 0.0 { 0.0 } else { frontal / speed },
-        "coveredArea": crate::mappolygon::area(&crate::surveydoc::polygon(survey)),
-        "complexDistance": visual.windows(2).map(|pair| crate::surveygrid::distance_between(pair[0], pair[1])).sum::<f64>(),
-    });
-    let facts = json!({ "kind": "object", "facts": [
+    let calc_facts = |calc: &Value| json!({ "kind": "object", "facts": [
         metres_fact("adjustedFootprintSide", number(calc, "AdjustedFootprintSide")),
-        metres_fact("adjustedFootprintFrontal", frontal),
+        metres_fact("adjustedFootprintFrontal", number(calc, "AdjustedFootprintFrontal")),
         metres_fact("distanceToSurface", number(calc, "DistanceToSurface")),
         { "property": "minTriggerInterval", "value": number(calc, "MinTriggerInterval"), "rawValue": number(calc, "MinTriggerInterval") },
     ] });
+    let stats = |shots: f64, seconds: f64, area: f64, distance: f64| json!({ "kind": "object", "isSurveyItem": kind == "survey", "cameraShots": shots, "timeBetweenShots": seconds, "coveredArea": area, "complexDistance": distance });
+    let (stats, facts) = match kind {
+        "survey" | "CorridorScan" => {
+            let transect = &item["TransectStyleComplexItem"];
+            let calc = &transect["CameraCalc"];
+            let visual: Vec<(f64, f64)> = transect["VisualTransectPoints"].as_array().map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default();
+            let area = match kind {
+                "survey" => crate::mappolygon::area(&crate::surveydoc::polygon(item)),
+                _ => crate::mappolygon::area(&crate::corridorscan::corridor_polygon(item).iter().map(|(latitude, longitude, _)| (*latitude, *longitude)).collect::<Vec<_>>()),
+            };
+            let distance = visual.windows(2).map(|pair| crate::surveygrid::distance_between(pair[0], pair[1])).sum::<f64>();
+            (stats(number(transect, "CameraShots"), per_second(number(calc, "AdjustedFootprintFrontal")), area, distance), calc_facts(calc))
+        }
+        "StructureScan" => {
+            let flight = crate::structurescan::saved_flight(item).unwrap_or_default();
+            let plan = crate::structurescan::saved_plan(item);
+            let shots = crate::structurescan::camera_shots(&flight, plan.adjusted_side, plan.layers) as f64;
+            (stats(shots, per_second(plan.adjusted_side), 0.0, crate::structurescan::scan_distance(&flight, &plan)), calc_facts(&item["CameraCalc"]))
+        }
+        _ => {
+            let row = crate::landingpattern::row(item);
+            let slope = crate::landingpattern::slope_start(item);
+            let distance = row.zip(slope).map_or(0.0, |(row, slope)| crate::surveygrid::distance_between(row.approach, slope) + crate::surveygrid::distance_between(slope, row.land));
+            (stats(0.0, 0.0, 0.0, distance), json!({ "kind": "null" }))
+        }
+    };
     Some((stats, facts))
 }

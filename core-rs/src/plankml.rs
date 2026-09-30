@@ -150,21 +150,10 @@ fn flight_path(items: &[UploadItem], planned: &Planned) -> Vec<Node> {
     ]
 }
 
-fn pairs(points: Option<&Value>) -> Vec<(f64, f64)> {
-    points.and_then(Value::as_array).map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default()
-}
-
 fn survey_area(item: &Value) -> Vec<Coord> {
     match item.get("complexItemType").and_then(Value::as_str) {
         Some("survey") => crate::surveydoc::polygon(item).into_iter().map(|(latitude, longitude)| (latitude, longitude, f64::NAN)).collect(),
-        Some("CorridorScan") => {
-            let polyline = pairs(item.get("polyline"));
-            let half = item.get("CorridorWidth").and_then(Value::as_f64).unwrap_or(0.0) / 2.0;
-            match polyline.len() {
-                0 | 1 => Vec::new(),
-                _ => [crate::mappolyline::offset_on_ellipsoid(&polyline, half), crate::mappolyline::offset_on_ellipsoid(&polyline, -half).into_iter().rev().collect()].concat(),
-            }
-        }
+        Some("CorridorScan") => crate::corridorscan::corridor_polygon(item),
         _ => Vec::new(),
     }
 }

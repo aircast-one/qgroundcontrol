@@ -379,6 +379,18 @@ pub fn slope_start(pattern: &Value) -> Option<(f64, f64)> {
     }
 }
 
+pub fn view_inputs(pattern: &Value) -> Option<(Value, Value)> {
+    let place = |p: &Point3| json!({ "valid": true, "latitude": p.latitude, "longitude": p.longitude, "altitude": p.altitude });
+    let land = coordinate(pattern, "landCoordinate")?;
+    let approach = approach(pattern)?;
+    let loiters_down = flag(pattern, "useLoiterToAlt") && slope_start(pattern).is_some_and(|s| s != (approach.latitude, approach.longitude));
+    let (slope_latitude, slope_longitude) = slope_start(pattern)?;
+    let slope = Point3 { latitude: slope_latitude, longitude: slope_longitude, altitude: if loiters_down { land.altitude } else { approach.altitude } };
+    let item = json!({ "kind": "object", "isSimpleItem": false, "landingCoordinate": place(&land), "slopeStartCoordinate": place(&slope), "finalApproachCoordinate": place(&approach) });
+    let facts: Vec<Value> = field_values(pattern).into_iter().map(|(_, property, value)| json!({ "property": property, "value": value })).collect();
+    Some((item, json!({ "kind": "object", "facts": facts })))
+}
+
 pub struct Row {
     pub approach: (f64, f64),
     pub land: (f64, f64),

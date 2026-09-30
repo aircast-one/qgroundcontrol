@@ -49,6 +49,15 @@ pub fn flat_transects(polyline: &[Point], params: &Params) -> Vec<Vec<Point>> {
     typed_transects(polyline, params).into_iter().map(|transect| transect.into_iter().map(|coord| coord.at).collect()).collect()
 }
 
+pub fn corridor_polygon(item: &serde_json::Value) -> Vec<(f64, f64, f64)> {
+    let polyline: Vec<Point> = item.get("polyline").and_then(serde_json::Value::as_array).map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default();
+    let half = item.get("CorridorWidth").and_then(serde_json::Value::as_f64).unwrap_or(0.0) / 2.0;
+    match polyline.len() {
+        0 | 1 => Vec::new(),
+        _ => [crate::mappolyline::offset_on_ellipsoid(&polyline, half), crate::mappolyline::offset_on_ellipsoid(&polyline, -half).into_iter().rev().collect()].concat(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
