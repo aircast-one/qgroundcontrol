@@ -11,7 +11,7 @@ class MapClickMenuTest {
     fun `reads the offered actions in the order the core serves them`() {
         val actions = mapClickActions(
             JSONObject(
-                """{"actions":[{"path":"vehicle.guidedModeGotoLocation","label":"Go to location","title":"Go To Location",""" +
+                """{"actions":[{"id":"GoTo","path":"vehicle.guidedModeGotoLocation","label":"Go to location","title":"Go To Location",""" +
                     """"message":"Move the vehicle to the specified location","confirm":true},""" +
                     """{"path":"vehicle.guidedModeROI","label":"ROI at location","title":"ROI","message":"m","confirm":false}]}""",
             ),
@@ -20,6 +20,16 @@ class MapClickMenuTest {
         assertTrue(actions[0].confirm)
         assertFalse(actions[1].confirm)
         assertTrue(mapClickActions(null).isEmpty())
+    }
+
+    @Test
+    fun `an orbit sends the point, radius, direction and height above home in that order`() {
+        val args = orbitArgs(MapPoint(47.4, 8.5), OrbitChoice(radiusMetres = 30.0, clockwise = false, aboveHomeMetres = 50.0))
+        assertEquals(listOf<Any>(47.4, 8.5, 30.0, false, 50.0), args.toList())
+        val feet = orbitDefaults(JSONObject("""{"orbitDefaultRadius":98.4252,"orbitRadiusUnit":"ft","orbitMetresPerUnit":0.3048,"orbitClockwise":true}"""))
+        assertEquals(30.0, radiusMetres("", feet)!!, 1e-3)
+        assertEquals(15.24, radiusMetres("50", feet)!!, 1e-9)
+        assertEquals(null, radiusMetres("wide", feet))
     }
 
     @Test

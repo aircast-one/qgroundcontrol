@@ -39,10 +39,15 @@ pub const DEPS: &[&str] = &[
     "vehicle.flightMode",
     "vehicle.sensorsPresentBits",
     "settings.flyViewSettings.goToLocationRequiresConfirmInGuided",
+    "vehicle.homePosition",
+    "vehicle.landing",
+    "settings.unitsSettings.horizontalDistanceUnits",
 ];
 
+const ORBIT_DEFAULT_RADIUS_METRES: f64 = 30.0;
+
 struct Offer {
-    click: Click,
+    id: &'static str,
     path: &'static str,
     label: &'static str,
     title: &'static str,
@@ -52,7 +57,7 @@ struct Offer {
 
 fn offers(backend: &dyn Backend) -> Vec<Offer> {
     let vehicle = object(&backend.get_fields("vehicle", "flying,sensorsPresentBits,flightMode,gotoFlightMode"));
-    let supports = object(&backend.get_fields("vehicle.supports", "roiMode"));
+    let supports = object(&backend.get_fields("vehicle.supports", "roiMode,orbitMode"));
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
         return vec![];
     }
@@ -60,12 +65,16 @@ fn offers(backend: &dyn Backend) -> Vec<Offer> {
     let gps = integer(&vehicle, "sensorsPresentBits").unwrap_or(GPS_SENSOR_BIT) & GPS_SENSOR_BIT != 0;
     let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
     let confirm_in_guided = crate::read::value_number(&backend.get("settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue")).is_none_or(|v| v != 0.0);
+    let home = object(&backend.get("vehicle.homePosition"));
+    let home_known = flag(&home, "valid") && home.get("altitude").and_then(Value::as_f64).is_some_and(f64::is_finite);
+    let orbit = flying && flag(&supports, "orbitMode") && home_known && !crate::guided::mission_active(backend);
     [
-        (flying, Offer { click: Click::GoTo, path: "vehicle.guidedModeGotoLocation", label: "Go to location", title: "Go To Location", message: "Move the vehicle to the specified location", confirm: !in_goto_mode || confirm_in_guided }),
-        (flying && flag(&supports, "roiMode"), Offer { click: Click::Roi, path: "vehicle.guidedModeROI", label: "ROI at location", title: "ROI", message: "Make the specified location a Region Of Interest", confirm: false }),
-        (true, Offer { click: Click::SetHome, path: "vehicle.doSetHome", label: "Set home here", title: "Set Home", message: "Set vehicle home as the specified location. This will affect Return to Home position", confirm: true }),
-        (flying, Offer { click: Click::Heading, path: "vehicle.guidedModeChangeHeading", label: "Set Heading", title: "Change Heading", message: "Set the vehicle heading towards the specified location", confirm: true }),
-        (!gps, Offer { click: Click::EstimatorOrigin, path: "vehicle.setEstimatorOrigin", label: "Set Estimator Origin", title: "Set Estimator Origin", message: "Make the specified location the estimator origin", confirm: true }),
+        (flying, Offer { id: "GoTo", path: "vehicle.guidedModeGotoLocation", label: "Go to location", title: "Go To Location", message: "Move the vehicle to the specified location", confirm: !in_goto_mode || confirm_in_guided }),
+        (orbit, Offer { id: "Orbit", path: "guided.orbit", label: "Orbit at location", title: "Orbit", message: "Orbit the vehicle around the specified location", confirm: true }),
+        (flying && flag(&supports, "roiMode"), Offer { id: "Roi", path: "vehicle.guidedModeROI", label: "ROI at location", title: "ROI", message: "Make the specified location a Region Of Interest", confirm: false }),
+        (true, Offer { id: "SetHome", path: "vehicle.doSetHome", label: "Set home here", title: "Set Home", message: "Set vehicle home as the specified location. This will affect Return to Home position", confirm: true }),
+        (flying, Offer { id: "Heading", path: "vehicle.guidedModeChangeHeading", label: "Set Heading", title: "Change Heading", message: "Set the vehicle heading towards the specified location", confirm: true }),
+        (!gps, Offer { id: "EstimatorOrigin", path: "vehicle.setEstimatorOrigin", label: "Set Estimator Origin", title: "Set Estimator Origin", message: "Make the specified location the estimator origin", confirm: true }),
     ]
     .into_iter()
     .filter_map(|(shown, offer)| shown.then_some(offer))
@@ -74,18 +83,23 @@ fn offers(backend: &dyn Backend) -> Vec<Offer> {
 
 pub fn map_click_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let listed = offers(backend);
+    let unit = crate::read::Unit::horizontal(backend);
     json!({
         "kind": "object",
         "class": "MapClick",
         "offered": !listed.is_empty(),
         "actions": listed.iter().map(|o| json!({
-            "id": format!("{:?}", o.click),
+            "id": o.id,
             "path": o.path,
             "label": o.label,
             "title": o.title,
             "message": o.message,
             "confirm": o.confirm,
         })).collect::<Vec<_>>(),
+        "orbitDefaultRadius": unit.show(ORBIT_DEFAULT_RADIUS_METRES),
+        "orbitRadiusUnit": unit.name,
+        "orbitMetresPerUnit": 1.0 / unit.factor,
+        "orbitClockwise": true,
     })
 }
 
@@ -165,18 +179,19 @@ mod tests {
         assert_eq!(Click::of("vehicle.guidedModeOrbit"), None, "the orbit is guided.orbit's, with a radius and altitude the operator chose");
     }
 
-    struct Offered { flying: bool, sensors: i64, mode: &'static str, roi: bool, confirm_in_guided: f64 }
+    struct Offered { flying: bool, sensors: i64, mode: &'static str, roi: bool, confirm_in_guided: f64, orbit: bool }
     impl Backend for Offered {
         fn get(&self, p: &str) -> String {
             match p {
                 "settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue" => json!({ "value": self.confirm_in_guided }).to_string(),
+                "vehicle.homePosition" => json!({ "kind": "object", "valid": true, "altitude": 480.0 }).to_string(),
                 _ => self.get_fields(p, ""),
             }
         }
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
                 "vehicle" => json!({ "kind": "object", "flying": self.flying, "sensorsPresentBits": self.sensors, "flightMode": self.mode, "gotoFlightMode": "Guided" }),
-                "vehicle.supports" => json!({ "kind": "object", "roiMode": self.roi }),
+                "vehicle.supports" => json!({ "kind": "object", "roiMode": self.roi, "orbitMode": self.orbit }),
                 _ => json!({ "kind": "null" }),
             }
             .to_string()
@@ -189,7 +204,7 @@ mod tests {
     #[test]
     fn the_menu_offers_what_qgc_offers() {
         let labels = |b: &Offered| map_click_view(b, &[])["actions"].as_array().unwrap().iter().map(|a| a["label"].as_str().unwrap().to_string()).collect::<Vec<_>>();
-        let flying = Offered { flying: true, sensors: 32, mode: "Loiter", roi: true, confirm_in_guided: 0.0 };
+        let flying = Offered { flying: true, sensors: 32, mode: "Loiter", roi: true, confirm_in_guided: 0.0, orbit: false };
         assert_eq!(labels(&flying), ["Go to location", "ROI at location", "Set home here", "Set Heading"]);
         assert_eq!(labels(&Offered { flying: false, ..flying }), ["Set home here"], "on the ground only home can be moved");
         assert_eq!(labels(&Offered { flying: false, sensors: 0, ..flying }), ["Set home here", "Set Estimator Origin"], "a vehicle without GPS is offered an origin");
@@ -198,6 +213,8 @@ mod tests {
         assert_eq!(actions(&Offered { mode: "Guided", ..flying })[0]["confirm"], false, "already in Guided the goto is sent at once unless the setting asks for a confirmation");
         assert_eq!(actions(&Offered { mode: "Guided", confirm_in_guided: 1.0, ..flying })[0]["confirm"], true);
         assert_eq!(actions(&flying)[1]["confirm"], false, "QGC sends an ROI without asking");
+        assert_eq!(labels(&Offered { orbit: true, ..flying })[1], "Orbit at location", "an orbit follows the goto when the vehicle supports it and home carries an altitude");
+        assert_eq!(map_click_view(&flying, &[])["orbitDefaultRadius"], 30.0);
         assert_eq!(map_click_view(&Vehicle(RefCell::new(vec![])), &[])["offered"], true);
     }
 

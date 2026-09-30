@@ -638,7 +638,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RangeHint(text: String) {
+internal fun RangeHint(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,
