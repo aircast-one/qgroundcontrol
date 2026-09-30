@@ -48,6 +48,7 @@ use crate::mapclick;
 use crate::missioncomplete;
 use crate::paramtools;
 use crate::gimbalindicator;
+use crate::escview;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -158,6 +159,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
     View { path: "view.attitude", deps: attitude::DEPS, compute: attitude::attitude_view },
     View { path: "view.mapClick", deps: mapclick::DEPS, compute: mapclick::map_click_view },
+    View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
     View { path: "view.gimbalIndicator", deps: gimbalindicator::DEPS, compute: gimbalindicator::indicator_view },
     View { path: "view.parameterTools", deps: paramtools::DEPS, compute: paramtools::parameter_tools_view },
     View { path: "view.missionComplete", deps: missioncomplete::DEPS, compute: missioncomplete::mission_complete_view },
@@ -481,6 +483,7 @@ mod deps_cover_reads {
             ("paramtools", include_str!("paramtools.rs")),
             ("paramfile", include_str!("paramfile.rs")),
             ("gimbalindicator", include_str!("gimbalindicator.rs")),
+            ("escview", include_str!("escview.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
