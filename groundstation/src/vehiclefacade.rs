@@ -6,6 +6,10 @@ pub struct Facade<B>(pub B);
 
 const VEHICLE_OBJECT_FIELDS: &str = "id,flightMode,armed,flying,landing,gotoFlightMode,landFlightMode,rtlFlightMode,smartRTLFlightMode,missionFlightMode,pauseFlightMode,sensorsPresentBits,coordinate,homePosition";
 
+fn names_a_vehicle(object: &str) -> bool {
+    object == "vehicle" || object.starts_with("vehicle.")
+}
+
 fn offline_field(path: &str, field: &str) -> Option<Value> {
     match (path, field) {
         ("vehicles", "activeVehicleAvailable") => Some(json!(false)),
@@ -902,7 +906,7 @@ impl<B: Backend> Backend for Facade<B> {
             whole["class"] = json!("Vehicle");
             return whole.to_string();
         }
-        if let Some((prefix, field)) = path.rsplit_once('.').filter(|(prefix, _)| switched_on() && !crate::qthost::present() && no_vehicle() && !prefix.starts_with("vehicle")) {
+        if let Some((prefix, field)) = path.rsplit_once('.').filter(|(prefix, _)| switched_on() && !crate::qthost::present() && no_vehicle() && !names_a_vehicle(prefix)) {
             if let Some(value) = offline_field(prefix, field) {
                 return json!({ "kind": "value", "value": value }).to_string();
             }
@@ -1340,6 +1344,13 @@ impl<B: Backend> Backend for Facade<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_vehicle_manager_is_not_a_vehicle() {
+        assert!(names_a_vehicle("vehicle") && names_a_vehicle("vehicle.parameterManager"));
+        assert!(!names_a_vehicle("vehicles"), "vehicles.activeVehicleAvailable is the manager's answer and has an offline value");
+        assert_eq!(offline_field("vehicles", "activeVehicleAvailable"), Some(json!(false)));
+    }
 
     #[test]
     fn airframe_and_firmware_text_follow_the_heartbeat_and_autopilot_version() {
