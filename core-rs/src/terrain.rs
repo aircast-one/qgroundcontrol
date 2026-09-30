@@ -114,7 +114,17 @@ pub fn samples(from: (f64, f64), to: (f64, f64)) -> Vec<(f64, f64)> {
     }
 }
 
+const COLLISION_IGNORE_M: f64 = 10.0;
+
 pub fn segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
+    shaped_segment(from, from_alt, to, to_alt, false, height)
+}
+
+fn landing_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
+    shaped_segment(from, from_alt, to, to_alt, true, height)
+}
+
+fn shaped_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, land: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
     let points = samples(from, to);
     let between = geodesic_distance(points[0], points[1]);
     let last_between = geodesic_distance(points[points.len() - 2], points[points.len() - 1]);
@@ -128,7 +138,7 @@ pub fn segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, hei
         .scan(0.0, |x, (i, ground)| {
             let here = *x;
             *x += if i + 2 == heights.len() { last_between } else { between };
-            Some(*ground > slope * here + from_alt)
+            Some(!(land && here > total - COLLISION_IGNORE_M) && *ground > slope * here + from_alt)
         })
         .any(|hit| hit);
     json!({
@@ -143,8 +153,51 @@ pub fn segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, hei
     })
 }
 
+fn landing_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Option<Vec<Value>> {
+    let row = crate::landingpattern::row(item)?;
+    let slope = crate::landingpattern::slope_start(item)?;
+    let base = if row.relative { home_altitude } else { 0.0 };
+    let (entry, exit) = (row.approach_altitude + base, row.land_altitude + base);
+    let loiter = item.get("useLoiterToAlt").and_then(Value::as_bool).unwrap_or(false);
+    let vtol = item.get("complexItemType").and_then(Value::as_str) == Some(crate::landingpattern::VTOL_PATTERN);
+    Some(match (vtol, loiter) {
+        (false, true) => vec![segment(row.approach, entry, slope, entry, height), landing_segment(slope, entry, row.land, exit, height)],
+        (false, false) => vec![landing_segment(row.approach, entry, row.land, exit, height)],
+        (true, true) => vec![segment(row.approach, entry, slope, entry, height), segment(slope, entry, row.land, entry, height), landing_segment(row.land, entry, row.land, exit, height)],
+        (true, false) => vec![segment(row.approach, entry, row.land, entry, height), landing_segment(row.land, entry, row.land, exit, height)],
+    })
+}
+
+fn structure_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Option<Vec<Value>> {
+    let flight = crate::structurescan::saved_flight(item).ok().filter(|f| f.len() > 2)?;
+    let plan = crate::structurescan::saved_plan(item);
+    let half = plan.adjusted_frontal / 2.0;
+    let step = if plan.start_from_top { -half } else { half };
+    let first = if plan.start_from_top { plan.structure_height } else { plan.scan_bottom_alt } + step + home_altitude;
+    let entrance = flight[plan.entry_vertex % flight.len()];
+    let entrance_alt = plan.entrance_alt + home_altitude;
+    let layers: Vec<f64> = (0..plan.layers.max(0)).map(|i| first + 2.0 * step * i as f64).collect();
+    let ring: Vec<((f64, f64), (f64, f64))> = flight.windows(2).map(|pair| (pair[0], pair[1])).chain(std::iter::once((flight[flight.len() - 1], flight[0]))).collect();
+    let last = layers.last().copied().unwrap_or(0.0);
+    Some(
+        std::iter::once(segment(entrance, entrance_alt, entrance, first, height))
+            .chain(layers.iter().enumerate().flat_map(|(i, alt)| {
+                let climb = (i > 0).then(|| segment(entrance, layers[i - 1], entrance, *alt, height));
+                climb.into_iter().chain(ring.iter().map(|(a, b)| segment(*a, *alt, *b, *alt, height))).collect::<Vec<_>>()
+            }))
+            .chain(std::iter::once(segment(entrance, last, entrance, entrance_alt, height)))
+            .collect(),
+    )
+}
+
 pub fn transect_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Option<Vec<Value>> {
     let kind = item.get("complexItemType").and_then(Value::as_str)?;
+    if crate::landingpattern::is_landing(kind) {
+        return landing_segments(item, home_altitude, height);
+    }
+    if kind == "StructureScan" {
+        return structure_segments(item, home_altitude, height);
+    }
     (kind == "survey" || kind == "CorridorScan").then_some(())?;
     let transect = item.get("TransectStyleComplexItem")?;
     let calc = transect.get("CameraCalc")?;
@@ -243,18 +296,14 @@ fn core_model(backend: &dyn Backend) -> Value {
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            if item.get("isSimpleItem") == Some(&Value::Bool(false)) && item.get("homePosition") != Some(&Value::Bool(true)) {
-                let collides = core_segments(index).is_some_and(|segments| segments.iter().any(|s| s["terrainCollision"] == true));
-                let mut element = json!({ "terrainAltitude": Value::Null, "terrainCollision": collides });
-                FIELDS.split(',').filter(|f| !matches!(*f, "terrainAltitude" | "terrainCollision")).for_each(|f| element[f] = item.get(f).cloned().unwrap_or(Value::Null));
-                return element;
-            }
             let coordinate = item.get("coordinate");
             let at = |key: &str| coordinate.and_then(|c| c.get(key)).and_then(Value::as_f64);
             let placed = item.get("specifiesCoordinate").and_then(Value::as_bool) == Some(true);
             let ground = at("latitude").zip(at("longitude")).filter(|(latitude, longitude)| placed && !(*latitude == 0.0 && *longitude == 0.0)).and_then(|(latitude, longitude)| crate::terrainservice::height(latitude, longitude));
             let amsl = item.get("amslEntryAlt").and_then(Value::as_f64).unwrap_or(f64::NAN);
-            let mut element = json!({ "terrainAltitude": ground, "terrainCollision": placed && collides(amsl, ground, range) });
+            let complex = item.get("isSimpleItem") == Some(&Value::Bool(false)) && item.get("homePosition") != Some(&Value::Bool(true));
+            let segments_collide = complex && core_segments(index).is_some_and(|segments| segments.iter().any(|s| s["terrainCollision"] == true));
+            let mut element = json!({ "terrainAltitude": ground, "terrainCollision": segments_collide || (placed && collides(amsl, ground, range)) });
             FIELDS.split(',').filter(|f| !matches!(*f, "terrainAltitude" | "terrainCollision")).for_each(|f| element[f] = item.get(f).cloned().unwrap_or(Value::Null));
             element
         })
