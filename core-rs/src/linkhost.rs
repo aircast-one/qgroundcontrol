@@ -20,6 +20,7 @@ pub enum Owned {
     Tcp(TcpLink),
     #[cfg(not(target_os = "android"))]
     Serial(crate::seriallink::SerialLink),
+    Cloud(crate::cloudlink::CloudLink),
 }
 
 impl Owned {
@@ -29,6 +30,7 @@ impl Owned {
             Owned::Tcp(link) => link.write(bytes).is_ok(),
             #[cfg(not(target_os = "android"))]
             Owned::Serial(link) => link.write(bytes).is_ok(),
+            Owned::Cloud(link) => link.write(bytes),
         }
     }
 
@@ -38,6 +40,7 @@ impl Owned {
             Owned::Tcp(link) => link.close(),
             #[cfg(not(target_os = "android"))]
             Owned::Serial(link) => link.close(),
+            Owned::Cloud(link) => link.close(),
         }
     }
 }
@@ -229,6 +232,13 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             )
             .map(Owned::Serial)
             .map_err(|e| Failure::retry(e.to_string()))
+        }
+        Kind::AircastCloud { api_base, device_id } => {
+            let url = crate::cloudlink::relay_url(api_base, device_id).ok_or_else(|| Failure::edit_address(format!("{} has no device to reach.", config.name)))?;
+            let token = crate::cloudlink::token_key(api_base).and_then(|key| crate::settingsstore::stored_text(&key)).filter(|t| !t.is_empty());
+            let token = token.ok_or_else(|| Failure::edit_address("Sign in to your Aircast account in this link's settings to use the cloud backup link."))?;
+            let shared = shared.clone();
+            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(url, token, move |bytes| shared.deliver(id, bytes))))
         }
         other => Err(Failure::retry(format!("the core does not own {other:?} links on this platform"))),
     }

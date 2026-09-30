@@ -37,6 +37,7 @@ url = "2"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 geoconvert = "1.0.2"
 geographiclib-rs = "0.2.7"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"

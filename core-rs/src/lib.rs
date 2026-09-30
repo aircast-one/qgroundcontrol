@@ -71,6 +71,7 @@ pub mod linkremove;
 pub mod mapclick;
 pub mod mapurls;
 pub mod maptiles;
+pub mod cloudlink;
 pub mod commandtree;
 pub mod components;
 pub mod paramnames;
