@@ -134,6 +134,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         }
         EscIndicatorCell()
         RemoteIdIndicatorCell()
+        GcsBatteryCell()
         GimbalIndicatorCell()
     }
 
