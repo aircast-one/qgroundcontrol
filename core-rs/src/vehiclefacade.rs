@@ -579,6 +579,27 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
     (answered.into_iter().filter_map(|(name, v)| Some((name.to_string(), v?))).collect(), missing.into_iter().map(|(name, _)| name.to_string()).collect())
 }
 
+const FIRMWARE_LIMITS: [&str; 4] = ["vehicle.minimumTakeoffAltitudeMeters", "vehicle.maximumHorizontalSpeedMultirotorMetersSecond", "vehicle.maximumEquivalentAirspeed", "vehicle.minimumEquivalentAirspeed"];
+const DEFAULT_TAKEOFF_METRES: f64 = 3.048;
+
+fn firmware_limit(path: &str, autopilot: u8, vtol: bool, param: &dyn Fn(&str) -> Option<f64>) -> Option<f64> {
+    let first = |names: &[(&str, f64)]| names.iter().find_map(|(name, scale)| param(name).map(|v| v * scale));
+    match (autopilot, path) {
+        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.minimumTakeoffAltitudeMeters") => {
+            let names: &[(&str, f64)] = if vtol { &[("Q_PILOT_TKO_ALT_M", 1.0), ("Q_PILOT_TKOFF_ALT", 0.01), ("Q_RTL_ALT", 1.0)] } else { &[("PILOT_TKO_ALT_M", 1.0), ("PILOT_TKOFF_ALT", 0.01)] };
+            Some(first(names).filter(|v| *v != 0.0).unwrap_or(DEFAULT_TAKEOFF_METRES))
+        }
+        (_, "vehicle.minimumTakeoffAltitudeMeters") => Some(DEFAULT_TAKEOFF_METRES),
+        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.maximumHorizontalSpeedMultirotorMetersSecond") => first(&[("WP_SPD", 1.0), ("WPNAV_SPEED", 0.01)]),
+        (crate::modes::AUTOPILOT_PX4, "vehicle.maximumHorizontalSpeedMultirotorMetersSecond") => param("MPC_XY_VEL_MAX"),
+        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.maximumEquivalentAirspeed") => param("AIRSPEED_MAX"),
+        (crate::modes::AUTOPILOT_PX4, "vehicle.maximumEquivalentAirspeed") => param("FW_AIRSPD_MAX"),
+        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.minimumEquivalentAirspeed") => param("AIRSPEED_MIN"),
+        (crate::modes::AUTOPILOT_PX4, "vehicle.minimumEquivalentAirspeed") => param("FW_AIRSPD_MIN"),
+        _ => None,
+    }
+}
+
 fn merged(answered: serde_json::Map<String, Value>, host: String) -> String {
     serde_json::from_str::<Value>(&host).ok().filter(|h| h["kind"] == "object").map_or(host, |mut h| {
         answered.into_iter().for_each(|(k, v)| h[k.as_str()] = v);
@@ -1033,6 +1054,12 @@ impl<B: Backend> Backend for Facade<B> {
             let started = self.0.core_guided(&json!({ "action": "rcCal", "vehicle": vehicle, "op": op }));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
+        if let Some(limit) = FIRMWARE_LIMITS.contains(&path).then(|| {
+            let hub = crate::hub::lock();
+            hub.active().map(|v| firmware_limit(path, v.autopilot, (19..=25).contains(&v.vehicle_type), &|name| v.parameter(v.component, name).map(|p| p.as_f64())))
+        }).flatten().filter(|_| switched_on()) {
+            return json!({ "ok": true, "result": limit }).to_string();
+        }
         if path == "vehicle.requestOperatorControl" && inspector_owned() {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
             let allow = given.get(0).and_then(Value::as_bool).unwrap_or(false);
@@ -1149,6 +1176,19 @@ mod tests {
     #[test]
     fn an_unnamed_camera_is_called_by_its_slot() {
         assert_eq!((video_camera_name(0), video_camera_name(2)), ("Camera 1".to_string(), "Camera 3".to_string()));
+    }
+
+    #[test]
+    fn firmware_limits_read_the_parameter_each_firmware_names_with_its_units() {
+        let params = |held: &'static [(&'static str, f64)]| move |name: &str| held.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        let apm = crate::modes::AUTOPILOT_ARDUPILOT;
+        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", apm, false, &params(&[("PILOT_TKOFF_ALT", 250.0)])), Some(2.5), "pre-4.7 copters give centimetres");
+        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", apm, true, &params(&[("PILOT_TKOFF_ALT", 250.0), ("Q_RTL_ALT", 15.0)])), Some(15.0), "a VTOL reads the Q_ parameters");
+        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", apm, false, &params(&[("PILOT_TKOFF_ALT", 0.0)])), Some(3.048), "zero means the firmware default");
+        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", crate::modes::AUTOPILOT_PX4, false, &params(&[])), Some(3.048));
+        assert_eq!(firmware_limit("vehicle.maximumHorizontalSpeedMultirotorMetersSecond", apm, false, &params(&[("WPNAV_SPEED", 1000.0)])), Some(10.0));
+        assert_eq!(firmware_limit("vehicle.maximumHorizontalSpeedMultirotorMetersSecond", apm, false, &params(&[("WP_SPD", 7.0), ("WPNAV_SPEED", 1000.0)])), Some(7.0), "4.7 names win");
+        assert_eq!(firmware_limit("vehicle.maximumEquivalentAirspeed", apm, false, &params(&[])), None, "no parameter is no limit");
     }
 
     #[test]
