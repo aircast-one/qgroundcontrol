@@ -33,7 +33,7 @@ fn override_refusal(channel: Option<i64>, pwm: Option<i64>, connected: bool, con
     }
 }
 
-fn on_core(backend: &dyn Backend, mut action: Value) -> Option<bool> {
+pub(crate) fn on_core(backend: &dyn Backend, mut action: Value) -> Option<bool> {
     crate::vehiclefacade::switched_on().then_some(())?;
     action["vehicle"] = object(&backend.get("vehicle.id")).get("value").cloned().filter(Value::is_u64)?;
     backend.core_guided(&action).map(|started| started.is_ok())

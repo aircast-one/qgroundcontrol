@@ -152,6 +152,7 @@ pub mod gcsbattery;
 pub mod firstrun;
 pub mod applog;
 pub mod offlinemaps;
+pub mod virtualjoystick;
 pub mod gimbalindicator;
 pub mod gpsresilience;
 pub mod paramfile;

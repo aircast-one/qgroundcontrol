@@ -59,6 +59,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import one.aircast.android.ui.StatusReadingsInline
 import one.aircast.android.ui.VehicleStateChip
+import one.aircast.android.ui.VirtualJoystick
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.Modifier
@@ -111,6 +112,7 @@ private val KEY_ROW_STOP_GAP = 24.dp
 
 private val VIDEO_INSET_WIDTH = 200.dp
 private val VIDEO_INSET_HEIGHT = 112.dp
+private val VIRTUAL_JOYSTICK_BOTTOM_MARGIN = 96.dp
 
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
@@ -412,6 +414,15 @@ fun AircastShell(hostView: android.view.View?) {
                         },
                         expanded = videoExpanded,
                         onClick = { videoExpanded = !videoExpanded },
+                    )
+                }
+
+                if (tab == Tab.Fly) {
+                    VirtualJoystick(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = VIRTUAL_JOYSTICK_BOTTOM_MARGIN),
                     )
                 }
 

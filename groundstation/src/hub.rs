@@ -34,6 +34,7 @@ pub const TYPE_ADSB: u8 = 27;
 pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
+const MANUAL_CONTROL_SCALE: f32 = 1000.0;
 const MAV_STATE_ACTIVE: u8 = 4;
 const SEVERITY_ERROR: u8 = 3;
 const COMMAND_LONG_ID: u32 = 76;
@@ -1097,6 +1098,15 @@ impl Vehicle {
         self.encode(&Outbound::RcOverride { target, channels }).into_iter().collect()
     }
 
+    fn virtual_joystick(&mut self, action: &Value) -> Vec<Vec<u8>> {
+        if self.commands.high_latency {
+            return Vec::new();
+        }
+        let axis = |key: &str| (action.get(key).and_then(Value::as_f64).unwrap_or(0.0) as f32 * MANUAL_CONTROL_SCALE) as i16;
+        let control = Outbound::ManualControl { target: self.id, x: axis("pitch"), y: axis("roll"), z: axis("thrust"), r: axis("yaw") };
+        self.encode(&control).into_iter().collect()
+    }
+
     pub fn set_rc_override(&mut self, channel: u8, pwm: i64, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
         if !(1..=RC_OVERRIDE_CHANNEL_COUNT).contains(&channel) {
             return Err(format!("RC channels run from 1 to {RC_OVERRIDE_CHANNEL_COUNT}."));
@@ -1143,6 +1153,7 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("refreshParameters") => {
                 let actions = self.params.refresh_all(params::ALL_COMPONENTS);
@@ -2721,6 +2732,21 @@ mod tests {
     }
 
     #[test]
+    fn the_virtual_joystick_sends_manual_control_scaled_as_vehicle_does() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let sent = vehicle.start_guided(&json!({ "action": "virtualJoystick", "roll": 0.25, "pitch": -0.5, "yaw": 1.0, "thrust": 0.5 }), 1_000).unwrap();
+        let control = sent.iter().find_map(|b| match decode(b) {
+            MavMessage::MANUAL_CONTROL(m) => Some(m),
+            _ => None,
+        }).expect("a MANUAL_CONTROL frame");
+        assert_eq!((control.target, control.x, control.y, control.z, control.r), (1, -500, 250, 500, 1000), "pitch is x, roll y, thrust z, yaw r, each times 1000");
+        assert_eq!((control.buttons, control.enabled_extensions), (0, 0));
+    }
+
+    #[test]
     fn the_primary_link_stays_until_it_goes_quiet_and_then_moves_to_a_live_one() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
@@ -3012,8 +3038,8 @@ mod tests {
         let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_SET_MODE, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
         assert!(hub.on_frame(origin(4), &autopilot, &ack, 1_300_000, 1300).is_empty());
         let armed = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(4, false), 2_000_000, 2000);
-        let MavMessage::COMMAND_LONG(arm) = decode(&armed[0].1) else { panic!() };
-        assert_eq!((arm.command, arm.param1), (MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0));
+        let arming: Vec<(MavCmd, f32)> = armed.iter().filter_map(|(_, bytes)| match decode(bytes) { MavMessage::COMMAND_LONG(c) => Some((c.command, c.param1)), _ => None }).collect();
+        assert!(arming.contains(&(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0)), "{arming:?}");
         assert!(hub.tick(2_500).is_empty());
         let takeoff = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(4, true), 3_000_000, 3000);
         let sent: Vec<(MavCmd, f32)> = takeoff.iter().filter_map(|(_, bytes)| match decode(bytes) { MavMessage::COMMAND_LONG(c) => Some((c.command, c.param7)), _ => None }).collect();

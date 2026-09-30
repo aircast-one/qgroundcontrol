@@ -1,5 +1,5 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -45,6 +45,7 @@ pub enum Outbound {
     LoggingAck { target: (u8, u8), sequence: u16 },
     AccelCalAck,
     RcOverride { target: (u8, u8), channels: [u16; 18] },
+    ManualControl { target: u8, x: i16, y: i16, z: i16, r: i16 },
     LogRequestList { target: (u8, u8), start: u16, end: u16 },
     LogRequestData { target: (u8, u8), id: u16, offset: u32, count: u32 },
     LogRequestEnd { target: (u8, u8) },
@@ -226,6 +227,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
                 operator_id: chars(operator_id),
             }),
         }),
+        Outbound::ManualControl { target, x, y, z, r } => Some(MavMessage::MANUAL_CONTROL(MANUAL_CONTROL_DATA { x: *x, y: *y, z: *z, r: *r, target: *target, ..MANUAL_CONTROL_DATA::default() })),
         Outbound::RcOverride { target, channels: c } => Some(MavMessage::RC_CHANNELS_OVERRIDE(RC_CHANNELS_OVERRIDE_DATA {
             chan1_raw: c[0],
             chan2_raw: c[1],
