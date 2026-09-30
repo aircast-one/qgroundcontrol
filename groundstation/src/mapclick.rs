@@ -156,8 +156,12 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
     if let Some((token, reason)) = click_refusal(click, aircraft(backend)) {
         return refused(token, reason);
     }
-    let dispatched = flag(&object(&backend.invoke(path, &forwarded.to_string())), "ok");
-    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") } })
+    let core = match click {
+        Click::GoTo => Some(json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1] })),
+        Click::EstimatorOrigin => Some(json!({ "action": "estimatorOrigin", "latitude": latitude, "longitude": longitude, "altitude": at.get("altitude").cloned().unwrap_or(json!(0.0)) })),
+        Click::Roi | Click::SetHome | Click::Heading => None,
+    };
+    crate::guided::dispatch(backend, core, crate::guided::active_id(backend), path, &forwarded.to_string())
 }
 
 #[cfg(test)]

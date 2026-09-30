@@ -427,7 +427,7 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
     dispatch(backend, core_action(offered, &args, &state), vehicle, path, &args)
 }
 
-fn active_id(backend: &dyn Backend) -> Option<i64> {
+pub fn active_id(backend: &dyn Backend) -> Option<i64> {
     integer(&object(&backend.get_fields("vehicle", "id")), "id")
 }
 
@@ -453,7 +453,7 @@ fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Va
     }
 }
 
-fn dispatch(backend: &dyn Backend, core: Option<Value>, vehicle: Option<i64>, path: &str, args: &str) -> Value {
+pub fn dispatch(backend: &dyn Backend, core: Option<Value>, vehicle: Option<i64>, path: &str, args: &str) -> Value {
     let on_core = core.zip(vehicle).and_then(|(mut action, id)| {
         action["vehicle"] = json!(id);
         backend.core_guided(&action)
@@ -461,10 +461,13 @@ fn dispatch(backend: &dyn Backend, core: Option<Value>, vehicle: Option<i64>, pa
     let (dispatched, reason) = match on_core {
         Some(Ok(())) => (true, Value::Null),
         Some(Err(reason)) => (false, json!(reason)),
-        None => match flag(&object(&backend.invoke(path, args)), "ok") {
-            true => (true, Value::Null),
-            false => (false, json!("The vehicle was not sent the command.")),
-        },
+        None => {
+            let answered = object(&backend.invoke(path, args));
+            match flag(&answered, "ok") {
+                true => (true, Value::Null),
+                false => (false, answered.get("reason").filter(|r| r.as_str().is_some_and(|t| !t.is_empty())).cloned().unwrap_or_else(|| json!("The vehicle was not sent the command."))),
+            }
+        }
     };
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": reason })
 }

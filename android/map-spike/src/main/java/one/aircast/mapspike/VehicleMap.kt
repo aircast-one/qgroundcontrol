@@ -159,8 +159,11 @@ fun VehicleMap(
     centreRequest: Int = 0,
     centreOn: TrackPoint? = null,
     onMapClick: ((Double, Double) -> Unit)? = null,
+    onMissionItemClick: ((Int) -> Unit)? = null,
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
+    val latestItemClick by rememberUpdatedState(onMissionItemClick)
+    val latestItems by rememberUpdatedState(missionItems)
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
     val fleetJson by mapPath(VEHICLES_VIEW)
     val fleet = remember(fleetJson) { vehicleChoices(fleetJson).choices }
@@ -245,7 +248,15 @@ fun VehicleMap(
                 installVehicleLayer(loadedStyle)
                 if (!editable && onMapClick != null) {
                     loaded.addOnMapClickListener { at ->
-                        latestMapClick?.invoke(at.latitude, at.longitude)
+                        val screen = loaded.projection.toScreenLocation(at)
+                        val item = (hitTest(loaded, screen.x, screen.y) as? MapHit.Waypoint)
+                            ?.let { hit -> latestItems.firstOrNull { it.index == hit.index } }
+                        val itemClick = latestItemClick
+                        if (item != null && itemClick != null) {
+                            itemClick(item.sequence)
+                        } else {
+                            latestMapClick?.invoke(at.latitude, at.longitude)
+                        }
                         true
                     }
                 }

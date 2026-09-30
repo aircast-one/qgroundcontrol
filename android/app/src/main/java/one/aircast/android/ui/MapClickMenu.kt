@@ -216,3 +216,35 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
         }
     }
 }
+
+internal const val SET_WAYPOINT_PATH = "vehicle.setCurrentMissionSequence"
+
+internal fun waypointTarget(sequence: Int): Int = maxOf(sequence, 1)
+
+internal fun setWaypointMessage(sequence: Int): String = "Adjust current waypoint to ${waypointTarget(sequence)}"
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
+    var refusal by remember(sequence) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Set Waypoint", style = MaterialTheme.typography.titleMedium)
+            Text(setWaypointMessage(sequence), style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlideToConfirm(label = "Slide to confirm", modifier = Modifier.weight(1f)) {
+                    scope.launch {
+                        val refused = withContext(Dispatchers.Default) { Qgc.refusalOf(SET_WAYPOINT_PATH, waypointTarget(sequence)) }
+                        if (refused == null) onDismiss() else refusal = refused
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}

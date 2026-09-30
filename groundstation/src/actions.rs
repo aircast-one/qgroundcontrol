@@ -7,6 +7,7 @@ use crate::router::Backend;
 const INSERT: &str = "mission.insert";
 const REMOVE: &str = "mission.remove";
 const ORBIT: &str = "guided.orbit";
+const SET_CURRENT_MISSION: &str = "vehicle.setCurrentMissionSequence";
 const ACTIVATE: &str = "vehicles.setActive";
 const PHOTO: &str = "camera.takePhoto";
 const RECORD: &str = "camera.toggleRecording";
@@ -114,7 +115,7 @@ const SET_HOME: &str = "vehicle.doSetHome";
 const FACE_POINT: &str = "vehicle.guidedModeChangeHeading";
 const ESTIMATOR_ORIGIN: &str = "vehicle.setEstimatorOrigin";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, PLAN_CLEAR_VEHICLE, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, CREATE_AND_CONNECT, CREATE_SERIAL, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM, REMOVE_ITEM, UNIT_SYSTEM, CONSOLE_COMMAND, COMMAND_CATEGORIES, CATEGORY_COMMANDS, PARAMETER_NAMES, DESELECT_ALL, COMMIT_LINKS, GROUND_SPEED, AIRSPEED, GOTO_LOCATION, POINT_AT, SET_HOME, FACE_POINT, ESTIMATOR_ORIGIN];
+pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, SET_CURRENT_MISSION, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, PLAN_CLEAR_VEHICLE, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, CREATE_AND_CONNECT, CREATE_SERIAL, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM, REMOVE_ITEM, UNIT_SYSTEM, CONSOLE_COMMAND, COMMAND_CATEGORIES, CATEGORY_COMMANDS, PARAMETER_NAMES, DESELECT_ALL, COMMIT_LINKS, GROUND_SPEED, AIRSPEED, GOTO_LOCATION, POINT_AT, SET_HOME, FACE_POINT, ESTIMATOR_ORIGIN];
 
 pub fn owns(path: &str) -> bool {
     OWNED.contains(&path) || crate::coreplan::owns(path) || crate::linkconnect::disconnect_target(path).is_some() || crate::fenceedit::owns_member_action(path) || crate::factwrite::owns_validate(path) || crate::vehicleconfig::owns_validate(path) || crate::itemshape::owns(path) || crate::itemshape::owns_split(path) || crate::vehicleselect::fleet_target(path).is_some() || crate::commandtree::hint_target(path).is_some()
@@ -202,6 +203,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         INSERT => insert(backend, args),
         REMOVE => remove(backend, args),
         ORBIT => orbit(backend, args),
+        SET_CURRENT_MISSION => set_current_mission(backend, args),
         ACTIVATE => activate(backend, args),
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         UNDO | REDO => step(backend, path),
@@ -509,6 +511,17 @@ fn remove(backend: &dyn Backend, args: &str) -> Value {
     }
 }
 
+fn set_current_mission(backend: &dyn Backend, args: &str) -> Value {
+    let asked = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_f64());
+    let Some(sequence) = asked.filter(|s| s.fract() == 0.0 && *s >= 1.0) else {
+        return json!({ "ok": false, "refusal": "badSequence", "reason": "A waypoint is chosen by its sequence number, from 1." });
+    };
+    let Some(vehicle) = crate::guided::active_id(backend) else {
+        return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected." });
+    };
+    crate::guided::dispatch(backend, Some(json!({ "action": "setCurrentMission", "sequence": sequence })), Some(vehicle), SET_CURRENT_MISSION, &json!([sequence as i64]).to_string())
+}
+
 fn orbit(backend: &dyn Backend, args: &str) -> Value {
     let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let Some(args) = args.as_array() else {
@@ -543,11 +556,13 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     };
     let signed = if clockwise { radius } else { -radius };
     let amsl = home_altitude + above_home;
-    let called: Value = serde_json::from_str(&backend.invoke(
+    let called = crate::guided::dispatch(
+        backend,
+        Some(json!({ "action": "orbit", "latitude": latitude, "longitude": longitude, "radius": signed, "altitudeAmsl": amsl })),
+        crate::guided::active_id(backend),
         "vehicle.guidedModeOrbit",
         &json!([{ "latitude": latitude, "longitude": longitude, "altitude": 0.0 }, signed, amsl]).to_string(),
-    ))
-    .unwrap_or(Value::Null);
+    );
     match called.get("ok").and_then(Value::as_bool) {
         Some(true) => json!({ "ok": true, "radius": signed, "altitudeAmsl": amsl }),
         _ => json!({ "ok": false, "reason": called.get("reason").and_then(Value::as_str).unwrap_or("the vehicle refused the orbit").to_string() }),
@@ -1511,6 +1526,15 @@ pub(super) mod orbiting {
         let calls = plan.calls.lock().unwrap();
         let (_, args) = calls[0].split_once(' ').unwrap();
         serde_json::from_str(args).unwrap()
+    }
+
+    #[test]
+    fn a_jump_names_a_waypoint_from_one_on_a_connected_vehicle() {
+        let flying = Flying::launched(480.0);
+        assert_eq!(run(&flying, "vehicle.setCurrentMissionSequence", "[0]")["refusal"], "badSequence", "QGC clamps a click to 1 before asking, so 0 is never a request");
+        assert_eq!(run(&flying, "vehicle.setCurrentMissionSequence", "[2.5]")["refusal"], "badSequence");
+        assert_eq!(run(&flying, "vehicle.setCurrentMissionSequence", "[3]")["refusal"], "noVehicle", "with no vehicle id there is nobody to send it to");
+        assert!(flying.calls.lock().unwrap().is_empty());
     }
 
     #[test]

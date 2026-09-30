@@ -10,6 +10,10 @@ pub const CMD_DO_GRIPPER: u16 = 211;
 pub const CMD_MISSION_START: u16 = 300;
 pub const CMD_DO_VTOL_TRANSITION: u16 = 3000;
 pub const CMD_DO_DIGICAM_CONTROL: u16 = 203;
+pub const CMD_DO_SET_MISSION_CURRENT: u16 = 224;
+pub const CMD_DO_ORBIT: u16 = 34;
+pub const CMD_DO_SET_GLOBAL_ORIGIN: u16 = 611;
+pub const ORBIT_YAW_BEHAVIOUR_UNCHANGED: f64 = 5.0;
 pub const VTOL_STATE_MC: u8 = 3;
 pub const VTOL_STATE_FW: u8 = 4;
 pub const MOTOR_TEST_THROTTLE_PERCENT: f64 = 0.0;
@@ -129,6 +133,23 @@ pub fn takeoff(state: &VehicleState, altitude_relative: f64) -> Plan {
         }
         _ => Plan::Refused("Vehicle does not support guided takeoff".into()),
     }
+}
+
+pub fn set_current_mission(state: &VehicleState, sequence: f64) -> Plan {
+    if !sequence.is_finite() || sequence < 1.0 || sequence.fract() != 0.0 {
+        return Plan::Refused("A waypoint is chosen by its sequence number, from 1.".into());
+    }
+    let sent = if state.autopilot == AUTOPILOT_ARDUPILOT { sequence } else { sequence - 1.0 };
+    Plan::Steps(vec![Step::Command { command: CMD_DO_SET_MISSION_CURRENT, params: [sent, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
+}
+
+pub fn orbit(state: &VehicleState, latitude: f64, longitude: f64, radius: f64, amsl: f64) -> Plan {
+    let command_int = state.capabilities & CAP_COMMAND_INT != 0;
+    Plan::Steps(vec![Step::Command { command: CMD_DO_ORBIT, params: [radius, nan(), ORBIT_YAW_BEHAVIOUR_UNCHANGED, nan(), latitude, longitude, amsl], command_int, frame: FRAME_GLOBAL, show_error: true }])
+}
+
+pub fn estimator_origin(latitude: f64, longitude: f64, altitude: f64) -> Plan {
+    Plan::Steps(vec![Step::Command { command: CMD_DO_SET_GLOBAL_ORIGIN, params: [0.0, 0.0, 0.0, 0.0, latitude, longitude, altitude], command_int: true, frame: FRAME_GLOBAL, show_error: false }])
 }
 
 pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: f64) -> Plan {
@@ -323,6 +344,16 @@ mod tests {
         let Plan::Steps(steps) = vtol_transition(true) else { panic!("a transition is always sent") };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[0]), (CMD_DO_VTOL_TRANSITION, f64::from(VTOL_STATE_FW)), "setVtolInFwdFlight sends MAV_VTOL_STATE_FW for forward flight");
         assert!(matches!(gripper(2.0), Plan::Refused(_)));
+        let Plan::Steps(steps) = set_current_mission(&px4(), 3.0) else { panic!() };
+        assert_eq!(command(&steps[0]).0, CMD_DO_SET_MISSION_CURRENT);
+        assert!(matches!(steps[0], Step::Command { params, .. } if params[0] == 2.0), "PX4 does not count home, so Vehicle::setCurrentMissionSequence steps back one");
+        let Plan::Steps(steps) = set_current_mission(&copter(), 3.0) else { panic!() };
+        assert!(matches!(steps[0], Step::Command { params, .. } if params[0] == 3.0), "ArduPilot keeps home as item 0");
+        assert!(matches!(set_current_mission(&copter(), 0.0), Plan::Refused(_)));
+        let Plan::Steps(steps) = orbit(&px4(), 47.4, 8.5, -30.0, 520.0) else { panic!() };
+        assert!(matches!(steps[0], Step::Command { command: CMD_DO_ORBIT, params, .. } if params[0] == -30.0 && params[2] == ORBIT_YAW_BEHAVIOUR_UNCHANGED && params[6] == 520.0));
+        let Plan::Steps(steps) = estimator_origin(47.4, 8.5, 480.0) else { panic!() };
+        assert!(matches!(steps[0], Step::Command { command: CMD_DO_SET_GLOBAL_ORIGIN, command_int: true, .. }));
         let Plan::Steps(steps) = cancel_roi(&px4()) else { panic!() };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).2), (CMD_DO_SET_ROI_NONE, true));
         let Plan::Steps(steps) = cancel_roi(&copter()) else { panic!() };

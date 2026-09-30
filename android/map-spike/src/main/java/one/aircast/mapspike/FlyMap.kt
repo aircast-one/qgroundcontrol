@@ -42,6 +42,7 @@ fun FlyMap(
     modifier: Modifier = Modifier,
     cameraBottomPx: Int = 0,
     onMapClick: ((Double, Double) -> Unit)? = null,
+    onMissionItemClick: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
@@ -97,6 +98,7 @@ fun FlyMap(
             shots = plan.shots,
             editable = false,
             onMapClick = onMapClick,
+            onMissionItemClick = onMissionItemClick,
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level

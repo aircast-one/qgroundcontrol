@@ -36,4 +36,11 @@ class MapClickMenuTest {
     fun `shows the point to six places as QGC does`() {
         assertEquals(listOf("Lat: 47.397000", "Lon: 8.545123"), coordinateLines(MapPoint(47.397, 8.5451234)))
     }
+
+    @Test
+    fun `a tapped item jumps to its sequence, never before the first waypoint`() {
+        assertEquals(1, waypointTarget(0))
+        assertEquals(4, waypointTarget(4))
+        assertEquals("Adjust current waypoint to 4", setWaypointMessage(4))
+    }
 }

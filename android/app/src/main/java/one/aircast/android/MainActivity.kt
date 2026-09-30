@@ -86,6 +86,7 @@ import one.aircast.android.ui.FollowMeReadout
 import one.aircast.android.ui.AttitudeInstrument
 import one.aircast.android.ui.MapClickMenu
 import one.aircast.android.ui.MapPoint
+import one.aircast.android.ui.SetWaypointSheet
 import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.OrbitReadout
@@ -215,9 +216,15 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
     var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
+    var waypointTapped by remember { mutableStateOf<Int?>(null) }
     val flyMap = remember {
         movableContentOf<Modifier> { mod ->
-            FlyMap(modifier = mod, cameraBottomPx = 0, onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) })
+            FlyMap(
+                modifier = mod,
+                cameraBottomPx = 0,
+                onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
+                onMissionItemClick = { waypointTapped = it },
+            )
         }
     }
     val flyVideoSourceLayer = remember { movableContentOf { VideoSourceLayer() } }
@@ -379,6 +386,7 @@ fun AircastShell(hostView: android.view.View?) {
                             modifier = Modifier.fillMaxSize(),
                             cameraBottomPx = if (videoExpanded || !controlsExpanded) 0 else actionsHeightPx,
                             onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
+                            onMissionItemClick = { waypointTapped = it },
                         )
                         if (videoExpanded) {
                             Box(
@@ -407,6 +415,9 @@ fun AircastShell(hostView: android.view.View?) {
 
                 mapClickAt?.takeIf { tab == Tab.Fly }?.let { point ->
                     MapClickMenu(point) { mapClickAt = null }
+                }
+                waypointTapped?.takeIf { tab == Tab.Fly }?.let { sequence ->
+                    SetWaypointSheet(sequence) { waypointTapped = null }
                 }
 
                 key(popEpoch) {
