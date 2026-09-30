@@ -36,6 +36,7 @@ pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MAV_STATE_ACTIVE: u8 = 4;
 const SEVERITY_ERROR: u8 = 3;
+const COMMAND_LONG_ID: u32 = 76;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const LINK_SILENT_MS: u64 = 3500;
 const RC_OVERRIDE_CHANNEL_COUNT: u8 = 18;
@@ -1167,6 +1168,7 @@ impl Vehicle {
                 };
                 let send = Outbound::RawCommandLong { target: (self.id, self.component), command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params: [0.0, 1.0, if allow { 1.0 } else { 0.0 }, safe as f64, 0.0, 0.0, 0.0] };
                 self.control.requested(timeout, now_ms);
+                self.control.answered();
                 return Ok(self.encode(&send).into_iter().collect());
             }
             Some("messageInterval") => {
@@ -2299,11 +2301,19 @@ impl Hub {
     }
 
     pub fn on_extra(&mut self, header: &MavHeader, msgid: u32, payload: &[u8]) {
-        if msgid != crate::operatorcontrol::CONTROL_STATUS {
-            return;
-        }
-        if let (Some(vehicle), Some(flags), Some(main)) = (self.vehicles.get_mut(&header.system_id), payload.first(), payload.get(1)) {
-            vehicle.control.on_status(*flags, *main);
+        let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return };
+        match (msgid, payload.first(), payload.get(1)) {
+            (crate::operatorcontrol::CONTROL_STATUS, Some(flags), Some(main)) => vehicle.control.on_status(*flags, *main),
+            (COMMAND_LONG_ID, _, _) => {
+                let param = |i: usize| payload.get(i * 4..i * 4 + 4).and_then(|b| b.try_into().ok()).map_or(0.0, f32::from_le_bytes);
+                let command = payload.get(28..30).and_then(|b| b.try_into().ok()).map_or(0, u16::from_le_bytes);
+                let target = payload.get(30).copied().unwrap_or(0);
+                if command == crate::operatorcontrol::REQUEST_OPERATOR_CONTROL && target == mavout::gcs_system() {
+                    let default_secs = crate::settingsstore::raw_setting("settings.flyViewSettings.requestControlTimeout").and_then(|v| v.as_i64()).unwrap_or(crate::operatorcontrol::DEFAULT_REQUEST_TIMEOUT_SECS);
+                    vehicle.control.on_request(param(0) as u8, param(2) != 0.0, param(3), default_secs, now_ms());
+                }
+            }
+            _ => {}
         }
     }
 
@@ -2688,6 +2698,30 @@ mod tests {
         assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
         hub.set_active(Some(7));
         assert_eq!(hub.active().map(|v| v.id), Some(7));
+    }
+
+    #[test]
+    fn another_stations_control_request_is_held_until_it_times_out_or_is_answered() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let request = |from: f32, allow: f32, timeout: f32, target: u8| -> Vec<u8> {
+            [from, 0.0, allow, timeout, 0.0, 0.0, 0.0].iter().flat_map(|p| p.to_le_bytes()).chain(crate::operatorcontrol::REQUEST_OPERATOR_CONTROL.to_le_bytes()).chain([target, 0, 0]).collect()
+        };
+        let now = now_ms();
+        hub.on_extra(&header, COMMAND_LONG_ID, &request(9.0, 1.0, 20.0, mavout::gcs_system()));
+        assert_eq!(hub.active().unwrap().control.incoming_json(now), Value::Null, "GCSControlIndicator drops the popup until the vehicle has reported its control status");
+        hub.on_extra(&header, crate::operatorcontrol::CONTROL_STATUS, &[0, mavout::gcs_system()]);
+        hub.on_extra(&header, COMMAND_LONG_ID, &request(9.0, 1.0, 20.0, 42));
+        assert_eq!(hub.active().unwrap().control.incoming_json(now), Value::Null, "a request addressed to another station is not ours to answer");
+        hub.on_extra(&header, COMMAND_LONG_ID, &request(9.0, 1.0, 20.0, mavout::gcs_system()));
+        let held = hub.active().unwrap().control.incoming_json(now_ms());
+        assert_eq!((held["systemId"].as_u64(), held["allowTakeover"].as_bool(), held["timeoutMs"].as_u64()), (Some(9), Some(true), Some(20_000)));
+        assert_eq!(hub.active().unwrap().control.incoming_json(now_ms() + 20_001), Value::Null, "it expires with its own timeout");
+        hub.on_extra(&header, COMMAND_LONG_ID, &request(9.0, 0.0, 0.0, mavout::gcs_system()));
+        assert_eq!(hub.active().unwrap().control.incoming_json(now_ms())["timeoutMs"].as_u64(), Some(10_000), "no timeout in the request falls back to requestControlTimeout, in seconds");
+        hub.vehicles.get_mut(&1).unwrap().control.answered();
+        assert_eq!(hub.active().unwrap().control.incoming_json(now_ms()), Value::Null);
     }
 
     #[test]

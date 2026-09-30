@@ -17,8 +17,7 @@ fn timeout_setting(backend: &dyn Backend) -> (i64, (i64, i64)) {
 fn request_refusal(view: &Value, timeout: i64, bounds: (i64, i64)) -> Option<(&'static str, String)> {
     match () {
         _ if view["available"] != true => Some(("noVehicle", "No vehicle is connected.".to_string())),
-        _ if view["inControl"] == true => Some(("alreadyInControl", "This ground station is already flying this vehicle.".to_string())),
-        _ if view["requestAllowed"] == false => Some(("pending", "The last request is still waiting for an answer.".to_string())),
+        _ if view["inControl"] != true && view["requestAllowed"] == false => Some(("pending", "The last request is still waiting for an answer.".to_string())),
         _ if timeout != 0 && !(bounds.0..=bounds.1).contains(&timeout) => Some(("timeoutOutOfRange", format!("A request waits 0, or {} to {} seconds.", bounds.0, bounds.1))),
         _ => None,
     }
@@ -29,7 +28,7 @@ pub fn request(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let view = crate::operatorcontrol::operator_control_view(backend, &[]);
     let (setting, bounds) = timeout_setting(backend);
     let allow_takeover = given.get(0).and_then(Value::as_bool).unwrap_or_else(|| flag(&object(&backend.get(ALLOW_TAKEOVER)), "value"));
-    let timeout = given.get(1).and_then(Value::as_f64).filter(|v| v.fract() == 0.0).map(|v| v as i64).unwrap_or(match view["takeoverAllowed"] == true {
+    let timeout = given.get(1).and_then(Value::as_f64).filter(|v| v.fract() == 0.0).map(|v| v as i64).unwrap_or(match view["takeoverAllowed"] == true || view["inControl"] == true {
         true => 0,
         false => setting,
     });
@@ -57,7 +56,7 @@ mod tests {
         assert_eq!(token(&waiting, 10), None);
         assert_eq!(token(&waiting, 0), None, "zero is the no-wait request a head sends when the holder allows takeover");
         assert_eq!(token(&json!({ "available": true, "inControl": false, "requestAllowed": false }), 10), Some("pending"), "requestOperatorControl never reads sendControlRequestAllowed, so a second tap sent a second request while the first was still being answered");
-        assert_eq!(token(&json!({ "available": true, "inControl": true, "requestAllowed": true }), 10), Some("alreadyInControl"));
+        assert_eq!(token(&json!({ "available": true, "inControl": true, "requestAllowed": false }), 0), None, "the station flying changes its takeover condition, and answers another station's request, through this same call");
         assert_eq!(token(&waiting, 90), Some("timeoutOutOfRange"), "a timeout outside the setting's bounds is replaced by the default without a word, so the countdown a head draws is not the one sent");
         assert_eq!(token(&json!({ "available": false }), 10), Some("noVehicle"));
 

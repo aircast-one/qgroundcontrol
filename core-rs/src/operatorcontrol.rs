@@ -14,6 +14,7 @@ pub const DEPS: &[&str] = &[
 ];
 
 pub const TAKEOVER_TIMEOUT_MSECS: i64 = 10_000;
+pub const DEFAULT_REQUEST_TIMEOUT_SECS: i64 = 10;
 pub const REQUEST_OPERATOR_CONTROL: u16 = 32100;
 pub const CONTROL_STATUS: u32 = 512;
 const FLAG_SYSTEM_MANAGER: u8 = 1;
@@ -26,11 +27,20 @@ pub struct ControlState {
     pub first: bool,
     pub request_allowed: bool,
     allowed_again_ms: Option<u64>,
+    incoming: Option<Incoming>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Incoming {
+    pub from: u8,
+    pub allow_takeover: bool,
+    pub timeout_ms: u64,
+    until_ms: u64,
 }
 
 impl Default for ControlState {
     fn default() -> Self {
-        ControlState { gcs_main: 0, flags: 0, first: false, request_allowed: true, allowed_again_ms: None }
+        ControlState { gcs_main: 0, flags: 0, first: false, request_allowed: true, allowed_again_ms: None, incoming: None }
     }
 }
 
@@ -56,9 +66,29 @@ impl ControlState {
         }
     }
 
+    pub fn on_request(&mut self, from: u8, allow_takeover: bool, timeout_secs: f32, default_secs: i64, now_ms: u64) {
+        if !self.first {
+            return;
+        }
+        let secs = if timeout_secs > 0.0 { timeout_secs as u64 } else { u64::try_from(default_secs).unwrap_or(0) };
+        let timeout_ms = secs * 1000;
+        self.incoming = Some(Incoming { from, allow_takeover, timeout_ms, until_ms: now_ms + timeout_ms });
+    }
+
+    pub fn answered(&mut self) {
+        self.incoming = None;
+    }
+
+    pub fn incoming_json(&self, now_ms: u64) -> Value {
+        self.incoming.filter(|i| now_ms < i.until_ms).map_or(Value::Null, |i| json!({ "systemId": i.from, "allowTakeover": i.allow_takeover, "timeoutMs": i.timeout_ms, "remainingMs": i.until_ms - now_ms }))
+    }
+
     pub fn tick(&mut self, now_ms: u64) {
         if self.allowed_again_ms.is_some_and(|at| now_ms >= at) {
             (self.request_allowed, self.allowed_again_ms) = (true, None);
+        }
+        if self.incoming.is_some_and(|i| now_ms >= i.until_ms) {
+            self.incoming = None;
         }
     }
 
@@ -82,6 +112,13 @@ const FIELDS: &str = "gcsMain,gcsControlStatusFlags_SystemManager,gcsControlStat
 
 fn integer(read: &Value, key: &str) -> Option<i64> {
     read.get(key).and_then(Value::as_i64)
+}
+
+fn incoming_request() -> Value {
+    crate::vehiclefacade::switched_on()
+        .then(|| crate::hub::lock().active().map(|v| v.control.incoming_json(crate::hub::now_ms())))
+        .flatten()
+        .unwrap_or(Value::Null)
 }
 
 pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -113,6 +150,7 @@ pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "takeoverAllowed": answered(flag(&vehicle, "gcsControlStatusFlags_TakeoverAllowed")),
         "systemManager": answered(flag(&vehicle, "gcsControlStatusFlags_SystemManager")),
         "requestAllowed": flag(&vehicle, "sendControlRequestAllowed"),
+        "incomingRequest": incoming_request(),
         "takeoverTimeoutMs": integer(&vehicle, "operatorControlTakeoverTimeoutMsecs"),
         "reason": match (known, holder, ours) {
             (false, _, _) => "This vehicle has not said who is flying it.",
