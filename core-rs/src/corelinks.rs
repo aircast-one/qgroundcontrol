@@ -392,6 +392,86 @@ pub fn start() {
     });
 }
 
+static SERIAL_AUTO: LazyLock<Mutex<crate::autoconnect::AutoConnect>> = LazyLock::new(|| Mutex::new(crate::autoconnect::AutoConnect::default()));
+static BOARDS: LazyLock<Option<crate::boards::BoardTable>> = LazyLock::new(|| crate::boards::BoardTable::bundled().ok());
+
+fn autoconnect_setting(name: &str, unset: bool) -> bool {
+    crate::settingsstore::raw_setting(&format!("settings.autoConnectSettings.{name}")).and_then(|v| v.as_bool()).unwrap_or(unset)
+}
+
+fn autoconnect_settings() -> crate::autoconnect::Settings {
+    crate::autoconnect::Settings {
+        pixhawk: autoconnect_setting("autoConnectPixhawk", true),
+        sik_radio: autoconnect_setting("autoConnectSiKRadio", true),
+        libre_pilot: autoconnect_setting("autoConnectLibrePilot", true),
+        rtk_gps: autoconnect_setting("autoConnectRTKGPS", true),
+        udp: autoconnect_setting("autoConnectUDP", true),
+        forward_mavlink: false,
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn serial_ports() -> Vec<crate::boards::PortInfo> {
+    let found = serialport::available_ports().unwrap_or_default();
+    let visible = crate::seriallink::visible_ports(&found.iter().map(|p| p.port_name.clone()).collect::<Vec<_>>());
+    found
+        .into_iter()
+        .filter(|p| visible.contains(&p.port_name))
+        .map(|p| {
+            let usb = match p.port_type {
+                serialport::SerialPortType::UsbPort(usb) => Some(usb),
+                _ => None,
+            };
+            crate::boards::PortInfo {
+                port_name: crate::seriallink::port_display_name(&p.port_name),
+                system_location: p.port_name,
+                description: usb.as_ref().and_then(|u| u.product.clone()).unwrap_or_default(),
+                manufacturer: usb.as_ref().and_then(|u| u.manufacturer.clone()).unwrap_or_default(),
+                serial_number: usb.as_ref().and_then(|u| u.serial_number.clone()).unwrap_or_default(),
+                vendor_id: usb.as_ref().map(|u| u.vid),
+                product_id: usb.as_ref().map(|u| u.pid),
+            }
+        })
+        .collect()
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn serial_ports() -> Vec<crate::boards::PortInfo> {
+    Vec::new()
+}
+
+pub fn serial_entry(name: &str, port: &str, baud: u32) -> Entry {
+    Entry {
+        config: LinkConfig { name: name.to_string(), auto_connect: true, high_latency: false, kind: Kind::Serial { baud: i64::from(baud), data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port.to_string(), port_display_name: crate::seriallink::port_display_name(port) } },
+        dynamic: true,
+    }
+}
+
+fn add_dynamic(entry: &Entry) {
+    let mut dynamic = DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner);
+    if !dynamic.iter().any(|e| e.config.name == entry.config.name) {
+        dynamic.push(entry.clone());
+    }
+}
+
+fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
+    let Some(boards) = BOARDS.as_ref() else { return };
+    let connected: Vec<String> = live.iter().filter_map(|(_, c)| match &c.kind {
+        Kind::Serial { port_name, .. } => Some(port_name.clone()),
+        _ => None,
+    }).collect();
+    let nmea = crate::settingsstore::raw_setting("settings.autoConnectSettings.autoConnectNmeaPort").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    let host = crate::autoconnect::Host { android: cfg!(target_os = "android"), windows: cfg!(target_os = "windows") };
+    let actions = SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &nmea);
+    actions.into_iter().for_each(|action| {
+        if let crate::autoconnect::Action::OpenSerial { name, port, baud, .. } = action {
+            let entry = serial_entry(&name, &port, baud);
+            add_dynamic(&entry);
+            open_entry(&entry);
+        }
+    });
+}
+
 pub fn tick(now_ms: u64) {
     if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) {
         return;
@@ -404,15 +484,12 @@ pub fn tick(now_ms: u64) {
         *last = now_ms;
     }
     let live = live();
+    DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner).retain(|e| live.iter().any(|(_, c)| c.name == e.config.name));
     if let Some(udp) = udp_autoconnect_entry().filter(|udp| !live.iter().any(|(_, c)| c.name == udp.config.name && matches!(c.kind, Kind::Udp { .. }))) {
-        {
-            let mut dynamic = DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner);
-            if !dynamic.iter().any(|e| e.config.name == udp.config.name) {
-                dynamic.push(udp.clone());
-            }
-        }
+        add_dynamic(&udp);
         open_entry(&udp);
     }
+    autoconnect_serial(&live);
     saved().iter().filter(|e| e.config.auto_connect).for_each(|entry| {
         let up = live.iter().any(|(_, c)| c.name == entry.config.name);
         update_runtime(&entry.config.name, |run| run.note_link(up, now_ms));
@@ -459,6 +536,14 @@ mod tests {
         assert_eq!(edited(&tcp, "name", &json!("Bench 2")).unwrap().name, "Bench 2");
         assert_eq!(edited(&tcp, "localPort", &json!(1)), None, "a field the kind does not carry is not written");
         assert_eq!(edited(&tcp, "port", &json!(70000)), None);
+    }
+
+    #[test]
+    fn an_autoconnected_board_is_a_dynamic_serial_link_named_for_its_port() {
+        let entry = serial_entry("PX4 FMU V2 on cu.usbmodem1 (AutoConnect)", "/dev/cu.usbmodem1", 115200);
+        let shown = element(&entry, &TypeTable::new(true, true), &State { link: None, heard: false, error: None, reconnecting: false });
+        assert_eq!((shown["dynamic"].as_bool(), shown["autoConnect"].as_bool(), shown["baud"].as_i64(), shown["portDisplayName"].as_str()), (Some(true), Some(true), Some(115200), Some("cu.usbmodem1")));
+        assert_eq!(shown["summary"], "cu.usbmodem1 at 115200 baud");
     }
 
     #[test]
