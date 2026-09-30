@@ -9,7 +9,6 @@ use crate::transport::{Frame, LinkId};
 pub const GENERAL_NAME: &str = "MAVLink Forwarding Link";
 pub const SUPPORT_NAME: &str = "MAVLink Support Forwarding Link";
 const SIGNED: u8 = 0x01;
-const SIGNATURE_LEN: usize = 13;
 
 #[derive(Debug, Default)]
 pub struct Forwards {
@@ -106,6 +105,8 @@ pub fn forward(frame: &Frame) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SIGNATURE_LEN: usize = 13;
     use mavlink::MavHeader;
     use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, SETUP_SIGNING_DATA, SYS_STATUS_DATA};
 

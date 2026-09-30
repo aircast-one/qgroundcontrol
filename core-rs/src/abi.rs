@@ -115,6 +115,7 @@ fn split(paths_csv: *const c_char) -> Vec<String> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_set_event_handler(handler: EventFn) {
     *HEAD.lock().unwrap() = handler;
+    crate::terrainservice::set_notify(Box::new(|| CORE.on_event(crate::terrainservice::TERRAIN_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json))));
     *crate::detections::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_detections) as std::sync::Arc<dyn Fn() + Send + Sync>);
     *crate::coreplan::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_plan) as std::sync::Arc<dyn Fn() + Send + Sync>);
     *crate::adsb::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_adsb) as std::sync::Arc<dyn Fn() + Send + Sync>);

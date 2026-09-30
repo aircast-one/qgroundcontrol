@@ -4,7 +4,7 @@ use crate::read::{Unit, object};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile",
-    "settings.unitsSettings.verticalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits", crate::coreplan::CHANGED, crate::terrainservice::TERRAIN_CHANGED,
 ];
 
 const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,altitudeFrame,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
@@ -150,8 +150,35 @@ fn walked(backend: &dyn Backend, model: &Value) -> Vec<Point> {
         .collect()
 }
 
+pub fn collides(mission_altitude: f64, ground: Option<f64>, altitude_range: f64) -> bool {
+    altitude_range != 0.0 && ground.is_some_and(|ground| mission_altitude < ground)
+}
+
+fn core_model(backend: &dyn Backend) -> Value {
+    let reads = crate::missionitems::document_reads(&crate::coreplan::current_document(), 0).unwrap_or_default();
+    let summary = crate::coreplan::summary_fields(backend).unwrap_or(Value::Null);
+    let range = summary.get("maxAMSLAltitude").and_then(Value::as_f64).zip(summary.get("minAMSLAltitude").and_then(Value::as_f64)).map_or(0.0, |(high, low)| high - low);
+    let elements: Vec<Value> = reads
+        .iter()
+        .map(|item| {
+            let coordinate = item.get("coordinate");
+            let at = |key: &str| coordinate.and_then(|c| c.get(key)).and_then(Value::as_f64);
+            let placed = item.get("specifiesCoordinate").and_then(Value::as_bool) == Some(true);
+            let ground = at("latitude").zip(at("longitude")).filter(|(latitude, longitude)| placed && !(*latitude == 0.0 && *longitude == 0.0)).and_then(|(latitude, longitude)| crate::terrainservice::height(latitude, longitude));
+            let amsl = item.get("amslEntryAlt").and_then(Value::as_f64).unwrap_or(f64::NAN);
+            let mut element = json!({ "terrainAltitude": ground, "terrainCollision": placed && collides(amsl, ground, range) });
+            FIELDS.split(',').filter(|f| !matches!(*f, "terrainAltitude" | "terrainCollision")).for_each(|f| element[f] = item.get(f).cloned().unwrap_or(Value::Null));
+            element
+        })
+        .collect();
+    json!({ "kind": "list", "elements": elements })
+}
+
 pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let model = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
+    let model = match crate::vehiclefacade::switched_on() && crate::coreplan::enabled() {
+        true => core_model(backend),
+        false => object(&backend.get_fields("plan.missionController.visualItems", FIELDS)),
+    };
     let entries = points(&model);
     let inside = walked(backend, &model);
     let mut all: Vec<Point> = entries.into_iter().chain(inside).collect();
@@ -234,6 +261,14 @@ mod tests {
         let no_ground = profile(vec![point(0.0, 700.0, None), point(100.0, 700.0, None)]);
         assert_eq!(no_ground.min_clearance, None, "ground under nothing is not a clearance of zero");
         assert!(!clearance_complete(&no_ground));
+    }
+
+    #[test]
+    fn an_item_collides_only_below_known_ground_in_a_mission_with_some_height_to_it() {
+        assert!(collides(500.0, Some(520.0), 40.0));
+        assert!(!collides(530.0, Some(520.0), 40.0));
+        assert!(!collides(500.0, None, 40.0), "unknown ground is not a collision");
+        assert!(!collides(500.0, Some(520.0), 0.0), "MissionFlightStatusCalculator clears every collision when the mission has no altitude range");
     }
 
     #[test]

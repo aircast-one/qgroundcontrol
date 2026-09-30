@@ -30,8 +30,7 @@ pub fn tile_hash(x: i32, y: i32) -> Option<String> {
     tilecache::provider_hash(PROVIDER).map(|provider| tilecache::tile_hash(provider, x, y, TERRAIN_ZOOM))
 }
 
-pub fn elevation(latitude: f64, longitude: f64, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<f64, String> {
-    let (x, y) = tile_xy(latitude, longitude);
+pub fn load_tile(x: i32, y: i32, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<Tile, String> {
     let hash = tile_hash(x, y).ok_or("The Copernicus provider is not in the tile table.")?;
     let cached = cache.and_then(|c| c.tile(&hash).ok().flatten()).map(|t| t.image);
     let bytes = match cached {
@@ -44,7 +43,12 @@ pub fn elevation(latitude: f64, longitude: f64, cache: Option<&Cache>, fetch: &d
             bytes
         }
     };
-    let tile: Tile = terraintile::decode(&bytes).ok_or("The terrain tile could not be read.")?;
+    terraintile::decode(&bytes).ok_or_else(|| "The terrain tile could not be read.".to_string())
+}
+
+pub fn elevation(latitude: f64, longitude: f64, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<f64, String> {
+    let (x, y) = tile_xy(latitude, longitude);
+    let tile = load_tile(x, y, cache, fetch)?;
     tile.elevation(latitude, longitude).ok_or_else(|| "The terrain tile does not cover that position.".to_string())
 }
 

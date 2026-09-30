@@ -454,6 +454,25 @@ fn altitude_fact(property: &str, metres: f64) -> Value {
 }
 
 pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
+    let items: Vec<Value> = document_reads(doc, selected)?.into_iter().enumerate().map(|(index, read)| item(&read, index as i64, vertical, speed, imperial)).collect();
+    let items: Vec<Value> = match walked(&items) {
+        true => items,
+        false => items.into_iter().map(unwalked).collect(),
+    };
+    let has_items = !doc.items.is_empty();
+    Ok(json!({
+        "kind": "object",
+        "class": "MissionItems",
+        "available": has_items,
+        "linksStartToHome": rover || starts_from_the_ground(&items),
+        "editing": Value::Null,
+        "selected": selected,
+        "items": items,
+        "reason": if has_items { "" } else { "This plan has no items yet." },
+    }))
+}
+
+pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<Vec<Value>, String> {
     let surveys: Vec<Option<Survey>> = doc
         .items
         .iter()
@@ -577,22 +596,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
             })
         })
         .collect();
-    let items: Vec<Value> = std::iter::once(settings).chain(reads).enumerate().map(|(index, read)| item(&read, index as i64, vertical, speed, imperial)).collect();
-    let items: Vec<Value> = match walked(&items) {
-        true => items,
-        false => items.into_iter().map(unwalked).collect(),
-    };
-    let has_items = !doc.items.is_empty();
-    Ok(json!({
-        "kind": "object",
-        "class": "MissionItems",
-        "available": has_items,
-        "linksStartToHome": rover || starts_from_the_ground(&items),
-        "editing": Value::Null,
-        "selected": selected,
-        "items": items,
-        "reason": if has_items { "" } else { "This plan has no items yet." },
-    }))
+    Ok(std::iter::once(settings).chain(reads).collect())
 }
 
 // MissionController::_recalcFlightPathSegments walks from i = 1: item 0 is the MissionSettingsItem

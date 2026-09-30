@@ -1385,6 +1385,10 @@ pub fn plan_state() -> Option<PlanState> {
     })
 }
 
+pub fn current_document() -> Document {
+    held().document.clone().unwrap_or_else(empty_document)
+}
+
 pub fn summary_fields(backend: &dyn Backend) -> Option<Value> {
     if !enabled() {
         return None;
