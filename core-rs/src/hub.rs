@@ -164,6 +164,7 @@ pub struct Vehicle {
     pub shell: crate::shell::Shell,
     pub rc_values: Vec<u16>,
     pub events_heard: bool,
+    pub message_log: crate::messagelog::MessageLog,
     pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
@@ -282,6 +283,7 @@ impl Vehicle {
             shell: crate::shell::Shell::default(),
             rc_values: Vec::new(),
             events_heard: false,
+            message_log: crate::messagelog::MessageLog::default(),
             camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
@@ -1222,7 +1224,10 @@ impl Vehicle {
         if self.chunk_due.is_some_and(|due| now_ms >= due) {
             self.chunk_due = None;
             let expired = self.status_text.expire_pending();
-            expired.iter().for_each(|status| self.note_prearm(&status.text, now_ms));
+            expired.iter().for_each(|status| {
+                self.log_status(status);
+                self.note_prearm(&status.text, now_ms);
+            });
             self.recent.extend(expired);
             let excess = self.recent.len().saturating_sub(MAX_MESSAGES);
             self.recent.drain(..excess);
@@ -1365,6 +1370,13 @@ impl Vehicle {
             _ => Vec::new(),
         };
         self.onboard_log_outs(was_busy, outs)
+    }
+
+    fn log_status(&mut self, status: &StatusText) {
+        let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
+        if let Some(text) = crate::messagelog::admitted(px4, self.events_heard, status.severity, &status.text) {
+            self.message_log.record(status.component, status.severity, text, crate::messagelog::clock_now());
+        }
     }
 
     fn note_onboard_log(&mut self, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
@@ -1731,6 +1743,7 @@ impl Vehicle {
                 let received = self.status_text.receive(header.component_id, t.severity as u8, t.id, t.chunk_seq, &t.text[..end]);
                 self.chunk_due = self.status_text.has_pending().then_some(now_ms + CHUNKED_TEXT_TIMEOUT_MS);
                 if let Some(status) = received {
+                    self.log_status(&status);
                     let actions = self.calibrate.on_text(&status.text, now_ms);
                     let bytes = self.follow_calibration(actions, now_ms);
                     self.note_prearm(&status.text, now_ms);
@@ -2059,6 +2072,12 @@ impl Hub {
             "communicationLostEnabled" => v.comm_lost_enabled = on,
             _ => v.auto_disconnect = on,
         }).is_some()
+    }
+
+    pub fn clear_message_log(&mut self) {
+        if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
+            vehicle.message_log.clear();
+        }
     }
 
     pub fn with_onboard_logs<T>(&mut self, change: impl FnOnce(&mut crate::onboardlogs::OnboardLogs) -> T) -> Option<T> {

@@ -690,6 +690,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(value) = path.strip_prefix("vehicle.healthAndArmingCheckReport.").and_then(|name| unreported_checks()?.get(name).cloned()) {
             return json!({ "kind": "value", "value": value }).to_string();
         }
+        if let Some(formatted) = (path == "vehicle.formattedMessages" && switched_on()).then(|| crate::hub::lock().active().map(|v| v.message_log.formatted())).flatten() {
+            return json!({ "kind": "value", "value": formatted }).to_string();
+        }
         if let Some(lines) = (path == "mavlinkConsole.lines").then(shell_lines).flatten() {
             return json!({ "kind": "value", "value": lines }).to_string();
         }
@@ -865,6 +868,9 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
+        }
+        if path == "vehicle.clearMessages" && switched_on() {
+            crate::hub::lock().clear_message_log();
         }
         if switched_on() {
             match path {
