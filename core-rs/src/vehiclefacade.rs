@@ -227,6 +227,11 @@ fn fleet_member(path: &str) -> Option<(usize, &str)> {
     Some((index.parse().ok()?, tail))
 }
 
+fn shell_lines() -> Option<Vec<String>> {
+    switched_on().then_some(())?;
+    crate::hub::lock().active().map(|vehicle| vehicle.shell.lines())
+}
+
 fn selected_member(path: &str) -> Option<(usize, &str)> {
     let rest = path.strip_prefix("vehicles.selectedVehicles.")?;
     let (index, tail) = rest.split_once('.').map_or((rest, ""), |(i, t)| (i, t));
@@ -608,6 +613,14 @@ fn answer_invoke(path: &str, args: &str) -> Option<Value> {
 }
 
 impl<B: Backend> Facade<B> {
+    fn shell_invoke(&self, path: &str, args: &str) -> Option<String> {
+        (path == "mavlinkConsole.sendCommand" && switched_on()).then_some(())?;
+        let vehicle = crate::hub::lock().active_id()?;
+        let command = serde_json::from_str::<Value>(args).ok()?.get(0)?.as_str()?.to_string();
+        let started = self.0.core_guided(&json!({ "action": "shellCommand", "vehicle": vehicle, "command": command }))?;
+        Some(json!({ "ok": started.is_ok() }).to_string())
+    }
+
     fn selection_invoke(&self, path: &str, args: &str) -> Option<String> {
         let name = path.strip_prefix("vehicles.")?;
         switched_on().then_some(())?;
@@ -660,6 +673,9 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "kind": "value", "value": value }).to_string();
             }
         }
+        if let Some(lines) = (path == "mavlinkConsole.lines").then(shell_lines).flatten() {
+            return json!({ "kind": "value", "value": lines }).to_string();
+        }
         if let Some(value) = path.strip_prefix("positionManager.").filter(|_| switched_on()).and_then(|name| crate::gcsposition::lock().property(name)) {
             return match (path, value) {
                 ("positionManager.gcsPosition", Value::Null) => json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }),
@@ -705,6 +721,9 @@ impl<B: Backend> Backend for Facade<B> {
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
                 return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
             }
+        }
+        if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
+            return json!({ "kind": "object", "lines": lines }).to_string();
         }
         if asked_path == "positionManager" && switched_on() {
             let position = crate::gcsposition::lock();
@@ -815,6 +834,9 @@ impl<B: Backend> Backend for Facade<B> {
             return answer;
         }
         if let Some(answer) = self.selection_invoke(path, args) {
+            return answer;
+        }
+        if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
         }
         switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(

@@ -379,11 +379,11 @@ pub fn lock() -> MutexGuard<'static, GcsPosition> {
 
 pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let wall = wall_now();
+    let hosted = lock().hosted && crate::vehiclefacade::switched_on();
+    let read = (!hosted).then(|| crate::read::object(&backend.get_fields("positionManager", "gcsPosition,gcsHeading,gcsPositionHorizontalAccuracy,gcsPositionTimestamp,gcsPositionSource")));
     let mut position = lock();
-    if !(position.hosted && crate::vehiclefacade::switched_on()) {
-        drop(position);
-        fill_from_host(backend);
-        position = lock();
+    if let Some(read) = read {
+        fill_from_host(&mut position, &read);
     }
     let mut snapshot = position.snapshot(wall);
     // Every backend call blocks until the Qt thread services it, and the Qt thread reaches this
@@ -400,8 +400,7 @@ pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
     snapshot
 }
 
-fn fill_from_host(backend: &dyn Backend) {
-    let read = crate::read::object(&backend.get_fields("positionManager", "gcsPosition,gcsHeading,gcsPositionHorizontalAccuracy,gcsPositionTimestamp,gcsPositionSource"));
+fn fill_from_host(position: &mut GcsPosition, read: &Value) {
     let number = |key: &str| read.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
     // gcsPositionTimestamp is epoch milliseconds while now() counts from process start, and the
     // ladder subtracts one from the other. Converting the stamp into the process frame collapses
@@ -409,8 +408,7 @@ fn fill_from_host(backend: &dyn Backend) {
     // instead: every comparison in the struct is a difference, and a difference only needs the two
     // operands to share a frame.
     let stamped = read.get("gcsPositionTimestamp").and_then(Value::as_i64).filter(|stamped| *stamped > 0).map(|stamped| stamped as u64);
-    let coordinate = crate::read::nested_coordinate_at(&read, "gcsPosition");
-    let mut position = lock();
+    let coordinate = crate::read::nested_coordinate_at(read, "gcsPosition");
     position.source = Source::from_token(read.get("gcsPositionSource").and_then(Value::as_str).unwrap_or("none"));
     position.latitude = coordinate.map(|(latitude, _)| latitude);
     position.longitude = coordinate.map(|(_, longitude)| longitude);

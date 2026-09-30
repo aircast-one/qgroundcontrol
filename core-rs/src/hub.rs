@@ -161,6 +161,7 @@ pub struct Vehicle {
     pub rc_override: BTreeMap<u8, u16>,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
+    pub shell: crate::shell::Shell,
     pub camera_tracking_enabled: bool,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
@@ -276,6 +277,7 @@ impl Vehicle {
             rc_override: BTreeMap::new(),
             cameras: crate::cameraproto::Cameras::new(),
             onboard_logs: crate::onboardlogs::OnboardLogs::default(),
+            shell: crate::shell::Shell::default(),
             camera_tracking_enabled: false,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
@@ -1102,6 +1104,14 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("shellCommand") => {
+                let Some(command) = action.get("command").and_then(Value::as_str) else {
+                    return Err("A console command is text.".to_string());
+                };
+                self.shell.command_sent();
+                let target = (self.id, self.component);
+                return Ok(crate::shell::Shell::chunks(command).into_iter().filter_map(|data| self.encode(&Outbound::ShellData { target, data })).collect());
+            }
             Some(log @ ("logRefresh" | "logDownload" | "logCancel" | "logEraseAll")) => return Ok(self.onboard_log_action(log, action.get("folder").and_then(Value::as_str), now_ms)),
             _ => {}
         }
@@ -1759,6 +1769,13 @@ impl Vehicle {
         self.local.apply(message);
         self.local_setpoint.apply_target(message);
         self.estimator.apply(message);
+        if let MavMessage::SERIAL_CONTROL(d) = message {
+            if d.device == mavlink::dialects::ardupilotmega::SerialControlDev::SERIAL_CONTROL_DEV_SHELL {
+                if let Some(data) = d.data.get(..usize::from(d.count)) {
+                    self.shell.receive(data);
+                }
+            }
+        }
         let camera = self.note_camera(header.component_id, message, now_ms);
         camera.into_iter().chain(self.note_onboard_log(message, now_ms)).collect()
     }
@@ -2074,6 +2091,11 @@ impl Hub {
 
     pub fn set_active(&mut self, id: Option<u8>) {
         self.host_selects = true;
+        if self.active != id {
+            if let Some(vehicle) = id.and_then(|id| self.vehicles.get_mut(&id)) {
+                vehicle.shell = crate::shell::Shell::default();
+            }
+        }
         self.active = id;
     }
 
@@ -2488,6 +2510,22 @@ mod tests {
         assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
         hub.set_active(Some(7));
         assert_eq!(hub.active().map(|v| v.id), Some(7));
+    }
+
+    #[test]
+    fn shell_output_is_kept_and_a_frame_claiming_more_than_it_carries_is_discarded() {
+        use mavlink::dialects::ardupilotmega::{SERIAL_CONTROL_DATA, SerialControlDev};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let shell = |text: &[u8], count: u8| {
+            let mut data = [0u8; 70];
+            data[..text.len()].copy_from_slice(text);
+            MavMessage::SERIAL_CONTROL(SERIAL_CONTROL_DATA { device: SerialControlDev::SERIAL_CONTROL_DEV_SHELL, count, data, ..Default::default() })
+        };
+        hub.on_frame(origin(0), &header, &shell(b"lost", 88), 1, 1);
+        hub.on_frame(origin(0), &header, &shell(b"nsh> ", 5), 2, 2);
+        assert_eq!(hub.active().map(|v| v.shell.lines()), Some(vec!["nsh> ".to_string()]), "Vehicle.cc discards a SERIAL_CONTROL whose count overruns its data rather than truncating it");
     }
 
     #[test]

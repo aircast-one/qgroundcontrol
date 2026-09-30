@@ -394,6 +394,7 @@ mod deps_cover_reads {
             ("cameratrack", include_str!("cameratrack.rs")),
             ("cameraproto", include_str!("cameraproto.rs")),
             ("onboardlogs", include_str!("onboardlogs.rs")),
+            ("shell", include_str!("shell.rs")),
             ("cmdinfo", include_str!("cmdinfo.rs")),
             ("compinfo", include_str!("compinfo.rs")),
             ("compmeta", include_str!("compmeta.rs")),
