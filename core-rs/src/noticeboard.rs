@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 pub const NOTICES_CHANGED: &str = "core.notices@changed";
 pub const MESSAGE: &str = "message";
 pub const VEHICLE_ERROR: &str = "vehicleError";
-pub const KINDS: [&str; 3] = [MESSAGE, VEHICLE_ERROR, "navigation"];
+pub const KINDS: [&str; 3] = ["message", "vehicleError", "navigation"];
 const MAX_NOTICES: usize = 64;
 const KEEP_OLDEST: usize = 8;
 
