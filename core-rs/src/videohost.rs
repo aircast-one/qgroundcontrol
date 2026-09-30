@@ -4,7 +4,10 @@ use serde_json::{Value, json};
 
 use crate::videostate::{MAIN_RECEIVER, Out, Outcome, PrimaryUrls, Settings, SourceSlot, Status, TILE_RECEIVER_PREFIX, VideoState, source_uri};
 
+#[cfg(not(target_os = "android"))]
 const NATIVE_SINK: &str = "videoconvert ! appsink name=nativesink sync=false";
+#[cfg(target_os = "android")]
+const NATIVE_SINK: &str = "glupload ! glcolorconvert ! video/x-raw(memory:GLMemory),format=RGBA,texture-target=2D ! gldownload ! videoconvert ! appsink name=nativesink sync=false";
 
 #[derive(Default)]
 struct Host {
