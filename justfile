@@ -116,7 +116,7 @@ android:
 # Run the Android head's Kotlin unit tests
 android-checks:
     ./tools/android/studio.py
-    ./tools/android/gradle.sh :app:test :map-spike:test
+    ./tools/android/gradle.sh :app:testQtDebugUnitTest :map-spike:test
 
 # Build documentation
 docs:

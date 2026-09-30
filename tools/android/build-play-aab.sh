@@ -11,8 +11,8 @@ export AIRCAST_KEYSTORE_PASSWORD=${AIRCAST_KEYSTORE_PASSWORD:?keystore password}
 QGC_CONFIGURE_ARGS="-DQGC_USE_CACHE=OFF ${QGC_CONFIGURE_ARGS:-}" \
     QGC_CORE_BUILD_DIR=${BUILD_DIR:-build-android-play} "$root/tools/android/studio.py"
 
-"$root/tools/android/gradle.sh" :app:bundleRelease
+"$root/tools/android/gradle.sh" :app:bundleQtRelease
 
-aab=$root/android/app/build/outputs/bundle/release/app-release.aab
+aab=$root/android/app/build/outputs/bundle/qtRelease/app-qt-release.aab
 "$root/tools/android/check-16k.sh" "$aab"
 echo "$aab"

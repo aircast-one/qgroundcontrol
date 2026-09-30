@@ -100,18 +100,11 @@ import one.aircast.android.ui.FlyPortrait
 import one.aircast.android.ui.PinnedEmergencyStop
 import one.aircast.android.ui.flyIsPortrait
 import org.mavlink.qgroundcontrol.QGCBridge
-import org.mavlink.qgroundcontrol.QGCSDLManager
-import org.mavlink.qgroundcontrol.QGCUsbSerialManager
-import org.qtproject.qt.android.QtQuickView
-import org.qtproject.qt.android.QtRelaunchGuard
 
 private val KEY_ROW_STOP_GAP = 24.dp
 
 private val VIDEO_INSET_WIDTH = 200.dp
 private val VIDEO_INSET_HEIGHT = 112.dp
-
-private const val QML_URI = "qrc:/qml/QGroundControl/MainWindow/AndroidHost.qml"
-private const val QML_LIBRARY = "AircastQGC"
 
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
@@ -143,7 +136,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
     }
 
     private var multicastLock: WifiManager.MulticastLock? = null
-    private lateinit var quickView: QtQuickView
+    private var hostView: android.view.View? = null
 
     @Suppress("unused")
     fun hideSplashScreen(duration: Int) = Unit
@@ -154,19 +147,17 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
         QGCBridge.setHost(this)
         Qgc.start()
-        QGCUsbSerialManager.initialize(this)
-        QGCSDLManager.initialize(this)
 
         acquireMulticastLock()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        quickView = QtQuickView(this, QML_URI, QML_LIBRARY, arrayOf("qrc:/qml"))
+        hostView = HostPlatform.start(this)
 
         QGCBridge.notifyFontScale(resources.configuration.fontScale)
         QGCBridge.notifySafeAreaInsets(0, 0, 0, 0)
         intent?.data?.let { QGCBridge.notifyDeepLink(it.toString()) }
 
-        setContent { AircastShell(quickView) }
+        setContent { AircastShell(hostView) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -189,9 +180,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
     override fun onDestroy() {
         if (live === this) live = null
-        if (isChangingConfigurations) QtRelaunchGuard.forgetActivity(this)
-        runCatching { QGCSDLManager.cleanup() }
-        runCatching { QGCUsbSerialManager.cleanup(this) }
+        HostPlatform.stop(this)
         multicastLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
     }
@@ -207,7 +196,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AircastShell(quickView: QtQuickView) {
+fun AircastShell(hostView: android.view.View?) {
     var tab by remember { mutableStateOf(Tab.Fly) }
     var controlsExpanded by remember { mutableStateOf(true) }
     var actionsHeightPx by remember { mutableIntStateOf(0) }
@@ -336,7 +325,7 @@ fun AircastShell(quickView: QtQuickView) {
             },
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
-                AndroidView(factory = { quickView }, modifier = Modifier.fillMaxSize())
+                hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
 
                 if (tab == Tab.Fly && flyIsPortrait()) {
                     val controllable = hasVehicle()

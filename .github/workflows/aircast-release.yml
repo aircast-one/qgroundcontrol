@@ -200,8 +200,8 @@ jobs:
           # versionName is what Android shows in app info, so it carries the version
           # rather than the tag: 5.4.12-dev.5, not aircast-v5.4.12-dev.5.
           export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
-          ./gradlew --no-daemon :app:testDebugUnitTest :map-spike:testDebugUnitTest
-          ./gradlew --no-daemon :app:assembleRelease
+          ./gradlew --no-daemon :app:testQtDebugUnitTest :map-spike:testDebugUnitTest
+          ./gradlew --no-daemon :app:assembleQtRelease
 
       - name: Collect the native head APK
         env:
@@ -210,7 +210,7 @@ jobs:
           # Signed builds land as app-release.apk, unsigned as app-release-unsigned.apk,
           # and the name says which so an unsigned artifact cannot be mistaken for a
           # shippable one on the release page.
-          for f in android/app/build/outputs/apk/release/app-release*.apk; do
+          for f in android/app/build/outputs/apk/qt/release/app-qt-release*.apk; do
             case "$f" in
               *unsigned*) cp "$f" "out/AircastAndroid-${SHORT}-unsigned.apk" ;;
               *)          cp "$f" "out/AircastAndroid-${SHORT}.apk" ;;

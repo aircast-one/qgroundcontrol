@@ -17,6 +17,16 @@ play {
     defaultToAppBundles.set(true)
 }
 
+val coreCrate = rootProject.file("../core-rs")
+val coreJniLibs = layout.buildDirectory.dir("core/jniLibs")
+val coreBridgeSources = layout.buildDirectory.dir("core/bridge")
+val coreTriples = mapOf(
+    "arm64-v8a" to "aarch64-linux-android",
+    "armeabi-v7a" to "armv7-linux-androideabi",
+    "x86_64" to "x86_64-linux-android",
+    "x86" to "i686-linux-android",
+)
+
 android {
     testOptions {
         unitTests.isReturnDefaultValues = true
@@ -54,6 +64,18 @@ android {
         }
     }
 
+    flavorDimensions += "host"
+    productFlavors {
+        create("qt") { dimension = "host" }
+        create("core") { dimension = "host"; applicationIdSuffix = ".core" }
+    }
+    sourceSets {
+        getByName("core") {
+            java.srcDir(coreBridgeSources)
+            jniLibs.srcDir(coreJniLibs)
+        }
+    }
+
     buildFeatures { compose = true; buildConfig = true }
     packaging { jniLibs { useLegacyPackaging = true } }
     androidResources { noCompress += "rcc" }
@@ -65,8 +87,31 @@ android {
     kotlinOptions { jvmTarget = qgc("javaVersion") }
 }
 
+val copyCoreBridge by tasks.registering(Copy::class) {
+    from(rootProject.file("../deploy/android/src")) { include("org/mavlink/qgroundcontrol/QGCBridge.java") }
+    into(coreBridgeSources)
+}
+
+val buildCoreLibrary by tasks.registering(Exec::class) {
+    val abi = qgc("abi")
+    val triple = coreTriples[abi] ?: error("no Rust target for the $abi ABI")
+    workingDir = coreCrate
+    environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
+    commandLine("cargo", "ndk", "--target", abi, "--platform", qgc("minSdk"), "rustc", "--lib", "--release", "--features", "jni-host", "--crate-type", "cdylib")
+    doLast {
+        copy {
+            from(coreCrate.resolve("target/$triple/release/libqgc_core.so"))
+            into(coreJniLibs.get().dir(abi))
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith("preCore") && it.name.endsWith("Build") }.configureEach {
+    dependsOn(copyCoreBridge, buildCoreLibrary)
+}
+
 dependencies {
-    implementation(files(qgc("aar")))
+    "qtImplementation"(files(qgc("aar")))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
     implementation("androidx.activity:activity-compose:1.9.3")
