@@ -122,6 +122,23 @@ pub fn land(state: &VehicleState) -> Plan {
     }
 }
 
+pub fn guided_takeoff_with_altitude(state: &VehicleState) -> bool {
+    matches!(state.autopilot, AUTOPILOT_PX4 | AUTOPILOT_ARDUPILOT) && (modes::vehicle_class(state.vehicle_type) == VehicleClass::MultiRotor || matches!(state.vehicle_type, 19..=25))
+}
+
+pub fn start_takeoff(state: &VehicleState, flying: bool) -> Plan {
+    let mode_then_arm = |refusal: &str| match set_mode(state, "Takeoff") {
+        Some(steps) => Plan::Steps(steps.into_iter().chain([Step::Arm]).collect()),
+        None => Plan::Refused(refusal.to_string()),
+    };
+    match (state.autopilot, flying, state.armed) {
+        (AUTOPILOT_ARDUPILOT, true, _) => Plan::Refused("Unable to start takeoff: Vehicle is already in the air.".into()),
+        (AUTOPILOT_ARDUPILOT, false, true) => Plan::Steps(Vec::new()),
+        (AUTOPILOT_ARDUPILOT, false, false) => mode_then_arm("Unable to start takeoff: Vehicle failed to change to Takeoff mode."),
+        _ => mode_then_arm("Unable to start takeoff: Vehicle not changing to Takeoff flight mode."),
+    }
+}
+
 pub fn takeoff(state: &VehicleState, altitude_relative: f64) -> Plan {
     let Some(amsl) = state.altitude_amsl.filter(|a| a.is_finite()) else { return Plan::Refused("Unable to takeoff, vehicle position not known.".into()) };
     match state.autopilot {
@@ -567,4 +584,16 @@ mod tests {
             });
     }
 
+
+    #[test]
+    fn a_plane_takes_off_by_mode_and_arm_as_start_takeoff_does() {
+        let plane = VehicleState { autopilot: AUTOPILOT_ARDUPILOT, vehicle_type: 1, armed: false, ..px4() };
+        assert!(!guided_takeoff_with_altitude(&plane), "supports.guidedTakeoffWithAltitude is multirotor or VTOL only");
+        let Plan::Steps(steps) = start_takeoff(&plane, false) else { panic!("a grounded plane can start a takeoff") };
+        assert!(matches!(steps.first(), Some(Step::SetMode { mode, .. }) if mode == "Takeoff"));
+        assert_eq!(steps.last(), Some(&Step::Arm));
+        assert!(matches!(start_takeoff(&plane, true), Plan::Refused(r) if r.contains("already in the air")));
+        let px4_plane = VehicleState { vehicle_type: 1, ..px4() };
+        assert!(matches!(start_takeoff(&px4_plane, false), Plan::Steps(steps) if steps.last() == Some(&Step::Arm)));
+    }
 }

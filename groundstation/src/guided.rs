@@ -89,6 +89,7 @@ pub struct GuidedState {
     pub roi_supported: bool,
     pub roi_active: bool,
     pub was_flying: bool,
+    pub takeoff_with_altitude: bool,
 }
 
 impl GuidedState {
@@ -286,7 +287,7 @@ impl Action {
             offer,
             reason,
             destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
-            carries_value: self.carries_value(),
+            carries_value: self.carries_value() && !(self == Action::Takeoff && !s.takeoff_with_altitude),
         }
     }
 }
@@ -377,6 +378,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         flying: flag(&vehicle, "flying"),
         guided_supported: flag(&supports, "guidedMode"),
         takeoff_supported: flag(&supports, "guidedTakeoffWithAltitude") || flag(&supports, "guidedTakeoffWithoutAltitude"),
+        takeoff_with_altitude: flag(&supports, "guidedTakeoffWithAltitude"),
         pause_supported: flag(&supports, "pauseVehicle"),
         fixed_wing,
         vtol: flag(&vehicle, "vtol"),
@@ -491,6 +493,7 @@ fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Va
         [Action::ResumeMission] => given.get(0).and_then(Value::as_i64).map(|index| json!({ "action": "resumeMission", "index": index })),
         [Action::LandAbort] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "abortLanding", "climbOut": metres })),
         [Action::Grab] | [Action::Release] | [Action::Hold] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip })),
+        [Action::Takeoff] if !state.takeoff_with_altitude => Some(json!({ "action": "takeoff" })),
         [Action::Takeoff] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "takeoff", "altitude": metres })),
         [Action::ChangeAltitude] | [Action::Pause, Action::ChangeAltitude] => given.get(0).and_then(Value::as_f64).map(|delta| json!({
             "action": "changeAltitude",
@@ -1122,7 +1125,9 @@ mod core_route {
 
     #[test]
     fn valued_actions_carry_their_value_to_the_hub() {
-        assert_eq!(core_action(&[Action::Takeoff], "[12.5]", &GuidedState::default()), Some(json!({ "action": "takeoff", "altitude": 12.5 })));
+        let rotor = GuidedState { takeoff_with_altitude: true, ..GuidedState::default() };
+        assert_eq!(core_action(&[Action::Takeoff], "[12.5]", &rotor), Some(json!({ "action": "takeoff", "altitude": 12.5 })));
+        assert_eq!(core_action(&[Action::Takeoff], "[12.5]", &GuidedState::default()), Some(json!({ "action": "takeoff" })), "without guided takeoff the vehicle is sent to its Takeoff mode, which takes no height");
         assert_eq!(core_action(&[Action::Pause, Action::ChangeAltitude], "[-3.0,true]", &GuidedState::default()), Some(json!({ "action": "changeAltitude", "delta": -3.0, "pause": true })));
         assert_eq!(core_action(&[Action::ForceArm], "[]", &GuidedState::default()), Some(json!({ "action": "arm", "arm": true, "force": true })));
         assert_eq!(core_action(&[Action::LandAbort], "[50.0]", &GuidedState::default()), Some(json!({ "action": "abortLanding", "climbOut": 50.0 })));
