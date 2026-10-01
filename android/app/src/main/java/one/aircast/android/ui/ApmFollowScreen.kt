@@ -1,5 +1,11 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -134,6 +140,7 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
             if (!follow.rover) Choice("Point Vehicle", follow.pointOptions, follow.pointIndex) { act(APM_FOLLOW_POINT, it) }
             if (follow.positionIndex == 1) {
                 Text("Vehicle Offsets", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+                OffsetGraphic(follow) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
                 NumberEntry("Angle", "deg", follow.angle) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
                 NumberEntry("Distance", "m", follow.distance) { act(APM_FOLLOW_OFFSETS, follow.angle, it) }
                 if (!follow.rover) NumberEntry("Height", "m", follow.height) { act(APM_FOLLOW_HEIGHT, it) }
@@ -176,5 +183,53 @@ private fun NumberEntry(label: String, units: String, value: Double, onDone: (Do
             keyboardActions = KeyboardActions(onDone = { typed.toDoubleOrNull()?.let(onDone) }),
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+internal fun headingOfTap(x: Float, y: Float): Double {
+    val geometric = Math.toDegrees(kotlin.math.atan2(y.toDouble(), x.toDouble()))
+    return (90 - geometric).let { if (it < 0) it + 360 else if (it > 360) it - 360 else it }
+}
+
+internal fun vehicleYaw(follow: ApmFollow): Double = when {
+    follow.rover || follow.pointIndex == 0 -> 0.0
+    follow.pointIndex == 1 -> 180.0
+    else -> -follow.angle
+}
+
+private val OFFSET_GRAPHIC = 240.dp
+
+@Composable
+private fun OffsetGraphic(follow: ApmFollow, onAngle: (Double) -> Unit) {
+    val shade = MaterialTheme.colorScheme.outlineVariant
+    val ink = MaterialTheme.colorScheme.onSurface
+    val accent = MaterialTheme.colorScheme.primary
+    Text("Click in the graphic to change angle", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    androidx.compose.foundation.Canvas(
+        Modifier.size(OFFSET_GRAPHIC).pointerInput(Unit) {
+            detectTapGestures { tap -> onAngle(headingOfTap(tap.x - size.width / 2f, size.height / 2f - tap.y)) }
+        },
+    ) {
+        drawLine(shade, Offset(center.x, 0f), Offset(center.x, size.height), strokeWidth = 3.dp.toPx())
+        drawLine(shade, Offset(0f, center.y), Offset(size.width, center.y), strokeWidth = 3.dp.toPx())
+        val arrow = 14.dp.toPx()
+        drawPath(Path().apply {
+            moveTo(center.x, center.y - arrow)
+            lineTo(center.x - arrow * 0.7f, center.y + arrow * 0.7f)
+            lineTo(center.x + arrow * 0.7f, center.y + arrow * 0.7f)
+            close()
+        }, accent)
+        rotate(follow.angle.toFloat()) {
+            val at = Offset(center.x, 20.dp.toPx())
+            drawLine(ink.copy(alpha = 0.4f), Offset(center.x, at.y + 14.dp.toPx()), Offset(center.x, center.y - arrow - 4.dp.toPx()), strokeWidth = 2.dp.toPx())
+            rotate(vehicleYaw(follow).toFloat(), at) {
+                drawPath(Path().apply {
+                    moveTo(at.x, at.y - 12.dp.toPx())
+                    lineTo(at.x - 9.dp.toPx(), at.y + 10.dp.toPx())
+                    lineTo(at.x + 9.dp.toPx(), at.y + 10.dp.toPx())
+                    close()
+                }, ink)
+            }
+        }
     }
 }

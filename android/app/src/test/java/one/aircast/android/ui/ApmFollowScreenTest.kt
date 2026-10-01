@@ -22,4 +22,12 @@ class ApmFollowScreenTest {
         assertEquals("Specify Offsets", follow.positionOptions[follow.positionIndex])
         assertEquals("45.0", oneDecimal(follow.angle))
     }
+
+    @Test
+    fun `a tap sets the heading of the vehicle around the ground station`() {
+        org.junit.Assert.assertEquals(0.0, headingOfTap(0f, 10f), 1e-9)
+        org.junit.Assert.assertEquals(90.0, headingOfTap(10f, 0f), 1e-9)
+        org.junit.Assert.assertEquals(180.0, headingOfTap(0f, -10f), 1e-9)
+        org.junit.Assert.assertEquals(270.0, headingOfTap(-10f, 0f), 1e-9)
+    }
 }
