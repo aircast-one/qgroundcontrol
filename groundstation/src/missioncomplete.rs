@@ -35,18 +35,16 @@ pub struct Reading {
 }
 
 pub fn step(latch: Latch, now: &Reading) -> Latch {
-    if !now.connected {
-        return Latch { armed: None, was_armed: false, was_in_mission: false, open: false, ..latch };
-    }
-    let armed_edge = latch.armed != Some(now.armed);
-    let base = Latch { armed: Some(now.armed), ..latch };
-    match (armed_edge, now.armed) {
-        (true, true) => Latch { was_armed: true, was_in_mission: now.in_mission, ..base },
+    let armed = !now.connected || now.armed;
+    let in_mission = now.connected && now.in_mission;
+    let base = Latch { armed: now.connected.then_some(now.armed), open: latch.open && now.connected, ..latch };
+    match (latch.armed.unwrap_or(true) != armed, armed) {
+        (true, true) => Latch { was_armed: true, was_in_mission: in_mission, ..base },
         (true, false) => {
             let show = latch.was_armed && latch.was_in_mission && now.has_plan;
             Latch { was_armed: false, was_in_mission: false, shown: latch.shown + u64::from(show), open: latch.open || show, ..base }
         }
-        (false, true) => Latch { was_in_mission: latch.was_in_mission || now.in_mission, ..base },
+        (false, true) => Latch { was_in_mission: latch.was_in_mission || in_mission, ..base },
         (false, false) => base,
     }
 }
@@ -123,6 +121,9 @@ mod tests {
         let no_plan = [at(false, false), at(true, true), Reading { has_plan: false, ..at(false, false) }];
         assert!(!run(&no_plan).open, "with no plan, fence, rally or photos there is nothing to report");
         assert!(!run(&[at(false, false), at(true, true), Reading { connected: false, ..at(false, false) }]).open, "losing the vehicle closes it, as the dialog does when activeVehicle goes");
+        assert!(!run(&[at(true, true), at(false, true)]).open, "a vehicle first seen already armed never armed under QGC's eyes, since no vehicle reads as armed");
+        let gone = Reading { connected: false, ..at(false, false) };
+        assert!(run(&[at(false, false), at(true, true), gone, at(false, false)]).open, "a link lost in flight that returns disarmed is the finished mission QGC reports");
     }
 
     #[test]
