@@ -20,6 +20,7 @@ play {
 val coreCrate = rootProject.file("../groundstation")
 val coreJniLibs = layout.buildDirectory.dir("core/jniLibs")
 val coreBridgeSources = layout.buildDirectory.dir("core/bridge")
+val instrumentIconAssets = layout.buildDirectory.dir("instrumentIcons")
 val coreVideoBuild = layout.buildDirectory.dir("core/video/${qgc("abi")}")
 val coreTriples = mapOf(
     "arm64-v8a" to "aarch64-linux-android",
@@ -71,6 +72,9 @@ android {
         create("core") { dimension = "host"; applicationIdSuffix = ".core" }
     }
     sourceSets {
+        getByName("main") {
+            assets.srcDir(instrumentIconAssets)
+        }
         getByName("core") {
             java.srcDir(coreBridgeSources)
             java.srcDir(coreVideoBuild.map { it.dir("android-build/src") })
@@ -87,6 +91,11 @@ android {
         targetCompatibility = JavaVersion.toVersion(qgc("javaVersion"))
     }
     kotlinOptions { jvmTarget = qgc("javaVersion") }
+}
+
+val copyInstrumentIcons by tasks.registering(Copy::class) {
+    from(rootProject.file("../resources/InstrumentValueIcons"))
+    into(instrumentIconAssets.map { it.dir("InstrumentValueIcons") })
 }
 
 val copyCoreBridge by tasks.registering(Copy::class) {
@@ -128,6 +137,8 @@ val buildCoreVideo by tasks.registering(Exec::class) {
     }
 }
 
+tasks.named("preBuild") { dependsOn(copyInstrumentIcons) }
+
 tasks.matching { it.name.startsWith("preCore") && it.name.endsWith("Build") }.configureEach {
     dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo)
 }
@@ -143,6 +154,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation(project(":map-spike"))
     implementation("androidx.compose.material:material-icons-core")
+    implementation("io.coil-kt.coil3:coil-compose:3.1.0")
+    implementation("io.coil-kt.coil3:coil-svg:3.1.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }

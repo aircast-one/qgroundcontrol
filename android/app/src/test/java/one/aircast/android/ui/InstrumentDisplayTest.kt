@@ -2,13 +2,14 @@ package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstrumentDisplayTest {
-    private val ranged = ValueDisplay(colourRange = true, values = listOf(10.0, 20.0), colours = listOf(1L, 2L, 3L))
+    private val ranged = ValueDisplay(rangeType = RangeType.Color, values = listOf(10.0, 20.0), colours = listOf(1L, 2L, 3L))
 
     @Test
-    fun `a value takes the colour of the first range it fits under`() {
+    fun `a value takes the colour of the range it falls in`() {
         assertEquals(1L, displayColour(ranged, 5.0))
         assertEquals(2L, displayColour(ranged, 20.0))
         assertEquals(3L, displayColour(ranged, 25.0))
@@ -17,21 +18,32 @@ class InstrumentDisplayTest {
     }
 
     @Test
-    fun `turning on a colour range starts from QGC's two green thresholds`() {
-        val on = withColourRange(ValueDisplay(), true)
-        assertEquals(listOf(0.0, 100.0), on.values)
-        assertEquals(3, on.colours.size)
-        assertEquals(3, withRow(on).values.size)
-        assertEquals(listOf(100.0), withoutRow(on, 0).values)
-        assertEquals(ValueDisplay(), withColourRange(on, false))
+    fun `switching the range type resets the rows like _resetRangeInfo`() {
+        val icons = withRangeType(ValueDisplay(), RangeType.Icon, "airplane.svg")
+        assertEquals(listOf(0.0, 100.0), icons.values)
+        assertEquals(List(3) { "airplane.svg" }, icons.icons)
+        assertTrue(icons.colours.isEmpty())
+        assertEquals(3, withRow(icons, "x.svg").values.size)
+        assertEquals("x.svg", withRow(icons, "x.svg").icons.last())
+        assertEquals(listOf(100.0), withoutRow(icons, 0).values)
+        assertEquals(ValueDisplay(), withRangeType(icons, RangeType.None, "airplane.svg"))
     }
 
     @Test
-    fun `units can be hidden and the display survives a round trip`() {
-        assertEquals("12.1", displayReading(ValueDisplay(showUnits = false), "12.1", "V"))
-        assertEquals("12.1 V", displayReading(ValueDisplay(), "12.1", "V"))
-        val custom = ranged.copy(text = "Pack", showUnits = false)
-        assertEquals(custom, displayFrom(displayJson(custom)))
-        assertEquals(ValueDisplay(), displayFrom("not json"))
+    fun `opacity and icon ranges pick by value, and a fixed icon replaces the label`() {
+        val faded = withRangeType(ValueDisplay(), RangeType.Opacity, "a.svg").let { it.copy(opacities = listOf(0.2, 0.5, 1.0)) }
+        assertEquals(0.2f, displayOpacity(faded, -1.0))
+        assertEquals(1f, displayOpacity(faded, 150.0))
+        assertEquals(1f, displayOpacity(ValueDisplay(), 5.0))
+        val swapped = withRangeType(ValueDisplay(), RangeType.Icon, "a.svg").let { it.copy(icons = listOf("low.svg", "mid.svg", "high.svg")) }
+        assertEquals("mid.svg", displayIcon(swapped, 50.0))
+        assertEquals("plane.svg", displayIcon(ValueDisplay(showIcon = true, icon = "plane.svg"), 5.0))
+        assertNull(displayIcon(ValueDisplay(), 5.0))
+    }
+
+    @Test
+    fun `a display survives a round trip through storage`() {
+        val display = ValueDisplay(text = "Alt", showIcon = true, icon = "plane.svg", rangeType = RangeType.Opacity, values = listOf(1.0), opacities = listOf(0.5, 1.0))
+        assertEquals(display, displayFrom(displayJson(display)))
     }
 }

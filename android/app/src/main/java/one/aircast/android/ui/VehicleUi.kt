@@ -216,11 +216,7 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
                     style = TelemetryNumber,
                     color = displayColour(display, instrument.raw)?.let { Color(it) } ?: Color.Unspecified,
                 )
-                Text(
-                    display.text.ifBlank { instrument.label },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                ValueLabel(display, instrument.raw, instrument.label, MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Column(
