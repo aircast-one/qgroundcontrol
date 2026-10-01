@@ -96,7 +96,30 @@ fn result_text(command: u16, result: u8) -> Option<String> {
         4 => "failed",
         _ => return None,
     };
-    Some(format!("MAV_CMD {command} command {verb}"))
+    Some(format!("{} command {verb}", command_text(command)))
+}
+
+static NAMES: std::sync::LazyLock<std::collections::BTreeMap<i64, (String, String)>> = std::sync::LazyLock::new(|| {
+    crate::cmdinfo::tree(crate::cmdinfo::Firmware::Generic, crate::cmdinfo::VehicleClass::Generic)
+        .into_iter()
+        .map(|(id, c)| (id, (if c.friendly_name == c.raw_name { String::new() } else { c.friendly_name }, c.raw_name)))
+        .collect()
+});
+
+fn names(command: u16) -> (String, String) {
+    NAMES.get(&i64::from(command)).cloned().unwrap_or_else(|| (format!("MAV_CMD({command})"), format!("MAV_CMD({command})")))
+}
+
+fn command_text(command: u16) -> String {
+    match names(command) {
+        (friendly, raw) if friendly.is_empty() => raw,
+        (friendly, raw) => format!("{friendly} ({raw})"),
+    }
+}
+
+fn friendly_text(command: u16) -> String {
+    let (friendly, raw) = names(command);
+    if friendly.is_empty() { raw } else { friendly }
 }
 
 impl Commands {
@@ -137,7 +160,7 @@ impl Commands {
             let c = entry.command;
             let mut out = vec![Out::Result { tag: c.tag, component: c.component, command: c.command, result: RESULT_FAILED, failure: Failure::NoResponse }];
             if c.show_error {
-                out.push(Out::ShowError(format!("Vehicle did not respond to command: MAV_CMD {}", c.command)));
+                out.push(Out::ShowError(format!("Vehicle did not respond to command: {}", friendly_text(c.command))));
             }
             return out;
         }
@@ -265,12 +288,13 @@ mod tests {
         let sent = commands.send(arm(7), 0);
         assert!(matches!(sent.as_slice(), [Out::Send { component: 1, command: 400, command_int: false, .. }]));
         assert!(commands.pending(1, 400));
-        assert_eq!(commands.on_ack(1, 400, 2, 10), vec![Out::Result { tag: 7, component: 1, command: 400, result: 2, failure: Failure::ResultOnly }, Out::ShowError("MAV_CMD 400 command denied".into())]);
+        assert_eq!(commands.on_ack(1, 400, 2, 10), vec![Out::Result { tag: 7, component: 1, command: 400, result: 2, failure: Failure::ResultOnly }, Out::ShowError("Arm/Disarm (MAV_CMD_COMPONENT_ARM_DISARM) command denied".into())]);
+        assert_eq!(command_text(9999), "MAV_CMD(9999) (MAV_CMD(9999))", "MissionCommandTree names an unknown command MAV_CMD(n) for both halves");
         assert!(!commands.pending(1, 400));
         assert!(commands.on_ack(1, 400, 0, 10).is_empty());
         let unretried = commands.send(arm(8), 100);
         assert_eq!(unretried.len(), 1);
-        assert_eq!(commands.tick(100 + ACK_TIMEOUT_MS + 1), vec![Out::Result { tag: 8, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::NoResponse }, Out::ShowError("Vehicle did not respond to command: MAV_CMD 400".into())]);
+        assert_eq!(commands.tick(100 + ACK_TIMEOUT_MS + 1), vec![Out::Result { tag: 8, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::NoResponse }, Out::ShowError("Vehicle did not respond to command: Arm/Disarm".into())]);
     }
 
     #[test]

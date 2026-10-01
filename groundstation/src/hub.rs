@@ -4165,7 +4165,7 @@ mod tests {
         assert_eq!(hub.guided_snapshot(Some(1))["guided"]["state"], "done");
         let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_NAV_TAKEOFF, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &denied, 3_100_000, 3100);
-        assert_eq!(hub.guided_snapshot(None)["guided"]["errors"][0], "MAV_CMD 22 command denied");
+        assert_eq!(hub.guided_snapshot(None)["guided"]["errors"][0], "Takeoff (MAV_CMD_NAV_TAKEOFF) command denied");
         let goto = hub.guided(None, &json!({ "action": "goto", "latitude": 47.405, "longitude": 8.505 }), 3_200).unwrap();
         assert!(matches!(decode(&goto[0].1), MavMessage::COMMAND_INT(c) if c.command == MavCmd::MAV_CMD_DO_REPOSITION && c.x == 474050000));
         assert!(hub.guided(None, &json!({ "action": "goto", "latitude": 47.5, "longitude": 8.6 }), 3_300).is_err(), "13 km is past the 1000 m Max Go To distance");
