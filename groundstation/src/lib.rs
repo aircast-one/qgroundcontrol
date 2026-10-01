@@ -79,6 +79,7 @@ pub mod links;
 pub mod linkconnect;
 pub mod linkremove;
 pub mod mapclick;
+pub mod maptypes;
 pub mod mapurls;
 pub mod maptiles;
 pub mod cloudlink;

@@ -3521,6 +3521,15 @@
         "view.mapScale(120).imperial",
         "view.mapScale(120).kind",
         "view.mapScale(120).text",
+        "view.mapTypes.class",
+        "view.mapTypes.current",
+        "view.mapTypes.kind",
+        "view.mapTypes.path",
+        "view.mapTypes.provider",
+        "view.mapTypes.types.#",
+        "view.mapTypes.types.0",
+        "view.mapTypes.types.1",
+        "view.mapTypes.types.2",
         "view.mavlinkActions.actions.#",
         "view.mavlinkActions.class",
         "view.mavlinkActions.files.#",
@@ -7866,6 +7875,13 @@
         "view.mapScale(120).imperial",
         "view.mapScale(120).kind",
         "view.mapScale(120).text",
+        "view.mapTypes.class",
+        "view.mapTypes.current",
+        "view.mapTypes.kind",
+        "view.mapTypes.path",
+        "view.mapTypes.provider",
+        "view.mapTypes.types.#",
+        "view.mapTypes.types[]",
         "view.mavlinkActions.actions.#",
         "view.mavlinkActions.class",
         "view.mavlinkActions.files.#",
@@ -10001,6 +10017,7 @@
             "view.autotune",
             "view.actuatorOutputs",
             "view.apmServos",
+            "view.mapTypes",
             "view.apmFollow",
             "view.apmSubFrame",
             "view.apmSubMotors",
@@ -11364,6 +11381,16 @@
         "imperial": "bool",
         "kind": "string",
         "text": "string"
+    },
+    "view.mapTypes": {
+        "class": "string",
+        "current": "string",
+        "kind": "string",
+        "path": "string",
+        "provider": "string",
+        "types": [
+            "string"
+        ]
     },
     "view.mavlinkActions": {
         "actions": [

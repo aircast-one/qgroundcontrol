@@ -130,6 +130,7 @@ internal fun MapSpikeScreen(
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
 ) {
     var follow by remember { mutableStateOf(true) }
+    var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
     var editingItem by remember { mutableStateOf<MissionItem?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
     var loadArmed by remember { mutableStateOf(false) }
@@ -348,7 +349,7 @@ internal fun MapSpikeScreen(
     Box(Modifier.fillMaxSize()) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
-            mapStyle = mapStyle,
+            mapStyle = shownStyle,
             follow = follow,
             missionItems = items,
             linkStartToHome = linkStartToHome,
@@ -682,6 +683,8 @@ internal fun MapSpikeScreen(
                         follow = false
                         fitRequest += 1
                     }) { Text("Fit") }
+
+                    MapTypeMenu { shownStyle = it }
 
                     onClear?.let { clear ->
                         TextButton(onClick = {
@@ -1083,6 +1086,49 @@ private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall,
                 textAlign = TextAlign.End,
             )
+        }
+    }
+}
+
+internal const val MAP_TYPES_VIEW = "view.mapTypes"
+
+internal data class MapTypes(val current: String, val types: List<String>, val path: String)
+
+internal fun mapTypes(view: JSONObject?): MapTypes? = view?.takeIf { it.has("types") }?.let {
+    val types = it.optJSONArray("types")
+    MapTypes(it.optText("current"), (0 until (types?.length() ?: 0)).map { at -> types!!.optString(at) }, it.optText("path"))
+}
+
+@Composable
+private fun MapTypeMenu(onStyle: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    var listed by remember { mutableStateOf<MapTypes?>(null) }
+    val scope = rememberCoroutineScope()
+    Box {
+        TextButton(onClick = {
+            scope.launch {
+                listed = withContext(Dispatchers.Default) { mapTypes(runCatching { JSONObject(QGCBridge.get(MAP_TYPES_VIEW)) }.getOrNull()) }
+                open = true
+            }
+        }) { Text("Map") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            listed?.types?.forEach { type ->
+                DropdownMenuItem(
+                    text = { Text(type) },
+                    trailingIcon = { if (type == listed?.current) Text("✓") },
+                    onClick = {
+                        open = false
+                        val path = listed?.path ?: return@DropdownMenuItem
+                        scope.launch {
+                            val style = withContext(Dispatchers.Default) {
+                                setOk(path, settingJson(JSONObject.quote(type)))
+                                qgcRasterStyle(currentMapType())
+                            }
+                            onStyle(style)
+                        }
+                    },
+                )
+            }
         }
     }
 }

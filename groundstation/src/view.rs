@@ -62,6 +62,7 @@ use crate::px4airframe;
 use crate::autotune;
 use crate::actuators;
 use crate::apmfollow;
+use crate::maptypes;
 use crate::apmsubframe;
 use crate::apmsubmotors;
 use crate::apmservos;
@@ -198,6 +199,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.autotune", deps: autotune::DEPS, compute: autotune::autotune_view },
     View { path: "view.actuatorOutputs", deps: actuators::DEPS, compute: actuators::outputs_view },
     View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
+    View { path: "view.mapTypes", deps: maptypes::DEPS, compute: maptypes::map_types_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
     View { path: "view.apmSubMotors", deps: apmsubmotors::DEPS, compute: apmsubmotors::apm_sub_motors_view },
@@ -572,6 +574,7 @@ mod deps_cover_reads {
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
             ("components", include_str!("components.rs")),
+            ("maptypes", include_str!("maptypes.rs")),
             ("mapurls", include_str!("mapurls.rs")),
             ("maptiles", include_str!("maptiles.rs")),
             ("corelinks", include_str!("corelinks.rs")),
