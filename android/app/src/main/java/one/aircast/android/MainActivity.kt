@@ -419,6 +419,7 @@ fun AircastShell(hostView: android.view.View?) {
                         actions = { layout -> flightActions(layout) },
                     )
                 }
+                if (onFly) one.aircast.android.ui.ConnectingCard(Modifier.align(Alignment.Center))
 
                 if (tab == Tab.Fly) {
                     VirtualJoystick(
