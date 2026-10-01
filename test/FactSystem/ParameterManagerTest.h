@@ -11,6 +11,7 @@ private slots:
 
     void _noFailure();
     void _requestListNoResponse();
+    void _requestListWaitsWhileVehicleBoots();
     void _requestListMissingParamSuccess();
     void _requestListMissingParamFail();
     void _paramWriteNoAckRetry();
@@ -32,5 +33,5 @@ private slots:
 private:
     void _noFailureWorker(MockConfiguration::FailureMode_t failureMode);
     void _setParamWithFailureMode(MockLink::ParamSetFailureMode_t failureMode, bool expectSuccess,
-                                  const QString &paramName, MAV_AUTOPILOT autopilot);
+                                  const QString& paramName, MAV_AUTOPILOT autopilot);
 };
