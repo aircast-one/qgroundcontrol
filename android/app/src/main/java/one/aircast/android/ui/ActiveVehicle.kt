@@ -2,14 +2,18 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.res.painterResource
+import one.aircast.android.R
+import one.aircast.mapspike.aircast
 import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.isActive
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
@@ -28,7 +32,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -104,33 +107,43 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var refusal by remember { mutableStateOf<String?>(null) }
 
-    Row(
-        modifier = modifier.let {
+    androidx.compose.material3.Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = when {
+            lost -> MaterialTheme.colorScheme.errorContainer
+            disconnected -> MaterialTheme.colorScheme.surfaceContainerHigh
+            else -> MaterialTheme.aircast.successContainer
+        },
+        contentColor = when {
+            lost -> MaterialTheme.colorScheme.onErrorContainer
+            disconnected -> MaterialTheme.colorScheme.onSurface
+            else -> MaterialTheme.aircast.success
+        },
+        onClick = {
             when {
-                choices.ambiguous || taken -> it.clickable { picking = true }
-                disconnected -> it.clickable { offline = true }
-                else -> it.clickable { statusSettings = true }
+                choices.ambiguous || taken -> picking = true
+                disconnected -> offline = true
+                else -> statusSettings = true
             }
         },
+    ) {
+    Row(
+        Modifier.heightIn(min = 32.dp).padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
         Text(
             text = activeVehicleTitle(choices, subtitle),
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (lost) FontWeight.Bold else FontWeight.Normal,
-            color = if (lost) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
         )
         if (choices.ambiguous || taken) {
             val alarm = lostVehiclesText(lostVehicles(choices)) ?: controlLine(station).takeIf { taken }
             Icon(
-                imageVector = if (alarm == null) Icons.Default.KeyboardArrowDown else Icons.Default.Warning,
+                painter = painterResource(if (alarm == null) R.drawable.ic_arrow_drop_down else R.drawable.ic_warning),
                 contentDescription = alarm ?: "Choose which vehicle to fly",
-                tint = if (alarm == null) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.error
-                },
             )
         }
         var loading by remember { mutableStateOf<Float?>(null) }
@@ -151,6 +164,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(CLOSE_VEHICLE) } }
             }) { Text("Disconnect") }
         }
+    }
     }
 
     androidx.compose.runtime.LaunchedEffect(disconnected) { if (!disconnected) offline = false }

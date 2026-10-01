@@ -10,6 +10,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.graphics.Color
+import one.aircast.mapspike.aircast
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,11 +43,12 @@ import one.aircast.mapspike.AircastSpace
 
 private const val FLY_STORE = "fly"
 private const val FLY_VIEW_KEY = "view"
-private const val FLY_SCRIM_ALPHA = 0.85f
+private const val FLY_SCRIM_ALPHA = 0.55f
+private val STATUS_ROW_HEIGHT = 32.dp
+private val SEGMENT_HEIGHT = 32.dp
 private val MAP_PIP_SIZE = 120.dp
 private val VIDEO_PIP_WIDTH = 156.dp
 private val VIDEO_PIP_HEIGHT = 96.dp
-private val SWITCHER_HEIGHT = 36.dp
 
 enum class FlyView(val label: String, @DrawableRes val icon: Int) {
     Video("Video", R.drawable.ic_videocam),
@@ -67,24 +75,24 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
     Surface(
         modifier,
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = FLY_SCRIM_ALPHA),
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        color = Color.Black.copy(alpha = FLY_SCRIM_ALPHA),
+        contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         Row(
-            Modifier.padding(AircastSpace.s1).selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1),
+            Modifier.padding(3.dp).selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             FlyView.entries.map { entry ->
                 val selected = entry == view
                 Surface(
                     shape = CircleShape,
-                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0f),
-                    contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.aircast.outdoorForeground,
                     modifier = Modifier.selectable(selected = selected, role = Role.Tab) { onView(entry) },
                 ) {
                     Row(
-                        Modifier.height(SWITCHER_HEIGHT - AircastSpace.s2).padding(horizontal = AircastSpace.s3),
+                        Modifier.height(SEGMENT_HEIGHT).padding(start = if (selected) AircastSpace.s3 else AircastSpace.s2, end = if (selected) AircastSpace.s3 else AircastSpace.s2),
                         horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -101,6 +109,7 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
 internal fun FlyPortrait(
     view: FlyView,
     onView: (FlyView) -> Unit,
+    status: @Composable RowScope.() -> Unit,
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
@@ -127,7 +136,8 @@ internal fun FlyPortrait(
                 FlyView.Map -> video(
                     Modifier
                         .align(Alignment.TopEnd)
-                        .padding(AircastSpace.s3)
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3)
                         .size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
                         .clip(MaterialTheme.shapes.medium),
                     false,
@@ -138,10 +148,17 @@ internal fun FlyPortrait(
             Column(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(AircastSpace.s3),
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
                 verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
             ) {
-                FlyViewSwitcher(view, onView)
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
+                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = status,
+                )
+                FlyViewSwitcher(view, onView, Modifier.padding(top = AircastSpace.s2))
                 Row(
                     Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),

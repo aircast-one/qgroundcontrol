@@ -44,6 +44,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import one.aircast.mapspike.aircast
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -347,10 +350,12 @@ fun AircastShell(hostView: android.view.View?) {
             Box(Modifier.fillMaxSize()) { flyVideo(Modifier.fillMaxSize(), true) }
             return@AircastTheme
         }
+        val flyPortrait = tab == Tab.Fly && flyIsPortrait()
         Scaffold(
             snackbarHost = { SnackbarHost(snackbars) },
+            contentWindowInsets = if (flyPortrait) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
             topBar = {
-                Row(
+                if (!flyPortrait) Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
@@ -393,10 +398,23 @@ fun AircastShell(hostView: android.view.View?) {
                 hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
                 if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.TopCenter).zIndex(2f).padding(top = 8.dp))
 
-                if (tab == Tab.Fly && flyIsPortrait()) {
+                if (flyPortrait) {
                     FlyPortrait(
                         view = flyView,
                         onView = { flyView = it },
+                        status = {
+                            VehicleStateChip()
+                            VtolStateCell()
+                            ControlRequestPrompt()
+                            Spacer(Modifier.weight(1f))
+                            if (hasVehicle()) Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.45f),
+                                contentColor = MaterialTheme.aircast.outdoorForeground,
+                            ) {
+                                StatusReadingsInline(Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                            }
+                        },
                         video = { mod, expanded -> flyVideo(mod, expanded) },
                         map = { mod -> flyMap(mod) },
                         keyRow = {
