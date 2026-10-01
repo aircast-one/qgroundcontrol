@@ -644,7 +644,7 @@ pub fn camera_section(sections: &[Simple]) -> Value {
                 "enumIndex": mode_value as i64,
                 "units": "",
             },
-            degrees("gimbalPitch", -gimbal.map_or(0.0, |g| p(g, 0))),
+            degrees("gimbalPitch", gimbal.map_or(0.0, |g| p(g, 0))),
             degrees("gimbalYaw", gimbal.map_or(0.0, |g| p(g, 2))),
             {
                 "property": "cameraAction",
@@ -679,7 +679,7 @@ pub fn camera_state(sections: &[Simple]) -> CameraState {
     let trigger = found(CMD_DO_SET_CAM_TRIGG_DIST);
     CameraState {
         mode: found(CMD_SET_CAMERA_MODE).map(|m| p(m, 1)),
-        gimbal: found(CMD_DO_MOUNT_CONTROL).map(|g| (-p(g, 0), p(g, 2))),
+        gimbal: found(CMD_DO_MOUNT_CONTROL).map(|g| (p(g, 0), p(g, 2))),
         action: camera_section(sections)["facts"].as_array().and_then(|facts| facts.iter().find(|f| f["property"] == "cameraAction")).and_then(|f| f["value"].as_i64()).unwrap_or(0),
         interval_time: start.map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME),
         interval_distance: trigger.map(|t| p(t, 0)).filter(|d| *d > 0.0).unwrap_or(DEFAULT_INTERVAL_DISTANCE),
@@ -693,7 +693,7 @@ fn mission_command(command: i64, params: [f64; 7]) -> Simple {
 pub fn camera_items(state: &CameraState) -> Vec<Simple> {
     let nan = f64::NAN;
     let mode = state.mode.map(|m| mission_command(CMD_SET_CAMERA_MODE, [0.0, m, nan, nan, nan, nan, nan]));
-    let gimbal = state.gimbal.map(|(pitch, yaw)| mission_command(CMD_DO_MOUNT_CONTROL, [-pitch, 0.0, yaw, 0.0, 0.0, 0.0, MOUNT_MODE_MAVLINK_TARGETING]));
+    let gimbal = state.gimbal.map(|(pitch, yaw)| mission_command(CMD_DO_MOUNT_CONTROL, [pitch, 0.0, yaw, 0.0, 0.0, 0.0, MOUNT_MODE_MAVLINK_TARGETING]));
     let action: Vec<Simple> = match state.action {
         1 => vec![mission_command(CMD_IMAGE_START_CAPTURE, [0.0, state.interval_time.trunc(), 0.0, nan, nan, nan, nan])],
         2 => vec![mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [state.interval_distance, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0])],
@@ -846,6 +846,7 @@ mod tests {
         let commands: Vec<i64> = aimed.settings_sections.iter().map(|s| s.command).collect();
         assert_eq!(commands, [CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE], "gimbal before the action, as appendSectionItems orders them");
         assert_eq!(camera_state(&aimed.settings_sections).gimbal, Some((-45.0, 0.0)));
+        assert_eq!(aimed.settings_sections[0].params[0], Some(-45.0), "MAV_CMD_DO_MOUNT_CONTROL param1 is the pitch itself, as CameraSection writes and scans it");
         let moded = set_camera(&aimed, 0, "specifyCameraMode", &json!(true)).unwrap();
         assert_eq!(moded.settings_sections[0].command, CMD_SET_CAMERA_MODE);
         let stopped = set_camera(&moded, 0, "cameraAction", &json!(3)).unwrap();
