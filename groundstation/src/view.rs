@@ -65,6 +65,7 @@ use crate::apmfollow;
 use crate::apmservos;
 use crate::espbridge;
 use crate::logreplay;
+use crate::sensorsettings;
 use crate::mavlinkactions;
 use crate::ntrip;
 use crate::scripting;
@@ -197,6 +198,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
     View { path: "view.logReplay", deps: logreplay::DEPS, compute: logreplay::log_replay_view },
+    View { path: "view.sensorSettings", deps: sensorsettings::DEPS, compute: sensorsettings::sensor_settings_view },
     View { path: "view.espBridge", deps: espbridge::DEPS, compute: espbridge::esp_bridge_view },
     View { path: "view.mavlinkActions", deps: mavlinkactions::DEPS, compute: mavlinkactions::mavlink_actions_view },
     View { path: "view.scripting", deps: scripting::DEPS, compute: scripting::scripting_view },
@@ -515,6 +517,7 @@ mod deps_cover_reads {
             ("stickcal", include_str!("stickcal.rs")),
             ("mavlinkactions", include_str!("mavlinkactions.rs")),
             ("espbridge", include_str!("espbridge.rs")),
+            ("sensorsettings", include_str!("sensorsettings.rs")),
             ("kml", include_str!("kml.rs")),
             ("label", include_str!("label.rs")),
             ("landing", include_str!("landing.rs")),

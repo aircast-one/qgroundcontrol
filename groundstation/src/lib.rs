@@ -170,6 +170,7 @@ pub mod logreplay;
 pub mod mavlinkactions;
 pub mod ntrip;
 pub mod scripting;
+pub mod sensorsettings;
 pub mod signingkeys;
 pub mod stickcal;
 pub mod motorassignment;

@@ -4272,6 +4272,9 @@
         "view.scripting.scripts.#",
         "view.scripting.status",
         "view.scripting.unsupportedText",
+        "view.sensorSettings.available",
+        "view.sensorSettings.class",
+        "view.sensorSettings.kind",
         "view.sensors.class",
         "view.sensors.failing.#",
         "view.sensors.kind",
@@ -8682,6 +8685,9 @@
         "view.scripting.scripts.#",
         "view.scripting.status",
         "view.scripting.unsupportedText",
+        "view.sensorSettings.available",
+        "view.sensorSettings.class",
+        "view.sensorSettings.kind",
         "view.sensors.available",
         "view.sensors.class",
         "view.sensors.failing.#",
@@ -9834,6 +9840,7 @@
             "view.apmFollow",
             "view.ntrip",
             "view.logReplay",
+            "view.sensorSettings",
             "view.espBridge",
             "view.mavlinkActions",
             "view.scripting",
@@ -12368,6 +12375,11 @@
         ],
         "status": "string",
         "unsupportedText": "string"
+    },
+    "view.sensorSettings": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string"
     },
     "view.sensors": {
         "available": "bool",

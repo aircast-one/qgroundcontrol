@@ -99,18 +99,29 @@ private fun SensorsNotice(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+internal const val ACCEL_ROUTINE = "accelerometer"
+
 @Composable
 private fun StartDialog(
     calibration: CalibrationRoutine,
-    onConfirm: () -> Unit,
+    onConfirm: (List<Boolean>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val copy = routineCopy(calibration)
+    var simple by remember { mutableStateOf(false) }
+    val orientationFirst = calibration.id == ACCEL_ROUTINE || calibration.id == COMPASS_ROUTINE
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Calibrate ${calibration.title}?") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (orientationFirst) {
+                    SensorSettingsBlock(
+                        calibrating = true,
+                        showCompasses = calibration.id == COMPASS_ROUTINE,
+                        onSimpleAccel = if (calibration.id == ACCEL_ROUTINE) ({ simple = it }) else null,
+                    )
+                }
                 Text(copy.instruction)
                 if (copy.warning.isNotBlank()) {
                     Text(
@@ -122,7 +133,10 @@ private fun StartDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(); onDismiss() }) { Text("Start") }
+            TextButton(onClick = {
+                onConfirm(if (calibration.id == ACCEL_ROUTINE) listOf(simple) else calibration.arguments)
+                onDismiss()
+            }) { Text("Start") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -252,6 +266,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     val health = remember(healthJson) { sensorHealth(healthJson) }
     val state = remember(json) { calibrationState(json) }
     var pending by remember { mutableStateOf<CalibrationRoutine?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
     var runningName by remember { mutableStateOf("") }
     var rebootOffered by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -278,17 +293,26 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         return
     }
 
+    if (showSettings) {
+        AlertDialog(
+            onDismissRequest = { showSettings = false },
+            title = { Text("Sensor Settings") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { SensorSettingsBlock(calibrating = false, showCompasses = true) } },
+            confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Close") } },
+        )
+    }
+
     pending?.let { calibration ->
         StartDialog(
             calibration = calibration,
-            onConfirm = {
+            onConfirm = { arguments ->
                 runningName = calibration.title
                 rebootOffered = rebootOffered || calibration.id == COMPASS_ROUTINE
                 notice = null
                 scope.launch {
                     val before = withContext(Dispatchers.Default) { calibrationStatus() }
                     val dispatched = withContext(Dispatchers.Default) {
-                        Qgc.invoke(calibration.invocation, *calibration.arguments.toTypedArray())
+                        Qgc.invoke(calibration.invocation, *arguments.toTypedArray())
                     }
                     val started = dispatched && withTimeoutOrNull(CAL_START_MS) {
                         while (
@@ -376,6 +400,10 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                 },
                 onClick = if (routine.enabled) ({ pending = routine }) else null,
             )
+        }
+
+        item(key = "sensorSettings") {
+            SetupRow(title = "Sensor Settings", status = "", state = SetupState.Neutral, onClick = { showSettings = true })
         }
 
         if (state.statusText.isNotBlank()) {
