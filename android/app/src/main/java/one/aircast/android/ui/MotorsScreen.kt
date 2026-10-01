@@ -73,6 +73,9 @@ internal fun spin(motor: Int, percent: Int) {
     Qgc.invoke("vehicle.motorTest", motor, percent, seconds, true)
 }
 
+internal fun motorLabel(motor: Int, letters: Boolean): String =
+    if (letters) ('A' + (motor - 1)).toString() else motor.toString()
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MotorsScreen(modifier: Modifier = Modifier) {
@@ -82,6 +85,8 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
     val motors = motorCount(reported)
     var propsOff by remember { mutableStateOf(false) }
     var throttle by remember { mutableFloatStateOf(20f) }
+    val setupJson by qgcPath(SETUP)
+    val letters = remember(setupJson) { setupReadiness(setupJson)?.firmware == "apm" }
 
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Motor test", style = MaterialTheme.typography.titleMedium)
@@ -101,7 +106,10 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Switch(checked = propsOff, onCheckedChange = { propsOff = it })
+            Switch(checked = propsOff, onCheckedChange = {
+                propsOff = it
+                if (!it) throttle = 0f
+            })
             Text(
                 if (propsOff) "Motors are live" else "Propellers are off — turn on to enable",
                 style = MaterialTheme.typography.bodyMedium,
@@ -120,7 +128,7 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (1..motors).forEach { motor ->
                 Button(onClick = { spin(motor, throttle.toInt()) }, enabled = canTest(gate, propsOff)) {
-                    Text("$motor")
+                    Text(motorLabel(motor, letters))
                 }
             }
         }

@@ -67,4 +67,10 @@ class MotorGateTest {
         assertTrue(canStop(motorGate(frame(contactLost = "true"))))
         assertFalse(canStop(motorGate(frame(connected = false))))
     }
+
+    @org.junit.Test
+    fun `ArduPilot motors are tested by letter`() {
+        org.junit.Assert.assertEquals("C", motorLabel(3, letters = true))
+        org.junit.Assert.assertEquals("3", motorLabel(3, letters = false))
+    }
 }
