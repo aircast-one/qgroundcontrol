@@ -173,8 +173,8 @@ class SatelliteCellTest {
     }
 
     @Test
-    fun `a fix with no count reported draws nothing rather than a bare noun`() {
-        assertEquals("", satsText(FixLevel.Good, ""))
+    fun `a fix with no count reported reads as GPSIndicator's dashes rather than a bare noun`() {
+        assertEquals("--", satsText(FixLevel.Good, ""))
         assertEquals("2D only", satsText(FixLevel.TwoD, ""))
     }
 }

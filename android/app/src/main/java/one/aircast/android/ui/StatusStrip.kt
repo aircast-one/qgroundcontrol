@@ -77,10 +77,12 @@ internal fun fixLevel(lock: Double): FixLevel? = when {
     else -> FixLevel.Good
 }
 
+internal const val NO_COUNT = "--"
+
 internal fun satsText(fix: FixLevel, count: String): String = when (fix) {
     FixLevel.None -> "No fix"
     FixLevel.TwoD -> if (count.isBlank()) "2D only" else "$count sats · 2D only"
-    FixLevel.Good -> if (count.isBlank()) "" else "$count sats"
+    FixLevel.Good -> if (count.isBlank()) NO_COUNT else "$count sats"
 }
 
 @Composable
@@ -134,8 +136,8 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
             "battery" to { battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery } } },
             "gps" to {
-                fix?.let { level ->
-                    satsText(level, satellites).ifBlank { null }?.let { InlineCell(it, gpsColour(level)) { detail = StripDetail.Gps } }
+                gps?.let {
+                    InlineCell(fix?.let { satsText(it, satellites) } ?: NO_COUNT, fix?.let { gpsColour(it) } ?: Color.Unspecified) { detail = StripDetail.Gps }
                 }
             },
             "rc" to { rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified) } },
