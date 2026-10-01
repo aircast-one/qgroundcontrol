@@ -40,6 +40,19 @@ pub const FILES_BUSY: &str = "Another file transfer with the vehicle is in progr
 const AIRFRAME_PARAMS: [&str; 2] = ["SYS_AUTOSTART", "SYS_AUTOCONFIG"];
 const AIRFRAME_REBOOT_DELAY_MS: u64 = 800;
 const CMD_SET_MESSAGE_INTERVAL: u16 = 511;
+const MSG_HOME_POSITION_ID: u32 = 242;
+const MSG_EXTENDED_SYS_STATE_ID: u32 = 245;
+const STREAM_INTERVAL_US: f64 = 1_000_000.0;
+const STREAM_REINIT_MS: u64 = 10_000;
+const APM_STREAMS: [(u8, &str, i64); 7] = [
+    (1, "streamRateRawSensors", 2),
+    (2, "streamRateExtendedStatus", 2),
+    (3, "streamRateRCChannels", 2),
+    (6, "streamRatePosition", 3),
+    (10, "streamRateExtra1", 10),
+    (11, "streamRateExtra2", 10),
+    (12, "streamRateExtra3", 3),
+];
 const CMD_CONFIGURE_ACTUATOR: u16 = 311;
 const ACTUATOR_ACTION_TIMEOUT_MS: u64 = 3000;
 const MAV_STATE_ACTIVE: u8 = 4;
@@ -160,6 +173,7 @@ pub struct Vehicle {
     pub last_heartbeat_us: u64,
     pub gps: GpsFacts,
     pub gps2: GpsFacts,
+    streams_watched_ms: Option<(u64, u64)>,
     pub integrity_heard_ms: Option<u64>,
     pub batteries: Batteries,
     pub facts: VehicleFacts,
@@ -298,6 +312,7 @@ impl Vehicle {
             last_heartbeat_us: 0,
             gps: GpsFacts::default(),
             gps2: GpsFacts::default(),
+            streams_watched_ms: None,
             integrity_heard_ms: None,
             batteries: Batteries::default(),
             facts: VehicleFacts::for_vehicle(id, component),
@@ -1012,7 +1027,41 @@ impl Vehicle {
 
     fn begin_connect(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let actions = self.connect.start(&self.connect_link(), &self.connect_vehicle());
-        self.follow_connect(actions, now_ms)
+        let mut bytes = self.follow_connect(actions, now_ms);
+        bytes.extend(self.initialize_stream_rates(now_ms));
+        bytes
+    }
+
+    fn initialize_stream_rates(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        if !self.sends_home() {
+            return Vec::new();
+        }
+        self.streams_watched_ms = Some((now_ms, now_ms));
+        let target = (self.id, self.component);
+        let requests: Vec<Outbound> = match crate::settingsstore::raw_setting("settings.mavlinkSettings.apmStartMavlinkStreams").and_then(|v| v.as_bool()).unwrap_or(true) {
+            true => APM_STREAMS
+                .iter()
+                .filter_map(|(stream, name, default)| {
+                    let rate = crate::settingsstore::raw_setting(&format!("settings.apmMavlinkStreamRateSettings.{name}")).and_then(|v| v.as_i64()).unwrap_or(*default);
+                    (rate >= 0).then(|| Outbound::RequestDataStream { target, stream: *stream, rate: rate as u16 })
+                })
+                .collect(),
+            false => Vec::new(),
+        };
+        let mut bytes: Vec<Vec<u8>> = requests.iter().filter_map(|send| self.encode(send)).collect();
+        [MSG_HOME_POSITION_ID, MSG_EXTENDED_SYS_STATE_ID].iter().for_each(|message| {
+            let params = [f64::from(*message), STREAM_INTERVAL_US, 0.0, 0.0, 0.0, 0.0, 0.0];
+            let outs = self.commands.send(Command { component: COMP_AUTOPILOT1, command: CMD_SET_MESSAGE_INTERVAL, command_int: false, frame: 0, params, show_error: false, tag: 0 }, now_ms);
+            bytes.extend(self.handle(outs, now_ms));
+        });
+        bytes
+    }
+
+    fn tick_stream_rates(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        match self.streams_watched_ms {
+            Some((battery, home)) if now_ms.saturating_sub(battery) > STREAM_REINIT_MS || now_ms.saturating_sub(home) > STREAM_REINIT_MS => self.initialize_stream_rates(now_ms),
+            _ => Vec::new(),
+        }
     }
 
     fn step_done(&mut self, step: connect::Step, now_ms: u64) -> Vec<Vec<u8>> {
@@ -1631,6 +1680,7 @@ impl Vehicle {
         let mut bytes = self.handle(ticked, now_ms);
         bytes.extend(self.tick_rc_override(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
+        bytes.extend(self.tick_stream_rates(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
         let actuator = self.actuator_test.tick(now_ms);
         bytes.extend(self.actuator_request(actuator));
@@ -2294,6 +2344,13 @@ impl Vehicle {
                 }
             }
             _ => {}
+        }
+        if let Some((battery, home)) = self.streams_watched_ms {
+            self.streams_watched_ms = Some(match message {
+                MavMessage::BATTERY_STATUS(_) => (now_ms, home),
+                MavMessage::HOME_POSITION(_) => (battery, now_ms),
+                _ => (battery, home),
+            });
         }
         self.gps.apply(message);
         self.gps2.apply_second(message);
@@ -3564,8 +3621,14 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         let first = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
-        assert_eq!(first.len(), 1);
         assert_eq!(request_of(&first[0].1), (512, 148.0), "the first thing asked of a new vehicle is its autopilot version");
+        let streams: Vec<(u8, u16)> = first.iter().filter_map(|(_, b)| match decode(b) { MavMessage::REQUEST_DATA_STREAM(r) => Some((r.req_stream_id, r.req_message_rate)), _ => None }).collect();
+        assert_eq!(streams, [(1, 2), (2, 2), (3, 2), (6, 3), (10, 10), (11, 10), (12, 3)], "APMFirmwarePlugin::initializeStreamRates asks for every stream at its default rate");
+        let intervals: Vec<f32> = first.iter().filter_map(|(_, b)| match decode(b) { MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL => Some(c.param1), _ => None }).collect();
+        assert_eq!(intervals, [242.0, 245.0], "home position and extended sys state are streamed because ArduPilot does not by default");
+        assert_eq!(first.len(), 10);
+        let quiet: Vec<u8> = hub.tick(11_500).into_iter().filter_map(|(_, b)| match decode(&b) { MavMessage::REQUEST_DATA_STREAM(r) => Some(r.req_stream_id), _ => None }).collect();
+        assert_eq!(quiet.len(), 7, "ten silent seconds without BATTERY_STATUS or HOME_POSITION re-request the streams");
         assert_eq!(hub.snapshot()["vehicle"]["connectStep"], "AutopilotVersion");
         let version = MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA { capabilities: MavProtocolCapability::from_bits_retain(8 | 4), flight_sw_version: 0x04050600, ..Default::default() });
         let after_version = hub.on_frame(origin(4), &autopilot, &version, 1_100_000, 1_100);
@@ -4048,6 +4111,7 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         connect_copter(&mut hub, &autopilot);
+        hub.vehicles.get_mut(&1).unwrap().streams_watched_ms = None;
         let settings = remoteid::Settings { region: remoteid::REGION_FAA, operator_id: "FIN87astrdge12k8".into(), operator_id_type: 0, operator_id_valid: false, send_operator_id: true, basic_id: "1234".into(), basic_id_type: 1, basic_id_ua_type: 2, send_basic_id: true, send_self_id: false, self_id_type: 0, self_id_free: "Survey".into(), self_id_emergency: "Emergency".into(), self_id_extended: "Extended".into(), location_type: remoteid::LOCATION_LIVE, classification_type: 0, latitude_fixed: 0.0, longitude_fixed: 0.0, altitude_fixed: 0.0, category_eu: 0, class_eu: 0 };
         hub.set_remote_inputs(settings, GcsFix { valid: true, latitude: 47.5, longitude: 8.5, altitude: 400.0, age_ms: 100 }, 30_000);
         let status = MavMessage::OPEN_DRONE_ID_ARM_STATUS(OPEN_DRONE_ID_ARM_STATUS_DATA { status: MavOdidArmStatus::MAV_ODID_ARM_STATUS_GOOD_TO_ARM, error: mavout::chars("") });

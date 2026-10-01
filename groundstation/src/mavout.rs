@@ -58,6 +58,7 @@ pub enum Outbound {
     ShellData { target: (u8, u8), data: Vec<u8> },
     GpsRtcmData { data: mavlink::dialects::ardupilotmega::GPS_RTCM_DATA_DATA },
     SetupSigning { data: mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA },
+    RequestDataStream { target: (u8, u8), stream: u8, rate: u16 },
     GcsHeartbeat,
 }
 
@@ -235,6 +236,13 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
             }),
         }),
         Outbound::GpsRtcmData { data } => Some(MavMessage::GPS_RTCM_DATA(data.clone())),
+        Outbound::RequestDataStream { target, stream, rate } => Some(MavMessage::REQUEST_DATA_STREAM(mavlink::dialects::ardupilotmega::REQUEST_DATA_STREAM_DATA {
+            req_message_rate: *rate,
+            target_system: target.0,
+            target_component: target.1,
+            req_stream_id: *stream,
+            start_stop: 1,
+        })),
         Outbound::SetupSigning { data } => Some(MavMessage::SETUP_SIGNING(data.clone())),
         Outbound::JoystickManualControl { target, x, y, z, r, buttons, buttons2, enabled_extensions, extensions: e } => Some(MavMessage::MANUAL_CONTROL(MANUAL_CONTROL_DATA {
             x: *x,
