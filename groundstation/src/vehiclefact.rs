@@ -842,9 +842,15 @@ impl RcRssi {
     }
 }
 
+const OFF_THE_EQUATOR_DEG: f64 = 1e-9;
+
 pub fn mgrs(latitude: f64, longitude: f64) -> String {
-    let Ok(position) = geoconvert::LatLon::create(latitude, longitude) else { return String::new() };
-    let packed = geoconvert::Mgrs::from_latlon(&position, 5).to_string();
+    let banded = match latitude.abs() < OFF_THE_EQUATOR_DEG {
+        true => OFF_THE_EQUATOR_DEG.copysign(if latitude >= 0.0 { 1.0 } else { -1.0 }),
+        false => latitude,
+    };
+    let Ok(position) = geoconvert::LatLon::create(banded, longitude) else { return String::new() };
+    let Ok(packed) = std::panic::catch_unwind(|| geoconvert::Mgrs::from_latlon(&position, 5).to_string()) else { return String::new() };
     let digits_from = packed.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
     let half = (packed.len() - digits_from) / 2;
     format!("{} {} {}", &packed[..digits_from], &packed[digits_from..digits_from + half], &packed[digits_from + half..])
@@ -983,6 +989,8 @@ mod tests {
 
     #[test]
     fn mgrs_is_spelled_as_qgc_spaces_it() {
+        assert_eq!(mgrs(0.0, 0.0), "31NAA 66021 00000", "a GPS without a fix reads 0,0, which geoconvert asserts on; GeographicLib puts the equator in the northern band");
+        assert_eq!(mgrs(-0.0, 10.0), mgrs(0.0, 10.0), "negative zero is north too, as GeographicLib tests lat >= 0");
         assert_eq!(mgrs(-35.3632616, 149.1652372), "55HFA 96719 84519");
         assert_eq!(mgrs(417_189_529.0 * 1e-7, 448_281_746.0 * 1e-7), "38TMM 85707 18586", "both pairs read off one snapshot of Qt's vehicle.gps group");
         let gps = crate::gpsfacts::GpsFacts::default();
