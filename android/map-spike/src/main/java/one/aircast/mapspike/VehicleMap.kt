@@ -25,6 +25,7 @@ import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -205,7 +206,7 @@ fun VehicleMap(
     val context = androidx.compose.ui.platform.LocalContext.current
     val mapView = remember {
         MapLibre.getInstance(context)
-        MapView(context)
+        MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true))
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current

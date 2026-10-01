@@ -240,14 +240,17 @@ fun AircastShell(hostView: android.view.View?) {
     var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var popEpoch by remember { mutableIntStateOf(0) }
-    var videoExpanded by remember { mutableStateOf(true) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var flyView by remember { mutableStateOf(one.aircast.android.ui.loadFlyView(context)) }
+    LaunchedEffect(flyView) { one.aircast.android.ui.saveFlyView(context, flyView) }
+    val videoExpanded = flyView != one.aircast.android.ui.FlyView.Map
     var videoFullScreen by remember { mutableStateOf(false) }
 
     val flightActions = remember { movableContentOf { FlightActions() } }
     val emergencyStop = remember { movableContentOf { PinnedEmergencyStop() } }
     val flyVideo = remember {
         movableContentOf<Modifier, Boolean> { mod, expanded ->
-            VideoSurface(modifier = mod, expanded = expanded, onClick = { videoExpanded = !videoExpanded }, onDoubleTap = { videoFullScreen = !videoFullScreen })
+            VideoSurface(modifier = mod, expanded = expanded, onClick = { flyView = one.aircast.android.ui.flyViewSwapped(flyView) }, onDoubleTap = { videoFullScreen = !videoFullScreen })
         }
     }
     var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
@@ -302,10 +305,6 @@ fun AircastShell(hostView: android.view.View?) {
     }
 
     val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
-    val aimCameraJson by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.CAMERA_VIEW)
-    val videoAiming = remember(aimCameraJson) {
-        one.aircast.android.ui.trackingCanAim(one.aircast.android.ui.trackingReading(aimCameraJson))
-    }
     var lastVehicles by remember {
         mutableStateOf<one.aircast.mapspike.VehicleChoices?>(null)
     }
@@ -395,13 +394,9 @@ fun AircastShell(hostView: android.view.View?) {
                 if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.TopCenter).zIndex(2f).padding(top = 8.dp))
 
                 if (tab == Tab.Fly && flyIsPortrait()) {
-                    val controllable = hasVehicle()
                     FlyPortrait(
-                        videoExpanded = videoExpanded,
-                        onSwap = { videoExpanded = !videoExpanded },
-                        controlsExpanded = controlsExpanded,
-                        onToggleControls = { controlsExpanded = !controlsExpanded },
-                        controllable = controllable,
+                        view = flyView,
+                        onView = { flyView = it },
                         video = { mod, expanded -> flyVideo(mod, expanded) },
                         map = { mod -> flyMap(mod) },
                         keyRow = {
@@ -410,7 +405,6 @@ fun AircastShell(hostView: android.view.View?) {
                             flyObstacleArc()
                         },
                         keyRowEnd = { emergencyStop() },
-                        videoAiming = videoAiming,
                         overlays = {
                             flyAttitude()
                             ObstacleReadout()
@@ -447,7 +441,7 @@ fun AircastShell(hostView: android.view.View?) {
                             Box(
                                 Modifier
                                     .matchParentSize()
-                                    .clickable { videoExpanded = false },
+                                    .clickable { flyView = one.aircast.android.ui.FlyView.Map },
                             )
                         }
                     }
