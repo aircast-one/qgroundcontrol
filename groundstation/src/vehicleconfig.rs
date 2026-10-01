@@ -19,6 +19,8 @@ const APM_AIRSPEED: &str = include_str!("vehicleconfig/APMAirspeed.VehicleConfig
 const APM_ESC: &str = include_str!("vehicleconfig/APMESC.VehicleConfig.json");
 const APM_FLIGHT_MODE: &str = include_str!("vehicleconfig/APMFlightMode.VehicleConfig.json");
 const PX4_FLIGHT_MODE: &str = include_str!("vehicleconfig/PX4FlightMode.VehicleConfig.json");
+const APM_SIMPLE_MODES: &str = include_str!("vehicleconfig/APMSimpleModes.VehicleConfig.json");
+pub const SIMPLE_MODES: &str = "Simple Modes";
 pub const FLIGHT_MODE_SETTINGS: &str = "Flight Mode Settings";
 
 const CONFIGS: &[(&str, bool, &str)] = &[
@@ -34,6 +36,7 @@ const CONFIGS: &[(&str, bool, &str)] = &[
     ("Power", true, PX4_POWER),
     (FLIGHT_MODE_SETTINGS, false, APM_FLIGHT_MODE),
     (FLIGHT_MODE_SETTINGS, true, PX4_FLIGHT_MODE),
+    (SIMPLE_MODES, false, APM_SIMPLE_MODES),
 ];
 
 const ROW_PREFIX: &str = "vehicleConfig(";
@@ -413,7 +416,11 @@ impl<'a> Scope<'a> {
     }
 
     fn assign(&self, statement: &str) -> Result<(), String> {
-        let body = statement.trim().trim_start_matches('{').trim_end_matches('}').trim();
+        statement.trim().trim_start_matches('{').trim_end_matches('}').split(';').map(str::trim).filter(|one| !one.is_empty()).try_for_each(|one| self.assign_one(one))
+    }
+
+    fn assign_one(&self, statement: &str) -> Result<(), String> {
+        let body = statement;
         let at = body
             .char_indices()
             .find(|(i, c)| *c == '=' && !matches!(body[..*i].chars().last(), Some('=' | '!' | '<' | '>')) && !body[i + 1..].starts_with('='))
@@ -864,6 +871,9 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         (_, "radiogroup", true) => {
             let name = scope.full_name(control["param"].as_str().unwrap_or_default());
             let option = asked.as_u64().or_else(|| asked.as_str().and_then(|s| s.parse().ok())).and_then(|i| control["options"].get(i as usize));
+            if let Some(statement) = option.and_then(|o| o["onSelected"].as_str()) {
+                return answer(scope.assign(statement));
+            }
             match option.and_then(|o| scope.eval_text(o["value"].as_str().unwrap_or_default()).number()) {
                 Some(v) => write_parameter(backend, &name, flag(control, "raw"), v),
                 None => Err("Choose one of the listed options.".to_string()),
@@ -1066,6 +1076,22 @@ mod tests {
         assert_eq!(distance["value"], false);
         assert_eq!(write(&fake, distance["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["GF_MAX_HOR_DIST"], 1000.0, "switching the limit on starts it at the go-to distance limit");
+    }
+
+    #[test]
+    fn simple_mode_sets_both_masks_and_custom_offers_each_slot() {
+        let fake = Fake::new(&[("SIMPLE", 0.0), ("SUPER_SIMPLE", 0.0)]);
+        let rows = |fake: &Fake| -> Vec<Value> { page(fake, SIMPLE_MODES, false)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect() };
+        let mode = rows(&fake)[0].clone();
+        assert_eq!((mode["display"].as_str(), rows(&fake).len()), (Some("Off"), 1), "APMFlightModesComponent shows the per-slot checkboxes only in Custom");
+        assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":2}"#)["ok"], true);
+        assert_eq!((fake.params.borrow()["SIMPLE"], fake.params.borrow()["SUPER_SIMPLE"]), (0.0, 63.0), "Super-Simple puts every slot in super simple");
+        fake.params.borrow_mut().insert("SUPER_SIMPLE".into(), 4.0);
+        let custom = rows(&fake);
+        assert_eq!(custom[0]["display"], "Custom");
+        assert_eq!(custom.len(), 13);
+        let third = custom.iter().find(|r| r["label"] == "Flight Mode 3 Super-Simple").unwrap();
+        assert_eq!(third["value"], true);
     }
 
     #[test]

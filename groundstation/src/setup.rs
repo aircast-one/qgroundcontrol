@@ -344,10 +344,15 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
         present.then(|| decode(&fact, &path))
     };
+    let simple_modes = match (page, px4) {
+        ("Flight Modes", false) => crate::vehicleconfig::page(backend, crate::vehicleconfig::SIMPLE_MODES, false)["sections"].as_array().cloned().unwrap_or_default(),
+        _ => Vec::new(),
+    };
     let listed: Vec<Value> = sections
         .iter()
         .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter_map(|p| read(p)).collect::<Vec<_>>() }))
-        .filter(|s| !s["controls"].as_array().unwrap().is_empty())
+        .chain(simple_modes)
+        .filter(|s| !s["controls"].as_array().is_none_or(Vec::is_empty))
         .collect();
     json!({ "kind": "object", "class": "SetupPage", "page": page, "firmware": if px4 { "px4" } else { "apm" }, "available": !listed.is_empty(), "sections": listed })
 }
