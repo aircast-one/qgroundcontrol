@@ -60,6 +60,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import one.aircast.android.ui.AppFontScale
 import one.aircast.android.ui.LogReplayBar
 import one.aircast.android.ui.StatusReadingsInline
 import one.aircast.android.ui.VehicleStateChip
@@ -170,7 +171,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         QGCBridge.notifySafeAreaInsets(0, 0, 0, 0)
         intent?.data?.let { QGCBridge.notifyDeepLink(it.toString()) }
 
-        setContent { AircastShell(hostView) }
+        setContent { AppFontScale { AircastShell(hostView) } }
         GamepadInput.start(this, lifecycleScope)
     }
 
