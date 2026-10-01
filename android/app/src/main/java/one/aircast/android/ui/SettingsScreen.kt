@@ -1,5 +1,8 @@
 package one.aircast.android.ui
 
+import androidx.annotation.DrawableRes
+import one.aircast.android.R
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -92,6 +95,36 @@ internal val PAGE_NOTES = mapOf(
     "Remote ID" to "Operator and aircraft identification, which some regions require in flight",
     "RTK GPS" to "Base station accuracy and position",
 )
+
+internal enum class SettingsGroup(val title: String) { Connection("Connection"), Flying("Flying"), App("App"), More("More") }
+
+internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int)
+
+internal val PAGE_LOOKS = mapOf(
+    "Connections" to PageLook(SettingsGroup.Connection, R.drawable.ic_link),
+    "MAVLink" to PageLook(SettingsGroup.Connection, R.drawable.ic_swap_horiz),
+    "Video" to PageLook(SettingsGroup.Connection, R.drawable.ic_videocam),
+    "Packet Radio" to PageLook(SettingsGroup.Connection, R.drawable.ic_wifi),
+    "ADSB Server" to PageLook(SettingsGroup.Connection, R.drawable.ic_navigation),
+    "RTK GPS" to PageLook(SettingsGroup.Connection, R.drawable.ic_satellite_alt),
+    "NTRIP / RTK" to PageLook(SettingsGroup.Connection, R.drawable.ic_satellite_alt),
+    "Remote ID" to PageLook(SettingsGroup.Connection, R.drawable.ic_shield),
+    "Fly View" to PageLook(SettingsGroup.Flying, R.drawable.ic_flight),
+    "Plan View" to PageLook(SettingsGroup.Flying, R.drawable.ic_route),
+    "Maps" to PageLook(SettingsGroup.Flying, R.drawable.ic_map),
+    "Flight Modes" to PageLook(SettingsGroup.Flying, R.drawable.ic_toggle_on),
+    "3D Viewer" to PageLook(SettingsGroup.Flying, R.drawable.ic_explore),
+    "General" to PageLook(SettingsGroup.App, R.drawable.ic_tune),
+    "PX4 Log Transfer" to PageLook(SettingsGroup.App, R.drawable.ic_download),
+    "Firmware Upgrade" to PageLook(SettingsGroup.App, R.drawable.ic_developer_board),
+    "Console" to PageLook(SettingsGroup.App, R.drawable.ic_terminal),
+    "About" to PageLook(SettingsGroup.App, R.drawable.ic_description),
+)
+
+internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.More, R.drawable.ic_settings)
+
+internal fun groupedPages(pages: List<SettingsPageEntry>): List<Pair<SettingsGroup, List<SettingsPageEntry>>> =
+    pages.groupBy { pageLook(it.title).group }.toList().sortedBy { it.first.ordinal }
 
 internal data class HelpLink(val name: String, val url: String, val host: String)
 
@@ -267,6 +300,13 @@ private fun SettingsList(
     }
 
     LazyColumn(modifier.fillMaxSize()) {
+        item(key = "title") {
+            Text(
+                "Settings",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp),
+            )
+        }
         item(key = "search") {
             OutlinedTextField(
                 value = search,
@@ -280,13 +320,16 @@ private fun SettingsList(
         }
 
         if (search.isBlank()) {
-            items(pages, key = { it.title }) { entry ->
-                ListItem(
-                    headlineContent = { Text(entry.title) },
-                    supportingContent = { PAGE_NOTES[entry.title]?.let { Text(it) } },
-                    modifier = Modifier.clickable { onOpen(entry.title) },
-                )
-                HorizontalDivider()
+            groupedPages(pages).forEach { (group, entries) ->
+                item(key = "group${group.name}") { SectionHeader(group.title) }
+                items(entries, key = { it.title }) { entry ->
+                    SetupRow(
+                        title = entry.title,
+                        subtitle = PAGE_NOTES[entry.title].orEmpty(),
+                        onClick = { onOpen(entry.title) },
+                        icon = pageLook(entry.title).icon,
+                    )
+                }
             }
             return@LazyColumn
         }
