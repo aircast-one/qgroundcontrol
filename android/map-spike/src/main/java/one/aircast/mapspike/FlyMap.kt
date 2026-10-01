@@ -42,6 +42,7 @@ private data class FlownPlan(
     val gimbals: List<GimbalAzimuth> = emptyList(),
     val roi: TrackPoint? = null,
     val goto: GotoLocation? = null,
+    val orbit: OrbitCircle? = null,
 )
 
 internal fun <T> missionArrived(before: List<T>, after: List<T>): Boolean = before.isEmpty() && after.isNotEmpty()
@@ -92,6 +93,7 @@ fun FlyMap(
                         gimbals = GimbalBridge.read(),
                         roi = RoiBridge.read(),
                         goto = GotoBridge.read(),
+                        orbit = OrbitBridge.read(),
                     )
                 }
                 if (missionArrived(plan.items, next.items)) fitRequest++
@@ -128,6 +130,7 @@ fun FlyMap(
             roi = plan.roi,
             onRoiClick = onRoiClick,
             goto = plan.goto,
+            orbit = plan.orbit,
             fitRequest = fitRequest,
             onCentreChanged = { at, level ->
                 centre = at

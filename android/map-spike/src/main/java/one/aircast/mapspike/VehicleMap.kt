@@ -180,6 +180,7 @@ fun VehicleMap(
     roi: TrackPoint? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
     goto: GotoLocation? = null,
+    orbit: OrbitCircle? = null,
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
@@ -284,6 +285,7 @@ fun VehicleMap(
                 installTrafficLayer(loadedStyle)
                 installRoiLayer(loadedStyle)
                 installGotoLayer(loadedStyle)
+                installOrbitLayer(loadedStyle)
                 if (!editable && onMapClick != null) {
                     loaded.addOnMapClickListener { at ->
                         val screen = loaded.projection.toScreenLocation(at)
@@ -331,6 +333,10 @@ fun VehicleMap(
         renderProximityRadar(radarStyle, latitude, longitude, heading, radarReading(radarJson))
     }
 
+    LaunchedEffect(style, orbit, goto) {
+        val orbitStyle = style ?: return@LaunchedEffect
+        renderOrbit(orbitStyle, orbit, gotoShown = goto != null)
+    }
     LaunchedEffect(style, goto) {
         val gotoStyle = style ?: return@LaunchedEffect
         renderGoto(gotoStyle, goto)
