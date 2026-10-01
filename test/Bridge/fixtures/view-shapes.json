@@ -3596,6 +3596,10 @@
         "view.nedToGeo(100,50,-10,47.396,8.545,490).longitude",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).valid",
         "view.ntrip.active",
+        "view.ntrip.browser.canBrowse",
+        "view.ntrip.browser.error",
+        "view.ntrip.browser.mountpoints.#",
+        "view.ntrip.browser.status",
         "view.ntrip.button",
         "view.ntrip.buttonEnabled",
         "view.ntrip.bytesReceived",
@@ -3605,6 +3609,7 @@
         "view.ntrip.dataRateBytesPerSec",
         "view.ntrip.dataStale",
         "view.ntrip.dataWarning",
+        "view.ntrip.ggaSource",
         "view.ntrip.kind",
         "view.ntrip.messageTypes.#",
         "view.ntrip.messages",
@@ -7892,6 +7897,10 @@
         "view.nedToGeo(100,50,-10,47.396,8.545,490).longitude",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).valid",
         "view.ntrip.active",
+        "view.ntrip.browser.canBrowse",
+        "view.ntrip.browser.error",
+        "view.ntrip.browser.mountpoints.#",
+        "view.ntrip.browser.status",
         "view.ntrip.button",
         "view.ntrip.buttonEnabled",
         "view.ntrip.bytesReceived",
@@ -7901,6 +7910,7 @@
         "view.ntrip.dataRateBytesPerSec",
         "view.ntrip.dataStale",
         "view.ntrip.dataWarning",
+        "view.ntrip.ggaSource",
         "view.ntrip.kind",
         "view.ntrip.messageTypes.#",
         "view.ntrip.messages",
@@ -11298,6 +11308,14 @@
     },
     "view.ntrip": {
         "active": "bool",
+        "browser": {
+            "canBrowse": "bool",
+            "error": "string",
+            "mountpoints": [
+                "empty"
+            ],
+            "status": "string"
+        },
         "button": "string",
         "buttonEnabled": "bool",
         "bytesReceived": "number",
@@ -11307,6 +11325,7 @@
         "dataRateBytesPerSec": "number",
         "dataStale": "bool",
         "dataWarning": "bool",
+        "ggaSource": "string",
         "kind": "string",
         "messageTypes": [
             "empty"

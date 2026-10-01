@@ -17,4 +17,11 @@ class NtripStatusSectionTest {
         assertEquals("900 B/s", dataRate(900.0))
         assertEquals("2.0 KB/s", dataRate(2048.0))
     }
+
+    @Test
+    fun the_browser_lists_mountpoints_and_marks_the_selected_one() {
+        val browser = ntripBrowser(JSONObject("""{"status":"success","error":"","canBrowse":true,"mountpoints":[{"mountpoint":"NEAR","detail":"RTCM 3.3 · GPS","selected":true}]}"""))
+        assertEquals(NtripMountpointRow("NEAR", "RTCM 3.3 · GPS", true), browser.mountpoints.single())
+        assertEquals("", ntripBrowser(null).status)
+    }
 }

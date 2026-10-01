@@ -369,6 +369,7 @@ private fun SettingsControls(
                 FactRow(fact, onWrite = onWrite)
                 HorizontalDivider()
             }
+            if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
         }
         section.note
             .takeIf { it.isNotBlank() && section.group !in GROUPS_WITH_A_HEAD_EDITOR }
@@ -378,6 +379,8 @@ private fun SettingsControls(
         if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
     }
 }
+
+internal const val NTRIP_MOUNTPOINT_BLOCK = "Mountpoint"
 
 internal fun isSecret(fact: Fact): Boolean = fact.name.endsWith("Password", ignoreCase = true)
 

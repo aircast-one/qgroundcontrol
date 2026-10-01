@@ -41,7 +41,7 @@ const PAGES: &[Page] = &[
 // radio reports. Left in the generic list it renders a second control writing the same fact - a
 // free-text field beside the picker, where a name that is not an adapter gets no feedback at all.
 // Same shape as extraVideoSources: when a bespoke block owns a fact, the fact leaves the list.
-const HIDDEN: &[&str] = &["firstRunPromptIdsShown", "instrumentQmlFile2", "deviceName", "ntripServerConnectEnabled", "ntripGgaPositionSource", "ntripGgaIntervalSec", "rtcmUdpInputEnabled", "rtcmUdpInputPort", "rtcmUdpValidate"];
+const HIDDEN: &[&str] = &["firstRunPromptIdsShown", "instrumentQmlFile2", "deviceName", "ntripServerConnectEnabled"];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
 
 const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.";
@@ -49,6 +49,7 @@ const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.
 const NTRIP_ACTIVE: &str = "Disconnect from the NTRIP server to change this.";
 const NTRIP_NO_TLS: &str = "Only applies with TLS encryption on.";
 const NTRIP_NO_FORWARD: &str = "Has no effect while UDP forwarding is off.";
+const RTCM_NO_INPUT: &str = "Has no effect while UDP RTCM input is off.";
 
 const GATED: &[(&str, &str, bool, &str)] = &[
     ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
@@ -56,11 +57,14 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("ntripServerPort", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripUsername", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripPassword", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
+    ("ntripMountpoint", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripUseTls", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripAllowSelfSignedCerts", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripAllowSelfSignedCerts", "ntripUseTls", true, NTRIP_NO_TLS),
     ("ntripUdpTargetAddress", "ntripUdpForwardEnabled", true, NTRIP_NO_FORWARD),
     ("ntripUdpTargetPort", "ntripUdpForwardEnabled", true, NTRIP_NO_FORWARD),
+    ("rtcmUdpInputPort", "rtcmUdpInputEnabled", true, RTCM_NO_INPUT),
+    ("rtcmUdpValidate", "rtcmUdpInputEnabled", true, RTCM_NO_INPUT),
 ];
 
 // QGC distinguishes the two, and which binding a page uses is what decides this. FlyViewSettings
@@ -80,9 +84,12 @@ const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
 
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
     ("ntripSettings", &[
-        ("Server", &["ntripServerHostAddress", "ntripServerPort", "ntripUsername", "ntripPassword", "ntripMountpoint", "ntripUseTls", "ntripAllowSelfSignedCerts"]),
+        ("Server", &["ntripServerHostAddress", "ntripServerPort", "ntripUsername", "ntripPassword", "ntripUseTls", "ntripAllowSelfSignedCerts"]),
+        ("Mountpoint", &["ntripMountpoint"]),
+        ("GGA Position Reporting", &["ntripGgaPositionSource", "ntripGgaIntervalSec"]),
         ("Options", &["ntripWhitelist"]),
         ("UDP Forwarding", &["ntripUdpForwardEnabled", "ntripUdpTargetAddress", "ntripUdpTargetPort"]),
+        ("UDP RTCM Input", &["rtcmUdpInputEnabled", "rtcmUdpInputPort", "rtcmUdpValidate"]),
     ]),
     ("appSettings", &[
         ("Appearance", &["indoorPalette", "appFontPointSize", "overlayGlassFrost", "qLocaleLanguage"]),

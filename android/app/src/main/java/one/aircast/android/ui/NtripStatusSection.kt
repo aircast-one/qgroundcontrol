@@ -56,6 +56,8 @@ internal data class NtripStatus(
     val bytesSent: Long,
     val sentKBps: Double,
     val securityWarning: String,
+    val ggaSource: String,
+    val browser: NtripBrowser,
 )
 
 internal fun ntripStatus(view: JSONObject?): NtripStatus? = view?.takeIf { it.optText("status").isNotBlank() }?.let {
@@ -76,6 +78,24 @@ internal fun ntripStatus(view: JSONObject?): NtripStatus? = view?.takeIf { it.op
         bytesSent = it.optLong("bytesSent"),
         sentKBps = it.optDouble("sentKBps", 0.0),
         securityWarning = it.optText("securityWarning"),
+        ggaSource = it.optText("ggaSource"),
+        browser = ntripBrowser(it.optJSONObject("browser")),
+    )
+}
+
+internal data class NtripMountpointRow(val mountpoint: String, val detail: String, val selected: Boolean)
+
+internal data class NtripBrowser(val status: String, val error: String, val canBrowse: Boolean, val mountpoints: List<NtripMountpointRow>)
+
+internal fun ntripBrowser(json: JSONObject?): NtripBrowser {
+    val rows = json?.optJSONArray("mountpoints")
+    return NtripBrowser(
+        status = json?.optText("status").orEmpty(),
+        error = json?.optText("error").orEmpty(),
+        canBrowse = json?.optBoolean("canBrowse") == true,
+        mountpoints = (0 until (rows?.length() ?: 0)).mapNotNull { at ->
+            rows!!.optJSONObject(at)?.let { NtripMountpointRow(it.optText("mountpoint"), it.optText("detail"), it.optBoolean("selected")) }
+        },
     )
 }
 
@@ -141,6 +161,7 @@ internal fun NtripStatusSection(onWrite: () -> Unit) {
             if (connected && status.bytesReceived > 0) StatusLine("Data Received", "${dataSize(status.bytesReceived)} (${dataRate(status.dataRate)})")
             if (connected && status.dataWarning) Text("Warning: Data usage: ${dataSize(status.bytesReceived)} — consider connection costs", color = NTRIP_ORANGE, style = MaterialTheme.typography.bodySmall)
             if (connected && status.bytesSent > 0) StatusLine("To Vehicle", "${dataSize(status.bytesSent)} (${"%.1f".format(java.util.Locale.ROOT, status.sentKBps)} KB/s)")
+            if (connected && status.ggaSource.isNotBlank()) StatusLine("GGA Source", status.ggaSource)
             if (status.securityWarning.isNotBlank()) Text(status.securityWarning, color = NTRIP_ORANGE, style = MaterialTheme.typography.bodySmall)
             if (status.status == "error") Text(status.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
@@ -152,5 +173,60 @@ private fun StatusLine(label: String, value: String) {
     Row(Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+internal const val NTRIP_FETCH_MOUNTPOINTS = "ntrip.fetchMountpoints"
+internal const val NTRIP_SELECT_MOUNTPOINT = "ntrip.selectMountpoint"
+
+@Composable
+internal fun NtripMountpointBrowser(onWrite: () -> Unit) {
+    var browser by remember { mutableStateOf<NtripBrowser?>(null) }
+    var refreshes by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(refreshes) {
+        browser = withContext(Dispatchers.Default) { ntripStatus(Qgc.get(NTRIP_VIEW))?.browser }
+        if (browser?.status == "inProgress") {
+            delay(NTRIP_POLL_MS)
+            refreshes++
+        }
+    }
+    val read = browser ?: return
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.compose.material3.OutlinedButton(
+            enabled = read.canBrowse,
+            onClick = {
+                scope.launch {
+                    withContext(Dispatchers.Default) { Qgc.invoke(NTRIP_FETCH_MOUNTPOINTS) }
+                    refreshes++
+                }
+            },
+        ) { Text("Browse") }
+        if (read.status == "inProgress") Text("Fetching mountpoints…", color = NTRIP_ORANGE)
+        if (read.status == "error") Text(read.error, color = MaterialTheme.colorScheme.error)
+        read.mountpoints.forEach { row ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(row.mountpoint, style = MaterialTheme.typography.bodyLarge, color = if (row.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        if (row.selected) Text("(selected)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    if (row.detail.isNotBlank()) Text(row.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.TextButton(
+                    enabled = !row.selected,
+                    onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.Default) { Qgc.invoke(NTRIP_SELECT_MOUNTPOINT, row.mountpoint) }
+                            refreshes++
+                            onWrite()
+                        }
+                    },
+                ) { Text(if (row.selected) "Selected" else "Select") }
+            }
+        }
     }
 }

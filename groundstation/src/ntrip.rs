@@ -7,6 +7,7 @@ use std::time::Duration;
 use base64::Engine;
 use serde_json::{Value, json};
 
+use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[];
@@ -24,6 +25,12 @@ const RTCM_CRC_BYTES: usize = 3;
 const RTCM_MAX_PAYLOAD: usize = 1023;
 const CRC24Q_POLY: u32 = 0x186_4CFB;
 const RATE_WINDOW_MS: u64 = 1000;
+const READ_SLICE: Duration = Duration::from_secs(1);
+const GGA_FAST_RETRY_MS: u64 = 1000;
+const GGA_FAST_RETRIES: u32 = 5;
+const GGA_DEFAULT_INTERVAL_SEC: u64 = 5;
+const GGA_FIX_QUALITY: u8 = 1;
+const GGA_SATELLITES: u8 = 12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -249,10 +256,14 @@ pub struct Ntrip {
     counts: BTreeMap<u16, u64>,
     last_message_ms: Option<u64>,
     udp_target: Option<String>,
+    gga_source: &'static str,
 }
 
 impl Ntrip {
     fn enter(&mut self, status: Status, detail: &str) {
+        if status != Status::Connected {
+            self.gga_source = "";
+        }
         self.status = status;
         self.message = if detail.is_empty() { status.default_message().to_string() } else { detail.to_string() };
     }
@@ -289,6 +300,12 @@ impl Ntrip {
         self.received = Rate::default();
         self.counts.clear();
         self.last_message_ms = None;
+    }
+
+    pub fn gga_source(&mut self, generation: u64, source: &'static str) {
+        if generation == self.generation {
+            self.gga_source = source;
+        }
     }
 
     pub fn connected(&mut self, generation: u64) {
@@ -367,6 +384,7 @@ impl Ntrip {
             "dataWarning": self.bytes_received > DATA_WARNING_BYTES,
             "bytesSent": self.sent_bytes,
             "sentKBps": self.sent.per_second / 1024.0,
+            "ggaSource": self.gga_source,
             "securityWarning": if connected && config.is_some_and(Config::credentials_in_clear) { "Credentials are being sent without TLS encryption." } else { "" },
         })
     }
@@ -396,7 +414,11 @@ fn truthy(name: &str) -> bool {
 }
 
 pub fn configured() -> Option<Config> {
-    truthy("ntripServerConnectEnabled").then(|| Config {
+    truthy("ntripServerConnectEnabled").then(from_settings)
+}
+
+fn from_settings() -> Config {
+    Config {
         host: text("ntripServerHostAddress"),
         port: setting("ntripServerPort").as_f64().filter(|p| (1.0..=65535.0).contains(p)).map_or(0, |p| p as u16),
         username: setting("ntripUsername").as_str().unwrap_or_default().to_string(),
@@ -405,7 +427,7 @@ pub fn configured() -> Option<Config> {
         whitelist: parse_whitelist(&text("ntripWhitelist")),
         use_tls: truthy("ntripUseTls"),
         allow_self_signed: truthy("ntripAllowSelfSignedCerts"),
-    })
+    }
 }
 
 fn udp_target() -> Option<String> {
@@ -414,7 +436,244 @@ fn udp_target() -> Option<String> {
     (truthy("ntripUdpForwardEnabled") && !host.is_empty()).then(|| format!("{host}:{}", port as u16))
 }
 
+pub const FETCH_MOUNTPOINTS: &str = "ntrip.fetchMountpoints";
+pub const SELECT_MOUNTPOINT: &str = "ntrip.selectMountpoint";
+const SOURCE_TABLE_TTL_MS: u64 = 60_000;
+const SOURCE_TABLE_TIMEOUT: Duration = Duration::from_secs(10);
+const SOURCE_TABLE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mountpoint {
+    pub mountpoint: String,
+    pub format: String,
+    pub nav_system: String,
+    pub country: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub bitrate: i64,
+    pub distance_km: f64,
+}
+
+fn coordinate_field(text: &str, limit: f64) -> f64 {
+    text.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() <= limit).unwrap_or(0.0)
+}
+
+pub fn mountpoint_line(line: &str) -> Option<Mountpoint> {
+    let fields: Vec<&str> = line.split(';').collect();
+    (fields.len() >= 18 && fields[0].trim().eq_ignore_ascii_case("STR")).then(|| Mountpoint {
+        mountpoint: fields[1].trim().to_string(),
+        format: fields[3].trim().to_string(),
+        nav_system: fields[6].trim().to_string(),
+        country: fields[8].trim().to_string(),
+        latitude: coordinate_field(fields[9], 90.0),
+        longitude: coordinate_field(fields[10], 180.0),
+        bitrate: fields[17].trim().parse().unwrap_or(0),
+        distance_km: -1.0,
+    })
+}
+
+pub fn source_table(raw: &str, from: Option<(f64, f64)>) -> Vec<Mountpoint> {
+    let located = |m: Mountpoint| match from {
+        Some((lat, lon)) if !(m.latitude == 0.0 && m.longitude == 0.0) => Mountpoint { distance_km: crate::surveygrid::distance_between((lat, lon), (m.latitude, m.longitude)) / 1000.0, ..m },
+        _ => m,
+    };
+    let mut parsed: Vec<Mountpoint> = raw.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("ENDSOURCETABLE")).filter_map(mountpoint_line).map(located).collect();
+    parsed.sort_by(|a, b| (a.distance_km < 0.0).cmp(&(b.distance_km < 0.0)).then(a.distance_km.total_cmp(&b.distance_km)));
+    parsed
+}
+
+pub fn mountpoint_detail(m: &Mountpoint) -> String {
+    [
+        (!m.format.is_empty()).then(|| m.format.clone()),
+        (!m.nav_system.is_empty()).then(|| m.nav_system.clone()),
+        (!m.country.is_empty()).then(|| m.country.clone()),
+        (m.bitrate > 0).then(|| format!("{} bps", m.bitrate)),
+        (m.distance_km >= 0.0).then(|| format!("{:.1} km", m.distance_km)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ")
+}
+
+#[derive(Debug, Default)]
+struct Browser {
+    fetching: bool,
+    error: String,
+    mountpoints: Vec<Mountpoint>,
+    fetched_at_ms: Option<u64>,
+    key: Option<(String, u16, String, String, bool)>,
+}
+
+static BROWSER: LazyLock<Mutex<Browser>> = LazyLock::new(|| Mutex::new(Browser::default()));
+
+fn browser() -> MutexGuard<'static, Browser> {
+    BROWSER.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn caster_key(config: &Config) -> (String, u16, String, String, bool) {
+    (config.host.clone(), config.port, config.username.clone(), config.password.clone(), config.use_tls)
+}
+
+fn download_source_table(config: &Config) -> Result<String, String> {
+    let tls = ureq::tls::TlsConfig::builder().disable_verification(config.allow_self_signed).build();
+    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(SOURCE_TABLE_TIMEOUT)).tls_config(tls).build().into();
+    let url = format!("{}://{}:{}/", if config.use_tls { "https" } else { "http" }, config.host, config.port);
+    let request = agent.get(&url).header("Ntrip-Version", "Ntrip/2.0").header("User-Agent", "QGC-NTRIP");
+    let request = match config.username.is_empty() && config.password.is_empty() {
+        true => request,
+        false => request.header("Authorization", format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", config.username, config.password)))),
+    };
+    let mut response = request.call().map_err(|e| e.to_string())?;
+    let body = response.body_mut().with_config().limit(SOURCE_TABLE_MAX_BYTES).read_to_string().map_err(|e| match e {
+        ureq::Error::BodyExceedsLimit(_) => format!("Source table too large (exceeds {} MB)", SOURCE_TABLE_MAX_BYTES / (1024 * 1024)),
+        other => other.to_string(),
+    })?;
+    match body.contains("ENDSOURCETABLE") {
+        true => Ok(body),
+        false => Err("Response does not contain a valid source table".to_string()),
+    }
+}
+
+fn vehicle_coordinate() -> Option<(f64, f64)> {
+    crate::hub::lock().active().and_then(|v| v.facts.coordinate.map(|(lat, lon, _)| (lat, lon)))
+}
+
+pub fn fetch_mountpoints() -> Value {
+    let config = from_settings();
+    let key = caster_key(&config);
+    let now_ms = crate::hub::now_ms();
+    {
+        let mut browser = browser();
+        let same = browser.key.as_ref() == Some(&key);
+        if same && (browser.fetching || (!browser.mountpoints.is_empty() && browser.fetched_at_ms.is_some_and(|at| now_ms.saturating_sub(at) < SOURCE_TABLE_TTL_MS))) {
+            return json!({ "ok": true });
+        }
+        if let Some(reason) = config.validation_error() {
+            *browser = Browser { error: reason.to_string(), ..Browser::default() };
+            return json!({ "ok": true });
+        }
+        *browser = Browser { fetching: true, key: Some(key.clone()), ..Browser::default() };
+    }
+    let from = vehicle_coordinate();
+    std::thread::Builder::new()
+        .name("groundstation-ntrip-sourcetable".to_string())
+        .spawn(move || {
+            let fetched = download_source_table(&config);
+            let mut browser = browser();
+            if browser.key.as_ref() != Some(&key) {
+                return;
+            }
+            browser.fetching = false;
+            match fetched {
+                Ok(body) => {
+                    browser.mountpoints = source_table(&body, from);
+                    browser.fetched_at_ms = Some(crate::hub::now_ms());
+                }
+                Err(error) => {
+                    browser.error = error;
+                    browser.mountpoints.clear();
+                    browser.fetched_at_ms = None;
+                }
+            }
+        })
+        .expect("ntrip source table thread");
+    json!({ "ok": true })
+}
+
+pub fn select_mountpoint(backend: &dyn Backend, args: &str) -> Value {
+    match serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)) {
+        Some(mountpoint) => object(&backend.set("settings.ntripSettings.ntripMountpoint", &json!({ "value": mountpoint }).to_string())),
+        None => json!({ "ok": false, "reason": "ntrip.selectMountpoint takes the mountpoint name" }),
+    }
+}
+
+pub fn owns(path: &str) -> bool {
+    [FETCH_MOUNTPOINTS, SELECT_MOUNTPOINT].contains(&path)
+}
+
+fn browser_json(active: bool, has_host: bool) -> Value {
+    let browser = browser();
+    let selected = text("ntripMountpoint");
+    json!({
+        "status": if browser.fetching { "inProgress" } else if !browser.error.is_empty() { "error" } else if browser.fetched_at_ms.is_some() { "success" } else { "idle" },
+        "error": browser.error,
+        "canBrowse": !active && has_host && !browser.fetching,
+        "mountpoints": browser.mountpoints.iter().map(|m| json!({ "mountpoint": m.mountpoint, "detail": mountpoint_detail(m), "selected": m.mountpoint == selected })).collect::<Vec<_>>(),
+    })
+}
+
+#[derive(Debug, Default)]
+struct UdpInput {
+    wanted: Option<(u16, bool)>,
+    generation: u64,
+}
+
+static UDP_INPUT: LazyLock<Mutex<UdpInput>> = LazyLock::new(|| Mutex::new(UdpInput::default()));
+
+fn udp_input() -> MutexGuard<'static, UdpInput> {
+    UDP_INPUT.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn udp_input_wanted() -> Option<(u16, bool)> {
+    let port = setting("rtcmUdpInputPort").as_f64().filter(|p| (1.0..=65535.0).contains(p))? as u16;
+    truthy("rtcmUdpInputEnabled").then_some((port, truthy("rtcmUdpValidate")))
+}
+
+fn inject(rtcm: &[u8]) {
+    let outbound = crate::hub::lock().inject_rtcm(rtcm);
+    outbound.iter().for_each(|(link, bytes)| {
+        crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+    });
+}
+
+pub fn datagram_frames(framer: &mut Framer, datagram: &[u8], validate: bool) -> Vec<Vec<u8>> {
+    match validate {
+        true => framer.push(datagram).into_iter().map(|frame| frame.bytes).collect(),
+        false => vec![datagram.to_vec()],
+    }
+}
+
+fn listen(port: u16, validate: bool, generation: u64) {
+    let socket = match std::net::UdpSocket::bind(("0.0.0.0", port)) {
+        Ok(socket) => socket,
+        Err(e) => {
+            log::warn!("UDP RTCM input could not bind port {port}: {e}");
+            return;
+        }
+    };
+    if let Err(e) = socket.set_read_timeout(Some(READ_SLICE)) {
+        log::warn!("UDP RTCM input on port {port}: {e}");
+        return;
+    }
+    let mut framer = Framer::default();
+    let mut buffer = [0u8; 65536];
+    while udp_input().generation == generation {
+        if let Ok((n, _)) = socket.recv_from(&mut buffer)
+            && n > 0
+        {
+            datagram_frames(&mut framer, &buffer[..n], validate).iter().for_each(|rtcm| inject(rtcm));
+        }
+    }
+}
+
+fn sync_udp_input() {
+    let wanted = udp_input_wanted();
+    let start = {
+        let mut input = udp_input();
+        (input.wanted != wanted).then(|| {
+            input.generation += 1;
+            input.wanted = wanted;
+            wanted.map(|(port, validate)| (port, validate, input.generation))
+        })
+    };
+    if let Some(Some((port, validate, generation))) = start {
+        std::thread::Builder::new().name("groundstation-rtcm-udp".to_string()).spawn(move || listen(port, validate, generation)).expect("rtcm udp thread");
+    }
+}
+
 pub fn sync() {
+    sync_udp_input();
     let wanted = configured();
     let target = udp_target();
     let start = {
@@ -466,7 +725,7 @@ fn tls(config: &Config, tcp: TcpStream) -> Result<Box<dyn Stream>, String> {
 fn open(config: &Config) -> Result<Box<dyn Stream>, String> {
     let address = (config.host.as_str(), config.port).to_socket_addrs().map_err(|e| e.to_string())?.next().ok_or_else(|| format!("{} does not resolve", config.host))?;
     let tcp = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|e| if e.kind() == std::io::ErrorKind::TimedOut { "Connection timeout".to_string() } else { e.to_string() })?;
-    tcp.set_read_timeout(Some(DATA_WATCHDOG)).map_err(|e| e.to_string())?;
+    tcp.set_read_timeout(Some(READ_SLICE)).map_err(|e| e.to_string())?;
     match config.use_tls {
         true => tls(config, tcp),
         false => Ok(Box::new(tcp)),
@@ -486,12 +745,109 @@ fn forward(generation: u64, framer: &mut Framer, bytes: &[u8]) -> bool {
         {
             log::warn!("NTRIP UDP forward to {target} failed: {e}");
         }
-        let outbound = crate::hub::lock().inject_rtcm(&frame.bytes);
-        outbound.iter().for_each(|(link, bytes)| {
-            crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
-        });
+        inject(&frame.bytes);
     });
     true
+}
+
+fn nmea_checksum(body: &str) -> u8 {
+    body.bytes().fold(0, |sum, b| sum ^ b)
+}
+
+fn degrees_minutes(degrees: f64, width: usize) -> String {
+    let whole = degrees.abs().trunc();
+    let minutes = ((degrees.abs() - whole) * 60.0 * 10000.0 + 0.5).trunc() / 10000.0;
+    let (whole, minutes) = if minutes >= 60.0 { (whole + 1.0, minutes - 60.0) } else { (whole, minutes) };
+    format!("{:0width$}{:07.4}", whole as u32, minutes)
+}
+
+pub fn gga(latitude: f64, longitude: f64, altitude_msl: f64, utc: (u32, u32, u32)) -> String {
+    let altitude = if altitude_msl.is_finite() { altitude_msl } else { 0.0 };
+    let body = format!(
+        "GPGGA,{:02}{:02}{:02},{},{},{},{},{GGA_FIX_QUALITY},{GGA_SATELLITES},1.0,{altitude:.1},M,0.0,M,,",
+        utc.0,
+        utc.1,
+        utc.2,
+        degrees_minutes(latitude, 2),
+        if latitude >= 0.0 { "N" } else { "S" },
+        degrees_minutes(longitude, 3),
+        if longitude >= 0.0 { "E" } else { "W" },
+    );
+    format!("${body}*{:02X}\r\n", nmea_checksum(&body))
+}
+
+fn sane(latitude: f64, longitude: f64) -> bool {
+    latitude.is_finite() && longitude.is_finite() && !(latitude == 0.0 && longitude == 0.0) && latitude.abs() <= 90.0 && longitude.abs() <= 180.0
+}
+
+const GGA_SOURCES: [(u8, &str); 3] = [(1, "Vehicle GPS"), (2, "Vehicle EKF"), (4, "GCS Position")];
+
+fn position_from(source: u8) -> Option<(f64, f64, f64)> {
+    let found = match source {
+        1 => crate::hub::lock().active().and_then(|v| Some((v.gps.latitude?, v.gps.longitude?, v.facts.altitude_amsl))),
+        2 => crate::hub::lock().active().and_then(|v| v.facts.coordinate.map(|(lat, lon, _)| (lat, lon, v.facts.altitude_amsl))),
+        4 => match crate::gcsposition::lock().coordinate() {
+            (Some(lat), Some(lon), alt) => Some((lat, lon, alt.unwrap_or(0.0))),
+            _ => None,
+        },
+        _ => None,
+    };
+    found.filter(|(lat, lon, _)| sane(*lat, *lon))
+}
+
+pub fn gga_position(source: u8) -> Option<((f64, f64, f64), &'static str)> {
+    match source {
+        0 => GGA_SOURCES.iter().find_map(|(id, name)| position_from(*id).map(|p| (p, *name))),
+        id => GGA_SOURCES.iter().find(|(s, _)| *s == id).and_then(|(id, name)| position_from(*id).map(|p| (p, *name))),
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct GgaSchedule {
+    next_ms: u64,
+    misses: u32,
+    settled: bool,
+}
+
+impl GgaSchedule {
+    pub fn due(&self, now_ms: u64) -> bool {
+        now_ms >= self.next_ms
+    }
+
+    pub fn sent(&mut self, now_ms: u64, interval_ms: u64) {
+        self.settled = true;
+        self.misses = 0;
+        self.next_ms = now_ms + interval_ms;
+    }
+
+    pub fn missed(&mut self, now_ms: u64, interval_ms: u64) {
+        self.misses += 1;
+        self.settled = self.settled || self.misses >= GGA_FAST_RETRIES;
+        self.next_ms = now_ms + if self.settled { interval_ms } else { GGA_FAST_RETRY_MS };
+    }
+}
+
+fn send_gga(stream: &mut Box<dyn Stream>, schedule: &mut GgaSchedule, generation: u64) -> Result<(), String> {
+    let now_ms = crate::hub::now_ms();
+    if !schedule.due(now_ms) {
+        return Ok(());
+    }
+    let interval_ms = setting("ntripGgaIntervalSec").as_u64().filter(|s| *s > 0).unwrap_or(GGA_DEFAULT_INTERVAL_SEC) * 1000;
+    let source = setting("ntripGgaPositionSource").as_u64().and_then(|s| u8::try_from(s).ok()).unwrap_or(0);
+    match gga_position(source) {
+        None => {
+            schedule.missed(now_ms, interval_ms);
+            Ok(())
+        }
+        Some(((lat, lon, alt), name)) => {
+            let now = chrono::Utc::now();
+            use chrono::Timelike;
+            stream.write_all(gga(lat, lon, alt, (now.hour(), now.minute(), now.second())).as_bytes()).map_err(|e| e.to_string())?;
+            schedule.sent(now_ms, interval_ms);
+            lock().gga_source(generation, name);
+            Ok(())
+        }
+    }
 }
 
 fn session(config: &Config, generation: u64) -> (bool, String) {
@@ -504,10 +860,18 @@ fn session(config: &Config, generation: u64) -> (bool, String) {
     }
     let mut header = Vec::new();
     let mut chunk = [0u8; 4096];
+    let mut quiet = Duration::ZERO;
+    let timed_out = |e: &std::io::Error| matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut);
+    let watchdog = format!("No data received for {} seconds", DATA_WATCHDOG.as_secs());
     let rest = loop {
         match stream.read(&mut chunk) {
             Ok(0) => return (false, "Server disconnected (peer closed before HTTP response; check mountpoint and credentials)".to_string()),
             Ok(n) => header.extend_from_slice(&chunk[..n]),
+            Err(e) if timed_out(&e) && quiet + READ_SLICE < DATA_WATCHDOG => {
+                quiet += READ_SLICE;
+                continue;
+            }
+            Err(e) if timed_out(&e) => return (false, watchdog),
             Err(e) => return (false, e.to_string()),
         }
         match response(&header) {
@@ -521,12 +885,19 @@ fn session(config: &Config, generation: u64) -> (bool, String) {
     if !forward(generation, &mut framer, &rest) {
         return (false, String::new());
     }
+    let mut schedule = GgaSchedule::default();
+    let mut quiet = Duration::ZERO;
     loop {
+        if let Err(detail) = send_gga(&mut stream, &mut schedule, generation) {
+            return (false, detail);
+        }
         match stream.read(&mut chunk) {
             Ok(0) => return (false, "Server disconnected".to_string()),
             Ok(n) if !forward(generation, &mut framer, &chunk[..n]) => return (false, String::new()),
-            Ok(_) => {}
-            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return (false, format!("No data received for {} seconds", DATA_WATCHDOG.as_secs())),
+            Ok(_) => quiet = Duration::ZERO,
+            Err(e) if timed_out(&e) && lock().generation != generation => return (false, String::new()),
+            Err(e) if timed_out(&e) && quiet + READ_SLICE < DATA_WATCHDOG => quiet += READ_SLICE,
+            Err(e) if timed_out(&e) => return (false, watchdog),
             Err(e) => return (false, e.to_string()),
         }
     }
@@ -549,8 +920,10 @@ pub fn ntrip_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     }
     sync();
     let active = truthy("ntripServerConnectEnabled");
-    let can_connect = active || !text("ntripServerHostAddress").is_empty();
+    let has_host = !text("ntripServerHostAddress").is_empty();
+    let can_connect = active || has_host;
     let mut snapshot = lock().snapshot(crate::hub::now_ms());
+    snapshot["browser"] = browser_json(active, has_host);
     snapshot["active"] = json!(active);
     snapshot["buttonEnabled"] = json!(snapshot["buttonEnabled"].as_bool().unwrap_or(false) && can_connect);
     snapshot
@@ -638,6 +1011,47 @@ mod tests {
         assert_eq!(ntrip.status, Status::Disconnected);
         assert_eq!(ntrip.retarget(Some(Config { host: String::new(), ..config() })), None);
         assert_eq!((ntrip.status, ntrip.message.as_str()), (Status::Error, "No host address"));
+    }
+
+    #[test]
+    fn the_gga_sentence_matches_qgc_make_gga() {
+        assert_eq!(gga(47.3977419, 8.5455938, 488.0, (12, 34, 56)), "$GPGGA,123456,4723.8645,N,00832.7356,E,1,12,1.0,488.0,M,0.0,M,,*70\r\n");
+        assert!(gga(-33.5, -70.25, f64::NAN, (0, 0, 0)).starts_with("$GPGGA,000000,3330.0000,S,07015.0000,W,1,12,1.0,0.0,M"));
+        assert_eq!(degrees_minutes(9.99999999, 3), "01000.0000", "minutes rounding to 60 carry into the degrees");
+    }
+
+    #[test]
+    fn gga_retries_fast_five_times_then_settles_on_the_interval() {
+        let mut schedule = GgaSchedule::default();
+        assert!(schedule.due(0));
+        (0..4).for_each(|i| schedule.missed(i * 1000, 5000));
+        assert!(schedule.due(4000) && !schedule.due(3999));
+        schedule.missed(4000, 5000);
+        assert!(!schedule.due(8999) && schedule.due(9000), "after five misses it waits the full interval");
+        schedule.sent(9000, 5000);
+        schedule.missed(14000, 5000);
+        assert!(!schedule.due(15000), "once settled a miss does not go back to the fast retry");
+    }
+
+    #[test]
+    fn a_udp_datagram_is_validated_frame_by_frame_or_passed_whole() {
+        let good = frame(1005, 19);
+        let mut bad = frame(1077, 10);
+        bad[5] ^= 0xFF;
+        let datagram = [good.clone(), bad].concat();
+        assert_eq!(datagram_frames(&mut Framer::default(), &datagram, true), [good]);
+        assert_eq!(datagram_frames(&mut Framer::default(), &datagram, false), [datagram.clone()]);
+    }
+
+    #[test]
+    fn the_source_table_is_parsed_and_nearest_first() {
+        let table = "SOURCETABLE 200 OK\r\nCAS;caster;2101;x\r\nSTR;FAR;Far;RTCM 3.2;1005;2;GPS+GLO;NET;DEU;52.5;13.4;0;0;gen;none;B;N;9600;\r\nSTR;NEAR;Near;RTCM 3.3;1077;2;GPS;NET;CHE;47.4;8.5;1;0;gen;none;B;N;4800;\r\nSTR;NOWHERE;x;RTCM 3;;2;GPS;NET;;0;0;0;0;gen;none;N;N;0;\r\nSTR;short;line\r\nENDSOURCETABLE\r\n";
+        let parsed = source_table(table, Some((47.39, 8.54)));
+        assert_eq!(parsed.iter().map(|m| m.mountpoint.as_str()).collect::<Vec<_>>(), ["NEAR", "FAR", "NOWHERE"], "known distances ascend, unknown last");
+        assert!(parsed[0].distance_km < 5.0);
+        assert_eq!(mountpoint_detail(&parsed[2]), "RTCM 3 · GPS");
+        assert!(mountpoint_detail(&parsed[1]).starts_with("RTCM 3.2 · GPS+GLO · DEU · 9600 bps · "));
+        assert_eq!(source_table(table, None)[0].distance_km, -1.0);
     }
 
     #[test]
