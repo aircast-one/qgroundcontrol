@@ -84,7 +84,7 @@ object GamepadInput : InputManager.InputDeviceListener {
         }
         val devices = JSONArray(
             synchronized(pads) {
-                pads.values.map { pad -> JSONObject().put("name", pad.device.name).put("axes", pad.axes.size).put("buttons", GAMEPAD_BUTTONS.size).put("hats", if (pad.hasHat) 1 else 0) }
+                pads.values.map { pad -> JSONObject().put("name", pad.device.name).put("axes", pad.axes.size).put("buttons", GAMEPAD_BUTTONS.size).put("hats", if (pad.hasHat) 1 else 0).put("gamepad", pad.device.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD) }
             },
         )
         offMainDetached { Qgc.invoke(JOYSTICK_DEVICES, devices) }

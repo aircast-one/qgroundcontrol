@@ -196,6 +196,7 @@
         "view.itemFacts(4).speedSection",
         "view.joystick.active",
         "view.joystick.calibration",
+        "view.joystick.indicator",
         "view.joystick.state",
         "view.joystick.transmitterMode",
         "view.joystickMapping.functions.0.extensionBit",
@@ -2889,6 +2890,7 @@
         "view.joystick.calibration",
         "view.joystick.class",
         "view.joystick.enabled",
+        "view.joystick.indicator",
         "view.joystick.kind",
         "view.joystick.names.#",
         "view.joystick.settings.#",
@@ -7646,6 +7648,7 @@
         "view.joystick.calibration",
         "view.joystick.class",
         "view.joystick.enabled",
+        "view.joystick.indicator",
         "view.joystick.kind",
         "view.joystick.names.#",
         "view.joystick.settings.#",
@@ -11064,6 +11067,7 @@
         "calibration": "null",
         "class": "string",
         "enabled": "bool",
+        "indicator": "null",
         "kind": "string",
         "names": [
             "empty"

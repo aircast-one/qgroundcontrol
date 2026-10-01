@@ -133,6 +133,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified) { detail = StripDetail.Links }
         }
         EscIndicatorCell()
+        JoystickIndicatorCell()
         RemoteIdIndicatorCell()
         GpsResilienceCell()
         GcsBatteryCell()

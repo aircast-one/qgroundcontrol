@@ -146,6 +146,7 @@ pub struct Device {
     pub axes: usize,
     pub buttons: usize,
     pub hats: usize,
+    pub gamepad: bool,
 }
 
 #[derive(Default)]
@@ -437,7 +438,7 @@ fn devices(text: &str) -> Value {
         .iter()
         .filter_map(|d| {
             let count = |key: &str| d[key].as_u64().map(|n| n as usize);
-            Some(Device { name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(), axes: count("axes")?, buttons: count("buttons")?, hats: count("hats").unwrap_or(0) })
+            Some(Device { name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(), axes: count("axes")?, buttons: count("buttons")?, hats: count("hats").unwrap_or(0), gamepad: d["gamepad"].as_bool().unwrap_or(false) })
         })
         .collect();
     {
@@ -597,6 +598,21 @@ pub fn tick(now_ms: u64) {
     sync_polling(now_ms);
 }
 
+pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value {
+    let Some(device) = device else { return Value::Null };
+    json!({
+        "heading": device.name,
+        "enabledText": match (vehicle, enabled) {
+            (false, _) => "No Vehicle",
+            (true, true) => "Yes",
+            (true, false) => "No",
+        },
+        "warn": vehicle && !enabled,
+        "typeText": if device.gamepad { "Gamepad" } else { "Joystick" },
+        "inputsText": format!("{} axes, {} buttons", device.axes, device.buttons),
+    })
+}
+
 pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = active_vehicle();
     let modes = settable_modes();
@@ -632,6 +648,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(_, cal)| cal.json()),
         "transmitterMode": active.as_ref().map(|name| transmitter_mode(name)),
         "assignableActions": assignable,
+        "indicator": indicator(active.as_ref().and_then(|name| host.devices.iter().find(|d| &d.name == name)), vehicle.is_some(), enabled),
     })
 }
 
@@ -652,8 +669,19 @@ mod tests {
     }
 
     #[test]
+    fn the_toolbar_indicator_reads_like_joystick_indicator_qml() {
+        let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, hats: 1, gamepad: true };
+        let shown = indicator(Some(&pad), true, false);
+        assert_eq!((shown["heading"].as_str(), shown["enabledText"].as_str(), shown["warn"].as_bool()), (Some("Xbox"), Some("No"), Some(true)), "a joystick not enabled for the vehicle shows orange");
+        assert_eq!((shown["typeText"].as_str(), shown["inputsText"].as_str()), (Some("Gamepad"), Some("6 axes, 15 buttons")));
+        assert_eq!(indicator(Some(&pad), false, false)["enabledText"], "No Vehicle");
+        assert_eq!(indicator(Some(&pad), false, false)["warn"], false);
+        assert!(indicator(None, true, true).is_null(), "no joystick, no indicator");
+    }
+
+    #[test]
     fn an_unknown_stored_name_falls_back_to_the_first_device() {
-        let devices = vec![Device { name: "Pad".into(), axes: 4, buttons: 10, hats: 1 }];
+        let devices = vec![Device { name: "Pad".into(), axes: 4, buttons: 10, hats: 1, gamepad: true }];
         assert_eq!(active_name(&devices), Some("Pad".into()));
         assert_eq!(active_name(&[]), None);
         assert_eq!(polling(true, true, false), Polling::default(), "an uncalibrated stick never commands");
