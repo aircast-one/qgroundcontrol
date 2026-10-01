@@ -32,7 +32,7 @@ struct Routine {
     warning: &'static str,
     spins_propeller: bool,
     visible: fn(&Classes) -> bool,
-    on_fixed_wing: Option<(&'static str, &'static str)>,
+    on_fixed_wing: Option<(&'static str, &'static str, &'static str)>,
 }
 
 const ANY_VEHICLE: fn(&Classes) -> bool = |_| true;
@@ -42,12 +42,12 @@ const GYRO_NEEDED: &str = "gyroSetupNeeded";
 const COMPASS_NEEDED: &str = "compassSetupNeeded";
 
 const APM_ROUTINES: &[Routine] = &[
-    Routine { id: "accelerometer", title: "Accelerometer", method: "calibrateAccel", arguments: &[false], blocked_by: &[], blocked_text: "", needs: Some(ACCEL_NEEDED), shown_if: None, explanation: "Hold the vehicle in each orientation it asks for.", dialog_help: "", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
-    Routine { id: "compass", title: "Compass", method: "calibrateCompass", arguments: &[], blocked_by: &[ACCEL_NEEDED], blocked_text: ACCEL_FIRST, needs: Some(COMPASS_NEEDED), shown_if: None, explanation: "Rotate the vehicle about every axis until each side is done.", dialog_help: "", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
-    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], blocked_by: &[ACCEL_NEEDED], blocked_text: ACCEL_FIRST, needs: None, shown_if: None, explanation: "Place the vehicle in its level flight position", dialog_help: "", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
-    Routine { id: "gyro", title: "Gyro", method: "calibrateGyro", arguments: &[], blocked_by: &[], blocked_text: "", needs: None, shown_if: None, explanation: "Leave the vehicle still while the gyros settle.", dialog_help: "", warning: "", spins_propeller: false, visible: ROTOR_OR_GROUND, on_fixed_wing: None },
-    Routine { id: "pressure", title: "Pressure", method: "calibratePressure", arguments: &[], blocked_by: &[], blocked_text: "", needs: None, shown_if: None, explanation: "Zero the barometer at the current altitude.", dialog_help: "", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: Some(("Baro/Airspeed", "Shield the airspeed sensor from the wind and leave the holes clear.")) },
-    Routine { id: "compassMot", title: "CompassMot", method: "calibrateMotorInterference", arguments: &[], blocked_by: &[], blocked_text: "", needs: None, shown_if: None, explanation: "Disconnect your props, flip them over and rotate them one position around the frame. In this configuration they should push the copter down into the ground when the throttle is raised. Secure the copter so that it does not move, turn on your transmitter and keep throttle at zero.", dialog_help: "", warning: "This spins the motors. CompassMot only works well if you have a battery current monitor, because the magnetic interference is linear with current drawn.", spins_propeller: true, visible: ANY_VEHICLE, on_fixed_wing: None },
+    Routine { id: "accelerometer", title: "Accelerometer", method: "calibrateAccel", arguments: &[false], blocked_by: &[], blocked_text: "", needs: Some(ACCEL_NEEDED), shown_if: None, explanation: "Hold the vehicle still on all six sides", dialog_help: "", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
+    Routine { id: "compass", title: "Compass", method: "calibrateCompass", arguments: &[], blocked_by: &[ACCEL_NEEDED], blocked_text: ACCEL_FIRST, needs: Some(COMPASS_NEEDED), shown_if: None, explanation: "Rotate the vehicle through several positions", dialog_help: "", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
+    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], blocked_by: &[ACCEL_NEEDED], blocked_text: ACCEL_FIRST, needs: None, shown_if: None, explanation: "Place the vehicle in its level flight position", dialog_help: "To level the horizon you need to place the vehicle in its level flight position and press Ok.", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
+    Routine { id: "gyro", title: "Gyro", method: "calibrateGyro", arguments: &[], blocked_by: &[], blocked_text: "", needs: None, shown_if: None, explanation: "Place the vehicle on a surface and leave it still", dialog_help: "For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.\n\nClick Ok to start calibration.", warning: "", spins_propeller: false, visible: ROTOR_OR_GROUND, on_fixed_wing: None },
+    Routine { id: "pressure", title: "Pressure", method: "calibratePressure", arguments: &[], blocked_by: &[], blocked_text: "", needs: None, shown_if: None, explanation: "Zeroes the altitude at the current pressure", dialog_help: "Pressure calibration will set the altitude to zero at the current pressure reading. ", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: Some(("Baro/Airspeed", "Shield the airspeed sensor from the wind", "Pressure calibration will set the altitude to zero at the current pressure reading. To calibrate the airspeed sensor shield it from the wind. Do not touch the sensor or obstruct any holes during the calibration.")) },
+    Routine { id: "compassMot", title: "CompassMot", method: "calibrateMotorInterference", arguments: &[], blocked_by: &[], blocked_text: "", needs: None, shown_if: None, explanation: "Props off and reversed, vehicle secured", dialog_help: "Disconnect your props, flip them over and rotate them one position around the frame. In this configuration they should push the copter down into the ground when the throttle is raised.\n\nSecure the copter (perhaps with tape) so that it does not move.\n\nTurn on your transmitter and keep throttle at zero.\n\nClick Ok to start CompassMot calibration.", warning: "This spins the motors. This is recommended for vehicles that have only an internal compass and on vehicles where there is significant interference on the compass from the motors, power wires, etc. CompassMot only works well if you have a battery current monitor because the magnetic interference is linear with current drawn. It is technically possible to set-up CompassMot using throttle but this is not recommended.", spins_propeller: true, visible: ANY_VEHICLE, on_fixed_wing: None },
 ];
 
 const PX4_ROUTINES: &[Routine] = &[
@@ -144,9 +144,9 @@ fn routines(cal: &Value, connected: bool, busy: bool, classes: Option<&Classes>)
         .filter(|r| offered(r, cal, classes))
         .map(|r| {
             let blocked = blocked(r, cal);
-            let (title, explanation) = match (classes.is_some_and(|c| c.fixed_wing), r.on_fixed_wing) {
+            let (title, explanation, dialog_help) = match (classes.is_some_and(|c| c.fixed_wing), r.on_fixed_wing) {
                 (true, Some(named)) => named,
-                _ => (r.title, r.explanation),
+                _ => (r.title, r.explanation, r.dialog_help),
             };
             let status = match (blocked, r.needs.map(|key| flag(cal, key))) {
                 (true, _) => r.blocked_text,
@@ -162,7 +162,7 @@ fn routines(cal: &Value, connected: bool, busy: bool, classes: Option<&Classes>)
                 "blocked": blocked,
                 "enabled": connected && !busy && !blocked,
                 "description": if blocked { r.blocked_text } else { explanation },
-                "dialogHelp": r.dialog_help,
+                "dialogHelp": dialog_help,
                 "status": status,
                 "warning": r.warning,
                 "spinsPropeller": r.spins_propeller,
@@ -369,7 +369,7 @@ mod tests {
         for routine in APM_ROUTINES.iter().filter(|r| !r.spins_propeller) {
             assert_ne!(routine.method, "calibrateMotorInterference", "this one turns the motors whatever the flag says");
         }
-        assert!(spinning[0].explanation.contains("push the copter down into the ground"), "QGC's own instruction, because inverting the props is what makes the test safe and a paraphrase could lose it");
+        assert!(spinning[0].dialog_help.contains("push the copter down into the ground"), "QGC's own instruction, because inverting the props is what makes the test safe and a paraphrase could lose it");
     }
 
     #[test]

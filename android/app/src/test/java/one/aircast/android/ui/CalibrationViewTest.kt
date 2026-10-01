@@ -57,14 +57,13 @@ class CalibrationViewTest {
     }
 
     @Test
-    fun `the head keeps its own instructions and falls back to the core's`() {
+    fun `the instruction is the core's dialog text, else its description`() {
         val state = calibrationState(served)!!
 
-        assertTrue(routineCopy(state.routines[0]).instruction.contains("six orientations"))
         assertEquals(
             "Rotate the vehicle until every side is done.",
             routineCopy(
-                state.routines[1].copy(id = "unknown", description = "Rotate the vehicle until every side is done."),
+                state.routines[1].copy(dialogHelp = "", description = "Rotate the vehicle until every side is done."),
             ).instruction,
         )
     }

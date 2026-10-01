@@ -173,7 +173,7 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
                 onValueChange = { command = it },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                label = { Text("Command") },
+                placeholder = { Text("Enter Commands here...") },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { send() }),
             )

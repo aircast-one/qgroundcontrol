@@ -64,31 +64,8 @@ internal fun calibrationBegan(running: Boolean, statusBefore: String, statusNow:
 
 internal data class RoutineCopy(val instruction: String, val warning: String = "")
 
-internal val ROUTINE_COPY = mapOf(
-    "accelerometer" to RoutineCopy(
-        "You will be asked to hold the vehicle still in six orientations. " +
-            "Press Next once it is steady in each one.",
-    ),
-    "compass" to RoutineCopy(
-        "Rotate the vehicle slowly around all axes until the bar fills. " +
-            "Stand away from metal, cars and reinforced concrete.",
-    ),
-    "levelHorizon" to RoutineCopy(
-        "Place the vehicle in its level flight position and leave it still.",
-        "Sets what the vehicle considers level. Get this wrong and it will drift in flight.",
-    ),
-    "gyro" to RoutineCopy(
-        "Place the vehicle on a surface and leave it completely still.",
-    ),
-    "pressure" to RoutineCopy(
-        "Zeroes the altitude at the current pressure. Do this where you will take off.",
-    ),
-)
-
-internal fun routineCopy(routine: CalibrationRoutine): RoutineCopy = when {
-    routine.dialogHelp.isNotBlank() -> RoutineCopy(routine.dialogHelp, routine.warning)
-    else -> ROUTINE_COPY[routine.id] ?: RoutineCopy(routine.description, routine.warning)
-}
+internal fun routineCopy(routine: CalibrationRoutine): RoutineCopy =
+    RoutineCopy(routine.dialogHelp.ifBlank { routine.description }, routine.warning)
 
 @Composable
 private fun SensorsNotice(text: String, modifier: Modifier = Modifier) {
