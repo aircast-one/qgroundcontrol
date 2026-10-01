@@ -708,7 +708,8 @@ impl Camera {
             Action::StartRecording => resetting
                 .or_else(|| missing(CAP_CAPTURE_VIDEO))
                 .or_else(|| self.recording().then_some(Refusal::Busy))
-                .or_else(|| (self.mode_now() == Some(MODE_PHOTO) && !self.info.has(CAP_VIDEO_IN_IMAGE_MODE)).then_some(Refusal::WrongMode)),
+                .or_else(|| (self.photo_status_now().unwrap_or(PHOTO_IDLE) != PHOTO_IDLE).then_some(Refusal::Busy))
+                .or_else(|| (self.info.has(CAP_HAS_MODES) && matches!(self.mode_now(), Some(MODE_PHOTO | MODE_SURVEY))).then_some(Refusal::WrongMode)),
             Action::StopRecording => resetting
                 .or_else(|| missing(CAP_CAPTURE_VIDEO))
                 .or_else(|| (self.video_status_now() == Some(VIDEO_STOPPED)).then_some(Refusal::NotCapturing)),
@@ -1832,6 +1833,8 @@ mod tests {
             "the camera said no, so the mode goes back to the one the camera last reported instead of reading as video for the rest of the flight"
         );
         assert_eq!(denied["lastCommand"]["result"], "denied", "and the refusal itself is published, which is the only way an operator learns the camera said no");
+        assert_eq!(cameras.start_recording(300).unwrap_err(), Refusal::WrongMode, "captureVideoState is Disabled in photo mode even for a camera that can record there");
+        cameras.on_camera_settings(CAMERA, SettingsReport { mode_id: MODE_VIDEO, zoom_percent: f64::NAN, focus_percent: f64::NAN }, 250);
         cameras.start_recording(300).unwrap();
         assert_eq!(
             cameras.snapshot(300)["cameras"][0]["commandedVideoStatus"],
@@ -2282,5 +2285,15 @@ mod tests {
             view["actions"],
             json!(["setMode", "takePhoto", "stopTakePhoto", "startRecording", "stopRecording", "zoom", "focus", "formatStorage", "selectStream", "resetSettings"])
         );
+    }
+
+    #[test]
+    fn recording_waits_for_photo_capture_and_a_video_mode_as_capture_video_state_does() {
+        let mut timelapse = idle(CAP_CAPTURE_IMAGE | CAP_CAPTURE_VIDEO);
+        timelapse.on_capture_status(CAMERA, CaptureStatusReport { image_status: PHOTO_INTERVAL_IN_PROGRESS, ..CaptureStatusReport::default() }, 10);
+        assert_eq!(timelapse.start_recording(20).unwrap_err(), Refusal::Busy, "captureVideoState is Disabled while photos are being taken");
+        let mut surveying = idle(CAP_CAPTURE_VIDEO | CAP_HAS_MODES);
+        surveying.on_camera_settings(CAMERA, SettingsReport { mode_id: MODE_SURVEY, zoom_percent: f64::NAN, focus_percent: f64::NAN }, 10);
+        assert_eq!(surveying.start_recording(20).unwrap_err(), Refusal::WrongMode, "survey mode records no video in QGC either");
     }
 }
