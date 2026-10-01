@@ -3,7 +3,6 @@ import QtQuick.Window
 import QtMultimedia
 
 import QGroundControl
-import QGroundControl.Controls
 
 Rectangle {
     id:                 _root
@@ -44,7 +43,7 @@ Rectangle {
         camera: Camera {
             id:             camera
             cameraDevice:   mediaDevices.findCameraDevice(_videoManager.uvcVideoSourceID)
-            active:         _videoManager.isUvc && (!ScreenTools.isMobile || Qt.application.state === Qt.ApplicationActive)
+            active:         _videoManager.isUvc
 
             onCameraDeviceChanged: {
                 if (active) {
