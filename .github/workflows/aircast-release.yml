@@ -476,9 +476,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code@2.1.281
-
       - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
@@ -495,7 +492,6 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           REPO: ${{ github.repository }}
           V: ${{ needs.setup.outputs.version }}
           SHORT: ${{ needs.setup.outputs.short_version }}
@@ -508,7 +504,9 @@ jobs:
           if gh release view "$V" -R "$REPO" >/dev/null 2>&1; then
             gh release upload "$V" -R "$REPO" --clobber assets/*
           else
-            scripts/release-notes.sh "$V" > release-notes.md
+            git fetch --force origin "refs/tags/$V:refs/tags/$V"
+            NOTES=$(git cat-file tag "$V" | sed '1,/^$/d; /^-----BEGIN PGP SIGNATURE-----$/,$d')
+            if [ "$(printf '%s\n' "$NOTES" | wc -l)" -gt 1 ]; then printf '%s\n' "$NOTES"; else scripts/release-notes.sh "$V"; fi > release-notes.md
             gh release create "$V" -R "$REPO" \
               --title "Aircast QGC $SHORT" \
               --notes-file release-notes.md \

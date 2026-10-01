@@ -58,27 +58,22 @@ case "$TYPE" in
     patch)
         NEW_VERSION="aircast-v${MAJOR}.${MINOR}.$((PATCH + 1))"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
-        MESSAGE="Release $NEW_VERSION"
         ;;
     minor)
         NEW_VERSION="aircast-v${MAJOR}.$((MINOR + 1)).0"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
-        MESSAGE="Release $NEW_VERSION"
         ;;
     major)
         NEW_VERSION="aircast-v$((MAJOR + 1)).0.0"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
-        MESSAGE="Release $NEW_VERSION"
         ;;
     dev)
         NEW_VERSION="aircast-v${MAJOR}.${MINOR}.$((PATCH + 1))-dev.1"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
-        MESSAGE="Development Release $NEW_VERSION"
         ;;
     staging)
         NEW_VERSION="aircast-v${MAJOR}.${MINOR}.${PATCH}-staging.1"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
-        MESSAGE="Staging Release $NEW_VERSION"
         ;;
     *)
         echo "Unknown release type: $TYPE"
@@ -90,7 +85,10 @@ esac
 log_info "New version: $NEW_VERSION"
 log_info "Creating tag..."
 
-git tag -a "$NEW_VERSION" -m "$MESSAGE"
+NOTES_FILE=$(mktemp)
+trap 'rm -f "$NOTES_FILE"' EXIT
+scripts/release-notes.sh "$NEW_VERSION" > "$NOTES_FILE"
+git tag -a "$NEW_VERSION" --cleanup=verbatim -F "$NOTES_FILE"
 git push fork "$NEW_VERSION"
 
 log_info "Released $NEW_VERSION"
