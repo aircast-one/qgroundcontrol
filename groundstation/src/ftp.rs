@@ -11,6 +11,9 @@ pub const CMD_RESET_SESSIONS: u8 = 2;
 pub const CMD_LIST_DIRECTORY: u8 = 3;
 pub const CMD_OPEN_FILE_RO: u8 = 4;
 pub const CMD_READ_FILE: u8 = 5;
+pub const CMD_CREATE_FILE: u8 = 6;
+pub const CMD_WRITE_FILE: u8 = 7;
+pub const CMD_REMOVE_FILE: u8 = 8;
 pub const CMD_BURST_READ_FILE: u8 = 15;
 pub const RSP_ACK: u8 = 128;
 pub const RSP_NAK: u8 = 129;
@@ -509,6 +512,166 @@ impl Listing {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum OpOut {
+    Send(Request),
+    StartTimer,
+    StopTimer,
+    Progress(f64),
+    Complete { error: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Create,
+    Write,
+    Reset,
+    Remove,
+}
+
+#[derive(Debug)]
+pub struct FileOp {
+    pub path: String,
+    pub component: u8,
+    step: Step,
+    expected_seq: u16,
+    session: u8,
+    data: Vec<u8>,
+    sent: usize,
+    chunk: usize,
+    retries: u32,
+    active: bool,
+}
+
+impl FileOp {
+    fn begin(from_component: u8, uri: &str, step: Step, data: Vec<u8>, expected_seq: u16) -> Result<(FileOp, Vec<OpOut>), String> {
+        let (path, component) = parse_uri(from_component, uri)?;
+        let mut op = FileOp { path, component, step, expected_seq, session: 0, data, sent: 0, chunk: 0, retries: 0, active: true };
+        let out = op.request(true);
+        Ok((op, out))
+    }
+
+    pub fn upload(from_component: u8, uri: &str, data: Vec<u8>, expected_seq: u16) -> Result<(FileOp, Vec<OpOut>), String> {
+        Self::begin(from_component, uri, Step::Create, data, expected_seq)
+    }
+
+    pub fn remove(from_component: u8, uri: &str, expected_seq: u16) -> Result<(FileOp, Vec<OpOut>), String> {
+        Self::begin(from_component, uri, Step::Remove, Vec::new(), expected_seq)
+    }
+
+    pub fn in_progress(&self) -> bool {
+        self.active
+    }
+
+    pub fn expected_seq(&self) -> u16 {
+        self.expected_seq
+    }
+
+    fn opcode(&self) -> u8 {
+        match self.step {
+            Step::Create => CMD_CREATE_FILE,
+            Step::Write => CMD_WRITE_FILE,
+            Step::Reset => CMD_RESET_SESSIONS,
+            Step::Remove => CMD_REMOVE_FILE,
+        }
+    }
+
+    fn request(&mut self, first: bool) -> Vec<OpOut> {
+        if first {
+            self.retries = 0;
+        } else {
+            self.expected_seq = self.expected_seq.wrapping_sub(2);
+        }
+        let (session, offset, data) = match self.step {
+            Step::Create | Step::Remove => (0, 0, self.path.as_bytes().iter().copied().take(DATA_LEN).collect()),
+            Step::Write => {
+                self.chunk = (self.data.len() - self.sent).min(DATA_LEN);
+                (self.session, self.sent as u32, self.data[self.sent..self.sent + self.chunk].to_vec())
+            }
+            Step::Reset => (0, 0, Vec::new()),
+        };
+        let request = Request { seq: self.expected_seq.wrapping_add(1), session, opcode: self.opcode(), offset, data, ..Default::default() };
+        self.expected_seq = self.expected_seq.wrapping_add(2);
+        vec![OpOut::StartTimer, OpOut::Send(request)]
+    }
+
+    fn complete(&mut self, error: String) -> Vec<OpOut> {
+        self.active = false;
+        vec![OpOut::StopTimer, OpOut::Complete { error }]
+    }
+
+    fn upload_failed(&mut self, why: &str) -> Vec<OpOut> {
+        let error = format!("Upload failed for: {} - {why}", self.path);
+        self.complete(error)
+    }
+
+    fn advance(&mut self) -> Vec<OpOut> {
+        match self.step {
+            Step::Create | Step::Write if self.sent < self.data.len() => {
+                self.step = Step::Write;
+                self.request(true)
+            }
+            Step::Create | Step::Write => {
+                self.step = Step::Reset;
+                self.request(true)
+            }
+            Step::Reset | Step::Remove => self.complete(String::new()),
+        }
+    }
+
+    pub fn on_timeout(&mut self) -> Vec<OpOut> {
+        if !self.active {
+            return Vec::new();
+        }
+        self.retries += 1;
+        match self.step {
+            Step::Create => self.upload_failed("no response from vehicle"),
+            Step::Write if self.retries > MAX_RETRY => self.upload_failed("no response from vehicle"),
+            Step::Remove if self.retries > MAX_RETRY => self.complete("Delete failed".to_string()),
+            Step::Reset => self.complete(String::new()),
+            _ => self.request(false),
+        }
+    }
+
+    pub fn on_payload(&mut self, payload: &[u8]) -> Vec<OpOut> {
+        let Some(reply) = Request::decode(payload) else { return Vec::new() };
+        if !self.active || reply.req_opcode != self.opcode() {
+            return Vec::new();
+        }
+        let current = match self.step {
+            Step::Write => reply.session == self.session && reply.seq >= self.expected_seq,
+            _ => reply.seq == self.expected_seq,
+        };
+        if !current {
+            return Vec::new();
+        }
+        match (reply.opcode, self.step) {
+            (RSP_ACK, Step::Create) => {
+                self.session = reply.session;
+                [vec![OpOut::StopTimer], self.advance()].concat()
+            }
+            (RSP_ACK, Step::Write) => {
+                self.sent += self.chunk;
+                self.chunk = 0;
+                self.expected_seq = reply.seq;
+                let progress = OpOut::Progress(if self.data.is_empty() { 1.0 } else { self.sent as f64 / self.data.len() as f64 });
+                [vec![OpOut::StopTimer, progress], self.advance()].concat()
+            }
+            (RSP_ACK, _) => [vec![OpOut::StopTimer], self.advance()].concat(),
+            (RSP_NAK, Step::Create | Step::Write) => {
+                let why = format!("error: {}", reply.nak_error());
+                self.upload_failed(&why)
+            }
+            (RSP_NAK, Step::Remove) => {
+                let error = format!("Delete failed: {}", reply.nak_error());
+                self.complete(error)
+            }
+            (RSP_NAK, Step::Reset) => self.complete(String::new()),
+            _ => Vec::new(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -618,5 +781,45 @@ mod tests {
         let retried: Vec<Vec<ListOut>> = (0..4).map(|_| failing.on_timeout()).collect();
         assert!(retried[2].iter().any(|o| matches!(o, ListOut::Send(r) if r.seq == 1)));
         assert!(matches!(retried[3].last(), Some(ListOut::Complete { error, .. }) if error == "List directory failed"));
+    }
+
+    fn op_ack(to: &Request, opcode: u8, session: u8, data: Vec<u8>) -> [u8; PAYLOAD_LEN] {
+        Request { seq: to.seq.wrapping_add(1), session, opcode, req_opcode: to.opcode, data, ..Default::default() }.encode()
+    }
+
+    fn op_sent(out: &[OpOut]) -> Request {
+        out.iter().find_map(|o| match o { OpOut::Send(r) => Some(r.clone()), _ => None }).expect("a request is sent")
+    }
+
+    #[test]
+    fn an_upload_creates_writes_in_chunks_then_resets_the_sessions() {
+        let data: Vec<u8> = (0..300u16).map(|i| i as u8).collect();
+        let (mut op, out) = FileOp::upload(1, "/APM/scripts/hello.lua", data.clone(), 0).unwrap();
+        let create = op_sent(&out);
+        assert_eq!((create.opcode, create.data.as_slice()), (CMD_CREATE_FILE, b"/APM/scripts/hello.lua".as_slice()));
+        let first = op_sent(&op.on_payload(&op_ack(&create, RSP_ACK, 4, vec![])));
+        assert_eq!((first.opcode, first.session, first.offset, first.data.len()), (CMD_WRITE_FILE, 4, 0, DATA_LEN));
+        let out = op.on_payload(&op_ack(&first, RSP_ACK, 4, vec![]));
+        let second = op_sent(&out);
+        assert_eq!((second.offset as usize, second.data.len()), (DATA_LEN, 300 - DATA_LEN));
+        assert_eq!([first.data, second.data.clone()].concat(), data);
+        let reset = op_sent(&op.on_payload(&op_ack(&second, RSP_ACK, 4, vec![])));
+        assert_eq!(reset.opcode, CMD_RESET_SESSIONS);
+        assert_eq!(op.on_payload(&op_ack(&reset, RSP_ACK, 0, vec![])).last(), Some(&OpOut::Complete { error: String::new() }));
+        assert!(!op.in_progress());
+    }
+
+    #[test]
+    fn a_nak_or_silence_fails_with_qgcs_wording() {
+        let (mut op, out) = FileOp::upload(1, "/APM/scripts/x.lua", vec![1; 10], 0).unwrap();
+        let create = op_sent(&out);
+        let failed = op.on_payload(&op_ack(&create, RSP_NAK, 0, vec![ERR_FAIL_ERRNO, 13]));
+        assert_eq!(failed.last(), Some(&OpOut::Complete { error: "Upload failed for: /APM/scripts/x.lua - error: errno 13".into() }));
+        let (mut silent, _) = FileOp::upload(1, "/APM/scripts/x.lua", vec![1; 10], 0).unwrap();
+        assert_eq!(silent.on_timeout().last(), Some(&OpOut::Complete { error: "Upload failed for: /APM/scripts/x.lua - no response from vehicle".into() }));
+        let (mut remove, out) = FileOp::remove(1, "/APM/scripts/x.lua", 0).unwrap();
+        assert_eq!(op_sent(&out).opcode, CMD_REMOVE_FILE);
+        (0..MAX_RETRY).for_each(|_| assert!(matches!(remove.on_timeout().last(), Some(OpOut::Send(_)))));
+        assert_eq!(remove.on_timeout().last(), Some(&OpOut::Complete { error: "Delete failed".into() }));
     }
 }

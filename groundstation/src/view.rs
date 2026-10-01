@@ -64,6 +64,7 @@ use crate::apmfollow;
 use crate::apmservos;
 use crate::logreplay;
 use crate::ntrip;
+use crate::scripting;
 use crate::signingkeys;
 use crate::obstacle;
 use crate::kml;
@@ -193,6 +194,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
     View { path: "view.logReplay", deps: logreplay::DEPS, compute: logreplay::log_replay_view },
+    View { path: "view.scripting", deps: scripting::DEPS, compute: scripting::scripting_view },
     View { path: "view.signingKeys", deps: signingkeys::DEPS, compute: signingkeys::signing_keys_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
     View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
@@ -538,6 +540,8 @@ mod deps_cover_reads {
             ("apmservos", include_str!("apmservos.rs")),
             ("logreplay", include_str!("logreplay.rs")),
             ("ntrip", include_str!("ntrip.rs")),
+            ("filejobs", include_str!("filejobs.rs")),
+            ("scripting", include_str!("scripting.rs")),
             ("signingkeys", include_str!("signingkeys.rs")),
             ("actuatortest", include_str!("actuatortest.rs")),
             ("motorassignment", include_str!("motorassignment.rs")),

@@ -8,7 +8,7 @@ use crate::sensors;
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
-const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Lights", "Remote Support"];
+const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Scripting", "Lights", "Remote Support"];
 
 /// Which component backs each page. The join is on the KnownVehicleComponent enum where the
 /// firmware declares one and on the C++ class name otherwise - both untranslated, where the
@@ -30,6 +30,7 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Motors", &["MotorComponent", "APMMotorComponent"]),
     ("Tuning", &["APMTuningComponent", "PX4TuningComponent"]),
     ("Tuning - Advanced", &["APMAdvancedTuningCopterComponent"]),
+    ("Scripting", &["ScriptingComponent"]),
     ("Gimbal", &["APMGimbalComponent"]),
     ("Airspeed", &["APMAirspeedComponent"]),
     ("ESC", &["APMESCComponent"]),
@@ -78,7 +79,7 @@ pub fn page_absence(px4: bool) -> &'static str {
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
     ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Airspeed", "ESC", "Servo Outputs", "Motors", "Actuators", "Heli", "Tuning", "Tuning - Advanced", "Gimbal", "Lights", "Flight Behavior", "Follow Me"]),
-    ("Advanced", &["Logging", "Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
+    ("Advanced", &["Logging", "Scripting", "Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
 ];
 
 pub struct Section {
@@ -128,6 +129,7 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
         ("Tuning", true) => Some("px4Tuning"),
         ("Frame", true) => Some("px4Airframe"),
         ("Tuning - Advanced", false) => Some("px4Tuning"),
+        ("Scripting", false) => Some("scripting"),
         ("Servo Outputs", false) => Some("apmServos"),
         ("Follow Me", false) => Some("apmFollow"),
         ("Actuators", true) if crate::vehiclefacade::switched_on() => Some("actuators"),

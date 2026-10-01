@@ -190,6 +190,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == ACTUATORS_SCREEN -> ActuatorsScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_SERVOS_SCREEN -> ApmServosScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_FOLLOW_SCREEN -> ApmFollowScreen(Modifier.weight(1f))
+                nativePage?.screen == SCRIPTING_SCREEN -> ScriptingScreen(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",

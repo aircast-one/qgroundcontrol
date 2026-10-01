@@ -253,6 +253,8 @@ pub struct Vehicle {
     fetch: Option<Fetch>,
     ftp_due: Option<u64>,
     ftp_seq: u16,
+    pub files: crate::filejobs::Files,
+    download_to: Option<String>,
     plans: [PlanSlot; 3],
     remote: RemoteId,
     odid_due: Option<u64>,
@@ -386,6 +388,8 @@ impl Vehicle {
             fetch: None,
             ftp_due: None,
             ftp_seq: 0,
+            files: crate::filejobs::Files::default(),
+            download_to: None,
             plans: [PLAN_MISSION, PLAN_FENCE, PLAN_RALLY].map(|kind| PlanSlot { transfer: Transfer::new(autopilot == crate::modes::AUTOPILOT_ARDUPILOT, kind), due: None, progress: 0.0, error: None }),
             remote: RemoteId::default(),
             odid_due: None,
@@ -764,6 +768,72 @@ impl Vehicle {
                 self.step_done(connect::Step::ComponentInformation, now_ms)
             }
         }
+    }
+
+    fn file_job(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        let op = action.get("op").and_then(Value::as_str).unwrap_or("");
+        if op == "cancel" {
+            let steps = self.files.job.as_mut().map(crate::filejobs::Job::cancel).unwrap_or_default();
+            return Ok(self.follow_files(steps, now_ms));
+        }
+        if self.files.busy() || self.fetch.is_some() {
+            return Err("Another file transfer with the vehicle is in progress.".to_string());
+        }
+        let path = action.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("A file operation needs the path on the vehicle.")?;
+        let local = action.get("file").and_then(Value::as_str).unwrap_or("").to_string();
+        let (component, seq) = (self.component, self.ftp_seq);
+        let started = match op {
+            "list" => crate::filejobs::Job::list(component, path, seq),
+            "download" if !local.is_empty() => crate::filejobs::Job::download(component, path, seq),
+            "upload" => std::fs::read(&local).map_err(|e| format!("Upload failed for: {path} - {e}")).and_then(|data| crate::filejobs::Job::upload(component, path, data, seq)),
+            "delete" => crate::filejobs::Job::delete(component, path, seq),
+            _ => Err(format!("{op} is not a file operation")),
+        }?;
+        let (job, steps) = started;
+        self.download_to = (op == "download").then_some(local);
+        self.files.job = Some(job);
+        self.files.progress = 0.0;
+        self.files.generation += 1;
+        Ok(self.follow_files(steps, now_ms))
+    }
+
+    fn follow_files(&mut self, steps: Vec<crate::filejobs::Step>, now_ms: u64) -> Vec<Vec<u8>> {
+        use crate::filejobs::{Outcome, Step};
+        steps
+            .into_iter()
+            .flat_map(|step| match step {
+                Step::Send(request) => {
+                    let Some(job) = self.files.job.as_ref() else { return Vec::new() };
+                    self.ftp_seq = job.expected_seq();
+                    let target = (self.id, job.component());
+                    self.encode(&Outbound::Ftp { target, payload: request.encode() }).into_iter().collect()
+                }
+                Step::StartTimer => {
+                    self.files.due_ms = Some(now_ms + compmeta::FTP_ACK_TIMEOUT_MS);
+                    Vec::new()
+                }
+                Step::StopTimer => {
+                    self.files.due_ms = None;
+                    Vec::new()
+                }
+                Step::Progress(progress) => {
+                    self.files.progress = progress;
+                    Vec::new()
+                }
+                Step::Done(result) => {
+                    self.files.due_ms = None;
+                    let Some(job) = self.files.job.take() else { return Vec::new() };
+                    self.ftp_seq = job.expected_seq();
+                    let result = match (result, self.download_to.take()) {
+                        (Ok(Outcome::Downloaded(bytes)), Some(to)) => std::fs::write(&to, &bytes).map(|_| Outcome::Downloaded(Vec::new())).map_err(|e| format!("Download failed for: {} - {e}", job.path)),
+                        (other, _) => other,
+                    };
+                    self.files.last = Some((job.path, result));
+                    self.files.generation += 1;
+                    Vec::new()
+                }
+            })
+            .collect()
     }
 
     fn follow_ftp(&mut self, outs: Vec<ftp::Out>, now_ms: u64) -> Vec<Vec<u8>> {
@@ -1353,6 +1423,7 @@ impl Vehicle {
                 return Ok(self.send_interval(next, now_ms));
             }
             Some("gimbal") => return self.gimbal_action(action, now_ms),
+            Some("ftp") => return self.file_job(action, now_ms),
             Some("refreshParameters") => {
                 let actions = match action.get("names").and_then(Value::as_array) {
                     Some(names) => names.iter().filter_map(Value::as_str).flat_map(|name| self.params.refresh(self.component, name)).collect(),
@@ -1578,6 +1649,11 @@ impl Vehicle {
             let outs = self.plans[kind as usize].transfer.on_timeout();
             bytes.extend(self.follow_plan(kind, outs, now_ms));
         });
+        if self.files.due_ms.is_some_and(|due| now_ms >= due) {
+            self.files.due_ms = None;
+            let steps = self.files.job.as_mut().map(crate::filejobs::Job::on_timeout).unwrap_or_default();
+            bytes.extend(self.follow_files(steps, now_ms));
+        }
         if self.ftp_due.is_some_and(|due| now_ms >= due) {
             self.ftp_due = None;
             let outs = self.fetch.as_mut().map(|f| f.download.on_timeout()).unwrap_or_default();
@@ -2040,9 +2116,13 @@ impl Vehicle {
                 return self.start_fetch(TYPE_GENERAL, &uri, now_ms);
             }
             MavMessage::FILE_TRANSFER_PROTOCOL(f) if mavout::for_us(f.target_system) => {
-                let Some(fetch) = self.fetch.as_mut().filter(|fetch| fetch.download.component == header.component_id) else { return Vec::new() };
-                let outs = fetch.download.on_payload(&f.payload);
-                return self.follow_ftp(outs, now_ms);
+                if let Some(fetch) = self.fetch.as_mut().filter(|fetch| fetch.download.component == header.component_id) {
+                    let outs = fetch.download.on_payload(&f.payload);
+                    return self.follow_ftp(outs, now_ms);
+                }
+                let Some(job) = self.files.job.as_mut().filter(|job| job.component() == header.component_id) else { return Vec::new() };
+                let steps = job.on_payload(&f.payload);
+                return self.follow_files(steps, now_ms);
             }
             MavMessage::AVAILABLE_MODES(m) => {
                 if self.commands.on_message(header.component_id, MSG_AVAILABLE_MODES).is_empty() {
@@ -3445,6 +3525,25 @@ mod tests {
         assert_eq!(sent.len(), 1);
         assert!(matches!(decode(&sent[0].1), MavMessage::GPS_RTCM_DATA(d) if d.len == 10 && d.flags == 0));
         assert!(Hub::default().inject_rtcm(&[0xD3; 10]).is_empty(), "no vehicle, nothing sent");
+    }
+
+    #[test]
+    fn a_script_directory_listing_runs_over_the_files_slot() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let sent = hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "ftp", "op": "list", "path": "/APM/scripts/" }), 20_000).unwrap();
+        let request = ftp_request(&sent[0]);
+        assert_eq!((request.opcode, request.data.as_slice()), (ftp::CMD_LIST_DIRECTORY, b"/APM/scripts/".as_slice()));
+        assert!(hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "ftp", "op": "delete", "path": "/APM/scripts/a.lua" }), 20_000).is_err(), "one transfer at a time");
+        let listed = ftp::Request { seq: request.seq + 1, opcode: ftp::RSP_ACK, req_opcode: ftp::CMD_LIST_DIRECTORY, data: b"Fhello.lua\t120\0Dmodules\0".to_vec(), ..Default::default() };
+        let next = hub.on_frame(origin(4), &autopilot, &ftp_reply(listed), 20_100_000, 20_100);
+        let more = ftp_request(&next[0].1);
+        let eof = ftp::Request { seq: more.seq + 1, opcode: ftp::RSP_NAK, req_opcode: ftp::CMD_LIST_DIRECTORY, data: vec![ftp::ERR_EOF], ..Default::default() };
+        hub.on_frame(origin(4), &autopilot, &ftp_reply(eof), 20_200_000, 20_200);
+        let files = &hub.active().unwrap().files;
+        assert!(!files.busy());
+        assert_eq!(files.last, Some(("/APM/scripts/".to_string(), Ok(crate::filejobs::Outcome::Listed(vec!["Fhello.lua\t120".into(), "Dmodules".into()])))));
     }
 
     #[test]
