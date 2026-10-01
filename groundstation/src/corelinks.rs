@@ -216,6 +216,26 @@ fn remove(index: usize) -> bool {
     true
 }
 
+fn serial_framing(kind: &Kind, field: &str, value: i64) -> Option<Kind> {
+    let Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_name, port_display_name } = kind else { return None };
+    let valid = match field {
+        "dataBits" => (5..=8).contains(&value),
+        "stopBits" => (1..=2).contains(&value),
+        "parity" => [0, 2, 3].contains(&value),
+        "flowControl" => (0..=1).contains(&value),
+        _ => false,
+    };
+    valid.then(|| Kind::Serial {
+        baud: *baud,
+        data_bits: if field == "dataBits" { value } else { *data_bits },
+        flow_control: if field == "flowControl" { value } else { *flow_control },
+        stop_bits: if field == "stopBits" { value } else { *stop_bits },
+        parity: if field == "parity" { value } else { *parity },
+        port_name: port_name.clone(),
+        port_display_name: port_display_name.clone(),
+    })
+}
+
 pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkConfig> {
     let text = value.as_str().map(|t| t.trim().to_string());
     let port = value.as_u64().and_then(|p| u16::try_from(p).ok());
@@ -232,6 +252,7 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
         (Kind::Serial { data_bits, flow_control, stop_bits, parity, port_name, port_display_name, .. }, "baud") => {
             Kind::Serial { baud: value.as_i64()?, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name: port_name.clone(), port_display_name: port_display_name.clone() }
         }
+        (Kind::Serial { .. }, "dataBits" | "stopBits" | "parity" | "flowControl") => serial_framing(&config.kind, field, value.as_i64()?)?,
         _ => return None,
     };
     Some(LinkConfig { kind, ..config.clone() })
@@ -568,6 +589,21 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serial_framing_edits_take_only_the_values_serial_settings_offers() {
+        let serial = LinkConfig { name: "Radio".into(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud: 57600, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: "ttyUSB0".into(), port_display_name: "ttyUSB0".into() } };
+        let framing = |field: &str, value: i64| edited(&serial, field, &serde_json::json!(value)).map(|c| match c.kind {
+            Kind::Serial { data_bits, flow_control, stop_bits, parity, .. } => (data_bits, flow_control, stop_bits, parity),
+            _ => unreachable!(),
+        });
+        assert_eq!(framing("dataBits", 7), Some((7, 0, 1, 0)));
+        assert_eq!(framing("parity", 2), Some((8, 0, 1, 2)), "Even is QSerialPort::EvenParity, 2");
+        assert_eq!(framing("parity", 1), None, "1 is no QSerialPort parity SerialSettings offers");
+        assert_eq!(framing("stopBits", 2), Some((8, 0, 2, 0)));
+        assert_eq!(framing("flowControl", 1), Some((8, 1, 1, 0)));
+        assert_eq!(framing("dataBits", 9), None);
+    }
 
     #[test]
     fn a_created_link_follows_create_and_connect_link_and_an_edit_changes_only_its_field() {

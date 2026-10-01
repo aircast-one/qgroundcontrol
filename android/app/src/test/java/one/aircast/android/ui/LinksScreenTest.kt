@@ -192,9 +192,15 @@ class LinkEditRulesTest {
     }
 
     @Test
-    fun `serial writes the port name and baud`() {
-        val writes = editWrites("serial", "n", "", 0, "/dev/ttyUSB0", 57600, false, true)
-        assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to true, "portName" to "/dev/ttyUSB0", "baud" to 57600), writes)
+    fun `serial writes the port name, baud and the advanced framing`() {
+        val writes = editWrites("serial", "n", "", 0, "/dev/ttyUSB0", 57600, false, true, SerialFraming(dataBits = 7, stopBits = 2, parity = 2, flowControl = 1))
+        assertEquals(
+            listOf<Pair<String, Any>>(
+                "name" to "n", "autoConnect" to false, "highLatency" to true, "portName" to "/dev/ttyUSB0", "baud" to 57600,
+                "dataBits" to 7, "stopBits" to 2, "parity" to 2, "flowControl" to 1,
+            ),
+            writes,
+        )
     }
 
     @Test

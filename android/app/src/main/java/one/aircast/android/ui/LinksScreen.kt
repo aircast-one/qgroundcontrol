@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -73,6 +74,7 @@ data class LinkRow(
     val port: Int = 0,
     val portName: String = "",
     val baud: Int = 0,
+    val framing: SerialFraming = SerialFraming(),
     val autoConnect: Boolean = false,
     val highLatency: Boolean = false,
 )
@@ -95,6 +97,7 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 port = link.optInt("port"),
                 portName = link.optText("portName"),
                 baud = link.optInt("baud"),
+                framing = SerialFraming(link.optInt("dataBits", 8), link.optInt("stopBits", 1), link.optInt("parity", 0), link.optInt("flowControl", 0)),
                 autoConnect = link.optBoolean("autoConnect"),
                 highLatency = link.optBoolean("highLatency"),
             )
@@ -141,6 +144,12 @@ internal fun bluetoothPermissions(sdk: Int): Array<String> =
         arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
+data class SerialFraming(val dataBits: Int = 8, val stopBits: Int = 1, val parity: Int = 0, val flowControl: Int = 0)
+
+internal val PARITY_CHOICES = listOf("None" to 0, "Even" to 2, "Odd" to 3)
+internal val DATA_BITS_CHOICES = listOf(5, 6, 7, 8)
+internal val STOP_BITS_CHOICES = listOf(1, 2)
+
 internal fun editWrites(
     editing: String,
     name: String,
@@ -150,10 +159,18 @@ internal fun editWrites(
     baud: Int,
     autoConnect: Boolean,
     highLatency: Boolean,
+    framing: SerialFraming = SerialFraming(),
 ): List<Pair<String, Any>> = listOf<Pair<String, Any>>("name" to name, "autoConnect" to autoConnect, "highLatency" to highLatency) + when (editing) {
     "hostAndPort" -> listOf("host" to host, "port" to port)
     "portOnly" -> listOf("localPort" to port)
-    "serial" -> listOf("portName" to portName, "baud" to baud)
+    "serial" -> listOf(
+        "portName" to portName,
+        "baud" to baud,
+        "dataBits" to framing.dataBits,
+        "stopBits" to framing.stopBits,
+        "parity" to framing.parity,
+        "flowControl" to framing.flowControl,
+    )
     else -> emptyList()
 }
 
@@ -343,6 +360,8 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     var error by remember { mutableStateOf<String?>(null) }
     var autoConnect by remember { mutableStateOf(row.autoConnect) }
     var highLatency by remember { mutableStateOf(row.highLatency) }
+    var framing by remember { mutableStateOf(row.framing) }
+    var advanced by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val linksJson by qgcPath(LINKS_VIEW)
     val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
@@ -379,6 +398,11 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                             }
                         }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = advanced, onCheckedChange = { advanced = it })
+                        Text("Advanced Settings")
+                    }
+                    if (advanced) SerialFramingControls(framing) { framing = it }
                 } else {
                     OutlinedTextField(
                         value = port,
@@ -417,9 +441,9 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                                 return@launch
                             }
                             withContext(Dispatchers.Default) {
-                                editWrites(row.editing, name, host, parsed, portName, baud, autoConnect, highLatency)
+                                editWrites(row.editing, name, host, parsed, portName, baud, autoConnect, highLatency, framing)
                                     .forEach { (field, value) ->
-                                        // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.autoConnect, links.linkConfigurations.0.highLatency, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud
+                                        // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.autoConnect, links.linkConfigurations.0.highLatency, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud, links.linkConfigurations.0.dataBits, links.linkConfigurations.0.stopBits, links.linkConfigurations.0.parity, links.linkConfigurations.0.flowControl
                                         Qgc.set("$LINKS_PATH.${row.index}.$field", value)
                                     }
                                 Qgc.invoke("links.commitLinkConfigurations")
@@ -793,4 +817,39 @@ internal const val REMEDY_EDIT_ADDRESS = "editAddress"
 internal fun remedyText(remedy: String): String? = when (remedy) {
     REMEDY_EDIT_ADDRESS -> "Nothing is listening at that address. Retrying will not help until it is changed."
     else -> null
+}
+
+@Composable
+private fun SerialFramingControls(framing: SerialFraming, onChange: (SerialFraming) -> Unit) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = framing.flowControl != 0, onCheckedChange = { onChange(framing.copy(flowControl = if (it) 1 else 0)) })
+            Text("Enable Flow Control")
+        }
+        FramingPicker("Parity", PARITY_CHOICES.firstOrNull { it.second == framing.parity }?.first.orEmpty(), PARITY_CHOICES.map { it.first }) {
+            onChange(framing.copy(parity = PARITY_CHOICES[it].second))
+        }
+        FramingPicker("Data Bits", framing.dataBits.toString(), DATA_BITS_CHOICES.map { it.toString() }) {
+            onChange(framing.copy(dataBits = DATA_BITS_CHOICES[it]))
+        }
+        FramingPicker("Stop Bits", framing.stopBits.toString(), STOP_BITS_CHOICES.map { it.toString() }) {
+            onChange(framing.copy(stopBits = STOP_BITS_CHOICES[it]))
+        }
+    }
+}
+
+@Composable
+private fun FramingPicker(label: String, shown: String, choices: List<String>, onPick: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f))
+        Box {
+            OutlinedButton(onClick = { open = true }) { Text(shown) }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                choices.forEachIndexed { index, choice ->
+                    DropdownMenuItem(text = { Text(choice) }, onClick = { onPick(index); open = false })
+                }
+            }
+        }
+    }
 }
