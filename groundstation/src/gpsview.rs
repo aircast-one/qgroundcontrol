@@ -17,6 +17,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.gps.hdop",
     "vehicle.gps.vdop",
     "vehicle.gps.courseOverGround",
+    "vehicle.gps.systemErrors",
 ];
 
 const DETAIL: &[(&str, &str)] = &[("count", "Satellites"), ("hdop", "HDOP"), ("vdop", "VDOP"), ("courseOverGround", "Course over ground"), ("mgrs", "MGRS")];
@@ -79,6 +80,24 @@ fn rows(fact: &dyn Fn(&str) -> Option<Reading>) -> Vec<Value> {
         .collect()
 }
 
+pub fn gps_error_text(errors: i64) -> &'static str {
+    match errors {
+        1 => "Incoming correction",
+        2 => "Configuration",
+        4 => "Software",
+        8 => "Antenna",
+        16 => "Event congestion",
+        32 => "CPU overload",
+        64 => "Output congestion",
+        _ => "Multiple errors",
+    }
+}
+
+fn error_row(reading: Option<Reading>) -> Option<Value> {
+    let errors = reading?.number.map(|n| n as i64).filter(|e| *e > 0)?;
+    Some(json!({ "label": "GPS Error", "value": gps_error_text(errors) }))
+}
+
 fn whole(reading: Option<&Reading>) -> Option<i64> {
     reading.and_then(|r| r.number).map(|n| n as i64)
 }
@@ -95,7 +114,7 @@ pub fn gps_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "satellites": whole(count.as_ref()),
         "lock": whole(lock.as_ref()),
         "lockText": lock.map(|l| l.spelled).unwrap_or_default(),
-        "rows": rows(&fact),
+        "rows": rows(&fact).into_iter().chain(error_row(fact("systemErrors"))).collect::<Vec<_>>(),
     })
 }
 
@@ -144,6 +163,10 @@ mod tests {
         assert!(!dop_usable("hdop", &unknown_dop), "UINT16_MAX scaled by GPS_RAW_INT is the receiver saying it has no dilution");
         assert!(!dop_usable("vdop", &Reading { number: Some(0.0), ..unknown_dop.clone() }));
         assert!(dop_usable("hdop", &Reading { number: Some(1.4), ..unknown_dop.clone() }) && dop_usable("count", &unknown_dop));
+
+        let antenna = Gps(vec![("count", fact("count", json!(10), "10", "")), ("systemErrors", fact("systemErrors", json!(8), "8", ""))]);
+        assert_eq!(gps_view(&antenna, &[])["rows"].as_array().unwrap().last().unwrap(), &json!({ "label": "GPS Error", "value": "Antenna" }));
+        assert_eq!(gps_error_text(12), "Multiple errors");
 
         let none = gps_view(&Gps(Vec::new()), &[]);
         assert_eq!((&none["available"], &none["satellites"], &none["rows"]), (&json!(false), &Value::Null, &json!([])));
