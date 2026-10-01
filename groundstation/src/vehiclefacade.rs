@@ -34,6 +34,20 @@ pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
     ((azimuth.trunc() as i64 + 360) % 360) as f64 + azimuth.fract()
 }
 
+const FENCE_SHAPES: std::ops::RangeInclusive<u16> = 5001..=5004;
+
+fn plan_contents(fence: &[crate::plantransfer::Item], rally: &[crate::plantransfer::Item]) -> (bool, bool) {
+    (fence.iter().any(|item| FENCE_SHAPES.contains(&item.command)), !rally.is_empty())
+}
+
+fn heading_to_next_wp(coordinate: Option<(f64, f64, f64)>, items: &[crate::plantransfer::Item], current: i32) -> f64 {
+    let next = usize::try_from(current).ok().and_then(|index| items.get(index)).map(|item| (item.params[4], item.params[5]));
+    match coordinate.zip(next) {
+        Some((here, target)) if target.1 != 0.0 && crate::terrain::qt_distance((here.0, here.1), target) > 5.0 => qt_azimuth((here.0, here.1), target),
+        _ => f64::NAN,
+    }
+}
+
 fn home_facts(coordinate: Option<(f64, f64, f64)>, home: Option<(f64, f64, f64)>) -> (f64, f64, f64) {
     match coordinate.zip(home) {
         None => (f64::NAN, f64::NAN, f64::NAN),
@@ -105,6 +119,7 @@ struct Known {
     supports: Value,
     fields: Value,
     autotune: crate::autotune::Autotune,
+    plan_contents: (bool, bool),
 }
 
 fn supports(autopilot: u8, vehicle_type: u8) -> Value {
@@ -232,7 +247,7 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
     };
     let named = |custom: Option<u32>, fallback: &str| custom.and_then(|c| listed.iter().find(|m| m.1 == c)).map_or_else(|| fallback.to_string(), |m| m.0.clone());
     let names = |advanced_only: bool| listed.iter().filter(|m| m.2 && (!advanced_only || m.3)).map(|m| m.0.clone()).collect::<Vec<_>>();
-    let apm = |guided: u32, rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str)| {
+    let apm = |guided: u32, rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str), stabilized: (u32, &str)| {
         json!({
             "flightModes": names(false),
             "advancedFlightModes": names(true),
@@ -244,13 +259,14 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
             "pauseFlightMode": named(pause.0, pause.1),
             "followFlightMode": named(follow.0, follow.1),
             "gotoFlightMode": named(Some(guided), "Guided"),
+            "stabilizedFlightMode": named(Some(stabilized.0), stabilized.1),
         })
     };
     let fields = match (autopilot, crate::modes::vehicle_class(vehicle_type)) {
-        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(4, Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake"), (Some(23), "Follow")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(15, Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter"), (None, "")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(15, Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(4, None, None, Some(3), (None, ""), (None, ""), (None, "")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(4, Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake"), (Some(23), "Follow"), (0, "Stabilize")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(15, Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter"), (None, ""), (2, "Stabilize")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(15, Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow"), (0, "Manual")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(4, None, None, Some(3), (None, ""), (None, ""), (None, ""), (0, "Stabilize")),
         (AUTOPILOT_PX4, _) => json!({
             "advancedFlightModes": names(true),
             "rtlFlightMode": named(Some(px4(4, 5)), ""),
@@ -422,6 +438,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "altitudeAMSL": crate::vehiclefact::vehicle_fact("altitudeAMSL", &json!(v.facts.altitude_amsl)),
         "throttlePct": crate::vehiclefact::vehicle_fact("throttlePct", &json!(v.facts.throttle_pct)),
         "distanceToNextWP": crate::vehiclefact::vehicle_fact("distanceToNextWP", &json!(v.facts.distance_to_next_wp)),
+        "headingToNextWP": crate::vehiclefact::vehicle_fact("headingToNextWP", &json!(heading_to_next_wp(v.facts.coordinate, v.mission_items(), v.mission_current))),
         "distanceToHome": crate::vehiclefact::vehicle_fact("distanceToHome", &json!(home_facts(v.facts.coordinate, v.home).0)),
         "headingToHome": crate::vehiclefact::vehicle_fact("headingToHome", &json!(home_facts(v.facts.coordinate, v.home).1)),
         "headingFromHome": crate::vehiclefact::vehicle_fact("headingFromHome", &json!(home_facts(v.facts.coordinate, v.home).2)),
@@ -464,7 +481,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
             .chain([("sensorsPresentBits".to_string(), json!(v.status_bits.present))])
             .collect(),
     );
-    Known { id: v.id, parameters_ready: v.parameters_ready(), parameters_unanswered: v.parameters_unanswered(), lost: v.connection_lost, home: v.home, roi: v.roi_coord, remote: v.remote_snapshot(), coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), gps2: v.gps2.clone(), integrity_stale: crate::vehiclefact::integrity_stale(v.integrity_heard_ms, crate::hub::now_ms()), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), orbit: v.orbit_circle, hygrometer: v.hygrometer.clone(), generator: v.generator.clone(), efi: v.efi.clone(), terrain_blocks: v.terrain_blocks, escs: v.escs.clone(), trigger_points: (v.trigger_points.clone(), v.trigger_points_appended), mission_indices: (v.current_mission_index(), v.resume_mission_index(), v.fly_items()), links: (v.link_states.iter().map(|(link, _, lost)| (*link, *lost)).collect(), v.primary_link), cameras: (v.cameras.models(), v.cameras.selected_index().unwrap_or(0)), sensors, supports: supports(v.autopilot, v.vehicle_type), fields, autotune: v.autotune.clone() }
+    Known { id: v.id, parameters_ready: v.parameters_ready(), parameters_unanswered: v.parameters_unanswered(), lost: v.connection_lost, home: v.home, roi: v.roi_coord, remote: v.remote_snapshot(), coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), gps2: v.gps2.clone(), integrity_stale: crate::vehiclefact::integrity_stale(v.integrity_heard_ms, crate::hub::now_ms()), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), orbit: v.orbit_circle, hygrometer: v.hygrometer.clone(), generator: v.generator.clone(), efi: v.efi.clone(), terrain_blocks: v.terrain_blocks, escs: v.escs.clone(), trigger_points: (v.trigger_points.clone(), v.trigger_points_appended), mission_indices: (v.current_mission_index(), v.resume_mission_index(), v.fly_items()), links: (v.link_states.iter().map(|(link, _, lost)| (*link, *lost)).collect(), v.primary_link), cameras: (v.cameras.models(), v.cameras.selected_index().unwrap_or(0)), sensors, supports: supports(v.autopilot, v.vehicle_type), fields, autotune: v.autotune.clone(), plan_contents: plan_contents(v.plan_items(crate::plantransfer::PLAN_FENCE), v.plan_items(crate::plantransfer::PLAN_RALLY)) }
 }
 
 fn fields_of(fields: &str) -> Vec<&str> {
@@ -611,6 +628,9 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
     let field = |name: &str| -> Option<Value> {
         match (path, name) {
             ("vehicles", "activeVehicleAvailable") => Some(json!(true)),
+            ("vehicle.autotune", "autotuneInProgress") => Some(json!(known.autotune.in_progress)),
+            ("vehicle.autotune", "autotuneProgress") => Some(json!(known.autotune.progress)),
+            ("vehicle.autotune", "autotuneStatus") => Some(json!(known.autotune.status)),
             ("vehicle.parameterManager", "parametersReady") => Some(json!(known.parameters_ready)),
             ("vehicle.parameterManager", "requestUnanswered") => Some(json!(known.parameters_unanswered)),
             ("vehicle.vehicleLinkManager", "communicationLost") => Some(json!(known.lost)),
@@ -624,6 +644,8 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("vehicle", "coordinate") => Some(known.coordinate.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
             ("vehicle", "homePosition") => Some(known.home.map_or(Value::Null, |(latitude, longitude, altitude)| json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": altitude }))),
             ("planFly.missionController", "currentMissionIndex") => Some(json!(known.mission_indices.0)),
+            ("planFly.geoFenceController", "containsItems") => Some(json!(known.plan_contents.0)),
+            ("planFly.rallyPointController", "containsItems") => Some(json!(known.plan_contents.1)),
             ("planFly.missionController", "resumeMissionIndex") => Some(json!(known.mission_indices.1)),
             ("planFly.missionController.visualItems", "count") => Some(json!(known.mission_indices.2)),
             ("plan.geoFenceController", "paramCircularFence") => known.fields.get("paramCircularFence").cloned(),
@@ -827,7 +849,11 @@ fn answer_parameter(path: &str) -> Option<Value> {
         -1 => vehicle.component,
         id => u8::try_from(id).ok()?,
     };
-    let value = vehicle.parameter(component, name.trim())?;
+    let name = vehicle.parameter_name(name.trim());
+    let name = name.as_str();
+    let Some(value) = vehicle.parameter(component, name) else {
+        return vehicle.parameters_ready().then(|| field_of(absent_parameter(), rest)).flatten();
+    };
     let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
     let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
     let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
@@ -836,14 +862,22 @@ fn answer_parameter(path: &str) -> Option<Value> {
         other => json!(other.as_f64() as i64),
     };
     let raw = number(value);
-    let firmware_default = (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name.trim()).copied()).flatten();
-    let meta = crate::factmeta::MetaData { default: firmware_default.map(number), ..crate::apmmeta::json_metadata(&definitions, name.trim(), value_type) };
+    let firmware_default = (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name).copied()).flatten();
+    let meta = crate::factmeta::MetaData { default: firmware_default.map(number), ..crate::apmmeta::json_metadata(&definitions, name, value_type) };
     let mut described = crate::vehiclefact::fact(&meta, &raw, None);
     described["mavType"] = json!(value.param_type());
     described["componentId"] = json!(component);
     if described["typeIsInteger"] == true {
         [("minString", &meta.min), ("maxString", &meta.max)].into_iter().filter_map(|(key, bound)| Some((key, bound.as_ref()?.as_f64()?))).for_each(|(key, bound)| described[key] = json!(crate::control::qt_shortest(bound)));
     }
+    field_of(described, rest)
+}
+
+fn absent_parameter() -> Value {
+    crate::vehiclefact::fact(&crate::px4meta::bare(crate::factmeta::ValueType::Int32), &json!(0), None)
+}
+
+fn field_of(described: Value, rest: &str) -> Option<Value> {
     match rest.strip_prefix('.') {
         None if rest.is_empty() => Some(described),
         Some(field) => Some(json!({ "kind": "value", "value": described.get(field)?.clone() })),
@@ -1389,6 +1423,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_fence_contains_items_only_when_it_has_a_shape() {
+        let item = |command: u16| crate::plantransfer::Item { seq: 0, frame: 0, command, current: false, auto_continue: true, params: [0.0; 7] };
+        assert_eq!(plan_contents(&[item(5000)], &[]), (false, false), "a breach return point is not a polygon or a circle");
+        assert_eq!(plan_contents(&[item(5000), item(5003)], &[item(5100)]), (true, true));
+        assert_eq!(plan_contents(&[item(5001)], &[]), (true, false));
+    }
+
+    #[test]
+    fn heading_to_the_next_waypoint_follows_vehicle_update_heading_to_next_wp() {
+        let item = |lat: f64, lon: f64| crate::plantransfer::Item { seq: 0, frame: 3, command: 16, current: false, auto_continue: true, params: [0.0, 0.0, 0.0, 0.0, lat, lon, 10.0] };
+        let items = [item(0.0, 0.0), item(-35.36, 149.17)];
+        let here = Some((-35.3633, 149.1652, 584.0));
+        assert!((heading_to_next_wp(here, &items, 1) - qt_azimuth((-35.3633, 149.1652), (-35.36, 149.17))).abs() < 1e-9);
+        assert!(heading_to_next_wp(here, &items, 0).is_nan(), "a zero longitude is no waypoint");
+        assert!(heading_to_next_wp(here, &items, -1).is_nan() && heading_to_next_wp(here, &items, 2).is_nan(), "no current item");
+        assert!(heading_to_next_wp(Some((-35.36, 149.17, 0.0)), &items, 1).is_nan(), "within five metres there is no heading");
+        assert!(heading_to_next_wp(None, &items, 1).is_nan());
+    }
+
+    #[test]
     fn the_vehicle_manager_is_not_a_vehicle() {
         assert!(names_a_vehicle("vehicle") && names_a_vehicle("vehicle.parameterManager"));
         assert!(!names_a_vehicle("vehicles"), "vehicles.activeVehicleAvailable is the manager's answer and has an offline value");
@@ -1473,7 +1527,7 @@ mod tests {
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, parameters_unanswered: false, lost: false, home: None, roi: None, remote: Value::Null, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), gps2: crate::gpsfacts::GpsFacts::default(), integrity_stale: true, vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), local_setpoint: Default::default(), wind: Default::default(), setpoint: Default::default(), orbit: None, hygrometer: Default::default(), generator: Default::default(), efi: Default::default(), terrain_blocks: (0, 0), escs: Default::default(), trigger_points: Default::default(), mission_indices: (-1, 0, 1), links: (Vec::new(), None), cameras: (Vec::new(), 0), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }), autotune: crate::autotune::Autotune::default() };
+        let known = Known { id: 1, parameters_ready: true, parameters_unanswered: false, lost: false, home: None, roi: None, remote: Value::Null, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), gps2: crate::gpsfacts::GpsFacts::default(), integrity_stale: true, vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), local_setpoint: Default::default(), wind: Default::default(), setpoint: Default::default(), orbit: None, hygrometer: Default::default(), generator: Default::default(), efi: Default::default(), terrain_blocks: (0, 0), escs: Default::default(), trigger_points: Default::default(), mission_indices: (-1, 0, 1), links: (Vec::new(), None), cameras: (Vec::new(), 0), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }), autotune: crate::autotune::Autotune::default(), plan_contents: (false, false) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");

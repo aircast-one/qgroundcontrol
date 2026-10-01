@@ -122,6 +122,7 @@ pub mod plandoc;
 pub mod planitems;
 pub mod plankml;
 pub mod platformbluetooth;
+pub mod paramremap;
 pub mod platformserial;
 pub mod presets;
 pub mod rctoparam;

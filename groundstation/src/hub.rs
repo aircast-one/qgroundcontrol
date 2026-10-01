@@ -997,7 +997,13 @@ impl Vehicle {
     }
 
     pub fn parameter(&self, component: u8, name: &str) -> Option<ParamValue> {
-        self.params.value(component, name)
+        self.params.value(component, &self.parameter_name(name))
+    }
+
+    pub fn parameter_name(&self, name: &str) -> String {
+        let family = (self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then(|| crate::apmmeta::vehicle_file_name(self.vehicle_type)).flatten();
+        let version = self.firmware().and_then(|f| f.version).map(|(major, minor, _, _)| (major, minor));
+        crate::paramremap::versioned(family, version, name)
     }
 
     pub fn parameters(&self, component: u8) -> Vec<(String, ParamValue)> {
@@ -1014,6 +1020,7 @@ impl Vehicle {
             .and_then(Value::as_str)
             .filter(|n| !n.is_empty() && n.len() <= 16 && n.bytes().all(|b| b.is_ascii_graphic()))
             .ok_or_else(|| "A parameter name of at most sixteen printable characters is required.".to_string())?;
+        let name = &self.parameter_name(name);
         if request.get("refresh").and_then(Value::as_bool).unwrap_or(false) {
             let actions = self.params.refresh(component, name);
             return Ok(self.follow_params(actions, now_ms));
@@ -2032,6 +2039,14 @@ impl Vehicle {
         if self.mission_current != self.mission_last_current && self.mission_cached_last != self.mission_current {
             self.mission_cached_last = self.mission_current;
         }
+    }
+
+    pub fn mission_items(&self) -> &[plantransfer::Item] {
+        self.plan_items(PLAN_MISSION)
+    }
+
+    pub fn plan_items(&self, kind: u8) -> &[plantransfer::Item] {
+        &self.plans[kind as usize].transfer.items
     }
 
     pub fn fly_items(&self) -> usize {

@@ -14,12 +14,20 @@ const RESULT_IN_PROGRESS: u8 = 5;
 const WAIT_FOR_DISARM: u8 = 95;
 const DONE: u8 = 100;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Autotune {
     pub in_progress: bool,
     pub progress: f64,
     pub status: String,
     disarm_message_displayed: bool,
+}
+
+pub const NOT_PERFORMED: &str = "Autotune: Not performed";
+
+impl Default for Autotune {
+    fn default() -> Self {
+        Autotune { in_progress: false, progress: 0.0, status: NOT_PERFORMED.to_string(), disarm_message_displayed: false }
+    }
 }
 
 impl Autotune {

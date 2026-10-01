@@ -19,7 +19,7 @@ fn number(value_type: ValueType, raw: &str) -> Option<Value> {
     })
 }
 
-fn bare(value_type: ValueType) -> MetaData {
+pub fn bare(value_type: ValueType) -> MetaData {
     MetaData {
         bits: Vec::new(),
         name: String::new(),
