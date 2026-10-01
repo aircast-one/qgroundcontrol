@@ -1354,7 +1354,10 @@ impl Vehicle {
             }
             Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("refreshParameters") => {
-                let actions = self.params.refresh_all(params::ALL_COMPONENTS);
+                let actions = match action.get("names").and_then(Value::as_array) {
+                    Some(names) => names.iter().filter_map(Value::as_str).flat_map(|name| self.params.refresh(self.component, name)).collect(),
+                    None => self.params.refresh_all(params::ALL_COMPONENTS),
+                };
                 return Ok(self.follow_params(actions, now_ms));
             }
             Some("calibrate") => return self.calibrate_request(&action["request"], now_ms),
@@ -3423,6 +3426,17 @@ mod tests {
         let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();
         assert!(matches!(decode(&refreshed[0].1), MavMessage::PARAM_REQUEST_READ(r) if r.param_index == -1 && r.param_id.to_str().unwrap() == "WPNAV_SPEED"));
         assert!(hub.parameter_request(Some(9), &json!({ "name": "X", "value": 1.0 }), 12_000).is_err());
+    }
+
+    #[test]
+    fn named_refresh_reads_back_only_the_parameters_asked_for() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let sent = vehicle.start_guided(&json!({ "action": "refreshParameters", "names": ["FOLL_SYSID", "FOLL_OFS_X"] }), 20_000).unwrap();
+        let read: Vec<String> = sent.iter().filter_map(|b| match decode(b) { MavMessage::PARAM_REQUEST_READ(r) => Some(r.param_id.to_str().unwrap().to_string()), _ => None }).collect();
+        assert_eq!(read, ["FOLL_SYSID", "FOLL_OFS_X"]);
     }
 
     #[test]

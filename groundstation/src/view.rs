@@ -60,6 +60,7 @@ use crate::px4tuning;
 use crate::px4airframe;
 use crate::autotune;
 use crate::actuators;
+use crate::apmfollow;
 use crate::apmservos;
 use crate::obstacle;
 use crate::kml;
@@ -186,6 +187,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.autotune", deps: autotune::DEPS, compute: autotune::autotune_view },
     View { path: "view.actuatorOutputs", deps: actuators::DEPS, compute: actuators::outputs_view },
     View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
+    View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
     View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
     View { path: "view.gimbalIndicator", deps: gimbalindicator::DEPS, compute: gimbalindicator::indicator_view },
@@ -526,6 +528,7 @@ mod deps_cover_reads {
             ("streamconfig", include_str!("streamconfig.rs")),
             ("autotune", include_str!("autotune.rs")),
             ("actuators", include_str!("actuators.rs")),
+            ("apmfollow", include_str!("apmfollow.rs")),
             ("apmservos", include_str!("apmservos.rs")),
             ("actuatortest", include_str!("actuatortest.rs")),
             ("motorassignment", include_str!("motorassignment.rs")),

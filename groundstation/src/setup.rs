@@ -8,7 +8,7 @@ use crate::sensors;
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
-const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Lights", "Remote Support"];
+const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Lights", "Remote Support"];
 
 /// Which component backs each page. The join is on the KnownVehicleComponent enum where the
 /// firmware declares one and on the C++ class name otherwise - both untranslated, where the
@@ -103,6 +103,21 @@ const LIGHTS_APM: &[Section] = &[
     Section { title: "Light channels", note: "", parameters: &["SERVO5_FUNCTION", "SERVO6_FUNCTION", "SERVO7_FUNCTION", "SERVO8_FUNCTION", "SERVO9_FUNCTION", "SERVO10_FUNCTION", "SERVO11_FUNCTION", "SERVO12_FUNCTION", "SERVO13_FUNCTION", "SERVO14_FUNCTION", "SERVO15_FUNCTION", "SERVO16_FUNCTION"] },
     Section { title: "Brightness steps", note: "", parameters: &["JS_LIGHTS_STEPS", "JS_LIGHTS_STEP", "BRD_PWM_COUNT"] },
 ];
+const HELI_APM: &[Section] = &[
+    Section { title: "Servo 1", note: "", parameters: &["SERVO1_FUNCTION", "SERVO1_MIN", "SERVO1_MAX", "SERVO1_TRIM", "SERVO1_REVERSED"] },
+    Section { title: "Servo 2", note: "", parameters: &["SERVO2_FUNCTION", "SERVO2_MIN", "SERVO2_MAX", "SERVO2_TRIM", "SERVO2_REVERSED"] },
+    Section { title: "Servo 3", note: "", parameters: &["SERVO3_FUNCTION", "SERVO3_MIN", "SERVO3_MAX", "SERVO3_TRIM", "SERVO3_REVERSED"] },
+    Section { title: "Servo 4", note: "", parameters: &["SERVO4_FUNCTION", "SERVO4_MIN", "SERVO4_MAX", "SERVO4_TRIM", "SERVO4_REVERSED"] },
+    Section { title: "Servo 5", note: "", parameters: &["SERVO5_FUNCTION", "SERVO5_MIN", "SERVO5_MAX", "SERVO5_TRIM", "SERVO5_REVERSED"] },
+    Section { title: "Servo 6", note: "", parameters: &["SERVO6_FUNCTION", "SERVO6_MIN", "SERVO6_MAX", "SERVO6_TRIM", "SERVO6_REVERSED"] },
+    Section { title: "Servo 7", note: "", parameters: &["SERVO7_FUNCTION", "SERVO7_MIN", "SERVO7_MAX", "SERVO7_TRIM", "SERVO7_REVERSED"] },
+    Section { title: "Servo 8", note: "", parameters: &["SERVO8_FUNCTION", "SERVO8_MIN", "SERVO8_MAX", "SERVO8_TRIM", "SERVO8_REVERSED"] },
+    Section { title: "Swashplate Setup", note: "", parameters: &["H_SV_MAN", "H_SW_TYPE", "H_SW_COL_DIR", "H_SW_LIN_SVO", "H_FLYBAR_MODE", "H_CYC_MAX", "H_COL_MAX", "H_COL_ANG_MAX", "H_COL_MIN", "H_COL_ANG_MIN", "H_COL_ZERO_THRST", "H_COL_LAND_MIN"] },
+    Section { title: "Throttle Settings", note: "", parameters: &["H_RSC_MODE", "H_RSC_CRITICAL", "H_RSC_RAMP_TIME", "H_RSC_RUNUP_TIME", "H_RSC_CLDWN_TIME", "H_RSC_SETPOINT", "H_RSC_IDLE", "H_RSC_THRCRV_0", "H_RSC_THRCRV_25", "H_RSC_THRCRV_50", "H_RSC_THRCRV_75", "H_RSC_THRCRV_100"] },
+    Section { title: "Governor Settings", note: "", parameters: &["H_RSC_GOV_COMP", "H_RSC_GOV_DROOP", "H_RSC_GOV_FF", "H_RSC_GOV_RANGE", "H_RSC_GOV_RPM", "H_RSC_GOV_TORQUE"] },
+    Section { title: "Stabilize Collective Curve", note: "", parameters: &["IM_STB_COL_1", "IM_STB_COL_2", "IM_STB_COL_3", "IM_STB_COL_4"] },
+    Section { title: "Tail & Gyros", note: "", parameters: &["H_TAIL_TYPE", "H_TAIL_SPEED", "H_GYR_GAIN", "H_GYR_GAIN_ACRO", "H_COLYAW"] },
+];
 const FLIGHT_BEHAVIOR_PX4: &[Section] = &[
     Section { title: "Responsiveness", note: "", parameters: &["SYS_VEHICLE_RESP", "MPC_XY_VEL_ALL", "MPC_Z_VEL_ALL"] },
 ];
@@ -112,6 +127,7 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
         ("Tuning", true) => Some("px4Tuning"),
         ("Frame", true) => Some("px4Airframe"),
         ("Servo Outputs", false) => Some("apmServos"),
+        ("Follow Me", false) => Some("apmFollow"),
         ("Actuators", true) if crate::vehiclefacade::switched_on() => Some("actuators"),
         _ => None,
     }
@@ -123,6 +139,7 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
         ("Flight Modes", true) => Some(FLIGHT_MODES_PX4),
         ("Flight Modes", false) => Some(FLIGHT_MODES_APM),
         ("Lights", false) => Some(LIGHTS_APM),
+        ("Heli", false) => Some(HELI_APM),
         ("Flight Behavior", true) => Some(FLIGHT_BEHAVIOR_PX4),
         _ => None,
     }
@@ -662,5 +679,13 @@ mod components {
         let waiting = readiness(true, false, &[("Radio".into(), false)], &[]);
         assert_eq!(waiting.0, None);
         assert_eq!(waiting.1, "Waiting for this vehicle's parameters", "connected and parameters_ready are adjacent bools, so transposing them at the call site still compiles and still returns None - only the headline tells the two apart");
+    }
+
+    #[test]
+    fn heli_is_an_ardupilot_page_listing_the_first_eight_servos_then_the_rotor() {
+        assert!(!page_exists("Heli", true));
+        let titles: Vec<&str> = sections_for("Heli", false).unwrap().iter().map(|s| s.title).collect();
+        assert_eq!(titles[..8], ["Servo 1", "Servo 2", "Servo 3", "Servo 4", "Servo 5", "Servo 6", "Servo 7", "Servo 8"]);
+        assert_eq!(titles[8..], ["Swashplate Setup", "Throttle Settings", "Governor Settings", "Stabilize Collective Curve", "Tail & Gyros"]);
     }
 }
