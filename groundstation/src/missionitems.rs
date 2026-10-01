@@ -169,6 +169,10 @@ fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     })
 }
 
+pub(crate) fn complex_entry(json: &Value) -> Option<(f64, f64)> {
+    survey(json, 0.0).ok().map(|pattern| pattern.entry)
+}
+
 fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     if json.get("complexItemType").and_then(Value::as_str).is_some_and(crate::landingpattern::is_landing) {
         return landing(json, home_altitude);

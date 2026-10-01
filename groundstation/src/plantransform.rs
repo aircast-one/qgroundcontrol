@@ -85,6 +85,62 @@ fn transformed_simple(simple: &Simple, command: &crate::cmdinfo::Command, transf
     Simple { params, altitude: if up.is_some() { altitude } else { simple.altitude.clone() }, ..simple.clone() }
 }
 
+fn translated(at: &Value, distance: f64, azimuth: f64) -> Value {
+    match at.as_array().and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?))) {
+        Some(point) => {
+            let (lat, lon) = at_distance_and_azimuth(point, distance, azimuth);
+            json!([lat, lon].into_iter().chain(at.as_array().into_iter().flatten().skip(2).filter_map(Value::as_f64)).collect::<Vec<f64>>())
+        }
+        None => at.clone(),
+    }
+}
+
+fn with_keys(json: &Value, keys: &[&str], change: impl Fn(&Value) -> Value) -> Value {
+    match json {
+        Value::Object(fields) => Value::Object(fields.iter().map(|(key, value)| (key.clone(), if keys.contains(&key.as_str()) { change(value) } else { value.clone() })).collect()),
+        other => other.clone(),
+    }
+}
+
+fn moved_complex(kind: &str, json: &Value, transform: Transform, home: Option<(f64, f64)>) -> Option<Value> {
+    let landing = crate::landingpattern::is_landing(kind);
+    let old = match landing {
+        true => crate::landingpattern::coordinate(json, "landCoordinate").map(|at| (at.latitude, at.longitude)),
+        false => crate::missionitems::complex_entry(json),
+    }?;
+    let new = moved_point(old, transform, home)?;
+    let (distance, azimuth) = (distance_between(old, new), azimuth_to(old, new));
+    let moved = match landing {
+        true => with_keys(json, &["landCoordinate", "loiterCoordinate", "landingApproachCoordinate"], |at| translated(at, distance, azimuth)),
+        false => with_keys(json, &["polygon", "polyline"], |shape| Value::Array(shape.as_array().into_iter().flatten().map(|at| translated(at, distance, azimuth)).collect())),
+    };
+    Some(if landing { moved } else { crate::surveydoc::regenerate_item(&moved) })
+}
+
+fn complex_altitude(kind: &str, json: &Value) -> Option<f64> {
+    match kind {
+        k if crate::landingpattern::is_landing(k) => crate::landingpattern::approach(json).map(|at| at.altitude),
+        "StructureScan" => json.get("EntranceAltitude")?.as_f64(),
+        _ => json.get("TransectStyleComplexItem")?.get("CameraCalc")?.get("DistanceToSurface")?.as_f64(),
+    }
+}
+
+fn transformed_complex(item: &Item, transform: Transform, home: Option<(f64, f64)>, scope: Scope) -> Item {
+    let Item::Complex { kind, json, item_count } = item else { return item.clone() };
+    if !scope.landing && crate::landingpattern::is_landing(kind) {
+        return item.clone();
+    }
+    let placed = moves_horizontally(transform).then(|| moved_complex(kind, json, transform, home)).flatten().unwrap_or_else(|| json.clone());
+    let moved = Item::Complex { kind: kind.clone(), item_count: crate::plandoc::complex_count(kind, &placed).unwrap_or(*item_count), json: placed };
+    match transform {
+        Transform::Offset { up, .. } if !fuzzy_zero(up) => match moved {
+            Item::Complex { ref kind, ref json, .. } => complex_altitude(kind, json).map_or(moved.clone(), |altitude| crate::coreplan::with_new_altitude(&moved, altitude + up)),
+            other => other,
+        },
+        _ => moved,
+    }
+}
+
 pub fn transform(doc: &Document, transform: Transform, scope: Scope) -> Result<Document, String> {
     let home = doc.home.map(|[lat, lon, _]| (lat, lon));
     match transform {
@@ -99,7 +155,7 @@ pub fn transform(doc: &Document, transform: Transform, scope: Scope) -> Result<D
         .iter()
         .map(|item| match item {
             Item::Simple(simple) => commands.get(&simple.command).map_or_else(|| item.clone(), |command| Item::Simple(transformed_simple(simple, command, transform, home, scope))),
-            Item::Complex { .. } => item.clone(),
+            Item::Complex { .. } => transformed_complex(item, transform, home, scope),
         })
         .collect();
     let moved_home = doc.home.map(|[lat, lon, alt]| {
@@ -248,6 +304,25 @@ mod tests {
         assert!((distance_between((48.0, 9.0), (lat, lon)) - distance_between((47.0, 8.0), (47.001, 8.0))).abs() < 0.01);
         let homeless = Document { home: None, ..doc() };
         assert!(transform(&homeless, Transform::Rotate { degrees_cw: 10.0 }, Scope { takeoff: false, landing: false }).is_err());
+    }
+
+    #[test]
+    fn complex_items_move_with_their_entry_and_landings_only_when_asked() {
+        let corridor: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
+        let landing: Value = serde_json::from_str(include_str!("../tests/fixtures/fwland-pattern.json")).unwrap();
+        let complex = |json: &Value| Item::Complex { kind: json["complexItemType"].as_str().unwrap().to_string(), json: json.clone(), item_count: crate::plandoc::complex_count(json["complexItemType"].as_str().unwrap(), json).unwrap_or(1) };
+        let base = Document { items: vec![complex(&corridor["corridor"]), complex(&landing)], ..doc() };
+        let north = Transform::Offset { east: 0.0, north: 100.0, up: 10.0 };
+        let moved = transform(&base, north, Scope { takeoff: false, landing: false }).unwrap();
+        let json_of = |item: &Item| match item { Item::Complex { json, .. } => json.clone(), Item::Simple(_) => panic!() };
+        let vertex = |json: &Value| (json["polyline"][0][0].as_f64().unwrap(), json["polyline"][0][1].as_f64().unwrap());
+        let (before, after) = (vertex(&corridor["corridor"]), vertex(&json_of(&moved.items[0])));
+        assert!((distance_between(before, after) - 100.0).abs() < 0.5 && azimuth_to(before, after).abs() < 1.0, "the corridor slid 100 m north");
+        assert_eq!(json_of(&moved.items[0])["TransectStyleComplexItem"]["CameraCalc"]["DistanceToSurface"].as_f64(), corridor["corridor"]["TransectStyleComplexItem"]["CameraCalc"]["DistanceToSurface"].as_f64().map(|a| a + 10.0));
+        assert_eq!(json_of(&moved.items[1]), landing, "a landing stays unless landing items are included");
+        let with_landing = transform(&base, north, Scope { takeoff: false, landing: true }).unwrap();
+        let land = |json: &Value| (json["landCoordinate"][0].as_f64().unwrap(), json["landCoordinate"][1].as_f64().unwrap());
+        assert!((distance_between(land(&landing), land(&json_of(&with_landing.items[1]))) - 100.0).abs() < 0.5, "a landing moves by its touchdown point");
     }
 
     #[test]
