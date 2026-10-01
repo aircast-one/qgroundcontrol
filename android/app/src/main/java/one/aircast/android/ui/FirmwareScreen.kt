@@ -46,7 +46,7 @@ internal const val FIRMWARE_VIEW = "view.firmwareUpgrade"
 internal const val FIRMWARE_PORTS_VIEW = "view.firmwarePorts"
 internal const val FIRMWARE_FLASH = "firmware.flash"
 internal const val FIRMWARE_POLL_MS = 500L
-internal val FIRMWARE_EXTENSIONS = listOf("px4", "apj", "bin")
+internal val FIRMWARE_EXTENSIONS = listOf("px4", "apj", "bin", "ihx")
 
 internal data class FirmwarePort(val port: String, val description: String, val bootloader: Boolean)
 
@@ -93,7 +93,7 @@ internal fun firmwarePhaseText(phase: String): String = when (phase) {
 internal const val FIRMWARE_FROM_FILE = "file"
 
 internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
-    listOf(FIRMWARE_FROM_FILE to "A firmware file", "px4:stable" to "PX4 Pro, stable", "px4:beta" to "PX4 Pro, beta") +
+    listOf(FIRMWARE_FROM_FILE to "A firmware file", "px4:stable" to "PX4 Pro, stable", "px4:beta" to "PX4 Pro, beta", "sik:stable" to "SiK radio, stable") +
         listOf("copter", "heli", "plane", "rover", "sub").flatMap { vehicle ->
             listOf("stable", "beta", "dev").map { build ->
                 "ardupilot:$vehicle:$build" to "ArduPilot ${vehicle.replaceFirstChar { it.uppercase() }}, $build"
@@ -142,7 +142,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                     context.contentResolver.openInputStream(chosen)?.use { source -> target.outputStream().use { source.copyTo(it) } }
                 }.getOrNull()?.let { target }
             }
-            refusal = if (staged == null) "Choose a .px4, .apj or .bin firmware file." else ""
+            refusal = if (staged == null) "Choose a .px4, .apj, .bin or .ihx firmware file." else ""
             file = staged ?: file
         }
     }

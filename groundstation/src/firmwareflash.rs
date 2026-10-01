@@ -104,7 +104,7 @@ pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn F
 }
 
 pub fn flash<P: Port>(port: P, file: &str, contents: &[u8], report: &mut dyn FnMut(Event)) -> Result<(), String> {
-    flash_from(port, &mut |_| Ok((file.to_string(), contents.to_vec())), report)
+    flash_from(port, is_ihx(file), &mut |_| Ok((file.to_string(), contents.to_vec())), report)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,12 +113,41 @@ pub enum Source {
     Url(String),
     Px4 { beta: bool },
     ArduPilot { vehicle: crate::firmwarecatalog::Vehicle, build: crate::firmwarecatalog::Build },
+    Sik,
+}
+
+pub const SIK_FIRMWARE_URL: &str = "https://px4-travis.s3.amazonaws.com/SiK/stable";
+const SIK_OPEN_SETTLE_MS: u64 = 1_000;
+
+pub fn sik_url(board_id: u32) -> Option<String> {
+    let image = match board_id {
+        crate::bootloader::BOARD_ID_SIK_RADIO_1000 => "radio~hm_trp.ihx",
+        crate::bootloader::BOARD_ID_SIK_RADIO_1060 => "radio~hb1060.ihx",
+        _ => return None,
+    };
+    Some(format!("{SIK_FIRMWARE_URL}/{image}"))
+}
+
+fn is_ihx(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".ihx")
+}
+
+impl Source {
+    pub fn sik(&self) -> bool {
+        match self {
+            Source::Sik => true,
+            Source::File(name) | Source::Url(name) => is_ihx(name),
+            _ => false,
+        }
+    }
 }
 
 pub fn source(given: &str) -> Result<Source, String> {
     let parts: Vec<&str> = given.split(':').collect();
     match parts.as_slice() {
         [scheme, ..] if matches!(*scheme, "http" | "https") => Ok(Source::Url(given.to_string())),
+        ["sik", "stable"] => Ok(Source::Sik),
+        ["sik", build] => Err(format!("SiK radio firmware is only published as stable, not {build}")),
         ["px4", build] => match *build {
             "stable" => Ok(Source::Px4 { beta: false }),
             "beta" => Ok(Source::Px4 { beta: true }),
@@ -150,6 +179,7 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
         Source::File(path) => return std::fs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}")),
         Source::Url(url) => url.clone(),
         Source::Px4 { beta } => crate::firmwarecatalog::px4_url(board.board_id, *beta).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
+        Source::Sik => sik_url(board.board_id).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
         Source::ArduPilot { vehicle, build } => {
             report(Event::Status("Downloading the ArduPilot firmware list...".into()));
             crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, description)?
@@ -159,9 +189,33 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
     crate::firmwarecatalog::download(&url).map(|bytes| (url, bytes))
 }
 
-pub fn flash_from<P: Port>(port: P, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
-    let mut loader = Bootloader::new(port);
+fn flash_sik<P: Port>(mut loader: Bootloader<P>, board: &BoardInfo, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
+    report(Event::Status("Connected to SiK radio:".into()));
+    report(Event::Status(format!("  Board ID: {}", board.board_id)));
+    loader.init_flash_sequence()?;
+    let (_, contents) = fetch(board)?;
+    let blocks = crate::bootloader::parse_ihx(&String::from_utf8_lossy(&contents))?;
+    report(Event::Phase(Phase::Erasing));
+    report(Event::Status("Erasing previous program...".into()));
+    loader.erase()?;
+    report(Event::Status("Erase complete".into()));
+    report(Event::Phase(Phase::Programming));
+    report(Event::Status("Programming new version...".into()));
+    loader.program_ihx(&blocks, &mut |done, total| report(Event::Progress(done as f64 / total.max(1) as f64)))?;
+    report(Event::Phase(Phase::Verifying));
+    report(Event::Status("Verifying program...".into()));
+    loader.verify_ihx(&blocks, &mut |_, _| {})?;
+    report(Event::Status("Rebooting board".into()));
+    Ok(())
+}
+
+pub fn flash_from<P: Port>(port: P, sik: bool, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
+    let mut loader = if sik { Bootloader::sik(port) } else { Bootloader::new(port) };
     let board = loader.board_info()?;
+    report(Event::Board(board));
+    if sik {
+        return flash_sik(loader, &board, fetch, report);
+    }
     report(Event::Board(board));
     report(Event::Status("Connected to bootloader:".into()));
     report(Event::Status(format!("  Version: {}", board.bootloader_version)));
@@ -231,6 +285,10 @@ impl Port for Serial {
 
     fn discard_input(&mut self) {
         let _ = self.0.clear(serialport::ClearBuffer::Input);
+    }
+
+    fn set_baud(&mut self, baud: u32) -> Result<(), String> {
+        self.0.set_baud_rate(baud).map_err(|e| format!("Unable to set baud rate {baud}: {e}"))
     }
 }
 
@@ -303,6 +361,7 @@ type Inbox = std::sync::Arc<(Mutex<(std::collections::VecDeque<u8>, Option<Strin
 struct Usb {
     serial: crate::platformserial::PlatformSerial,
     inbox: Inbox,
+    port: String,
 }
 
 #[cfg(any(target_os = "android", test))]
@@ -337,6 +396,12 @@ impl Port for Usb {
     fn discard_input(&mut self) {
         self.inbox.0.lock().unwrap_or_else(PoisonError::into_inner).0.clear();
     }
+
+    fn set_baud(&mut self, baud: u32) -> Result<(), String> {
+        self.serial.close();
+        self.serial = usb_serial(&self.port, baud, self.inbox.clone())?;
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -347,8 +412,13 @@ fn open(port: &str) -> Result<Usb, String> {
 #[cfg(any(target_os = "android", test))]
 fn open_usb(port: &str) -> Result<Usb, String> {
     let inbox: Inbox = std::sync::Arc::new((Mutex::new((std::collections::VecDeque::new(), None)), std::sync::Condvar::new()));
-    let fed = inbox.clone();
-    let serial = crate::platformserial::PlatformSerial::open(FLASH_SERIAL_ID, port, BAUD, 8, 1, 0, move |event| {
+    let serial = usb_serial(port, BAUD, inbox.clone())?;
+    Ok(Usb { serial, inbox, port: port.to_string() })
+}
+
+#[cfg(any(target_os = "android", test))]
+fn usb_serial(port: &str, baud: u32, fed: Inbox) -> Result<crate::platformserial::PlatformSerial, String> {
+    crate::platformserial::PlatformSerial::open(FLASH_SERIAL_ID, port, baud, 8, 1, 0, move |event| {
         let (lock, ready) = &*fed;
         let mut held = lock.lock().unwrap_or_else(PoisonError::into_inner);
         match event {
@@ -357,8 +427,7 @@ fn open_usb(port: &str) -> Result<Usb, String> {
         }
         ready.notify_all();
     })
-    .map_err(|e| format!("Open failed on port {port}: {e}"))?;
-    Ok(Usb { serial, inbox })
+    .map_err(|e| format!("Open failed on port {port}: {e}"))
 }
 
 pub fn start(port: &str, file: &str) -> Result<(), String> {
@@ -380,7 +449,10 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
             let waited = wait_for_bootloader(&mut || look_at(&port), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &mut apply);
             let description = description_of(&port);
             let outcome = waited.and_then(|()| open(&port)).and_then(|opened| {
-                flash_from(opened, &mut |board| resolve(&chosen, board, &description, &mut apply), &mut apply)
+                if chosen.sik() {
+                    std::thread::sleep(std::time::Duration::from_millis(SIK_OPEN_SETTLE_MS));
+                }
+                flash_from(opened, chosen.sik(), &mut |board| resolve(&chosen, board, &description, &mut apply), &mut apply)
             });
             let mut held = job();
             match outcome {
@@ -550,6 +622,22 @@ mod tests {
         assert!(source("ardupilot:boat:stable").is_err());
         let board = BoardInfo { bootloader_version: 5, board_id: 4242, flash_size: 1024 };
         assert_eq!(resolve(&Source::Px4 { beta: false }, &board, "", &mut |_| {}), Err("Unable to find specified firmware for board type".to_string()), "a board PX4 publishes no build for is refused before any download");
+    }
+
+    #[test]
+    fn a_sik_radio_flashes_an_ihx_through_the_firmware_flow() {
+        let ihx = ":0400000001020304F2\n:00000001FF\n";
+        let mut lines = Vec::new();
+        flash(Board::sik_radio(crate::bootloader::BOARD_ID_SIK_RADIO_1060, 0x100), "radio.ihx", ihx.as_bytes(), &mut |e| {
+            if let Event::Status(s) = e {
+                lines.push(s);
+            }
+        })
+        .unwrap();
+        assert_eq!(lines[..2], ["Connected to SiK radio:", "  Board ID: 80"]);
+        assert_eq!(source("sik:stable"), Ok(Source::Sik));
+        assert!(Source::Url("https://x/radio~hb1060.ihx".into()).sik() && !Source::Px4 { beta: false }.sik());
+        assert_eq!(sik_url(80).as_deref(), Some("https://px4-travis.s3.amazonaws.com/SiK/stable/radio~hb1060.ihx"));
     }
 
     #[test]

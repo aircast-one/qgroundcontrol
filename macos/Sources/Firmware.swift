@@ -19,12 +19,13 @@ struct FirmwareJob: Equatable {
     var error = ""
     var ports: [FirmwarePort] = []
 
-    static let fileExtensions = ["px4", "apj", "bin"]
+    static let fileExtensions = ["px4", "apj", "bin", "ihx"]
 
     static let sources: [(token: String, title: String)] = [
         ("file", "A firmware file"),
         ("px4:stable", "PX4 Pro, stable"),
         ("px4:beta", "PX4 Pro, beta"),
+        ("sik:stable", "SiK radio, stable"),
     ] + ["copter", "heli", "plane", "rover", "sub"].flatMap { vehicle in
         ["stable", "beta", "dev"].map { build in
             ("ardupilot:\(vehicle):\(build)", "ArduPilot \(vehicle.capitalized), \(build)")
@@ -161,7 +162,7 @@ struct FirmwareView: View {
                 }
                 if store.source == "file" {
                 GroupRow(title: "Firmware file",
-                         description: store.file.isEmpty ? "A .px4, .apj or .bin image" : store.file,
+                         description: store.file.isEmpty ? "A .px4, .apj, .bin or .ihx image" : store.file,
                          leading: { Tile(symbol: "doc.zipper", colour: .indigo) }) {
                     Button("Choose\u{2026}", action: store.chooseFile).disabled(store.job.busy)
                 }
