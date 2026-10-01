@@ -31,6 +31,7 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Tuning", &["APMTuningComponent", "PX4TuningComponent"]),
     ("Tuning - Advanced", &["APMAdvancedTuningCopterComponent"]),
     ("Scripting", &["ScriptingComponent"]),
+    ("Joystick", &["JoystickComponent"]),
     ("Gimbal", &["APMGimbalComponent"]),
     ("Airspeed", &["APMAirspeedComponent"]),
     ("ESC", &["APMESCComponent"]),
@@ -78,7 +79,7 @@ pub fn page_absence(px4: bool) -> &'static str {
 
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
-    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Airspeed", "ESC", "Servo Outputs", "Motors", "Actuators", "Heli", "Tuning", "Tuning - Advanced", "Gimbal", "Lights", "Flight Behavior", "Follow Me"]),
+    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Airspeed", "ESC", "Servo Outputs", "Motors", "Actuators", "Heli", "Tuning", "Tuning - Advanced", "Gimbal", "Lights", "Flight Behavior", "Follow Me", "Joystick"]),
     ("Advanced", &["Logging", "Scripting", "Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
 ];
 
@@ -130,6 +131,7 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
         ("Frame", true) => Some("px4Airframe"),
         ("Tuning - Advanced", false) => Some("px4Tuning"),
         ("Scripting", false) => Some("scripting"),
+        ("Joystick", _) => Some("joystick"),
         ("Servo Outputs", false) => Some("apmServos"),
         ("Follow Me", false) => Some("apmFollow"),
         ("Actuators", true) if crate::vehiclefacade::switched_on() => Some("actuators"),

@@ -269,6 +269,7 @@ pub(crate) fn start_pump() {
                 if crate::vehiclefacade::switched_on() {
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
+                    crate::joystickhost::tick(crate::hub::now_ms());
                     crate::gcsheartbeat::tick(crate::hub::now_ms());
                     if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
                         CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));

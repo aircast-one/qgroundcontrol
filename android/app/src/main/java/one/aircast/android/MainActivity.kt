@@ -4,9 +4,12 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.wifi.WifiManager
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.Window
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
@@ -167,7 +170,14 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         intent?.data?.let { QGCBridge.notifyDeepLink(it.toString()) }
 
         setContent { AircastShell(hostView) }
+        GamepadInput.start(this, lifecycleScope)
     }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =
+        GamepadInput.onMotion(event) || super.dispatchGenericMotionEvent(event)
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        GamepadInput.onKey(event) || super.dispatchKeyEvent(event)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

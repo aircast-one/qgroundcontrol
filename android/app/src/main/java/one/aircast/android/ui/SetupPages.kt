@@ -19,4 +19,4 @@ internal fun headPage(component: SetupComponent): String =
 internal fun headCanOpen(page: SetupPage?, name: String): Boolean =
     page != null &&
         (name == SENSORS || name == RADIO || name == REMOTE_SUPPORT || name == MOTORS ||
-            page.parameterSections || page.screen == PX4_TUNING_SCREEN || page.screen == PX4_AIRFRAME_SCREEN || page.screen == ACTUATORS_SCREEN || page.screen == APM_SERVOS_SCREEN || page.screen == APM_FOLLOW_SCREEN || page.screen == SCRIPTING_SCREEN)
+            page.parameterSections || page.screen == PX4_TUNING_SCREEN || page.screen == PX4_AIRFRAME_SCREEN || page.screen == ACTUATORS_SCREEN || page.screen == APM_SERVOS_SCREEN || page.screen == APM_FOLLOW_SCREEN || page.screen == SCRIPTING_SCREEN || page.screen == JOYSTICK_SCREEN)

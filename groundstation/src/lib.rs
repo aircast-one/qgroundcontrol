@@ -67,6 +67,7 @@ pub mod itemposition;
 pub mod itemcamera;
 pub mod itemfacts;
 pub mod joystick;
+pub mod joystickhost;
 pub mod instrumentgroups;
 pub mod instruments;
 pub mod kml;

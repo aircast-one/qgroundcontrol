@@ -29,6 +29,7 @@ use crate::gpsview;
 use crate::videostate;
 use crate::cameraproto;
 use crate::joystick;
+use crate::joystickhost;
 use crate::detections;
 use crate::followme;
 use crate::frame;
@@ -254,6 +255,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.cameraDefinition", deps: cameradef::DEPS, compute: cameradef::camera_definition_view },
     View { path: "view.cameraProtocol", deps: &[], compute: cameraproto::protocol_view },
     View { path: "view.joystickMapping", deps: &[], compute: joystick::joystick_view },
+    View { path: "view.joystick", deps: joystickhost::DEPS, compute: joystickhost::joystick_state_view },
     View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
     View { path: "view.frame", deps: frame::DEPS, compute: frame::frame_view },
     View { path: "view.gcsPosition", deps: gcsposition::DEPS, compute: gcsposition::gcs_position_view },
@@ -505,6 +507,7 @@ mod deps_cover_reads {
         ("itemcamera", include_str!("itemcamera.rs")),
         ("itemfacts", include_str!("itemfacts.rs")),
             ("joystick", include_str!("joystick.rs")),
+            ("joystickhost", include_str!("joystickhost.rs")),
             ("kml", include_str!("kml.rs")),
             ("label", include_str!("label.rs")),
             ("landing", include_str!("landing.rs")),
