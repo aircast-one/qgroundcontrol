@@ -1027,6 +1027,26 @@ internal fun MapSpikeScreen(
                         circle?.let { it ->
                             val bigger = grownRadius(it)
                             val smaller = shrunkRadius(it)
+                            var typedCircleRadius by remember(it.index, it.radius) { mutableStateOf(trimmedRadius(it.radius)) }
+
+                            OutlinedTextField(
+                                value = typedCircleRadius,
+                                onValueChange = { typedCircleRadius = it },
+                                label = { Text("Radius") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Decimal,
+                                    imeAction = ImeAction.Done,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        val wanted = typedRadius(typedCircleRadius, it)
+                                        if (wanted == null) say("Not a radius this fence accepts") else onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
+                                    },
+                                ),
+                                modifier = Modifier.width(110.dp),
+                                textStyle = MaterialTheme.typography.bodySmall,
+                            )
 
                             TextButton(
                                 enabled = bigger != null,

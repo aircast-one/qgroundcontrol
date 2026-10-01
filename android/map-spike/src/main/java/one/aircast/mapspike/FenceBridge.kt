@@ -98,6 +98,15 @@ internal fun grownRadius(circle: FenceCircle): Double? {
     return if (circle.radius >= ceiling) null else minOf(wanted, ceiling)
 }
 
+internal fun trimmedRadius(radius: Double): String =
+    String.format(java.util.Locale.US, "%.1f", radius).trimEnd('0').trimEnd('.')
+
+internal fun typedRadius(text: String, circle: FenceCircle): Double? =
+    text.trim().toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it > 0.0 }
+        ?.takeIf { wanted -> circle.radiusMinimum?.let { wanted >= it } ?: true }
+        ?.takeIf { wanted -> circle.radiusMaximum?.let { wanted <= it } ?: true }
+
 internal fun shrunkRadius(circle: FenceCircle): Double? {
     val wanted = circle.radius / CIRCLE_STEP
     val floor = circle.radiusMinimum ?: return wanted.takeIf { it > 0.0 }
