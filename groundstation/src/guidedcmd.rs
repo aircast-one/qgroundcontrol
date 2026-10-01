@@ -246,6 +246,14 @@ pub fn too_far_refusal(from: Option<(f64, f64)>, to: (f64, f64), max_meters: f64
     })
 }
 
+fn loiter_direction(radius: f64) -> f64 {
+    match radius {
+        r if r > 0.0 => 0.0,
+        r if r < 0.0 => 1.0,
+        _ => f64::NAN,
+    }
+}
+
 pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: f64) -> Plan {
     match state.autopilot {
         AUTOPILOT_PX4 => {
@@ -258,7 +266,7 @@ pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: 
             let amsl = state.altitude_amsl.unwrap_or(f64::NAN);
             let mut steps = Vec::new();
             if state.reposition_supported != Some(false) {
-                steps.push(Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, loiter_radius, nan(), latitude, longitude, amsl], command_int: true, frame: FRAME_GLOBAL, show_error: false });
+                steps.push(Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, loiter_radius.abs(), loiter_direction(loiter_radius), latitude, longitude, amsl], command_int: true, frame: FRAME_GLOBAL, show_error: false });
             }
             if state.reposition_supported != Some(true) {
                 match mode_or_refuse(state, "Guided") {
@@ -530,7 +538,11 @@ mod tests {
         assert_eq!(steps[2], Step::Arm);
         assert_eq!(command(&steps[4]).1[6], 2.5, "the minimum takeoff altitude wins over a lower request");
         let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 30.0) else { panic!() };
-        assert_eq!(command(&steps[0]).1[2], 30.0);
+        assert_eq!((command(&steps[0]).1[2], command(&steps[0]).1[3]), (30.0, 0.0), "a positive radius loiters clockwise");
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, -30.0) else { panic!() };
+        assert_eq!((command(&steps[0]).1[2], command(&steps[0]).1[3]), (30.0, 1.0), "a negative radius is sent as its size with the counter-clockwise flag");
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0) else { panic!() };
+        assert!(command(&steps[0]).1[3].is_nan(), "no radius leaves a copter's yaw mode alone");
         assert!(matches!(steps.last(), Some(Step::GuidedMissionItem { altitude_relative, .. }) if *altitude_relative == 20.0));
         let supported = VehicleState { reposition_supported: Some(true), ..copter() };
         assert_eq!(match goto(&supported, 1.0, 2.0, 0.0) { Plan::Steps(s) => s.len(), _ => 0 }, 1);
