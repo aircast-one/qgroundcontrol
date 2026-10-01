@@ -338,7 +338,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
 
     Column(modifier.then(if (side) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        VehicleMessageBanner()
 
         refusal?.let { message ->
             Text(

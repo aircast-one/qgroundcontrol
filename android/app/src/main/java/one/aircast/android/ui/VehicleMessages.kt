@@ -1,6 +1,15 @@
 package one.aircast.android.ui
 
-import androidx.compose.foundation.clickable
+import one.aircast.android.R
+
+import androidx.compose.ui.res.painterResource
+
+import androidx.compose.foundation.layout.size
+
+import androidx.compose.material3.Surface
+
+import androidx.compose.material3.ModalBottomSheet
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,10 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,7 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
@@ -131,36 +136,37 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     if (blocker == null && messages.isEmpty()) return
 
     val urgent = blocker != null || hasError
-    val tint = when {
-        urgent -> MaterialTheme.colorScheme.error
-        hasWarning -> MaterialTheme.aircast.warning
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clickable {
-                showing = true
-                offMainDetached { Qgc.invoke("vehicle.resetAllMessages") }
-            }
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(
+        onClick = {
+            showing = true
+            offMainDetached { Qgc.invoke("vehicle.resetAllMessages") }
+        },
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = when {
+            urgent -> MaterialTheme.colorScheme.errorContainer
+            hasWarning -> MaterialTheme.aircast.warningContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        contentColor = when {
+            urgent -> MaterialTheme.colorScheme.onErrorContainer
+            hasWarning -> MaterialTheme.aircast.warning
+            else -> MaterialTheme.colorScheme.onSurface
+        },
     ) {
-        if (urgent || hasWarning) {
-            Icon(Icons.Filled.Warning, contentDescription = null, tint = tint)
+        Row(
+            Modifier.heightIn(min = 40.dp).padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(painterResource(if (urgent || hasWarning) R.drawable.ic_warning else R.drawable.ic_notifications), null, Modifier.size(22.dp))
+            Text(
+                text = bannerText(blocker, unread) ?: messageCountText(messages.size),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
-        Text(
-            text = bannerText(blocker, unread) ?: messageCountText(messages.size),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (urgent) FontWeight.Bold else FontWeight.Normal,
-            color = tint,
-            modifier = Modifier.weight(1f),
-        )
     }
 
     if (showing) {
@@ -168,6 +174,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun VehicleMessageLog(
     messages: List<VehicleMessage>,
@@ -179,63 +186,70 @@ private fun VehicleMessageLog(
 
     editing?.let { name -> ParameterEditDialog(name) { editing = null } }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (checks.isEmpty()) "Vehicle messages" else "Why it will not arm") },
-        text = {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            Text(if (checks.isEmpty()) "Messages" else "Why it will not arm", style = MaterialTheme.typography.headlineSmall)
+            Text(messageCountText(lines.size), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (lines.isEmpty() && checks.isEmpty()) {
-                Text("The vehicle has not said anything yet.")
+                Text("The vehicle has not said anything yet.", Modifier.padding(vertical = 16.dp))
             } else {
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                LazyColumn(Modifier.heightIn(max = 420.dp).padding(top = 12.dp)) {
                     items(checks) { check ->
-                        Column(Modifier.padding(vertical = 6.dp)) {
-                            Text(
-                                text = check.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (check.severity == "error") {
-                                    MaterialTheme.colorScheme.error
-                                } else {
-                                    MaterialTheme.aircast.warning
-                                },
-                            )
+                        MessageLine(
+                            level = if (check.severity == "error") MessageSeverity.Error else MessageSeverity.Warning,
+                            time = "",
+                        ) {
+                            Text(check.message, style = MaterialTheme.typography.bodyMedium)
                             if (check.description.isNotBlank()) {
                                 LinkedText(
                                     html = check.description,
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     onParameter = { editing = it },
                                 )
                             }
                         }
-                        androidx.compose.material3.HorizontalDivider()
                     }
-                    itemsIndexed(lines) { index, message ->
-                        Column(Modifier.padding(vertical = 6.dp)) {
-                            Text(
-                                text = listOf(message.time, message.text)
-                                    .filter { it.isNotBlank() }
-                                    .joinToString("  "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = when (message.level) {
-                                    MessageSeverity.Error -> MaterialTheme.colorScheme.error
-                                    MessageSeverity.Warning -> MaterialTheme.aircast.warning
-                                    MessageSeverity.Normal -> MaterialTheme.colorScheme.onSurface
-                                },
-                            )
-                        }
-                        if (index < lines.lastIndex) {
-                            androidx.compose.material3.HorizontalDivider()
+                    items(lines) { message ->
+                        MessageLine(level = message.level, time = message.time) {
+                            Text(message.text, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                offMainDetached { Qgc.invoke("vehicle.clearMessages") }
-                onDismiss()
-            }) { Text("Clear") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = {
+                    offMainDetached { Qgc.invoke("vehicle.clearMessages") }
+                    onDismiss()
+                }) { Text("Clear") }
+                TextButton(onClick = onDismiss) { Text("Close") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageLine(level: MessageSeverity, time: String, content: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Icon(
+            painterResource(
+                when (level) {
+                    MessageSeverity.Error -> R.drawable.ic_error
+                    MessageSeverity.Warning -> R.drawable.ic_warning
+                    MessageSeverity.Normal -> R.drawable.ic_check_circle
+                },
+            ),
+            null,
+            tint = when (level) {
+                MessageSeverity.Error -> MaterialTheme.colorScheme.error
+                MessageSeverity.Warning -> MaterialTheme.aircast.warning
+                MessageSeverity.Normal -> MaterialTheme.aircast.success
+            },
+            modifier = Modifier.size(24.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            content()
+        }
+    }
 }
