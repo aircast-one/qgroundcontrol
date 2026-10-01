@@ -32,8 +32,6 @@ internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<S
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
-    val setupJson by qgcPath(SETUP)
-    val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val healthJson by qgcPath(SENSOR_HEALTH)
     val health = remember(healthJson) { sensorHealth(healthJson) }
     var showAll by remember { mutableStateOf(false) }
@@ -44,7 +42,7 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            health?.takeIf { !px4 && it.available && it.sensors.isNotEmpty() }?.let { reading ->
+            health?.takeIf { healthJson?.optBoolean("healthChecksSupported") != true && it.available && it.sensors.isNotEmpty() }?.let { reading ->
                 Text("Sensors", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                 shownSensors(reading.sensors, showAll).forEach { sensor ->
                     val fault = sensor.state == SENSOR_FAULT_STATE

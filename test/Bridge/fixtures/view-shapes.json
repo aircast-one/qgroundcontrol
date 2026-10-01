@@ -4602,6 +4602,7 @@
         "view.sensorSettings.kind",
         "view.sensors.class",
         "view.sensors.failing.#",
+        "view.sensors.healthChecksSupported",
         "view.sensors.kind",
         "view.settings(General).helpLinks.#",
         "view.settings(General).sections.#",
@@ -9338,6 +9339,7 @@
         "view.sensors.available",
         "view.sensors.class",
         "view.sensors.failing.#",
+        "view.sensors.healthChecksSupported",
         "view.sensors.kind",
         "view.sensors.sensors.#",
         "view.sensors.sensors[].label",
@@ -13470,6 +13472,7 @@
         "failing": [
             "empty"
         ],
+        "healthChecksSupported": "bool",
         "kind": "string",
         "sensors": [
             {
