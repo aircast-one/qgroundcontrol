@@ -3376,6 +3376,8 @@ impl Hub {
             v.link_kinds = kinds.clone();
             v.check_links(now_ms);
         });
+        let closed: Vec<u8> = self.vehicles.values().filter(|v| v.connection_lost && v.auto_disconnect).map(|v| v.id).collect();
+        closed.iter().for_each(|id| self.remove(*id));
     }
 
     pub fn remove(&mut self, id: u8) {
@@ -3821,6 +3823,16 @@ mod tests {
             .iter()
             .for_each(|line| assert!(spoken.contains(line), "{line} was not spoken"));
         assert!(!spoken.contains("new primary link"), "the held primary did not change on regain");
+    }
+
+    #[test]
+    fn auto_disconnect_closes_a_vehicle_on_total_comm_loss() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        hub.set_link_flag("autoDisconnect", true);
+        hub.check_links(10 * LINK_SILENT_MS, &LinkKinds::default());
+        assert!(hub.active().is_none(), "VehicleLinkManager closes the vehicle when every link is lost and autoDisconnect is set");
     }
 
     #[test]
