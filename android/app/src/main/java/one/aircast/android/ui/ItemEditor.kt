@@ -182,7 +182,10 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                     TextButton(onClick = { choosing = true }) { Text("Change command") }
                 }
             }
-            if (index == 0) MissionAltitudeFrame()
+            if (index == 0) {
+                MissionAltitudeFrame()
+                PlanVehicleRows()
+            }
             altitudesRelative(view)?.let { relative ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Altitudes relative to launch", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
