@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
@@ -46,6 +48,7 @@ private const val FLY_VIEW_KEY = "view"
 private const val FLY_SCRIM_ALPHA = 0.55f
 private val STATUS_ROW_HEIGHT = 32.dp
 private val SEGMENT_HEIGHT = 32.dp
+private val SIDE_PANEL_WIDTH = 168.dp
 private val MAP_PIP_SIZE = 120.dp
 private val VIDEO_PIP_WIDTH = 156.dp
 private val VIDEO_PIP_HEIGHT = 96.dp
@@ -106,20 +109,21 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
 }
 
 @Composable
-internal fun FlyPortrait(
+internal fun FlyScreen(
     view: FlyView,
     onView: (FlyView) -> Unit,
+    landscape: Boolean,
     status: @Composable RowScope.() -> Unit,
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
     keyRowEnd: @Composable () -> Unit,
     overlays: @Composable () -> Unit,
-    actions: @Composable (Boolean) -> Unit,
+    actions: @Composable (FlyDeckLayout) -> Unit,
 ) {
     val simple = view == FlyView.Simple
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().weight(1f)) {
+    val stage: @Composable (Modifier) -> Unit = { stageModifier ->
+        Box(stageModifier) {
             if (view == FlyView.Map) map(Modifier.fillMaxSize()) else video(Modifier.fillMaxSize(), true)
 
             when (view) {
@@ -181,7 +185,7 @@ internal fun FlyPortrait(
             }
 
             if (simple) {
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { actions(true) }
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { actions(FlyDeckLayout.Simple) }
             } else {
                 Box(
                     Modifier
@@ -190,12 +194,27 @@ internal fun FlyPortrait(
                 ) { keyRowEnd() }
             }
         }
+    }
 
-        if (!simple) {
-            Surface(
-                Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) { actions(false) }
+    if (landscape) {
+        Row(Modifier.fillMaxSize()) {
+            stage(Modifier.weight(1f).fillMaxHeight())
+            if (!simple) {
+                Surface(
+                    Modifier.width(SIDE_PANEL_WIDTH).fillMaxHeight(),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) { actions(FlyDeckLayout.Side) }
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            stage(Modifier.fillMaxWidth().weight(1f))
+            if (!simple) {
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) { actions(FlyDeckLayout.Bottom) }
+            }
         }
     }
 }

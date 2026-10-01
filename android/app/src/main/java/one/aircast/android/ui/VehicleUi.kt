@@ -1,5 +1,9 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.rememberScrollState
+
+import androidx.compose.foundation.verticalScroll
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -149,7 +153,7 @@ fun VehicleTitle() {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TelemetryRow(modifier: Modifier = Modifier) {
+fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
     val context = LocalContext.current
     var chosen by remember { mutableStateOf(readChosen(context)) }
     var choosing by remember { mutableStateOf(false) }
@@ -205,7 +209,7 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
             .alpha(if (silent) 0.45f else 1f),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalArrangement = Arrangement.spacedBy(6.dp),
-        maxItemsInEachRow = rowWidth(shown.size + 1),
+        maxItemsInEachRow = columns ?: rowWidth(shown.size + 1),
     ) {
         shown.forEach { instrument ->
             val display = displays[instrument.id] ?: ValueDisplay()
@@ -243,7 +247,9 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FlightActions(modifier: Modifier = Modifier, simple: Boolean = false) {
+fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeckLayout.Bottom) {
+    val simple = layout == FlyDeckLayout.Simple
+    val side = layout == FlyDeckLayout.Side
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
     val available = state?.connected == true
@@ -331,7 +337,7 @@ fun FlightActions(modifier: Modifier = Modifier, simple: Boolean = false) {
         }
     }
 
-    Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.then(if (side) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         VehicleMessageBanner()
 
         refusal?.let { message ->
@@ -449,9 +455,14 @@ fun FlightActions(modifier: Modifier = Modifier, simple: Boolean = false) {
         deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
         deckShown = deck.map { it.first }.toSet()
 
-        if (!simple) TelemetryRow()
+        if (!simple) TelemetryRow(columns = if (side) 1 else null)
 
-        if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (side) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            deck.forEach { (id, primary) ->
+                entries.firstOrNull { it.id == id }?.let { entry -> DeckButton(entry, primary, Modifier.fillMaxWidth()) }
+            }
+            DeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false, modifier = Modifier.fillMaxWidth())
+        } else if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             deck.forEach { (id, primary) ->
                 entries.firstOrNull { it.id == id }?.let { entry ->
                     DeckButton(entry, primary, Modifier.weight(1f))

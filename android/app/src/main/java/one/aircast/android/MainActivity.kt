@@ -15,39 +15,34 @@ import one.aircast.android.ui.videoReading
 import one.aircast.android.ui.VIDEO_VIEW
 import one.aircast.android.bridge.qgcPath
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import one.aircast.mapspike.aircast
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,12 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import one.aircast.android.ui.AppFontScale
 import one.aircast.android.ui.AppNavigation
 import one.aircast.android.ui.OverlayEditBar
@@ -77,10 +67,7 @@ import one.aircast.android.ui.ControlRequestPrompt
 import one.aircast.android.ui.VtolStateCell
 import one.aircast.android.ui.ResumeFailedPrompt
 import one.aircast.android.ui.VirtualJoystick
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -112,26 +99,22 @@ import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.TerrainProgress
 import one.aircast.android.ui.OrbitReadout
-import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
 import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.TrafficReadout
-import one.aircast.android.ui.VehicleTitle
 import one.aircast.mapspike.FlyMap
 import one.aircast.mapspike.TrackPoint
 import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
-import one.aircast.android.ui.FlyPortrait
+import one.aircast.android.ui.FlyScreen
 import one.aircast.android.ui.PinnedEmergencyStop
 import one.aircast.android.ui.flyIsPortrait
 import org.mavlink.qgroundcontrol.QGCBridge
 
 private val KEY_ROW_STOP_GAP = 24.dp
 
-private val VIDEO_INSET_WIDTH = 200.dp
-private val VIDEO_INSET_HEIGHT = 112.dp
 private val VIRTUAL_JOYSTICK_BOTTOM_MARGIN = 96.dp
 
 private const val MULTICAST_LOCK_TAG = "Aircast"
@@ -239,8 +222,6 @@ fun AircastShell(hostView: android.view.View?) {
     LaunchedEffect(AppNavigation.settingsPage) {
         if (AppNavigation.settingsPage != null) tab = Tab.Settings
     }
-    var controlsExpanded by remember { mutableStateOf(true) }
-    var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var popEpoch by remember { mutableIntStateOf(0) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -249,8 +230,7 @@ fun AircastShell(hostView: android.view.View?) {
     val videoExpanded = flyView != one.aircast.android.ui.FlyView.Map
     var videoFullScreen by remember { mutableStateOf(false) }
 
-    val flightActions = remember { movableContentOf<Boolean> { simple -> FlightActions(simple = simple) } }
-    val emergencyStop = remember { movableContentOf { PinnedEmergencyStop() } }
+    val flightActions = remember { movableContentOf<one.aircast.android.ui.FlyDeckLayout> { layout -> FlightActions(layout = layout) } }
     val flyVideo = remember {
         movableContentOf<Modifier, Boolean> { mod, expanded ->
             VideoSurface(modifier = mod, expanded = expanded, onClick = { flyView = one.aircast.android.ui.flyViewSwapped(flyView) }, onDoubleTap = { videoFullScreen = !videoFullScreen })
@@ -350,44 +330,45 @@ fun AircastShell(hostView: android.view.View?) {
             Box(Modifier.fillMaxSize()) { flyVideo(Modifier.fillMaxSize(), true) }
             return@AircastTheme
         }
-        val flyPortrait = tab == Tab.Fly && flyIsPortrait()
+        val onFly = tab == Tab.Fly
+        val landscape = !flyIsPortrait()
+        val flyLandscape = onFly && landscape
         val flyStateJson by qgcPath(one.aircast.android.ui.FLY_STATE)
         val armedOnFly = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson)?.armed == true }
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbars) },
-            contentWindowInsets = if (flyPortrait) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
-            topBar = {
-                if (!flyPortrait && tab == Tab.Fly) Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    VehicleStateChip()
-                    VtolStateCell()
-                    ControlRequestPrompt()
-                    if (tab == Tab.Fly) {
-                        StatusReadingsInline(Modifier.weight(1f))
-                    }
+        val showNav = !(onFly && armedOnFly)
+        val selectTab: (Tab) -> Unit = { entry ->
+            if (tab == entry) {
+                if (reselectClearsAnalyze(tab, entry)) analyzePage = null
+                popEpoch++
+            } else {
+                tab = entry
+            }
+        }
+        Row(Modifier.fillMaxSize()) {
+        if (showNav && landscape) {
+            NavigationRail(Modifier.fillMaxHeight()) {
+                Tab.entries.forEach { entry ->
+                    NavigationRailItem(
+                        selected = tab == entry,
+                        onClick = { selectTab(entry) },
+                        icon = { Icon(entry.icon, entry.label) },
+                        label = { Text(entry.label) },
+                    )
                 }
-            },
+            }
+        }
+        Scaffold(
+            modifier = Modifier.weight(1f),
+            snackbarHost = { SnackbarHost(snackbars) },
+            contentWindowInsets = if (onFly) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
             bottomBar = {
                 Column {
                 LogReplayBar()
-                if (!(tab == Tab.Fly && armedOnFly)) NavigationBar {
+                if (showNav && !landscape) NavigationBar {
                     Tab.entries.forEach { entry ->
                         NavigationBarItem(
                             selected = tab == entry,
-                            onClick = {
-                                if (tab == entry) {
-                                    if (reselectClearsAnalyze(tab, entry)) analyzePage = null
-                                    popEpoch++
-                                } else {
-                                    tab = entry
-                                }
-                            },
+                            onClick = { selectTab(entry) },
                             icon = { Icon(entry.icon, entry.label) },
                             label = { Text(entry.label) },
                         )
@@ -400,10 +381,11 @@ fun AircastShell(hostView: android.view.View?) {
                 hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
                 if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.TopCenter).zIndex(2f).padding(top = 8.dp))
 
-                if (flyPortrait) {
-                    FlyPortrait(
+                if (onFly) {
+                    FlyScreen(
                         view = flyView,
                         onView = { flyView = it },
+                        landscape = flyLandscape,
                         status = {
                             VehicleStateChip()
                             VtolStateCell()
@@ -434,50 +416,7 @@ fun AircastShell(hostView: android.view.View?) {
                             flyTrafficReadout()
                             flyRcControlsLayer()
                         },
-                        actions = { simple -> flightActions(simple) },
-                    )
-                }
-
-                if (tab == Tab.Fly && !flyIsPortrait()) {
-                    Box(
-                        if (videoExpanded) {
-                            Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(12.dp)
-                                .size(width = VIDEO_INSET_WIDTH, height = VIDEO_INSET_HEIGHT)
-                                .zIndex(1f)
-                        } else {
-                            Modifier.fillMaxSize()
-                        },
-                    ) {
-                        FlyMap(
-                            modifier = Modifier.fillMaxSize(),
-                            cameraBottomPx = if (videoExpanded || !controlsExpanded) 0 else actionsHeightPx,
-                            onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
-                            onMissionItemClick = { waypointTapped = it },
-                            onRoiClick = { roiTapped = it },
-                        )
-                        if (videoExpanded) {
-                            Box(
-                                Modifier
-                                    .matchParentSize()
-                                    .clickable { flyView = one.aircast.android.ui.FlyView.Map },
-                            )
-                        }
-                    }
-                }
-
-                if (!flyIsPortrait()) {
-                    flyVideo(
-                        if (videoExpanded) {
-                            Modifier.fillMaxSize()
-                        } else {
-                            Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(12.dp)
-                                .size(width = VIDEO_INSET_WIDTH, height = VIDEO_INSET_HEIGHT)
-                        },
-                        videoExpanded,
+                        actions = { layout -> flightActions(layout) },
                     )
                 }
 
@@ -516,56 +455,8 @@ fun AircastShell(hostView: android.view.View?) {
                         else -> Unit
                     }
                 }
-
-                if (tab == Tab.Fly && !flyIsPortrait()) {
-                    Column(
-                        Modifier
-                            .align(Alignment.TopStart)
-                            .padding(12.dp)
-                            .padding(top = VIDEO_INSET_HEIGHT + 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        emergencyStop()
-                        flyAttitude()
-                        ObstacleReadout()
-                        flyObstacleArc()
-                        flyOrbitReadout()
-                        flyFollowMeReadout()
-                        flyTrafficReadout()
-                        flyVideoSourceLayer()
-                        flyCameraControlLayer()
-                        flyRcControlsLayer()
-                    }
-                }
-
-                if (tab == Tab.Fly && !flyIsPortrait()) {
-                    val controllable = hasVehicle()
-                    Column(Modifier.align(Alignment.BottomCenter)) {
-                        if (controllable) Surface(
-                            Modifier.align(Alignment.CenterHorizontally),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                            shape = MaterialTheme.shapes.small,
-                        ) {
-                            IconButton(onClick = { controlsExpanded = !controlsExpanded }) {
-                                Icon(
-                                    if (controlsExpanded) {
-                                        Icons.Default.KeyboardArrowDown
-                                    } else {
-                                        Icons.Default.KeyboardArrowUp
-                                    },
-                                    if (controlsExpanded) "Hide flight controls" else "Show flight controls",
-                                )
-                            }
-                        }
-                        AnimatedVisibility(visible = controlsExpanded || !controllable) {
-                            Surface(
-                                Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                            ) { flightActions(false) }
-                        }
-                    }
-                }
             }
+        }
         }
     }
 }

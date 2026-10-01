@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import one.aircast.mapspike.AircastSpace
 
 internal const val CHECKLIST = "checklist"
+
+enum class FlyDeckLayout { Bottom, Side, Simple }
 private const val DISABLED_ALPHA = 0.38f
 private val DECK_BUTTON_HEIGHT = 80.dp
 private val DECK_ICON_SIZE = 28.dp
