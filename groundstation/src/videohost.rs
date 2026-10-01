@@ -6,9 +6,9 @@ use crate::videostate::{MAIN_RECEIVER, Out, Outcome, PrimaryUrls, Settings, Sour
 
 const RECORD_TEE: &str = "tee name=nativerec ! queue";
 #[cfg(not(target_os = "android"))]
-const NATIVE_SINK: &str = "videoconvert ! appsink name=nativesink sync=false";
+const NATIVE_SINK: &str = "videoconvert ! appsink name=nativesink";
 #[cfg(target_os = "android")]
-const NATIVE_SINK: &str = "glupload ! glcolorconvert ! video/x-raw(memory:GLMemory),format=RGBA,texture-target=2D ! gldownload ! videoconvert ! appsink name=nativesink sync=false";
+const NATIVE_SINK: &str = "glupload ! glcolorconvert ! video/x-raw(memory:GLMemory),format=RGBA,texture-target=2D ! gldownload ! videoconvert ! appsink name=nativesink";
 
 #[derive(Default)]
 struct Host {
@@ -151,15 +151,22 @@ fn host_port(rest: &str) -> Option<(String, u16)> {
     Some((if host.is_empty() { "0.0.0.0".to_string() } else { host.to_string() }, port.parse().ok()?))
 }
 
-pub fn pipeline(uri: &str, latency_ms: i64) -> Option<String> {
+const RETRANSMISSION_MIN_LATENCY_MS: i64 = 40;
+
+pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String> {
+    let retransmit = latency_ms >= RETRANSMISSION_MIN_LATENCY_MS && !low_latency;
+    let jitter = match low_latency {
+        true => String::new(),
+        false => format!(" ! rtpjitterbuffer latency={latency_ms} do-lost=true do-retransmission={retransmit} drop-on-latency=true"),
+    };
     let rtp = |encoding: &str, rest: &str| {
         let (host, port) = host_port(rest)?;
         Some(format!(
-            "udpsrc address={host} port={port} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string){encoding}\" ! rtpjitterbuffer latency={latency_ms}"
+            "udpsrc address={host} port={port} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string){encoding}\"{jitter}"
         ))
     };
     let source = match uri.split_once("://")? {
-        ("rtsp" | "rtsps", _) => format!("rtspsrc location={} latency={latency_ms}", quoted(uri)),
+        ("rtsp" | "rtsps", _) => format!("rtspsrc location={} latency={latency_ms} do-rtcp=true do-retransmission={retransmit} drop-on-latency=true", quoted(uri)),
         ("udp", rest) => rtp("H264", rest)?,
         ("udp265", rest) => rtp("H265", rest)?,
         ("mpegts", rest) => {
@@ -176,7 +183,7 @@ pub fn pipeline(uri: &str, latency_ms: i64) -> Option<String> {
         }
         _ => return None,
     };
-    Some(format!("{source} ! {RECORD_TEE} ! decodebin3 ! {NATIVE_SINK}"))
+    Some(format!("{source} ! {RECORD_TEE} ! decodebin3 ! {NATIVE_SINK} sync={}", !low_latency))
 }
 
 fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
@@ -267,7 +274,7 @@ fn object(host: &Host) -> Value {
         "cameraStatuses": (0..settings.count()).map(|i| status_text(state.receiver_status(i))).collect::<Vec<_>>(),
         "cameraConnecting": (0..settings.count()).map(|i| state.camera_connecting(i)).collect::<Vec<_>>(),
         "cameraRecording": (0..settings.count()).map(|i| state.camera_recording(i)).collect::<Vec<_>>(),
-        "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&uri, latency)).flatten(),
+        "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&uri, latency, settings.low_latency)).flatten(),
         "nativeRecording": host.recording_file,
         "nativeRecordingFormat": recording_format(),
     })
@@ -383,10 +390,11 @@ mod tests {
 
     #[test]
     fn a_uri_becomes_a_pipeline_ending_in_the_native_sink() {
-        assert_eq!(pipeline("udp://0.0.0.0:5600", 80).unwrap(), "udpsrc address=0.0.0.0 port=5600 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false");
-        assert_eq!(pipeline("rtsp://cam/main", 40).unwrap(), "rtspsrc location=\"rtsp://cam/main\" latency=40 ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false");
-        assert!(pipeline("whep://sfu/whep/x", 80).unwrap().starts_with("whepsrc whep-endpoint=\"http://sfu/whep/x\""));
-        assert_eq!(pipeline("bogus", 80), None);
+        assert_eq!(pipeline("udp://0.0.0.0:5600", 80, false).unwrap(), "udpsrc address=0.0.0.0 port=5600 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 do-lost=true do-retransmission=true drop-on-latency=true ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=true");
+        assert_eq!(pipeline("udp://0.0.0.0:5600", 80, true).unwrap(), "udpsrc address=0.0.0.0 port=5600 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false", "low latency drops the jitter buffer and the clock sync, as GstVideoReceiver does with _buffer -1");
+        assert_eq!(pipeline("rtsp://cam/main", 20, false).unwrap(), "rtspsrc location=\"rtsp://cam/main\" latency=20 do-rtcp=true do-retransmission=false drop-on-latency=true ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=true", "retransmission needs 40 ms of headroom");
+        assert!(pipeline("whep://sfu/whep/x", 80, false).unwrap().starts_with("whepsrc whep-endpoint=\"http://sfu/whep/x\""));
+        assert_eq!(pipeline("bogus", 80, false), None);
     }
 
     #[test]
