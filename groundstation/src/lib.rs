@@ -135,6 +135,7 @@ pub mod libevents;
 pub mod wfbhost;
 pub mod bootloader;
 pub mod firmwareflash;
+pub mod firmwarecatalog;
 pub mod platformserial;
 pub mod presets;
 pub mod rctoparam;

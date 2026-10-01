@@ -104,6 +104,62 @@ pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn F
 }
 
 pub fn flash<P: Port>(port: P, file: &str, contents: &[u8], report: &mut dyn FnMut(Event)) -> Result<(), String> {
+    flash_from(port, &mut |_| Ok((file.to_string(), contents.to_vec())), report)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Source {
+    File(String),
+    Url(String),
+    Px4 { beta: bool },
+    ArduPilot { vehicle: crate::firmwarecatalog::Vehicle, build: crate::firmwarecatalog::Build },
+}
+
+pub fn source(given: &str) -> Result<Source, String> {
+    let parts: Vec<&str> = given.split(':').collect();
+    match parts.as_slice() {
+        [scheme, ..] if matches!(*scheme, "http" | "https") => Ok(Source::Url(given.to_string())),
+        ["px4", build] => match *build {
+            "stable" => Ok(Source::Px4 { beta: false }),
+            "beta" => Ok(Source::Px4 { beta: true }),
+            _ => Err(format!("PX4 builds are stable or beta, not {build}")),
+        },
+        ["ardupilot", vehicle, build] => match (crate::firmwarecatalog::Vehicle::parse(vehicle), crate::firmwarecatalog::Build::parse(build)) {
+            (Some(vehicle), Some(build)) => Ok(Source::ArduPilot { vehicle, build }),
+            _ => Err(format!("ArduPilot builds are ardupilot:<copter|heli|plane|rover|sub>:<stable|beta|dev>, not {given}")),
+        },
+        _ => Ok(Source::File(given.to_string())),
+    }
+}
+
+static MANIFEST: Mutex<Option<Vec<crate::firmwarecatalog::Entry>>> = Mutex::new(None);
+
+fn manifest() -> Result<Vec<crate::firmwarecatalog::Entry>, String> {
+    let mut held = MANIFEST.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(entries) = held.as_ref() {
+        return Ok(entries.clone());
+    }
+    let bytes = crate::firmwarecatalog::download(crate::firmwarecatalog::ARDUPILOT_MANIFEST_URL)?;
+    let entries = crate::firmwarecatalog::parse_manifest(&String::from_utf8_lossy(&bytes))?;
+    *held = Some(entries.clone());
+    Ok(entries)
+}
+
+pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &mut dyn FnMut(Event)) -> Result<(String, Vec<u8>), String> {
+    let url = match source {
+        Source::File(path) => return std::fs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}")),
+        Source::Url(url) => url.clone(),
+        Source::Px4 { beta } => crate::firmwarecatalog::px4_url(board.board_id, *beta).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
+        Source::ArduPilot { vehicle, build } => {
+            report(Event::Status("Downloading the ArduPilot firmware list...".into()));
+            crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, description)?
+        }
+    };
+    report(Event::Status(format!("Downloading firmware from {url}")));
+    crate::firmwarecatalog::download(&url).map(|bytes| (url, bytes))
+}
+
+pub fn flash_from<P: Port>(port: P, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
     let mut loader = Bootloader::new(port);
     let board = loader.board_info()?;
     report(Event::Board(board));
@@ -111,7 +167,8 @@ pub fn flash<P: Port>(port: P, file: &str, contents: &[u8], report: &mut dyn FnM
     report(Event::Status(format!("  Version: {}", board.bootloader_version)));
     report(Event::Status(format!("  Board ID: {}", board.board_id)));
     report(Event::Status(format!("  Flash size: {}", board.flash_size)));
-    let image = image_for(file, contents, &board)?;
+    let (file, contents) = fetch(&board)?;
+    let image = image_for(&file, &contents, &board)?;
     report(Event::Phase(Phase::Erasing));
     report(Event::Status("Erasing previous program...".into()));
     loader.erase()?;
@@ -185,6 +242,10 @@ fn look_at(port: &str) -> Sighting {
         Some(serialport::SerialPortType::UsbPort(usb)) if in_bootloader(usb.product.as_deref().unwrap_or_default()) => Sighting::Bootloader,
         Some(_) => Sighting::Running,
     }
+}
+
+fn description_of(port: &str) -> String {
+    ports().into_iter().find(|p| p["port"] == port).and_then(|p| p["description"].as_str().map(str::to_string)).unwrap_or_default()
 }
 
 #[cfg(not(target_os = "android"))]
@@ -301,7 +362,10 @@ fn open_usb(port: &str) -> Result<Usb, String> {
 }
 
 pub fn start(port: &str, file: &str) -> Result<(), String> {
-    let contents = std::fs::read(file).map_err(|e| format!("Unable to open firmware file {file}: {e}"))?;
+    let chosen = source(file)?;
+    if let Source::File(path) = &chosen {
+        std::fs::metadata(path).map_err(|e| format!("Unable to open firmware file {path}: {e}"))?;
+    }
     {
         let mut held = job();
         if held.phase.busy() {
@@ -309,12 +373,15 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
         }
         *held = Job { phase: Phase::Connecting, port: Some(port.to_string()), file: Some(file.to_string()), ..Job::default() };
     }
-    let (port, file) = (port.to_string(), file.to_string());
+    let port = port.to_string();
     std::thread::Builder::new()
         .name("firmware-flash".into())
         .spawn(move || {
             let waited = wait_for_bootloader(&mut || look_at(&port), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &mut apply);
-            let outcome = waited.and_then(|()| open(&port)).and_then(|opened| flash(opened, &file, &contents, &mut apply));
+            let description = description_of(&port);
+            let outcome = waited.and_then(|()| open(&port)).and_then(|opened| {
+                flash_from(opened, &mut |board| resolve(&chosen, board, &description, &mut apply), &mut apply)
+            });
             let mut held = job();
             match outcome {
                 Ok(()) => {
@@ -471,6 +538,18 @@ mod tests {
         let board = USB_BOARD.lock().unwrap().take().unwrap();
         assert!(board.booted);
         assert_eq!(&board.flash[..700], &firmware[..]);
+    }
+
+    #[test]
+    fn a_firmware_source_reads_as_a_file_a_url_or_a_release_to_look_up() {
+        use crate::firmwarecatalog::{Build, Vehicle};
+        assert_eq!(source("/tmp/fw.px4"), Ok(Source::File("/tmp/fw.px4".into())));
+        assert_eq!(source("https://firmware.ardupilot.org/x.apj"), Ok(Source::Url("https://firmware.ardupilot.org/x.apj".into())));
+        assert_eq!(source("px4:beta"), Ok(Source::Px4 { beta: true }));
+        assert_eq!(source("ardupilot:heli:dev"), Ok(Source::ArduPilot { vehicle: Vehicle::Heli, build: Build::Developer }));
+        assert!(source("ardupilot:boat:stable").is_err());
+        let board = BoardInfo { bootloader_version: 5, board_id: 4242, flash_size: 1024 };
+        assert_eq!(resolve(&Source::Px4 { beta: false }, &board, "", &mut |_| {}), Err("Unable to find specified firmware for board type".to_string()), "a board PX4 publishes no build for is refused before any download");
     }
 
     #[test]

@@ -658,6 +658,7 @@ mod deps_cover_reads {
             ("wfbhost", include_str!("wfbhost.rs")),
             ("bootloader", include_str!("bootloader.rs")),
             ("firmwareflash", include_str!("firmwareflash.rs")),
+            ("firmwarecatalog", include_str!("firmwarecatalog.rs")),
             ("settingsorder", include_str!("settingsorder.rs")),
             ("platformserial", include_str!("platformserial.rs")),
             ("presets", include_str!("presets.rs")),
