@@ -686,7 +686,6 @@
         "view.setup.groups.1.pages.10.screen",
         "view.setup.groups.1.pages.11.blockedReason",
         "view.setup.groups.1.pages.11.screen",
-        "view.setup.groups.1.pages.2.screen",
         "view.setup.groups.1.pages.3.screen",
         "view.setup.groups.1.pages.4.blockedReason",
         "view.setup.groups.1.pages.4.screen",
@@ -4034,6 +4033,8 @@
         "view.preflight.groups.2.name",
         "view.preflight.kind",
         "view.preflight.offered",
+        "view.px4Airframe.class",
+        "view.px4Airframe.kind",
         "view.px4Tuning.class",
         "view.px4Tuning.kind",
         "view.radio.calibrating",
@@ -5984,7 +5985,6 @@
         "view.setup.groups.1.pages.11.openable",
         "view.setup.groups.1.pages.11.screen",
         "view.setup.groups.1.pages.2.name",
-        "view.setup.groups.1.pages.2.screen",
         "view.setup.groups.1.pages.3.name",
         "view.setup.groups.1.pages.3.parameterSections",
         "view.setup.groups.1.pages.3.screen",
@@ -8228,6 +8228,23 @@
         "view.preflight.kind",
         "view.preflight.offered",
         "view.preflight.total",
+        "view.px4Airframe.applyText",
+        "view.px4Airframe.applyTitle",
+        "view.px4Airframe.autostartId",
+        "view.px4Airframe.available",
+        "view.px4Airframe.class",
+        "view.px4Airframe.currentIndex",
+        "view.px4Airframe.currentType",
+        "view.px4Airframe.custom",
+        "view.px4Airframe.customText",
+        "view.px4Airframe.heading",
+        "view.px4Airframe.kind",
+        "view.px4Airframe.types.#",
+        "view.px4Airframe.types[].airframes.#",
+        "view.px4Airframe.types[].airframes[].autostartId",
+        "view.px4Airframe.types[].airframes[].name",
+        "view.px4Airframe.types[].image",
+        "view.px4Airframe.types[].name",
         "view.px4Tuning.available",
         "view.px4Tuning.class",
         "view.px4Tuning.kind",
@@ -9436,6 +9453,7 @@
             "view.virtualJoystick",
             "view.planTransform",
             "view.px4Tuning",
+            "view.px4Airframe",
             "view.remoteIdStatus",
             "view.escs",
             "view.gimbalIndicator",
@@ -11669,6 +11687,31 @@
         "kind": "string",
         "offered": "bool",
         "total": "number"
+    },
+    "view.px4Airframe": {
+        "applyText": "string",
+        "applyTitle": "string",
+        "autostartId": "number",
+        "available": "bool",
+        "class": "string",
+        "currentIndex": "number",
+        "currentType": "string",
+        "custom": "bool",
+        "customText": "string",
+        "heading": "string",
+        "kind": "string",
+        "types": [
+            {
+                "airframes": [
+                    {
+                        "autostartId": "number",
+                        "name": "string"
+                    }
+                ],
+                "image": "string",
+                "name": "string"
+            }
+        ]
     },
     "view.px4Tuning": {
         "available": "bool",

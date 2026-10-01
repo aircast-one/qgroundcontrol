@@ -105,7 +105,11 @@ const FLIGHT_BEHAVIOR_PX4: &[Section] = &[
 ];
 
 pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
-    (page == "Tuning" && px4).then_some("px4Tuning")
+    match (page, px4) {
+        ("Tuning", true) => Some("px4Tuning"),
+        ("Frame", true) => Some("px4Airframe"),
+        _ => None,
+    }
 }
 
 pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {

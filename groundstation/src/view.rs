@@ -57,6 +57,7 @@ use crate::offlinemaps;
 use crate::virtualjoystick;
 use crate::plantransform;
 use crate::px4tuning;
+use crate::px4airframe;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -178,6 +179,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.virtualJoystick", deps: virtualjoystick::DEPS, compute: virtualjoystick::virtual_joystick_view },
     View { path: "view.planTransform", deps: plantransform::DEPS, compute: plantransform::transform_view },
     View { path: "view.px4Tuning", deps: px4tuning::DEPS, compute: px4tuning::tuning_view },
+    View { path: "view.px4Airframe", deps: px4airframe::DEPS, compute: px4airframe::airframe_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
     View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
     View { path: "view.gimbalIndicator", deps: gimbalindicator::DEPS, compute: gimbalindicator::indicator_view },
@@ -514,6 +516,7 @@ mod deps_cover_reads {
             ("plantemplates", include_str!("plantemplates.rs")),
             ("plantransform", include_str!("plantransform.rs")),
             ("px4tuning", include_str!("px4tuning.rs")),
+            ("px4airframe", include_str!("px4airframe.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),

@@ -247,6 +247,10 @@ impl Params {
         self.ready
     }
 
+    pub fn writing(&self, component: u8, name: &str) -> bool {
+        self.waiting_write.get(&component).is_some_and(|waiting| waiting.contains_key(name))
+    }
+
     pub fn value(&self, component: u8, name: &str) -> Option<ParamValue> {
         self.facts.get(&component)?.get(name).copied()
     }

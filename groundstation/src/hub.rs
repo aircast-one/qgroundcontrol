@@ -35,6 +35,8 @@ pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MANUAL_CONTROL_SCALE: f32 = 1000.0;
+const AIRFRAME_PARAMS: [&str; 2] = ["SYS_AUTOSTART", "SYS_AUTOCONFIG"];
+const AIRFRAME_REBOOT_DELAY_MS: u64 = 800;
 const MAV_STATE_ACTIVE: u8 = 4;
 const SEVERITY_ERROR: u8 = 3;
 const COMMAND_LONG_ID: u32 = 76;
@@ -162,6 +164,7 @@ pub struct Vehicle {
     pub terrain_blocks: (u16, u16),
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
+    pub airframe_reboot: Option<Option<u64>>,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
@@ -312,6 +315,7 @@ impl Vehicle {
             trigger_points_appended: false,
             image_captured_seen: false,
             rc_release_ticks: 0,
+            airframe_reboot: None,
             rc_due: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
@@ -1098,6 +1102,34 @@ impl Vehicle {
         self.encode(&Outbound::RcOverride { target, channels }).into_iter().collect()
     }
 
+    fn change_autostart(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        let autostart = action.get("autostartId").and_then(Value::as_f64).ok_or("Changing the airframe needs its autostart id.")?;
+        let known = AIRFRAME_PARAMS.iter().map(|name| self.params.value(self.component, name).map(|v| (*name, v))).collect::<Option<Vec<_>>>().ok_or("This vehicle has no SYS_AUTOSTART and SYS_AUTOCONFIG to change.")?;
+        let actions: Vec<_> = known
+            .iter()
+            .filter_map(|(name, held)| ParamValue::from_f64(held.param_type(), if *name == "SYS_AUTOSTART" { autostart } else { 1.0 }).map(|value| (*name, value)))
+            .flat_map(|(name, value)| self.params.write(self.component, name, value))
+            .collect();
+        self.airframe_reboot = Some(None);
+        Ok(self.follow_params(actions, now_ms))
+    }
+
+    fn tick_airframe_reboot(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let acked = !AIRFRAME_PARAMS.iter().any(|name| self.params.writing(self.component, name));
+        match self.airframe_reboot {
+            Some(None) if acked => {
+                self.airframe_reboot = Some(Some(now_ms + AIRFRAME_REBOOT_DELAY_MS));
+                Vec::new()
+            }
+            Some(Some(due)) if now_ms >= due => {
+                self.airframe_reboot = None;
+                log::info!("Rebooting vehicle {} after the airframe change", self.id);
+                self.start_guided(&json!({ "action": "reboot" }), now_ms).unwrap_or_default()
+            }
+            _ => Vec::new(),
+        }
+    }
+
     fn virtual_joystick(&mut self, action: &Value) -> Vec<Vec<u8>> {
         if self.commands.high_latency {
             return Vec::new();
@@ -1154,6 +1186,7 @@ impl Vehicle {
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
+            Some("changeAutostart") => return self.change_autostart(action, now_ms),
             Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("refreshParameters") => {
                 let actions = self.params.refresh_all(params::ALL_COMPONENTS);
@@ -1328,6 +1361,7 @@ impl Vehicle {
         self.control.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
         bytes.extend(self.tick_rc_override(now_ms));
+        bytes.extend(self.tick_airframe_reboot(now_ms));
         let camera_due = self.cameras.tick(now_ms);
         bytes.extend(self.camera_commands(camera_due));
         let was_busy = self.onboard_logs.busy();
@@ -3182,6 +3216,28 @@ mod tests {
         let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();
         assert!(matches!(decode(&refreshed[0].1), MavMessage::PARAM_REQUEST_READ(r) if r.param_index == -1 && r.param_id.to_str().unwrap() == "WPNAV_SPEED"));
         assert!(hub.parameter_request(Some(9), &json!({ "name": "X", "value": 1.0 }), 12_000).is_err());
+    }
+
+    #[test]
+    fn an_airframe_change_reboots_only_after_both_writes_are_acknowledged() {
+        use mavlink::dialects::ardupilotmega::MavCmd;
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        hub.on_frame(origin(4), &autopilot, &param_value("SYS_AUTOSTART", 3, 1, 4001.0), 10_000_000, 10_000);
+        hub.on_frame(origin(4), &autopilot, &param_value("SYS_AUTOCONFIG", 3, 2, 0.0), 10_000_000, 10_000);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let sent = vehicle.start_guided(&json!({ "action": "changeAutostart", "autostartId": 4001 }), 11_000).unwrap();
+        let sets: Vec<(String, f32)> = sent.iter().filter_map(|b| match decode(b) { MavMessage::PARAM_SET(p) => Some((p.param_id.to_str().unwrap().to_string(), p.param_value)), _ => None }).collect();
+        assert_eq!(sets, [("SYS_AUTOSTART".to_string(), 4001.0), ("SYS_AUTOCONFIG".to_string(), 1.0)], "both are written even though SYS_AUTOSTART already holds 4001, as forceSetRawValue does");
+        let reboots = |bytes: &[Vec<u8>]| bytes.iter().any(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN && c.param1 == 1.0));
+        assert!(!reboots(&vehicle.pump_with(11_500, None, 0)), "no reboot while the writes are unacknowledged");
+        hub.on_frame(origin(4), &autopilot, &param_value("SYS_AUTOSTART", 3, 1, 4001.0), 12_000_000, 12_000);
+        hub.on_frame(origin(4), &autopilot, &param_value("SYS_AUTOCONFIG", 3, 2, 1.0), 12_000_000, 12_000);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        assert!(!reboots(&vehicle.pump_with(12_700, None, 0)), "the acks start the 800 ms wait");
+        assert!(reboots(&vehicle.pump_with(12_800, None, 0)));
+        assert!(vehicle.airframe_reboot.is_none());
     }
 
     #[test]
