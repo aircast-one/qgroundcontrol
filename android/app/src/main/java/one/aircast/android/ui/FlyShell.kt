@@ -115,8 +115,9 @@ internal fun FlyPortrait(
     keyRow: @Composable () -> Unit,
     keyRowEnd: @Composable () -> Unit,
     overlays: @Composable () -> Unit,
-    actions: @Composable () -> Unit,
+    actions: @Composable (Boolean) -> Unit,
 ) {
+    val simple = view == FlyView.Simple
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
             if (view == FlyView.Map) map(Modifier.fillMaxSize()) else video(Modifier.fillMaxSize(), true)
@@ -158,25 +159,45 @@ internal fun FlyPortrait(
                     verticalAlignment = Alignment.CenterVertically,
                     content = status,
                 )
-                FlyViewSwitcher(view, onView, Modifier.padding(top = AircastSpace.s2))
+                if (simple) SimpleTiles(Modifier.fillMaxWidth().padding(top = AircastSpace.s3))
                 Row(
+                    Modifier.fillMaxWidth().padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2),
+                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FlyViewSwitcher(view, onView)
+                    if (simple) keyRowEnd()
+                }
+                if (!simple) Row(
                     Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     verticalAlignment = Alignment.CenterVertically,
                 ) { keyRow() }
-                overlays()
+                if (!simple) overlays()
             }
 
-            Box(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(AircastSpace.s3),
-            ) { keyRowEnd() }
+            if (simple) Column(
+                Modifier.align(Alignment.Center),
+                verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) { overlays() }
+
+            if (simple) {
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { actions(true) }
+            } else {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(AircastSpace.s3),
+                ) { keyRowEnd() }
+            }
         }
 
-        Surface(
-            Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) { actions() }
+        if (!simple) {
+            Surface(
+                Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) { actions(false) }
+        }
     }
 }

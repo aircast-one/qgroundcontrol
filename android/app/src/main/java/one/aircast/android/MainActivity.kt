@@ -249,7 +249,7 @@ fun AircastShell(hostView: android.view.View?) {
     val videoExpanded = flyView != one.aircast.android.ui.FlyView.Map
     var videoFullScreen by remember { mutableStateOf(false) }
 
-    val flightActions = remember { movableContentOf { FlightActions() } }
+    val flightActions = remember { movableContentOf<Boolean> { simple -> FlightActions(simple = simple) } }
     val emergencyStop = remember { movableContentOf { PinnedEmergencyStop() } }
     val flyVideo = remember {
         movableContentOf<Modifier, Boolean> { mod, expanded ->
@@ -432,7 +432,7 @@ fun AircastShell(hostView: android.view.View?) {
                             flyTrafficReadout()
                             flyRcControlsLayer()
                         },
-                        actions = { flightActions() },
+                        actions = { simple -> flightActions(simple) },
                     )
                 }
 
@@ -559,7 +559,7 @@ fun AircastShell(hostView: android.view.View?) {
                             Surface(
                                 Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
                                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                            ) { flightActions() }
+                            ) { flightActions(false) }
                         }
                     }
                 }

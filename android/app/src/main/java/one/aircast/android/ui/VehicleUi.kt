@@ -243,7 +243,7 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FlightActions(modifier: Modifier = Modifier) {
+fun FlightActions(modifier: Modifier = Modifier, simple: Boolean = false) {
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
     val available = state?.connected == true
@@ -449,9 +449,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
         deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
         deckShown = deck.map { it.first }.toSet()
 
-        TelemetryRow()
+        if (!simple) TelemetryRow()
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             deck.forEach { (id, primary) ->
                 entries.firstOrNull { it.id == id }?.let { entry ->
                     DeckButton(entry, primary, Modifier.weight(1f))
