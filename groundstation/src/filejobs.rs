@@ -66,6 +66,23 @@ impl Job {
         Ok((Job { machine: Machine::List(listing), path: path.to_string() }, outs.into_iter().map(from_list).collect()))
     }
 
+    pub fn list_with_time(component: u8, path: &str, seq: u16) -> Result<(Job, Vec<Step>), String> {
+        let (listing, outs) = Listing::start_with_time(component, path, seq)?;
+        Ok((Job { machine: Machine::List(listing), path: path.to_string() }, outs.into_iter().map(from_list).collect()))
+    }
+
+    pub fn is_list(&self) -> bool {
+        matches!(self.machine, Machine::List(_))
+    }
+
+    pub fn is_delete(&self) -> bool {
+        matches!(self.machine, Machine::Delete(_))
+    }
+
+    pub fn list_time_unsupported(&self) -> bool {
+        matches!(&self.machine, Machine::List(m) if m.time_unsupported)
+    }
+
     pub fn download(component: u8, path: &str, seq: u16) -> Result<(Job, Vec<Step>), String> {
         let (download, outs) = Download::start_from(component, path, false, seq)?;
         Ok((Job { machine: Machine::Download(download), path: path.to_string() }, outs.into_iter().map(from_download).collect()))

@@ -39,6 +39,29 @@ const HIGH_LATENCY_UPLOAD: &str = "Upload not supported on high latency links.";
 
 const MANUAL_CONTROL_SCALE: f32 = 1000.0;
 const MAV_TYPE_AIRSHIP: u8 = 7;
+enum LogFileJob {
+    List(String),
+    Download(String, std::path::PathBuf),
+    Delete(String),
+}
+
+#[derive(Clone, Copy)]
+enum LogFileKind {
+    List,
+    Download,
+    Delete,
+}
+
+impl LogFileJob {
+    fn kind(&self) -> LogFileKind {
+        match self {
+            LogFileJob::List(_) => LogFileKind::List,
+            LogFileJob::Download(..) => LogFileKind::Download,
+            LogFileJob::Delete(_) => LogFileKind::Delete,
+        }
+    }
+}
+
 pub const FILES_BUSY: &str = "Another file transfer with the vehicle is in progress.";
 const AIRFRAME_PARAMS: [&str; 2] = ["SYS_AUTOSTART", "SYS_AUTOCONFIG"];
 const AIRFRAME_REBOOT_DELAY_MS: u64 = 800;
@@ -302,6 +325,8 @@ pub struct Vehicle {
     pub files: crate::filejobs::Files,
     download_to: Option<String>,
     camera_definition_from: Option<u8>,
+    files_for_logs: bool,
+    ftp_list_time_unsupported: bool,
     plans: [PlanSlot; 3],
     remote: RemoteId,
     odid_due: Option<u64>,
@@ -459,6 +484,8 @@ impl Vehicle {
             files: crate::filejobs::Files::default(),
             download_to: None,
             camera_definition_from: None,
+            files_for_logs: false,
+            ftp_list_time_unsupported: false,
             plans: [PLAN_MISSION, PLAN_FENCE, PLAN_RALLY].map(|kind| PlanSlot { transfer: Transfer::new(autopilot == crate::modes::AUTOPILOT_ARDUPILOT, kind), due: None, progress: 0.0, error: None }),
             remote: RemoteId::default(),
             odid_due: None,
@@ -917,16 +944,32 @@ impl Vehicle {
                 }
                 Step::Progress(progress) => {
                     self.files.progress = progress;
+                    if self.files_for_logs {
+                        self.onboard_logs.on_ftp_progress(progress, now_ms);
+                    }
                     Vec::new()
                 }
                 Step::Done(result) => {
                     self.files.due_ms = None;
                     let Some(job) = self.files.job.take() else { return Vec::new() };
                     self.ftp_seq = job.expected_seq();
+                    self.ftp_list_time_unsupported = self.ftp_list_time_unsupported || job.list_time_unsupported();
+                    let for_logs = std::mem::take(&mut self.files_for_logs);
                     let result = match (result, self.download_to.take()) {
                         (Ok(Outcome::Downloaded(bytes)), Some(to)) => std::fs::write(&to, &bytes).map(|_| Outcome::Downloaded(Vec::new())).map_err(|e| format!("Download failed for: {} - {e}", job.path)),
                         (other, _) => other,
                     };
+                    if for_logs {
+                        let kind = match &result {
+                            Ok(crate::filejobs::Outcome::Listed(_)) => LogFileKind::List,
+                            Ok(crate::filejobs::Outcome::Deleted) => LogFileKind::Delete,
+                            Ok(_) => LogFileKind::Download,
+                            Err(_) if job.is_list() => LogFileKind::List,
+                            Err(_) if job.is_delete() => LogFileKind::Delete,
+                            Err(_) => LogFileKind::Download,
+                        };
+                        return self.log_file_job_done(&kind, result, now_ms);
+                    }
                     match self.camera_definition_from.take() {
                         Some(compid) => crate::camsettings::ftp_finished(self.id, compid, result),
                         None => {
@@ -1702,7 +1745,7 @@ impl Vehicle {
                 let target = (self.id, self.component);
                 return Ok(crate::shell::Shell::chunks(command).into_iter().filter_map(|data| self.encode(&Outbound::ShellData { target, data })).collect());
             }
-            Some(log @ ("logRefresh" | "logDownload" | "logCancel" | "logEraseAll")) => return Ok(self.onboard_log_action(log, action.get("folder").and_then(Value::as_str), now_ms)),
+            Some(log @ ("logRefresh" | "logDownload" | "logCancel" | "logEraseAll" | "logEraseSelected")) => return Ok(self.onboard_log_action(log, action.get("folder").and_then(Value::as_str), now_ms)),
             _ => {}
         }
         if self.guided.running() {
@@ -1823,7 +1866,7 @@ impl Vehicle {
         bytes.extend(self.camera_commands(camera_due));
         let was_busy = self.onboard_logs.busy();
         let log_due = self.onboard_logs.on_timeout(now_ms);
-        bytes.extend(self.onboard_log_outs(was_busy, log_due));
+        bytes.extend(self.onboard_log_outs(was_busy, log_due, now_ms));
         if self.chunk_due.is_some_and(|due| now_ms >= due) {
             self.chunk_due = None;
             let expired = self.status_text.expire_pending();
@@ -2045,37 +2088,90 @@ impl Vehicle {
         }
     }
 
-    fn onboard_log_outs(&mut self, was_busy: bool, outs: Vec<crate::onboardlogs::Out>) -> Vec<Vec<u8>> {
+    fn onboard_log_outs(&mut self, was_busy: bool, outs: Vec<crate::onboardlogs::Out>, now_ms: u64) -> Vec<Vec<u8>> {
         use crate::onboardlogs::Out;
-        let busy = self.onboard_logs.busy();
-        if busy != was_busy {
-            self.comm_lost_enabled = !busy;
-        }
         let target = (self.id, self.component);
-        outs.into_iter()
-            .filter_map(|out| {
+        let sent: Vec<Vec<u8>> = outs
+            .into_iter()
+            .flat_map(|out| {
                 let send = match out {
                     Out::RequestList { start, end } => Outbound::LogRequestList { target, start, end },
                     Out::RequestData { id, offset, count } => Outbound::LogRequestData { target, id, offset, count },
                     Out::RequestEnd => Outbound::LogRequestEnd { target },
                     Out::Erase => Outbound::LogErase { target },
+                    Out::FtpList(path) => return self.log_file_job(LogFileJob::List(path), now_ms),
+                    Out::FtpDownload { path, local } => return self.log_file_job(LogFileJob::Download(path, local), now_ms),
+                    Out::FtpDelete(path) => return self.log_file_job(LogFileJob::Delete(path), now_ms),
+                    Out::FtpCancel => {
+                        let steps = self.files.job.as_mut().filter(|_| self.files_for_logs).map(crate::filejobs::Job::cancel).unwrap_or_default();
+                        return self.follow_files(steps, now_ms);
+                    }
                 };
-                self.encode(&send)
+                self.encode(&send).into_iter().collect()
             })
-            .collect()
+            .collect();
+        let busy = self.onboard_logs.busy();
+        if busy != was_busy {
+            self.comm_lost_enabled = !busy;
+        }
+        sent
+    }
+
+    fn log_file_job(&mut self, wanted: LogFileJob, now_ms: u64) -> Vec<Vec<u8>> {
+        let (component, seq) = (self.component, self.ftp_seq);
+        let started = match (self.files.busy() || self.fetch.is_some(), &wanted) {
+            (true, _) => Err(FILES_BUSY.to_string()),
+            (false, LogFileJob::List(path)) if self.ftp_list_time_unsupported => crate::filejobs::Job::list(component, path, seq),
+            (false, LogFileJob::List(path)) => crate::filejobs::Job::list_with_time(component, path, seq),
+            (false, LogFileJob::Download(path, _)) => crate::filejobs::Job::download(component, path, seq),
+            (false, LogFileJob::Delete(path)) => crate::filejobs::Job::delete(component, path, seq),
+        };
+        match started {
+            Ok((job, steps)) => {
+                self.download_to = match &wanted {
+                    LogFileJob::Download(_, local) => Some(local.to_string_lossy().into_owned()),
+                    _ => None,
+                };
+                self.files_for_logs = true;
+                self.files.job = Some(job);
+                self.files.progress = 0.0;
+                self.files.generation += 1;
+                self.follow_files(steps, now_ms)
+            }
+            Err(error) => self.log_file_job_done(&wanted.kind(), Err(error), now_ms),
+        }
+    }
+
+    fn log_file_job_done(&mut self, kind: &LogFileKind, result: Result<crate::filejobs::Outcome, String>, now_ms: u64) -> Vec<Vec<u8>> {
+        let was_busy = self.onboard_logs.busy();
+        let outs = match (kind, result) {
+            (LogFileKind::List, Ok(crate::filejobs::Outcome::Listed(entries))) => self.onboard_logs.on_ftp_listed(Ok(entries), self.ftp_list_time_unsupported, now_ms),
+            (LogFileKind::List, Err(error)) => self.onboard_logs.on_ftp_listed(Err(error), self.ftp_list_time_unsupported, now_ms),
+            (LogFileKind::Download, result) => self.onboard_logs.on_ftp_downloaded(result.map(|_| ()), now_ms),
+            (LogFileKind::Delete, _) => self.onboard_logs.on_ftp_deleted(now_ms),
+            (LogFileKind::List, Ok(_)) => Vec::new(),
+        };
+        self.onboard_log_outs(was_busy, outs, now_ms)
     }
 
     pub fn onboard_log_action(&mut self, action: &str, folder: Option<&str>, now_ms: u64) -> Vec<Vec<u8>> {
         let was_busy = self.onboard_logs.busy();
         let extension = self.log_extension();
+        self.onboard_logs.ftp_capable = self.capabilities_known && self.capabilities & crate::connect::CAP_FTP != 0;
+        self.onboard_logs.set_ftp_fallback_root(match self.autopilot {
+            crate::modes::AUTOPILOT_PX4 => Some(crate::onboardlogs::PX4_LOG_ROOT),
+            crate::modes::AUTOPILOT_ARDUPILOT => Some(crate::onboardlogs::APM_LOG_ROOT),
+            _ => None,
+        });
         let outs = match action {
             "logRefresh" => self.onboard_logs.refresh(now_ms),
             "logDownload" => self.onboard_logs.download(std::path::Path::new(folder.unwrap_or("")), extension, now_ms),
             "logCancel" => self.onboard_logs.cancel(),
             "logEraseAll" => self.onboard_logs.erase_all(now_ms),
+            "logEraseSelected" => self.onboard_logs.erase_selected(),
             _ => Vec::new(),
         };
-        self.onboard_log_outs(was_busy, outs)
+        self.onboard_log_outs(was_busy, outs, now_ms)
     }
 
     fn log_status(&mut self, status: &StatusText) {
@@ -2116,7 +2212,7 @@ impl Vehicle {
             MavMessage::LOG_DATA(d) => self.onboard_logs.on_data(d.ofs, d.id, &d.data[..usize::from(d.count).min(d.data.len())], now_ms),
             _ => return Vec::new(),
         };
-        self.onboard_log_outs(was_busy, outs)
+        self.onboard_log_outs(was_busy, outs, now_ms)
     }
 
     fn camera_action(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {

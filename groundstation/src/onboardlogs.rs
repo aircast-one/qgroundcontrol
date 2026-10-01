@@ -10,12 +10,40 @@ const TIMEOUT_MS: u64 = 500;
 const GUI_RATE_MS: u64 = 500;
 const SIZE_UPDATE_BYTES: u64 = 102_400;
 
+pub const MAVLINK_LOG_ROOT: &str = "@MAV_LOG";
+pub const PX4_LOG_ROOT: &str = "/fs/microsd/log";
+pub const APM_LOG_ROOT: &str = "/APM/LOGS";
+pub const FTP_TRANSPORT: &str = "ftp";
+const MESSAGES_TRANSPORT: &str = "messages";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
     RequestList { start: u16, end: u16 },
     RequestData { id: u16, offset: u32, count: u32 },
     RequestEnd,
     Erase,
+    FtpList(String),
+    FtpDownload { path: String, local: std::path::PathBuf },
+    FtpDelete(String),
+    FtpCancel,
+}
+
+#[derive(Debug, Default)]
+struct Ftp {
+    root: String,
+    fallback_root: Option<&'static str>,
+    tried_fallback: bool,
+    listing_root: bool,
+    dirs: Vec<String>,
+    next_id: u16,
+    downloads: Vec<u16>,
+    deletes: Vec<u16>,
+    deleting: bool,
+    current: Option<u16>,
+    had_error: bool,
+    progress_bytes: u64,
+    progress_from_ms: u64,
+    rate_avg: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,11 +54,12 @@ pub struct Entry {
     pub received: bool,
     pub selected: bool,
     pub status: String,
+    pub ftp_path: Option<String>,
 }
 
 impl Entry {
     fn pending(id: u16) -> Entry {
-        Entry { id, size: 0, time_utc: None, received: false, selected: false, status: "Pending".to_string() }
+        Entry { id, size: 0, time_utc: None, received: false, selected: false, status: "Pending".to_string(), ftp_path: None }
     }
 
     fn status_id(&self) -> String {
@@ -113,6 +142,29 @@ pub struct OnboardLogs {
     folder: std::path::PathBuf,
     extension: String,
     download: Option<Download>,
+    pub ftp_capable: bool,
+    ftp_disabled: bool,
+    use_ftp: bool,
+    ftp: Ftp,
+}
+
+pub fn ftp_entry(entry: &str, subdir: Option<&str>) -> Option<(String, u32, Option<u32>)> {
+    let info = entry.strip_prefix('F')?;
+    let mut fields = info.split('\t');
+    let name = fields.next()?.to_string();
+    let size = fields.next()?.parse::<u32>().ok()?;
+    let lower = name.to_lowercase();
+    if !(lower.ends_with(".ulg") || lower.ends_with(".bin")) {
+        return None;
+    }
+    let mtime = fields.next().and_then(|m| m.parse::<i64>().ok()).filter(|m| *m > 0).and_then(|m| u32::try_from(m).ok());
+    let from_dir = || {
+        let date = chrono::NaiveDate::parse_from_str(subdir?, "%Y-%m-%d").ok()?;
+        let stem = name.rsplit_once('.').map_or(name.as_str(), |(stem, _)| stem);
+        let time = chrono::NaiveTime::parse_from_str(stem, "%H_%M_%S").unwrap_or_default();
+        u32::try_from(date.and_time(time).and_utc().timestamp()).ok()
+    };
+    Some((name.clone(), size, mtime.or_else(from_dir)))
 }
 
 impl OnboardLogs {
@@ -140,7 +192,95 @@ impl OnboardLogs {
             return Vec::new();
         }
         self.entries.clear();
+        match self.ftp_capable && !self.ftp_disabled {
+            true => {
+                self.use_ftp = true;
+                self.listing = true;
+                self.ftp = Ftp { root: MAVLINK_LOG_ROOT.to_string(), fallback_root: self.ftp.fallback_root, listing_root: true, ..Ftp::default() };
+                vec![Out::FtpList(self.ftp.root.clone())]
+            }
+            false => {
+                self.use_ftp = false;
+                self.request_list(0, 0xffff, now_ms)
+            }
+        }
+    }
+
+    pub fn set_ftp_fallback_root(&mut self, root: Option<&'static str>) {
+        self.ftp.fallback_root = root;
+    }
+
+    pub fn transport(&self) -> &'static str {
+        if self.use_ftp { FTP_TRANSPORT } else { MESSAGES_TRANSPORT }
+    }
+
+    fn fall_back_to_messages(&mut self, now_ms: u64) -> Vec<Out> {
+        self.ftp_disabled = true;
+        self.use_ftp = false;
+        self.entries.clear();
         self.request_list(0, 0xffff, now_ms)
+    }
+
+    pub fn on_ftp_listed(&mut self, listed: Result<Vec<String>, String>, time_unsupported: bool, now_ms: u64) -> Vec<Out> {
+        if !self.listing || !self.use_ftp {
+            return Vec::new();
+        }
+        let entries = match listed {
+            Ok(entries) => entries,
+            Err(_) if self.ftp.listing_root && !self.ftp.tried_fallback && self.ftp.fallback_root.is_some() => {
+                self.ftp.tried_fallback = true;
+                self.ftp.root = self.ftp.fallback_root.unwrap_or_default().to_string();
+                return vec![Out::FtpList(self.ftp.root.clone())];
+            }
+            Err(_) => return self.fall_back_to_messages(now_ms),
+        };
+        match self.ftp.listing_root {
+            true => {
+                self.add_ftp_entries(&entries, None);
+                let mut dirs: Vec<String> = entries.iter().filter_map(|e| e.strip_prefix('D')).filter(|d| !d.is_empty()).map(str::to_string).collect();
+                dirs.sort();
+                self.ftp.dirs = dirs;
+                self.ftp.listing_root = false;
+            }
+            false => {
+                let current = self.ftp.dirs.first().cloned();
+                self.add_ftp_entries(&entries, current.as_deref());
+                if !self.ftp.dirs.is_empty() {
+                    self.ftp.dirs.remove(0);
+                }
+            }
+        }
+        match self.ftp.dirs.first() {
+            Some(dir) => vec![Out::FtpList(format!("{}/{dir}", self.ftp.root))],
+            None if time_unsupported => self.fall_back_to_messages(now_ms),
+            None => {
+                self.finish_listing();
+                Vec::new()
+            }
+        }
+    }
+
+    fn add_ftp_entries(&mut self, listed: &[String], subdir: Option<&str>) {
+        let found: Vec<Entry> = listed
+            .iter()
+            .filter_map(|entry| ftp_entry(entry, subdir))
+            .enumerate()
+            .map(|(at, (name, size, time_utc))| Entry {
+                id: self.ftp.next_id + at as u16,
+                size,
+                time_utc,
+                received: true,
+                selected: false,
+                status: "Available".to_string(),
+                ftp_path: Some(match subdir {
+                    Some(dir) => format!("{}/{dir}/{name}", self.ftp.root),
+                    None => format!("{}/{name}", self.ftp.root),
+                }),
+            })
+            .collect();
+        self.ftp.next_id += found.len() as u16;
+        self.appended = self.appended || !found.is_empty();
+        self.entries.extend(found);
     }
 
     fn sort(&mut self) {
@@ -249,6 +389,9 @@ impl OnboardLogs {
     }
 
     pub fn download(&mut self, folder: &std::path::Path, extension: &str, now_ms: u64) -> Vec<Out> {
+        if self.use_ftp {
+            return self.ftp_download(folder, now_ms);
+        }
         self.finish_listing();
         self.download = None;
         if folder.as_os_str().is_empty() {
@@ -394,7 +537,122 @@ impl OnboardLogs {
         vec![request]
     }
 
+    fn ftp_download(&mut self, folder: &std::path::Path, now_ms: u64) -> Vec<Out> {
+        if folder.as_os_str().is_empty() {
+            return Vec::new();
+        }
+        self.folder = folder.to_path_buf();
+        self.ftp.had_error = false;
+        self.ftp.downloads = self.entries.iter().filter(|e| e.selected && e.ftp_path.is_some()).map(|e| e.id).collect();
+        let queued = self.ftp.downloads.clone();
+        queued.iter().for_each(|id| self.set_status(*id, "Waiting"));
+        if queued.is_empty() {
+            return Vec::new();
+        }
+        self.downloading = true;
+        self.next_ftp_download(now_ms)
+    }
+
+    fn local_name(&self, remote: &str, id: u16) -> std::path::PathBuf {
+        let name = remote.rsplit('/').next().filter(|n| !n.is_empty()).map_or_else(|| format!("log_{id}.ulg"), str::to_string);
+        let (stem, extension) = name.rsplit_once('.').map_or((name.as_str(), String::new()), |(s, e)| (s, format!(".{e}")));
+        (0..)
+            .map(|n| match n {
+                0 => self.folder.join(&name),
+                n => self.folder.join(format!("{stem}_{n}{extension}")),
+            })
+            .find(|path| !path.exists())
+            .unwrap_or_else(|| self.folder.join(&name))
+    }
+
+    fn next_ftp_download(&mut self, now_ms: u64) -> Vec<Out> {
+        self.ftp.current = None;
+        if self.ftp.downloads.is_empty() {
+            if self.ftp.had_error {
+                self.ftp_disabled = true;
+            }
+            self.downloading = false;
+            return Vec::new();
+        }
+        let id = self.ftp.downloads.remove(0);
+        let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else { return self.next_ftp_download(now_ms) };
+        entry.selected = false;
+        entry.status = "Downloading".to_string();
+        let path = entry.ftp_path.clone().unwrap_or_default();
+        let local = self.local_name(&path, id);
+        self.ftp.current = Some(id);
+        (self.ftp.progress_bytes, self.ftp.progress_from_ms, self.ftp.rate_avg) = (0, now_ms, 0.0);
+        vec![Out::FtpDownload { path, local }]
+    }
+
+    pub fn on_ftp_downloaded(&mut self, result: Result<(), String>, now_ms: u64) -> Vec<Out> {
+        let Some(id) = self.ftp.current.filter(|_| self.downloading && !self.ftp.deleting) else { return Vec::new() };
+        match result {
+            Ok(()) => self.set_status(id, "Downloaded"),
+            Err(_) => {
+                self.set_status(id, "Error");
+                self.ftp.had_error = true;
+            }
+        }
+        self.next_ftp_download(now_ms)
+    }
+
+    pub fn on_ftp_progress(&mut self, fraction: f64, now_ms: u64) {
+        let Some(id) = self.ftp.current.filter(|_| !self.ftp.deleting) else { return };
+        let elapsed = now_ms.saturating_sub(self.ftp.progress_from_ms);
+        if elapsed < GUI_RATE_MS {
+            return;
+        }
+        let size = self.entries.iter().find(|e| e.id == id).map_or(0, |e| e.size);
+        let total = (f64::from(size) * fraction) as u64;
+        if total < self.ftp.progress_bytes {
+            self.ftp.progress_bytes = total;
+            return;
+        }
+        let rate = (total - self.ftp.progress_bytes) as f64 / (elapsed as f64 / 1000.0);
+        self.ftp.rate_avg = self.ftp.rate_avg * 0.95 + rate * 0.05;
+        (self.ftp.progress_bytes, self.ftp.progress_from_ms) = (total, now_ms);
+        let status = format!("{} ({}/s)", big_size_text(total), big_size_text(self.ftp.rate_avg as u64));
+        self.set_status(id, &status);
+    }
+
+    pub fn erase_selected(&mut self) -> Vec<Out> {
+        if !self.use_ftp || self.busy() {
+            return Vec::new();
+        }
+        self.ftp.deletes = self.entries.iter().filter(|e| e.selected && e.ftp_path.is_some()).map(|e| e.id).collect();
+        if self.ftp.deletes.is_empty() {
+            return Vec::new();
+        }
+        self.ftp.deleting = true;
+        self.downloading = true;
+        self.next_ftp_delete(0)
+    }
+
+    fn next_ftp_delete(&mut self, now_ms: u64) -> Vec<Out> {
+        if self.ftp.deletes.is_empty() {
+            self.ftp.deleting = false;
+            self.downloading = false;
+            return self.refresh(now_ms);
+        }
+        let id = self.ftp.deletes.remove(0);
+        let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else { return self.next_ftp_delete(now_ms) };
+        entry.selected = false;
+        entry.status = "Erasing".to_string();
+        vec![Out::FtpDelete(entry.ftp_path.clone().unwrap_or_default())]
+    }
+
+    pub fn on_ftp_deleted(&mut self, now_ms: u64) -> Vec<Out> {
+        match self.ftp.deleting {
+            true => self.next_ftp_delete(now_ms),
+            false => Vec::new(),
+        }
+    }
+
     pub fn cancel(&mut self) -> Vec<Out> {
+        if self.use_ftp {
+            return self.cancel_ftp();
+        }
         self.finish_listing();
         if let Some(download) = self.download.take() {
             self.set_status(download.id, "Canceled");
@@ -405,6 +663,30 @@ impl OnboardLogs {
         self.downloading = false;
         self.due = None;
         vec![Out::RequestEnd]
+    }
+
+    fn cancel_ftp(&mut self) -> Vec<Out> {
+        match (self.listing, self.ftp.deleting, self.downloading) {
+            (true, _, _) => {
+                self.ftp.dirs.clear();
+                self.finish_listing();
+                vec![Out::FtpCancel]
+            }
+            (_, true, _) => {
+                self.ftp.deletes.clear();
+                Vec::new()
+            }
+            (_, _, true) => {
+                if let Some(id) = self.ftp.current.take() {
+                    self.set_status(id, "Canceled");
+                }
+                self.ftp.downloads.clear();
+                self.reset_selection(true);
+                self.downloading = false;
+                vec![Out::FtpCancel]
+            }
+            _ => Vec::new(),
+        }
     }
 
     pub fn erase_all(&mut self, now_ms: u64) -> Vec<Out> {
@@ -457,7 +739,7 @@ impl OnboardLogs {
             "requestingList": self.listing,
             "selectedCount": self.selected_count(),
             "sortAscending": self.sort_ascending,
-            "transport": "messages",
+            "transport": self.transport(),
         })
     }
 }
@@ -505,6 +787,66 @@ mod tests {
         assert_eq!((logs.downloading, logs.entries[0].status.as_str()), (false, "Downloaded"));
         let written = std::fs::read(folder.join("log_0_UnknownDate.bin")).unwrap();
         assert_eq!((written.len(), written[0], written[90]), (180, 1, 2));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    fn ftp_logs() -> OnboardLogs {
+        let mut logs = OnboardLogs { ftp_capable: true, ..OnboardLogs::default() };
+        logs.set_ftp_fallback_root(Some(PX4_LOG_ROOT));
+        logs
+    }
+
+    #[test]
+    fn ftp_entries_take_the_vehicles_time_or_the_date_folder_and_skip_other_files() {
+        assert_eq!(ftp_entry("Fa.ulg\t100\t1700000000", None), Some(("a.ulg".to_string(), 100, Some(1_700_000_000))));
+        assert_eq!(ftp_entry("F12_30_05.ulg\t7", Some("2026-09-30")).map(|e| e.2), Some(Some(1_790_771_405)));
+        assert_eq!(ftp_entry("F00000001.BIN\t9\t0", None), Some(("00000001.BIN".to_string(), 9, None)), "a zero time is unknown");
+        assert_eq!(ftp_entry("Fnotes.txt\t5", None), None);
+        assert_eq!(ftp_entry("Dsess001", None), None);
+    }
+
+    #[test]
+    fn an_ftp_listing_walks_the_date_folders_and_falls_back_like_the_controller() {
+        let mut logs = ftp_logs();
+        assert_eq!(logs.refresh(0), vec![Out::FtpList(MAVLINK_LOG_ROOT.to_string())]);
+        assert_eq!(logs.on_ftp_listed(Err("List directory failed".into()), false, 0), vec![Out::FtpList(PX4_LOG_ROOT.to_string())], "a root @MAV_LOG cannot list falls back to the firmware's own folder");
+        let root = vec!["D2026-09-30".to_string(), "D2026-09-29".to_string(), "Fstray.ulg\t3".to_string()];
+        assert_eq!(logs.on_ftp_listed(Ok(root), false, 0), vec![Out::FtpList(format!("{PX4_LOG_ROOT}/2026-09-29"))], "folders are walked in sorted order");
+        assert_eq!(logs.on_ftp_listed(Ok(vec!["F10_00_00.ulg\t50".into()]), false, 0), vec![Out::FtpList(format!("{PX4_LOG_ROOT}/2026-09-30"))]);
+        assert!(logs.on_ftp_listed(Ok(vec!["F11_00_00.ulg\t60".into()]), false, 0).is_empty());
+        assert!(!logs.listing);
+        assert_eq!(logs.transport(), FTP_TRANSPORT);
+        assert_eq!(logs.entries.len(), 3);
+        assert_eq!(logs.entries[0].ftp_path.as_deref(), Some("/fs/microsd/log/2026-09-30/11_00_00.ulg"), "newest first");
+
+        let mut old_px4 = ftp_logs();
+        old_px4.refresh(0);
+        assert_eq!(old_px4.on_ftp_listed(Ok(vec!["Fa.ulg\t1".into()]), true, 0), vec![Out::RequestList { start: 0, end: 0xffff }], "no file times over FTP means the message transport, which has them");
+        assert_eq!((old_px4.transport(), old_px4.entries.len()), ("messages", 0));
+        assert_eq!(old_px4.refresh(10_000).first(), None, "listing is still busy on the messages request");
+    }
+
+    #[test]
+    fn ftp_downloads_and_erases_walk_the_selection() {
+        let folder = std::env::temp_dir().join(format!("qgc-ftp-logs-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("a.ulg"), b"x").unwrap();
+        let mut logs = ftp_logs();
+        logs.refresh(0);
+        logs.on_ftp_listed(Ok(vec!["Fa.ulg\t10".into(), "Fb.ulg\t20".into()]), false, 0);
+        logs.select_all(true);
+        let first = logs.download(&folder, ".ulg", 0);
+        assert!(matches!(first.as_slice(), [Out::FtpDownload { path, local }] if path.ends_with("/a.ulg") || path.ends_with("/b.ulg") ) );
+        let Out::FtpDownload { local, .. } = &first[0] else { unreachable!() };
+        assert!(local.ends_with("a_1.ulg") || local.ends_with("b.ulg"), "an existing file gets a numbered name");
+        assert!(matches!(logs.on_ftp_downloaded(Ok(()), 1).as_slice(), [Out::FtpDownload { .. }]));
+        assert!(logs.on_ftp_downloaded(Err("Download failed".into()), 2).is_empty());
+        assert!(!logs.downloading);
+        assert_eq!(logs.entries.iter().filter(|e| e.status == "Downloaded").count(), 1);
+
+        logs.select(0, true);
+        assert!(matches!(logs.erase_selected().as_slice(), [Out::FtpDelete(_)]));
+        assert_eq!(logs.on_ftp_deleted(3), vec![Out::RequestList { start: 0, end: 0xffff }], "the failed download disabled FTP, so the refresh after erasing goes over messages");
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

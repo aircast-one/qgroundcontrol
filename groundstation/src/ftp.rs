@@ -15,10 +15,12 @@ pub const CMD_CREATE_FILE: u8 = 6;
 pub const CMD_WRITE_FILE: u8 = 7;
 pub const CMD_REMOVE_FILE: u8 = 8;
 pub const CMD_BURST_READ_FILE: u8 = 15;
+pub const CMD_LIST_DIRECTORY_WITH_TIME: u8 = 16;
 pub const RSP_ACK: u8 = 128;
 pub const RSP_NAK: u8 = 129;
 pub const ERR_FAIL_ERRNO: u8 = 2;
 pub const ERR_EOF: u8 = 6;
+pub const ERR_UNKNOWN_COMMAND: u8 = 7;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Request {
@@ -438,6 +440,8 @@ pub struct Listing {
     entries: Vec<String>,
     retries: u32,
     active: bool,
+    opcode: u8,
+    pub time_unsupported: bool,
 }
 
 impl Listing {
@@ -446,8 +450,17 @@ impl Listing {
     }
 
     pub fn start_from(from_component: u8, uri: &str, expected_seq: u16) -> Result<(Listing, Vec<ListOut>), String> {
+        Self::start_listing(from_component, uri, expected_seq, false)
+    }
+
+    pub fn start_with_time(from_component: u8, uri: &str, expected_seq: u16) -> Result<(Listing, Vec<ListOut>), String> {
+        Self::start_listing(from_component, uri, expected_seq, true)
+    }
+
+    fn start_listing(from_component: u8, uri: &str, expected_seq: u16, with_time: bool) -> Result<(Listing, Vec<ListOut>), String> {
         let (path, component) = parse_uri(from_component, uri)?;
-        let mut listing = Listing { path, component, active: true, expected_seq, ..Default::default() };
+        let opcode = if with_time { CMD_LIST_DIRECTORY_WITH_TIME } else { CMD_LIST_DIRECTORY };
+        let mut listing = Listing { path, component, active: true, expected_seq, opcode, ..Default::default() };
         let out = listing.request(true);
         Ok((listing, out))
     }
@@ -466,7 +479,7 @@ impl Listing {
         } else {
             self.expected_seq = self.expected_seq.wrapping_sub(2);
         }
-        let request = Request { seq: self.expected_seq.wrapping_add(1), session: 0, opcode: CMD_LIST_DIRECTORY, offset: self.expected_offset, data: self.path.as_bytes().iter().copied().take(DATA_LEN).collect(), ..Default::default() };
+        let request = Request { seq: self.expected_seq.wrapping_add(1), session: 0, opcode: self.opcode, offset: self.expected_offset, data: self.path.as_bytes().iter().copied().take(DATA_LEN).collect(), ..Default::default() };
         self.expected_seq = self.expected_seq.wrapping_add(2);
         vec![ListOut::StartTimer, ListOut::Send(request)]
     }
@@ -487,7 +500,17 @@ impl Listing {
 
     pub fn on_payload(&mut self, payload: &[u8]) -> Vec<ListOut> {
         let Some(reply) = Request::decode(payload) else { return Vec::new() };
-        if !self.active || reply.req_opcode != CMD_LIST_DIRECTORY || self.expected_seq.wrapping_sub(1).wrapping_sub(reply.seq) < u16::MAX / 2 {
+        if self.active && self.opcode == CMD_LIST_DIRECTORY_WITH_TIME && reply.req_opcode == CMD_LIST_DIRECTORY_WITH_TIME && reply.opcode == RSP_NAK && reply.data.first() == Some(&ERR_UNKNOWN_COMMAND) {
+            self.opcode = CMD_LIST_DIRECTORY;
+            self.time_unsupported = true;
+            self.expected_offset = 0;
+            self.entries.clear();
+            self.expected_seq = reply.seq;
+            let mut out = vec![ListOut::StopTimer];
+            out.append(&mut self.request(true));
+            return out;
+        }
+        if !self.active || reply.req_opcode != self.opcode || self.expected_seq.wrapping_sub(1).wrapping_sub(reply.seq) < u16::MAX / 2 {
             return Vec::new();
         }
         match reply.opcode {
@@ -761,6 +784,21 @@ mod tests {
         let (seeded, out) = Download::start_from(1, "/fs/f", false, 40).unwrap();
         assert_eq!(sent(&out).seq, 41);
         assert_eq!(seeded.expected_seq(), 42);
+    }
+
+    #[test]
+    fn a_timed_listing_falls_back_to_the_plain_one_when_the_server_does_not_know_it() {
+        let sent_of = |out: &[ListOut]| out.iter().find_map(|o| match o { ListOut::Send(r) => Some(r.clone()), _ => None }).unwrap();
+        let (mut listing, out) = Listing::start_with_time(1, "@MAV_LOG", 0).unwrap();
+        assert_eq!(sent_of(&out).opcode, CMD_LIST_DIRECTORY_WITH_TIME);
+        let retry = listing.on_payload(&Request { seq: 2, opcode: RSP_NAK, req_opcode: CMD_LIST_DIRECTORY_WITH_TIME, data: vec![ERR_UNKNOWN_COMMAND], ..Default::default() }.encode());
+        let plain = sent_of(&retry);
+        assert_eq!((plain.opcode, plain.offset), (CMD_LIST_DIRECTORY, 0));
+        assert!(listing.time_unsupported);
+        let page = listing.on_payload(&Request { seq: plain.seq + 1, opcode: RSP_ACK, req_opcode: CMD_LIST_DIRECTORY, data: b"Fa.ulg\t10\0".to_vec(), ..Default::default() }.encode());
+        let next = sent_of(&page);
+        let done = listing.on_payload(&Request { seq: next.seq + 1, opcode: RSP_NAK, req_opcode: CMD_LIST_DIRECTORY, data: vec![ERR_EOF], ..Default::default() }.encode());
+        assert!(matches!(done.last(), Some(ListOut::Complete { entries, error }) if entries == &vec!["Fa.ulg\t10".to_string()] && error.is_empty()));
     }
 
     #[test]

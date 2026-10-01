@@ -1050,6 +1050,7 @@ impl<B: Backend> Facade<B> {
             "refresh" => dispatch(json!({ "action": "logRefresh", "vehicle": vehicle })),
             "cancel" => dispatch(json!({ "action": "logCancel", "vehicle": vehicle })),
             "eraseAll" => dispatch(json!({ "action": "logEraseAll", "vehicle": vehicle })),
+            "eraseSelected" => dispatch(json!({ "action": "logEraseSelected", "vehicle": vehicle })),
             "download" => {
                 let folder = given.get(0).and_then(Value::as_str).filter(|f| !f.is_empty()).map(str::to_string).or_else(crate::settingsstore::log_save_path).unwrap_or_default();
                 dispatch(json!({ "action": "logDownload", "vehicle": vehicle, "folder": folder }))
