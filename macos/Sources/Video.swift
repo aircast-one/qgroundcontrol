@@ -85,6 +85,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         let read = VideoStatus(Bridge.group("view.video"))
         if read != status { status = read }
         drive(read.nativePipeline)
+        record(read.nativeRecording)
         pollNative()
         loadCamera()
     }
@@ -194,6 +195,25 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     func stopNative() {
         qgc_video_stop()
         pollNative()
+    }
+
+    private var drivenRecording: NativeRecording?
+    private var reportedRecording = false
+
+    private func record(_ wanted: NativeRecording?) {
+        if wanted != drivenRecording {
+            if drivenRecording != nil {
+                qgc_video_stop_recording()
+            }
+            if let wanted, !qgc_video_start_recording(wanted.file, wanted.format) {
+                nativeError = String(cString: qgc_video_last_error())
+            }
+            drivenRecording = wanted
+        }
+        let recording = qgc_video_recording()
+        guard recording != reportedRecording else { return }
+        reportedRecording = recording
+        Bridge.invoke("video.reportRecording", [recording])
     }
 
     private var drivenPipeline: String?

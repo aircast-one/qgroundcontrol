@@ -25,6 +25,9 @@ pub struct Video {
     pub frames: unsafe extern "C" fn() -> i64,
     last_error: unsafe extern "C" fn() -> *const c_char,
     pub copy_frame: unsafe extern "C" fn(*mut c_void, c_int, *mut c_int, *mut c_int, *mut c_int) -> bool,
+    start_recording: unsafe extern "C" fn(*const c_char, c_int) -> bool,
+    stop_recording: unsafe extern "C" fn(),
+    recording: unsafe extern "C" fn() -> bool,
 }
 
 static VIDEO: OnceLock<Option<Video>> = OnceLock::new();
@@ -49,6 +52,9 @@ fn load() -> Option<Video> {
         frames: symbol(handle, c"qgc_video_frames")?,
         last_error: symbol(handle, c"qgc_video_last_error")?,
         copy_frame: symbol(handle, c"qgc_video_copy_frame")?,
+        start_recording: symbol(handle, c"qgc_video_start_recording")?,
+        stop_recording: symbol(handle, c"qgc_video_stop_recording")?,
+        recording: symbol(handle, c"qgc_video_recording")?,
     })
 }
 
@@ -78,9 +84,29 @@ struct Driver {
     driven: Option<String>,
     error: String,
     reported: Option<(bool, i64, c_int, c_int)>,
+    recording: Option<serde_json::Value>,
+    recording_reported: bool,
 }
 
 impl Driver {
+    fn record(&mut self, video: &Video) {
+        let wanted = crate::videohost::native_recording();
+        if wanted != self.recording {
+            if self.recording.is_some() {
+                unsafe { (video.stop_recording)() };
+            }
+            if let Some((file, format)) = wanted.as_ref().and_then(|w| Some((CString::new(w.get("file")?.as_str()?).ok()?, w.get("format")?.as_i64()?))) {
+                unsafe { (video.start_recording)(file.as_ptr(), format as c_int) };
+            }
+            self.recording = wanted;
+        }
+        let active = unsafe { (video.recording)() };
+        if active != self.recording_reported {
+            self.recording_reported = active;
+            crate::videohost::invoke("video.reportRecording", &serde_json::json!([active]).to_string());
+        }
+    }
+
     fn step(&mut self, video: &Video) {
         let wanted = crate::videohost::native_pipeline();
         if wanted != self.driven {
@@ -95,6 +121,7 @@ impl Driver {
             self.driven = wanted;
             self.reported = None;
         }
+        self.record(video);
         if self.driven.is_none() {
             return;
         }

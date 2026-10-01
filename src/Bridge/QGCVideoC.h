@@ -20,6 +20,9 @@ bool qgc_video_attach_appsink(void *appsink);
 void qgc_video_detach_appsink(void);
 bool qgc_video_set_window(void *native_window);
 bool qgc_video_attach_overlay(void *sink);
+bool qgc_video_start_recording(const char *file, int format);
+void qgc_video_stop_recording(void);
+bool qgc_video_recording(void);
 
 typedef void (*qgc_video_frame_callback)(const uint8_t *pixels, int width, int height, int stride);
 void qgc_video_set_frame_callback(qgc_video_frame_callback callback);

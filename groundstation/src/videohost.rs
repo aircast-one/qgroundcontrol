@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use crate::videostate::{MAIN_RECEIVER, Out, Outcome, PrimaryUrls, Settings, SourceSlot, Status, TILE_RECEIVER_PREFIX, VideoState, source_uri};
 
+const RECORD_TEE: &str = "tee name=nativerec ! queue";
 #[cfg(not(target_os = "android"))]
 const NATIVE_SINK: &str = "videoconvert ! appsink name=nativesink sync=false";
 #[cfg(target_os = "android")]
@@ -16,7 +17,14 @@ struct Host {
     wanted: bool,
     restart_at_ms: Option<u64>,
     reported: (bool, bool, u32, u32),
+    recording_file: Option<String>,
 }
+
+const FILE_EXTENSIONS: [&str; 3] = ["mkv", "mov", "mp4"];
+const DEFAULT_RECORDING_FORMAT: i64 = 2;
+const DEFAULT_MAX_VIDEO_MB: u64 = 10240;
+const BAD_FORMAT_MESSAGE: &str = "Invalid video format defined.";
+const NO_SAVE_PATH_MESSAGE: &str = "Unabled to record video. Video save path must be specified in Settings.";
 
 static HOST: Mutex<Option<Host>> = Mutex::new(None);
 
@@ -47,7 +55,90 @@ pub fn settings_from(text: &dyn Fn(&str) -> String, flag: &dyn Fn(&str, bool) ->
 }
 
 fn stored_settings() -> Settings {
-    settings_from(&text, &|name, default| setting(name).as_bool().unwrap_or(default), &|name, default| setting(name).as_i64().unwrap_or(default))
+    let settings = settings_from(&text, &|name, default| setting(name).as_bool().unwrap_or(default), &|name, default| setting(name).as_i64().unwrap_or(default));
+    Settings { save_path_set: crate::settingsstore::video_save_path().is_some(), recording_format_valid: extension(recording_format()).is_some(), ..settings }
+}
+
+fn recording_format() -> i64 {
+    setting("recordingFormat").as_i64().unwrap_or(DEFAULT_RECORDING_FORMAT)
+}
+
+fn extension(format: i64) -> Option<&'static str> {
+    usize::try_from(format).ok().and_then(|index| FILE_EXTENSIONS.get(index)).copied()
+}
+
+pub fn recording_file_name(folder: &str, stamp: &str, format: i64) -> Option<String> {
+    Some(format!("{folder}/{stamp}.{}", extension(format)?))
+}
+
+pub fn videos_to_delete(mut videos: Vec<(String, u64, std::time::SystemTime)>, max_bytes: u64) -> Vec<String> {
+    videos.sort_by(|a, b| b.2.cmp(&a.2));
+    let total: u64 = videos.iter().map(|v| v.1).sum();
+    videos
+        .iter()
+        .rev()
+        .scan(total, |left, (name, size, _)| {
+            let over = *left >= max_bytes;
+            *left = left.saturating_sub(*size);
+            over.then(|| name.clone())
+        })
+        .collect()
+}
+
+fn cleanup_old_videos(folder: &str) {
+    if !setting("enableStorageLimit").as_bool().unwrap_or(false) {
+        return;
+    }
+    let max_bytes = setting("maxVideoSize").as_u64().unwrap_or(DEFAULT_MAX_VIDEO_MB) * 1024 * 1024;
+    let videos: Vec<(String, u64, std::time::SystemTime)> = std::fs::read_dir(folder)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().extension().and_then(|e| e.to_str()).is_some_and(|e| FILE_EXTENSIONS.contains(&e)))
+                .filter_map(|entry| {
+                    let meta = entry.metadata().ok().filter(std::fs::Metadata::is_file)?;
+                    Some((entry.path().to_string_lossy().into_owned(), meta.len(), meta.modified().ok()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    videos_to_delete(videos, max_bytes).iter().for_each(|path| {
+        let _ = std::fs::remove_file(path);
+    });
+}
+
+pub fn start_recording() -> Result<(), Option<&'static str>> {
+    let mut guard = synced();
+    let host = guard.as_mut().ok_or(None)?;
+    match host.state.record_refusal() {
+        Some(crate::videostate::REFUSED_BAD_FORMAT) => return Err(Some(BAD_FORMAT_MESSAGE)),
+        Some(crate::videostate::REFUSED_NO_SAVE_PATH) => return Err(Some(NO_SAVE_PATH_MESSAGE)),
+        Some(_) => return Err(None),
+        None => {}
+    }
+    let folder = crate::settingsstore::video_save_path().ok_or(Some(NO_SAVE_PATH_MESSAGE))?;
+    cleanup_old_videos(&folder);
+    let _ = std::fs::create_dir_all(&folder);
+    let stamp = chrono::Local::now().format("%Y-%m-%d_%H.%M.%S").to_string();
+    let file = recording_file_name(&folder, &stamp, recording_format()).ok_or(Some(BAD_FORMAT_MESSAGE))?;
+    let outs = host.state.start_recording();
+    if outs.iter().any(|out| matches!(out, Out::StartRecording { receivers } if receivers.iter().any(|r| r == MAIN_RECEIVER))) {
+        host.recording_file = Some(file);
+    }
+    Ok(())
+}
+
+pub fn stop_recording() {
+    let mut guard = synced();
+    if let Some(host) = guard.as_mut() {
+        host.recording_file = None;
+        let outs = host.state.stop_recording();
+        apply(host, outs, crate::hub::now_ms());
+    }
+}
+
+pub fn recording() -> bool {
+    get("video.recording").and_then(|v| v.get("value")?.as_bool()).unwrap_or(false) || HOST.lock().unwrap_or_else(PoisonError::into_inner).as_ref().is_some_and(|host| host.recording_file.is_some())
 }
 
 fn quoted(value: &str) -> String {
@@ -64,28 +155,28 @@ pub fn pipeline(uri: &str, latency_ms: i64) -> Option<String> {
     let rtp = |encoding: &str, rest: &str| {
         let (host, port) = host_port(rest)?;
         Some(format!(
-            "udpsrc address={host} port={port} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string){encoding}\" ! rtpjitterbuffer latency={latency_ms} ! decodebin3"
+            "udpsrc address={host} port={port} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string){encoding}\" ! rtpjitterbuffer latency={latency_ms}"
         ))
     };
     let source = match uri.split_once("://")? {
-        ("rtsp" | "rtsps", _) => format!("rtspsrc location={} latency={latency_ms} ! decodebin3", quoted(uri)),
+        ("rtsp" | "rtsps", _) => format!("rtspsrc location={} latency={latency_ms}", quoted(uri)),
         ("udp", rest) => rtp("H264", rest)?,
         ("udp265", rest) => rtp("H265", rest)?,
         ("mpegts", rest) => {
             let (host, port) = host_port(rest)?;
-            format!("udpsrc address={host} port={port} ! tsdemux ! decodebin3")
+            format!("udpsrc address={host} port={port} ! tsdemux")
         }
         ("tcp", rest) => {
             let (host, port) = host_port(rest)?;
-            format!("tcpclientsrc host={host} port={port} ! tsdemux ! decodebin3")
+            format!("tcpclientsrc host={host} port={port} ! tsdemux")
         }
         ("http" | "https" | "whep" | "wheps", _) => {
             let endpoint = uri.replacen("wheps://", "https://", 1).replacen("whep://", "http://", 1);
-            format!("whepsrc whep-endpoint={} ! decodebin3", quoted(&endpoint))
+            format!("whepsrc whep-endpoint={}", quoted(&endpoint))
         }
         _ => return None,
     };
-    Some(format!("{source} ! {NATIVE_SINK}"))
+    Some(format!("{source} ! {RECORD_TEE} ! decodebin3 ! {NATIVE_SINK}"))
 }
 
 fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
@@ -177,6 +268,8 @@ fn object(host: &Host) -> Value {
         "cameraConnecting": (0..settings.count()).map(|i| state.camera_connecting(i)).collect::<Vec<_>>(),
         "cameraRecording": (0..settings.count()).map(|i| state.camera_recording(i)).collect::<Vec<_>>(),
         "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&uri, latency)).flatten(),
+        "nativeRecording": host.recording_file,
+        "nativeRecordingFormat": recording_format(),
     })
 }
 
@@ -186,6 +279,11 @@ fn served() -> bool {
 
 pub fn has_video() -> bool {
     get("video.hasVideo").and_then(|v| v.get("value")?.as_bool()).unwrap_or(false)
+}
+
+pub fn native_recording() -> Option<Value> {
+    let file = get("video.nativeRecording")?.get("value")?.as_str()?.to_string();
+    Some(json!({ "file": file, "format": recording_format() }))
 }
 
 pub fn native_pipeline() -> Option<String> {
@@ -243,6 +341,15 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
+        "video.reportRecording" => {
+            let active = given.get(0).and_then(Value::as_bool).unwrap_or(false);
+            let outs = host.state.on_recording(MAIN_RECEIVER, active, crate::hub::now_ms() / 1000);
+            if !active {
+                host.recording_file = None;
+            }
+            apply(host, outs, crate::hub::now_ms());
+            Some(json!({ "ok": true }))
+        }
         "video.reportNative" => {
             let number = |i: usize| given.get(i).and_then(Value::as_i64).unwrap_or(0);
             let size = |i: usize| u32::try_from(number(i)).unwrap_or(0);
@@ -258,9 +365,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_recording_is_named_and_trimmed_as_video_manager_does() {
+        assert_eq!(recording_file_name("/v", "2026-10-01_14.30.00", 2).as_deref(), Some("/v/2026-10-01_14.30.00.mp4"));
+        assert_eq!(recording_file_name("/v", "s", 0).as_deref(), Some("/v/s.mkv"));
+        assert_eq!(recording_file_name("/v", "s", 3), None, "VideoReceiver::isValidFileFormat");
+        let at = |s: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(s);
+        let videos = vec![("old".to_string(), 6, at(1)), ("new".to_string(), 6, at(3)), ("mid".to_string(), 6, at(2))];
+        assert_eq!(videos_to_delete(videos.clone(), 10), vec!["old".to_string(), "mid".to_string()], "oldest first until the total is under the limit");
+        assert!(videos_to_delete(videos, 100).is_empty());
+    }
+
+    #[test]
     fn a_uri_becomes_a_pipeline_ending_in_the_native_sink() {
-        assert_eq!(pipeline("udp://0.0.0.0:5600", 80).unwrap(), "udpsrc address=0.0.0.0 port=5600 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false");
-        assert_eq!(pipeline("rtsp://cam/main", 40).unwrap(), "rtspsrc location=\"rtsp://cam/main\" latency=40 ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false");
+        assert_eq!(pipeline("udp://0.0.0.0:5600", 80).unwrap(), "udpsrc address=0.0.0.0 port=5600 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false");
+        assert_eq!(pipeline("rtsp://cam/main", 40).unwrap(), "rtspsrc location=\"rtsp://cam/main\" latency=40 ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false");
         assert!(pipeline("whep://sfu/whep/x", 80).unwrap().starts_with("whepsrc whep-endpoint=\"http://sfu/whep/x\""));
         assert_eq!(pipeline("bogus", 80), None);
     }

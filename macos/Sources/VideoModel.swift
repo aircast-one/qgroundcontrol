@@ -77,6 +77,7 @@ struct VideoStatus: Equatable {
     let summary: String
     let cameras: [VideoCamera]
     let nativePipeline: String?
+    let nativeRecording: NativeRecording?
 
     static let unavailable = VideoStatus()
 
@@ -93,6 +94,7 @@ struct VideoStatus: Equatable {
         summary = ""
         cameras = []
         nativePipeline = nil
+        nativeRecording = nil
     }
 
     init(_ json: [String: Any]) {
@@ -109,6 +111,7 @@ struct VideoStatus: Equatable {
         summary = (json["summary"] as? String) ?? ""
         cameras = ((json["cameras"] as? [Any]) ?? []).compactMap(VideoCamera.init)
         nativePipeline = (json["nativePipeline"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        nativeRecording = NativeRecording(json["nativeRecording"])
     }
 
     var configuredCameras: [VideoCamera] { cameras.filter(\.configured) }
@@ -139,5 +142,16 @@ struct VideoStatus: Equatable {
     var level: FlyTelemetry.Level {
         if settled { return .good }
         return anyConnecting ? .warning : .unknown
+    }
+}
+
+struct NativeRecording: Equatable {
+    let file: String
+    let format: Int32
+
+    init?(_ value: Any?) {
+        guard let json = value as? [String: Any], let file = json["file"] as? String, !file.isEmpty else { return nil }
+        self.file = file
+        format = (json["format"] as? NSNumber)?.int32Value ?? 2
     }
 }

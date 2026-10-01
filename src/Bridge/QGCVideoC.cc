@@ -1,5 +1,7 @@
 #include "QGCVideoC.h"
 
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -32,6 +34,97 @@ std::string lastError;
 GstElement *pipeline = nullptr;
 GstElement *sink = nullptr;
 GstElement *overlaySink = nullptr;
+
+constexpr const char *kRecordingTee = "nativerec";
+constexpr auto kRecordingDrain = std::chrono::seconds(3);
+
+struct Recording {
+    GstElement *queue = nullptr;
+    GstElement *parse = nullptr;
+    GstElement *mux = nullptr;
+    GstElement *file = nullptr;
+    GstElement *reparse = nullptr;
+    GstPad *teePad = nullptr;
+};
+
+Recording recording;
+std::mutex drainMutex;
+std::condition_variable drained;
+bool drainedEos = false;
+
+const char *muxerFor(int format)
+{
+    switch (format) {
+    case 0:
+        return "matroskamux";
+    case 1:
+        return "qtmux";
+    case 2:
+        return "mp4mux";
+    default:
+        return nullptr;
+    }
+}
+
+const char *reparserFor(GstPad *pad)
+{
+    GstCaps *const caps = gst_pad_query_caps(pad, nullptr);
+    const gchar *const name = gst_caps_is_empty(caps) ? "" : gst_structure_get_name(gst_caps_get_structure(caps, 0));
+    const char *const parser = g_str_equal(name, "video/x-h264") ? "h264parse" : g_str_equal(name, "video/x-h265") ? "h265parse" : nullptr;
+    gst_caps_unref(caps);
+    return parser;
+}
+
+void onParsedPad(GstElement *, GstPad *pad, gpointer mux)
+{
+    GstPad *const target = gst_element_request_pad_simple(GST_ELEMENT(mux), "video_%u");
+    if (!target) {
+        return;
+    }
+    const char *const parser = reparserFor(pad);
+    recording.reparse = parser ? gst_element_factory_make(parser, nullptr) : nullptr;
+    if (recording.reparse && pipeline) {
+        gst_bin_add(GST_BIN(pipeline), recording.reparse);
+        gst_element_sync_state_with_parent(recording.reparse);
+        GstPad *const reparseSink = gst_element_get_static_pad(recording.reparse, "sink");
+        GstPad *const reparseSrc = gst_element_get_static_pad(recording.reparse, "src");
+        gst_pad_link(pad, reparseSink);
+        gst_pad_link(reparseSrc, target);
+        gst_object_unref(reparseSink);
+        gst_object_unref(reparseSrc);
+    } else {
+        gst_pad_link(pad, target);
+    }
+    gst_object_unref(target);
+}
+
+GstPadProbeReturn onRecordingEos(GstPad *, GstPadProbeInfo *info, gpointer)
+{
+    if (GST_EVENT_TYPE(GST_PAD_PROBE_INFO_EVENT(info)) == GST_EVENT_EOS) {
+        const std::lock_guard<std::mutex> lock(drainMutex);
+        drainedEos = true;
+        drained.notify_all();
+        return GST_PAD_PROBE_DROP;
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+void dropRecording()
+{
+    GstElement *const elements[] = {recording.queue, recording.parse, recording.reparse, recording.mux, recording.file};
+    for (GstElement *element : elements) {
+        if (element) {
+            gst_element_set_state(element, GST_STATE_NULL);
+            if (pipeline) {
+                gst_bin_remove(GST_BIN(pipeline), element);
+            }
+        }
+    }
+    if (recording.teePad) {
+        gst_object_unref(recording.teePad);
+    }
+    recording = Recording{};
+}
 
 GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
 {
@@ -231,9 +324,118 @@ bool qgc_video_start(const char *pipelineDescription)
 #endif
 }
 
+bool qgc_video_start_recording(const char *file, int format)
+{
+#ifdef QGC_GST_STREAMING
+    const char *const muxer = muxerFor(format);
+    if (!file || !*file || !muxer) {
+        lastError = "a recording needs a file and a known format";
+        return false;
+    }
+    if (!pipeline) {
+        lastError = "no video is playing";
+        return false;
+    }
+    if (recording.file) {
+        lastError = "already recording";
+        return false;
+    }
+    GstElement *const tee = gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee);
+    if (!tee) {
+        lastError = "the pipeline has no recording tee";
+        return false;
+    }
+    recording.queue = gst_element_factory_make("queue", nullptr);
+    recording.parse = gst_element_factory_make("parsebin", nullptr);
+    recording.mux = gst_element_factory_make(muxer, nullptr);
+    recording.file = gst_element_factory_make("filesink", nullptr);
+    if (!recording.queue || !recording.parse || !recording.mux || !recording.file) {
+        lastError = std::string("this build cannot record with ") + muxer;
+        GstElement *const made[] = {recording.queue, recording.parse, recording.mux, recording.file};
+        for (GstElement *element : made) {
+            if (element) {
+                gst_object_unref(element);
+            }
+        }
+        recording = Recording{};
+        gst_object_unref(tee);
+        return false;
+    }
+    g_object_set(recording.file, "location", file, "async", FALSE, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline), recording.queue, recording.parse, recording.mux, recording.file, nullptr);
+    g_signal_connect(recording.parse, "pad-added", G_CALLBACK(onParsedPad), recording.mux);
+    const bool linked = gst_element_link(recording.queue, recording.parse) && gst_element_link(recording.mux, recording.file);
+    GstPad *const fileSinkPad = gst_element_get_static_pad(recording.file, "sink");
+    gst_pad_add_probe(fileSinkPad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, onRecordingEos, nullptr, nullptr);
+    gst_object_unref(fileSinkPad);
+    gst_element_sync_state_with_parent(recording.file);
+    gst_element_sync_state_with_parent(recording.mux);
+    gst_element_sync_state_with_parent(recording.parse);
+    gst_element_sync_state_with_parent(recording.queue);
+    recording.teePad = gst_element_request_pad_simple(tee, "src_%u");
+    GstPad *const queueSink = gst_element_get_static_pad(recording.queue, "sink");
+    const bool attached = linked && recording.teePad && gst_pad_link(recording.teePad, queueSink) == GST_PAD_LINK_OK;
+    gst_object_unref(queueSink);
+    gst_object_unref(tee);
+    if (!attached) {
+        lastError = "the recording branch would not link";
+        qgc_video_stop_recording();
+        return false;
+    }
+    lastError.clear();
+    return true;
+#else
+    (void)file;
+    (void)format;
+    lastError = "this build has no GStreamer";
+    return false;
+#endif
+}
+
+void qgc_video_stop_recording(void)
+{
+#ifdef QGC_GST_STREAMING
+    if (!recording.queue) {
+        return;
+    }
+    GstElement *const tee = pipeline ? gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee) : nullptr;
+    GstPad *const queueSink = gst_element_get_static_pad(recording.queue, "sink");
+    if (recording.teePad) {
+        gst_pad_unlink(recording.teePad, queueSink);
+        if (tee) {
+            gst_element_release_request_pad(tee, recording.teePad);
+        }
+    }
+    {
+        const std::lock_guard<std::mutex> lock(drainMutex);
+        drainedEos = false;
+    }
+    gst_pad_send_event(queueSink, gst_event_new_eos());
+    gst_object_unref(queueSink);
+    {
+        std::unique_lock<std::mutex> lock(drainMutex);
+        drained.wait_for(lock, kRecordingDrain, [] { return drainedEos; });
+    }
+    if (tee) {
+        gst_object_unref(tee);
+    }
+    dropRecording();
+#endif
+}
+
+bool qgc_video_recording(void)
+{
+#ifdef QGC_GST_STREAMING
+    return recording.file != nullptr;
+#else
+    return false;
+#endif
+}
+
 void qgc_video_stop(void)
 {
 #ifdef QGC_GST_STREAMING
+    qgc_video_stop_recording();
     if (pipeline) {
         gst_element_set_state(pipeline, GST_STATE_NULL);
     }
