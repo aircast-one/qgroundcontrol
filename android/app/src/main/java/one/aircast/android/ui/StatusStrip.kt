@@ -23,6 +23,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
 import org.json.JSONObject
@@ -135,7 +137,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             }
         }
         rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified) }
-        overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) }
+        overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) { offMainDetached { Qgc.invoke(CLEAR_RC_OVERRIDES) } } }
         telemetryCell(state)?.let { InlineCell(it, Color.Unspecified) { detail = StripDetail.Telemetry } }
         links?.let {
             InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified) { detail = StripDetail.Links }
@@ -180,6 +182,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
 }
 
 internal const val BATTERY_SETTINGS_PAGE = "Battery Settings"
+internal const val CLEAR_RC_OVERRIDES = "vehicle.clearRcChannelOverrides"
 internal const val POWER_SETUP_PAGE = "Power"
 
 internal enum class StripDetail { Battery, Gps, Links, Telemetry }
