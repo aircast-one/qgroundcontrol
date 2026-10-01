@@ -155,6 +155,7 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn poll(&self) -> Vec<(String, String)> {
+        crate::connectnotices::announce(&self.backend);
         let asked = self.watching.lock().unwrap().asked();
         let rendered: Vec<(String, String)> = asked
             .iter()

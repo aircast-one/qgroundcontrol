@@ -287,6 +287,7 @@ pub struct Vehicle {
     metadata_types: BTreeMap<u8, Uris>,
     parameter_metadata: Option<ComponentParameters>,
     pub parameter_download_skipped: bool,
+    parameters_announce_due: bool,
     pub link_status: crate::linkcount::LinkStatus,
     pub actuators_metadata: Option<Value>,
     pub events: crate::libevents::Session,
@@ -443,6 +444,7 @@ impl Vehicle {
             metadata_types: BTreeMap::new(),
             parameter_metadata: None,
             parameter_download_skipped: false,
+            parameters_announce_due: false,
             link_status: crate::linkcount::LinkStatus::default(),
             actuators_metadata: None,
             events: crate::libevents::Session::default(),
@@ -1153,6 +1155,9 @@ impl Vehicle {
     fn step_done(&mut self, step: connect::Step, now_ms: u64) -> Vec<Vec<u8>> {
         if self.connect.current() != Some(step) {
             return Vec::new();
+        }
+        if step == connect::Step::Parameters && !self.parameter_download_skipped {
+            self.parameters_announce_due = true;
         }
         let actions = self.connect.on_step_done(&self.connect_link(), &self.connect_vehicle());
         self.follow_connect(actions, now_ms)
@@ -2909,8 +2914,14 @@ impl Hub {
                     vehicle.max_proto_version = Some(PROTO_MAVLINK2);
                 }
                 bytes.extend(vehicle.begin_connect(now_ms));
+                if header.system_id == crate::mavout::gcs_system() {
+                    crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, &format!("Warning: A vehicle is using the same system id as {}: {}", crate::noticeboard::application_name(), header.system_id));
+                }
                 self.vehicles.insert(header.system_id, vehicle);
                 self.arrival.push(header.system_id);
+                if self.vehicles.len() > 1 {
+                    crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, &format!("Connected to Vehicle {}", header.system_id));
+                }
                 if !self.host_selects {
                     self.active.get_or_insert(header.system_id);
                 }
@@ -3184,6 +3195,13 @@ impl Hub {
 
     pub fn active_id(&self) -> Option<u8> {
         self.active
+    }
+
+    pub fn take_parameters_announce(&mut self) -> Option<(bool, bool)> {
+        let vehicle = self.active.and_then(|id| self.vehicles.get_mut(&id)).filter(|v| v.parameters_announce_due)?;
+        vehicle.parameters_announce_due = false;
+        let hitl = vehicle.parameter(vehicle.component, "SYS_HITL").is_some_and(|p| p.as_f64() != 0.0);
+        Some((vehicle.autopilot == crate::modes::AUTOPILOT_PX4, hitl))
     }
 
     pub fn active(&self) -> Option<&Vehicle> {
