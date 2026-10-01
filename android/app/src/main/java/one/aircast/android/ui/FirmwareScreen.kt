@@ -4,6 +4,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +90,19 @@ internal fun firmwarePhaseText(phase: String): String = when (phase) {
     else -> ""
 }
 
+internal const val FIRMWARE_FROM_FILE = "file"
+
+internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
+    listOf(FIRMWARE_FROM_FILE to "A firmware file", "px4:stable" to "PX4 Pro, stable", "px4:beta" to "PX4 Pro, beta") +
+        listOf("copter", "heli", "plane", "rover", "sub").flatMap { vehicle ->
+            listOf("stable", "beta", "dev").map { build ->
+                "ardupilot:$vehicle:$build" to "ArduPilot ${vehicle.replaceFirstChar { it.uppercase() }}, $build"
+            }
+        }
+
+internal fun firmwareChoice(source: String, file: String?): String? =
+    if (source == FIRMWARE_FROM_FILE) file else source
+
 internal fun firmwareFileAccepted(name: String): Boolean = FIRMWARE_EXTENSIONS.any { name.lowercase().endsWith(".$it") }
 
 @Composable
@@ -97,6 +113,8 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     var ports by remember { mutableStateOf<List<FirmwarePort>>(emptyList()) }
     var port by remember { mutableStateOf("") }
     var file by remember { mutableStateOf<File?>(null) }
+    var source by remember { mutableStateOf(FIRMWARE_FROM_FILE) }
+    var sourceMenu by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -133,7 +151,8 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "note") {
             FootNote(
-                "Plug in your device via USB, choose its port and a firmware file, then press Flash. A board " +
+                "Plug in your device via USB, choose its port and either a release, downloaded once the board is " +
+                    "identified, or a firmware file, then press Flash. A board " +
                     "running its firmware is asked to be unplugged and plugged back in so its bootloader starts.",
             )
         }
@@ -151,13 +170,31 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
         }
         item(key = "actions") {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(file?.name?.removePrefix("firmware-") ?: "No firmware file chosen", style = MaterialTheme.typography.bodyMedium)
+                Box {
+                    OutlinedButton(enabled = !busy, onClick = { sourceMenu = true }) {
+                        Text(FIRMWARE_SOURCES.firstOrNull { it.first == source }?.second ?: source)
+                    }
+                    DropdownMenu(expanded = sourceMenu, onDismissRequest = { sourceMenu = false }) {
+                        FIRMWARE_SOURCES.forEach { (token, title) ->
+                            DropdownMenuItem(text = { Text(title) }, onClick = {
+                                source = token
+                                sourceMenu = false
+                            })
+                        }
+                    }
+                }
+                if (source == FIRMWARE_FROM_FILE) {
+                    Text(file?.name?.removePrefix("firmware-") ?: "No firmware file chosen", style = MaterialTheme.typography.bodyMedium)
+                }
+                val choice = firmwareChoice(source, file?.absolutePath)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose file") }
+                    if (source == FIRMWARE_FROM_FILE) {
+                        OutlinedButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose file") }
+                    }
                     Button(
-                        enabled = !busy && port.isNotBlank() && file != null,
+                        enabled = !busy && port.isNotBlank() && choice != null,
                         onClick = {
-                            val chosen = file?.absolutePath ?: return@Button
+                            val chosen = choice ?: return@Button
                             scope.launch {
                                 refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(FIRMWARE_FLASH, port, chosen) }.orEmpty()
                             }

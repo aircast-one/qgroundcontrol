@@ -21,6 +21,16 @@ struct FirmwareJob: Equatable {
 
     static let fileExtensions = ["px4", "apj", "bin"]
 
+    static let sources: [(token: String, title: String)] = [
+        ("file", "A firmware file"),
+        ("px4:stable", "PX4 Pro, stable"),
+        ("px4:beta", "PX4 Pro, beta"),
+    ] + ["copter", "heli", "plane", "rover", "sub"].flatMap { vehicle in
+        ["stable", "beta", "dev"].map { build in
+            ("ardupilot:\(vehicle):\(build)", "ArduPilot \(vehicle.capitalized), \(build)")
+        }
+    }
+
     static func read(_ view: [String: Any], ports listed: [String: Any]) -> FirmwareJob? {
         guard view["kind"] as? String == "object" else { return nil }
         let ports = (listed["ports"] as? [[String: Any]] ?? []).compactMap { entry -> FirmwarePort? in
@@ -56,6 +66,7 @@ final class FirmwareStore: ObservableObject, Probeable {
     @Published private(set) var job = FirmwareJob()
     @Published var port = ""
     @Published private(set) var file = ""
+    @Published var source = "file"
     @Published private(set) var refusal = ""
 
     private var poll: Timer?
@@ -89,17 +100,19 @@ final class FirmwareStore: ObservableObject, Probeable {
         file = url.path
     }
 
-    var canFlash: Bool { !job.busy && !port.isEmpty && !file.isEmpty }
+    var chosen: String { source == "file" ? file : source }
+
+    var canFlash: Bool { !job.busy && !port.isEmpty && !chosen.isEmpty }
 
     func flash() {
         guard canFlash else { return }
-        let answer = Bridge.invoke("firmware.flash", [port, file])
+        let answer = Bridge.invoke("firmware.flash", [port, chosen])
         refusal = (answer["ok"] as? NSNumber)?.boolValue == true ? "" : (answer["reason"] as? String ?? "The upgrade did not start.")
         reload()
     }
 
     func probeState() -> [String: Any] {
-        ["phase": job.phase, "busy": job.busy, "progress": job.progress, "port": port, "file": file,
+        ["phase": job.phase, "busy": job.busy, "progress": job.progress, "port": port, "file": file, "source": source,
          "ports": job.ports.map(\.port), "messages": job.messages, "error": job.error, "refusal": refusal]
     }
 
@@ -108,6 +121,7 @@ final class FirmwareStore: ObservableObject, Probeable {
         case "select":
             port = args["port"] ?? port
             file = args["file"] ?? file
+            source = args["source"] ?? source
             return ["ok": true]
         case "flash":
             flash()
@@ -123,11 +137,11 @@ struct FirmwareView: View {
 
     var body: some View {
         SetupPageBody(title: "Firmware",
-                      note: "Plug in your device via USB, choose its port and a firmware file, then press Flash. A board running its firmware is asked to be unplugged and plugged back in so its bootloader starts.") {
+                      note: "Plug in your device via USB, choose its port and either a release, downloaded once the board is identified, or a firmware file, then press Flash. A board running its firmware is asked to be unplugged and plugged back in so its bootloader starts.") {
             GroupCard {
                 GroupRow(title: "Port", showSeparator: false, leading: { Tile(symbol: "cable.connector", colour: .blue) }) {
                     Picker("", selection: $store.port) {
-                        if store.job.ports.isEmpty && store.port.isEmpty { Text("No serial ports").tag("") }
+                        if store.port.isEmpty { Text(store.job.ports.isEmpty ? "No serial ports" : "Choose a port").tag("") }
                         if !store.port.isEmpty && !store.job.ports.contains(where: { $0.port == store.port }) {
                             Text("\(store.port) — not plugged in").tag(store.port)
                         }
@@ -137,10 +151,20 @@ struct FirmwareView: View {
                     .frame(maxWidth: 320)
                     .disabled(store.job.busy)
                 }
+                GroupRow(title: "Firmware", leading: { Tile(symbol: "shippingbox", colour: .orange) }) {
+                    Picker("", selection: $store.source) {
+                        ForEach(FirmwareJob.sources, id: \.token) { Text($0.title).tag($0.token) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 320)
+                    .disabled(store.job.busy)
+                }
+                if store.source == "file" {
                 GroupRow(title: "Firmware file",
                          description: store.file.isEmpty ? "A .px4, .apj or .bin image" : store.file,
                          leading: { Tile(symbol: "doc.zipper", colour: .indigo) }) {
                     Button("Choose\u{2026}", action: store.chooseFile).disabled(store.job.busy)
+                }
                 }
             }
 

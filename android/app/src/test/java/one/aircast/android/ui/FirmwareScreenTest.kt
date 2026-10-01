@@ -20,6 +20,14 @@ class FirmwareScreenTest {
     }
 
     @Test
+    fun aReleaseIsSentAsTheCoresTokenAndAFileAsItsPath() {
+        assertEquals("ardupilot:heli:dev", firmwareChoice("ardupilot:heli:dev", null))
+        assertEquals("/cache/firmware-fw.px4", firmwareChoice(FIRMWARE_FROM_FILE, "/cache/firmware-fw.px4"))
+        assertNull(firmwareChoice(FIRMWARE_FROM_FILE, null))
+        assertTrue(FIRMWARE_SOURCES.any { it.first == "ardupilot:plane:stable" && it.second == "ArduPilot Plane, stable" })
+    }
+
+    @Test
     fun onlyImagesTheBootloaderTakesAreAccepted() {
         assertTrue(firmwareFileAccepted("px4_fmu-v5_default.px4"))
         assertTrue(firmwareFileAccepted("arducopter.APJ"))
