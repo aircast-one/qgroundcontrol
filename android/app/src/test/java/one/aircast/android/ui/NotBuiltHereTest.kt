@@ -88,8 +88,8 @@ class NotBuiltHereTest {
         assertEquals(
             "it belongs with the label like the unit does - in the value column it merged with " +
                 "the value and stopped that column being scannable",
-            "MB \u00b7 No effect here - this head does not use QGC's tile cache",
-            factSubtitle(fact("maxCacheDiskSize", isBool = false).copy(units = "MB")),
+            "MB \u00b7 No effect here - the map keeps its own memory cache",
+            factSubtitle(fact("maxCacheMemorySize", isBool = false).copy(units = "MB")),
         )
         assertEquals("MB", factSubtitle(fact("someLiveNumber", isBool = false).copy(units = "MB")))
         assertEquals("", factSubtitle(fact("someLiveToggle")))

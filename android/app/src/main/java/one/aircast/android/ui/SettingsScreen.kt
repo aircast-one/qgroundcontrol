@@ -133,8 +133,7 @@ internal val NOT_BUILT_HERE = mapOf(
     "showAzimuthIndicatorOnMap" to "this head draws no gimbal azimuth indicator",
     "toolbarIndicatorShowAzimuth" to "this head has no toolbar to indicate on",
     "toolbarIndicatorShowAcquireReleaseControl" to "this head has no gimbal buttons panel",
-    "maxCacheDiskSize" to "this head does not use QGC's tile cache",
-    "maxCacheMemorySize" to "this head does not use QGC's tile cache",
+    "maxCacheMemorySize" to "the map keeps its own memory cache",
 )
 
 internal fun notBuiltHere(fact: Fact): String? = NOT_BUILT_HERE[fact.name]

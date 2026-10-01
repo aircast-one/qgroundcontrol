@@ -199,6 +199,10 @@ fun OfflineMapsSection() {
             HorizontalDivider()
         }
         Button(onClick = { adding = true }) { Text("Add New Set") }
+        TileSetTransfer(read.sets) {
+            refusal = it
+            polls++
+        }
         refusal?.let { Text(it, color = MaterialTheme.aircast.alert) }
     }
 

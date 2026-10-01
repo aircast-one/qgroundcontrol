@@ -328,6 +328,134 @@ impl Cache {
         })
     }
 
+    pub fn trim_to(&self, max_bytes: i64) -> rusqlite::Result<i64> {
+        let (_, size) = self.unique(self.default_set()?)?;
+        match size > max_bytes {
+            true => self.prune(size - max_bytes),
+            false => Ok(0),
+        }
+    }
+
+    fn is_own_file(&self, path: &Path) -> bool {
+        let own = self.connection.path().and_then(|own| std::fs::canonicalize(own).ok());
+        std::fs::canonicalize(path).ok().zip(own).is_some_and(|(asked, own)| asked == own)
+    }
+
+    pub fn export(&self, sets: &[i64], path: &Path) -> Result<(), String> {
+        if self.is_own_file(path) {
+            return Err("Export path must differ from the active database".to_string());
+        }
+        let _ = std::fs::remove_file(path);
+        let created = Connection::open(path).and_then(|out| SCHEMA.iter().try_for_each(|statement| out.execute_batch(statement)));
+        created.map_err(|_| "Error creating export database".to_string())?;
+        self.connection.execute("ATTACH DATABASE ?1 AS export", params![path.to_string_lossy()]).map_err(|_| "Error opening export database".to_string())?;
+        let copied = self.copy_sets_out(sets).map_err(|_| "Error adding tile set to exported database".to_string());
+        let _ = self.connection.execute_batch("DETACH DATABASE export");
+        copied
+    }
+
+    fn copy_sets_out(&self, sets: &[i64]) -> rusqlite::Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        sets.iter().try_for_each(|set| {
+            transaction.execute(
+                "INSERT INTO export.TileSets(name, typeStr, topleftLat, topleftLon, bottomRightLat, bottomRightLon, minZoom, maxZoom, type, numTiles, defaultSet, date) \
+                 SELECT name, typeStr, topleftLat, topleftLon, bottomRightLat, bottomRightLon, minZoom, maxZoom, type, numTiles, defaultSet, date FROM main.TileSets WHERE setID = ?1",
+                params![set],
+            )?;
+            let exported = transaction.last_insert_rowid();
+            transaction.execute(
+                "INSERT OR IGNORE INTO export.Tiles(hash, format, tile, size, type, date) \
+                 SELECT T.hash, T.format, T.tile, length(T.tile), T.type, T.date FROM main.Tiles T INNER JOIN main.SetTiles S ON T.tileID = S.tileID WHERE S.setID = ?1",
+                params![set],
+            )?;
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO export.SetTiles(tileID, setID) \
+                     SELECT E.tileID, ?2 FROM export.Tiles E INNER JOIN main.Tiles T ON E.hash = T.hash INNER JOIN main.SetTiles S ON T.tileID = S.tileID WHERE S.setID = ?1",
+                    params![set, exported],
+                )
+                .map(|_| ())
+        })?;
+        transaction.commit()
+    }
+
+    pub fn import(&self, path: &Path, replace: bool) -> Result<(), String> {
+        if !path.is_file() {
+            return Err("Error opening import database".to_string());
+        }
+        if self.is_own_file(path) {
+            return Err("Import path must differ from the active database".to_string());
+        }
+        self.connection.execute("ATTACH DATABASE ?1 AS import", params![path.to_string_lossy()]).map_err(|_| "Error opening import database".to_string())?;
+        let merged = self.merge_imported(replace);
+        let _ = self.connection.execute_batch("DETACH DATABASE import");
+        merged
+    }
+
+    fn merge_imported(&self, replace: bool) -> Result<(), String> {
+        let tiles: i64 = self.connection.query_row("SELECT COUNT(tileID) FROM import.Tiles", [], |row| row.get(0)).map_err(|_| "Error opening import database".to_string())?;
+        if tiles == 0 {
+            return Err("No unique tiles in imported database".to_string());
+        }
+        let imported: Vec<(i64, String, bool)> = self
+            .connection
+            .prepare("SELECT setID, name, defaultSet FROM import.TileSets ORDER BY defaultSet DESC, name ASC")
+            .and_then(|mut statement| statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get::<_, i64>(2)? != 0)))?.collect())
+            .map_err(|_| "No tile set in database".to_string())?;
+        if replace {
+            self.reset().map_err(|error| error.to_string())?;
+        }
+        let linked = imported.iter().try_fold(false, |any, (source, name, default_set)| {
+            self.merge_set(*source, name, *default_set).map(|linked| any || linked)
+        });
+        match linked.map_err(|_| "Error adding imported tile set to database".to_string())? {
+            true => Ok(()),
+            false => Err("No unique tiles in imported database".to_string()),
+        }
+    }
+
+    fn merge_set(&self, source: i64, name: &str, default_set: bool) -> rusqlite::Result<bool> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let target = match default_set {
+            true => self.default_set()?,
+            false => {
+                transaction.execute(
+                    "INSERT INTO main.TileSets(name, typeStr, topleftLat, topleftLon, bottomRightLat, bottomRightLon, minZoom, maxZoom, type, numTiles, defaultSet, date) \
+                     SELECT ?2, typeStr, topleftLat, topleftLon, bottomRightLat, bottomRightLon, minZoom, maxZoom, type, numTiles, defaultSet, ?3 FROM import.TileSets WHERE setID = ?1",
+                    params![source, self.unused_name(name)?, now_secs()],
+                )?;
+                transaction.last_insert_rowid()
+            }
+        };
+        transaction.execute(
+            "INSERT OR IGNORE INTO main.Tiles(hash, format, tile, size, type, date) \
+             SELECT T.hash, T.format, T.tile, length(T.tile), T.type, T.date FROM import.Tiles T INNER JOIN import.SetTiles S ON T.tileID = S.tileID WHERE S.setID = ?1",
+            params![source],
+        )?;
+        let linked = transaction.execute(
+            "INSERT OR IGNORE INTO main.SetTiles(tileID, setID) \
+             SELECT M.tileID, ?2 FROM main.Tiles M INNER JOIN import.Tiles T ON M.hash = T.hash INNER JOIN import.SetTiles S ON T.tileID = S.tileID WHERE S.setID = ?1",
+            params![source, target],
+        )?;
+        match (linked, default_set) {
+            (0, false) => transaction.execute("DELETE FROM main.TileSets WHERE setID = ?1", params![target]).map(|_| ())?,
+            (0, true) => (),
+            _ => transaction
+                .execute("UPDATE main.TileSets SET numTiles = (SELECT COUNT(*) FROM main.SetTiles WHERE setID = ?1) WHERE setID = ?1", params![target])
+                .map(|_| ())?,
+        }
+        transaction.commit()?;
+        Ok(linked > 0)
+    }
+
+    fn unused_name(&self, name: &str) -> rusqlite::Result<String> {
+        let taken: std::collections::HashSet<String> = self.sets()?.into_iter().map(|set| set.name).collect();
+        Ok(std::iter::once(name.to_string())
+            .chain((1..=9999).map(|n| format!("{name} {n:04}")))
+            .find(|candidate| !taken.contains(candidate))
+            .unwrap_or_else(|| format!("{name} {}", now_secs())))
+    }
+
     pub fn saved(&self, set: i64) -> rusqlite::Result<(i64, i64)> {
         self.connection.query_row(
             "SELECT COUNT(size), SUM(size) FROM Tiles A INNER JOIN SetTiles B on A.tileID = B.tileID WHERE B.setID = ?1",

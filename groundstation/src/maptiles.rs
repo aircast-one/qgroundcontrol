@@ -1,8 +1,35 @@
+use std::sync::{LazyLock, Mutex, PoisonError};
+use std::time::{Duration, Instant};
+
 use crate::mapurls::{Keys, TileRequest, tile_request};
 use crate::tilecache::{Cache, Tile, provider_hash, tile_hash};
 
 const BING_NO_TILE: &[u8] = include_bytes!("../../resources/BingNoTileBytes.dat");
 const ELEVATION_PROVIDER: &str = "Copernicus";
+const DISK_LIMIT_PATH: &str = "settings.mapsSettings.maxCacheDiskSize";
+const DEFAULT_DISK_LIMIT_MB: u64 = 1024;
+const LIMIT_CHECK_EVERY: Duration = Duration::from_secs(2);
+
+static LAST_LIMIT_CHECK: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
+
+fn disk_limit_bytes() -> i64 {
+    let megabytes = crate::settingsstore::raw_setting(DISK_LIMIT_PATH).and_then(|value| value.as_u64()).unwrap_or(DEFAULT_DISK_LIMIT_MB);
+    (megabytes * 1024 * 1024) as i64
+}
+
+fn keep_within_disk_limit(cache: &Cache) {
+    let due = {
+        let mut last = LAST_LIMIT_CHECK.lock().unwrap_or_else(PoisonError::into_inner);
+        let due = last.is_none_or(|checked| checked.elapsed() >= LIMIT_CHECK_EVERY);
+        if due {
+            *last = Some(Instant::now());
+        }
+        due
+    };
+    if due {
+        let _ = cache.trim_to(disk_limit_bytes());
+    }
+}
 
 pub fn image_format(image: &[u8]) -> Option<&'static str> {
     [(&b"\x89PNG\r\n\x1a\n"[..], "png"), (&b"\xff\xd8\xff"[..], "jpg"), (&b"GIF8"[..], "gif")]
@@ -25,6 +52,7 @@ pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Opti
     let format = image_format(&image)?;
     if let Some(cache) = cache.filter(|_| persist) {
         let _ = cache.save(&Tile { hash, format: format.to_string(), image: image.clone(), kind }, None);
+        keep_within_disk_limit(cache);
     }
     Some(image)
 }

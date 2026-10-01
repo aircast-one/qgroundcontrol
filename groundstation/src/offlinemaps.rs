@@ -15,6 +15,8 @@ pub const RESUME_DOWNLOAD: &str = "offlineMaps.resume";
 pub const CANCEL_DOWNLOAD: &str = "offlineMaps.cancel";
 pub const DELETE_SET: &str = "offlineMaps.delete";
 pub const RENAME_SET: &str = "offlineMaps.rename";
+pub const EXPORT_SETS: &str = "offlineMaps.export";
+pub const IMPORT_SETS: &str = "offlineMaps.import";
 
 const MAX_MAP_ZOOM: i32 = 23;
 const DEFAULT_AVERAGE_TILE_SIZE: u64 = 13652;
@@ -319,10 +321,7 @@ fn with_set(args: &str, act: impl FnOnce(&Cache, &TileSet) -> Result<(), String>
         let set = cache.sets().map_err(|error| error.to_string())?.into_iter().find(|set| set.id == id).ok_or("No such tile set.")?;
         act(&cache, &set)
     });
-    match outcome {
-        Ok(()) => json!({ "ok": true }),
-        Err(reason) => json!({ "ok": false, "reason": reason }),
-    }
+    self::outcome(outcome)
 }
 
 fn cancel(set: i64) {
@@ -331,8 +330,45 @@ fn cancel(set: i64) {
     }
 }
 
+fn cancel_all() {
+    DOWNLOADS.lock().unwrap_or_else(PoisonError::into_inner).keys().copied().collect::<Vec<_>>().into_iter().for_each(cancel);
+}
+
+fn outcome(result: Result<(), String>) -> Value {
+    match result {
+        Ok(()) => json!({ "ok": true }),
+        Err(reason) => json!({ "ok": false, "reason": reason }),
+    }
+}
+
+fn export_sets(args: &str) -> Value {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let path = argument(&args, 0).and_then(Value::as_str).unwrap_or_default();
+    let sets: Vec<i64> = args.as_array().map(|all| all.iter().skip(1).filter_map(Value::as_i64).collect()).unwrap_or_default();
+    match (path.is_empty(), sets.is_empty()) {
+        (true, _) => json!({ "ok": false, "reason": "offlineMaps.export takes the file to write and the ids of the sets to put in it" }),
+        (false, true) => json!({ "ok": false, "reason": "Select at least one tile set to export." }),
+        (false, false) => outcome(open_cache().and_then(|cache| cache.export(&sets, std::path::Path::new(path)))),
+    }
+}
+
+fn import_sets(args: &str) -> Value {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let path = argument(&args, 0).and_then(Value::as_str).unwrap_or_default();
+    let replace = argument(&args, 1).and_then(Value::as_bool).unwrap_or(false);
+    if path.is_empty() {
+        return json!({ "ok": false, "reason": "offlineMaps.import takes the file to read and whether it replaces the existing sets" });
+    }
+    if replace {
+        cancel_all();
+    }
+    outcome(open_cache().and_then(|cache| cache.import(std::path::Path::new(path), replace)))
+}
+
 pub fn run(path: &str, args: &str) -> Value {
     match path {
+        EXPORT_SETS => export_sets(args),
+        IMPORT_SETS => import_sets(args),
         START_DOWNLOAD => start_download(args),
         RESUME_DOWNLOAD => with_set(args, |cache, set| {
             cache.retry_errors(set.id).map_err(|error| error.to_string())?;
@@ -345,7 +381,7 @@ pub fn run(path: &str, args: &str) -> Value {
         }),
         DELETE_SET => with_set(args, |cache, set| match set.default_set {
             true => {
-                DOWNLOADS.lock().unwrap_or_else(PoisonError::into_inner).keys().copied().collect::<Vec<_>>().into_iter().for_each(cancel);
+                cancel_all();
                 cache.reset().map_err(|error| error.to_string())
             }
             false => {
@@ -369,7 +405,7 @@ pub fn run(path: &str, args: &str) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [START_DOWNLOAD, RESUME_DOWNLOAD, CANCEL_DOWNLOAD, DELETE_SET, RENAME_SET].contains(&path)
+    [START_DOWNLOAD, RESUME_DOWNLOAD, CANCEL_DOWNLOAD, DELETE_SET, RENAME_SET, EXPORT_SETS, IMPORT_SETS].contains(&path)
 }
 
 #[cfg(test)]
@@ -452,6 +488,55 @@ mod tests {
         cache.reset().unwrap();
         let left = cache.sets().unwrap();
         assert_eq!((left.len(), left[0].default_set, cache.count().unwrap()), (1, true, 0), "deleting the system wide cache empties it and keeps only its own row");
+    }
+
+    #[test]
+    fn exported_sets_import_beside_what_is_there_or_in_place_of_it() {
+        let folder = std::env::temp_dir().join(format!("qgc-tile-export-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let (ours, file) = (folder.join("ours.db"), folder.join("export.db"));
+        let _ = std::fs::remove_file(&ours);
+        let kind = provider_hash("Google Satellite").unwrap();
+        let png = b"\x89PNG\r\n\x1a\n".to_vec();
+        let tile = |x: i32| Tile { hash: tile_hash(kind, x, 1, 2), format: "png".into(), image: png.clone(), kind };
+        let set = |name: &str| TileSet { id: 0, name: name.into(), type_str: "Google Satellite".into(), top_left: (1.0, 2.0), bottom_right: (0.5, 2.5), min_zoom: 2, max_zoom: 2, kind, tiles: 2, default_set: false };
+        let cache = Cache::open(&ours).unwrap();
+        let fields = cache.create_set(&set("Fields"), &[(1, 1, 2), (2, 1, 2)]).unwrap();
+        [1, 2].iter().for_each(|x| cache.complete(fields, &tile(*x)).unwrap());
+        let empty = cache.create_set(&set("Empty"), &[(7, 1, 2)]).unwrap();
+        cache.save(&tile(9), None).unwrap();
+
+        assert_eq!(cache.export(&[fields], &ours), Err("Export path must differ from the active database".into()));
+        cache.export(&[fields, empty], &file).unwrap();
+        let exported = Cache::open(&file).unwrap();
+        let names: Vec<String> = exported.sets().unwrap().into_iter().map(|s| s.name).collect();
+        assert_eq!(names, ["Default Tile Set", "Empty", "Fields"], "the export carries only the chosen sets beside its own default");
+        assert_eq!(exported.count().unwrap(), 2, "the default cache's tile stays home");
+        drop(exported);
+
+        cache.import(&file, false).unwrap();
+        let after: Vec<(String, i64)> = cache.sets().unwrap().into_iter().map(|s| (s.name, s.tiles)).collect();
+        assert_eq!(after, [("Default Tile Set".into(), 0), ("Empty".into(), 2), ("Fields".into(), 2), ("Fields 0001".into(), 2)], "a clashing name is numbered and a set with no tiles is not imported");
+        assert_eq!(cache.count().unwrap(), 3, "tiles already cached are linked, not duplicated");
+
+        cache.import(&file, true).unwrap();
+        let replaced: Vec<String> = cache.sets().unwrap().into_iter().map(|s| s.name).collect();
+        assert_eq!(replaced, ["Default Tile Set", "Fields"]);
+        assert_eq!(cache.count().unwrap(), 2, "replacing drops what the file does not hold");
+        assert_eq!(cache.import(&folder.join("missing.db"), false), Err("Error opening import database".into()));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn the_default_cache_is_trimmed_to_the_disk_limit() {
+        let cache = Cache::open_in_memory().unwrap();
+        let kind = provider_hash("Google Satellite").unwrap();
+        (0..4).for_each(|x| {
+            cache.save(&Tile { hash: tile_hash(kind, x, 0, 3), format: "png".into(), image: vec![0; 1000], kind }, None).unwrap();
+        });
+        assert_eq!(cache.trim_to(4000).unwrap(), 0);
+        assert_eq!(cache.trim_to(2500).unwrap(), 2);
+        assert_eq!(cache.count().unwrap(), 2);
     }
 
     #[test]
