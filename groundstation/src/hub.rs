@@ -2040,6 +2040,9 @@ impl Vehicle {
         }
         let switched = held.is_some() && best != self.primary_link;
         self.primary_link = best;
+        if let Some(sending) = best {
+            self.link = sending;
+        }
         switched
     }
 
@@ -3829,6 +3832,7 @@ mod tests {
         hub.check_links(100, &kinds);
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 200);
         assert_eq!(hub.active().unwrap().primary_link, Some(2), "_updatePrimaryLink leaves a cloud primary once a direct link is alive");
+        assert_eq!(hub.active().unwrap().link, 2, "commands go out on the primary link, as Vehicle::sendMessageOnLinkThreadSafe does with the primary");
         hub.on_frame(Origin { link: 4, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 300);
         assert_eq!(hub.active().unwrap().primary_link, Some(2), "a live direct primary is kept");
         hub.check_links(3_000, &kinds);
