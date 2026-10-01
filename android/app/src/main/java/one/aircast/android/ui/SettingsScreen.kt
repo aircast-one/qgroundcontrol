@@ -1,5 +1,11 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
+
+import androidx.compose.ui.draw.clip
+
+import androidx.compose.foundation.layout.aspectRatio
+
 import androidx.annotation.DrawableRes
 import one.aircast.android.R
 
@@ -387,6 +393,17 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
     }
 
     Column(modifier.verticalScroll(rememberScrollState())) {
+        if (page.showsVideoSources) {
+            VideoSurface(
+                Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                expanded = true,
+            )
+        }
         SettingsControls(page, sections) { reloads++ }
         if (page.title == GENERAL_PAGE) ResetAllSettingsRow()
     }
