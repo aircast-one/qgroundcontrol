@@ -434,6 +434,40 @@ fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Stri
     Some(answer.to_string())
 }
 
+pub fn folder() -> Option<std::path::PathBuf> {
+    PATH.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+}
+
+pub fn telemetry_save_path() -> Option<String> {
+    let root = stored_text(&key("App", "savePath"))?;
+    Some(child_save_path(&root, "Telemetry")).filter(|path| !path.is_empty())
+}
+
+pub fn default_save_path(application: &str) -> Option<std::path::PathBuf> {
+    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+    Some(home.join("Documents").join(application))
+}
+
+pub fn establish_save_path(given: Option<&str>, application: &str) {
+    let root = match given {
+        Some(path) => Some(std::path::PathBuf::from(path)),
+        None => match stored_text(&key("App", "savePath")).filter(|path| !path.is_empty()) {
+            Some(_) => None,
+            None => default_save_path(application),
+        },
+    };
+    if let Some(root) = root {
+        written(&key("App", "savePath"), &root.to_string_lossy());
+    }
+    if let Some(saved) = stored_text(&key("App", "savePath")).filter(|path| !path.is_empty()).map(std::path::PathBuf::from)
+        && std::fs::create_dir_all(&saved).is_ok()
+    {
+        SAVE_DIRECTORIES.iter().for_each(|(_, directory)| {
+            let _ = std::fs::create_dir_all(saved.join(directory));
+        });
+    }
+}
+
 pub fn parameter_save_path() -> Option<String> {
     let root = stored_text(&key("App", "savePath"))?;
     Some(child_save_path(&root, "Parameters")).filter(|path| !path.is_empty())

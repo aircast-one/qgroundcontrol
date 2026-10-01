@@ -17,6 +17,7 @@ const DEEP_LINK_SCHEME: &str = "aircast-qgc";
 pub struct Options {
     pub settings: std::path::PathBuf,
     pub map_cache: Option<String>,
+    pub save_path: Option<String>,
     pub application: String,
     pub position_source: String,
     pub autoconnect: bool,
@@ -39,6 +40,7 @@ pub fn options(arguments: &[String]) -> Options {
     Options {
         settings: option("--settings").map_or_else(|| default_settings_path(&application), std::path::PathBuf::from),
         map_cache: option("--map-cache").or_else(|| default_map_cache(&application)),
+        save_path: option("--save-path"),
         position_source: option("--position-source").unwrap_or_else(|| "none".to_string()),
         autoconnect: !arguments.iter().any(|a| a == "--no-autoconnect"),
         debug_port: option("--port").or_else(|| std::env::var("QGC_DEBUG_API_PORT").ok()).and_then(|p| p.parse().ok()),

@@ -148,6 +148,8 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
         crate::abi::qgc_core_set_application_name(text(&chosen.application).as_ptr());
         crate::abi::qgc_core_gcs_position_source(text(&chosen.position_source).as_ptr());
     }
+    crate::settingsstore::establish_save_path(chosen.save_path.as_deref(), &chosen.application);
+    crate::telemetrylog::recover_lost();
     if let Some(cache) = &chosen.map_cache {
         unsafe { crate::abi::qgc_core_set_map_cache_path(text(cache).as_ptr()) };
     }

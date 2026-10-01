@@ -270,6 +270,7 @@ pub(crate) fn start_pump() {
                 crate::corelinks::tick(crate::hub::now_ms());
                 crate::signingkeys::tick(crate::hub::now_ms());
                 if crate::vehiclefacade::switched_on() {
+                    crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
                     crate::joystickhost::tick(crate::hub::now_ms());
@@ -385,6 +386,9 @@ fn install_hub_sink() {
                 if !verdict.accept {
                     return;
                 }
+            }
+            if crate::vehiclefacade::switched_on() {
+                crate::telemetrylog::received(frame);
             }
             let outbound = crate::hub::lock().on_frame(crate::hub::Origin { link: frame.link, replay: frame.replay, v2: frame.v2 }, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
             deliver(outbound);

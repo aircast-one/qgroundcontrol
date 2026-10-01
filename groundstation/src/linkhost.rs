@@ -351,6 +351,9 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
     if bytes.is_empty() {
         return false;
     }
+    if crate::vehiclefacade::switched_on() {
+        crate::telemetrylog::sent(bytes);
+    }
     let signed = crate::signing::lock().outbound(id, bytes);
     let bytes = signed.as_slice();
     let (owned, writer, shared) = {

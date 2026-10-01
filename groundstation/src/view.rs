@@ -563,6 +563,7 @@ mod deps_cover_reads {
             ("rtkbase", include_str!("rtkbase.rs")),
             ("sbfbase", include_str!("sbfbase.rs")),
             ("speech", include_str!("speech.rs")),
+            ("telemetrylog", include_str!("telemetrylog.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),

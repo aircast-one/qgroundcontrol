@@ -30,6 +30,7 @@ object HostPlatform {
             "--settings", settings.absolutePath,
             "--app-name", application,
             "--map-cache", File(mapCache, "qgcMapCache.db").absolutePath,
+            "--save-path", File(activity.getExternalFilesDir(null) ?: activity.filesDir, application).absolutePath,
         ) + if (BuildConfig.DEBUG) listOf("--port", DEBUG_API_PORT) else emptyList()
         QGCBridge.start(arguments.toTypedArray())
         val tileCache = File(mapCache, "qgcMapCache.db").absolutePath
