@@ -59,7 +59,7 @@ fn starts_logging(message: &MavMessage) -> bool {
 }
 
 fn start(recording: &mut Recording) {
-    if recording.open.is_some() || recording.suspended || !setting_bool("settings.mavlinkSettings.telemetrySave", true) {
+    if recording.open.is_some() || recording.suspended || !setting_bool("settings.mavlinkSettings.telemetrySave", true) || setting_bool("settings.appSettings.disableAllPersistence", false) {
         return;
     }
     let Some(folder) = temp_folder() else { return };
@@ -71,6 +71,7 @@ fn start(recording: &mut Recording) {
         Ok(file) => recording.open = Some((path, file)),
         Err(error) => {
             log::warn!("MAVLink Logging failed. Could not open {}: {error}", path.display());
+            crate::noticeboard::post(crate::noticeboard::MESSAGE, "MAVLink", &format!("Opening Flight Data file for writing failed. Unable to write to {}. Please choose a different file location.", path.display()));
             recording.suspended = true;
         }
     }
@@ -144,10 +145,16 @@ pub fn saved_name(folder: &Path, now: chrono::DateTime<chrono::Local>) -> PathBu
 }
 
 fn save(temp: &Path) {
-    let Some(folder) = save_folder().filter(|folder| std::fs::create_dir_all(folder).is_ok()) else {
+    let Some(folder) = save_folder() else {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", "Unable to save telemetry log. Application save directory is not set.");
         let _ = std::fs::remove_file(temp);
         return;
     };
+    if std::fs::create_dir_all(&folder).is_err() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &format!("Unable to save telemetry log. Telemetry save directory \"{}\" does not exist.", folder.display()));
+        let _ = std::fs::remove_file(temp);
+        return;
+    }
     let target = saved_name(&folder, chrono::Local::now());
     let moved = std::fs::rename(temp, &target).or_else(|_| std::fs::copy(temp, &target).map(|_| ()));
     match moved {
