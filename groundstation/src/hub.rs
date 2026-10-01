@@ -2263,6 +2263,12 @@ impl Vehicle {
                     }
                 }
             }
+            MavMessage::DATA_TRANSMISSION_HANDSHAKE(h) => {
+                crate::flowimage::on_handshake(self.id, crate::flowimage::Handshake { kind: h.mavtype as u8, size: h.size, width: h.width, height: h.height, packets: h.packets, payload: h.payload });
+            }
+            MavMessage::ENCAPSULATED_DATA(d) => {
+                crate::flowimage::on_data(self.id, d.seqnr, &d.data);
+            }
             MavMessage::STATUSTEXT(t) => {
                 let end = t.text.iter().position(|b| *b == 0).unwrap_or(t.text.len());
                 let received = self.status_text.receive(header.component_id, t.severity as u8, t.id, t.chunk_seq, &t.text[..end]);

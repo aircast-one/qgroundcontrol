@@ -275,6 +275,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
     let (ready, headline, detail) = readiness(connected, parameters_ready, &named, &faults);
     let sub_frame = components.iter().any(|c| c.class_name == "APMSubFrameComponent");
+    let flow_images = connected && crate::hub::lock().active_id().is_some_and(|id| crate::flowimage::image_index(id) > 0);
     json!({
         "kind": "object",
         "class": "VehicleSetup",
@@ -296,11 +297,12 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
-            "pages": pages.iter().filter(|p| page_exists(p, px4)).map(|p| {
+            "pages": pages.iter().filter(|p| page_exists(p, px4)).chain((*title == "Setup" && flow_images).then_some(&"Optical Flow")).map(|p| {
                 let blocked = page_block(p, &components);
                 let screen = match (sub_frame, *p) {
                     (true, "Frame") => Some(crate::apmsubframe::SUB_FRAME_SCREEN),
                     (true, "Motors") => Some(crate::apmsubmotors::SUB_MOTORS_SCREEN),
+                    (_, "Optical Flow") => Some(crate::flowimage::OPTICAL_FLOW_SCREEN),
                     _ => screen_for(p, px4),
                 };
                 json!({ "name": p, "parameterSections": screen.is_none() && (sections_for(p, px4).is_some() || crate::vehicleconfig::has(p, px4)), "screen": screen, "openable": blocked.is_none(), "blockedReason": blocked })

@@ -62,6 +62,7 @@ use crate::px4airframe;
 use crate::autotune;
 use crate::actuators;
 use crate::apmfollow;
+use crate::flowimage;
 use crate::maptypes;
 use crate::presets;
 use crate::apmsubframe;
@@ -202,6 +203,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.actuatorOutputs", deps: actuators::DEPS, compute: actuators::outputs_view },
     View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
     View { path: "view.patternPresets", deps: presets::DEPS, compute: presets::pattern_presets_view },
+    View { path: "view.opticalFlow", deps: flowimage::DEPS, compute: flowimage::optical_flow_view },
     View { path: "view.mapTypes", deps: maptypes::DEPS, compute: maptypes::map_types_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
@@ -577,6 +579,7 @@ mod deps_cover_reads {
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
             ("components", include_str!("components.rs")),
+            ("flowimage", include_str!("flowimage.rs")),
             ("maptypes", include_str!("maptypes.rs")),
             ("mapurls", include_str!("mapurls.rs")),
             ("maptiles", include_str!("maptiles.rs")),
