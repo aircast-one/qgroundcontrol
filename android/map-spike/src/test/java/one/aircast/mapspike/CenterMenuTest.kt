@@ -21,4 +21,13 @@ class CenterMenuTest {
         )
         assertEquals(listOf(TrackPoint(47.0, 8.0), TrackPoint(47.1, 8.1)), missionFitPoints(items))
     }
+
+    @Test
+    fun `a selected corner's position comes from its fence or survey`() {
+        val fence = FencePolygon(3, true, listOf(TrackPoint(1.0, 2.0), TrackPoint(3.0, 4.0)))
+        val survey = Survey(5, listOf(TrackPoint(5.0, 6.0)), emptyList(), 0, "survey", "polygon", "surveyAreaPolygon")
+        assertEquals(TrackPoint(3.0, 4.0), cornerPosition(MapHit.FenceVertex(3, 1), listOf(fence), listOf(survey)))
+        assertEquals(TrackPoint(5.0, 6.0), cornerPosition(MapHit.SurveyVertex(5, 0), listOf(fence), listOf(survey)))
+        assertNull(cornerPosition(MapHit.FenceVertex(3, 9), listOf(fence), listOf(survey)))
+    }
 }

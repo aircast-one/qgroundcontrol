@@ -134,6 +134,7 @@ internal fun MapSpikeScreen(
     var editingItem by remember { mutableStateOf<MissionItem?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
     var fitOnly by remember { mutableStateOf<List<TrackPoint>?>(null) }
+    var positioning by remember { mutableStateOf<Pair<MapHit, TrackPoint>?>(null) }
     var loadArmed by remember { mutableStateOf(false) }
     var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
@@ -397,6 +398,13 @@ internal fun MapSpikeScreen(
             centreRequest = centreRequest,
             centreOn = centreOn,
         )
+
+        positioning?.let { (hit, at) ->
+            PositionDialog(at, onDismiss = { positioning = null }) { moved ->
+                positioning = null
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally) }
+            }
+        }
 
         FilterChip(
             selected = follow,
@@ -891,6 +899,12 @@ internal fun MapSpikeScreen(
                             }
                         }
 
+                        listOfNotNull(fenceHit, surveyHit).firstOrNull()?.let { hit ->
+                            cornerPosition(hit, fences, surveyList)?.let { at ->
+                                TextButton(onClick = { positioning = hit to at }) { Text("Edit Position") }
+                            }
+                        }
+
                         fenceHit?.let { hit ->
                             if (cornerRemovable(fences.firstOrNull { it.index == hit.polygon })) {
                                 TextButton(onClick = {
@@ -1153,6 +1167,31 @@ fun parsedCoordinate(latitude: String, longitude: String): TrackPoint? {
     val lat = latitude.trim().toDoubleOrNull()?.takeIf { it in -90.0..90.0 } ?: return null
     val lon = longitude.trim().toDoubleOrNull()?.takeIf { it in -180.0..180.0 } ?: return null
     return TrackPoint(lat, lon)
+}
+
+fun cornerPosition(hit: MapHit, fences: List<FencePolygon>, surveys: List<Survey>): TrackPoint? = when (hit) {
+    is MapHit.FenceVertex -> fences.firstOrNull { it.index == hit.polygon }?.vertices?.getOrNull(hit.vertex)
+    is MapHit.SurveyVertex -> surveys.firstOrNull { it.index == hit.item }?.area?.getOrNull(hit.vertex)
+    else -> null
+}
+
+@Composable
+private fun PositionDialog(at: TrackPoint, onDismiss: () -> Unit, onMove: (TrackPoint) -> Unit) {
+    var latitude by remember(at) { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.latitude)) }
+    var longitude by remember(at) { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.longitude)) }
+    val parsed = parsedCoordinate(latitude, longitude)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Position") },
+        text = {
+            Column {
+                OutlinedTextField(value = latitude, onValueChange = { latitude = it }, label = { Text("Latitude") }, singleLine = true)
+                OutlinedTextField(value = longitude, onValueChange = { longitude = it }, label = { Text("Longitude") }, singleLine = true)
+            }
+        },
+        confirmButton = { TextButton(enabled = parsed != null, onClick = { parsed?.let(onMove) }) { Text("Move") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
