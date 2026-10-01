@@ -6,13 +6,17 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
+    "vehicle.fixedWing",
+    "vehicle.vtol",
+    "vehicle.airship",
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",
     "settings.unitsSettings.speedUnits",
     "settings.unitsSettings.areaUnits",
 ];
 
-pub const DEFAULTS: &[&str] = &["vehicle/altitudeRelative", "vehicle/groundSpeed", "vehicle/climbRate", "vehicle/distanceToHome", "vehicle/heading", "vehicle/altitudeAMSL"];
+pub const DEFAULTS: &[&str] = &["vehicle/distanceToHome", "vehicle/altitudeRelative", "vehicle/groundSpeed", "vehicle/climbRate"];
+pub const FORWARD_FLIGHT_DEFAULTS: &[&str] = &["vehicle/airSpeed"];
 
 const ABSENT: &str = "\u{2014}";
 
@@ -42,9 +46,9 @@ fn split_selection(selection: &str) -> (String, String) {
     }
 }
 
-fn selections(args: &[String]) -> Vec<(String, String)> {
+fn selections(args: &[String], forward_flight: bool) -> Vec<(String, String)> {
     let chosen: Vec<(String, String)> = match args.is_empty() {
-        true => DEFAULTS.iter().map(|s| split_selection(s)).collect(),
+        true => DEFAULTS.iter().chain(FORWARD_FLIGHT_DEFAULTS.iter().filter(|_| forward_flight)).map(|s| split_selection(s)).collect(),
         false => args.iter().map(|s| split_selection(s)).collect(),
     };
     chosen.into_iter().filter(|(_, name)| !name.is_empty()).collect()
@@ -53,7 +57,7 @@ fn selections(args: &[String]) -> Vec<(String, String)> {
 pub fn deps_for(args: &[String]) -> Vec<String> {
     DEPS.iter()
         .map(|d| d.to_string())
-        .chain(selections(args).iter().map(|(group, name)| fact_path(group, name)))
+        .chain(selections(args, true).iter().map(|(group, name)| fact_path(group, name)))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect()
@@ -78,7 +82,9 @@ fn converted(backend: &dyn Backend, fact: &Value) -> Option<(String, String)> {
 }
 
 pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let items: Vec<Value> = selections(args)
+    let class = object(&backend.get_fields("vehicle", "fixedWing,vtol,airship"));
+    let forward_flight = ["fixedWing", "vtol", "airship"].iter().any(|key| crate::read::flag(&class, key));
+    let items: Vec<Value> = selections(args, forward_flight)
         .iter()
         .map(|(group, name)| {
             let fact = object(&backend.get(&fact_path(group, name)));
@@ -146,17 +152,18 @@ mod tests {
     }
 
     #[test]
-    fn defaults_are_the_six_vehicle_facts() {
+    fn defaults_are_qgc_core_plugins_four_and_airspeed_in_forward_flight() {
         let view = instruments_view(&Fake, &[]);
         let items = view["items"].as_array().unwrap();
-        assert_eq!(items.len(), 6);
-        assert_eq!(items[0]["label"], "Alt (Rel)");
-        assert_eq!(items[0]["value"], "25.0");
-        assert_eq!(items[0]["units"], "m");
-        assert_eq!(items[1]["label"], "Ground Speed");
-        assert_eq!(items[1]["value"], "\u{2014}");
-        assert_eq!(items[1]["missing"], true);
-        assert_eq!(items[2]["label"], "Climb Rate");
+        assert_eq!(items.iter().map(|i| i["name"].as_str().unwrap()).collect::<Vec<_>>(), ["distanceToHome", "altitudeRelative", "groundSpeed", "climbRate"], "QGCCorePlugin::factValueGridCreateDefaultSettings");
+        assert_eq!(items[1]["label"], "Alt (Rel)");
+        assert_eq!(items[1]["value"], "25.0");
+        assert_eq!(items[1]["units"], "m");
+        assert_eq!(items[2]["label"], "Ground Speed");
+        assert_eq!(selections(&[], true).last().map(|(_, name)| name.as_str()), Some("airSpeed"), "fixed wing, VTOL and airship add AirSpeed");
+        assert_eq!(items[2]["value"], "\u{2014}");
+        assert_eq!(items[2]["missing"], true);
+        assert_eq!(items[3]["label"], "Climb Rate");
         assert_eq!(view["available"], true);
     }
 
@@ -285,10 +292,10 @@ mod tests {
 
     #[test]
     fn dependencies_are_the_selected_facts_not_their_groups() {
-        assert_eq!(deps_for(&["gps/count".to_string(), "vehicle/heading".to_string(), "batteries.0/voltage".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.batteries.0.voltage", "vehicle.gps.count", "vehicle.heading", "vehicles.activeVehicleAvailable"]);
-        assert_eq!(deps_for(&[]).len(), 11);
+        assert_eq!(deps_for(&["gps/count".to_string(), "vehicle/heading".to_string(), "batteries.0/voltage".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.batteries.0.voltage", "vehicle.fixedWing", "vehicle.gps.count", "vehicle.heading", "vehicle.vtol", "vehicles.activeVehicleAvailable"]);
+        assert_eq!(deps_for(&[]).len(), 13);
         assert!(deps_for(&[]).contains(&"vehicle.altitudeRelative".to_string()));
-        assert_eq!(deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicles.activeVehicleAvailable"], "an empty name never turns into a read of the whole vehicle");
+        assert_eq!(deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.fixedWing", "vehicle.vtol", "vehicles.activeVehicleAvailable"], "an empty name never turns into a read of the whole vehicle");
         assert!(instruments_view(&Fake, &["vehicle/".to_string()])["items"].as_array().unwrap().is_empty());
     }
 

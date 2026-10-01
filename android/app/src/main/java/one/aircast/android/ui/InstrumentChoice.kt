@@ -7,11 +7,13 @@ import one.aircast.mapspike.optText
 internal const val INSTRUMENT_GROUPS = "view.instrumentGroups"
 
 internal val DEFAULT_INSTRUMENTS = listOf(
+    "distanceToHome",
     "altitudeRelative",
     "groundSpeed",
-    "distanceToHome",
-    "heading",
+    "climbRate",
 )
+
+private const val INSTRUMENTS_VIEW = "view.instruments"
 
 internal const val MOST_INSTRUMENTS = 6
 
@@ -55,8 +57,10 @@ internal fun vehicleOwnGroup(view: JSONObject?): InstrumentGroup? {
     return listed.takeIf { it.isNotEmpty() }?.let { InstrumentGroup("vehicle", "Vehicle", it) }
 }
 
-internal fun instrumentsPath(chosen: List<String>): String =
-    "view.instruments(${chosen.ifEmpty { DEFAULT_INSTRUMENTS }.joinToString(",")})"
+internal fun instrumentsPath(chosen: List<String>): String = when {
+    chosen.isEmpty() || chosen == DEFAULT_INSTRUMENTS -> INSTRUMENTS_VIEW
+    else -> "$INSTRUMENTS_VIEW(${chosen.joinToString(",")})"
+}
 
 internal fun showsInstruments(chosen: List<String>): Boolean = chosen.isNotEmpty()
 

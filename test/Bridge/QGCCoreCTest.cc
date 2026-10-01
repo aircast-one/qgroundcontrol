@@ -308,8 +308,8 @@ void QGCCoreCTest::_instrumentsResolveTheSelection()
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.instruments")).value(QStringLiteral("available")).toBool(false), true, 5000);
     const QJsonArray items = take(qgc_bridge_get("view.instruments")).value(QStringLiteral("items")).toArray();
-    QCOMPARE(items.count(), 6);
-    QCOMPARE(items.first().toObject().value(QStringLiteral("name")).toString(), QStringLiteral("altitudeRelative"));
+    QCOMPARE(items.count(), 4);
+    QCOMPARE(items.first().toObject().value(QStringLiteral("name")).toString(), QStringLiteral("distanceToHome"));
     QVERIFY(!items.first().toObject().value(QStringLiteral("label")).toString().isEmpty());
     const QJsonArray chosen = take(qgc_bridge_get("view.instruments(gps/count,vehicle/heading)")).value(QStringLiteral("items")).toArray();
     QCOMPARE(chosen.count(), 2);
