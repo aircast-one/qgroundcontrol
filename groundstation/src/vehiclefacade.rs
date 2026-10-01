@@ -580,6 +580,8 @@ fn onboard_log_get(path: &str) -> Option<Value> {
     }
 }
 
+const MAV_MODE_FLAG_HIL_ENABLED: u8 = 32;
+
 fn real_camera_op(name: &str, args: &str) -> Option<Value> {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let timelapse = stored_number("PhotoCaptureMode").is_some_and(|mode| mode as i64 != crate::simcamera::PHOTO_CAPTURE_SINGLE);
@@ -784,7 +786,7 @@ fn vehicle_components() -> Option<Vec<Value>> {
     }
     let parameter = |component: u8, name: &str| v.parameter(component, name).map(|p| p.as_f64());
     let version = v.firmware().and_then(|f| f.version).map(|(major, minor, patch, _)| (major, minor, patch));
-    let described = crate::components::Vehicle { vehicle_type: v.vehicle_type, version, parameter: &parameter, default_component: v.component };
+    let described = crate::components::Vehicle { vehicle_type: v.vehicle_type, version, parameter: &parameter, default_component: v.component, hil: v.base_mode & MAV_MODE_FLAG_HIL_ENABLED != 0 };
     if v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
         return Some(crate::components::ardupilot(&described));
     }

@@ -21,6 +21,7 @@ pub struct Vehicle<'a> {
     pub version: Option<(u8, u8, u8)>,
     pub parameter: &'a dyn Fn(u8, &str) -> Option<f64>,
     pub default_component: u8,
+    pub hil: bool,
 }
 
 struct Entry {
@@ -131,7 +132,7 @@ pub fn px4(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<Value> {
     };
     let entries = [
         Some(Entry { requires_setup: true, setup_complete: param("SYS_AUTOSTART").unwrap_or(0.0) as i64 != 0, ..entry("Airframe", "AirframeComponent", UNKNOWN, false, false) }),
-        Some(Entry { requires_setup: true, setup_complete: px4_sensors_complete(&param, vehicle.vehicle_type, vehicle.version), ..entry("Sensors", "SensorsComponent", KNOWN_SENSORS, false, false) }),
+        (!vehicle.hil).then(|| Entry { requires_setup: true, setup_complete: px4_sensors_complete(&param, vehicle.vehicle_type, vehicle.version), ..entry("Sensors", "SensorsComponent", KNOWN_SENSORS, false, false) }),
         Some(Entry { requires_setup: !rc_in_manual, setup_complete: radio_complete, ..entry("Radio", "PX4RadioComponent", KNOWN_RADIO, false, false) }),
         Some(entry("Flight Modes", "FlightModesComponent", KNOWN_FLIGHT_MODES, false, false)),
         Some(Entry { requires_setup: true, setup_complete: px4_power_complete(&param), ..entry("Power", "PowerComponent", KNOWN_POWER, true, false) }),
@@ -143,9 +144,10 @@ pub fn px4(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<Value> {
         Some(entry("Joystick", "JoystickComponent", KNOWN_JOYSTICK, false, false)),
         exists("SLNK_RADIO_CHAN").then(|| entry("Syslink", "SyslinkComponent", UNKNOWN, false, false)),
     ];
-    entries
+    let mut listed: Vec<Entry> = entries.into_iter().flatten().collect();
+    listed.sort_by_key(|e| e.name.to_lowercase());
+    listed
         .into_iter()
-        .flatten()
         .map(|e| json!({ "kind": "object", "name": e.name, "class": e.class, "KnownVehicleComponent": e.known, "requiresSetup": e.requires_setup, "setupComplete": e.setup_complete, "allowSetupWhileArmed": e.armed, "allowSetupWhileFlying": e.flying }))
         .collect()
 }
@@ -156,7 +158,7 @@ mod tests {
 
     fn listed(vehicle_type: u8, version: Option<(u8, u8, u8)>, params: &'static [(u8, &'static str, f64)]) -> Vec<Value> {
         let parameter = move |component: u8, name: &str| params.iter().find(|(c, n, _)| *c == component && *n == name).map(|(_, _, v)| *v);
-        ardupilot(&Vehicle { vehicle_type, version, parameter: &parameter, default_component: 1 })
+        ardupilot(&Vehicle { vehicle_type, version, parameter: &parameter, default_component: 1, hil: false })
     }
 
     fn names(list: &[Value]) -> Vec<&str> {
@@ -168,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn a_px4_quad_lists_what_px4_auto_pilot_plugin_builds_in_its_order() {
+    fn a_px4_quad_lists_what_px4_auto_pilot_plugin_builds_sorted_by_name() {
         let set = |name: &str| match name {
             "SYS_AUTOSTART" => Some(4001.0),
             "CAL_GYRO0_ID" | "CAL_ACC0_ID" | "CAL_MAG0_ID" => Some(1.0),
@@ -179,15 +181,17 @@ mod tests {
             _ => None,
         };
         let parameter = |_component: u8, name: &str| set(name);
-        let quad = Vehicle { vehicle_type: 2, version: Some((1, 15, 0)), parameter: &parameter, default_component: 1 };
+        let quad = Vehicle { vehicle_type: 2, version: Some((1, 15, 0)), parameter: &parameter, default_component: 1, hil: false };
         let listed = px4(&quad, Some(Px4Actuators { show_ui: true, has_unset_required: false }));
         let names: Vec<&str> = listed.iter().map(|c| c["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["Airframe", "Sensors", "Radio", "Flight Modes", "Power", "Actuators", "Safety", "PID Tuning", "Flight Behavior", "Joystick"], "build order, not sorted - PX4AutoPilotPlugin does not sort as APMAutoPilotPlugin does");
+        assert_eq!(names, ["Actuators", "Airframe", "Flight Behavior", "Flight Modes", "Joystick", "PID Tuning", "Power", "Radio", "Safety", "Sensors"], "PX4AutoPilotPlugin::vehicleComponents sorts by lower-cased name, as APMAutoPilotPlugin does");
         let complete = |name: &str| listed.iter().find(|c| c["name"] == name).unwrap()["setupComplete"].as_bool().unwrap();
         assert!(complete("Airframe") && complete("Sensors") && complete("Radio"));
         assert!(!complete("Power"), "a battery source with no voltages or cells is not set up");
         let bare = px4(&quad, None);
-        assert_eq!(bare[5]["name"], "Motors", "without actuator metadata the legacy motor page stands in");
+        assert!(bare.iter().any(|c| c["name"] == "Motors") && bare.iter().all(|c| c["name"] != "Actuators"), "without actuator metadata the legacy motor page stands in");
+        let simulated = Vehicle { hil: true, ..quad };
+        assert!(px4(&simulated, None).iter().all(|c| c["name"] != "Sensors"), "PX4AutoPilotPlugin leaves Sensors out in HIL mode");
     }
 
     #[test]

@@ -252,7 +252,7 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
     let count = listed.get("value").and_then(Value::as_array).map(|elements| elements.len()).unwrap_or(0);
     (0..count)
         .filter_map(|index| {
-            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,requiresSetup,setupComplete,allowSetupWhileArmed,allowSetupWhileFlying,KnownVehicleComponent"));
+            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,class,requiresSetup,setupComplete,allowSetupWhileArmed,allowSetupWhileFlying,KnownVehicleComponent"));
             let name = component.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
             Some(Component {
                 name: name.to_string(),

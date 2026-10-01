@@ -21,18 +21,9 @@ pub struct Status {
 
 static STATUS: Mutex<Option<Status>> = Mutex::new(None);
 
-fn app() -> String {
-    Some(crate::noticeboard::application_name()).filter(|n| !n.is_empty()).unwrap_or_else(|| "QGroundControl".to_string())
-}
-
 pub fn advance(status: &Status, message: &str) -> Option<Status> {
     let text = message.strip_prefix(CAL_PREFIX)?;
     let say = |highlight: &str, rest: String, running: bool| Some(Status { highlight: highlight.to_string(), text: rest, running, ..status.clone() });
-    if let Some(started) = text.strip_prefix("calibration started: ") {
-        if started.split(' ').count() != 2 {
-            return say(FAILED, format!("{} cannot perform ESC Calibration with this version of firmware. You will need to upgrade to a newer firmware.", app()), false);
-        }
-    }
     match text {
         "Connect battery now" => say("WARNING: Props must be removed from vehicle prior to performing ESC calibration.", " Connect the battery now and calibration will begin.".to_string(), true),
         "Battery connected" => say("", "Performing calibration. This will take a few seconds..".to_string(), true),
@@ -111,6 +102,6 @@ mod tests {
         assert_eq!(advance(&start, "[cal] calibration failed: timeout").unwrap().text, "timeout");
         assert_eq!(advance(&start, "Some other text"), None);
         assert_eq!(advance(&start, "[cal] calibration started: 2 esc"), None, "a well-formed start changes nothing");
-        assert!(!advance(&start, "[cal] calibration started: 2").unwrap().running, "a start without the firmware revision fails as incorrect reporting");
+        assert_eq!(advance(&start, "[cal] calibration started: 2"), None, "PowerComponentController only emits incorrectFirmwareRevReporting, which no QML connects, so the calibration keeps listening");
     }
 }

@@ -94,8 +94,9 @@ fn param_value(backend: &dyn Backend, param: &str) -> Option<(f64, String)> {
     Some((value, fact.get("valueString").and_then(Value::as_str).unwrap_or_default().to_string()))
 }
 
-pub fn calculated(measured: f64, current: f64, reading: f64) -> Option<f64> {
-    (measured != 0.0 && measured.is_finite() && reading != 0.0).then(|| measured * current / reading).filter(|new| *new > 0.0 && new.is_finite())
+pub fn calculated(measured: f64, current: f64, reading: f64, measure: &str) -> Option<f64> {
+    let accepted = |new: f64| new.is_finite() && if measure == "current" { new != 0.0 } else { new > 0.0 };
+    (measured != 0.0 && measured.is_finite() && reading != 0.0).then(|| measured * current / reading).filter(|new| accepted(*new))
 }
 
 pub fn power_calc_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -119,7 +120,7 @@ pub fn calculate(backend: &dyn Backend, args: &str) -> Value {
     let refused = |reason: &str| json!({ "ok": false, "reason": reason });
     let Some((current, _)) = param_value(backend, &param) else { return refused("That parameter is not on this vehicle.") };
     let Some((now, _)) = reading(backend, &measure, battery) else { return refused("The vehicle is not reporting that battery.") };
-    let Some(new) = calculated(measured, current, now) else { return refused("Enter the measured value, with the vehicle reporting a non-zero reading.") };
+    let Some(new) = calculated(measured, current, now, &measure) else { return refused("Enter the measured value, with the vehicle reporting a non-zero reading.") };
     let written = object(&backend.set(&format!("vehicle.parameterManager.getParameter(-1,{param})"), &json!({ "value": new }).to_string()));
     match written.get("ok").and_then(Value::as_bool).unwrap_or(false) {
         true => json!({ "ok": true, "result": new }),
@@ -133,11 +134,12 @@ mod tests {
 
     #[test]
     fn the_new_value_scales_the_old_by_measured_over_reported_like_the_qgc_dialogs() {
-        assert_eq!(calculated(12.6, 10.0, 12.0), Some(10.5));
-        assert_eq!(calculated(0.0, 10.0, 12.0), None, "an empty measurement changes nothing");
-        assert_eq!(calculated(f64::NAN, 10.0, 12.0), None);
-        assert_eq!(calculated(12.6, 10.0, 0.0), None, "no reading, no division");
-        assert_eq!(calculated(12.6, -1.0, 12.0), None, "a non-positive result is not written");
+        assert_eq!(calculated(12.6, 10.0, 12.0, "voltage"), Some(10.5));
+        assert_eq!(calculated(0.0, 10.0, 12.0, "voltage"), None, "an empty measurement changes nothing");
+        assert_eq!(calculated(f64::NAN, 10.0, 12.0, "voltage"), None);
+        assert_eq!(calculated(12.6, 10.0, 0.0, "voltage"), None, "no reading, no division");
+        assert_eq!(calculated(12.6, -1.0, 12.0, "voltage"), None, "a non-positive voltage multiplier is not written");
+        assert_eq!(calculated(12.6, -1.0, 12.0, "current"), Some(-1.05), "CalcAmpsPerVoltDialog writes any non-zero amps per volt");
         let shown = calculator("APMCalcAmpsPerVoltDialog", 2, "BATT2_AMP_PERVLT").unwrap();
         assert_eq!((shown["button"].clone(), shown["measure"].clone(), shown["batteryIndex"].clone()), (json!("Calculate And Set"), json!("current"), json!(2)));
         assert!(calculator("ESCCalibrationDialog", 1, "").is_none());
