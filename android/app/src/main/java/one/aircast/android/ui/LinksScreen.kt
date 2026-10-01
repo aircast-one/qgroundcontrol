@@ -1,5 +1,18 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import one.aircast.android.R
+import one.aircast.mapspike.aircast
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,9 +32,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,16 +46,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -233,75 +240,92 @@ private fun LinkRowItem(
     onEdit: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val fixByEditing = row.errorRemedy == REMEDY_EDIT_ADDRESS && linkIsEditable(row)
 
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = row.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontSize = 18.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = row.statusLine,
-                style = MaterialTheme.typography.bodyMedium,
-                color = when {
-                    row.goneQuiet -> MaterialTheme.colorScheme.error
-                    row.heard -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                fontWeight = if (row.heard && !row.goneQuiet) FontWeight.Bold else FontWeight.Normal,
-            )
-            if (row.lastError.isNotBlank()) {
-                Text(
-                    row.lastError,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { menuOpen = true }
+                .semantics { contentDescription = "More actions for ${row.name}" }
+                .heightIn(min = 72.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(
+                Modifier.size(40.dp).background(
+                    if (row.connected) MaterialTheme.aircast.successContainer else MaterialTheme.colorScheme.secondaryContainer,
+                    CircleShape,
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painterResource(if (row.portName.isNotBlank()) R.drawable.ic_usb else R.drawable.ic_link),
+                    null,
+                    tint = if (row.connected) MaterialTheme.aircast.success else MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(24.dp),
                 )
-                remedyText(row.errorRemedy)?.let { advice ->
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = row.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = row.statusLine,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (row.goneQuiet) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (row.lastError.isNotBlank()) {
                     Text(
-                        advice,
+                        row.lastError,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.error,
                     )
+                    remedyText(row.errorRemedy)?.let { advice ->
+                        Text(
+                            advice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
-        }
-        when {
-            row.connected -> OutlinedButton(onClick = onDisconnect) { Text("Disconnect") }
-            row.errorRemedy == REMEDY_EDIT_ADDRESS && linkIsEditable(row) ->
-                Button(onClick = onEdit) { Text("Edit") }
-            else -> Button(onClick = onConnect) { Text("Connect") }
-        }
-        Box {
-            IconButton(onClick = { menuOpen = true }) {
-                Icon(Icons.Filled.MoreVert, contentDescription = "More actions for ${row.name}")
+            if (row.connected) {
+                Text("Connected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.success)
             }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text("Edit Link") },
-                    enabled = linkIsEditable(row),
-                    onClick = {
-                        menuOpen = false
-                        onEdit()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("Delete Link") },
-                    onClick = {
-                        menuOpen = false
-                        onRemove()
-                    },
-                )
-            }
+            Icon(painterResource(R.drawable.ic_chevron_right), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(if (row.connected) "Disconnect" else if (fixByEditing) "Edit" else "Connect") },
+                onClick = {
+                    menuOpen = false
+                    when {
+                        row.connected -> onDisconnect()
+                        fixByEditing -> onEdit()
+                        else -> onConnect()
+                    }
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Edit Link") },
+                enabled = linkIsEditable(row),
+                onClick = {
+                    menuOpen = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Delete Link") },
+                onClick = {
+                    menuOpen = false
+                    onRemove()
+                },
+            )
         }
     }
 }
@@ -684,7 +708,8 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     var confirmingRemove by remember { mutableStateOf<LinkRow?>(null) }
     var editing by remember { mutableStateOf<LinkRow?>(null) }
 
-    Column(modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
     notice?.let {
         Text(
             text = it,
@@ -703,7 +728,9 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                 )
             }
         } else {
-            items(rows, key = { "link${it.name}" }) { row ->
+            rows.groupBy { it.connected }.toList().sortedByDescending { it.first }.forEach { (connected, group) ->
+            item(key = "head$connected") { SectionHeader(if (connected) "Connected" else "Saved") }
+            items(group, key = { "link${it.name}" }) { row ->
                 LinkRowItem(
                     row = row,
                     onConnect = {
@@ -725,15 +752,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                     onRemove = { confirmingRemove = row },
                     onEdit = { editing = row },
                 )
-                HorizontalDivider()
             }
-        }
-
-        item(key = "add") {
-            Row(Modifier.fillMaxWidth().padding(20.dp)) {
-                Button(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Add Link…")
-                }
             }
         }
 
@@ -744,8 +763,18 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
         }
 
         item(key = "footer") { footer() }
+        item(key = "fabSpace") { Spacer(Modifier.height(88.dp)) }
     }
 
+    }
+    ExtendedFloatingActionButton(
+        onClick = { adding = true },
+        icon = { Icon(painterResource(R.drawable.ic_add), null) },
+        text = { Text("Add Link…") },
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+    )
     }
 
     if (adding) {
