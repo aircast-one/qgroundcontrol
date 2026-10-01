@@ -170,7 +170,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     detail?.let { shown ->
         val rows = when (shown) {
             StripDetail.Battery -> listOfNotNull(totalDraw(batteryJson)?.let { DetailRow("Total draw", it) }) + batteryDetail(batteryJson)
-            StripDetail.Gps -> gpsDetail(fix, gps)
+            StripDetail.Gps -> gpsDetail(gps)
             StripDetail.Telemetry -> telemetryDetail(state?.telemetry)
             StripDetail.Links -> linkDetail(
                 vehicleLinks(linksJson),

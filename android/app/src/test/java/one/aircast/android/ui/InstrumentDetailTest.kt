@@ -92,7 +92,8 @@ class InstrumentDetailTest {
         val gps = gpsStatus(view)
         assertEquals(11, gps?.satellites)
         assertEquals(FixLevel.Good, fixLevel(gps!!.lock))
-        assertEquals(listOf("GPS Lock", "Satellites", "HDOP"), gpsDetail(fixLevel(gps.lock), gps).map { it.label })
+        assertEquals(listOf("GPS Lock", "Satellites", "HDOP"), gpsDetail(gps).map { it.label })
+        assertEquals("3D Lock", gpsDetail(gps).first().value)
     }
 
     @Test
@@ -101,19 +102,14 @@ class InstrumentDetailTest {
         val unlocked = gpsStatus(JSONObject("""{"kind":"object","available":true,"satellites":null,"lock":null,"rows":[]}"""))
         assertEquals(null, fixLevel(unlocked!!.lock))
         assertEquals(null, unlocked.satellites)
-        assertEquals(emptyList<DetailRow>(), gpsDetail(null, unlocked))
+        assertEquals(emptyList<DetailRow>(), gpsDetail(unlocked))
     }
 
     @Test
-    fun `the lock is named rather than shown as the enum the vehicle sent`() {
-        assertEquals("3D or better", lockName(FixLevel.Good))
-        assertEquals("2D", lockName(FixLevel.TwoD))
-        assertEquals("No fix", lockName(FixLevel.None))
-        assertEquals(null, lockName(null))
-        assertEquals(
-            emptyList<String>(),
-            gpsDetail(fix = null, gps = null).map { it.label },
-        )
+    fun `the lock row shows the core's lock text, so RTK states read as GPSIndicatorPage spells them`() {
+        val rtk = gpsStatus(JSONObject("""{"kind":"object","available":true,"satellites":20,"lock":6,"lockText":"RTK Fixed","rows":[]}"""))
+        assertEquals(listOf(DetailRow("GPS Lock", "RTK Fixed")), gpsDetail(rtk))
+        assertEquals(emptyList<String>(), gpsDetail(null).map { it.label })
     }
 
     @Test
