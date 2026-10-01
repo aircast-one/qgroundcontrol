@@ -94,6 +94,13 @@ class PlanActionsTest {
     }
 
     @Test
+    fun `opening over changes and creating over items ask in PlanView's words`() {
+        assertEquals("Plan overwrite", confirmCopy(PlanConfirm.Open).title)
+        assertEquals("You have unsaved/unsent changes. Loading from a file will lose these changes. Are you sure you want to load from a file?", confirmCopy(PlanConfirm.Open).body)
+        assertEquals("Create Plan", confirmCopy(PlanConfirm.NewPlan).title)
+    }
+
+    @Test
     fun `no answer offers nothing rather than guessing what is allowed`() {
         val none = planActions(null)
         assertEquals(false, none.open)

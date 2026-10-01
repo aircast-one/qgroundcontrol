@@ -59,9 +59,6 @@ internal fun planIsSyncing(view: JSONObject?): Boolean =
 
 internal fun planContainsItems(view: JSONObject?): Boolean = view?.optBoolean("containsItems") == true
 
-internal fun discardNeedsConfirming(dirty: Boolean, containsItems: Boolean): Boolean =
-    dirty && containsItems
-
 // The core maps readyForSaveState to a sentence in readiness.reason. This head
 // mapped the same three states to different words, so which sentence an operator
 // saw depended on which path refused.
@@ -85,14 +82,14 @@ data class ConfirmCopy(
 
 internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
     PlanConfirm.Open -> ConfirmCopy(
-        "Discard unsaved changes?",
-        "Opening a plan replaces the one you have. Your unsaved changes cannot be recovered.",
-        "Discard and open",
+        "Plan overwrite",
+        "You have unsaved/unsent changes. Loading from a file will lose these changes. Are you sure you want to load from a file?",
+        "Load from file",
     )
     PlanConfirm.NewPlan -> ConfirmCopy(
-        "Discard unsaved changes?",
-        "Starting a new plan clears the one you have. Your unsaved changes cannot be recovered.",
-        "Discard and start new",
+        "Create Plan",
+        "Are you sure you want to remove current plan and create a new plan?",
+        "Create plan",
     )
     PlanConfirm.Download -> ConfirmCopy(
         "Plan overwrite",

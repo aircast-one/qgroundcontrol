@@ -244,7 +244,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                     enabled = can.open,
                                     onClick = {
                                         menuOpen = false
-                                        if (discardNeedsConfirming(dirty, containsItems)) pending = PlanConfirm.Open else files.open()
+                                        if (dirty) pending = PlanConfirm.Open else files.open()
                                     },
                                 )
                                 DropdownMenuItem(
@@ -283,7 +283,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                     enabled = can.newPlan,
                                     onClick = {
                                         menuOpen = false
-                                        if (discardNeedsConfirming(dirty, containsItems)) pending = PlanConfirm.NewPlan else files.newPlan()
+                                        if (containsItems) pending = PlanConfirm.NewPlan else files.newPlan()
                                     },
                                 )
                                 DropdownMenuItem(
