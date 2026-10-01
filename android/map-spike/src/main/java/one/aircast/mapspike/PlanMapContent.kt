@@ -133,6 +133,7 @@ internal fun MapSpikeScreen(
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
     var editingItem by remember { mutableStateOf<MissionItem?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
+    var fitOnly by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var loadArmed by remember { mutableStateOf(false) }
     var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
@@ -391,6 +392,7 @@ internal fun MapSpikeScreen(
             bottomInsetPx = controlsHeightPx,
             topInsetPx = topOverlayPx,
             fitRequest = fitRequest,
+            fitOnly = fitOnly,
             onFitFailed = { onBridge("Fitting the plan") { false } },
             centreRequest = centreRequest,
             centreOn = centreOn,
@@ -679,10 +681,21 @@ internal fun MapSpikeScreen(
                     }
                     GroupBreak()
 
-                    TextButton(onClick = {
-                        follow = false
-                        fitRequest += 1
-                    }) { Text("Fit") }
+                    CenterMenu(
+                        launch = allItems.firstOrNull { it.sequence == 0 }?.let { TrackPoint(it.latitude, it.longitude) },
+                        myLocation = operator,
+                        onFit = { points ->
+                            follow = false
+                            fitOnly = points
+                            fitRequest += 1
+                        },
+                        onCentre = { point ->
+                            follow = false
+                            centreOn = point
+                            centreRequest += 1
+                        },
+                        missionPoints = missionFitPoints(allItems),
+                    )
 
                     MapTypeMenu { shownStyle = it }
 
@@ -1130,5 +1143,63 @@ private fun MapTypeMenu(onStyle: (String) -> Unit) {
                 )
             }
         }
+    }
+}
+
+fun missionFitPoints(items: List<MissionItem>): List<TrackPoint> =
+    items.filter { isPlottable(it.latitude, it.longitude) }.map { TrackPoint(it.latitude, it.longitude) }
+
+fun parsedCoordinate(latitude: String, longitude: String): TrackPoint? {
+    val lat = latitude.trim().toDoubleOrNull()?.takeIf { it in -90.0..90.0 } ?: return null
+    val lon = longitude.trim().toDoubleOrNull()?.takeIf { it in -180.0..180.0 } ?: return null
+    return TrackPoint(lat, lon)
+}
+
+@Composable
+private fun CenterMenu(
+    launch: TrackPoint?,
+    myLocation: TrackPoint?,
+    missionPoints: List<TrackPoint>,
+    onFit: (List<TrackPoint>?) -> Unit,
+    onCentre: (TrackPoint) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    var asking by remember { mutableStateOf(false) }
+    val fleetJson by mapPath(VEHICLES_VIEW)
+    val vehicle = remember(fleetJson) { vehicleChoices(fleetJson).choices.firstOrNull { it.active } }
+        ?.takeIf { isPlottable(it.latitude, it.longitude) }
+        ?.let { TrackPoint(it.latitude, it.longitude) }
+    Box {
+        TextButton(onClick = { open = true }) { Text("Center") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Mission") }, onClick = { open = false; onFit(missionPoints) })
+            DropdownMenuItem(text = { Text("All Items") }, onClick = { open = false; onFit(null) })
+            DropdownMenuItem(text = { Text("Launch") }, enabled = launch != null, onClick = { open = false; launch?.let(onCentre) })
+            DropdownMenuItem(text = { Text("Vehicle") }, enabled = vehicle != null, onClick = { open = false; vehicle?.let(onCentre) })
+            DropdownMenuItem(text = { Text("My Location") }, enabled = myLocation != null, onClick = { open = false; myLocation?.let(onCentre) })
+            DropdownMenuItem(text = { Text("Coordinates…") }, onClick = { open = false; asking = true })
+        }
+    }
+    if (asking) {
+        var latitude by remember { mutableStateOf("") }
+        var longitude by remember { mutableStateOf("") }
+        val parsed = parsedCoordinate(latitude, longitude)
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text("Center map on coordinate") },
+            text = {
+                Column {
+                    OutlinedTextField(value = latitude, onValueChange = { latitude = it }, label = { Text("Latitude") }, singleLine = true)
+                    OutlinedTextField(value = longitude, onValueChange = { longitude = it }, label = { Text("Longitude") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = parsed != null, onClick = {
+                    asking = false
+                    parsed?.let(onCentre)
+                }) { Text("Center") }
+            },
+            dismissButton = { TextButton(onClick = { asking = false }) { Text("Cancel") } },
+        )
     }
 }

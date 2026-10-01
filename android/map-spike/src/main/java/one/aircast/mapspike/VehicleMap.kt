@@ -158,6 +158,7 @@ fun VehicleMap(
     topInsetPx: Int = 0,
     cameraBottomPx: Int = 0,
     fitRequest: Int = 0,
+    fitOnly: List<TrackPoint>? = null,
     onFitFailed: () -> Unit = {},
     centreRequest: Int = 0,
     centreOn: TrackPoint? = null,
@@ -386,7 +387,7 @@ fun VehicleMap(
         val currentMap = map ?: return@LaunchedEffect
         val bounds = planBounds(
             fitPoints(
-                planPoints(missionItems, fencePolygons, fenceCircles, rallyPoints, surveys),
+                fitOnly ?: planPoints(missionItems, fencePolygons, fenceCircles, rallyPoints, surveys),
                 latitude,
                 longitude,
             ),
