@@ -4,6 +4,8 @@ type Point = (f64, f64);
 
 pub const CMD_NAV_WAYPOINT: u16 = 16;
 pub const CMD_DO_SET_CAM_TRIGG_DIST: u16 = 206;
+pub const CMD_IMAGE_START_CAPTURE: u16 = 2000;
+pub const HOVER_AND_CAPTURE_DELAY_SECONDS: f64 = 4.0;
 pub const FRAME_GLOBAL: u8 = 0;
 pub const FRAME_MISSION: u8 = 2;
 pub const FRAME_GLOBAL_RELATIVE_ALT: u8 = 3;
@@ -22,6 +24,7 @@ pub struct Plan {
     pub trigger_distance: f64,
     pub altitude_mode: i64,
     pub images_in_turnaround: bool,
+    pub hover_and_capture: bool,
 }
 
 pub fn frame_for(altitude_mode: i64) -> u8 {
@@ -45,20 +48,34 @@ pub fn items(transects: &[Vec<Coord>], plan: &Plan) -> Vec<Item> {
     flown(&flight, plan)
 }
 
+fn single_photo() -> Item {
+    Item { command: CMD_IMAGE_START_CAPTURE, frame: FRAME_MISSION, params: [Some(0.0), Some(0.0), Some(1.0), Some(0.0), None, None, None] }
+}
+
 pub fn flown(flight: &[(Coord, f64)], plan: &Plan) -> Vec<Item> {
     let frame = frame_for(plan.altitude_mode);
     let triggering = plan.trigger_distance > 0.0;
+    let hover = triggering && plan.hover_and_capture;
+    let first_and_last = !plan.hover_and_capture && plan.images_in_turnaround && triggering;
+    let has_turnarounds = flight.iter().any(|(coord, _)| coord.kind == Kind::Turnaround);
     let last = flight.len().saturating_sub(1);
     flight
         .iter()
         .enumerate()
         .flat_map(|(index, (coord, altitude))| {
-            let first_turnaround = plan.images_in_turnaround && coord.kind == Kind::Turnaround && index == 0;
-            let opens = triggering && (coord.kind == Kind::SurveyEntry || first_turnaround);
-            let closes = triggering && index == last;
-            std::iter::once(waypoint(coord.at, *altitude, frame, 0.0))
-                .chain(opens.then(|| trigger(plan.trigger_distance)))
-                .chain(closes.then(|| trigger(0.0)))
+            let pass = |hold: f64| vec![waypoint(coord.at, *altitude, frame, hold)];
+            let update = |distance: f64| vec![waypoint(coord.at, *altitude, frame, 0.0), trigger(distance)];
+            let captured = || vec![waypoint(coord.at, *altitude, frame, HOVER_AND_CAPTURE_DELAY_SECONDS), single_photo()];
+            match coord.kind {
+                Kind::Turnaround if first_and_last && index == 0 => update(plan.trigger_distance),
+                Kind::Turnaround if first_and_last && index == last => update(0.0),
+                Kind::InteriorHoverTrigger => captured(),
+                Kind::SurveyEntry | Kind::SurveyExit if hover => captured(),
+                Kind::SurveyEntry if triggering => update(plan.trigger_distance),
+                Kind::SurveyExit if first_and_last && !has_turnarounds && index == last => update(0.0),
+                Kind::SurveyExit if triggering && !plan.images_in_turnaround => update(0.0),
+                _ => pass(0.0),
+            }
         })
         .collect()
 }
@@ -96,7 +113,7 @@ mod tests {
                     entry: crate::altitudemodes::MIXED,
                 };
                 let transects = crate::surveygrid::typed_transects(&polygon, &grid);
-                let plan = Plan { altitude: case["distanceToSurface"].as_f64().unwrap(), trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true };
+                let plan = Plan { altitude: case["distanceToSurface"].as_f64().unwrap(), trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true, hover_and_capture: false };
                 let ours: Vec<String> = items(&transects, &plan).iter().map(spelled).collect();
                 let expected: Vec<String> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
                 let matched = ours.len() == expected.len() && ours.iter().zip(expected.iter()).all(|(ours, theirs)| same_item(ours, theirs));
@@ -115,7 +132,7 @@ mod tests {
             (Coord { at: (47.0, 8.001), kind: Kind::InteriorTerrainAdded }, 162.0),
             (Coord { at: (47.0, 8.002), kind: Kind::SurveyExit }, 170.0),
         ];
-        let plan = Plan { altitude: 50.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::CALC_ABOVE_TERRAIN, images_in_turnaround: false };
+        let plan = Plan { altitude: 50.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::CALC_ABOVE_TERRAIN, images_in_turnaround: false, hover_and_capture: false };
         let built = flown(&flight, &plan);
         assert!(built.iter().all(|i| i.frame == FRAME_GLOBAL));
         assert_eq!(built.iter().map(|i| i.params[6].unwrap()).collect::<Vec<_>>(), [150.0, 162.0, 170.0]);
@@ -159,6 +176,7 @@ mod tests {
                     trigger_distance: case["triggerDistance"].as_f64().unwrap(),
                     altitude_mode: crate::altitudemodes::RELATIVE,
                     images_in_turnaround: true,
+                    hover_and_capture: false,
                 };
                 let ours: Vec<String> = items(&transects, &plan).iter().map(spelled).collect();
                 let expected: Vec<String> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
@@ -174,7 +192,7 @@ mod tests {
     #[test]
     fn the_camera_is_switched_on_at_each_entry_and_off_once_at_the_end() {
         let two = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0), crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0)];
-        let built = items(&two, &Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true });
+        let built = items(&two, &Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true, hover_and_capture: false });
         let commands: Vec<u16> = built.iter().map(|item| item.command).collect();
         assert_eq!(commands, [16, 206, 16, 16, 206, 16, 206], "a trigger follows each entry, and one last trigger turns the camera off");
         assert_eq!(built.last().unwrap().params[0], Some(0.0), "the closing trigger is a distance of zero, which is what stops the camera");
@@ -182,9 +200,21 @@ mod tests {
     }
 
     #[test]
+    fn without_images_in_turnaround_each_exit_stops_the_camera_and_hover_captures_at_each_point() {
+        let two = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0), crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0)];
+        let base = Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: false, hover_and_capture: false };
+        let commands = |plan: &Plan| items(&two, plan).iter().map(|item| item.command).collect::<Vec<u16>>();
+        assert_eq!(commands(&base), [16, 206, 16, 206, 16, 206, 16, 206], "TransectStyleComplexItem stops the camera at every survey exit when it is not left on through turnarounds");
+        let hovering = items(&two, &Plan { hover_and_capture: true, ..base });
+        assert_eq!(hovering.iter().map(|item| item.command).collect::<Vec<_>>(), [16, 2000, 16, 2000, 16, 2000, 16, 2000], "hover and capture holds and takes one photo instead of distance triggering");
+        assert_eq!(hovering[0].params[0], Some(HOVER_AND_CAPTURE_DELAY_SECONDS));
+        assert_eq!(hovering[1].params[2], Some(1.0));
+    }
+
+    #[test]
     fn a_survey_with_no_camera_is_waypoints_alone() {
         let one = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0)];
-        let built = items(&one, &Plan { altitude: 60.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true });
+        let built = items(&one, &Plan { altitude: 60.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true, hover_and_capture: false });
         assert!(built.iter().all(|item| item.command == CMD_NAV_WAYPOINT), "no trigger distance means no camera commands at all");
         assert_eq!(built.len(), 2);
     }

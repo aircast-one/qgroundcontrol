@@ -319,7 +319,10 @@ fn additional_delay(item: &crate::plandoc::Item) -> f64 {
             16 | 112 | 93 => s.params[0].unwrap_or(0.0),
             _ => 0.0,
         },
-        crate::plandoc::Item::Complex { .. } => 0.0,
+        crate::plandoc::Item::Complex { json, .. } => json
+            .pointer("/TransectStyleComplexItem/Items")
+            .and_then(Value::as_array)
+            .map_or(0.0, |items| items.iter().filter(|item| item["command"] == crate::surveyitems::CMD_NAV_WAYPOINT).filter_map(|item| item["params"][0].as_f64()).sum()),
     }
 }
 
@@ -663,9 +666,6 @@ fn with_vehicle_yaws(reads: Vec<Value>) -> Vec<Value> {
         .collect()
 }
 
-// MissionController::_recalcFlightPathSegments walks from i = 1: item 0 is the MissionSettingsItem
-// and MissionSettingsItem::specifiesCoordinate() returns true unconditionally, so a walk that
-// starts at 0 sees a flown leg on the settings row and stops before any takeoff.
 fn starts_from_the_ground(items: &[Value]) -> bool {
     items
         .iter()
@@ -774,9 +774,6 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
     }
 }
 
-// The macOS head read an item's speedSection raw for three things: whether the item can carry a
-// speed change at all, whether it does, and the speed with its units. The value is read off the
-// flightSpeed Fact the head writes, so what it shows and what it writes are one path.
 pub(crate) fn speed_section(backend: &dyn Backend, index: i64) -> Value {
     let path = format!("plan.missionController.visualItems.{index}.speedSection");
     let section = object(&backend.get_fields(&path, "available,specifyFlightSpeed"));

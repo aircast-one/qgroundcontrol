@@ -30,6 +30,7 @@ pub enum Kind {
     Interior,
     SurveyExit,
     InteriorTerrainAdded,
+    InteriorHoverTrigger,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

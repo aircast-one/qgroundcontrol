@@ -32,6 +32,26 @@ fn camera_shots(transects: &[Vec<Coord>], trigger_distance: f64, in_turnaround: 
     }
 }
 
+fn with_hover_points(transects: Vec<Vec<Coord>>, trigger_distance: f64, hover: bool) -> Vec<Vec<Coord>> {
+    if !hover || trigger_distance <= 0.0 {
+        return transects;
+    }
+    transects
+        .into_iter()
+        .map(|transect| {
+            let entry = transect.iter().position(|c| c.kind == surveygrid::Kind::SurveyEntry);
+            let exit = transect.iter().position(|c| c.kind == surveygrid::Kind::SurveyExit);
+            let Some((entry, exit)) = entry.zip(exit) else { return transect };
+            let (from, to) = (transect[entry].at, transect[exit].at);
+            let length = surveygrid::distance_between(from, to);
+            let azimuth = surveygrid::azimuth_to(from, to);
+            let count = if trigger_distance < length { (length / trigger_distance).floor() as usize } else { 0 };
+            let hovers = (1..=count).map(|i| Coord { at: surveygrid::at_distance_and_azimuth(from, trigger_distance * i as f64, azimuth), kind: surveygrid::Kind::InteriorHoverTrigger });
+            transect[..=entry].iter().copied().chain(hovers).chain(transect[entry + 1..].iter().copied()).collect()
+        })
+        .collect()
+}
+
 pub fn regenerate(survey: &Value) -> Value {
     let transect = survey.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
     let calc = transect.get("CameraCalc").cloned().unwrap_or(Value::Null);
@@ -43,8 +63,8 @@ pub fn regenerate(survey: &Value) -> Value {
         alternate: flag(survey, "flyAlternateTransects"),
         entry: survey.get("entryLocation").and_then(Value::as_i64).unwrap_or(0),
     };
-    let transects = surveygrid::typed_transects(&polygon(survey), &params);
     let trigger_distance = f64::from(number(&calc, "AdjustedFootprintFrontal").unwrap_or(0.0) as f32);
+    let transects = with_hover_points(surveygrid::typed_transects(&polygon(survey), &params), trigger_distance, flag(&transect, "HoverAndCapture"));
     let in_turnaround = flag(&transect, "CameraTriggerInTurnAround");
     let mut changed = survey.clone();
     changed["TransectStyleComplexItem"] = rebuilt(&transect, &calc, &transects, trigger_distance, in_turnaround, |complex_distance| camera_shots(&transects, trigger_distance, in_turnaround, complex_distance));
@@ -400,6 +420,9 @@ pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option
                 "transect" => {
                     let mut changed = survey.clone();
                     changed["TransectStyleComplexItem"][key.as_str()] = raw(&key);
+                    if key == "HoverAndCapture" && raw(&key) == json!(true) {
+                        changed["TransectStyleComplexItem"]["CameraTriggerInTurnAround"] = json!(false);
+                    }
                     changed
                 }
                 _ => {
@@ -667,6 +690,7 @@ fn rebuilt(transect: &Value, calc: &Value, transects: &[Vec<Coord>], trigger_dis
         trigger_distance,
         altitude_mode: calc.get("DistanceMode").and_then(Value::as_i64).unwrap_or(crate::altitudemodes::RELATIVE),
         images_in_turnaround: in_turnaround,
+        hover_and_capture: flag(transect, "HoverAndCapture"),
     };
     let follows_terrain = plan.altitude_mode == crate::altitudemodes::CALC_ABOVE_TERRAIN;
     let adjust = terrain_adjust(transect, plan.altitude);
@@ -863,6 +887,10 @@ mod tests {
         let calc = &higher["TransectStyleComplexItem"]["CameraCalc"];
         assert!((calc["AdjustedFootprintSide"].as_f64().unwrap() - 2.0 * survey["TransectStyleComplexItem"]["CameraCalc"]["AdjustedFootprintSide"].as_f64().unwrap()).abs() < 1e-9, "doubling the height doubles the footprint");
         assert!(higher["TransectStyleComplexItem"]["Items"].as_array().unwrap().len() < survey["TransectStyleComplexItem"]["Items"].as_array().unwrap().len(), "wider spacing means fewer transects");
+        let hovering = set(&survey, "hoverAndCapture", &json!(true), &metric()).unwrap();
+        assert_eq!(hovering["TransectStyleComplexItem"]["CameraTriggerInTurnAround"], false, "TransectStyleComplexItem turns images-in-turnaround off when hover and capture comes on");
+        let items = hovering["TransectStyleComplexItem"]["Items"].as_array().unwrap();
+        assert!(items.iter().any(|i| i["command"] == 2000) && items.iter().all(|i| i["command"] != 206), "a hovering survey photographs at each stop and never distance-triggers");
         let turned = set(&survey, "gridAngle", &json!(0.0), &metric()).unwrap();
         assert_eq!(turned["angle"], 0.0);
         assert!(set(&survey, "noSuchField", &json!(1), &metric()).is_none());
