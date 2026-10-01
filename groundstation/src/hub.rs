@@ -350,6 +350,15 @@ struct Fetch {
 
 const SEVERITY_CRITICAL: u8 = 2;
 
+fn transfer_failed(kind: u8, error: &str) -> String {
+    let name = match kind {
+        plantransfer::PLAN_FENCE => "GeoFence",
+        plantransfer::PLAN_RALLY => "Rally Point",
+        _ => "Mission",
+    };
+    format!("{name} transfer failed. Error: {error}")
+}
+
 pub fn is_prearm(text: &str, severity: u8) -> bool {
     text.starts_with("PreArm") || (text.get(..9).is_some_and(|head| head.eq_ignore_ascii_case("preflight")) && severity >= SEVERITY_CRITICAL)
 }
@@ -709,6 +718,9 @@ impl Vehicle {
                     self.plans[plan].due = None;
                     self.plans[plan].error = (!success).then_some(error.clone());
                     if !success {
+                        if !error.is_empty() {
+                            crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &transfer_failed(kind, &error));
+                        }
                         self.note(error);
                     }
                     self.step_done(Self::plan_step(kind), now_ms)
@@ -4782,6 +4794,13 @@ mod tests {
         vehicle.announce_fence(true, FENCE_BREACH_MAXALT, 11_000);
         vehicle.announce_fence(true, FENCE_BREACH_MAXALT, 14_000);
         assert_eq!(count("maximum altitude fence breached") - before, 2);
+    }
+
+    #[test]
+    fn a_failed_transfer_is_announced_per_plan_as_vehicle_does() {
+        assert_eq!(transfer_failed(plantransfer::PLAN_MISSION, "x"), "Mission transfer failed. Error: x");
+        assert_eq!(transfer_failed(plantransfer::PLAN_FENCE, "x"), "GeoFence transfer failed. Error: x");
+        assert_eq!(transfer_failed(plantransfer::PLAN_RALLY, "x"), "Rally Point transfer failed. Error: x");
     }
 
     #[test]
