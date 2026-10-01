@@ -41,6 +41,7 @@ data class Fact(
     val qgcRebootRequired: Boolean = false,
     val warning: Boolean = false,
     val changedFromDefault: Boolean = false,
+    val optional: Boolean = false,
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
@@ -54,6 +55,7 @@ data class Fact(
     // nothing. A control can be writable and pointless at once - enforceChecklist while
     // useChecklist is off is exactly that - and every call site wants the same answer.
     val acceptsWrite: Boolean = !readOnly && enabled
+    val optionalSet: Boolean = (value as? Number)?.toDouble()?.isNaN() == false
 }
 
 object Qgc {

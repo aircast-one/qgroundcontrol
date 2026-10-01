@@ -17,7 +17,7 @@ pub const DEPS: &[&str] = &[
 ];
 
 const ITEM_ROOT: &str = "plan.missionController.visualItems";
-const LISTS: [&str; 2] = ["textFieldFacts", "comboboxFacts"];
+const LISTS: [&str; 3] = ["textFieldFacts", "comboboxFacts", "nanFacts"];
 // Mission Settings edits the launch altitude through its own control, so it is not a field here.
 const LAUNCH_ALTITUDE: &str = "plannedHomePositionAltitude";
 const SURVEY_PROPERTIES: [&str; 4] = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"];
@@ -42,7 +42,15 @@ fn listed(backend: &dyn Backend, item: &str) -> Vec<Value> {
         .flat_map(|list| {
             let read = object(&backend.get(&format!("{item}.{list}")));
             let elements = read.get("elements").and_then(Value::as_array).cloned().unwrap_or_default();
-            elements.into_iter().enumerate().filter(|(_, fact)| named(fact)).map(move |(at, fact)| field(&fact, item, &format!("{list}.{at}"), "Settings")).collect::<Vec<_>>()
+            elements
+                .into_iter()
+                .enumerate()
+                .filter(|(_, fact)| named(fact))
+                .map(move |(at, fact)| match (*list == "nanFacts", field(&fact, item, &format!("{list}.{at}"), "Settings")) {
+                    (true, Value::Object(map)) => Value::Object(map.into_iter().chain([("optional".to_string(), json!(true))]).collect()),
+                    (_, control) => control,
+                })
+                .collect::<Vec<_>>()
         })
         .collect()
 }

@@ -402,6 +402,7 @@ ACCEPTED = {
     "showIcon": "InstrumentDisplay.kt reads its own SharedPreferences JSON (per-value Telemetry Display styling), not a bridge view",
     "icon": "InstrumentDisplay.kt reads its own SharedPreferences JSON (per-value Telemetry Display styling), not a bridge view",
     "rangeType": "InstrumentDisplay.kt reads its own SharedPreferences JSON (per-value Telemetry Display styling), not a bridge view",
+    "optional": "view.itemFacts marks nanFacts fields optional, and the recording plan has no VTOL land or DO_SET_ACTUATOR item to carry one; coreplan.rs simple_fields and itemfacts.rs listed serve it",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",

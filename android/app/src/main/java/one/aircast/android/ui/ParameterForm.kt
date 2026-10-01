@@ -89,6 +89,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         defaultValueString = control.optText("defaultText"),
         qgcRebootRequired = control.optBoolean("applicationRestartRequired"),
         warning = control.optBoolean("warning"),
+        optional = control.optBoolean("optional"),
     )
 }
 

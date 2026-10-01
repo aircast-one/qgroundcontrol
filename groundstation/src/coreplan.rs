@@ -1307,6 +1307,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         let s = simple?;
         match raw {
             true => (group == "textFieldFacts." && at < RAW_LABELS.len()).then_some(at + 1),
+            false if group == "nanFacts." => nan_params(commands.get(&s.command)?).get(at).map(|(param, _)| usize::from(*param)),
             false => field_params(commands.get(&s.command)?, group == "comboboxFacts.").get(at).map(|(param, _)| usize::from(*param)),
         }
     };
@@ -1328,6 +1329,10 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             let speed = on.then(|| keep.unwrap_or(default));
             answer(plandoc::set_speed(&current, index, speed).ok_or_else(|| format!("Item {index} carries no speed.")))
         }
+        _ if property.starts_with("nanFacts.") => match field("nanFacts.") {
+            Some(param) => answer(plandoc::set_param(&current, index, param, number.unwrap_or(f64::NAN)).ok_or_else(|| format!("Item {index} has no such field."))),
+            None => answer(unknown()),
+        },
         _ => match (field("textFieldFacts.").or_else(|| field("comboboxFacts.")), number) {
             (Some(param), Some(v)) => answer(plandoc::set_param(&current, index, param, v).ok_or_else(|| format!("Item {index} has no such field."))),
             (Some(_), None) => refused("That field takes a number."),
@@ -1720,6 +1725,20 @@ mod tests {
     }
 
     #[test]
+    fn optional_params_are_served_as_nan_facts_and_switch_off_to_nan() {
+        let commands = crate::cmdinfo::tree(crate::cmdinfo::Firmware::Px4, crate::cmdinfo::VehicleClass::Vtol);
+        let shown = |id: i64| nan_params(&commands[&id]).iter().map(|(i, _)| *i).collect::<Vec<_>>();
+        assert_eq!(shown(85), [4], "SimpleItemEditor's nanFacts: VTOL land Yaw, while its advanced Approach Alt stays hidden");
+        assert_eq!(shown(187), [1, 2, 3, 4], "each actuator of DO_SET_ACTUATOR is optional");
+        assert!(shown(16).is_empty(), "a waypoint's Yaw is advanced and goes to nanFactsAdvanced, which the editor does not show");
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let at = 1;
+        let unset = plandoc::set_param(&doc, at, 4, f64::NAN).unwrap();
+        let Some(plandoc::Item::Simple(s)) = unset.items.get(at - 1) else { panic!() };
+        assert!(s.params[3].is_some_and(f64::is_nan), "off writes NaN, which a vehicle reads as unchanged");
+    }
+
+    #[test]
     fn an_item_reads_edited_until_the_plan_it_is_in_is_saved() {
         let saved = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
         let moved = plandoc::set_altitude(&saved, 2, 33.0).unwrap();
@@ -1888,6 +1907,15 @@ fn param_fact(param: &Value, value: f64) -> Value {
     })
 }
 
+fn nan_params(info: &crate::cmdinfo::Command) -> Vec<(u8, Value)> {
+    let flag = |p: &Value, key: &str| p.get(key).and_then(Value::as_bool).unwrap_or(false);
+    (1..=7u8)
+        .filter(|i| !info.hidden.contains(i))
+        .filter_map(|i| info.params.get(&i).map(|p| (i, p.clone())))
+        .filter(|(_, p)| flag(p, "nanUnchanged") && !flag(p, "advanced"))
+        .collect()
+}
+
 fn field_params(info: &crate::cmdinfo::Command, combo: bool) -> Vec<(u8, Value)> {
     let flag = |p: &Value, key: &str| p.get(key).and_then(Value::as_bool).unwrap_or(false);
     (1..=7u8)
@@ -1965,7 +1993,12 @@ fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap
             control
         }
     };
-    text_params.enumerate().map(build("textFieldFacts")).chain(combo_params.enumerate().map(build("comboboxFacts"))).collect()
+    let nan = nan_params(info);
+    let optional = nan.iter().map(|(i, p)| (*i, p)).enumerate().map(build("nanFacts")).map(|control| match control {
+        Value::Object(map) => Value::Object(map.into_iter().chain([("optional".to_string(), json!(true))]).collect()),
+        other => other,
+    });
+    text_params.enumerate().map(build("textFieldFacts")).chain(combo_params.enumerate().map(build("comboboxFacts"))).chain(optional).collect()
 }
 
 fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], available: bool, hover: f64, cruise: f64) -> Value {

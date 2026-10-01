@@ -1010,7 +1010,7 @@ impl<B: Backend> Facade<B> {
     fn shell_invoke(&self, path: &str, args: &str) -> Option<String> {
         switched_on().then_some(())?;
         let first = || serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)).unwrap_or_default();
-        let mut history = || crate::console::HISTORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let history = || crate::console::HISTORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         match path {
             "mavlinkConsole.historyUp" => return Some(json!({ "ok": true, "result": history().up(&first()) }).to_string()),
             "mavlinkConsole.historyDown" => return Some(json!({ "ok": true, "result": history().down(&first()) }).to_string()),

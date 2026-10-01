@@ -101,6 +101,22 @@ internal fun categoryNames(result: Any?): List<String> {
     return (0 until listed.length()).map { listed.optText(it) }
 }
 
+@Composable
+private fun OptionalFactRow(fact: one.aircast.android.bridge.Fact, onWrite: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = fact.optionalSet, onCheckedChange = { on ->
+            scope.launch {
+                withContext(Dispatchers.Default) { Qgc.set(fact.path, if (on) 0.0 else null) }
+                onWrite()
+            }
+        })
+        Box(Modifier.weight(1f)) {
+            FactRow(if (fact.optionalSet) fact else fact.copy(enabled = false), onWrite = onWrite)
+        }
+    }
+}
+
 internal fun altitudesRelative(view: JSONObject?): Boolean? =
     view?.takeIf { it.optBoolean("landing") && it.has("altitudesAreRelative") && !it.isNull("altitudesAreRelative") }?.optBoolean("altitudesAreRelative")
 
@@ -209,7 +225,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
             }
             if (areaHelp(view) == null) LazyColumn(Modifier.heightIn(max = 480.dp)) {
                 items(fields, key = { it.path }) { fact ->
-                    FactRow(fact) { revision++ }
+                    if (fact.optional) OptionalFactRow(fact) { revision++ } else FactRow(fact) { revision++ }
                 }
                 camera?.let { block ->
                     item(key = "camera") {
