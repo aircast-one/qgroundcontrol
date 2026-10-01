@@ -138,13 +138,15 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         }
     }
 
-    fun importFrom(uri: Uri, pattern: String) {
+    fun importFrom(uris: List<Uri>, pattern: String) {
         scope.launch {
             val message = withContext(Dispatchers.Default) {
-                val label = displayName(context, uri)
+                val labelled = uris.map { it to displayName(context, it) }
+                val main = mainBoundaryName(labelled.map { it.second.orEmpty() })
+                val label = labelled.firstOrNull { it.second.orEmpty() == main }?.second
                 val staged = File(context.cacheDir, boundaryCacheName(label))
                 staged.delete()
-                if (!copyIn(context, uri, staged)) {
+                if (!labelled.all { (uri, name) -> copyIn(context, uri, File(context.cacheDir, boundaryCacheName(name))) }) {
                     return@withContext "That file could not be read."
                 }
                 val before = visualItems().length()
@@ -236,11 +238,11 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         ActivityResultContracts.CreateDocument(PLAN_MIME),
     ) { uri -> uri?.let { exportKmlTo(it) } }
 
-    val pendingImport = remember { mutableStateOf<Uri?>(null) }
+    val pendingImport = remember { mutableStateOf<List<Uri>?>(null) }
     val patterns = remember { mutableStateOf<List<String>>(emptyList()) }
 
-    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        val chosen = uri ?: return@rememberLauncherForActivityResult
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val chosen = uris.takeIf { it.isNotEmpty() } ?: return@rememberLauncherForActivityResult
         scope.launch {
             val names = withContext(Dispatchers.Default) { patternNames() }
             when {
@@ -261,9 +263,9 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val choosePattern = PatternChoice(
         options = { patterns.value.takeIf { pendingImport.value != null } ?: emptyList() },
         pick = { name ->
-            val uri = pendingImport.value
+            val uris = pendingImport.value
             pendingImport.value = null
-            if (uri != null) importFrom(uri, name)
+            if (uris != null) importFrom(uris, name)
         },
         cancel = { pendingImport.value = null },
     )

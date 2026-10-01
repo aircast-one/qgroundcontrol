@@ -13,6 +13,9 @@ internal fun boundaryCacheName(displayName: String?): String {
     return "boundary.${ext ?: DEFAULT_BOUNDARY_EXT}"
 }
 
+internal fun mainBoundaryName(names: List<String>): String? =
+    names.firstOrNull { it.endsWith(".shp", ignoreCase = true) } ?: names.firstOrNull { it.endsWith(".kml", ignoreCase = true) } ?: names.firstOrNull()
+
 internal fun importedNothing(distance: Double?): Boolean = distance == null || distance <= 0.0
 
 data class PlanActions(

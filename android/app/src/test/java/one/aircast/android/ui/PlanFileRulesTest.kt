@@ -23,4 +23,11 @@ class PlanFileRulesTest {
             saveBlockedReason(JSONObject("""{"readiness":{"ready":false,"reason":"This plan has no items."}}""")),
         )
     }
+
+    @Test
+    fun `the shp of a picked shapefile set is the boundary to read`() {
+        org.junit.Assert.assertEquals("area.SHP", mainBoundaryName(listOf("area.prj", "area.SHP", "area.dbf")))
+        org.junit.Assert.assertEquals("route.kml", mainBoundaryName(listOf("route.kml")))
+        org.junit.Assert.assertNull(mainBoundaryName(emptyList()))
+    }
 }

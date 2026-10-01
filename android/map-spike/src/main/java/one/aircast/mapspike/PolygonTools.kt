@@ -100,12 +100,22 @@ private fun fileName(context: Context, uri: Uri): String = runCatching {
         ?.use { if (it.moveToFirst()) it.getString(0) else null }
 }.getOrNull().orEmpty()
 
-fun importShapeFile(context: Context, uri: Uri, target: ShapeTarget): String? {
-    val extension = fileName(context, uri).substringAfterLast('.', "").lowercase()
+internal fun extensionOf(name: String): String = name.substringAfterLast('.', "").lowercase()
+
+internal fun mainShapeExtension(names: List<String>): String? {
+    val extensions = names.map(::extensionOf)
+    return listOf("shp", "kml").firstOrNull { it in extensions } ?: extensions.firstOrNull()
+}
+
+fun importShapeFiles(context: Context, uris: List<Uri>, target: ShapeTarget): String? {
+    val named = uris.map { it to extensionOf(fileName(context, it)) }
+    val extension = mainShapeExtension(named.map { "x.${it.second}" }) ?: return "That file could not be read."
+    val copied = named.all { (uri, ext) ->
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { source -> File(context.cacheDir, "shape.$ext").outputStream().use { source.copyTo(it) } } != null
+        }.getOrDefault(false)
+    }
     val staged = File(context.cacheDir, "shape.$extension")
-    val copied = runCatching {
-        context.contentResolver.openInputStream(uri)?.use { source -> staged.outputStream().use { source.copyTo(it) } } != null
-    }.getOrDefault(false)
     val view = "view.${if (extension == "shp") "shapeFile" else "kmlFile"}(${staged.absolutePath})"
     val (vertices, error) = when {
         !copied -> emptyList<TrackPoint>() to "That file could not be read."

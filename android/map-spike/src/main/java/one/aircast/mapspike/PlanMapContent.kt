@@ -266,13 +266,13 @@ internal fun MapSpikeScreen(
     val context = LocalContext.current
     var importInto by remember { mutableStateOf<ShapeTarget?>(null) }
     val polygonFile = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
         val target = importInto
         importInto = null
-        if (uri != null && target != null) {
+        if (uris.isNotEmpty() && target != null) {
             scope.launch {
-                withContext(Dispatchers.Default) { importShapeFile(context, uri, target) }?.let { say(it) }
+                withContext(Dispatchers.Default) { importShapeFiles(context, uris, target) }?.let { say(it) }
             }
         }
     }

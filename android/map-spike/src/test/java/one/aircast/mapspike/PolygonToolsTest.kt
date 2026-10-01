@@ -75,4 +75,11 @@ class PolygonToolsTest {
         assertEquals(47.4005, top.latitude, 1e-9)
         assertEquals(47.3995, bottom.latitude, 1e-9)
     }
+
+    @Test
+    fun `a shapefile picked with its prj is read through the shp`() {
+        assertEquals("shp", mainShapeExtension(listOf("area.prj", "area.SHP")))
+        assertEquals("kml", mainShapeExtension(listOf("area.kml")))
+        assertNull(mainShapeExtension(emptyList()))
+    }
 }
