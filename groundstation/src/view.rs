@@ -54,6 +54,7 @@ use crate::gcsbattery;
 use crate::gpsresilience;
 use crate::rtkbase;
 use crate::speech;
+use crate::proximity;
 use crate::firstrun;
 use crate::applog;
 use crate::offlinemaps;
@@ -293,6 +294,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.gpsRtkBase", deps: gpsrtk::DEPS, compute: gpsrtk::base_view },
     View { path: "view.gpsRtk", deps: &[], compute: rtkbase::rtk_view },
     View { path: "view.speech", deps: &[], compute: speech::speech_view },
+    View { path: "view.proximityRadar", deps: proximity::DEPS, compute: proximity::proximity_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
@@ -564,6 +566,7 @@ mod deps_cover_reads {
             ("sbfbase", include_str!("sbfbase.rs")),
             ("speech", include_str!("speech.rs")),
             ("telemetrylog", include_str!("telemetrylog.rs")),
+            ("proximity", include_str!("proximity.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),

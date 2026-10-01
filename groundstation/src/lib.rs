@@ -59,6 +59,7 @@ pub mod gpsrtk;
 pub mod ubxbase;
 pub mod speech;
 pub mod telemetrylog;
+pub mod proximity;
 pub mod sbfbase;
 pub mod rtkbase;
 pub mod gpsview;

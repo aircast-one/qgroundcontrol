@@ -79,6 +79,7 @@ fun VideoSurface(
 
         if (video?.decoding == true) {
             if (showGrid) VideoGrid(Modifier.fillMaxSize())
+            ProximityRadarOverlay(Modifier.fillMaxSize())
             if (expanded) GimbalScreenControl(Modifier.fillMaxSize())
             DetectionOverlay(Modifier.fillMaxSize())
             TrackingBoxOverlay(Modifier.fillMaxSize())
