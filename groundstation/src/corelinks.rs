@@ -555,7 +555,29 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
     });
 }
 
+static DISCONNECT_ALL_AT: Mutex<Option<u64>> = Mutex::new(None);
+
+pub fn disconnect_all_at(due_ms: u64) {
+    *DISCONNECT_ALL_AT.lock().unwrap_or_else(PoisonError::into_inner) = Some(due_ms);
+}
+
+fn disconnect_all_if_due(now_ms: u64) {
+    let due = {
+        let mut at = DISCONNECT_ALL_AT.lock().unwrap_or_else(PoisonError::into_inner);
+        at.filter(|due| now_ms >= *due).inspect(|_| *at = None)
+    };
+    if due.is_some() {
+        let open = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(PoisonError::into_inner).open_ids();
+        open.into_iter().for_each(|id| {
+            crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, "the vehicle is rebooting after an airframe change");
+        });
+    }
+}
+
 pub fn tick(now_ms: u64) {
+    if owned() {
+        disconnect_all_if_due(now_ms);
+    }
     if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) || crate::logreplay::playing() {
         return;
     }

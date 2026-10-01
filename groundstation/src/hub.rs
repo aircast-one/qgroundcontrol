@@ -33,6 +33,7 @@ pub const TYPE_GIMBAL: u8 = 26;
 pub const TYPE_ADSB: u8 = 27;
 pub const COMP_AUTOPILOT1: u8 = 1;
 const CMD_CONTROL_HIGH_LATENCY: u16 = 2600;
+const AIRFRAME_DISCONNECT_AFTER_MS: u64 = 1000;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const HIGH_LATENCY_DOWNLOAD: &str = "Download not supported on high latency links.";
@@ -1592,6 +1593,7 @@ impl Vehicle {
             Some(Some(due)) if now_ms >= due => {
                 self.airframe_reboot = None;
                 log::info!("Rebooting vehicle {} after the airframe change", self.id);
+                crate::corelinks::disconnect_all_at(now_ms + AIRFRAME_DISCONNECT_AFTER_MS);
                 self.start_guided(&json!({ "action": "reboot" }), now_ms).unwrap_or_default()
             }
             _ => Vec::new(),
