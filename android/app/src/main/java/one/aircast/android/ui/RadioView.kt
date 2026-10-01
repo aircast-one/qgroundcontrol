@@ -39,6 +39,7 @@ internal data class RadioView(
     val enoughChannels: Boolean,
     val sticks: List<RadioStick>,
     val channels: List<RadioChannel>,
+    val startPrompt: Pair<String, String>? = null,
 )
 
 private fun <T> each(view: JSONObject?, key: String, make: (JSONObject) -> T): List<T> {
@@ -55,6 +56,7 @@ internal fun radioView(view: JSONObject?): RadioView? {
         shortfall = view.optText("shortfall"),
         transmitterMode = view.optInt("transmitterMode", 2),
         enoughChannels = view.optBoolean("enoughChannels"),
+        startPrompt = view.optJSONObject("startPrompt")?.let { it.optText("title") to it.optText("message") },
         calibration = RadioCalibration(
             running = view.optBoolean("calibrating"),
             statusText = view.optText("statusText"),

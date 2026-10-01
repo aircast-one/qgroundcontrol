@@ -9239,6 +9239,9 @@
         "view.radio.nextText",
         "view.radio.shortfall",
         "view.radio.skipEnabled",
+        "view.radio.startPrompt",
+        "view.radio.startPrompt.message",
+        "view.radio.startPrompt.title",
         "view.radio.statusText",
         "view.radio.sticks.#",
         "view.radio.sticks[].fraction",
@@ -13331,6 +13334,10 @@
         "nextText": "string",
         "shortfall": "string",
         "skipEnabled": "bool",
+        "startPrompt": {
+            "message": "string",
+            "title": "string"
+        },
         "statusText": "string",
         "sticks": [
             {

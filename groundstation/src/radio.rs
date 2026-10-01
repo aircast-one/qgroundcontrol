@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{integer, object, text, truthy};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["radioCal", "vehicles.activeVehicleAvailable"];
+pub const DEPS: &[&str] = &["radioCal", "vehicles.activeVehicleAvailable", "vehicle.px4Firmware"];
 
 const LOW_PWM: f64 = 1000.0;
 const HIGH_PWM: f64 = 2000.0;
@@ -29,6 +29,19 @@ pub fn shortfall(connected: bool, channel_count: i64, minimum: i64) -> String {
     match connected && channel_count > 0 && channel_count < minimum {
         true => format!("At least {minimum} channels are needed to fly; the transmitter reports {channel_count}."),
         false => String::new(),
+    }
+}
+
+pub fn start_prompt(connected: bool, joystick: bool, px4: bool) -> Value {
+    match connected && !joystick {
+        false => Value::Null,
+        true => json!({
+            "title": "Zero Trims",
+            "message": format!(
+                "Before calibrating you should zero all your trims and subtrims. Click Ok to start Calibration.\n\n{}",
+                if px4 { "" } else { "Please ensure all motor power is disconnected AND all props are removed from the vehicle." }
+            ).trim_end().to_string(),
+        }),
     }
 }
 
@@ -78,6 +91,7 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "summary": summary(connected, channel_count, live),
         "shortfall": shortfall(connected, channel_count, minimum),
         "calibrating": cancel_enabled,
+        "startPrompt": start_prompt(connected, truthy(&cal, "joystickMode"), crate::read::flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware")),
         "statusText": text(&cal, "statusText"),
         "nextText": text(&cal, "nextText"),
         "nextEnabled": truthy(&cal, "nextEnabled"),
@@ -162,6 +176,14 @@ pub fn write_transmitter_mode(backend: &dyn Backend, path: &str, value: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_zero_trims_prompt_warns_about_props_except_on_px4() {
+        assert_eq!(start_prompt(true, false, true)["message"], "Before calibrating you should zero all your trims and subtrims. Click Ok to start Calibration.");
+        assert!(start_prompt(true, false, false)["message"].as_str().unwrap().ends_with("all props are removed from the vehicle."));
+        assert_eq!(start_prompt(true, true, false), Value::Null, "a joystick calibration starts without the prompt");
+        assert_eq!(start_prompt(false, false, false), Value::Null);
+    }
 
     struct Fake(Value);
     impl Backend for Fake {

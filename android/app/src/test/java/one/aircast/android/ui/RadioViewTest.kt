@@ -98,4 +98,11 @@ class CalibrationStepTest {
         assertEquals("", calibrationStep(""))
         assertEquals("", calibrationStep("   \n  "))
     }
+
+    @Test
+    fun `the zero trims prompt comes from the core`() {
+        val view = radioView(org.json.JSONObject("""{"class":"Radio","startPrompt":{"title":"Zero Trims","message":"Before calibrating"}}"""))
+        org.junit.Assert.assertEquals("Zero Trims" to "Before calibrating", view?.startPrompt)
+        org.junit.Assert.assertNull(radioView(org.json.JSONObject("""{"class":"Radio","startPrompt":null}"""))?.startPrompt)
+    }
 }

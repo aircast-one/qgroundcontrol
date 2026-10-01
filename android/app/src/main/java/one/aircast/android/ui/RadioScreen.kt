@@ -223,6 +223,15 @@ private fun CalibrationStart(
     onMode: (Int) -> Unit,
     onInvoke: (String, Int?) -> Unit,
 ) {
+    var prompting by remember { mutableStateOf(false) }
+    view.startPrompt?.takeIf { prompting }?.let { (title, message) ->
+        AlertDialog(
+            onDismissRequest = { prompting = false },
+            title = { Text(title) },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { prompting = false; onAction("nextButtonClicked") }) { Text("Ok") } },
+        )
+    }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         ModeRow(view.transmitterMode, onMode)
         Row(
@@ -231,7 +240,7 @@ private fun CalibrationStart(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Button(
-                onClick = { onAction("nextButtonClicked") },
+                onClick = { if (view.startPrompt != null) prompting = true else onAction("nextButtonClicked") },
                 enabled = view.calibration.nextEnabled && view.enoughChannels,
             ) { Text(view.calibration.nextText.ifBlank { "Calibrate" }) }
             Text(
