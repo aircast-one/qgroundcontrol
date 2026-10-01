@@ -351,6 +351,8 @@ fun AircastShell(hostView: android.view.View?) {
             return@AircastTheme
         }
         val flyPortrait = tab == Tab.Fly && flyIsPortrait()
+        val flyStateJson by qgcPath(one.aircast.android.ui.FLY_STATE)
+        val armedOnFly = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson)?.armed == true }
         Scaffold(
             snackbarHost = { SnackbarHost(snackbars) },
             contentWindowInsets = if (flyPortrait) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
@@ -374,7 +376,7 @@ fun AircastShell(hostView: android.view.View?) {
             bottomBar = {
                 Column {
                 LogReplayBar()
-                NavigationBar {
+                if (!(tab == Tab.Fly && armedOnFly)) NavigationBar {
                     Tab.entries.forEach { entry ->
                         NavigationBarItem(
                             selected = tab == entry,
@@ -422,7 +424,7 @@ fun AircastShell(hostView: android.view.View?) {
                             flyCameraControlLayer()
                             flyObstacleArc()
                         },
-                        keyRowEnd = { emergencyStop() },
+                        keyRowEnd = { PinnedEmergencyStop() },
                         overlays = {
                             flyAttitude()
                             ObstacleReadout()

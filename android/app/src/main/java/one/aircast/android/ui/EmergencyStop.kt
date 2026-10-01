@@ -2,8 +2,19 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import one.aircast.android.R
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -12,13 +23,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 
 internal const val EMERGENCY_STOP = "emergencyStop"
+private const val STOP_SCRIM_ALPHA = 0.45f
+private const val DISABLED_STOP_ALPHA = 0.38f
 
 internal fun emergencyStopOffer(offers: Map<String, GuidedOffer>): GuidedOffer? =
     offers[EMERGENCY_STOP]?.takeIf { it.shown }
@@ -40,22 +52,23 @@ internal fun EmergencyStopButton(
         return
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Button(
+        Surface(
             onClick = { onConfirm(emergencyStopAction(offer)) },
             enabled = offer.ready,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error,
-                contentColor = MaterialTheme.colorScheme.onError,
-            ),
+            modifier = Modifier.alpha(if (offer.ready) 1f else DISABLED_STOP_ALPHA),
+            shape = CircleShape,
+            color = Color.Black.copy(alpha = STOP_SCRIM_ALPHA),
+            contentColor = MaterialTheme.colorScheme.error,
+            border = BorderStroke(2.dp, MaterialTheme.colorScheme.error),
         ) {
-            Text(offer.title, fontWeight = FontWeight.Bold)
-        }
-        blockedReasonFor(offer)?.let { reason ->
-            Text(
-                text = reason,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                Modifier.height(40.dp).padding(start = 10.dp, end = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(R.drawable.ic_stop_circle), null, Modifier.size(24.dp))
+                Text(offer.title, style = MaterialTheme.typography.labelLarge)
+            }
         }
     }
 }

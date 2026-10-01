@@ -173,14 +173,12 @@ internal fun FlyPortrait(
                     horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     verticalAlignment = Alignment.CenterVertically,
                 ) { keyRow() }
-                if (!simple) overlays()
+                Column(
+                    Modifier.fillMaxWidth().padding(top = if (simple) AircastSpace.s8 else 0.dp),
+                    verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    horizontalAlignment = if (simple) Alignment.CenterHorizontally else Alignment.Start,
+                ) { overlays() }
             }
-
-            if (simple) Column(
-                Modifier.align(Alignment.Center),
-                verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) { overlays() }
 
             if (simple) {
                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { actions(true) }
