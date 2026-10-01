@@ -58,6 +58,17 @@ const ACTUATOR_ACTION_TIMEOUT_MS: u64 = 3000;
 const MAV_STATE_ACTIVE: u8 = 4;
 const SEVERITY_ERROR: u8 = 3;
 const SEVERITY_NOTICE: u8 = 5;
+const BATTERY_OK: u8 = 1;
+const BATTERY_LOW: u8 = 2;
+const BATTERY_CRITICAL: u8 = 3;
+const BATTERY_EMERGENCY: u8 = 4;
+const BATTERY_FAILED: u8 = 5;
+const BATTERY_UNHEALTHY: u8 = 6;
+const FENCE_BREACH_NONE: u8 = 0;
+const FENCE_BREACH_MINALT: u8 = 1;
+const FENCE_BREACH_MAXALT: u8 = 2;
+const FENCE_BREACH_BOUNDARY: u8 = 3;
+const FENCE_SPEECH_GAP_MS: u64 = 3000;
 const COMMAND_LONG_ID: u32 = 76;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const LINK_SILENT_MS: u64 = 3500;
@@ -231,6 +242,9 @@ pub struct Vehicle {
     pub prearm: Option<(String, u64)>,
     prearm_spoken: BTreeMap<String, u64>,
     announced: (Option<String>, bool, bool),
+    speech_prefix: String,
+    battery_announced: BTreeMap<u8, u8>,
+    fence_quiet_ms: u64,
     pub distance: DistanceSensorFacts,
     pub local: LocalPositionFacts,
     pub local_setpoint: LocalPositionFacts,
@@ -371,6 +385,9 @@ impl Vehicle {
             prearm: None,
             prearm_spoken: BTreeMap::new(),
             announced: (None, false, false),
+            speech_prefix: String::new(),
+            battery_announced: BTreeMap::new(),
+            fence_quiet_ms: 0,
             distance: DistanceSensorFacts::default(),
             local: LocalPositionFacts::default(),
             local_setpoint: LocalPositionFacts::default(),
@@ -605,7 +622,6 @@ impl Vehicle {
                 plantransfer::Out::SendItem(item) => self.encode(&Outbound::MissionItemInt { target, plan: kind, item }).into_iter().collect(),
                 plantransfer::Out::SendAck => self.encode(&Outbound::MissionAck { target, plan: kind, result: plantransfer::RESULT_ACCEPTED }).into_iter().collect(),
                 plantransfer::Out::ClearAll => self.encode(&Outbound::MissionClearAll { target, plan: kind }).into_iter().collect(),
-                plantransfer::Out::ClearAll => self.encode(&Outbound::MissionClearAll { target, plan: kind }).into_iter().collect(),
                 plantransfer::Out::StartTimer(ms) => {
                     self.plans[plan].due = Some(now_ms + ms);
                     Vec::new()
@@ -702,13 +718,6 @@ impl Vehicle {
         }
         match request.get("action").and_then(Value::as_str).unwrap_or("") {
             "load" => Ok(self.load_plan(kind, now_ms)),
-            "removeAll" => {
-                if kind == PLAN_MISSION {
-                    (self.mission_current, self.mission_last_current) = (-1, -1);
-                }
-                let outs = self.plans[kind as usize].transfer.remove_all();
-                Ok(self.follow_plan(kind, outs, now_ms))
-            }
             "removeAll" => {
                 if kind == PLAN_MISSION {
                     (self.mission_current, self.mission_last_current) = (-1, -1);
@@ -1793,7 +1802,48 @@ impl Vehicle {
         (asked && !repeated).then_some(text)
     }
 
+    fn announce_battery(&mut self, id: u8, charge_state: u8) {
+        let lowest = self.battery_announced.get(&id).copied().unwrap_or(0);
+        let message = match charge_state {
+            BATTERY_OK => {
+                self.battery_announced.insert(id, charge_state);
+                None
+            }
+            BATTERY_LOW if charge_state > lowest => Some("battery {} level low"),
+            BATTERY_CRITICAL if charge_state > lowest => Some("battery {} level is critical"),
+            BATTERY_EMERGENCY if charge_state > lowest => Some("battery {} level emergency"),
+            BATTERY_FAILED if charge_state > lowest => Some("battery {} failed"),
+            BATTERY_UNHEALTHY if charge_state > lowest => Some("battery {} unhealthy"),
+            _ => None,
+        };
+        if let Some(message) = message {
+            self.battery_announced.insert(id, charge_state);
+            let numbered = if self.batteries.by_id.len() > 1 { id.to_string() } else { String::new() };
+            crate::speech::say("warning");
+            crate::speech::say(&format!("{} {} ", self.speech_prefix, message.replace("{}", &numbered)).to_lowercase());
+        }
+    }
+
+    fn announce_fence(&mut self, breached: bool, breach_type: u8, now_ms: u64) {
+        let kind = match breach_type {
+            FENCE_BREACH_NONE => return,
+            FENCE_BREACH_MINALT => "minimum altitude",
+            FENCE_BREACH_MAXALT => "maximum altitude",
+            FENCE_BREACH_BOUNDARY => "boundary",
+            _ => "",
+        };
+        match breached {
+            true if now_ms.saturating_sub(self.fence_quiet_ms) > FENCE_SPEECH_GAP_MS => {
+                self.fence_quiet_ms = now_ms;
+                crate::speech::say(&format!("{kind} fence breached"));
+            }
+            true => {}
+            false => self.fence_quiet_ms = now_ms,
+        }
+    }
+
     pub fn announce(&mut self, prefix: &str) {
+        self.speech_prefix = prefix.to_string();
         let (mode, armed, lost) = (self.flight_mode(), self.armed(), self.connection_lost);
         let (last_mode, last_armed, last_lost) = self.announced.clone();
         if !mode.is_empty() && last_mode.as_deref() != Some(mode.as_str()) {
@@ -2403,6 +2453,11 @@ impl Vehicle {
                     return bytes;
                 }
             }
+            _ => {}
+        }
+        match message {
+            MavMessage::BATTERY_STATUS(b) if !crate::cameraproto::is_camera_component(header.component_id) => self.announce_battery(b.id, b.charge_state as u8),
+            MavMessage::FENCE_STATUS(f) => self.announce_fence(f.breach_status == 1, f.breach_type as u8, now_ms),
             _ => {}
         }
         if let Some((battery, home)) = self.streams_watched_ms {
@@ -4203,6 +4258,38 @@ mod tests {
         assert!(hub.home_follows_gcs(false, (47.5, 8.5, 400.0), 41_100).is_empty());
         let sent = hub.home_follows_gcs(true, (47.5, 8.5, 400.0), 41_200);
         assert!(sent.iter().any(|(_, b)| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_SET_HOME && c.param5 == 47.5 && c.param7 == 400.0)), "{sent:?}");
+    }
+
+    struct NullBackend;
+    impl crate::router::Backend for NullBackend {
+        fn get(&self, _p: &str) -> String { String::new() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_worsening_battery_is_announced_once_per_level_and_a_fence_breach_at_most_every_three_seconds() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let spoken = || crate::speech::speech_view(&NullBackend, &[]).get("lines").and_then(Value::as_array).cloned().unwrap_or_default().iter().filter_map(|l| l["text"].as_str().map(str::to_string)).collect::<Vec<_>>();
+        let count = |needle: &str| spoken().iter().filter(|t| t.contains(needle)).count();
+        vehicle.announce_battery(7, BATTERY_LOW);
+        vehicle.announce_battery(7, BATTERY_LOW);
+        assert_eq!(count("battery  level low"), 1, "the same level is said once");
+        vehicle.announce_battery(7, BATTERY_CRITICAL);
+        assert_eq!(count("battery  level is critical"), 1);
+        vehicle.announce_battery(7, BATTERY_OK);
+        vehicle.announce_battery(7, BATTERY_LOW);
+        assert_eq!(count("battery  level low"), 2, "recovering to OK re-arms the warnings");
+        let before = count("maximum altitude fence breached");
+        vehicle.announce_fence(true, FENCE_BREACH_MAXALT, 10_000);
+        vehicle.announce_fence(true, FENCE_BREACH_MAXALT, 11_000);
+        vehicle.announce_fence(true, FENCE_BREACH_MAXALT, 14_000);
+        assert_eq!(count("maximum altitude fence breached") - before, 2);
     }
 
     #[test]
