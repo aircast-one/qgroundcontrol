@@ -188,7 +188,16 @@ fn field_values(pattern: &Value) -> Vec<(&'static str, &'static str, Value)> {
 
 pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> Vec<Value> {
     let file = if is_vtol(pattern) { VTOL_META } else { FIXED_WING_META };
-    field_values(pattern).into_iter().filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units)).collect()
+    let by_distance = pattern.get("valueSetIsDistance").and_then(Value::as_bool).unwrap_or(true);
+    field_values(pattern)
+        .into_iter()
+        .filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units).map(|control| (suffix, control)))
+        .map(|(suffix, control)| match (suffix, control) {
+            ("landingDistance", Value::Object(map)) if !is_vtol(pattern) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(by_distance))]).collect()),
+            ("glideSlope", Value::Object(map)) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(!by_distance))]).collect()),
+            (_, control) => control,
+        })
+        .collect()
 }
 
 pub fn raw(pattern: &Value, suffix: &str, value: &Value, units: &crate::surveydoc::Units) -> Value {
@@ -461,6 +470,18 @@ pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Ite
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distance_and_glide_slope_are_exclusive_like_the_radio_buttons() {
+        let built = fresh(&Fresh { vtol: false, land: (-35.37, 149.172), ardupilot: true, relative: true, transition_distance: None });
+        let units = crate::surveydoc::Units { vertical: &crate::read::Unit { name: "m".into(), factor: 1.0 }, horizontal: &crate::read::Unit { name: "m".into(), factor: 1.0 } };
+        let enabled = |pattern: &Value, suffix: &str| fields(pattern, "item", &units).into_iter().find(|f| f["pathSuffix"] == suffix).map(|f| f["enabled"].clone());
+        let by_slope = edit(&built, "valueSetIsDistance", &json!(false)).unwrap();
+        assert_eq!(enabled(&by_slope, "glideSlope"), Some(json!(true)));
+        assert_eq!(enabled(&by_slope, "landingDistance"), Some(json!(false)), "FWLandingPatternEditor disables the value the radio did not choose");
+        let by_distance = edit(&built, "valueSetIsDistance", &json!(true)).unwrap();
+        assert_eq!(enabled(&by_distance, "glideSlope"), Some(json!(false)));
+    }
 
     #[test]
     fn altitudes_relative_to_launch_is_a_checkbox_the_core_edits() {
