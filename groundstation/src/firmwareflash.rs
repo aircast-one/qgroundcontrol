@@ -205,12 +205,19 @@ fn ports() -> Vec<Value> {
 
 #[cfg(target_os = "android")]
 fn ports() -> Vec<Value> {
-    Vec::new()
+    crate::platformserial::ports()
+        .into_iter()
+        .map(|p| json!({ "port": p.system_location, "bootloader": in_bootloader(&p.description), "description": crate::platformserial::display_name(&p) }))
+        .collect()
 }
 
 #[cfg(target_os = "android")]
-fn look_at(_port: &str) -> Sighting {
-    Sighting::Absent
+fn look_at(port: &str) -> Sighting {
+    match crate::platformserial::ports().into_iter().find(|p| p.system_location == port) {
+        None => Sighting::Absent,
+        Some(p) if in_bootloader(&p.description) => Sighting::Bootloader,
+        Some(_) => Sighting::Running,
+    }
 }
 
 #[cfg(not(target_os = "android"))]
@@ -225,25 +232,72 @@ fn open(port: &str) -> Result<Serial, String> {
         .map_err(|e| format!("Open failed on port {port}: {e}"))
 }
 
-#[cfg(target_os = "android")]
-enum Unopened {}
+#[cfg(any(target_os = "android", test))]
+const FLASH_SERIAL_ID: u32 = 0xfff0_0002;
 
-#[cfg(target_os = "android")]
-impl Port for Unopened {
-    fn write(&mut self, _bytes: &[u8]) -> Result<(), String> {
-        match *self {}
+#[cfg(any(target_os = "android", test))]
+type Inbox = std::sync::Arc<(Mutex<(std::collections::VecDeque<u8>, Option<String>)>, std::sync::Condvar)>;
+
+#[cfg(any(target_os = "android", test))]
+struct Usb {
+    serial: crate::platformserial::PlatformSerial,
+    inbox: Inbox,
+}
+
+#[cfg(any(target_os = "android", test))]
+impl Drop for Usb {
+    fn drop(&mut self) {
+        self.serial.close();
     }
-    fn read_exact(&mut self, _count: usize, _timeout_ms: u64) -> Result<Vec<u8>, String> {
-        match *self {}
+}
+
+#[cfg(any(target_os = "android", test))]
+impl Port for Usb {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
+        match self.serial.write(bytes) {
+            true => Ok(()),
+            false => Err("Write failed: the USB device refused the bytes".to_string()),
+        }
     }
+
+    fn read_exact(&mut self, count: usize, timeout_ms: u64) -> Result<Vec<u8>, String> {
+        let (lock, ready) = &*self.inbox;
+        let held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        let (mut held, _) = ready
+            .wait_timeout_while(held, std::time::Duration::from_millis(timeout_ms), |(bytes, gone)| bytes.len() < count && gone.is_none())
+            .unwrap_or_else(PoisonError::into_inner);
+        match (held.0.len() >= count, held.1.clone()) {
+            (true, _) => Ok(held.0.drain(..count).collect()),
+            (false, Some(reason)) => Err(format!("Read failed: error: {reason}")),
+            (false, None) => Err("Timeout waiting for bytes to be available".to_string()),
+        }
+    }
+
     fn discard_input(&mut self) {
-        match *self {}
+        self.inbox.0.lock().unwrap_or_else(PoisonError::into_inner).0.clear();
     }
 }
 
 #[cfg(target_os = "android")]
-fn open(_port: &str) -> Result<Unopened, String> {
-    Err("Flashing over USB serial is not available on this platform yet".to_string())
+fn open(port: &str) -> Result<Usb, String> {
+    open_usb(port)
+}
+
+#[cfg(any(target_os = "android", test))]
+fn open_usb(port: &str) -> Result<Usb, String> {
+    let inbox: Inbox = std::sync::Arc::new((Mutex::new((std::collections::VecDeque::new(), None)), std::sync::Condvar::new()));
+    let fed = inbox.clone();
+    let serial = crate::platformserial::PlatformSerial::open(FLASH_SERIAL_ID, port, BAUD, 8, 1, 0, move |event| {
+        let (lock, ready) = &*fed;
+        let mut held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+        match event {
+            crate::platformserial::Event::Bytes(bytes) => held.0.extend(bytes),
+            crate::platformserial::Event::Disconnected(reason) => held.1 = Some(reason),
+        }
+        ready.notify_all();
+    })
+    .map_err(|e| format!("Open failed on port {port}: {e}"))?;
+    Ok(Usb { serial, inbox })
 }
 
 pub fn start(port: &str, file: &str) -> Result<(), String> {
@@ -385,6 +439,38 @@ mod tests {
         let (outcome, _, pauses) = watched(&[]);
         assert_eq!((outcome, pauses), (Err("Bootloader not found".to_string()), FIND_BOARD_ATTEMPTS));
         assert!(in_bootloader("PX4 BL FMU v5.x") && in_bootloader("ArduPilot Bootloader") && !in_bootloader("PX4 FMU v5.x"));
+    }
+
+    static USB_BOARD: Mutex<Option<Board>> = Mutex::new(None);
+
+    fn usb_open(_id: u32, _port: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64) -> bool {
+        (baud, data_bits, stop_bits, parity) == (BAUD, 8, 1, 0)
+    }
+
+    fn usb_write(id: u32, bytes: &[u8]) -> bool {
+        let answer = USB_BOARD.lock().unwrap().as_mut().map(|board| {
+            board.write(bytes).unwrap();
+            board.output()
+        });
+        let delivered = answer.filter(|out| !out.is_empty()).map(|out| std::thread::spawn(move || crate::platformserial::received(id, out)));
+        delivered.map(|thread| thread.join().is_ok()).unwrap_or(true)
+    }
+
+    fn usb_close(_id: u32) {}
+
+    fn usb_ports() -> Vec<crate::boards::PortInfo> {
+        Vec::new()
+    }
+
+    #[test]
+    fn a_bin_file_flashes_over_the_android_usb_hooks_to_a_board_on_the_other_end() {
+        crate::platformserial::install(crate::platformserial::Hooks { open: usb_open, write: usb_write, close: usb_close, ports: usb_ports });
+        *USB_BOARD.lock().unwrap() = Some(Board::new(5, 50, 2048));
+        let firmware: Vec<u8> = (0..700u32).map(|i| (i % 253) as u8).collect();
+        flash(open_usb("/dev/bus/usb/001/002").unwrap(), "fw.bin", &firmware, &mut |_| {}).unwrap();
+        let board = USB_BOARD.lock().unwrap().take().unwrap();
+        assert!(board.booted);
+        assert_eq!(&board.flash[..700], &firmware[..]);
     }
 
     #[test]
