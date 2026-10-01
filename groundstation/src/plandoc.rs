@@ -320,11 +320,12 @@ pub fn insert_simple(doc: &Document, command: i64, latitude: f64, longitude: f64
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
     let fresh = with_command_defaults(doc, &commands, command, [None, None, None, None, Some(latitude), Some(longitude), None], defaults);
     let land = commands.get(&command).is_some_and(|c| c.is_land);
+    let takeoff = commands.get(&command).is_some_and(|c| c.is_takeoff);
     let inherited = previous_altitude(doc, &commands, visual_index).filter(|_| fresh.altitude.is_some() && !land);
     let placed = match inherited {
         Some((altitude, previous_mode)) => {
-            let mode = match doc.global_altitude_mode {
-                crate::altitudemodes::MIXED => previous_mode,
+            let mode = match (takeoff, doc.global_altitude_mode) {
+                (true, _) | (false, crate::altitudemodes::MIXED) => previous_mode,
                 _ => fresh.altitude.as_ref().map_or(previous_mode, |a| a.mode),
             };
             Simple {
@@ -944,6 +945,23 @@ mod tests {
         matches_qt(&placed, include_str!("../tests/fixtures/edit-D-by-qt.plan"));
         let home = placed.home.unwrap();
         assert!((home[0] - 47.64026979617687).abs() < 1e-12 && home[1] == -122.1 && home[2] == 0.0);
+    }
+
+    #[test]
+    fn a_takeoff_copies_the_previous_altitude_frame_whatever_the_plan_mode() {
+        let doc = section();
+        let amsl = Document {
+            global_altitude_mode: crate::altitudemodes::ABSOLUTE,
+            items: doc.items.iter().map(|item| match item {
+                Item::Simple(s) if s.altitude.is_some() => Item::Simple(Simple { altitude: s.altitude.clone().map(|a| Altitude { mode: crate::altitudemodes::ABSOLUTE, ..a }), ..s.clone() }),
+                other => other.clone(),
+            }).collect(),
+            ..doc
+        };
+        let end = amsl.items.len() as i64 + 1;
+        let placed = insert_simple(&amsl, CMD_NAV_TAKEOFF, 47.63, -122.08, end, &QT_DEFAULTS);
+        let Some(Item::Simple(takeoff)) = placed.items.last() else { panic!("a takeoff is a simple item") };
+        assert_eq!(takeoff.altitude.as_ref().map(|a| a.mode), Some(crate::altitudemodes::ABSOLUTE), "insertTakeoffItem copies _findPreviousAltitude's frame, not the relative default");
     }
 
     #[test]
