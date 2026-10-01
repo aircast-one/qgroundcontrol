@@ -10,6 +10,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +42,8 @@ private data class FlownPlan(
     val goto: GotoLocation? = null,
 )
 
+internal fun <T> missionArrived(before: List<T>, after: List<T>): Boolean = before.isEmpty() && after.isNotEmpty()
+
 @Composable
 fun FlyMap(
     modifier: Modifier = Modifier,
@@ -54,6 +57,7 @@ fun FlyMap(
     var plan by remember { mutableStateOf(FlownPlan()) }
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
+    var fitRequest by remember { mutableIntStateOf(0) }
     val keepCentered by mapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)")
 
     DisposableEffect(Unit) {
@@ -86,6 +90,7 @@ fun FlyMap(
                         goto = GotoBridge.read(),
                     )
                 }
+                if (missionArrived(plan.items, next.items)) fitRequest++
                 plan = next
                 delay(FLY_POLL_MS)
             }
@@ -117,6 +122,7 @@ fun FlyMap(
             roi = plan.roi,
             onRoiClick = onRoiClick,
             goto = plan.goto,
+            fitRequest = fitRequest,
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level
