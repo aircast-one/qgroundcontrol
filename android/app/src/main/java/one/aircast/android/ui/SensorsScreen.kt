@@ -46,6 +46,7 @@ import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 
 private const val CAL = "sensorsCal"
+internal const val SENSOR_FACTORY_RESET = "sensorSettings.factoryReset"
 
 private const val CAL_START_MS = 5000L
 
@@ -84,8 +85,10 @@ internal val ROUTINE_COPY = mapOf(
     ),
 )
 
-internal fun routineCopy(routine: CalibrationRoutine): RoutineCopy =
-    ROUTINE_COPY[routine.id] ?: RoutineCopy(routine.description, routine.warning)
+internal fun routineCopy(routine: CalibrationRoutine): RoutineCopy = when {
+    routine.dialogHelp.isNotBlank() -> RoutineCopy(routine.dialogHelp, routine.warning)
+    else -> ROUTINE_COPY[routine.id] ?: RoutineCopy(routine.description, routine.warning)
+}
 
 @Composable
 private fun SensorsNotice(text: String, modifier: Modifier = Modifier) {
@@ -109,6 +112,7 @@ private fun StartDialog(
 ) {
     val copy = routineCopy(calibration)
     var simple by remember { mutableStateOf(false) }
+    val offersSimple = calibration.id == ACCEL_ROUTINE && calibration.arguments.isNotEmpty()
     val orientationFirst = calibration.id == ACCEL_ROUTINE || calibration.id == COMPASS_ROUTINE
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -119,7 +123,7 @@ private fun StartDialog(
                     SensorSettingsBlock(
                         calibrating = true,
                         showCompasses = calibration.id == COMPASS_ROUTINE,
-                        onSimpleAccel = if (calibration.id == ACCEL_ROUTINE) ({ simple = it }) else null,
+                        onSimpleAccel = if (offersSimple) ({ simple = it }) else null,
                     )
                 }
                 Text(copy.instruction)
@@ -134,7 +138,7 @@ private fun StartDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onConfirm(if (calibration.id == ACCEL_ROUTINE) listOf(simple) else calibration.arguments)
+                onConfirm(if (offersSimple) listOf(simple) else calibration.arguments)
                 onDismiss()
             }) { Text("Start") }
         },
@@ -259,14 +263,13 @@ private fun RunningCalibration(
 @Composable
 fun SensorsScreen(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
-    val setupJson by qgcPath(SETUP)
-    val isPx4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val json by qgcPath(CALIBRATION)
     val healthJson by qgcPath(SENSOR_HEALTH)
     val health = remember(healthJson) { sensorHealth(healthJson) }
     val state = remember(json) { calibrationState(json) }
     var pending by remember { mutableStateOf<CalibrationRoutine?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var confirmFactoryReset by remember { mutableStateOf(false) }
     var runningName by remember { mutableStateOf("") }
     var rebootOffered by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -279,15 +282,6 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    if (isPx4) {
-        SensorsNotice(
-            "Sensor calibration is only carried over for ArduPilot vehicles. " +
-                "Use QGroundControl on a computer for this vehicle.",
-            modifier,
-        )
-        return
-    }
-
     if (state == null) {
         SensorsNotice("Reading the vehicle's calibration state.", modifier)
         return
@@ -296,9 +290,24 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     if (showSettings) {
         AlertDialog(
             onDismissRequest = { showSettings = false },
-            title = { Text("Sensor Settings") },
+            title = { Text(state.settingsTitle) },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) { SensorSettingsBlock(calibrating = false, showCompasses = true) } },
             confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Close") } },
+        )
+    }
+
+    if (confirmFactoryReset) {
+        AlertDialog(
+            onDismissRequest = { confirmFactoryReset = false },
+            title = { Text("Factory reset") },
+            text = { Text("Reset every parameter on the vehicle to its factory default?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmFactoryReset = false
+                    scope.launch { notice = withContext(Dispatchers.Default) { Qgc.refusalOf(SENSOR_FACTORY_RESET) } }
+                }) { Text("Reset") }
+            },
+            dismissButton = { TextButton(onClick = { confirmFactoryReset = false }) { Text("Cancel") } },
         )
     }
 
@@ -389,7 +398,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         }
 
         items(state.routines, key = { it.id }) { routine ->
-            val status = routineStatus(routine, state)
+            val status = routine.status
             SetupRow(
                 title = routine.title,
                 status = if (routine.spinsPropeller) "Spins the motors" else status,
@@ -403,7 +412,13 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         }
 
         item(key = "sensorSettings") {
-            SetupRow(title = "Sensor Settings", status = "", state = SetupState.Neutral, onClick = { showSettings = true })
+            SetupRow(title = state.settingsTitle, status = "", state = SetupState.Neutral, onClick = { showSettings = true })
+        }
+
+        if (state.px4) {
+            item(key = "factoryReset") {
+                SetupRow(title = "Factory reset", status = "", state = SetupState.NeedsAttention, onClick = { confirmFactoryReset = true })
+            }
         }
 
         if (state.statusText.isNotBlank()) {

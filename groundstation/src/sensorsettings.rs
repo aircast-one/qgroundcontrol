@@ -4,8 +4,14 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.apmFirmware", "vehicle.sub"];
+pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.apmFirmware", "vehicle.px4Firmware", "vehicle.sub"];
 pub const SET_PRIORITY: &str = "sensorSettings.priority";
+pub const FACTORY_RESET: &str = "sensorSettings.factoryReset";
+const CMD_PREFLIGHT_STORAGE: u16 = 245;
+const STORAGE_RESET_FACTORY: f64 = 3.0;
+const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
+const PX4_MAX_MAGS: usize = 50;
+const PX4_ROTATION_NOTE: &str = "ROTATION_NONE indicates component points in direction of flight.";
 const COMPASSES: usize = 3;
 const PRIORITY_NOT_SET: usize = 3;
 const AUTO_ROT_ENABLED: f64 = 2.0;
@@ -91,11 +97,44 @@ fn decoded(backend: &dyn Backend, name: &str) -> Option<Value> {
     fact(backend, name).map(|f| decode(&f, &path(name)))
 }
 
+fn unavailable() -> Value {
+    json!({ "kind": "object", "class": "SensorSettings", "available": false })
+}
+
+pub fn px4_mag_shown(id: Option<f64>, rotation: Option<f64>) -> bool {
+    id.is_some_and(|id| id > 0.0) && rotation.is_some_and(|rot| rot >= 0.0)
+}
+
+fn px4_view(backend: &dyn Backend) -> Value {
+    let Some(board) = decoded(backend, "SENS_BOARD_ROT") else { return unavailable() };
+    let mags_enabled = number(backend, "SYS_HAS_MAG").is_none_or(|has| has != 0.0);
+    let compasses: Vec<Value> = (0..PX4_MAX_MAGS)
+        .map_while(|i| fact(backend, &format!("CAL_MAG{i}_ID")).map(|_| i))
+        .filter(|i| mags_enabled && px4_mag_shown(number(backend, &format!("CAL_MAG{i}_ID")), number(backend, &format!("CAL_MAG{i}_ROT"))))
+        .map(|i| json!({ "index": i, "label": format!("Mag {i}"), "device": "", "use": null, "priority": null, "orientation": decoded(backend, &format!("CAL_MAG{i}_ROT")), "orientationTitle": format!("Mag {i} Orientation") }))
+        .collect();
+    json!({
+        "kind": "object",
+        "class": "SensorSettings",
+        "available": true,
+        "boardRotation": board,
+        "boardTitle": "Autopilot Orientation",
+        "compasses": compasses,
+        "compassesWhileCalibrating": false,
+        "priorities": [],
+        "helpSet": format!("Adjust orientations as needed.\n\n{PX4_ROTATION_NOTE}"),
+        "helpCal": format!("Set autopilot orientation before calibrating.\n\n{PX4_ROTATION_NOTE}"),
+        "simpleAccelHelp": "",
+        "declination": null,
+    })
+}
+
 pub fn sensor_settings_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,sub"));
-    let Some(board) = decoded(backend, "AHRS_ORIENTATION").filter(|_| flag(&vehicle, "apmFirmware")) else {
-        return json!({ "kind": "object", "class": "SensorSettings", "available": false });
-    };
+    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,px4Firmware,sub"));
+    if flag(&vehicle, "px4Firmware") {
+        return px4_view(backend);
+    }
+    let Some(board) = decoded(backend, "AHRS_ORIENTATION").filter(|_| flag(&vehicle, "apmFirmware")) else { return unavailable() };
     let primary = number(backend, "COMPASS_PRIMARY");
     let auto_rot = number(backend, "COMPASS_AUTO_ROT") == Some(AUTO_ROT_ENABLED);
     let priorities: Vec<Option<f64>> = PRIO_PARAMS.iter().map(|p| number(backend, p)).collect();
@@ -114,6 +153,7 @@ pub fn sensor_settings_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "use": use_fact,
                 "priority": (has_priority && in_use).then(|| priority_of(id, &priorities)),
                 "orientation": (!auto_rot && external == Some(true)).then(|| decoded(backend, ORIENT_PARAMS[i])).flatten(),
+                "orientationTitle": "Orientation",
             }))
         })
         .collect();
@@ -123,7 +163,9 @@ pub fn sensor_settings_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "SensorSettings",
         "available": true,
         "boardRotation": board,
+        "boardTitle": "Autopilot Rotation",
         "compasses": compasses,
+        "compassesWhileCalibrating": true,
         "priorities": ["Priority 1", "Priority 2", "Priority 3", "Not Set"],
         "helpSet": HELP_SET,
         "helpCal": HELP_CAL,
@@ -143,6 +185,14 @@ pub fn set_priority(backend: &dyn Backend, args: &str) -> Value {
     }
     let Some(id) = number(backend, ID_PARAMS[compass]) else { return json!({ "ok": false, "reason": "That compass is not on this vehicle." }) };
     object(&backend.set(&format!("{}.rawValue", path(PRIO_PARAMS[priority])), &json!({ "value": id }).to_string()))
+}
+
+pub fn factory_reset(backend: &dyn Backend) -> Value {
+    if !flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware") {
+        return json!({ "ok": false, "reason": "Factory reset is offered for PX4 vehicles only." });
+    }
+    let params = [STORAGE_RESET_FACTORY, STORAGE_MISSION_UNTOUCHED, 0.0, 0.0, 0.0, 0.0, 0.0];
+    crate::guided::dispatch(backend, Some(json!({ "action": "mavlinkCommand", "command": CMD_PREFLIGHT_STORAGE, "params": params })), crate::guided::active_id(backend), "", "[]")
 }
 
 #[cfg(test)]
@@ -165,5 +215,13 @@ mod tests {
         assert_eq!(compass_label(2, Some(false), None), "Compass 3 (secondary)");
         assert_eq!(priority_of(97539.0, &[Some(1.0), Some(97539.0), None]), 1);
         assert_eq!(priority_of(5.0, &[Some(1.0), None, None]), 3, "a compass in no slot reads Not Set");
+    }
+
+    #[test]
+    fn px4_lists_only_external_mags_like_the_orientations_dialog() {
+        assert!(px4_mag_shown(Some(396_825.0), Some(0.0)), "ROTATION_NONE is still a settable external mag");
+        assert!(!px4_mag_shown(Some(396_825.0), Some(-1.0)), "an internal mag reports rotation -1 and has no orientation to set");
+        assert!(!px4_mag_shown(Some(0.0), Some(0.0)), "an unused slot is hidden");
+        assert!(!px4_mag_shown(None, Some(0.0)));
     }
 }

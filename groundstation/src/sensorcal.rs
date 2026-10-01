@@ -565,10 +565,40 @@ pub fn compass_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
         .any(|(_, _, offsets)| ["X", "Y", "Z"].iter().any(|axis| parameter(&format!("{offsets}_{axis}")) as f32 == 0.0))
 }
 
-pub fn qt_shape(snapshot: &Value, parameter: &dyn Fn(&str) -> f64) -> Value {
+pub fn apm_setup_needs(parameter: &dyn Fn(&str) -> Option<f64>) -> Value {
+    let zeroed = |name: &str| parameter(name).unwrap_or(0.0);
+    json!({ "px4": false, "compassSetupNeeded": compass_setup_needed(&zeroed), "accelSetupNeeded": accel_setup_needed(&zeroed) })
+}
+
+const AIRSPEED_CHECK_DISABLED: i64 = 162_128;
+
+pub fn px4_setup_needs(parameter: &dyn Fn(&str) -> Option<f64>, airframe_flies_on_airspeed: bool) -> Value {
+    let unset = |name: &str| parameter(name).unwrap_or(0.0) as f32 == 0.0;
+    let mag_enabled = parameter("SYS_HAS_MAG").is_none_or(|has| has != 0.0);
+    let airspeed_supported = airframe_flies_on_airspeed
+        && match parameter("SYS_HAS_NUM_ASPD") {
+            Some(count) => count != 0.0,
+            None => parameter("FW_ARSP_MODE").unwrap_or(0.0) == 0.0 && parameter("CBRK_AIRSPD_CHK").unwrap_or(0.0) as i64 != AIRSPEED_CHECK_DISABLED,
+        };
+    json!({
+        "px4": true,
+        "accelSetupNeeded": unset("CAL_ACC0_ID"),
+        "gyroSetupNeeded": unset("CAL_GYRO0_ID"),
+        "compassSetupNeeded": mag_enabled && unset("CAL_MAG0_ID"),
+        "magEnabled": mag_enabled,
+        "airspeedSupported": airspeed_supported,
+        "airspeedSetupNeeded": airspeed_supported && unset("SENS_DPRES_OFF"),
+    })
+}
+
+pub fn qt_shape(snapshot: &Value, needs: &Value) -> Value {
+    let px4 = needs["px4"] == true;
     let running = snapshot["running"].as_str();
     let kind = running.or(snapshot["last"].as_str());
-    let visual = kind == Some("accelerometer");
+    let visual = match px4 {
+        true => kind.is_some_and(|k| ["accelerometer", "compass", "gyro"].contains(&k)),
+        false => kind == Some("accelerometer"),
+    };
     let log = snapshot["log"].as_array().map(|lines| lines.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")).unwrap_or_default();
     let help = || snapshot["help"].as_str().unwrap_or_default().to_string();
     let (progress, help_text, status, show, sides_done) = match (running, snapshot["outcome"].as_str()) {
@@ -601,7 +631,7 @@ pub fn qt_shape(snapshot: &Value, parameter: &dyn Fn(&str) -> f64) -> Value {
     });
     let base = json!({
         "kind": "object",
-        "class": "APMSensorsComponentController",
+        "class": if px4 { "SensorsComponentController" } else { "APMSensorsComponentController" },
         "calProgress": progress,
         "nextEnabled": snapshot["nextEnabled"],
         "cancelEnabled": snapshot["cancelEnabled"],
@@ -609,13 +639,12 @@ pub fn qt_shape(snapshot: &Value, parameter: &dyn Fn(&str) -> f64) -> Value {
         "calibrationInProgress": running.is_some(),
         "calibrationActive": running.is_some(),
         "statusText": status,
-        "compassSetupNeeded": compass_setup_needed(parameter),
-        "accelSetupNeeded": accel_setup_needed(parameter),
         "showOrientationCalArea": show,
         "waitingForCancel": snapshot["waitingForCancel"],
     });
     let mut object = base.as_object().cloned().unwrap_or_default();
     object.extend(side_fields.chain(compass_fields));
+    object.extend(needs.as_object().cloned().unwrap_or_default());
     Value::Object(object)
 }
 
@@ -631,6 +660,34 @@ mod tests {
         assert!(!compass_setup_needed(&params(&[])), "no compass device, nothing to calibrate");
         assert!(compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 1.0), ("COMPASS_OFS_X", 5.0), ("COMPASS_OFS_Y", 3.0)])));
         assert!(!compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 0.0)])), "an unused compass is not asked for");
+    }
+
+    #[test]
+    fn px4_setup_needs_follow_the_sensors_component() {
+        let params = |values: &'static [(&'static str, f64)]| move |name: &str| values.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        let fresh = px4_setup_needs(&params(&[]), false);
+        assert_eq!((fresh["accelSetupNeeded"].clone(), fresh["gyroSetupNeeded"].clone(), fresh["compassSetupNeeded"].clone()), (json!(true), json!(true), json!(true)));
+        assert_eq!(fresh["airspeedSupported"], false, "a multirotor never offers airspeed");
+        let no_mag = px4_setup_needs(&params(&[("SYS_HAS_MAG", 0.0)]), false);
+        assert_eq!((no_mag["magEnabled"].clone(), no_mag["compassSetupNeeded"].clone()), (json!(false), json!(false)));
+        let plane = px4_setup_needs(&params(&[("SYS_HAS_NUM_ASPD", 1.0), ("CAL_ACC0_ID", 1_310_988.0)]), true);
+        assert_eq!((plane["airspeedSupported"].clone(), plane["airspeedSetupNeeded"].clone(), plane["accelSetupNeeded"].clone()), (json!(true), json!(true), json!(false)));
+        let old_plane = px4_setup_needs(&params(&[("CBRK_AIRSPD_CHK", 162_128.0)]), true);
+        assert_eq!(old_plane["airspeedSupported"], false, "before SYS_HAS_NUM_ASPD the circuit breaker turns the sensor off");
+        let no_sensor = px4_setup_needs(&params(&[("SYS_HAS_NUM_ASPD", 0.0)]), true);
+        assert_eq!(no_sensor["airspeedSupported"], false);
+    }
+
+    #[test]
+    fn a_px4_compass_run_shows_its_sides_through_the_qt_shape() {
+        let snapshot = json!({ "running": "compass", "showOrientations": true, "sides": [{ "key": "Down", "stage": "inProgress", "visible": true, "rotate": true }] });
+        let shape = qt_shape(&snapshot, &json!({ "px4": true, "magEnabled": true }));
+        assert_eq!(shape["class"], "SensorsComponentController");
+        assert_eq!(shape["showOrientationCalArea"], true);
+        assert_eq!(shape["orientationCalDownSideRotate"], true);
+        assert_eq!(shape["magEnabled"], true);
+        let apm = qt_shape(&snapshot, &json!({ "px4": false }));
+        assert_eq!(apm["showOrientationCalArea"], false, "ArduPilot compass calibration reports progress bars, not sides");
     }
 
     fn stages(cal: &Calibration) -> Vec<&'static str> {

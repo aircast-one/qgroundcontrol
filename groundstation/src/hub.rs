@@ -35,6 +35,7 @@ pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MANUAL_CONTROL_SCALE: f32 = 1000.0;
+const MAV_TYPE_AIRSHIP: u8 = 7;
 const AIRFRAME_PARAMS: [&str; 2] = ["SYS_AUTOSTART", "SYS_AUTOCONFIG"];
 const AIRFRAME_REBOOT_DELAY_MS: u64 = 800;
 const CMD_SET_MESSAGE_INTERVAL: u16 = 511;
@@ -2706,10 +2707,18 @@ impl Hub {
 
     pub fn sensors_json(&self) -> Option<Value> {
         let vehicle = self.active()?;
-        (vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then_some(())?;
         let snapshot = vehicle.calibration_snapshot();
-        let parameter = |name: &str| vehicle.parameter(vehicle.component, name).map(|p| p.as_f64()).unwrap_or(0.0);
-        Some(crate::sensorcal::qt_shape(&snapshot, &parameter))
+        let parameter = |name: &str| vehicle.parameter(vehicle.component, name).map(|p| p.as_f64());
+        let needs = match vehicle.autopilot {
+            crate::modes::AUTOPILOT_ARDUPILOT => crate::sensorcal::apm_setup_needs(&parameter),
+            crate::modes::AUTOPILOT_PX4 => {
+                use crate::cmdinfo::VehicleClass::{FixedWing, Vtol};
+                let class = crate::plandoc::vehicle_class(i64::from(vehicle.vehicle_type));
+                crate::sensorcal::px4_setup_needs(&parameter, matches!(class, FixedWing | Vtol) || vehicle.vehicle_type == MAV_TYPE_AIRSHIP)
+            }
+            _ => return None,
+        };
+        Some(crate::sensorcal::qt_shape(&snapshot, &needs))
     }
 
     pub fn radio_json(&mut self) -> Option<Value> {

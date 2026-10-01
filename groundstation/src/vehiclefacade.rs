@@ -312,6 +312,7 @@ fn sensors_request(path: &str, args: &str) -> Option<Value> {
         "calibrateGyro" => start("gyro"),
         "calibratePressure" => start("pressure"),
         "calibrateMotorInterference" => start("compassMot"),
+        "calibrateAirspeed" => start("airspeed"),
         "nextClicked" => Some(json!({ "action": "next" })),
         "cancelCalibration" => Some(json!({ "action": "cancel" })),
         _ => None,

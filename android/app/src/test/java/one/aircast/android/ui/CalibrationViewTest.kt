@@ -18,10 +18,10 @@ class CalibrationViewTest {
             "routines":[
               {"id":"accelerometer","title":"Accelerometer","invocation":"sensorsCal.calibrateAccel",
                "arguments":[false],"blocked":false,"enabled":true,
-               "description":"Hold the vehicle in each orientation it asks for.","warning":""},
+               "description":"Hold the vehicle in each orientation it asks for.","status":"Not calibrated","warning":""},
               {"id":"compass","title":"Compass","invocation":"sensorsCal.calibrateCompass",
                "arguments":[],"blocked":true,"enabled":false,
-               "description":"Calibrate the accelerometer first.","warning":""}]}""",
+               "description":"Calibrate the accelerometer first.","status":"Calibrate the accelerometer first.","warning":""}]}""",
     )
 
     @Test
@@ -35,28 +35,25 @@ class CalibrationViewTest {
     }
 
     @Test
-    fun `the accelerometer-first rule is the core's answer, not the head's`() {
+    fun `the accelerometer-first rule and each routine's status are the core's answer, not the head's`() {
         val state = calibrationState(served)!!
 
         assertFalse(state.routines[0].blocked)
         assertTrue(state.routines[1].blocked)
-        assertEquals("Calibrate the accelerometer first", routineStatus(state.routines[1], state))
+        assertEquals("Calibrate the accelerometer first.", state.routines[1].status)
+        assertEquals("Not calibrated", state.routines[0].status)
     }
 
     @Test
-    fun `a routine that is not blocked reports what the vehicle says about it`() {
-        val state = calibrationState(served)!!
-
-        assertEquals("Not calibrated", routineStatus(state.routines[0], state))
-    }
-
-    @Test
-    fun `a calibrated vehicle says so`() {
-        val done = calibrationState(
-            JSONObject(served.toString()).put("accelNeeded", false).put("compassNeeded", false),
+    fun `a px4 routine opens with the dialog text qgc shows`() {
+        val px4 = calibrationState(
+            JSONObject(served.toString()).put("px4", true).put("settingsTitle", "Orientations"),
         )!!
+        val gyro = px4.routines[0].copy(id = "gyro", dialogHelp = "For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.")
 
-        assertEquals("Calibrated", routineStatus(done.routines[0], done))
+        assertTrue(px4.px4)
+        assertEquals("Orientations", px4.settingsTitle)
+        assertEquals(gyro.dialogHelp, routineCopy(gyro).instruction)
     }
 
     @Test

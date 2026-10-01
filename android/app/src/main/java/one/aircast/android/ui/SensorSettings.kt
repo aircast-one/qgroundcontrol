@@ -33,12 +33,14 @@ import org.json.JSONObject
 internal const val SENSOR_SETTINGS_VIEW = "view.sensorSettings"
 internal const val SENSOR_SETTINGS_PRIORITY = "sensorSettings.priority"
 
-internal data class CompassSettings(val index: Int, val label: String, val device: String, val use: Fact?, val priority: Int?, val orientation: Fact?)
+internal data class CompassSettings(val index: Int, val label: String, val device: String, val use: Fact?, val priority: Int?, val orientation: Fact?, val orientationTitle: String)
 
 internal data class Declination(val manual: Boolean, val autoDecPath: String, val value: Fact?)
 
 internal data class SensorSettings(
     val boardRotation: Fact?,
+    val boardTitle: String,
+    val compassesWhileCalibrating: Boolean,
     val compasses: List<CompassSettings>,
     val priorities: List<String>,
     val helpSet: String,
@@ -52,6 +54,8 @@ internal fun sensorSettings(view: JSONObject?): SensorSettings? = view?.takeIf {
     val priorities = it.optJSONArray("priorities")
     SensorSettings(
         boardRotation = it.optJSONObject("boardRotation")?.let(::factFromControl),
+        boardTitle = it.optText("boardTitle"),
+        compassesWhileCalibrating = it.optBoolean("compassesWhileCalibrating"),
         compasses = (0 until (compasses?.length() ?: 0)).mapNotNull { at ->
             compasses!!.optJSONObject(at)?.let { c ->
                 CompassSettings(
@@ -61,6 +65,7 @@ internal fun sensorSettings(view: JSONObject?): SensorSettings? = view?.takeIf {
                     use = c.optJSONObject("use")?.let(::factFromControl),
                     priority = if (c.isNull("priority")) null else c.optInt("priority"),
                     orientation = c.optJSONObject("orientation")?.let(::factFromControl),
+                    orientationTitle = c.optText("orientationTitle"),
                 )
             }
         },
@@ -85,7 +90,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
     val refresh: () -> Unit = { revision++ }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (calibrating) settings.helpCal else settings.helpSet, style = MaterialTheme.typography.bodyMedium)
-        settings.boardRotation?.let { FactRow(it, title = "Autopilot Rotation", onWrite = refresh) }
+        settings.boardRotation?.let { FactRow(it, title = settings.boardTitle, onWrite = refresh) }
         onSimpleAccel?.let { report ->
             Text(settings.simpleAccelHelp, style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -96,7 +101,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
                 Text("Simple Accelerometer Calibration")
             }
         }
-        if (showCompasses) {
+        if (showCompasses && (!calibrating || settings.compassesWhileCalibrating)) {
             settings.compasses.forEach { compass ->
                 Text(compass.label, style = MaterialTheme.typography.titleSmall)
                 if (compass.device.isNotBlank()) Text(compass.device, style = MaterialTheme.typography.bodySmall)
@@ -109,7 +114,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
                         }
                     }
                 }
-                compass.orientation?.let { FactRow(it, title = "Orientation", onWrite = refresh) }
+                compass.orientation?.let { FactRow(it, title = compass.orientationTitle, onWrite = refresh) }
             }
             settings.declination?.let { declination ->
                 Text("Magnetic Declination", style = MaterialTheme.typography.titleSmall)

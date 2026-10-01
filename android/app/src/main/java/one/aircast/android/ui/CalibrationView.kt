@@ -21,6 +21,8 @@ internal data class CalibrationRoutine(
     val blocked: Boolean,
     val enabled: Boolean,
     val description: String,
+    val dialogHelp: String,
+    val status: String,
     val warning: String,
     val spinsPropeller: Boolean,
 )
@@ -37,6 +39,8 @@ internal data class CalibrationState(
     val accelNeeded: Boolean,
     val compassNeeded: Boolean,
     val needsAttention: String,
+    val px4: Boolean,
+    val settingsTitle: String,
     val sides: List<CalibrationSide>,
     val routines: List<CalibrationRoutine>,
 )
@@ -60,6 +64,8 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
         accelNeeded = view.optBoolean("accelNeeded"),
         compassNeeded = view.optBoolean("compassNeeded"),
         needsAttention = view.optText("needsAttention"),
+        px4 = view.optBoolean("px4"),
+        settingsTitle = view.optText("settingsTitle"),
         sides = view.list("sides") {
             CalibrationSide(
                 key = it.optText("key"),
@@ -80,18 +86,13 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
                 blocked = it.optBoolean("blocked"),
                 enabled = it.optBoolean("enabled"),
                 description = it.optText("description"),
+                dialogHelp = it.optText("dialogHelp"),
+                status = it.optText("status"),
                 warning = it.optText("warning"),
                 spinsPropeller = it.optBoolean("spinsPropeller"),
             )
         },
     )
-}
-
-internal fun routineStatus(routine: CalibrationRoutine, state: CalibrationState): String = when {
-    routine.blocked -> "Calibrate the accelerometer first"
-    routine.id == "accelerometer" -> if (state.accelNeeded) "Not calibrated" else "Calibrated"
-    routine.id == "compass" -> if (state.compassNeeded) "Not calibrated" else "Calibrated"
-    else -> ""
 }
 
 internal const val COMPASS_ROUTINE = "compass"

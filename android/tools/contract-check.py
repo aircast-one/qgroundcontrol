@@ -197,17 +197,13 @@ ACCEPTED_ON = {
     ("view.settings", "valueMeters"): "see view.plan",
     ("view.settings", "showsPacketRadio"): "this head has no packet radio screen at all",
     ("view.mavlinkConsole", "last"): "the console draws every line; last is for a head that shows one",
-    ("view.vehicleLinks", "primary"): "b0ba82f11 - link names live on view.links behind Connections",
     ("view.vehicleLinks", "watching"): "the reason sentence the core serves alongside says the same thing",
     ("view.vehicleLinks", "autoDisconnect"): "contact loss reaches the operator through view.flyState",
     ("view.plan", "speedUnits"): "the unit the two speed defaults share. Each control carries its "
         "own units and PlanDefaultsDialog renders them through FactRow, so this is the core "
         "telling a head that wants ONE label for both - this one does not",
-    ("view.plan", "home"): "plan.controllerVehicle.homePosition. The head draws the planned-home item at "
-        "index 0, which is the one the mission actually flies from",
-    ("view.frame", "vehicleType"): "view.frame is read by MotorsScreen for motorCount and the safety gate; "
+    ("view.frame", "vehicleTypeText"): "view.frame is read by MotorsScreen for motorCount and the safety gate; "
         "naming the airframe belongs to a setup summary, not the motor test",
-    ("view.frame", "vehicleTypeText"): "see vehicleType",
 }
 
 ONLY_IN = {
@@ -357,18 +353,12 @@ ACCEPTED = {
     "ssid": "view.espBridge serves the ESP8266 bridge's component-240 parameters and the desktop rig has no bridge, so it records only available=false; espbridge.rs esp_bridge_view serves it",
     "ssidSta": "view.espBridge serves the ESP8266 bridge's component-240 parameters and the desktop rig has no bridge, so it records only available=false; espbridge.rs esp_bridge_view serves it",
     "autoDecPath": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "boardRotation": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "compasses": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "declination": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "device": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "helpCal": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "helpSet": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "manual": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "orientation": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "priorities": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "priority": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "simpleAccelHelp": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "use": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
+    "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
     "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",
