@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.rover", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString"];
+pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash"];
 const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 const SETUP_REQUIRED: &str = "Setup required";
 const READY: &str = "Ready";
@@ -24,7 +24,11 @@ pub struct Vehicle {
     pub multi_rotor: bool,
     pub fixed_wing: bool,
     pub rover: bool,
+    pub sub: bool,
+    pub version: (i64, i64, i64),
     pub firmware: String,
+    pub firmware_type: String,
+    pub git_hash: String,
 }
 
 pub type Facts<'a> = &'a dyn Fn(&str) -> Option<Value>;
@@ -76,7 +80,13 @@ fn apm_airframe(facts: Facts, vehicle: &Vehicle) -> Rows {
 fn apm_sub_frame(facts: Facts, vehicle: &Vehicle) -> Rows {
     let frame = facts("FRAME_CONFIG").map(|f| number(&f) as i64);
     let name = crate::apmsubframe::FRAMES.iter().find(|f| Some(f.value) == frame).map_or("", |f| f.name);
-    vec![row("Frame Type", name), row("Firmware Version", vehicle.firmware.clone())]
+    let (major, minor, patch) = vehicle.version;
+    let firmware = match major {
+        -1 => "Unknown".to_string(),
+        _ => format!("{major}.{minor}.{patch} {}", vehicle.firmware_type),
+    };
+    let git = Some(vehicle.git_hash.clone()).filter(|h| !h.is_empty() && h != "-1").unwrap_or_else(|| "Unknown".to_string());
+    vec![row("Frame Type", name), row("Firmware Version", firmware), row("Git Revision", git)]
 }
 
 fn apm_radio(facts: Facts) -> Rows {
@@ -210,6 +220,27 @@ fn fence_kind(enable: &Value, kind: &Value) -> &'static str {
     }
 }
 
+fn either_text(fact: &Value) -> String {
+    Some(text(fact, "enumOrValueString")).filter(|t| !t.is_empty()).unwrap_or_else(|| text(fact, "valueString"))
+}
+
+fn sub_failsafes(facts: Facts, vehicle: &Vehicle) -> Rows {
+    let modern = vehicle.version >= (3, 5, 0);
+    let shown = |name: &str| facts(name).map(|f| either_text(&f)).unwrap_or_default();
+    [
+        Some(row("GCS failsafe:", shown("FS_GCS_ENABLE"))),
+        Some(row("Leak failsafe:", shown("FS_LEAK_ENABLE"))),
+        modern.then(|| row("Battery failsafe:", facts("BATT_FS_LOW_ACT").map_or_else(|| DISABLED.to_string(), |f| either_text(&f)))),
+        modern.then(|| row("EKF failsafe:", shown("FS_EKF_ACTION"))),
+        modern.then(|| row("Pilot Input failsafe:", shown("FS_PILOT_INPUT"))),
+        Some(row("Int. Temperature failsafe:", shown("FS_TEMP_ENABLE"))),
+        Some(row("Int. Pressure failsafe:", shown("FS_PRESS_ENABLE"))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
 fn apm_flight_safety(facts: Facts, vehicle: &Vehicle) -> Rows {
     let enable = facts("FENCE_ENABLE");
     let action = facts("FENCE_ACTION").map(|a| match number(&a) as i64 {
@@ -313,7 +344,9 @@ pub fn rows(class: &str, facts: Facts, vehicle: &Vehicle) -> Option<Rows> {
         "PowerComponent" => px4_power(facts),
         "APMAirspeedComponent" => apm_airspeed(facts),
         "APMFollowComponent" => apm_follow(facts),
+        "APMFailsafesComponent" if vehicle.sub => sub_failsafes(facts, vehicle),
         "APMFailsafesComponent" => apm_failsafes(facts, vehicle),
+        "APMFlightSafetyComponent" if vehicle.sub => vec![row("Arming Checks:", arming_checks(facts))],
         "APMFlightSafetyComponent" => apm_flight_safety(facts, vehicle),
         "APMLightsComponent" => apm_lights(facts),
         "SafetyComponent" => px4_safety(facts),
@@ -331,13 +364,17 @@ pub fn firmware_text(major: i64, minor: i64, patch: i64, kind: &str) -> String {
 }
 
 pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,rover,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString"));
+    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash"));
     let part = |key: &str| read.get(key).and_then(Value::as_i64).unwrap_or(-1);
     let vehicle = Vehicle {
         multi_rotor: flag(&read, "multiRotor"),
         fixed_wing: flag(&read, "fixedWing"),
         rover: flag(&read, "rover") && flag(&read, "apmFirmware"),
+        sub: flag(&read, "sub"),
+        version: (part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion")),
         firmware: firmware_text(part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion"), &text(&read, "firmwareVersionTypeString")),
+        firmware_type: text(&read, "firmwareVersionTypeString"),
+        git_hash: read.get("gitHash").map(|h| h.as_str().map_or_else(|| h.to_string(), str::to_string)).unwrap_or_default(),
     };
     let facts = |name: &str| Some(object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty());
     let count = object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).map_or(0, Vec::len);
@@ -365,7 +402,7 @@ mod tests {
     }
 
     fn copter() -> Vehicle {
-        Vehicle { multi_rotor: true, fixed_wing: false, rover: false, firmware: "4.5.7".into() }
+        Vehicle { multi_rotor: true, fixed_wing: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new() }
     }
 
     #[test]
@@ -407,6 +444,16 @@ mod tests {
         assert!(shown.contains(&row("Loiter Alt", "30 m")));
         assert!(!shown.iter().any(|(label, _)| label == "Land Delay"), "a negative delay never lands");
         assert_eq!(clean_behavior("Warning"), "Warning");
+    }
+
+    #[test]
+    fn sub_failsafes_drop_the_rows_older_firmware_lacks() {
+        let map = HashMap::from([("FS_GCS_ENABLE", json!({ "kind": "fact", "enumOrValueString": "Warn only", "valueString": "1" })), ("ARMING_SKIPCHK", fact(0.0, "0", "", ""))]);
+        let sub = Vehicle { sub: true, ..copter() };
+        let modern = rows("APMFailsafesComponent", &lookup(&map), &sub).unwrap();
+        assert_eq!((modern[0].clone(), modern[2].clone()), (row("GCS failsafe:", "Warn only"), row("Battery failsafe:", DISABLED)));
+        assert_eq!(rows("APMFailsafesComponent", &lookup(&map), &Vehicle { version: (3, 4, 0), ..sub }).unwrap().len(), 4);
+        assert_eq!(rows("APMFlightSafetyComponent", &lookup(&map), &Vehicle { sub: true, ..copter() }).unwrap(), [row("Arming Checks:", "Enabled")]);
     }
 
     #[test]
