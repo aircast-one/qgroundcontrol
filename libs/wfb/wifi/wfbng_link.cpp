@@ -273,7 +273,12 @@ std::vector<DeviceId> WfbngLink::get_device_list() {
     return list;
 }
 
-bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidthMode, const std::string &kPath) {
+const char *WfbngLink::known_adapter_name(uint16_t vendor_id, uint16_t product_id) {
+    const auto known = kKnownAdapters.find(make_device_key(vendor_id, product_id));
+    return known == kKnownAdapters.end() ? nullptr : known->second;
+}
+
+bool WfbngLink::prepare_start(const std::string &kPath) {
     GuiInterface::Instance().wifiFrameCount_ = 0;
     GuiInterface::Instance().wfbngFrameCount_ = 0;
     GuiInterface::Instance().rtpPktCount_ = 0;
@@ -286,11 +291,36 @@ bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidt
         return false;
     }
 
-    auto logger = std::make_shared<Logger>();
-    logger->set_level(Logger::Level::Info);
-
     if (ctx) {
         GuiInterface::Instance().PutLog(LogLevel::Error, "libusb context should be null");
+        return false;
+    }
+    return true;
+}
+
+bool WfbngLink::start_fd(int fd, uint8_t channel, int channelWidthMode, const std::string &kPath) {
+    if (!prepare_start(kPath)) {
+        return false;
+    }
+    libusb_set_option(nullptr, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
+    if (libusb_init(&ctx) < 0) {
+        ctx = nullptr;
+        GuiInterface::Instance().PutLog(LogLevel::Error, "Failed to initialize libusb");
+        return false;
+    }
+    libusb_set_option(ctx, LIBUSB_OPTION_LOG_LEVEL, LIBUSB_LOG_LEVEL_ERROR);
+    if (libusb_wrap_sys_device(ctx, static_cast<intptr_t>(fd), &devHandle) < 0 || devHandle == nullptr) {
+        devHandle = nullptr;
+        libusb_exit(ctx);
+        ctx = nullptr;
+        GuiInterface::Instance().PutLog(LogLevel::Error, "Cannot open the USB device handed over by the system");
+        return false;
+    }
+    return run_opened(channel, channelWidthMode);
+}
+
+bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidthMode, const std::string &kPath) {
+    if (!prepare_start(kPath)) {
         return false;
     }
 
@@ -362,6 +392,13 @@ bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidt
         return false;
     }
 
+    return run_opened(channel, channelWidthMode);
+}
+
+bool WfbngLink::run_opened(uint8_t channel, int channelWidthMode) {
+    auto logger = std::make_shared<Logger>();
+    logger->set_level(Logger::Level::Info);
+
     // Find the Wi-Fi interface (handles composite devices like RTL8822BU)
     int iface = devourer::find_wifi_interface(devHandle);
 
@@ -369,7 +406,7 @@ bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidt
     // (do_reset=false: libusb_reset_device can cause RTL8812AU to re-enumerate
     //  with a stale handle on Windows/WinUSB, breaking URB completion)
     std::shared_ptr<devourer::UsbDeviceLock> usb_lock;
-    rc = devourer::claim_interface_then_reset(devHandle, iface, logger, false, usb_lock);
+    int rc = devourer::claim_interface_then_reset(devHandle, iface, logger, false, usb_lock);
     if (rc < 0) {
         libusb_close(devHandle);
         devHandle = nullptr;
@@ -384,14 +421,20 @@ bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidt
 
     tx_frame = std::make_shared<TxFrame>(tun_enabled);
 
+    usb_thread_done = false;
     usbThread = std::make_shared<std::thread>([=, this]() {
+        const std::shared_ptr<void> markDone(nullptr, [this](void *) { usb_thread_done = true; });
         WiFiDriver wifi_driver{logger};
         try {
             if (exit_requested) {
                 return;
             }
 
-            rtlDevice = wifi_driver.CreateRtlDevice(devHandle, ctx, usb_lock);
+            devourer::DeviceConfig config{};
+#ifdef __ANDROID__
+            config.usb.rx_zerocopy = false;
+#endif
+            rtlDevice = wifi_driver.CreateRtlDevice(devHandle, ctx, usb_lock, config);
 
             if (exit_requested) {
                 return;
@@ -831,6 +874,13 @@ void WfbngLink::stop() {
         tun_->stop();
     }
 #endif
+
+    while (usbThread && !usb_thread_done) {
+        if (rtlDevice) {
+            rtlDevice->StopRxLoop();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
 
     // Wait for the USB thread to exit.
     if (usbThread && usbThread->joinable()) {

@@ -65,6 +65,10 @@ public:
     /// Start Wi-Fi monitoring with a device.
     bool start(const DeviceId &deviceId, uint8_t channel, int channelWidth, const std::string &kPath);
 
+    bool start_fd(int fd, uint8_t channel, int channelWidth, const std::string &kPath);
+
+    static const char *known_adapter_name(uint16_t vendor_id, uint16_t product_id);
+
     void stop();
 
     bool get_alink_enabled() const;
@@ -95,6 +99,7 @@ protected:
 
     // In case a link is stopped before initializing an RTL device.
     std::atomic<bool> exit_requested{false};
+    std::atomic<bool> usb_thread_done{false};
 
     std::string keyPath;
 
@@ -127,6 +132,10 @@ protected:
     void start_link_quality_thread();
 
     void stop_adaptive_link();
+
+    bool prepare_start(const std::string &kPath);
+
+    bool run_opened(uint8_t channel, int channelWidthMode);
 
     void init_thread(std::unique_ptr<std::thread> &thread,
                      const std::function<std::unique_ptr<std::thread>()> &init_func);

@@ -9,6 +9,9 @@ use jni::{JNIEnv, JavaVM};
 const BRIDGE_CLASS: &str = "org/mavlink/qgroundcontrol/QGCBridge";
 const USB_SERIAL_CLASS: &str = "org/mavlink/qgroundcontrol/QGCUsbSerialManager";
 const BLUETOOTH_CLASS: &str = "one/aircast/android/BluetoothLinks";
+const WFB_USB_CLASS: &str = "one/aircast/android/WfbUsb";
+const WFB_LIBRARY: &CStr = c"libqgc_wfb.so";
+const RTLD_NOW: std::ffi::c_int = 2;
 const USB_WRITE_TIMEOUT_MS: i32 = 1000;
 const BAD_DEVICE_ID: i32 = 0;
 
@@ -16,6 +19,12 @@ static VM: OnceLock<JavaVM> = OnceLock::new();
 static BRIDGE: OnceLock<GlobalRef> = OnceLock::new();
 static USB_SERIAL: OnceLock<GlobalRef> = OnceLock::new();
 static BLUETOOTH: OnceLock<GlobalRef> = OnceLock::new();
+static WFB_USB: OnceLock<GlobalRef> = OnceLock::new();
+
+unsafe extern "C" {
+    fn dlopen(name: *const c_char, flags: std::ffi::c_int) -> *mut c_void;
+    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
+}
 static USB_DEVICES: Mutex<BTreeMap<u32, i32>> = Mutex::new(BTreeMap::new());
 
 fn text_of(env: &mut JNIEnv, value: &JString) -> CString {
@@ -185,6 +194,49 @@ fn string_array(vm: &JavaVM, class: &GlobalRef, method: &str) -> Vec<String> {
     lines
 }
 
+fn wfb_devices() -> Vec<crate::wfbhost::UsbDevice> {
+    let (Some(vm), Some(class)) = (VM.get(), WFB_USB.get()) else { return Vec::new() };
+    string_array(vm, class, "devices")
+        .iter()
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split('\t').collect();
+            Some(crate::wfbhost::UsbDevice {
+                name: fields.first()?.to_string(),
+                vendor_id: fields.get(1)?.parse().ok()?,
+                product_id: fields.get(2)?.parse().ok()?,
+                product: fields.get(3).map(|p| p.to_string()).unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+fn wfb_open(name: &str) -> i32 {
+    WFB_USB.get().and_then(|class| static_call(class, "open", "(Ljava/lang/String;)I", &[Arg::Text(name)])).and_then(|value| value.i().ok()).unwrap_or(-1)
+}
+
+fn wfb_close(name: &str) {
+    if let Some(class) = WFB_USB.get() {
+        static_call(class, "close", "(Ljava/lang/String;)V", &[Arg::Text(name)]);
+    }
+}
+
+fn wfb_symbol<T>(handle: *mut c_void, name: &CStr) -> Option<T> {
+    let found = unsafe { dlsym(handle, name.as_ptr()) };
+    (!found.is_null()).then(|| unsafe { std::mem::transmute_copy(&found) })
+}
+
+fn wfb_library() -> Option<crate::wfbhost::FdLibrary> {
+    let handle = unsafe { dlopen(WFB_LIBRARY.as_ptr(), RTLD_NOW) };
+    (!handle.is_null()).then_some(())?;
+    let table: unsafe extern "C" fn() -> *const crate::wfbhost::Native = wfb_symbol(handle, c"qgc_wfb_native")?;
+    let native = unsafe { table().as_ref() }?;
+    Some(crate::wfbhost::FdLibrary {
+        native: crate::wfbhost::Native { ..*native },
+        start_fd: wfb_symbol(handle, c"qgc_wfb_start_fd")?,
+        adapter_name: wfb_symbol(handle, c"qgc_wfb_adapter_name")?,
+    })
+}
+
 fn usb_ports() -> Vec<crate::boards::PortInfo> {
     let (Some(vm), Some(class)) = (VM.get(), USB_SERIAL.get()) else { return Vec::new() };
     string_array(vm, class, "availableDevicesInfo").iter().filter_map(|line| crate::platformserial::port_from_info(line)).collect()
@@ -203,6 +255,16 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _reserved: *mut c_void) -> jint {
     if let Some(bluetooth) = env.find_class(BLUETOOTH_CLASS).ok().and_then(|class| env.new_global_ref(class).ok()) {
         let _ = BLUETOOTH.set(bluetooth);
         crate::platformbluetooth::install(crate::platformbluetooth::Hooks { open: bluetooth_open, write: bluetooth_write, close: bluetooth_close, devices: bluetooth_devices, scan: bluetooth_scan, scanning: bluetooth_scanning });
+    }
+    if let Some(wfb) = env.find_class(WFB_USB_CLASS).ok().and_then(|class| env.new_global_ref(class).ok()) {
+        let _ = WFB_USB.set(wfb);
+        if let Some(library) = wfb_library() {
+            crate::wfbhost::register_usb(crate::wfbhost::UsbRadio {
+                library,
+                usb: crate::wfbhost::UsbHooks { devices: wfb_devices, open: wfb_open, close: wfb_close },
+                opened: Mutex::new(None),
+            });
+        }
     }
     if env.exception_check().unwrap_or(false) {
         let _ = env.exception_clear();

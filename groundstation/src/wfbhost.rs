@@ -59,7 +59,7 @@ impl Driver {
         };
         self.execute(radio, store, settings, default_key, outs, now_ms);
         if self.retry_due.is_some_and(|due| now_ms >= due) {
-            self.retry_due = None;
+            self.retry_due = Some(now_ms + crate::packetradio::RETRY_INTERVAL_MS);
             let outs = self.machine.on_retry(settings, &devices());
             self.execute(radio, store, settings, default_key, outs, now_ms);
         }
@@ -209,6 +209,108 @@ impl Radio for Native {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsbDevice {
+    pub name: String,
+    pub vendor_id: u16,
+    pub product_id: u16,
+    pub product: String,
+}
+
+pub const PERMISSION_PENDING: i32 = -2;
+
+pub struct UsbHooks {
+    pub devices: fn() -> Vec<UsbDevice>,
+    pub open: fn(&str) -> i32,
+    pub close: fn(&str),
+}
+
+pub struct FdLibrary {
+    pub native: Native,
+    pub start_fd: unsafe extern "C" fn(i32, u8, i32, *const c_char, *mut *mut c_char) -> bool,
+    pub adapter_name: unsafe extern "C" fn(u16, u16) -> *const c_char,
+}
+
+pub struct UsbRadio {
+    pub library: FdLibrary,
+    pub usb: UsbHooks,
+    pub opened: Mutex<Option<String>>,
+}
+
+impl UsbRadio {
+    fn known_name(&self, device: &UsbDevice) -> Option<String> {
+        let name = unsafe { (self.library.adapter_name)(device.vendor_id, device.product_id) };
+        (!name.is_null()).then(|| unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned())
+    }
+
+    fn display(&self, device: &UsbDevice) -> (String, bool) {
+        let suffix = device.name.rsplit('/').take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(":");
+        match self.known_name(device) {
+            Some(known) => (format!("{known} [{suffix}]"), true),
+            None => {
+                let product = if device.product.is_empty() { format!("{:04x}:{:04x}", device.vendor_id, device.product_id) } else { device.product.clone() };
+                (format!("{product} [{suffix}]"), false)
+            }
+        }
+    }
+
+    fn close_opened(&self) {
+        if let Some(name) = self.opened.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            (self.usb.close)(&name);
+        }
+    }
+}
+
+impl Radio for UsbRadio {
+    fn devices(&self) -> Vec<Adapter> {
+        (self.usb.devices)().iter().map(|device| self.display(device)).map(|(display_name, known)| Adapter { display_name, known }).collect()
+    }
+
+    fn start(&self, adapter: &str, channel: u8, channel_width: i64, key_path: &str) -> Result<(), String> {
+        let device = (self.usb.devices)().into_iter().find(|device| self.display(device).0 == adapter).ok_or("the adapter is no longer attached")?;
+        self.close_opened();
+        let fd = match (self.usb.open)(&device.name) {
+            PERMISSION_PENDING => return Err("allow USB access to the adapter on this device".to_string()),
+            fd if fd < 0 => return Err("the system would not open the adapter".to_string()),
+            fd => fd,
+        };
+        *self.opened.lock().unwrap_or_else(PoisonError::into_inner) = Some(device.name.clone());
+        let key = CString::new(key_path).map_err(|_| "the key path holds a NUL byte".to_string())?;
+        let mut error: *mut c_char = std::ptr::null_mut();
+        let started = unsafe { (self.library.start_fd)(fd, channel, i32::try_from(channel_width).unwrap_or(20), key.as_ptr(), &mut error) };
+        let reason = self.library.native.taken(error).unwrap_or_default();
+        if !started {
+            self.close_opened();
+        }
+        if started { Ok(()) } else { Err(reason) }
+    }
+
+    fn stop(&self) {
+        self.library.native.stop();
+        self.close_opened();
+    }
+
+    fn poll(&self) -> Poll {
+        self.library.native.poll()
+    }
+
+    fn adaptive(&self, enabled: bool, tx_power: i64) {
+        self.library.native.adaptive(enabled, tx_power)
+    }
+
+    fn rtp_packets(&self) -> i64 {
+        self.library.native.rtp_packets()
+    }
+
+    fn take_codec(&self) -> Option<String> {
+        self.library.native.take_codec()
+    }
+
+    fn take_stopped(&self) -> bool {
+        self.library.native.take_stopped()
+    }
+}
+
 pub struct WithoutUsb;
 
 impl Radio for WithoutUsb {
@@ -250,6 +352,11 @@ impl Store for SettingsStore {
 }
 
 static NATIVE: OnceLock<Native> = OnceLock::new();
+static USB_RADIO: OnceLock<UsbRadio> = OnceLock::new();
+
+pub fn register_usb(radio: UsbRadio) -> bool {
+    USB_RADIO.set(radio).is_ok()
+}
 static DRIVER: LazyLock<Mutex<Driver>> = LazyLock::new(|| Mutex::new(Driver::default()));
 
 fn driver() -> MutexGuard<'static, Driver> {
@@ -261,10 +368,11 @@ pub fn register(native: Native) -> bool {
 }
 
 fn radio() -> Option<&'static dyn Radio> {
-    match NATIVE.get() {
-        Some(native) => Some(native),
-        None if cfg!(target_os = "android") => Some(&WithoutUsb),
-        None => None,
+    match (NATIVE.get(), USB_RADIO.get()) {
+        (Some(native), _) => Some(native),
+        (None, Some(usb)) => Some(usb),
+        (None, None) if cfg!(target_os = "android") => Some(&WithoutUsb),
+        (None, None) => None,
     }
 }
 
@@ -404,6 +512,94 @@ mod tests {
         driver.tick(&WithoutUsb, &Memory::default(), &enabled(), Some("/k"), 0);
         assert_eq!(driver.machine.status(), Status::NoAdapter);
         assert!(driver.machine.retry_armed());
+    }
+
+    mod usb {
+        use super::*;
+        use std::sync::atomic::{AtomicI32, Ordering};
+
+        pub static OPEN_ANSWER: AtomicI32 = AtomicI32::new(PERMISSION_PENDING);
+        pub static STARTED_FD: AtomicI32 = AtomicI32::new(-1);
+        pub static CLOSED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+        pub fn devices() -> Vec<UsbDevice> {
+            vec![
+                UsbDevice { name: "/dev/bus/usb/001/002".into(), vendor_id: 0x0bda, product_id: 0x881a, product: "802.11n NIC".into() },
+                UsbDevice { name: "/dev/bus/usb/001/003".into(), vendor_id: 0x0403, product_id: 0x6001, product: String::new() },
+            ]
+        }
+        pub fn open(_name: &str) -> i32 {
+            OPEN_ANSWER.load(Ordering::SeqCst)
+        }
+        pub fn close(name: &str) {
+            CLOSED.lock().unwrap().push(name.to_string());
+        }
+        pub unsafe extern "C" fn start_fd(fd: i32, _channel: u8, _width: i32, _key: *const c_char, _error: *mut *mut c_char) -> bool {
+            STARTED_FD.store(fd, Ordering::SeqCst);
+            true
+        }
+        pub unsafe extern "C" fn adapter_name(vendor: u16, product: u16) -> *const c_char {
+            if (vendor, product) == (0x0bda, 0x881a) { c"RTL8812AU-VS".as_ptr() } else { std::ptr::null() }
+        }
+        extern "C" fn none() -> *mut c_char {
+            std::ptr::null_mut()
+        }
+        extern "C" fn refuse(_: *const c_char, _: u8, _: i32, _: *const c_char, _: *mut *mut c_char) -> bool {
+            false
+        }
+        extern "C" fn nothing() {}
+        extern "C" fn zeros(values: *mut i32) {
+            unsafe { std::ptr::write_bytes(values, 0, 3 * ANTENNA_COUNT + 1) }
+        }
+        extern "C" fn ignore(_: bool, _: i32) {}
+        extern "C" fn zero() -> i64 {
+            0
+        }
+        extern "C" fn no() -> bool {
+            false
+        }
+        extern "C" fn release(_: *mut c_char) {}
+
+        pub fn radio() -> UsbRadio {
+            UsbRadio {
+                library: FdLibrary {
+                    native: Native { devices: none, start: refuse, stop: nothing, poll: zeros, adaptive: ignore, rtp_packets: zero, take_codec: none, take_stopped: no, free: release },
+                    start_fd,
+                    adapter_name,
+                },
+                usb: UsbHooks { devices, open, close },
+                opened: Mutex::new(None),
+            }
+        }
+    }
+
+    #[test]
+    fn an_android_usb_adapter_is_named_by_its_ids_and_started_from_the_fd_the_system_hands_over() {
+        use std::sync::atomic::Ordering;
+        let radio = usb::radio();
+        assert_eq!(radio.devices(), vec![Adapter { display_name: "RTL8812AU-VS [001:002]".into(), known: true }, Adapter { display_name: "0403:6001 [001:003]".into(), known: false }]);
+        assert_eq!(radio.start("RTL8812AU-VS [001:002]", 161, 20, "/k"), Err("allow USB access to the adapter on this device".to_string()), "the permission prompt is up; the retry tries again");
+        usb::OPEN_ANSWER.store(42, Ordering::SeqCst);
+        assert_eq!(radio.start("RTL8812AU-VS [001:002]", 161, 20, "/k"), Ok(()));
+        assert_eq!(usb::STARTED_FD.load(Ordering::SeqCst), 42);
+        radio.stop();
+        assert_eq!(usb::CLOSED.lock().unwrap().last().map(String::as_str), Some("/dev/bus/usb/001/002"));
+        let mut driver = Driver::default();
+        driver.tick(&radio, &Memory::default(), &enabled(), Some("/k"), 0);
+        assert_eq!((driver.machine.status(), driver.machine.adapter()), (Status::Listening, Some("RTL8812AU-VS [001:002]")));
+    }
+
+    #[test]
+    fn the_retry_keeps_firing_until_an_adapter_turns_up_as_qts_repeating_timer_does() {
+        let mut driver = Driver::default();
+        let store = Memory::default();
+        driver.tick(&Fake::default(), &store, &enabled(), Some("/k"), 0);
+        driver.tick(&Fake::default(), &store, &enabled(), Some("/k"), 3000);
+        driver.tick(&Fake::default(), &store, &enabled(), Some("/k"), 6000);
+        assert_eq!(driver.machine.status(), Status::NoAdapter);
+        let plugged = Fake { devices: vec![Adapter { display_name: "RTL8812AU".into(), known: true }], ..Fake::default() };
+        driver.tick(&plugged, &store, &enabled(), Some("/k"), 9000);
+        assert_eq!(driver.machine.status(), Status::Listening, "an adapter plugged in after two empty retries is still picked up");
     }
 
     #[test]

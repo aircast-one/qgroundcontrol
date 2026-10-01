@@ -73,8 +73,6 @@ internal val PAGES_WITHOUT_A_SCREEN = mapOf(
     "3D Viewer" to "there is no 3D view here to configure",
     "Flight Modes" to "twelve comma-separated lists of hidden mode names, one per airframe. The mode " +
         "picker reads what they produce; the raw lists are worse than nothing",
-    "Packet Radio" to "the page needs a picker over the adapters the radio reports, and libusb " +
-        "cannot enumerate on Android without a file descriptor handed in from Java",
 )
 
 internal val SECTIONS_WITHOUT_A_SCREEN = mapOf(
@@ -90,6 +88,7 @@ internal val PAGE_NOTES = mapOf(
     "Connections" to "Serial, UDP and TCP links to the vehicle, and which kinds connect on their own",
     "MAVLink" to "Telemetry logging, how often the vehicle is asked to send each message, and forwarding",
     "ADSB Server" to "The SBS-1 receiver the traffic readout draws from",
+    "Packet Radio" to "Video and telemetry over a wfb-ng radio on a USB Wi-Fi adapter",
     "Remote ID" to "Operator and aircraft identification, which some regions require in flight",
     "RTK GPS" to "Base station accuracy and position",
 )

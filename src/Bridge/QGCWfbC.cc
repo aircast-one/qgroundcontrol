@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -104,6 +105,24 @@ void stopLink()
     }
 }
 
+bool startLink(const std::function<bool(WfbngLink &)> &begin, char **error)
+{
+    state().rtp = 0;
+    state().stopped = false;
+    try {
+        auto link = std::make_unique<WfbngLink>();
+        if (!begin(*link)) {
+            return false;
+        }
+        std::lock_guard<std::mutex> guard(state().lock);
+        state().link = std::move(link);
+        return true;
+    } catch (const std::exception &failure) {
+        *error = copied(failure.what());
+        return false;
+    }
+}
+
 bool start(const char *adapter, uint8_t channel, int32_t channelWidth, const char *keyPath, char **error)
 {
     installCallbacks();
@@ -114,20 +133,9 @@ bool start(const char *adapter, uint8_t channel, int32_t channelWidth, const cha
         *error = copied("the adapter is no longer attached");
         return false;
     }
-    state().rtp = 0;
-    state().stopped = false;
-    try {
-        auto link = std::make_unique<WfbngLink>();
-        if (!link->start(*device, channel, channelWidth, keyPath)) {
-            return false;
-        }
-        std::lock_guard<std::mutex> guard(state().lock);
-        state().link = std::move(link);
-        return true;
-    } catch (const std::exception &failure) {
-        *error = copied(failure.what());
-        return false;
-    }
+    const DeviceId chosen = *device;
+    const std::string key = keyPath;
+    return startLink([&](WfbngLink &link) { return link.start(chosen, channel, channelWidth, key); }, error);
 }
 
 void stop()
@@ -194,4 +202,19 @@ const QGCPacketRadioNative *qgc_wfb_native(void)
     return &native;
 }
 
+bool qgc_wfb_start_fd(int fd, uint8_t channel, int32_t channel_width, const char *key_path, char **error)
+{
+    installCallbacks();
+    stopLink();
+    const std::string key = key_path;
+    return startLink([&](WfbngLink &link) { return link.start_fd(fd, channel, channel_width, key); }, error);
+}
+
+const char *qgc_wfb_adapter_name(uint16_t vendor_id, uint16_t product_id)
+{
+    return WfbngLink::known_adapter_name(vendor_id, product_id);
+}
+
+#ifdef __APPLE__
 [[maybe_unused]] static const bool registeredWithCore = qgc_core_packet_radio_register(qgc_wfb_native());
+#endif

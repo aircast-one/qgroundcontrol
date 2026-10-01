@@ -131,7 +131,7 @@ val buildCoreVideo by tasks.registering(Exec::class) {
     )
     doLast {
         copy {
-            from(build.resolve("libqgc_video.so"))
+            from(build.resolve("libqgc_video.so"), build.resolve("libqgc_wfb.so"))
             into(coreJniLibs.get().dir(abi))
         }
     }
