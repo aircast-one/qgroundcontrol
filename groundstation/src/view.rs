@@ -654,6 +654,7 @@ mod deps_cover_reads {
             ("paramremap", include_str!("paramremap.rs")),
             ("libevents", include_str!("libevents.rs")),
             ("wfbhost", include_str!("wfbhost.rs")),
+            ("bootloader", include_str!("bootloader.rs")),
             ("settingsorder", include_str!("settingsorder.rs")),
             ("platformserial", include_str!("platformserial.rs")),
             ("presets", include_str!("presets.rs")),
