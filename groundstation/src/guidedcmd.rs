@@ -60,6 +60,7 @@ pub enum Step {
     PositionTargetLocalNed { frame: u8, type_mask: u16, x: f64, y: f64, z: f64 },
     GuidedMissionItem { latitude: f64, longitude: f64, altitude_relative: f64 },
     SkipIfNoDelta,
+    AwaitAccepted(u16),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,7 +125,11 @@ pub fn land(state: &VehicleState) -> Plan {
 pub fn takeoff(state: &VehicleState, altitude_relative: f64) -> Plan {
     let Some(amsl) = state.altitude_amsl.filter(|a| a.is_finite()) else { return Plan::Refused("Unable to takeoff, vehicle position not known.".into()) };
     match state.autopilot {
-        AUTOPILOT_PX4 => Plan::Steps(vec![Step::Command { command: CMD_NAV_TAKEOFF, params: [-1.0, 0.0, 0.0, nan(), nan(), nan(), altitude_relative + amsl], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+        AUTOPILOT_PX4 => Plan::Steps(vec![
+            Step::Command { command: CMD_NAV_TAKEOFF, params: [nan(), nan(), 0.0, nan(), nan(), nan(), altitude_relative + amsl], command_int: false, frame: FRAME_GLOBAL, show_error: true },
+            Step::AwaitAccepted(CMD_NAV_TAKEOFF),
+            Step::Arm,
+        ]),
         AUTOPILOT_ARDUPILOT => {
             let class = modes::vehicle_class(state.vehicle_type);
             if class != VehicleClass::MultiRotor && !matches!(state.vehicle_type, 19..=25) {
@@ -482,7 +487,8 @@ mod tests {
         let state = px4();
         let Plan::Steps(steps) = takeoff(&state, 15.0) else { panic!() };
         let (cmd, params, _) = command(&steps[0]);
-        assert_eq!((cmd, params[0], params[6]), (CMD_NAV_TAKEOFF, -1.0, 515.0));
+        assert_eq!((cmd, params[0].is_nan(), params[2], params[6]), (CMD_NAV_TAKEOFF, true, 0.0, 515.0), "PX4FirmwarePlugin::guidedModeTakeoff sends no pitch and AMSL altitude");
+        assert_eq!(&steps[1..], &[Step::AwaitAccepted(CMD_NAV_TAKEOFF), Step::Arm], "and arms once the takeoff is accepted");
         let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0) else { panic!() };
         let (cmd, params, int) = command(&steps[0]);
         assert_eq!((cmd, params[1], params[4], params[5], params[6], int), (CMD_DO_REPOSITION, 1.0, 47.4, 8.5, 500.0, true));

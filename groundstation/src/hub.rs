@@ -2513,6 +2513,9 @@ impl Vehicle {
                 }
             }
             MavMessage::COMMAND_ACK(a) => {
+                if from == (self.id, self.component) {
+                    self.guided.on_command_result(a.command as u32 as u16, a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED);
+                }
                 if a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
                     match a.command {
                         mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_LOCATION => self.roi_enabled = true,

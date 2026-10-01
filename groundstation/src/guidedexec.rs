@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 pub const MODE_TRIES: u32 = 3;
 pub const MODE_WAIT_MS: u64 = 1300;
 pub const ARM_WAIT_MS: u64 = 1500;
+pub const ACCEPT_WAIT_MS: u64 = 10_000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Emit {
@@ -25,6 +26,7 @@ enum Wait {
     None,
     Mode { since_ms: u64, tries: u32 },
     Armed { since_ms: u64 },
+    Accepted { command: u16, since_ms: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -43,6 +45,7 @@ pub struct Executor {
     wait: Wait,
     state: State,
     label: String,
+    acked: Option<(u16, bool)>,
 }
 
 fn label(step: &Step) -> String {
@@ -53,6 +56,7 @@ fn label(step: &Step) -> String {
         Step::PositionTargetLocalNed { .. } => "Sending position target".to_string(),
         Step::GuidedMissionItem { .. } => "Sending guided waypoint".to_string(),
         Step::SkipIfNoDelta => String::new(),
+        Step::AwaitAccepted(command) => format!("Waiting for command {command}"),
     }
 }
 
@@ -75,6 +79,18 @@ impl Executor {
     pub fn start(&mut self, steps: Vec<Step>, observed: &Observed, now_ms: u64) -> Vec<Emit> {
         *self = Executor { steps, state: State::Running, ..Executor::default() };
         self.advance(observed, now_ms)
+    }
+
+    pub fn on_command_result(&mut self, command: u16, accepted: bool) {
+        if matches!(self.wait, Wait::Accepted { command: waited, .. } if waited == command) {
+            self.acked = Some((command, accepted));
+        }
+    }
+
+    fn finish(&mut self) {
+        self.state = State::Done;
+        self.wait = Wait::None;
+        self.label = String::new();
     }
 
     fn fail(&mut self, reason: String) {
@@ -109,6 +125,19 @@ impl Executor {
                             };
                             self.fail(format!("Unable to change to {mode} mode."));
                         }
+                    }
+                    return out;
+                }
+                Wait::Accepted { command, since_ms } => {
+                    match self.acked.take() {
+                        Some((acked, true)) if acked == command => {
+                            self.wait = Wait::None;
+                            self.at += 1;
+                            continue;
+                        }
+                        Some((acked, false)) if acked == command => self.finish(),
+                        _ if now_ms.saturating_sub(since_ms) >= ACCEPT_WAIT_MS => self.finish(),
+                        _ => {}
                     }
                     return out;
                 }
@@ -161,6 +190,7 @@ impl Executor {
                     self.at += 1;
                 }
                 Step::SkipIfNoDelta => self.at += 1,
+                Step::AwaitAccepted(command) => self.wait = Wait::Accepted { command, since_ms: now_ms },
             }
         }
         out
@@ -256,5 +286,24 @@ mod tests {
         let emits = goto.start(steps(guidedcmd::goto(&copter(), 47.4, 8.5, 0.0)), &observed("Guided", true), 0);
         assert!(matches!(emits.as_slice(), [Emit::Command { command: 192, .. }, Emit::GuidedMissionItem { .. }]));
         assert_eq!(goto.snapshot()["state"], "done");
+    }
+
+    #[test]
+    fn px4_takeoff_arms_only_after_the_vehicle_accepts_it() {
+        let mut px4 = copter();
+        px4.autopilot = crate::modes::AUTOPILOT_PX4;
+        px4.altitude_amsl = Some(500.0);
+        let mut exec = Executor::default();
+        let sent = exec.start(steps(guidedcmd::takeoff(&px4, 10.0)), &observed("Hold", false), 0);
+        assert_eq!(commands(&sent), vec![guidedcmd::CMD_NAV_TAKEOFF]);
+        assert!(exec.advance(&observed("Hold", false), 100).is_empty(), "nothing more until the takeoff is answered");
+        exec.on_command_result(guidedcmd::CMD_NAV_TAKEOFF, true);
+        assert_eq!(commands(&exec.advance(&observed("Takeoff", false), 200)), vec![guidedcmd::CMD_COMPONENT_ARM_DISARM]);
+
+        let mut refused = Executor::default();
+        refused.start(steps(guidedcmd::takeoff(&px4, 10.0)), &observed("Hold", false), 0);
+        refused.on_command_result(guidedcmd::CMD_NAV_TAKEOFF, false);
+        assert!(refused.advance(&observed("Hold", false), 100).is_empty(), "a refused takeoff never arms");
+        assert!(!refused.running());
     }
 }
