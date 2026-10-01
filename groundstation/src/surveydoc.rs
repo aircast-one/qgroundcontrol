@@ -209,8 +209,10 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Ve
             (SURVEY_META, "SplitConcavePolygons", "splitConcavePolygons", survey, "splitConcavePolygons"),
         ],
     };
+    let manual_camera = survey.pointer("/CameraCalc/CameraName").and_then(Value::as_str).is_none_or(|name| name == MANUAL_CAMERA);
     let structure: Vec<(&str, &str, &str, &Value, &str)> = [("EntranceAltitude", "entranceAlt"), ("StructureHeight", "structureHeight"), ("ScanBottomAlt", "scanBottomAlt"), ("Layers", "layers"), ("GimbalPitch", "gimbalPitch"), ("StartFromTop", "startFromTop")]
         .iter()
+        .filter(|(name, _)| *name != "GimbalPitch" || manual_camera)
         .map(|(name, suffix)| (STRUCTURE_META, *name, *suffix, survey, *name))
         .collect();
     let chosen = match is_structure(survey) {
@@ -253,7 +255,12 @@ fn calc_of(item: &Value) -> Value {
 fn with_calc(item: &Value, calc: Value) -> Value {
     let mut changed = item.clone();
     match is_structure(item) {
-        true => changed["CameraCalc"] = calc,
+        true => {
+            if calc.get("CameraName").and_then(Value::as_str).is_some_and(|name| name != MANUAL_CAMERA) {
+                changed["GimbalPitch"] = json!(0);
+            }
+            changed["CameraCalc"] = calc;
+        }
         false => changed["TransectStyleComplexItem"]["CameraCalc"] = calc,
     }
     changed
@@ -749,6 +756,11 @@ mod tests {
         assert!((higher["EntranceAltitude"].as_f64().unwrap() - 100.0).abs() < 1e-9, "328.084 ft is stored as 100 m");
         let pitched = set(&fixture["structure"], "gimbalPitch", &json!(45.0), &metric()).unwrap();
         assert_eq!(pitched["GimbalPitch"], -45.0);
+        let mut real = pitched["CameraCalc"].clone();
+        real["CameraName"] = json!("Sony ILCE-QX1");
+        let camera = with_calc(&pitched, real);
+        assert_eq!(camera["GimbalPitch"], 0, "StructureScanComplexItem::_updateGimbalPitch zeroes the pitch for a real camera");
+        assert!(fields(&camera, "i", true, &metric()).iter().all(|f| f["pathSuffix"] != "gimbalPitch"), "and StructureScanEditor shows it only for a manual camera");
         let shown = fields(&pitched, "i", true, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
         assert_eq!((shown["value"].as_f64(), shown["minimum"].as_f64(), shown["maximum"].as_f64(), shown["units"].as_str()), (Some(45.0), Some(0.0), Some(90.0), Some("deg")));
     }
