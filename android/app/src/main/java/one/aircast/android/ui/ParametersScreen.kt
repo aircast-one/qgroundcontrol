@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +41,7 @@ internal fun parameterPath(name: String) = "$PARAMETER_MANAGER.getParameter($DEF
 fun ParametersScreen(modifier: Modifier = Modifier) {
     val setupJson by qgcPath(SETUP)
     val ready = remember(setupJson) { parametersReady(setupJson) }
+    val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     var search by remember { mutableStateOf("") }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
     var descriptions by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -93,7 +96,7 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(matches, key = { it }) { name ->
-                ParameterRow(name)
+                ParameterRow(name, px4)
                 HorizontalDivider()
             }
         }
@@ -101,8 +104,9 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ParameterRow(name: String) {
+private fun ParameterRow(name: String, offersRcToParam: Boolean) {
     var revision by remember { mutableStateOf(0) }
+    var mapping by remember { mutableStateOf(false) }
     val fact by produceState<Fact?>(null, name, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name) }
     }
@@ -113,12 +117,18 @@ private fun ParameterRow(name: String) {
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
         )
-        else -> FactRow(
-            fact = loaded,
-            title = loaded.name,
-            subtitle = parameterSubtitle(loaded.description, loaded.units),
-            onWrite = { revision++ },
-        )
+        else -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                FactRow(
+                    fact = loaded,
+                    title = loaded.name,
+                    subtitle = parameterSubtitle(loaded.description, loaded.units),
+                    onWrite = { revision++ },
+                )
+            }
+            if (offersRcToParam && !loaded.readOnly) TextButton(onClick = { mapping = true }) { Text("RC") }
+            if (mapping) RcToParamDialog(loaded) { mapping = false }
+        }
     }
 }
 

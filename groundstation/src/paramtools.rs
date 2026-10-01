@@ -7,6 +7,7 @@ pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.parameterManager.parametersReady",
     "vehicle.apmFirmware",
+    "vehicle.px4Firmware",
 ];
 
 pub const REFRESH: &str = "parameterTools.refresh";
@@ -25,7 +26,7 @@ fn autoconfig_exists(backend: &dyn Backend) -> bool {
 }
 
 pub fn parameter_tools_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware"));
+    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,px4Firmware"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let ready = connected && flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
     let apm = flag(&vehicle, "apmFirmware");
@@ -35,6 +36,7 @@ pub fn parameter_tools_view(backend: &dyn Backend, _args: &[String]) -> Value {
         Some(tool(crate::paramfile::FILE_SAVE, "Save to file...", "", "")),
         Some(tool(RESET_DEFAULTS, "Reset all to firmware's defaults", "Reset All", "Select Reset to reset all parameters to their defaults.\n\nNote that this will also completely reset everything, including UAVCAN nodes, all vehicle settings, setup and calibrations.")),
         (!apm && autoconfig_exists(backend)).then(|| tool(RESET_VEHICLE_CONFIG, "Reset to vehicle's configuration defaults", "Reset All", "Select Reset to reset all parameters to the vehicle's configuration defaults.")),
+        flag(&vehicle, "px4Firmware").then(|| tool(crate::rctoparam::CLEAR_RC_TO_PARAM, "Clear all RC to Param", "", "")),
         Some(tool(REBOOT, "Reboot Vehicle", "Reboot Vehicle", "Select Ok to reboot vehicle.")),
     ]
     .into_iter()
@@ -81,7 +83,7 @@ mod tests {
             }
             .to_string()
         }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "apmFirmware": self.apm, "id": 1 }).to_string() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "apmFirmware": self.apm, "px4Firmware": !self.apm, "id": 1 }).to_string() }
         fn set(&self, _p: &str, _v: &str) -> String { json!({ "ok": true }).to_string() }
         fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
         fn watch(&self, _p: &[String]) {}
@@ -95,6 +97,7 @@ mod tests {
     fn the_menu_matches_the_parameter_editor() {
         assert_eq!(labels(&Fake { apm: true, autoconfig: false, ready: true }), ["Refresh", "Load from file for review...", "Save to file...", "Reset all to firmware's defaults", "Reboot Vehicle"], "ArduPilot has no vehicle configuration reset");
         assert_eq!(labels(&Fake { apm: false, autoconfig: true, ready: true })[4], "Reset to vehicle's configuration defaults");
+        assert_eq!(labels(&Fake { apm: false, autoconfig: true, ready: true })[5], "Clear all RC to Param", "ParameterEditor.qml shows it for PX4 only");
         assert!(labels(&Fake { apm: false, autoconfig: true, ready: false }).is_empty(), "nothing to act on until the parameters are in");
         let tools = parameter_tools_view(&Fake { apm: true, autoconfig: false, ready: true }, &[]);
         assert_eq!(tools["tools"][0]["confirm"], false, "Refresh is immediate");

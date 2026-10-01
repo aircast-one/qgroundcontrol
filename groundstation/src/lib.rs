@@ -119,6 +119,7 @@ pub mod planitems;
 pub mod plankml;
 pub mod platformbluetooth;
 pub mod platformserial;
+pub mod rctoparam;
 pub mod planselect;
 pub mod plantransfer;
 pub mod preflight;

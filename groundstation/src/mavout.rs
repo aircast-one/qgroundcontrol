@@ -1,5 +1,5 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_EXT_REQUEST_LIST_DATA, PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, MavParamExtType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_EXT_REQUEST_LIST_DATA, PARAM_MAP_RC_DATA, PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, MavParamExtType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -51,6 +51,7 @@ pub enum Outbound {
     LogRequestData { target: (u8, u8), id: u16, offset: u32, count: u32 },
     LogRequestEnd { target: (u8, u8) },
     ParamExtRequestList { target: (u8, u8) },
+    ParamMapRc { target: (u8, u8), id: String, index: i16, tuning: u8, center: f32, scale: f32, min: f32, max: f32 },
     ParamExtRequestRead { target: (u8, u8), id: String },
     ParamExtSet { target: (u8, u8), id: String, value: [u8; 128], param_type: u8 },
     LogErase { target: (u8, u8) },
@@ -279,6 +280,17 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
         Outbound::LogRequestList { target, start, end } => Some(MavMessage::LOG_REQUEST_LIST(LOG_REQUEST_LIST_DATA { start: *start, end: *end, target_system: target.0, target_component: target.1 })),
         Outbound::LogRequestData { target, id, offset, count } => Some(MavMessage::LOG_REQUEST_DATA(LOG_REQUEST_DATA_DATA { ofs: *offset, count: *count, id: *id, target_system: target.0, target_component: target.1 })),
         Outbound::LogRequestEnd { target } => Some(MavMessage::LOG_REQUEST_END(LOG_REQUEST_END_DATA { target_system: target.0, target_component: target.1 })),
+        Outbound::ParamMapRc { target, id, index, tuning, center, scale, min, max } => Some(MavMessage::PARAM_MAP_RC(PARAM_MAP_RC_DATA {
+            param_value0: *center,
+            scale: *scale,
+            param_value_min: *min,
+            param_value_max: *max,
+            param_index: *index,
+            target_system: target.0,
+            target_component: target.1,
+            param_id: chars(id),
+            parameter_rc_channel_index: *tuning,
+        })),
         Outbound::ParamExtRequestList { target } => Some(MavMessage::PARAM_EXT_REQUEST_LIST(PARAM_EXT_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1 })),
         Outbound::ParamExtRequestRead { target, id } => Some(MavMessage::PARAM_EXT_REQUEST_READ(PARAM_EXT_REQUEST_READ_DATA { param_index: -1, target_system: target.0, target_component: target.1, param_id: chars(id) })),
         Outbound::ParamExtSet { target, id, value, param_type } => Some(MavMessage::PARAM_EXT_SET(PARAM_EXT_SET_DATA {
