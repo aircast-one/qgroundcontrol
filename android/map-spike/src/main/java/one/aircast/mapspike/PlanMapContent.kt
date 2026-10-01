@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -526,16 +530,39 @@ internal fun MapSpikeScreen(
             }
         }
 
+        val density = LocalDensity.current
+        val waypointAt = placeAt()
+        if (waypointAt != null && kindAllows(insertable, KIND_WAYPOINT) && tracing == null) {
+            ExtendedFloatingActionButton(
+                onClick = { addMissionItem(KIND_WAYPOINT, "Adding a waypoint", placeAt(), insertAfter(selected, allItems)) },
+                icon = { Icon(Icons.Default.Add, null) },
+                text = { Text("Add waypoint") },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = with(density) { controlsHeightPx.toDp() } + 16.dp),
+            )
+        }
+
         Surface(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .onGloballyPositioned { controlsHeightPx = it.size.height },
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column(
-                Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                Modifier.padding(horizontal = 12.dp)
                     .heightIn(max = CONTROLS_MAX_HEIGHT)
                     .verticalScroll(rememberScrollState()),
             ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 10.dp)
+                        .size(width = 32.dp, height = 4.dp)
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape),
+                )
                 FlowRow(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
