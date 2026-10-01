@@ -7,7 +7,7 @@ use crate::control::decode;
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.vehicleTypeString", "vehicle.parameterManager.parametersReady", "vehicle.px4Firmware"];
+pub const DEPS: &[&str] = &["vehicle.vehicleTypeString", "vehicle.parameterManager.parametersReady", "vehicle.px4Firmware", "vehicle.apmFirmware", "vehicle.multiRotor"];
 
 const DEFAULT_CHART_SECONDS: f64 = 8.0;
 const PAGES: &[(&str, &str)] = &[
@@ -25,6 +25,7 @@ const PAGES: &[(&str, &str)] = &[
     ("PX4TuningComponentSpacecraftAttitude.qml", include_str!("../../src/AutoPilotPlugins/PX4/PX4TuningComponentSpacecraftAttitude.qml")),
     ("PX4TuningComponentSpacecraftVelocity.qml", include_str!("../../src/AutoPilotPlugins/PX4/PX4TuningComponentSpacecraftVelocity.qml")),
     ("PX4TuningComponentSpacecraftPosition.qml", include_str!("../../src/AutoPilotPlugins/PX4/PX4TuningComponentSpacecraftPosition.qml")),
+    (APM_ADVANCED, include_str!("../../src/AutoPilotPlugins/APM/APMAdvancedTuningCopterComponent.qml")),
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +76,7 @@ static TAB: LazyLock<Regex> = LazyLock::new(|| regex(r#"ListElement\s*\{\s*butto
 static ELEMENT: LazyLock<Regex> = LazyLock::new(|| regex(r"(?s)ListElement\s*\{(.*?)\}"));
 static AXIS_ORDER: LazyLock<Regex> = LazyLock::new(|| regex(r"axis:\s*\[([^\]]*)\]"));
 static UNIT: LazyLock<Regex> = LazyLock::new(|| regex(r#"unit:\s*(?:qsTr\()?"([^"]*)""#));
+static PLAIN_TITLE: LazyLock<Regex> = LazyLock::new(|| regex(r#"\btitle:\s*"([^"]+)""#));
 static TITLE: LazyLock<Regex> = LazyLock::new(|| regex(r#"PIDTuning\s*\{[^}]*?title:\s*qsTr\("([^"]+)"\)"#));
 static PLOT: LazyLock<Regex> = LazyLock::new(|| regex(r#"\{\s*name:\s*"([^"]+)",\s*value:\s*globals\.activeVehicle\.([A-Za-z0-9_.]+)\.value\s*\}"#));
 static MODE: LazyLock<Regex> = LazyLock::new(|| regex(r"tuningMode:\s*Vehicle\.(Mode\w+)"));
@@ -126,7 +128,7 @@ fn page_of(tab: &str, file: &str) -> Option<Page> {
         .collect();
     Some(Page {
         tab: tab.to_string(),
-        title: TITLE.captures(&text).map(|c| c[1].to_string()).unwrap_or_default(),
+        title: TITLE.captures(&text).or_else(|| PLAIN_TITLE.captures(&text)).map(|c| c[1].to_string()).unwrap_or_default(),
         unit: UNIT.captures(&text).map(|c| c[1].to_string()).unwrap_or_default(),
         extras: EXTRA.captures_iter(&text).map(|c| c[1].to_string()).collect(),
         auto_mode_change: regex(r"showAutoModeChange:\s*true").is_match(&text),
@@ -151,6 +153,10 @@ pub fn pages(file: &str) -> Vec<Page> {
 }
 
 const CONTAINERS: [&str; 4] = ["PX4TuningComponentCopterAll.qml", "PX4TuningComponentPlaneAll.qml", "PX4TuningComponentSpacecraftAll.qml", "PX4TuningComponentVTOL.qml"];
+
+const APM_ADVANCED: &str = "APMAdvancedTuningCopterComponent.qml";
+
+static APM_ADVANCED_PAGES: LazyLock<Vec<Page>> = LazyLock::new(|| page_of("", APM_ADVANCED).map(|page| Page { tab: page.title.clone(), ..page }).into_iter().collect());
 
 static PARSED: LazyLock<Vec<(&'static str, Vec<Page>)>> = LazyLock::new(|| CONTAINERS.iter().map(|file| (*file, pages(file))).collect());
 
@@ -179,13 +185,15 @@ fn control(backend: &dyn Backend, name: &str) -> Option<Value> {
 }
 
 pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "vehicleTypeString,px4Firmware"));
+    let vehicle = object(&backend.get_fields("vehicle", "vehicleTypeString,px4Firmware,apmFirmware,multiRotor"));
     let named = vehicle.get("vehicleTypeString").and_then(Value::as_str).unwrap_or("");
     let vehicle_type = (0..=u8::MAX).find(|t| !named.is_empty() && crate::vehiclefacade::mav_type_text(*t) == named).map_or(0, i64::from);
-    let Some(container) = container_for(vehicle_type).filter(|_| crate::read::flag(&vehicle, "px4Firmware")) else {
-        return json!({ "kind": "object", "class": "Px4Tuning", "available": false, "tabs": [] });
+    let pages: &[Page] = match (crate::read::flag(&vehicle, "px4Firmware"), crate::read::flag(&vehicle, "apmFirmware") && crate::read::flag(&vehicle, "multiRotor")) {
+        (true, _) => container_for(vehicle_type).map_or(&[], parsed),
+        (false, true) => APM_ADVANCED_PAGES.as_slice(),
+        _ => &[],
     };
-    let tabs: Vec<Value> = parsed(container)
+    let tabs: Vec<Value> = pages
         .iter()
         .map(|page| {
             json!({
@@ -272,5 +280,15 @@ mod tests {
         assert_eq!(container_for(10), None);
         let named: Vec<&str> = [1u8, 2, 22, 45].iter().map(|t| crate::vehiclefacade::mav_type_text(*t)).collect();
         assert!(named.iter().all(|n| !n.is_empty()) && named.iter().enumerate().all(|(i, n)| named.iter().skip(i + 1).all(|m| m != n)), "the type string names one MAV_TYPE, so it finds the tab set QGC's switch picks: {named:?}");
+    }
+
+    #[test]
+    fn ardupilot_advanced_tuning_is_one_rate_page_of_three_axes() {
+        let page = APM_ADVANCED_PAGES.first().expect("the APM advanced tuning QML parses");
+        assert_eq!((page.tab.as_str(), page.unit.as_str(), page.chart_seconds), ("Rate", "deg/s", 3.0));
+        assert_eq!(page.axes.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Roll", "Pitch", "Yaw"]);
+        assert_eq!(page.axes.iter().map(|a| a.params.len()).collect::<Vec<_>>(), [4, 4, 3]);
+        assert_eq!(page.axes[0].params[0].param, "ATC_ANG_RLL_P");
+        assert_eq!(page.axes[0].plot.len(), 2);
     }
 }
