@@ -1,19 +1,5 @@
 name: Aircast Release
 
-# Builds the Aircast QGroundControl fork on a version tag and publishes a GitHub
-# release (public repo, so GitHub Releases are the distribution channel).
-#
-# Tags are created with `make release.<patch|minor|major|dev|staging>`.
-# Toolchain versions (Qt, NDK, GStreamer, SDK levels) come from
-# .github/build-config.json through the upstream composite actions.
-#
-# Optional secrets: ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_STORE_PASSWORD (APK signing,
-#                   PKCS12: the store password is also the key password; a throwaway
-#                   debug keystore is used when absent),
-#                   MACOS_CERT_P12_BASE64 / MACOS_CERT_P12_PASSWORD / MACOS_SIGNING_IDENTITY /
-#                   MACOS_NOTARIZATION_USERNAME / MACOS_NOTARIZATION_TEAM_ID /
-#                   MACOS_NOTARIZATION_PASSWORD (Developer ID signing + notarization;
-#                   the build is ad-hoc signed when the P12 secret is absent).
 
 permissions:
   contents: write
@@ -21,10 +7,9 @@ permissions:
 on:
   push:
     tags:
-      # aircast-v prefix: bare vX.Y.Z is upstream QGC's tag namespace
-      - "aircast-v[0-9]+.[0-9]+.[0-9]+" # production: aircast-v5.0.9
-      - "aircast-v*-staging.*" # staging:    aircast-v5.0.9-staging.1
-      - "aircast-v*-dev.*" # development: aircast-v5.0.9-dev.1
+      - "aircast-v[0-9]+.[0-9]+.[0-9]+"
+      - "aircast-v*-staging.*"
+      - "aircast-v*-dev.*"
   workflow_dispatch:
     inputs:
       version:
@@ -82,7 +67,6 @@ jobs:
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
       QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
       QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
-      # Fleet tablets are arm64; build the legacy 32-bit ABI only for production
       QT_ANDROID_ABIS: ${{ needs.setup.outputs.is_production == 'true' && 'arm64-v8a;armeabi-v7a' || 'arm64-v8a' }}
     steps:
       - name: Checkout repo
@@ -122,8 +106,6 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$QT_ANDROID_KEYSTORE_STORE_PASS" ]; then
-            # The checked-in keystore is upstream's; the aircast signing keystore is
-            # injected from a secret so it never lives in this public repo.
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$QT_ANDROID_KEYSTORE_PATH"
             echo "Installed aircast release keystore"
           else
@@ -174,9 +156,6 @@ jobs:
           mkdir -p out
           cp "${APK_DIR}"/*.apk "out/AircastQGC-${SHORT}.apk"
 
-      # The native head is a separate Gradle project that links the AAR this build
-      # produces. It is built here rather than in its own job because the AAR costs
-      # the whole Qt Android build to make, and that is twenty minutes.
       - name: Build the AAR the native head links
         working-directory: ${{ runner.temp }}/build
         run: cmake --build . --target aar --config Release
@@ -197,8 +176,6 @@ jobs:
           AIRCAST_VERSION_CODE: ${{ github.run_number }}
           RELEASE_TAG: ${{ needs.setup.outputs.version }}
         run: |
-          # versionName is what Android shows in app info, so it carries the version
-          # rather than the tag: 5.4.12-dev.5, not aircast-v5.4.12-dev.5.
           export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
           ./gradlew --no-daemon :app:testQtDebugUnitTest :map-spike:testDebugUnitTest
           ./gradlew --no-daemon :app:assembleQtRelease
@@ -207,9 +184,6 @@ jobs:
         env:
           SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
-          # Signed builds land as app-release.apk, unsigned as app-release-unsigned.apk,
-          # and the name says which so an unsigned artifact cannot be mistaken for a
-          # shippable one on the release page.
           for f in android/app/build/outputs/apk/qt/release/app-qt-release*.apk; do
             case "$f" in
               *unsigned*) cp "$f" "out/AircastAndroid-${SHORT}-unsigned.apk" ;;
@@ -225,7 +199,6 @@ jobs:
 
   build-macos:
     needs: setup
-    # GitHub-hosted, matching upstream's macos.yml; keeps builds off the user's workstation.
     runs-on: macos-15
     timeout-minutes: 120
     defaults:
@@ -255,8 +228,6 @@ jobs:
         uses: ./.github/actions/rust-toolchain
 
       - name: Install packet radio native deps
-        # libusb/libsodium are the wfb-ng receiver's native deps, copied into the
-        # bundle by cmake/BundleWfbDylibs.cmake.
         run: brew install --quiet libusb libsodium create-dmg
 
       - name: Import Code Signing Certificate
@@ -350,15 +321,8 @@ jobs:
           PLIST="$DST/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable AircastQGCNative" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :CFBundleName AircastQGC Native" "$PLIST"
-          # A separate identifier on purpose: two apps sharing one id share one preferences
-          # domain, and the first to write settings would answer for the other.
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier org.aircast.qgc.native" "$PLIST"
-          # The key IS the switch: an operator opening an app from Finder passes no arguments,
-          # so nothing but the bundle can say which of the two UIs this copy draws.
           /usr/libexec/PlistBuddy -c "Add :QGCNativeUI bool true" "$PLIST"
-          # Re-signed because renaming the executable and editing Info.plist invalidate the
-          # signature the install step applied; ad-hoc matches what that step does when no
-          # identity is configured, and macOS refuses to launch a bundle whose seal is broken.
           if [ -n "$SIGN_IDENTITY" ]; then
             codesign --force --timestamp --options=runtime -s "$SIGN_IDENTITY" "$DST/Contents/MacOS/AircastQGCNative"
             codesign --force --timestamp --options=runtime -s "$SIGN_IDENTITY" "$DST"
@@ -512,10 +476,6 @@ jobs:
           path: out/*.exe
           if-no-files-found: error
 
-  # Windows on ARM, built natively on the GitHub-hosted windows-11-arm runner the
-  # way upstream's windows.yml arm64 leg does (the arm64-cross leg upstream keeps
-  # has GStreamer off, which is no use for a ground station). Non-blocking and
-  # outside `publish` until the platform has proven itself.
   build-windows-arm64:
     needs: setup
     runs-on: windows-11-arm
@@ -595,9 +555,6 @@ jobs:
 
   build-linux:
     needs: setup
-    # GitHub-hosted, parallel with everything else. NEVER move this to self-hosted
-    # infra: infra.aircast.one is a k8s node and a QGC build there starved it and
-    # OOM-killed argocd-repo-server.
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     defaults:
@@ -670,6 +627,13 @@ jobs:
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Decide what this release can carry
         id: platforms
         env:
@@ -723,16 +687,18 @@ jobs:
           if [ "$IS_PRODUCTION" != "true" ]; then
             PRE="--prerelease"
           fi
-          NOTES=""
-          if [ -n "$MISSING" ]; then
-            NOTES="> **This release is incomplete.** No build was produced for: $MISSING."
-          fi
+          {
+            if [ -n "$MISSING" ]; then
+              printf '> **This release is incomplete.** No build was produced for: %s.\n\n' "$MISSING"
+            fi
+            scripts/release-notes.sh "$V"
+          } > release-notes.md
           if gh release view "$V" -R "$REPO" >/dev/null 2>&1; then
             gh release upload "$V" -R "$REPO" --clobber assets/*
           else
             gh release create "$V" -R "$REPO" \
               --title "Aircast QGC $SHORT" \
-              --notes "$NOTES" \
+              --notes-file release-notes.md \
               $PRE assets/*
           fi
 
@@ -750,7 +716,6 @@ jobs:
         run: |
           KEEP_COUNT=5
 
-          # Match only this channel's tags (double-escaped for jq's regex).
           if [ "$IS_PRODUCTION" == "true" ]; then
             TAG_PATTERN='^aircast-v[0-9]+\\.[0-9]+\\.[0-9]+$'
           elif [ "$ENV" == "staging" ]; then
