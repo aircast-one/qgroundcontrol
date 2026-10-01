@@ -148,6 +148,7 @@ add_library(QGCNativeUI STATIC
     Sources/FlightModeModel.swift
     Sources/Fly.swift
     Sources/FlyWindow.swift
+    Sources/GamepadInput.swift
 )
 
 set_target_properties(QGCNativeUI PROPERTIES
