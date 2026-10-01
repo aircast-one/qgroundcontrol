@@ -132,6 +132,13 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     val components = remember(setupJson) { setupComponents(setupJson) }
 
+    LaunchedEffect(AppNavigation.setupPage, components) {
+        AppNavigation.setupPage?.takeIf { components.isNotEmpty() }?.let { requested ->
+            components.firstOrNull { it.name == requested }?.let { openComponent = it }
+            AppNavigation.setupPage = null
+        }
+    }
+
     LaunchedEffect(hasVehicle) {
         if (!hasVehicle) {
             openComponent = null

@@ -229,6 +229,9 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 @Composable
 fun AircastShell(hostView: android.view.View?) {
     var tab by remember { mutableStateOf(Tab.Fly) }
+    LaunchedEffect(AppNavigation.setupPage) {
+        if (AppNavigation.setupPage != null) tab = Tab.Setup
+    }
     LaunchedEffect(AppNavigation.settingsPage) {
         if (AppNavigation.settingsPage != null) tab = Tab.Settings
     }

@@ -6,4 +6,5 @@ import androidx.compose.runtime.setValue
 
 internal object AppNavigation {
     var settingsPage by mutableStateOf<String?>(null)
+    var setupPage by mutableStateOf<String?>(null)
 }

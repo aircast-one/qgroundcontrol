@@ -163,6 +163,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             {
                 if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery Failsafes") }
+                TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle Power: Configure") }
             }
         } else {
             null
@@ -177,6 +178,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
 }
 
 internal const val BATTERY_SETTINGS_PAGE = "Battery Settings"
+internal const val POWER_SETUP_PAGE = "Power"
 
 internal enum class StripDetail { Battery, Gps, Links, Telemetry }
 
