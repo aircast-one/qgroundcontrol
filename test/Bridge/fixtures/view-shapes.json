@@ -3883,6 +3883,11 @@
         "view.plan.readiness.ready",
         "view.plan.readiness.reason",
         "view.plan.readiness.state",
+        "view.plan.templates.names.#",
+        "view.plan.templates.names.0",
+        "view.plan.templates.names.1",
+        "view.plan.templates.names.2",
+        "view.plan.templates.names.3",
         "view.plan.unsupportedReason",
         "view.plan.upload.pausesFirst",
         "view.planFile(<checkout>/test/MissionManager/SectionTest.plan).class",
@@ -8079,6 +8084,11 @@
         "view.plan.status",
         "view.plan.sync.refusal",
         "view.plan.sync.state",
+        "view.plan.templates.enabled",
+        "view.plan.templates.names.#",
+        "view.plan.templates.names[]",
+        "view.plan.templates.prompt",
+        "view.plan.templates.show",
         "view.plan.unsupportedReason",
         "view.plan.upload.canProceed",
         "view.plan.upload.canSend",
@@ -11380,6 +11390,14 @@
         "sync": {
             "refusal": "null|string",
             "state": "string"
+        },
+        "templates": {
+            "enabled": "bool",
+            "names": [
+                "string"
+            ],
+            "prompt": "string",
+            "show": "bool"
         },
         "unsupportedReason": "null",
         "upload": {

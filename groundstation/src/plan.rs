@@ -28,6 +28,7 @@ pub const DEPS: &[&str] = &[
     "plan.controllerVehicle.vtol",
     "plan.controllerVehicle.apmFirmware",
     "plan.controllerVehicle.homePosition",
+    "plan.missionController.homePositionSet",
     "settings.appSettings.defaultMissionItemAltitude",
     "settings.appSettings.offlineEditingCruiseSpeed",
     "settings.appSettings.offlineEditingHoverSpeed",
@@ -172,6 +173,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // upstream renamed them, so both reads had been answering null since the merge.
         "available": mission.get("kind").and_then(Value::as_str) == Some("object"),
         "patterns": patterns(&mission),
+        "templates": crate::plantemplates::templates_json(backend, &patterns(&mission).iter().filter_map(|p| p.get("name").and_then(Value::as_str).map(str::to_string)).collect::<Vec<_>>(), contains_items),
         "globalAltitudeFrame": core.as_ref().map(|c| c.global_mode).or_else(|| mission.get("globalAltitudeFrame").and_then(Value::as_i64)),
         "defaults": defaults_json(backend),
         "readiness": readiness_json(readiness),

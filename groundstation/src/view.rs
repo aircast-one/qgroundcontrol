@@ -507,6 +507,7 @@ mod deps_cover_reads {
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),
             ("virtualjoystick", include_str!("virtualjoystick.rs")),
+            ("plantemplates", include_str!("plantemplates.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),

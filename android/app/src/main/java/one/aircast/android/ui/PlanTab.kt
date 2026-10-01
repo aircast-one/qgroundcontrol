@@ -53,6 +53,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
     val can = planActions(planStatus)
     val history = planHistory(planStatus)
     var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
+    var centre by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
     DisposableEffect(Unit) {
         offMainDetached { Qgc.set("plan.undoTracking", true) }
@@ -207,6 +208,18 @@ fun PlanTab(modifier: Modifier = Modifier) {
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
-        PlanMapScreen(Modifier.weight(1f), itemEditor = { index, at, close -> ItemEditor(index, at, close) })
+        Box(Modifier.weight(1f)) {
+            PlanMapScreen(
+                Modifier.fillMaxSize(),
+                onCentre = { lat, lon -> centre = lat to lon },
+                itemEditor = { index, at, close -> ItemEditor(index, at, close) },
+            )
+            PlanTemplates(
+                planStatus = planStatus,
+                centre = centre,
+                onRefused = { notice = it },
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+            )
+        }
     }
 }
