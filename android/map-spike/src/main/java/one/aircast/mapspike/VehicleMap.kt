@@ -7,6 +7,7 @@ import android.graphics.Path
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -354,6 +355,24 @@ fun VehicleMap(
         (shotStyle.getSource(SHOT_SOURCE) as? GeoJsonSource)?.setGeoJson(shotFeatures(shots))
     }
 
+    fun recenterOnVehicle() {
+        val tracking = follow && isPlottable(latitude, longitude) && !panning && SystemClock.elapsedRealtime() >= trackingResumesAtMs
+        val shown = map
+        if (tracking && shown != null) {
+            val at = LatLng(latitude, longitude)
+            val zoomed = shown.cameraPosition.zoom > 1.0
+            val point = shown.projection.toScreenLocation(at)
+            when {
+                keepCentered || !zoomed -> shown.cameraPosition = CameraPosition.Builder()
+                    .target(at)
+                    .zoom(shown.cameraPosition.zoom.takeIf { zoomed } ?: DEFAULT_ZOOM)
+                    .build()
+                outsideCentreInset(point.x, point.y, mapView.width.toFloat(), mapView.height.toFloat(), topInsetPx.toFloat(), (bottomInsetPx + cameraBottomPx).toFloat()) ->
+                    shown.animateCamera(CameraUpdateFactory.newLatLng(at), RECENTER_ANIMATION_MS)
+            }
+        }
+    }
+
     LaunchedEffect(style, latitude, longitude, heading, home, linkLost, fleet) {
         val currentStyle = style ?: return@LaunchedEffect
 
@@ -386,21 +405,14 @@ fun VehicleMap(
             },
         )
 
-        val tracking = follow && isPlottable(latitude, longitude) && !panning && SystemClock.elapsedRealtime() >= trackingResumesAtMs
-        val shown = map
-        if (tracking && shown != null) {
-            val at = LatLng(latitude, longitude)
-            val zoomed = shown.cameraPosition.zoom > 1.0
-            val point = shown.projection.toScreenLocation(at)
-            when {
-                keepCentered || !zoomed -> shown.cameraPosition = CameraPosition.Builder()
-                    .target(at)
-                    .zoom(shown.cameraPosition.zoom.takeIf { zoomed } ?: DEFAULT_ZOOM)
-                    .build()
-                outsideCentreInset(point.x, point.y, mapView.width.toFloat(), mapView.height.toFloat(), topInsetPx.toFloat(), (bottomInsetPx + cameraBottomPx).toFloat()) ->
-                    shown.animateCamera(CameraUpdateFactory.newLatLng(at), RECENTER_ANIMATION_MS)
-            }
-        }
+        recenterOnVehicle()
+    }
+
+    val recenterNow by rememberUpdatedState(::recenterOnVehicle)
+    LaunchedEffect(trackingResumesAtMs) {
+        if (trackingResumesAtMs == 0L) return@LaunchedEffect
+        delay((trackingResumesAtMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+        recenterNow()
     }
 
     LaunchedEffect(map, cameraBottomPx) {
