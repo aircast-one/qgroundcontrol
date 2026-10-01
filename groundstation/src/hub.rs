@@ -117,7 +117,6 @@ const FETCH_PARAMETER_PACK: u8 = 255;
 const PREARM_REPEAT_MS: u64 = 10_000;
 const PREARM_SHOWN_MS: u64 = 35_000;
 const CHUNKED_TEXT_TIMEOUT_MS: u64 = 1000;
-pub const CONNECTION_LOST_US: u64 = 3_500_000;
 pub const RESULT_UNSUPPORTED: u8 = 3;
 pub const MINIMUM_TAKEOFF_ALTITUDE: f64 = 2.5;
 pub const MAX_ERRORS: usize = 10;
@@ -2043,6 +2042,7 @@ impl Vehicle {
                 state.1 = now_ms;
                 if state.2 {
                     state.2 = false;
+                    self.connection_lost = false;
                     log::info!("Communication regained on link {link}");
                     if self.link_states.len() > 1 {
                         self.say_link(&format!("Communication regained on {} link", self.link_role(link)));
@@ -2059,11 +2059,11 @@ impl Vehicle {
         }
     }
 
-    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId]) {
+    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId], high_latency: &[LinkId]) {
         if !self.comm_lost_enabled {
             return;
         }
-        let silenced: Vec<LinkId> = self.link_states.iter().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).map(|(link, _, _)| *link).collect();
+        let silenced: Vec<LinkId> = self.link_states.iter().filter(|(link, last, lost)| !lost && !high_latency.contains(link) && now_ms.saturating_sub(*last) > LINK_SILENT_MS).map(|(link, _, _)| *link).collect();
         let several = self.link_states.len() > 1;
         silenced.iter().for_each(|link| {
             log::warn!("Communication lost on link {link}");
@@ -2072,6 +2072,7 @@ impl Vehicle {
             }
         });
         self.link_states.iter_mut().filter(|(link, _, _)| silenced.contains(link)).for_each(|state| state.2 = true);
+        self.connection_lost = !self.link_states.is_empty() && self.link_states.iter().all(|(_, _, lost)| *lost);
         let was_relayed = self.primary_link.is_some_and(|link| cloud.contains(&link));
         if self.update_primary_link() {
             let back_to_direct = was_relayed && self.primary_link.is_some_and(|link| !cloud.contains(&link));
@@ -3338,13 +3339,8 @@ impl Hub {
         }
     }
 
-    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId]) {
-        self.vehicles.values_mut().for_each(|v| v.check_links(now_ms, cloud));
-    }
-
-    pub fn expire(&mut self, now_us: u64) -> Vec<u8> {
-        self.vehicles.values_mut().filter(|v| v.comm_lost_enabled).for_each(|v| v.connection_lost = now_us.saturating_sub(v.last_heartbeat_us) > CONNECTION_LOST_US);
-        self.vehicles.values().filter(|v| v.connection_lost).map(|v| v.id).collect()
+    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId], high_latency: &[LinkId]) {
+        self.vehicles.values_mut().for_each(|v| v.check_links(now_ms, cloud, high_latency));
     }
 
     pub fn remove(&mut self, id: u8) {
@@ -3489,8 +3485,7 @@ pub fn lock() -> MutexGuard<'static, Hub> {
 }
 
 pub fn core_vehicle_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
-    let mut hub = lock();
-    hub.expire(now_us());
+    let hub = lock();
     hub.snapshot_of(args.first().and_then(|a| a.trim().parse().ok()))
 }
 
@@ -3755,7 +3750,7 @@ mod tests {
         let header = MavHeader { system_id: 7, component_id: 1, sequence: 0 };
         hub.on_frame(Origin { link: 11, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
         hub.on_frame(Origin { link: 12, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_000);
-        hub.check_links(4_000, &[11]);
+        hub.check_links(4_000, &[11], &[]);
         assert_eq!(hub.vehicles[&7].primary_link, Some(12));
         assert!(crate::speech::spoken_lines().iter().any(|line| line == "switching communication back to the direct link."));
     }
@@ -3781,7 +3776,7 @@ mod tests {
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 100);
         assert_eq!(hub.active().unwrap().primary_link, Some(1), "the first link heard is primary and a second one does not take over");
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_000);
-        hub.check_links(4_000, &[]);
+        hub.check_links(4_000, &[], &[]);
         let vehicle = hub.active().unwrap();
         assert_eq!((vehicle.primary_link, vehicle.link_states.iter().map(|(_, _, lost)| *lost).collect::<Vec<_>>()), (Some(2), vec![true, false]), "link 1 was silent past 3.5 s");
         hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 4_100);
@@ -3794,15 +3789,31 @@ mod tests {
     }
 
     #[test]
+    fn any_traffic_keeps_a_link_alive_and_a_high_latency_link_never_times_out() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::ATTITUDE(Default::default()), 0, 3_000);
+        hub.check_links(5_000, &[], &[]);
+        assert!(!hub.active().unwrap().connection_lost, "VehicleLinkManager restarts a link's timer on any message, not only HEARTBEAT");
+        hub.check_links(7_000, &[], &[]);
+        assert!(hub.active().unwrap().connection_lost);
+        hub.on_frame(origin(0), &header, &MavMessage::ATTITUDE(Default::default()), 0, 7_100);
+        assert!(!hub.active().unwrap().connection_lost, "any traffic on a lost link regains it");
+        hub.check_links(60_000, &[], &[0]);
+        assert!(!hub.active().unwrap().connection_lost, "a high-latency link is never counted lost");
+    }
+
+    #[test]
     fn a_disabled_comm_lost_check_neither_loses_nor_regains_the_vehicle() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
         hub.set_link_flag("communicationLostEnabled", false);
-        hub.expire(CONNECTION_LOST_US * 10);
+        hub.check_links(10 * LINK_SILENT_MS, &[], &[]);
         assert!(!hub.active().unwrap().connection_lost, "Qt's check returns early while the check is off");
         hub.set_link_flag("communicationLostEnabled", true);
-        hub.expire(CONNECTION_LOST_US * 10);
+        hub.check_links(10 * LINK_SILENT_MS, &[], &[]);
         assert!(hub.active().unwrap().connection_lost);
     }
 
@@ -4009,11 +4020,12 @@ mod tests {
         hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 5, 0);
         let snapshot = hub.snapshot();
         assert_eq!((snapshot["vehicle"]["armed"].as_bool(), snapshot["vehicle"]["autopilot"].as_u64(), snapshot["vehicle"]["heartbeats"].as_u64()), (Some(true), Some(12), Some(1)));
-        assert!(hub.expire(5 + CONNECTION_LOST_US).is_empty());
-        assert_eq!(hub.expire(6 + CONNECTION_LOST_US), vec![1]);
+        hub.check_links(LINK_SILENT_MS, &[], &[]);
+        assert!(!hub.snapshot()["vehicle"]["connectionLost"].as_bool().unwrap());
+        hub.check_links(LINK_SILENT_MS + 1, &[], &[]);
         assert_eq!((hub.snapshot()["available"].as_bool(), hub.snapshot()["vehicle"]["connectionLost"].as_bool()), (Some(true), Some(true)), "a silent vehicle is kept and flagged, as the Qt head keeps it until its link closes");
         assert_eq!(hub.snapshot()["heard"], false, "a head reading only the top-level flags drew a frozen aircraft as a live one, because the liveness answer sat a level below the one it reached for");
-        hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 7 + CONNECTION_LOST_US, 0);
+        hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 3_500_007, 0);
         assert_eq!(hub.snapshot()["vehicle"]["connectionLost"], false);
         assert_eq!(hub.snapshot()["heard"], true, "heard is the liveness answer beside available, which only says a record exists");
         let mut two = Hub::default();
