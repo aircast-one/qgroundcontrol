@@ -2058,6 +2058,10 @@
         "view.cameraProtocol.videoStatus.1.token",
         "view.cameraProtocol.videoStatus.2.code",
         "view.cameraProtocol.videoStatus.2.token",
+        "view.cameraSettings.class",
+        "view.cameraSettings.error",
+        "view.cameraSettings.kind",
+        "view.cameraSettings.state",
         "view.control(settings.appSettings.audioMuted).applicationRestartRequired",
         "view.control(settings.appSettings.audioMuted).bits.#",
         "view.control(settings.appSettings.audioMuted).changedFromDefault",
@@ -6875,6 +6879,10 @@
         "view.cameraProtocol.videoStatus.#",
         "view.cameraProtocol.videoStatus[].code",
         "view.cameraProtocol.videoStatus[].token",
+        "view.cameraSettings.class",
+        "view.cameraSettings.error",
+        "view.cameraSettings.kind",
+        "view.cameraSettings.state",
         "view.control(settings.appSettings.audioMuted).applicationRestartRequired",
         "view.control(settings.appSettings.audioMuted).bits.#",
         "view.control(settings.appSettings.audioMuted).changedFromDefault",
@@ -9616,6 +9624,12 @@
             }
         ]
     },
+    "view.cameraSettings": {
+        "class": "string",
+        "error": "string",
+        "kind": "string",
+        "state": "string"
+    },
     "view.contract": {
         "class": "Contract",
         "enumerations": {
@@ -9988,6 +10002,7 @@
             "view.adsbTraffic",
             "view.cameraDefinition",
             "view.cameraProtocol",
+            "view.cameraSettings",
             "view.joystickMapping",
             "view.joystick",
             "view.followMe",

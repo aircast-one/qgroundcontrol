@@ -434,6 +434,11 @@ fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Stri
     Some(answer.to_string())
 }
 
+pub fn parameter_save_path() -> Option<String> {
+    let root = stored_text(&key("App", "savePath"))?;
+    Some(child_save_path(&root, "Parameters")).filter(|path| !path.is_empty())
+}
+
 pub fn log_save_path() -> Option<String> {
     let root = stored_text(&key("App", "savePath"))?;
     Some(child_save_path(&root, "Logs")).filter(|path| !path.is_empty())

@@ -770,7 +770,7 @@ fn parameter_json(parameters: &CameraParameters, parameter: &Parameter, now_ms: 
     })
 }
 
-fn definition_json(parameters: &CameraParameters, path: &str, now_ms: u64) -> Value {
+pub fn definition_json(parameters: &CameraParameters, path: &str, now_ms: u64) -> Value {
     let definition = &parameters.definition;
     json!({
         "kind": "object",

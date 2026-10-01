@@ -1888,6 +1888,7 @@ impl Vehicle {
                     definition_uri: text(&d.cam_definition_uri[..]),
                     gimbal_device_id: d.gimbal_device_id,
                 };
+                crate::camsettings::wanted(crate::camsettings::Wanted { vehicle: self.id, compid, link: self.link, vendor: info.vendor.clone(), model: info.model.clone(), version: info.definition_version, uri: info.definition_uri.clone() });
                 self.cameras.on_camera_information(compid, info, now_ms);
                 Vec::new()
             }
@@ -1925,6 +1926,10 @@ impl Vehicle {
                     uri: text(&d.uri[..]),
                 };
                 self.cameras.on_video_stream_information(compid, report, now_ms);
+                Vec::new()
+            }
+            MavMessage::PARAM_EXT_VALUE(d) => {
+                crate::camsettings::on_value(self.id, compid, &crate::camsettings::parameter_name(&d.param_id[..]), d.param_type as u8, &d.param_value[..], now_ms);
                 Vec::new()
             }
             MavMessage::VIDEO_STREAM_STATUS(d) => {
