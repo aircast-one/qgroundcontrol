@@ -17,6 +17,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.gps.count",
     "vehicle.batteries.0.percentRemaining",
     "settings.appSettings.audioMuted",
+    "settings.appSettings.audioVolume",
     "settings.appSettings.useChecklist",
 ];
 
@@ -149,6 +150,7 @@ pub struct Inputs {
     pub battery_percent: Option<f64>,
     pub unhealthy_bits: Option<i64>,
     pub audio_muted: bool,
+    pub audio_volume: f64,
 }
 
 pub fn gps(lock: Option<i64>, satellites: Option<i64>) -> Check {
@@ -166,7 +168,7 @@ pub fn battery(percent: Option<f64>) -> Check {
     match percent {
         None => Check::failing("Battery", PROMPT, "No vehicle is reporting a battery.".to_string()),
         Some(p) if p < FAILURE_PERCENT => Check::failing("Battery", PROMPT, format!("Battery charge below {FAILURE_PERCENT:.0}%. Please recharge.")),
-        Some(_) => Check::passing("Battery", PROMPT),
+        Some(_) => Check::manual("Battery", PROMPT),
     }
 }
 
@@ -190,11 +192,11 @@ pub fn contact(lost: bool) -> Option<Check> {
     })
 }
 
-fn sound(muted: bool) -> Check {
+fn sound(muted: bool, volume: f64) -> Check {
     const PROMPT: &str = "QGC audio output enabled. System audio output enabled, too?";
-    match muted {
+    match muted || volume <= 0.0 {
         true => Check::failing("Sound output", PROMPT, "QGC audio output is disabled. Please enable it under application settings->general to hear audio warnings!".to_string()),
-        false => Check::passing("Sound output", PROMPT),
+        false => Check::manual("Sound output", PROMPT),
     }
 }
 
@@ -221,7 +223,7 @@ pub fn groups(inputs: &Inputs) -> Vec<Group> {
                 airframe.checks_actuators().then(|| Check::manual("Actuators", "Move all control surfaces. Did they work properly?")),
                 airframe.checks_motors().then(|| Check::manual("Motors", "Propellers free? Then throttle up gently. Working properly?")),
                 Some(Check::manual("Mission", "Please confirm mission is valid (waypoints valid, no terrain collision).")),
-                Some(sound(inputs.audio_muted)),
+                Some(sound(inputs.audio_muted, inputs.audio_volume)),
             ]
             .into_iter()
             .flatten()
@@ -272,6 +274,7 @@ fn read_inputs(backend: &dyn Backend) -> Inputs {
         battery_percent: value_number(&backend.get("vehicle.batteries.0.percentRemaining")),
         unhealthy_bits: integer(&vehicle, "sensorsUnhealthyBits"),
         audio_muted: value_number(&backend.get("settings.appSettings.audioMuted.rawValue")).map(|v| v != 0.0).unwrap_or(false),
+        audio_volume: value_number(&backend.get("settings.appSettings.audioVolume.rawValue")).unwrap_or(100.0),
     }
 }
 
@@ -294,7 +297,7 @@ mod tests {
     #[test]
     fn battery_and_sensors_name_what_is_wrong() {
         assert_eq!(battery(Some(35.0)).reason, "Battery charge below 40%. Please recharge.");
-        assert_eq!(battery(Some(40.0)).verdict, "passing");
+        assert_eq!(battery(Some(40.0)).verdict, "manual", "PreFlightBatteryCheck has manualText, so a good charge still waits for the connector to be confirmed");
         assert_eq!(sensors(Some(4 | 32)).reason, "Failure. Magnetometer issues. Check console.", "the first failure in PreFlightSensorsHealthCheck's order");
         assert_eq!(sensors(Some(1 << 10)).verdict, "passing");
         assert_eq!(sensors(None).verdict, "failing");
@@ -302,7 +305,7 @@ mod tests {
 
     #[test]
     fn the_groups_follow_the_airframe() {
-        let base = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false };
+        let base = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false, audio_volume: 50.0 };
         let copter = groups(&base);
         assert_eq!(copter.len(), 3);
         assert_eq!(copter[0].checks[0].prompt, "Props mounted and secured?");
@@ -316,7 +319,7 @@ mod tests {
 
     #[test]
     fn a_silent_vehicle_says_so_before_the_readings_it_makes_stale() {
-        let talking = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false };
+        let talking = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false, audio_volume: 50.0 };
         assert!(groups(&talking)[0].checks.iter().all(|c| c.name != "Contact"), "a link that is up is the precondition for the list, not a line in it - a passing Contact row would be one more thing to read on every flight that is fine");
 
         let silent = groups(&Inputs { contact_lost: true, ..talking });
@@ -327,14 +330,18 @@ mod tests {
             silent[0].checks[1].name, "Hardware",
             "the rest of the group keeps its order and its content; the vehicle going quiet adds a check rather than replacing the ones whose inputs are now stale"
         );
-        assert_eq!(silent[0].checks[3].verdict, "passing", "battery still reads 90% because Vehicle latches its last value, which is exactly why Contact has to be the thing that says the number is old");
+        assert_eq!(silent[0].checks[2].verdict, "manual", "battery still reads 90% because Vehicle latches its last value, which is exactly why Contact has to be the thing that says the number is old");
     }
 
     #[test]
     fn a_muted_app_blocks_the_sound_check() {
-        let muted = Inputs { airframe: Airframe::Generic, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: true };
+        let muted = Inputs { airframe: Airframe::Generic, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: true, audio_volume: 50.0 };
         let sound = groups(&muted)[1].checks.iter().find(|c| c.name == "Sound output").unwrap().blocked;
         assert!(sound);
+        let silent = groups(&Inputs { audio_muted: false, audio_volume: 0.0, ..muted });
+        assert!(silent[1].checks.iter().find(|c| c.name == "Sound output").unwrap().blocked, "PreFlightSoundCheck fails at zero volume too");
+        let audible = groups(&Inputs { audio_muted: false, ..muted });
+        assert_eq!(audible[1].checks.iter().find(|c| c.name == "Sound output").unwrap().verdict, "manual");
     }
 
     #[test]

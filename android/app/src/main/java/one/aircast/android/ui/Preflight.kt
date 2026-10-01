@@ -93,7 +93,7 @@ internal fun checklistPopupIsDue(
     deciding: Boolean = false,
 ): Boolean = hasVehicle && useChecklist && enforceChecklist && !complete && !deciding
 
-internal fun checkNeedsTicking(check: PreflightCheck): Boolean = check.verdict == "manual"
+internal fun checkNeedsTicking(check: PreflightCheck): Boolean = check.verdict == "manual" || check.verdict == "overridable"
 
 internal enum class CheckMark { TICKABLE, PASSED, ATTENTION }
 
@@ -106,6 +106,6 @@ internal fun checkMark(check: PreflightCheck): CheckMark = when {
 internal fun checkStatusText(check: PreflightCheck, ticked: Boolean): String = when (check.verdict) {
     "passing" -> "Passing"
     "failing" -> check.reason.ifBlank { "Failing" }
-    "overridable" -> check.reason.ifBlank { "Needs attention" }
+    "overridable" -> if (ticked) "Checked" else check.reason.ifBlank { "Needs attention" }
     else -> if (ticked) "Checked" else "Check it"
 }

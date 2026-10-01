@@ -59,7 +59,7 @@ class PreflightTest {
         val checks = preflight(JSONObject(served))!!
 
         assertEquals(
-            "1 of 4 will stop the flight · 1 left to check.",
+            "1 of 4 will stop the flight · 2 left to check.",
             preflightSummary(checks, emptySet()),
         )
     }
@@ -68,7 +68,7 @@ class PreflightTest {
     fun `the count left to check is out of the checks the operator can tick`() {
         val checks = preflight(JSONObject(served))!!.copy(blocked = emptyList())
 
-        assertEquals("1 of 1 left to check.", preflightSummary(checks, emptySet()))
+        assertEquals("an overridable warning is clicked past, as PreFlightCheckButton keeps it pending until then", "2 of 2 left to check.", preflightSummary(checks, emptySet()))
     }
 
     @Test
@@ -77,7 +77,7 @@ class PreflightTest {
 
         assertEquals(
             "All 4 checks done · 1 warning.",
-            preflightSummary(checks, setOf("Area clear")),
+            preflightSummary(checks, setOf("Area clear", "Compass")),
         )
     }
 
@@ -87,7 +87,7 @@ class PreflightTest {
 
         assertEquals(
             "1 of 4 will stop the flight.",
-            preflightSummary(checks, setOf("Area clear")),
+            preflightSummary(checks, setOf("Area clear", "Compass")),
         )
     }
 
@@ -99,7 +99,7 @@ class PreflightTest {
         assertEquals(CheckMark.TICKABLE, checkMark(byName["Area clear"]!!))
         assertEquals(CheckMark.PASSED, checkMark(byName["Battery"]!!))
         assertEquals(CheckMark.ATTENTION, checkMark(byName["Props on"]!!))
-        assertEquals(CheckMark.ATTENTION, checkMark(byName["Compass"]!!))
+        assertEquals(CheckMark.TICKABLE, checkMark(byName["Compass"]!!))
     }
 
     @Test
@@ -107,7 +107,7 @@ class PreflightTest {
         val checks = preflight(JSONObject(served))!!.copy(blocked = emptyList())
 
         assertEquals(
-            "1 of 1 left to check.",
+            "2 of 2 left to check.",
             preflightSummary(checks, setOf("Battery", "Props on", "made up")),
         )
     }
