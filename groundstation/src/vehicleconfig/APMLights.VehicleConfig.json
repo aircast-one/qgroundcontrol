@@ -1,0 +1,41 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "sections": [
+        {
+            "title": "Light Settings",
+            "controls": [
+                {
+                    "control": "channelFunction",
+                    "label": "Lights 1",
+                    "channelParam": "SERVO#_FUNCTION",
+                    "functionValue": 59,
+                    "firstChannel": 5,
+                    "lastChannel": 16,
+                    "noneLabel": "Disabled",
+                    "exclusive": true
+                },
+                {
+                    "control": "channelFunction",
+                    "label": "Lights 2",
+                    "channelParam": "SERVO#_FUNCTION",
+                    "functionValue": 60,
+                    "firstChannel": 5,
+                    "lastChannel": 16,
+                    "noneLabel": "Disabled",
+                    "exclusive": true
+                },
+                {
+                    "param": "JS_LIGHTS_STEPS",
+                    "label": "Brightness Steps",
+                    "optional": true
+                },
+                {
+                    "param": "JS_LIGHTS_STEP",
+                    "label": "Brightness Step Size",
+                    "optional": true
+                }
+            ]
+        }
+    ]
+}

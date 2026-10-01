@@ -103,10 +103,6 @@ const FLIGHT_MODES_PX4: &[Section] = &[
     Section { title: "Mode slots", note: "", parameters: &["COM_FLTMODE1", "COM_FLTMODE2", "COM_FLTMODE3", "COM_FLTMODE4", "COM_FLTMODE5", "COM_FLTMODE6"] },
     Section { title: "Single function switches", note: "", parameters: &["RC_MAP_RETURN_SW", "RC_MAP_KILL_SW", "RC_MAP_ARM_SW", "RC_MAP_LOITER_SW", "RC_MAP_OFFB_SW", "RC_MAP_GEAR_SW", "RC_MAP_TRANS_SW"] },
 ];
-const LIGHTS_APM: &[Section] = &[
-    Section { title: "Light channels", note: "", parameters: &["SERVO5_FUNCTION", "SERVO6_FUNCTION", "SERVO7_FUNCTION", "SERVO8_FUNCTION", "SERVO9_FUNCTION", "SERVO10_FUNCTION", "SERVO11_FUNCTION", "SERVO12_FUNCTION", "SERVO13_FUNCTION", "SERVO14_FUNCTION", "SERVO15_FUNCTION", "SERVO16_FUNCTION"] },
-    Section { title: "Brightness steps", note: "", parameters: &["JS_LIGHTS_STEPS", "JS_LIGHTS_STEP", "BRD_PWM_COUNT"] },
-];
 const HELI_APM: &[Section] = &[
     Section { title: "Servo 1", note: "", parameters: &["SERVO1_FUNCTION", "SERVO1_MIN", "SERVO1_MAX", "SERVO1_TRIM", "SERVO1_REVERSED"] },
     Section { title: "Servo 2", note: "", parameters: &["SERVO2_FUNCTION", "SERVO2_MIN", "SERVO2_MAX", "SERVO2_TRIM", "SERVO2_REVERSED"] },
@@ -146,7 +142,6 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
         ("Frame", false) => Some(FRAME_APM),
         ("Flight Modes", true) => Some(FLIGHT_MODES_PX4),
         ("Flight Modes", false) => Some(FLIGHT_MODES_APM),
-        ("Lights", false) => Some(LIGHTS_APM),
         ("Heli", false) => Some(HELI_APM),
         ("Flight Behavior", true) => Some(FLIGHT_BEHAVIOR_PX4),
         _ => None,
@@ -429,7 +424,7 @@ mod tests {
     #[test]
     fn a_page_says_whether_the_core_can_describe_it_and_never_whether_a_head_has_built_it() {
         let described = |page: &str, px4: bool| sections_for(page, px4).is_some();
-        assert!(described("Lights", false), "the core can lay out APM lights as parameter sections");
+        assert!(described("Heli", false), "the core can lay out APM heli servos as parameter sections");
         assert!(!described("Radio", false), "and it cannot lay out radio calibration, which is a screen rather than a list of parameters");
         assert!(!described("Motors", false), "nor motors, which is the page a head opened because this view once claimed it had one");
     }
@@ -439,7 +434,7 @@ mod tests {
         struct Fake;
         impl Backend for Fake {
             fn get(&self, path: &str) -> String {
-                match (path.contains("SERVO5_FUNCTION)") || path.contains("JS_LIGHTS_STEPS"), path.contains("SERVO6_FUNCTION")) {
+                match (path.contains("SERVO1_FUNCTION)") || path.contains("SERVO2_FUNCTION)"), path.contains("SERVO1_MIN")) {
                     (true, _) => json!({ "kind": "fact", "name": path.rsplit(',').next().unwrap().trim_end_matches(')'), "value": 30, "min": 0, "max": 100, "minIsDefaultForType": false, "maxIsDefaultForType": false }),
                     (false, true) => json!({ "kind": "fact", "name": "", "value": 0, "valueString": "0", "decimalPlaces": 3 }),
                     _ => json!({ "kind": "null" }),
@@ -451,14 +446,14 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let page = setup_view(&Fake, &["Lights".to_string()]);
+        let page = setup_view(&Fake, &["Heli".to_string()]);
         let sections = page["sections"].as_array().unwrap();
         assert_eq!(sections.len(), 2);
-        assert_eq!(sections[0]["title"], "Light channels");
-        assert_eq!(sections[0]["controls"][0]["name"], "SERVO5_FUNCTION");
-        assert_eq!(sections[0]["controls"].as_array().unwrap().len(), 1);
+        assert_eq!(sections[0]["title"], "Servo 1");
+        assert_eq!(sections[0]["controls"][0]["name"], "SERVO1_FUNCTION");
+        assert_eq!(sections[0]["controls"].as_array().unwrap().len(), 1, "a nameless answer is a parameter the vehicle does not have");
         assert_eq!(sections[0]["controls"][0]["control"], "number");
-        assert_eq!(sections[1]["title"], "Brightness steps");
+        assert_eq!(sections[1]["title"], "Servo 2");
         assert_eq!(setup_view(&Fake, &["Nope".to_string()])["kind"], "null");
     }
 
