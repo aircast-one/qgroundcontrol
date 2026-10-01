@@ -129,6 +129,11 @@ internal fun addableLinkTypes(view: JSONObject?): List<String> {
     return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES } + bluetooth
 }
 
+internal fun linkTypeIds(view: JSONObject?): Set<String> {
+    val listed = view?.optJSONArray("linkTypeIds") ?: return emptySet()
+    return (0 until listed.length()).map { listed.optString(it) }.toSet()
+}
+
 internal fun bluetoothPermissions(sdk: Int): Array<String> =
     if (sdk >= android.os.Build.VERSION_CODES.S) {
         arrayOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)
@@ -449,6 +454,12 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var autoConnect by remember { mutableStateOf(false) }
     var highLatency by remember { mutableStateOf(false) }
     var device by remember { mutableStateOf<BluetoothDeviceChoice?>(null) }
+    var apiBase by remember { mutableStateOf("") }
+    var deviceId by remember { mutableStateOf("") }
+    var cloudErrors by remember { mutableStateOf(false) }
+    var cloudOffered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { cloudOffered = withContext(Dispatchers.Default) { accountState(Qgc.get("account")) != null } }
+    val choices = offered + listOf(AIRCAST_CLOUD_LINK).filter { cloudOffered && it in linkTypeIds(linksJson) }
     val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
     val scope = rememberCoroutineScope()
 
@@ -459,14 +470,14 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    offered.forEach { id ->
+                    choices.forEach { id ->
                         FilterChip(
                             selected = type == id,
                             onClick = {
                                 type = id
                                 if (id == BLUETOOTH_LINK) askBluetooth.launch(bluetoothPermissions(android.os.Build.VERSION.SDK_INT))
                             },
-                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "Bluetooth"; else -> id.uppercase() }) },
+                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "Bluetooth"; AIRCAST_CLOUD_LINK -> "Aircast Cloud"; else -> id.uppercase() }) },
                         )
                     }
                 }
@@ -476,12 +487,15 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                             "reach a specific device."
                         "serial" -> "A radio plugged into this device over USB."
                         BLUETOOTH_LINK -> "A radio paired with or near this device over Bluetooth."
+                        AIRCAST_CLOUD_LINK -> "A backup link to the aircraft through your Aircast account."
                         else -> "Calls out to a device that is listening, such as a ground station."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (type == BLUETOOTH_LINK) {
+                if (type == AIRCAST_CLOUD_LINK) {
+                    AircastCloudFields(apiBase, deviceId, cloudErrors, { apiBase = it }, { deviceId = it })
+                } else if (type == BLUETOOTH_LINK) {
                     BluetoothPicker(device) { device = it }
                 } else if (type == "serial" && ports.isEmpty()) {
                     Text(
@@ -551,18 +565,22 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
             Button(
                 enabled = !busy,
                 onClick = {
-                    val invalid = if (type == BLUETOOTH_LINK) {
+                    cloudErrors = type == AIRCAST_CLOUD_LINK
+                    val invalid = if (type == AIRCAST_CLOUD_LINK) {
+                        if (cloudApiBaseValid(apiBase) && cloudDeviceValid(deviceId)) null else ""
+                    } else if (type == BLUETOOTH_LINK) {
                         if (device == null) "Pick a Bluetooth device." else null
                     } else if (type == "serial") {
                         serialFormError(portName, baud, taken, name, ports.isNotEmpty())
                     } else {
                         linkFormError(type, host, port)
                     }
-                    error = invalid
+                    error = invalid?.ifBlank { null }
                     if (invalid == null) {
                         busy = true
                         val chosen = name.ifBlank {
                             when (type) {
+                                AIRCAST_CLOUD_LINK -> AIRCAST_CLOUD_NAME
                                 BLUETOOTH_LINK -> device?.name.orEmpty()
                                 "serial" -> autoSerialName(portName)
                                 else -> autoLinkName(type, host, port)
@@ -570,7 +588,10 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         }
                         scope.launch {
                             val added = withContext(Dispatchers.Default) {
-                                if (type == BLUETOOTH_LINK) {
+                                if (type == AIRCAST_CLOUD_LINK) {
+                                    Qgc.set("account.apiBase", apiBase)
+                                    Qgc.invokeResult("links.createAircastCloudLink", chosen, apiBase, deviceId) == true
+                                } else if (type == BLUETOOTH_LINK) {
                                     val picked = device!!
                                     Qgc.invokeResult("links.createBluetoothLink", chosen, picked.name, picked.address) == true
                                 } else if (type == "serial") {

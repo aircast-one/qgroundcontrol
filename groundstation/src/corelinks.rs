@@ -186,6 +186,23 @@ fn create_bluetooth(name: &str, device_name: &str, address: &str) -> bool {
     connect(index)
 }
 
+pub fn cloud_settings_valid(api_base: &str, device_id: &str) -> bool {
+    let base = api_base.trim();
+    let after_scheme = base.strip_prefix("https://").or_else(|| base.strip_prefix("http://"));
+    after_scheme.is_some_and(|rest| rest.chars().next().is_some_and(|c| c != '/')) && !device_id.trim().is_empty()
+}
+
+fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
+    if name.is_empty() || !cloud_settings_valid(api_base, device_id) {
+        return false;
+    }
+    if !add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::AircastCloud { api_base: api_base.trim().to_string(), device_id: device_id.trim().to_string() } }) {
+        return false;
+    }
+    let index = listed().iter().position(|e| e.config.name == name).unwrap_or(0);
+    connect(index)
+}
+
 fn remove(index: usize) -> bool {
     let Some(entry) = listed().into_iter().nth(index) else { return false };
     let hooks = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -533,6 +550,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createAndConnectLink" => json!(create_and_connect(&text(0), &text(1), &text(2), whole(3))),
         "links.createSerialConfiguration" => json!(create_serial(&text(0), &text(1), whole(2))),
         "links.createBluetoothLink" => json!(create_bluetooth(&text(0), &text(1), &text(2))),
+        "links.createAircastCloudLink" => json!(create_cloud(&text(0), &text(1), &text(2))),
         crate::platformbluetooth::SCAN => return crate::platformbluetooth::scan(args),
         "links.removeConfiguration" => json!(remove(given.get(0).and_then(Value::as_str).and_then(indexed)?)),
         "links.commitLinkConfigurations" => {
@@ -561,6 +579,9 @@ mod tests {
         assert_eq!(edited(&tcp, "name", &json!("Bench 2")).unwrap().name, "Bench 2");
         assert_eq!(edited(&tcp, "localPort", &json!(1)), None, "a field the kind does not carry is not written");
         assert!(edited(&tcp, "autoConnect", &json!(true)).is_some_and(|c| c.auto_connect), "Automatically Connect on Start");
+        assert!(cloud_settings_valid("https://api.aircast.one", "drone-1"));
+        assert!(cloud_settings_valid(" http://10.0.0.2:8080 ", "d"), "AircastCloudSettings.qml accepts http or https with a host");
+        assert!(!cloud_settings_valid("api.aircast.one", "d") && !cloud_settings_valid("https:///x", "d") && !cloud_settings_valid("https://a", " "));
         assert!(edited(&tcp, "highLatency", &json!(true)).is_some_and(|c| c.high_latency));
         assert_eq!(edited(&tcp, "highLatency", &json!("yes")), None);
         assert_eq!(edited(&tcp, "port", &json!(70000)), None);
