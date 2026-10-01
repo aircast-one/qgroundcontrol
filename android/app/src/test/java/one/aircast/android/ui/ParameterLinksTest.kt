@@ -18,4 +18,17 @@ class ParameterLinksTest {
         assertEquals(READ_ONLY_NOTE, forceEditNote(readOnly = true, forced = false))
         assertEquals(FORCE_EDIT_NOTE, forceEditNote(readOnly = true, forced = true))
     }
+
+    @Test
+    fun `reset offers the default only when the metadata has one`() {
+        assertEquals(20, parameterDefault(org.json.JSONObject("""{"defaultValueAvailable":true,"defaultValue":20}""")))
+        assertNull(parameterDefault(org.json.JSONObject("""{"defaultValueAvailable":false,"defaultValue":20}""")))
+        assertNull(parameterDefault(org.json.JSONObject("""{"defaultValueAvailable":true,"defaultValue":null}""")))
+    }
+
+    @Test
+    fun `manual entry drops the choice lists`() {
+        val fact = one.aircast.android.bridge.Fact("p", "MODE", "", "", "1", 1, listOf("A", "B"), listOf("0", "1"), 1, isBool = false, isString = false, readOnly = false)
+        assertEquals(false, manualEntryFact(fact).isEnum)
+    }
 }

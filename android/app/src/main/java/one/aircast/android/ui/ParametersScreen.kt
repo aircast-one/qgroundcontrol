@@ -128,7 +128,7 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
                 )
             }
             if (offersRcToParam && !loaded.readOnly) TextButton(onClick = { mapping = true }) { Text("RC") }
-            if (loaded.readOnly) TextButton(onClick = { forcing = true }) { Text("Edit") }
+            TextButton(onClick = { forcing = true }) { Text("Edit") }
             if (forcing) ParameterEditDialog(name) {
                 forcing = false
                 revision++

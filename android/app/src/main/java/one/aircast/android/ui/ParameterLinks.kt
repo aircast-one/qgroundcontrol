@@ -23,6 +23,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
+import org.json.JSONObject
+import one.aircast.android.bridge.Qgc
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.mapspike.aircast
@@ -60,13 +64,25 @@ private fun CheckRow(text: String, checked: Boolean, onChecked: (Boolean) -> Uni
     }
 }
 
+internal const val IN_FLIGHT_WARNING = "Warning: Modifying values while vehicle is in flight can lead to vehicle instability and possible vehicle loss. Make sure you know what you are doing and double-check your values before Save!"
+
+internal fun parameterDefault(json: JSONObject?): Any? =
+    json?.takeIf { it.optBoolean("defaultValueAvailable") && it.has("defaultValue") && !it.isNull("defaultValue") }?.opt("defaultValue")
+
+internal fun manualEntryFact(fact: Fact): Fact = fact.copy(enumStrings = emptyList(), enumValues = emptyList(), bitmaskStrings = emptyList(), bitmaskValues = emptyList())
+
 @Composable
 internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
     var advanced by remember { mutableStateOf(false) }
     var forced by remember { mutableStateOf(false) }
+    var manual by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val fact by produceState<Fact?>(null, name, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name) }
+    }
+    val default by produceState<Any?>(null, name, revision) {
+        value = withContext(Dispatchers.Default) { parameterDefault(Qgc.get(parameterPath(name))) }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -74,16 +90,31 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
         text = {
             Column {
                 fact?.let { loaded ->
+                    val editable = !loaded.readOnly || forced
                     forceEditNote(loaded.readOnly, forced)?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = if (forced) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
                     }
-                    FactRow(fact = loaded.copy(readOnly = loaded.readOnly && !forced), title = loaded.name, subtitle = parameterSubtitle(loaded.description, loaded.units), onWrite = { revision++ })
-                    if (loaded.readOnly) {
+                    val shown = loaded.copy(readOnly = !editable).let { if (manual) manualEntryFact(it) else it }
+                    FactRow(fact = shown, title = loaded.name, subtitle = parameterSubtitle(loaded.description, loaded.units), onWrite = { revision++ })
+                    if (editable && default != null) {
+                        TextButton(onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.Default) { Qgc.writeRefusal(loaded.path, default) }
+                                onDismiss()
+                            }
+                        }) { Text("Reset To Default") }
+                    }
+                    if (loaded.qgcRebootRequired) Text("Application restart required after change", style = MaterialTheme.typography.bodySmall)
+                    if (editable) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
+                    val hasChoices = loaded.isEnum || loaded.isBitmask
+                    if (loaded.readOnly || (editable && hasChoices)) {
                         CheckRow("Advanced settings", advanced) { on ->
                             advanced = on
                             forced = forced && on
+                            manual = manual && on
                         }
-                        if (advanced) CheckRow("Force edit read-only param", forced) { forced = it }
+                        if (advanced && loaded.readOnly) CheckRow("Force edit read-only param", forced) { forced = it }
+                        if (advanced && editable && hasChoices) CheckRow("Manual Entry", manual) { manual = it }
                     }
                 } ?: Text("$name is not a parameter on this vehicle.", style = MaterialTheme.typography.bodySmall)
             }
