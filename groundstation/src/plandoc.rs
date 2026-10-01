@@ -130,12 +130,8 @@ pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
         .ok_or("The plan has no planned home position.")?;
     let (firmware_type, vehicle_type) = (integer("firmwareType"), mission.get("vehicleType").and_then(Value::as_f64).map_or(offline_vehicle_type, |v| v as i64));
     let commands = cmdinfo::tree(firmware(firmware_type), vehicle_class(vehicle_type));
-    let items = mission
-        .get("items")
-        .and_then(Value::as_array)
-        .map(|items| items.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>())
-        .transpose()?
-        .unwrap_or_default();
+    let saved = mission["items"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let items = resolve_jumps(saved.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>()?, saved)?;
     let items = crate::landingpattern::fold(items, firmware(firmware_type) == Firmware::ArduPilot);
     let (settings_sections, items) = fold(items, vehicle_class(vehicle_type));
     Ok(Document {
@@ -150,6 +146,32 @@ pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
         fence: current_or_empty(root.get("geoFence"), FENCE_VERSION, json!({ "circles": [], "polygons": [], "version": FENCE_VERSION })),
         rally: current_or_empty(root.get("rallyPoints"), RALLY_VERSION, json!({ "points": [], "version": RALLY_VERSION })),
     })
+}
+
+const CMD_DO_JUMP: i64 = 177;
+
+fn resolve_jumps(items: Vec<Item>, saved: &[Value]) -> Result<Vec<Item>, String> {
+    let starts = items.iter().scan(1i64, |next, item| {
+        let start = *next;
+        *next += match item {
+            Item::Simple(_) => 1,
+            Item::Complex { item_count, .. } => *item_count as i64,
+        };
+        Some(start)
+    });
+    let targets: Vec<(i64, i64)> = saved.iter().zip(starts).filter(|(item, _)| item["type"] == "SimpleItem").filter_map(|(item, seq)| item["doJumpId"].as_i64().map(|id| (id, seq))).collect();
+    items
+        .into_iter()
+        .map(|item| match item {
+            Item::Simple(jump) if jump.command == CMD_DO_JUMP => {
+                let id = jump.params[0].unwrap_or(f64::NAN) as i64;
+                let seq = targets.iter().find(|(target, _)| *target == id).map(|(_, seq)| *seq).ok_or_else(|| format!("Mission: Could not find doJumpId: {id}"))?;
+                let params = std::array::from_fn(|i| if i == 0 { Some(seq as f64) } else { jump.params[i] });
+                Ok(Item::Simple(Simple { params, ..jump }))
+            }
+            other => Ok(other),
+        })
+        .collect()
 }
 
 fn current_or_empty(section: Option<&Value>, version: i64, empty: Value) -> Value {
@@ -1203,6 +1225,16 @@ mod tests {
     fn an_item_the_core_cannot_hold_refuses_the_whole_plan() {
         let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "plannedHomePosition": [0, 0, 0], "items": [{ "type": "ComplexItem", "complexItemType": "FWLandingPattern" }] } });
         assert!(load(&plan.to_string(), 2).unwrap_err().contains("FWLandingPattern"));
+    }
+
+    #[test]
+    fn a_jump_targets_the_sequence_of_the_item_carrying_its_do_jump_id() {
+        let item = |command: i64, id: i64, p1: f64| json!({ "type": "SimpleItem", "command": command, "frame": 2, "doJumpId": id, "autoContinue": true, "params": [p1, 0, 0, 0, 0, 0, 0] });
+        let plan = |items: Value| json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 2, "plannedHomePosition": [0, 0, 0], "items": items } }).to_string();
+        let doc = load(&plan(json!([item(203, 40, 0.0), item(203, 50, 0.0), item(177, 60, 50.0)])), 2).unwrap();
+        let Item::Simple(jump) = &doc.items[2] else { panic!() };
+        assert_eq!(jump.params[0], Some(2.0), "doJumpId 50 is the second item, sequence 2 after home");
+        assert_eq!(load(&plan(json!([item(177, 1, 9.0)])), 2).unwrap_err(), "Mission: Could not find doJumpId: 9");
     }
 
     #[test]
