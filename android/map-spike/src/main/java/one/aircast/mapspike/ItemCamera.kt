@@ -7,6 +7,16 @@ object ItemCameraBridge {
     fun read(index: Int): JSONObject? =
         runCatching { JSONObject(QGCBridge.get("view.itemCamera($index)")) }.getOrNull()
 
+    fun set(index: Int, member: String, value: Any): Boolean =
+        runCatching {
+            JSONObject(
+                QGCBridge.set(
+                    "plan.missionController.visualItems.$index.cameraSection.$member",
+                    JSONObject().put("value", value).toString(),
+                ),
+            ).optBoolean("ok")
+        }.getOrDefault(false)
+
     fun chooseAction(index: Int, choice: Int): Boolean =
         runCatching {
             JSONObject(
@@ -33,6 +43,34 @@ fun shotPoints(view: JSONObject?): List<TrackPoint> {
 }
 
 internal data class CameraChoices(val labels: List<String>, val chosen: Int)
+
+internal data class CameraExtras(
+    val intervalTime: Double?,
+    val intervalDistance: Double?,
+    val modeSupported: Boolean,
+    val commandsMode: Boolean,
+    val mode: Int,
+    val commandsGimbal: Boolean,
+    val pitch: Double,
+    val yaw: Double,
+)
+
+private fun JSONObject.measured(key: String): Double? =
+    optJSONObject(key)?.optDouble("value")?.takeIf { !it.isNaN() }
+
+internal fun cameraExtras(view: JSONObject?): CameraExtras? =
+    view?.takeIf { it.optBoolean("available") }?.let {
+        CameraExtras(
+            intervalTime = it.measured("intervalTime"),
+            intervalDistance = it.measured("intervalDistance"),
+            modeSupported = it.optBoolean("cameraModeSupported"),
+            commandsMode = it.optBoolean("commandsMode"),
+            mode = it.optJSONObject("cameraMode")?.optInt("choice", 0) ?: 0,
+            commandsGimbal = it.optBoolean("commandsGimbal"),
+            pitch = it.measured("gimbalPitch") ?: 0.0,
+            yaw = it.measured("gimbalYaw") ?: 0.0,
+        )
+    }
 
 internal fun cameraChoices(view: JSONObject?): CameraChoices? {
     val measure = view?.takeIf { it.optBoolean("available") }?.optJSONObject("cameraAction")

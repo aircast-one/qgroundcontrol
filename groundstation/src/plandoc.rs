@@ -599,6 +599,10 @@ fn camera_match(rest: &[Simple], found: &[Found]) -> Option<(Found, usize)> {
 
 const CAMERA_ACTIONS: [(&str, i64); 7] = [("No change", 0), ("Take photo", 6), ("Take photos (time)", 1), ("Take photos (distance)", 2), ("Stop taking photos", 3), ("Start recording video", 4), ("Stop recording video", 5)];
 
+pub fn camera_action_value(index: usize) -> Option<i64> {
+    CAMERA_ACTIONS.get(index).map(|(_, value)| *value)
+}
+
 pub fn camera_section(sections: &[Simple]) -> Value {
     let gimbal = sections.iter().find(|s| s.command == CMD_DO_MOUNT_CONTROL);
     let action = sections.iter().enumerate().find_map(|(i, item)| {
@@ -616,11 +620,30 @@ pub fn camera_section(sections: &[Simple]) -> Value {
     let action = action.unwrap_or(0);
     let degrees = |property: &str, value: f64| json!({ "property": property, "value": value, "valueString": format!("{value:.0}"), "enumOrValueString": format!("{value:.0}"), "units": "deg" });
     let chosen = CAMERA_ACTIONS.iter().position(|(_, v)| *v == action).unwrap_or(0);
+    let state_mode = sections.iter().find(|s| s.command == CMD_SET_CAMERA_MODE).map(|m| p(m, 1));
+    let start = sections.iter().find(|s| s.command == CMD_IMAGE_START_CAPTURE).map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME);
+    let distance = sections.iter().find(|s| s.command == CMD_DO_SET_CAM_TRIGG_DIST).map(|t| p(t, 0)).filter(|d| *d > 0.0).unwrap_or(DEFAULT_INTERVAL_DISTANCE);
+    let number = |property: &str, value: f64, units: &str| json!({ "property": property, "value": value, "valueString": format!("{value}"), "enumOrValueString": format!("{value}"), "units": units });
+    let modes = ["Photo", "Video", "Survey"];
+    let mode_value = state_mode.unwrap_or(0.0);
     json!({
         "kind": "object",
         "class": "CameraSection",
         "specifyGimbal": gimbal.is_some(),
+        "specifyCameraMode": state_mode.is_some(),
         "facts": [
+            number("cameraPhotoIntervalTime", start, "secs"),
+            number("cameraPhotoIntervalDistance", distance, "m"),
+            {
+                "property": "cameraMode",
+                "value": mode_value,
+                "valueString": format!("{mode_value}"),
+                "enumOrValueString": modes.get(mode_value as usize).copied().unwrap_or(""),
+                "enumStrings": modes,
+                "enumValues": [0, 1, 2],
+                "enumIndex": mode_value as i64,
+                "units": "",
+            },
             degrees("gimbalPitch", -gimbal.map_or(0.0, |g| p(g, 0))),
             degrees("gimbalYaw", gimbal.map_or(0.0, |g| p(g, 2))),
             {
@@ -635,6 +658,84 @@ pub fn camera_section(sections: &[Simple]) -> Value {
             },
         ],
     })
+}
+
+const DEFAULT_INTERVAL_TIME: f64 = 10.0;
+const DEFAULT_INTERVAL_DISTANCE: f64 = 1.0;
+const CAMERA_COMMANDS: [i64; 7] = [CMD_SET_CAMERA_MODE, CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE, CMD_IMAGE_STOP_CAPTURE, CMD_DO_SET_CAM_TRIGG_DIST, CMD_VIDEO_START_CAPTURE, CMD_VIDEO_STOP_CAPTURE];
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraState {
+    pub mode: Option<f64>,
+    pub gimbal: Option<(f64, f64)>,
+    pub action: i64,
+    pub interval_time: f64,
+    pub interval_distance: f64,
+}
+
+pub fn camera_state(sections: &[Simple]) -> CameraState {
+    let found = |command: i64| sections.iter().find(|s| s.command == command);
+    let start = found(CMD_IMAGE_START_CAPTURE);
+    let trigger = found(CMD_DO_SET_CAM_TRIGG_DIST);
+    CameraState {
+        mode: found(CMD_SET_CAMERA_MODE).map(|m| p(m, 1)),
+        gimbal: found(CMD_DO_MOUNT_CONTROL).map(|g| (-p(g, 0), p(g, 2))),
+        action: camera_section(sections)["facts"].as_array().and_then(|facts| facts.iter().find(|f| f["property"] == "cameraAction")).and_then(|f| f["value"].as_i64()).unwrap_or(0),
+        interval_time: start.map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME),
+        interval_distance: trigger.map(|t| p(t, 0)).filter(|d| *d > 0.0).unwrap_or(DEFAULT_INTERVAL_DISTANCE),
+    }
+}
+
+fn mission_command(command: i64, params: [f64; 7]) -> Simple {
+    Simple { command, frame: FRAME_MISSION, params: params.map(Some), auto_continue: true, altitude: None, sections: Vec::new() }
+}
+
+pub fn camera_items(state: &CameraState) -> Vec<Simple> {
+    let nan = f64::NAN;
+    let mode = state.mode.map(|m| mission_command(CMD_SET_CAMERA_MODE, [0.0, m, nan, nan, nan, nan, nan]));
+    let gimbal = state.gimbal.map(|(pitch, yaw)| mission_command(CMD_DO_MOUNT_CONTROL, [-pitch, 0.0, yaw, 0.0, 0.0, 0.0, MOUNT_MODE_MAVLINK_TARGETING]));
+    let action: Vec<Simple> = match state.action {
+        1 => vec![mission_command(CMD_IMAGE_START_CAPTURE, [0.0, state.interval_time.trunc(), 0.0, nan, nan, nan, nan])],
+        2 => vec![mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [state.interval_distance, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0])],
+        3 => vec![mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [0.0; 7]), mission_command(CMD_IMAGE_STOP_CAPTURE, [0.0, nan, nan, nan, nan, nan, nan])],
+        4 => vec![mission_command(CMD_VIDEO_START_CAPTURE, [0.0, VIDEO_CAPTURE_STATUS_INTERVAL, nan, nan, nan, nan, nan])],
+        5 => vec![mission_command(CMD_VIDEO_STOP_CAPTURE, [0.0, nan, nan, nan, nan, nan, nan])],
+        6 => vec![mission_command(CMD_IMAGE_START_CAPTURE, [0.0, 0.0, 1.0, 0.0, nan, nan, nan])],
+        _ => Vec::new(),
+    };
+    mode.into_iter().chain(gimbal).chain(action).collect()
+}
+
+pub fn edited_camera(state: &CameraState, property: &str, value: &Value) -> Option<CameraState> {
+    let number = value.as_f64().or_else(|| value.as_bool().map(f64::from));
+    let on = value.as_bool().or_else(|| number.map(|n| n != 0.0));
+    Some(match property {
+        "cameraAction" => CameraState { action: number? as i64, ..state.clone() },
+        "cameraPhotoIntervalTime" => CameraState { interval_time: number?.max(1.0), ..state.clone() },
+        "cameraPhotoIntervalDistance" => CameraState { interval_distance: number?.max(0.1), ..state.clone() },
+        "specifyCameraMode" => CameraState { mode: on?.then(|| state.mode.unwrap_or(0.0)), ..state.clone() },
+        "cameraMode" => CameraState { mode: Some(number?), ..state.clone() },
+        "specifyGimbal" => CameraState { gimbal: on?.then(|| state.gimbal.unwrap_or((0.0, 0.0))), ..state.clone() },
+        "gimbalPitch" => CameraState { gimbal: Some((number?.clamp(-90.0, 0.0), state.gimbal.map_or(0.0, |g| g.1))), ..state.clone() },
+        "gimbalYaw" => CameraState { gimbal: Some((state.gimbal.map_or(0.0, |g| g.0), number?.clamp(-180.0, 180.0))), ..state.clone() },
+        _ => return None,
+    })
+}
+
+fn with_camera(sections: &[Simple], property: &str, value: &Value) -> Option<Vec<Simple>> {
+    let state = edited_camera(&camera_state(sections), property, value)?;
+    let others = sections.iter().filter(|s| !CAMERA_COMMANDS.contains(&s.command)).cloned();
+    Some(camera_items(&state).into_iter().chain(others).collect())
+}
+
+pub fn set_camera(doc: &Document, visual_index: usize, property: &str, value: &Value) -> Option<Document> {
+    match visual_index {
+        0 => Some(Document { settings_sections: with_camera(&doc.settings_sections, property, value)?, ..doc.clone() }),
+        _ => {
+            let (at, current) = simple_at(doc, visual_index)?;
+            (current.command == CMD_NAV_WAYPOINT).then(|| with_camera(&current.sections, property, value).map(|sections| replaced(doc, at, Simple { sections, ..current.clone() }))).flatten()
+        }
+    }
 }
 
 fn camera_span(rest: &[Simple], found: Vec<Found>) -> usize {
@@ -733,6 +834,24 @@ fn save_item(item: &Item, seq: usize) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_camera_section_writes_the_commands_camera_section_appends() {
+        let doc = Document { settings_sections: Vec::new(), ..section() };
+        let timed = set_camera(&doc, 0, "cameraAction", &json!(1)).unwrap();
+        assert_eq!(timed.settings_sections.iter().map(|s| (s.command, s.params[1])).collect::<Vec<_>>(), [(CMD_IMAGE_START_CAPTURE, Some(10.0))], "Take photos (time) starts with the default 10 s interval");
+        let quicker = set_camera(&timed, 0, "cameraPhotoIntervalTime", &json!(5)).unwrap();
+        assert_eq!(camera_state(&quicker.settings_sections).interval_time, 5.0);
+        let aimed = set_camera(&set_camera(&quicker, 0, "specifyGimbal", &json!(true)).unwrap(), 0, "gimbalPitch", &json!(-45.0)).unwrap();
+        let commands: Vec<i64> = aimed.settings_sections.iter().map(|s| s.command).collect();
+        assert_eq!(commands, [CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE], "gimbal before the action, as appendSectionItems orders them");
+        assert_eq!(camera_state(&aimed.settings_sections).gimbal, Some((-45.0, 0.0)));
+        let moded = set_camera(&aimed, 0, "specifyCameraMode", &json!(true)).unwrap();
+        assert_eq!(moded.settings_sections[0].command, CMD_SET_CAMERA_MODE);
+        let stopped = set_camera(&moded, 0, "cameraAction", &json!(3)).unwrap();
+        assert_eq!(stopped.settings_sections.iter().map(|s| s.command).collect::<Vec<_>>(), [CMD_SET_CAMERA_MODE, CMD_DO_MOUNT_CONTROL, CMD_DO_SET_CAM_TRIGG_DIST, CMD_IMAGE_STOP_CAPTURE]);
+        assert_eq!(camera_state(&stopped.settings_sections).action, 3, "the written commands read back as the same action");
+    }
 
     fn by_value(value: Value) -> Value {
         match value {

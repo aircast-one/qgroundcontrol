@@ -827,6 +827,12 @@ internal fun MapSpikeScreen(
                                         )
                                     }
                                 }
+                                cameraExtras(camera)?.let { extras ->
+                                    CameraSectionExtras(extras) { member, value ->
+                                        onBridge("Setting the camera") { ItemCameraBridge.set(item.index, member, value) }
+                                        cameraRevision += 1
+                                    }
+                                }
                                 GroupBreak()
                             }
                         }

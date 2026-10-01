@@ -12,6 +12,9 @@ pub const DEPS: &[&str] = &[
     "plan.missionController@visualItemsReset",
 ];
 
+const TAKE_PHOTOS_TIME: i64 = 1;
+const TAKE_PHOTOS_DISTANCE: i64 = 2;
+
 fn fact<'a>(section: &'a Value, name: &str) -> Option<&'a Value> {
     section
         .get("facts")
@@ -46,6 +49,7 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
     // rather than a Fact, so it does not arrive with them through view.control - which is how a
     // head ends up with the value and not the thing that says whether it means anything.
     let specified = flag(&section, "specifyGimbal");
+    let action = fact(&section, "cameraAction").and_then(|f| f.get("value")).and_then(Value::as_i64);
     json!({
         "kind": "object",
         "class": "ItemCamera",
@@ -59,6 +63,12 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
         "gimbalPitch": if specified { measure(&section, "gimbalPitch") } else { Value::Null },
         "gimbalYaw": if specified { measure(&section, "gimbalYaw") } else { Value::Null },
         "cameraAction": measure(&section, "cameraAction"),
+        "intervalTime": match action { Some(TAKE_PHOTOS_TIME) => measure(&section, "cameraPhotoIntervalTime"), _ => Value::Null },
+        "intervalDistance": match action { Some(TAKE_PHOTOS_DISTANCE) => measure(&section, "cameraPhotoIntervalDistance"), _ => Value::Null },
+        "cameraModeSupported": present && flag(&section, "cameraModeSupported"),
+        "commandsMode": present && flag(&section, "specifyCameraMode"),
+        "cameraMode": if flag(&section, "cameraModeSupported") { measure(&section, "cameraMode") } else { Value::Null },
+        "path": format!("plan.missionController.visualItems.{index}.cameraSection"),
     })
 }
 
@@ -91,6 +101,33 @@ mod tests {
             String::new()
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    struct Timed;
+    impl Backend for Timed {
+        fn get(&self, _p: &str) -> String {
+            let section = crate::plandoc::camera_section(&[crate::plandoc::Simple { command: 2000, frame: 2, params: [Some(0.0), Some(4.0), Some(0.0), None, None, None, None], auto_continue: true, altitude: None, sections: Vec::new() }]);
+            match section {
+                Value::Object(map) => Value::Object(map.into_iter().chain([("cameraModeSupported".to_string(), json!(true))]).collect()),
+                other => other,
+            }
+            .to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_timed_photo_action_carries_its_interval_and_the_mode_choice() {
+        let view = item_camera_view(&Timed, &["2".into()]);
+        assert_eq!(view["intervalTime"]["value"], 4.0, "CameraSection shows Time only for Take photos (time)");
+        assert_eq!(view["intervalDistance"], Value::Null);
+        assert_eq!(view["cameraModeSupported"], true);
+        assert_eq!(view["commandsMode"], false);
+        assert_eq!(view["cameraMode"]["choices"], json!(["Photo", "Video", "Survey"]));
+        assert_eq!(view["path"], "plan.missionController.visualItems.2.cameraSection");
     }
 
     #[test]

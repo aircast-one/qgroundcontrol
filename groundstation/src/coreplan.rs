@@ -1254,6 +1254,21 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         Err(reason) => refused(reason),
     };
     let current = held().document.clone()?;
+    if let Some(member) = property.strip_prefix("cameraSection.") {
+        let (name, by_index) = match member.split_once('.') {
+            Some((name, "enumIndex")) => (name, true),
+            Some((name, _)) => (name, false),
+            None => (member, false),
+        };
+        let wanted = match (name, by_index, number) {
+            ("cameraAction", true, Some(i)) => plandoc::camera_action_value(i as usize).map(|v| json!(v)),
+            _ => given.clone(),
+        };
+        return Some(match wanted.and_then(|value| plandoc::set_camera(&current, index, name, &value)) {
+            Some(changed) => edit(|_| Ok(changed)),
+            None => refused(format!("Item {index} has no camera field {name}.")),
+        });
+    }
     if index == 0 && property == LAUNCH_ALTITUDE {
         let metres = number.map(|shown| crate::read::Unit::vertical(backend).meters(shown));
         return Some(match (metres, current.home) {
@@ -2170,9 +2185,17 @@ pub fn camera_section(index: usize) -> Option<Value> {
         return None;
     }
     let document = held().document.clone().unwrap_or_else(empty_document);
+    let supports_mode = crate::cmdinfo::tree(plandoc::firmware(document.firmware_type), crate::cmdinfo::VehicleClass::Generic).contains_key(&530);
+    let with_support = |section: Value| match section {
+        Value::Object(map) => {
+            let specified = map.get("specifyCameraMode").and_then(Value::as_bool).unwrap_or(false);
+            Value::Object(map.into_iter().chain([("cameraModeSupported".to_string(), json!(specified || supports_mode))]).collect())
+        }
+        other => other,
+    };
     Some(match index.checked_sub(1).map(|at| document.items.get(at)) {
-        None => plandoc::camera_section(&document.settings_sections),
-        Some(Some(plandoc::Item::Simple(simple))) => plandoc::camera_section(&simple.sections),
+        None => with_support(plandoc::camera_section(&document.settings_sections)),
+        Some(Some(plandoc::Item::Simple(simple))) => with_support(plandoc::camera_section(&simple.sections)),
         _ => json!({ "kind": "null" }),
     })
 }
