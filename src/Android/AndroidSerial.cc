@@ -9,12 +9,10 @@
 #include <QtCore/QRandomGenerator>
 #include <QtCore/QReadWriteLock>
 #include <QtCore/QThread>
+#include <atomic>
 #include <qserialport_p.h>
 #include <qserialportinfo_p.h>
-
 #include <unistd.h>
-
-#include <atomic>
 #include <utility>
 
 #include "AndroidInterface.h"
@@ -23,10 +21,6 @@
 QGC_LOGGING_CATEGORY(AndroidSerialLog, "Android.AndroidSerial");
 
 namespace AndroidSerial {
-
-// ----------------------------------------------------------------------------
-// POSIX serial backend support
-// ----------------------------------------------------------------------------
 
 static std::atomic<bool> s_usePosixSerial{false};
 
@@ -43,11 +37,9 @@ bool usePosixSerial()
 
 QList<QSerialPortInfo> availablePosixPorts()
 {
-    // Common SoC UART device node name patterns
     static const QStringList kUartPatterns = {
-        QStringLiteral("ttyS*"),   QStringLiteral("ttyHS*"),  QStringLiteral("ttyMSM*"),
-        QStringLiteral("ttyHSL*"), QStringLiteral("ttymxc*"), QStringLiteral("ttyAMA*"),
-        QStringLiteral("ttyTHS*"),
+        QStringLiteral("ttyS*"),   QStringLiteral("ttyHS*"),  QStringLiteral("ttyMSM*"), QStringLiteral("ttyHSL*"),
+        QStringLiteral("ttymxc*"), QStringLiteral("ttyAMA*"), QStringLiteral("ttyTHS*"),
     };
 
     QList<QSerialPortInfo> serialPortInfoList;
@@ -68,21 +60,6 @@ QList<QSerialPortInfo> availablePosixPorts()
 
     return serialPortInfoList;
 }
-
-bool hasPosixSerialPorts()
-{
-    return !availablePosixPorts().isEmpty();
-}
-
-// ----------------------------------------------------------------------------
-// Token-based pointer tracking (UAF protection)
-//
-// Java receives an opaque random jlong token instead of a raw C++ pointer.
-// A bidirectional hash map under QReadWriteLock maps tokens ↔ pointers.
-// JNI callbacks (readers) take a shared read lock; register/unregister
-// (writers) take an exclusive write lock.  Pattern follows Qt Bluetooth's
-// LowEnergyNotificationHub.
-// ----------------------------------------------------------------------------
 
 static QReadWriteLock s_ptrLock;
 static QHash<jlong, QSerialPortPrivate*> s_tokenToPtr;
@@ -166,10 +143,8 @@ static bool dispatchToPortObject(QSerialPort* serialPort, Functor&& func, const 
     }
 
     if (hasEventLoop) {
-        // BlockingQueuedConnection ensures the operation completes on the target thread
-        // before returning to the JNI caller (e.g. device disconnect is fully processed
-        // before Java-side cleanup continues).
-        const bool ok = QMetaObject::invokeMethod(serialPort, std::forward<Functor>(func), Qt::BlockingQueuedConnection);
+        const bool ok =
+            QMetaObject::invokeMethod(serialPort, std::forward<Functor>(func), Qt::BlockingQueuedConnection);
         if (!ok) {
             qCWarning(AndroidSerialLog) << context << ": failed to invoke method on target thread";
         }
@@ -180,10 +155,6 @@ static bool dispatchToPortObject(QSerialPort* serialPort, Functor&& func, const 
     std::forward<Functor>(func)();
     return true;
 }
-
-// ----------------------------------------------------------------------------
-// JNI method ID cache
-// ----------------------------------------------------------------------------
 
 struct JniMethodCache
 {
@@ -262,7 +233,7 @@ static bool cacheMethodIds(JNIEnv* env, jclass javaClass)
         *def.target = env->GetStaticMethodID(javaClass, def.name, def.sig);
         if (!*def.target) {
             qCWarning(AndroidSerialLog) << "Failed to cache method:" << def.name << def.sig;
-            (void)QJniEnvironment::checkAndClearExceptions(env);
+            (void) QJniEnvironment::checkAndClearExceptions(env);
             return false;
         }
     }
@@ -271,10 +242,6 @@ static bool cacheMethodIds(JNIEnv* env, jclass javaClass)
     qCDebug(AndroidSerialLog) << "All JNI method IDs cached successfully";
     return true;
 }
-
-// ----------------------------------------------------------------------------
-// Class resolution
-// ----------------------------------------------------------------------------
 
 static jclass getSerialManagerClass()
 {
@@ -304,7 +271,7 @@ static jclass getSerialManagerClass()
 
         if (!s_serialManagerClass) {
             qCWarning(AndroidSerialLog) << "Failed to create global ref for class:" << kJniUsbSerialManagerClassName;
-            (void)env.checkAndClearExceptions();
+            (void) env.checkAndClearExceptions();
             return nullptr;
         }
     }
@@ -314,12 +281,12 @@ static jclass getSerialManagerClass()
         env->DeleteGlobalRef(s_serialManagerClass);
         s_serialManagerClass = nullptr;
         s_methods = {};
-        (void)env.checkAndClearExceptions();
+        (void) env.checkAndClearExceptions();
         return nullptr;
     }
 
     s_methodsCached = true;
-    (void)env.checkAndClearExceptions();
+    (void) env.checkAndClearExceptions();
     return s_serialManagerClass;
 }
 
@@ -335,11 +302,6 @@ void cleanupJniCache()
     s_methodsCached = false;
 }
 
-// ----------------------------------------------------------------------------
-// Native method registration
-// ----------------------------------------------------------------------------
-
-// Forward declarations for JNI callbacks (defined below)
 static void jniDeviceHasDisconnected(JNIEnv* env, jobject obj, jlong token);
 static void jniDeviceNewData(JNIEnv* env, jobject obj, jlong token, jbyteArray data);
 static void jniDeviceException(JNIEnv* env, jobject obj, jlong token, jstring message);
@@ -367,10 +329,6 @@ void setNativeMethods()
 
     qCDebug(AndroidSerialLog) << "Native Functions Registered Successfully";
 }
-
-// ----------------------------------------------------------------------------
-// JNI callbacks (called from Java threads)
-// ----------------------------------------------------------------------------
 
 static void jniDeviceHasDisconnected(JNIEnv*, jobject, jlong token)
 {
@@ -446,8 +404,6 @@ static void jniDeviceNewData(JNIEnv* env, jobject, jlong token, jbyteArray data)
     }
 
     {
-        // Deliver inline while holding read lock so unregister/destroy cannot
-        // invalidate the pointer until this handoff is complete.
         QReadLocker locker(&s_ptrLock);
         QSerialPortPrivate* const serialPortPrivate = s_tokenToPtr.value(token, nullptr);
         if (!serialPortPrivate) {
@@ -501,10 +457,6 @@ static void jniDeviceException(JNIEnv*, jobject, jlong token, jstring message)
     }
 }
 
-// ----------------------------------------------------------------------------
-// Helper: get env + class + check cached method in one shot
-// ----------------------------------------------------------------------------
-
 struct JniContext
 {
     QJniEnvironment env;
@@ -529,10 +481,6 @@ static bool getContext(JniContext& ctx, const char* caller)
     return true;
 }
 
-// ----------------------------------------------------------------------------
-// Device enumeration
-// ----------------------------------------------------------------------------
-
 QList<QSerialPortInfo> availableDevices()
 {
     QList<QSerialPortInfo> serialPortInfoList;
@@ -546,7 +494,7 @@ QList<QSerialPortInfo> availableDevices()
         static_cast<jobjectArray>(ctx.env->CallStaticObjectMethod(ctx.cls, s_methods.availableDevicesInfo)));
     if (!objArray.get()) {
         qCDebug(AndroidSerialLog) << "availableDevicesInfo returned null";
-        (void)ctx.env.checkAndClearExceptions();
+        (void) ctx.env.checkAndClearExceptions();
         return serialPortInfoList;
     }
 
@@ -586,14 +534,10 @@ QList<QSerialPortInfo> availableDevices()
         serialPortInfoList.append(info);
     }
 
-    (void)ctx.env.checkAndClearExceptions();
+    (void) ctx.env.checkAndClearExceptions();
 
     return serialPortInfoList;
 }
-
-// ----------------------------------------------------------------------------
-// Device ID / handle lookup
-// ----------------------------------------------------------------------------
 
 int getDeviceId(const QString& portName)
 {
@@ -630,10 +574,6 @@ int getDeviceHandle(int deviceId)
 
     return static_cast<int>(result);
 }
-
-// ----------------------------------------------------------------------------
-// Open / close / isOpen
-// ----------------------------------------------------------------------------
 
 int open(const QString& portName, QSerialPortPrivate* classPtr)
 {
@@ -703,10 +643,6 @@ bool isOpen(const QString& portName)
     return (result == JNI_TRUE);
 }
 
-// ----------------------------------------------------------------------------
-// Read / write
-// ----------------------------------------------------------------------------
-
 QByteArray read(int deviceId, int length, int timeout)
 {
     JniContext ctx;
@@ -720,7 +656,7 @@ QByteArray read(int deviceId, int length, int timeout)
 
     if (!jarray.get()) {
         qCWarning(AndroidSerialLog) << "read method returned null";
-        (void)ctx.env.checkAndClearExceptions();
+        (void) ctx.env.checkAndClearExceptions();
         return QByteArray();
     }
 
@@ -783,10 +719,6 @@ int write(int deviceId, const char* data, int length, int timeout, bool async)
     return static_cast<int>(result);
 }
 
-// ----------------------------------------------------------------------------
-// Port configuration
-// ----------------------------------------------------------------------------
-
 bool setParameters(int deviceId, int baudRate, int dataBits, int stopBits, int parity)
 {
     JniContext ctx;
@@ -803,10 +735,6 @@ bool setParameters(int deviceId, int baudRate, int dataBits, int stopBits, int p
 
     return (result == JNI_TRUE);
 }
-
-// ----------------------------------------------------------------------------
-// Control line helpers (DRY macro for bool getters)
-// ----------------------------------------------------------------------------
 
 static bool callBoolMethod(jmethodID method, int deviceId, const char* name)
 {
@@ -838,10 +766,6 @@ static bool callBoolSetMethod(jmethodID method, int deviceId, bool set, const ch
 
     return (result == JNI_TRUE);
 }
-
-// ----------------------------------------------------------------------------
-// Control lines
-// ----------------------------------------------------------------------------
 
 bool getCarrierDetect(int deviceId)
 {
@@ -894,7 +818,7 @@ QSerialPort::PinoutSignals getControlLines(int deviceId)
                                                                                  static_cast<jint>(deviceId))));
     if (!jarray.get()) {
         qCWarning(AndroidSerialLog) << "getControlLines returned null";
-        (void)ctx.env.checkAndClearExceptions();
+        (void) ctx.env.checkAndClearExceptions();
         return QSerialPort::PinoutSignals();
     }
 
@@ -939,14 +863,10 @@ QSerialPort::PinoutSignals getControlLines(int deviceId)
     }
 
     ctx.env->ReleaseIntArrayElements(jarray.get(), ints, JNI_ABORT);
-    (void)ctx.env.checkAndClearExceptions();
+    (void) ctx.env.checkAndClearExceptions();
 
     return data;
 }
-
-// ----------------------------------------------------------------------------
-// Flow control
-// ----------------------------------------------------------------------------
 
 int getFlowControl(int deviceId)
 {
@@ -979,10 +899,6 @@ bool setFlowControl(int deviceId, int flowControl)
     return result == JNI_TRUE;
 }
 
-// ----------------------------------------------------------------------------
-// Buffer / break
-// ----------------------------------------------------------------------------
-
 bool purgeBuffers(int deviceId, bool input, bool output)
 {
     JniContext ctx;
@@ -1006,10 +922,6 @@ bool setBreak(int deviceId, bool set)
 {
     return callBoolSetMethod(s_methods.setBreak, deviceId, set, "setBreak");
 }
-
-// ----------------------------------------------------------------------------
-// IO manager (read thread)
-// ----------------------------------------------------------------------------
 
 bool startReadThread(int deviceId)
 {

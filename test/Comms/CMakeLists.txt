@@ -1,8 +1,3 @@
-# ============================================================================
-# Communications Unit Tests
-# Tests for serial port detection and communication links
-# ============================================================================
-
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         LinkConfigurationTest.cc
@@ -16,6 +11,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         MAVLinkV1TrafficTest.cc
         MAVLinkV1TrafficTest.h
         QGCSerialPortInfoTest.cc
+        RadiomasterAx12Test.cc
+        RadiomasterAx12Test.h
         SkydroidH16LinksTest.cc
         SkydroidH16LinksTest.h
         QGCSerialPortInfoTest.h
@@ -31,3 +28,4 @@ add_qgc_test(LogReplayLinkControllerTest LABELS Unit Comms)
 add_qgc_test(LogReplayLinkTest LABELS Unit Comms)
 add_qgc_test(MAVLinkV1TrafficTest LABELS Integration Comms)
 add_qgc_test(QGCSerialPortInfoTest LABELS Unit Comms)
+add_qgc_test(RadiomasterAx12Test LABELS Unit Comms)

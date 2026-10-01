@@ -251,7 +251,7 @@
         {
             "name": "androidUsePosixSerial",
             "shortDesc": "Use the device's built-in serial ports instead of USB serial devices.",
-            "longDesc": "If this option is enabled, the built-in serial ports (/dev/tty*) are used instead of USB serial devices. This requires a device which allows access to the serial ports.",
+            "longDesc": "If this option is enabled, the built-in serial ports (/dev/tty*) are used instead of USB serial devices, and USB serial devices are not listed. This requires a device which allows access to the serial ports. It is on by default on a Radiomaster AX12, whose ELRS module is wired to ttyS1.",
             "type": "bool",
             "default": false,
             "qgcRebootRequired": true,
