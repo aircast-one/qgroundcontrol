@@ -7,7 +7,8 @@ use serde_json::Value;
 
 use crate::gpsrtk::{Driver, Fault, INITIAL_BAUD, Out, RECEIVE_TIMEOUT_MS, Session, Settings};
 use crate::router::Backend;
-use crate::ubxbase::{Event, Transport, UbxBase};
+use crate::sbfbase::SbfBase;
+use crate::ubxbase::{BaseDriver, Event, Transport, UbxBase};
 
 const CONFIGURE_RETRY_MS: u64 = 500;
 #[cfg(target_os = "android")]
@@ -172,7 +173,7 @@ fn apply(event: Event, now_ms: u64, stop: &AtomicBool) {
     }
 }
 
-fn stream<T: Transport>(base: &mut UbxBase<T>, stop: &AtomicBool) -> Result<(), Fault> {
+fn stream(base: &mut dyn BaseDriver, stop: &AtomicBool) -> Result<(), Fault> {
     while !stop.load(Ordering::Relaxed) {
         let handled = base.receive(RECEIVE_TIMEOUT_MS as u64).ok_or(Fault::SerialError)?;
         let events = base.take_events();
@@ -186,16 +187,23 @@ fn stream<T: Transport>(base: &mut UbxBase<T>, stop: &AtomicBool) -> Result<(), 
     Ok(())
 }
 
-pub fn run<T: Transport>(transport: T, stop: &AtomicBool) {
+fn driver_for<T: Transport + 'static>(driver: Driver, transport: T, plan: crate::gpsrtk::BasePlan) -> Option<Box<dyn BaseDriver>> {
+    match driver {
+        Driver::UBlox => Some(Box::new(UbxBase::new(transport, plan))),
+        Driver::Septentrio => Some(Box::new(SbfBase::new(transport, plan))),
+        Driver::Trimble | Driver::Femtomes => None,
+    }
+}
+
+pub fn run<T: Transport + 'static>(transport: T, stop: &AtomicBool) {
     let configure = owned(stop, Session::serial_opened).into_iter().find_map(|out| match out {
         Out::ConfigureDriver { driver, plan, .. } => Some((driver, plan)),
         _ => None,
     });
-    let Some((Driver::UBlox, plan)) = configure else {
+    let Some(mut base) = configure.and_then(|(driver, plan)| driver_for(driver, transport, plan)) else {
         owned(stop, |held| held.serial_failed(Fault::ConfigureFailed));
         return;
     };
-    let mut base = UbxBase::new(transport, plan);
     while !stop.load(Ordering::Relaxed) {
         if !base.configure() {
             if base.transport_lost() {
@@ -209,7 +217,7 @@ pub fn run<T: Transport>(transport: T, stop: &AtomicBool) {
             continue;
         }
         owned(stop, Session::driver_configured);
-        if let Err(fault) = stream(&mut base, stop) {
+        if let Err(fault) = stream(base.as_mut(), stop) {
             owned(stop, |held| held.serial_failed(fault));
             return;
         }

@@ -150,6 +150,13 @@ pub enum Event {
     Rtcm(Vec<u8>),
 }
 
+pub trait BaseDriver {
+    fn configure(&mut self) -> bool;
+    fn receive(&mut self, timeout_ms: u64) -> Option<bool>;
+    fn take_events(&mut self) -> Vec<Event>;
+    fn transport_lost(&self) -> bool;
+}
+
 pub trait Transport {
     fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>>;
     fn write(&mut self, bytes: &[u8]) -> bool;
@@ -158,13 +165,13 @@ pub trait Transport {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Frame {
+pub(crate) enum Frame {
     Ubx { class: u8, id: u8, payload: Vec<u8> },
     Rtcm(Vec<u8>),
 }
 
 #[derive(Debug, Default)]
-struct Decoder {
+pub(crate) struct Decoder {
     buffer: Vec<u8>,
 }
 
@@ -224,11 +231,11 @@ fn scan(buffer: &[u8]) -> Scan {
 }
 
 impl Decoder {
-    fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.buffer.clear();
     }
 
-    fn feed(&mut self, bytes: &[u8]) -> Vec<Frame> {
+    pub(crate) fn feed(&mut self, bytes: &[u8]) -> Vec<Frame> {
         self.buffer.extend_from_slice(bytes);
         let (frames, consumed) = std::iter::successors(Some((None, 0usize)), |(_, at)| match scan(&self.buffer[*at..]) {
             Scan::Frame(frame, used) => Some((Some(frame), at + used)),
@@ -784,6 +791,24 @@ impl<T: Transport> UbxBase<T> {
         }
         self.configured = true;
         true
+    }
+}
+
+impl<T: Transport> BaseDriver for UbxBase<T> {
+    fn configure(&mut self) -> bool {
+        UbxBase::configure(self)
+    }
+
+    fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
+        UbxBase::receive(self, timeout_ms)
+    }
+
+    fn take_events(&mut self) -> Vec<Event> {
+        UbxBase::take_events(self)
+    }
+
+    fn transport_lost(&self) -> bool {
+        UbxBase::transport_lost(self)
     }
 }
 

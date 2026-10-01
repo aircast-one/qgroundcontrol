@@ -558,6 +558,7 @@ mod deps_cover_reads {
             ("gpsresilience", include_str!("gpsresilience.rs")),
             ("ubxbase", include_str!("ubxbase.rs")),
             ("rtkbase", include_str!("rtkbase.rs")),
+            ("sbfbase", include_str!("sbfbase.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),

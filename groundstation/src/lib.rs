@@ -57,6 +57,7 @@ pub mod geo;
 pub mod gpsfacts;
 pub mod gpsrtk;
 pub mod ubxbase;
+pub mod sbfbase;
 pub mod rtkbase;
 pub mod gpsview;
 pub mod guided;
