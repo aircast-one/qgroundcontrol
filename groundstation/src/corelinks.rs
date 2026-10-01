@@ -503,12 +503,15 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
     let nmea = crate::settingsstore::raw_setting("settings.autoConnectSettings.autoConnectNmeaPort").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
     let host = crate::autoconnect::Host { android: cfg!(target_os = "android"), windows: cfg!(target_os = "windows") };
     let actions = SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &nmea);
-    actions.into_iter().for_each(|action| {
-        if let crate::autoconnect::Action::OpenSerial { name, port, baud, .. } = action {
+    actions.into_iter().for_each(|action| match action {
+        crate::autoconnect::Action::OpenSerial { name, port, baud, .. } => {
             let entry = serial_entry(&name, &port, baud);
             add_dynamic(&entry);
             open_entry(&entry);
         }
+        crate::autoconnect::Action::ConnectRtk { port, name } => crate::rtkbase::connect(&port, &name),
+        crate::autoconnect::Action::DisconnectRtk => crate::rtkbase::disconnect(),
+        _ => {}
     });
 }
 

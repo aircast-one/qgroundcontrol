@@ -620,7 +620,7 @@ fn udp_input_wanted() -> Option<(u16, bool)> {
     truthy("rtcmUdpInputEnabled").then_some((port, truthy("rtcmUdpValidate")))
 }
 
-fn inject(rtcm: &[u8]) {
+pub fn inject(rtcm: &[u8]) {
     let outbound = crate::hub::lock().inject_rtcm(rtcm);
     outbound.iter().for_each(|(link, bytes)| {
         crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);

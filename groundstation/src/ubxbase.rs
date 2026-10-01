@@ -449,6 +449,7 @@ pub struct UbxBase<T: Transport> {
     pub configured: bool,
     ack: Ack,
     activate_requested: bool,
+    transport_lost: bool,
     events: Vec<Event>,
 }
 
@@ -463,6 +464,7 @@ impl<T: Transport> UbxBase<T> {
             configured: false,
             ack: Ack::Idle,
             activate_requested: false,
+            transport_lost: false,
             events: Vec::new(),
         }
     }
@@ -517,8 +519,15 @@ impl<T: Transport> UbxBase<T> {
         }
     }
 
+    pub fn transport_lost(&self) -> bool {
+        self.transport_lost
+    }
+
     fn receive_once(&mut self, timeout_ms: u64) -> Option<bool> {
-        let bytes = self.transport.read(timeout_ms)?;
+        let Some(bytes) = self.transport.read(timeout_ms) else {
+            self.transport_lost = true;
+            return None;
+        };
         let frames = self.decoder.feed(&bytes);
         Some(frames.into_iter().map(|frame| self.handle(frame)).collect::<Vec<bool>>().contains(&true))
     }
@@ -567,6 +576,9 @@ impl<T: Transport> UbxBase<T> {
 
     fn detect_baud(&mut self) -> Option<u32> {
         PROBE_BAUD_RATES.iter().find_map(|test| {
+            if self.transport_lost {
+                return None;
+            }
             self.transport.set_baud(*test);
             self.flush();
             let probe = valset(&[
