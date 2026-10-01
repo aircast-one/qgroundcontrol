@@ -284,13 +284,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        item(key = "footnote") {
-            FootNote(
-                "Radio calibration stays on the desktop: it needs you holding each " +
-                    "stick at its extremes while watching the aircraft. Any parameter can " +
-                    "still be edited under Parameters above.",
-            )
-        }
     }
 }
 

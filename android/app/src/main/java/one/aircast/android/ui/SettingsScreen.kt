@@ -123,15 +123,8 @@ internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 internal val NOT_BUILT_HERE = mapOf(
     "showMissionItemStatus" to "the terrain profile it hides is always shown here",
     "displayPresetsTabFirst" to "this head has no presets tab",
-    "enableMultiVehiclePanel" to "this head has no multi-vehicle panel",
+    "enableMultiVehiclePanel" to "the vehicle picker is always offered when several vehicles are connected",
     "valueDisplay" to "the battery reading here is one line, with nothing to choose between",
-    "EnableOnScreenControl" to "this head draws no on-screen gimbal control",
-    "ControlType" to "this head draws no on-screen gimbal control",
-    "CameraVFov" to "only the on-screen gimbal control reads it, and this head has none",
-    "CameraHFov" to "only the on-screen gimbal control reads it, and this head has none",
-    "CameraSlideSpeed" to "only the on-screen gimbal control reads it, and this head has none",
-    "toolbarIndicatorShowAzimuth" to "this head has no toolbar to indicate on",
-    "toolbarIndicatorShowAcquireReleaseControl" to "this head has no gimbal buttons panel",
     "maxCacheMemorySize" to "the map keeps its own memory cache",
 )
 
