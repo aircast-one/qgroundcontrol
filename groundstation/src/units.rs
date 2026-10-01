@@ -195,8 +195,35 @@ pub fn fields(path: &str, fields: &str) -> Option<String> {
     Some(object.to_string())
 }
 
+const UNIT_KINDS: [Kind; 6] = [Kind::Horizontal, Kind::Vertical, Kind::Area, Kind::Speed, Kind::Temperature, Kind::Weight];
+
+fn described_as(kind: Kind) -> (&'static [&'static str], &'static str) {
+    match kind {
+        Kind::Horizontal => (&["Feet", "Meters"], "Display unit for horizontal distances and ranges."),
+        Kind::Vertical => (&["Feet", "Meters"], "Display unit for altitudes and vertical heights."),
+        Kind::Area => (&["Square Feet", "Square Meters", "Square Kilometers", "Hectares", "Acres", "Square Miles"], "Display unit for area measurements."),
+        Kind::Speed => (&["Feet per Second", "Meters per Second", "Miles per Hour", "Kilometers per Hour", "Knots"], "Display unit for speed and velocity values."),
+        Kind::Temperature => (&["Celsius", "Fahrenheit"], "Display unit for temperature readings."),
+        Kind::Weight => (&["Grams", "Kilograms", "Ounces", "Pounds"], "Weight"),
+    }
+}
+
+pub fn fact_metadata(setting: &str) -> Option<crate::factmeta::MetaData> {
+    let kind = kind_of_setting(setting)?;
+    let (labels, short) = described_as(kind);
+    let enums = labels.iter().enumerate().map(|(value, label)| crate::factmeta::EnumEntry { label: (*label).to_string(), value: json!(value) }).collect();
+    Some(crate::factmeta::MetaData {
+        name: setting.to_string(),
+        short_description: short.to_string(),
+        enums,
+        default: Some(json!(kind.default_choice(MEASUREMENT_SYSTEM.load(Ordering::Relaxed)))),
+        qgc_reboot_required: true,
+        ..crate::px4meta::bare(crate::factmeta::ValueType::Uint32)
+    })
+}
+
 fn kind_of_setting(setting: &str) -> Option<Kind> {
-    [Kind::Horizontal, Kind::Vertical, Kind::Area, Kind::Speed, Kind::Temperature, Kind::Weight].into_iter().find(|kind| kind.setting() == setting)
+    UNIT_KINDS.into_iter().find(|kind| kind.setting() == setting)
 }
 
 const UNIT_SYSTEM_PRESETS: [[u32; 5]; 2] = [[1, 1, 1, 1, 0], [0, 0, 5, 2, 1]];

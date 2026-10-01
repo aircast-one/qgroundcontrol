@@ -16,6 +16,7 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
         ("plan.geoFenceController" | "plan.rallyPointController", "supported") => Some(json!(true)),
         ("plan.managerVehicle", "capabilitiesKnown") => Some(json!(true)),
         ("plan.geoFenceController", "paramCircularFence") => Some(json!(0)),
+        ("planFly.geoFenceController" | "planFly.rallyPointController", "containsItems") => Some(json!(false)),
         ("planFly.missionController", "currentMissionIndex") => Some(json!(-1)),
         ("planFly.missionController", "resumeMissionIndex") => Some(json!(0)),
         ("planFly.missionController.visualItems", "count") => Some(json!(1)),

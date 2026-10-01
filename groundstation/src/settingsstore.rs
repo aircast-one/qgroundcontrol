@@ -56,6 +56,60 @@ pub const RUNTIME_WHOLE: [&str; 1] = ["videoSettings.videoSource"];
 
 pub const UNEXPOSED: [&str; 3] = ["autoConnectSettings.autoConnectZeroConf", "flightModeSettings.px4HiddenFlightModes", "videoSettings.videoSavePath"];
 
+const LANGUAGES: [(i64, &str); 21] = [
+    (0, "System"),
+    (25, "Azerbaijani (Azerbaijani)"),
+    (45, "български (Bulgarian)"),
+    (58, "中文 (Chinese)"),
+    (72, "Nederlands (Dutch)"),
+    (75, "English"),
+    (84, "Suomi (Finnish)"),
+    (85, "Français (French)"),
+    (94, "Deutsche (German)"),
+    (96, "Ελληνικά (Greek)"),
+    (103, "עברית (Hebrew)"),
+    (119, "Italiano (Italian)"),
+    (120, "日本語 (Japanese)"),
+    (142, "한국어 (Korean)"),
+    (209, "Norsk (Norwegian)"),
+    (230, "Polskie (Polish)"),
+    (231, "Português (Portuguese)"),
+    (239, "Pусский (Russian)"),
+    (270, "Español (Spanish)"),
+    (275, "Svenska (Swedish)"),
+    (298, "Türk (Turkish)"),
+];
+const RELEASE_LANGUAGES: [i64; 7] = [75, 25, 58, 120, 142, 231, 239];
+const PARTIAL_LANGUAGES: [i64; 1] = [303];
+const FOLLOW_SYSTEM_PALETTE: i64 = 2;
+
+pub fn language_enums() -> Vec<crate::factmeta::EnumEntry> {
+    let entry = |value: i64, label: String| crate::factmeta::EnumEntry { label, value: json!(value) };
+    let rest = || LANGUAGES.iter();
+    std::iter::once(entry(LANGUAGES[0].0, LANGUAGES[0].1.to_string()))
+        .chain(rest().filter(|(id, _)| RELEASE_LANGUAGES.contains(id)).map(|(id, name)| entry(*id, (*name).to_string())))
+        .chain(rest().filter(|(id, _)| PARTIAL_LANGUAGES.contains(id)).map(|(id, name)| entry(*id, format!("{name} (Partial)"))))
+        .chain(rest().filter(|(id, _)| !RELEASE_LANGUAGES.contains(id) && !PARTIAL_LANGUAGES.contains(id)).map(|(id, name)| entry(*id, format!("{name} (Test Only)"))))
+        .collect()
+}
+
+pub fn hidden_on_this_platform(group: &str, fact: &str) -> bool {
+    match (group, fact) {
+        ("App", "androidDontSaveToSDCard") => !cfg!(target_os = "android"),
+        ("App", "androidUsePosixSerial") => true,
+        ("Viewer3D", "enabled") => cfg!(target_os = "android"),
+        _ => false,
+    }
+}
+
+fn platform_meta(group: &str, fact: &str, meta: MetaData) -> MetaData {
+    match (group, fact) {
+        ("App", "indoorPalette") => MetaData { default: Some(json!(if cfg!(target_os = "android") { FOLLOW_SYSTEM_PALETTE } else if cfg!(target_os = "ios") { 0 } else { 1 })), ..meta },
+        ("App", "qLocaleLanguage") => MetaData { enums: language_enums(), ..meta },
+        _ => meta,
+    }
+}
+
 pub fn runtime_fields(path: &str) -> Option<&'static [&'static str]> {
     let short = path.strip_prefix("settings.")?;
     RUNTIME.iter().find(|(name, _)| *name == short).map(|(_, keys)| *keys)
@@ -73,8 +127,26 @@ pub fn locate(path: &str) -> Option<(&'static str, &str)> {
 }
 
 pub fn metadata(group: &str, fact: &str) -> Option<MetaData> {
+    if let Some(units) = (group == "Units").then(|| crate::units::fact_metadata(fact)).flatten() {
+        return Some(units);
+    }
     let json = crate::settingsgroups::group(group).map(|g| g.json).or_else(|| EXTRA_GROUPS.iter().find(|(name, _)| *name == group).map(|(_, json)| *json))?;
     crate::factmeta::from_file(json).ok()?.remove(fact)
+}
+
+fn whole_group(backend: &dyn Backend, path: &str) -> Option<String> {
+    let object = path.strip_prefix("settings.").filter(|rest| !rest.contains('.'))?;
+    let group = OBJECTS.iter().find(|(name, _)| *name == object)?.1;
+    let names = crate::settingsorder::ORDER.iter().find(|(name, _)| *name == group)?.1;
+    let facts: Vec<Value> = names
+        .iter()
+        .filter_map(|fact| {
+            let fact_path = format!("{path}.{fact}");
+            let at = address(&fact_path)?;
+            Some(crate::vehiclefact::compact(&described(backend, &at, &fact_path), fact))
+        })
+        .collect();
+    Some(json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] }).to_string())
 }
 
 fn integer(value_type: &ValueType) -> bool {
@@ -350,13 +422,26 @@ fn address(path: &str) -> Option<Addressed> {
     let fact_path = path.strip_suffix(&field.as_ref().map(|f| format!(".{f}")).unwrap_or_default()).unwrap_or(path).to_string();
     (!served_by_host(&fact_path)).then_some(())?;
     let meta = metadata(group, &fact)?;
+    let meta = match crate::qthost::present() {
+        true => meta,
+        false => platform_meta(group, &fact, meta),
+    };
     Some(Addressed { group, fact, field, meta })
 }
 
 fn described(backend: &dyn Backend, at: &Addressed, path: &str) -> Value {
-    let mine = fact_json(&at.meta, &raw(at.group, &at.fact, &at.meta), unit_for(&at.meta));
+    let hidden = !crate::qthost::present() && hidden_on_this_platform(at.group, &at.fact);
+    let value = match (hidden, &at.meta.default) {
+        (true, Some(default)) => default.clone(),
+        _ => raw(at.group, &at.fact, &at.meta),
+    };
+    let mut mine = fact_json(&at.meta, &value, unit_for(&at.meta));
+    if hidden {
+        mine["userVisible"] = json!(false);
+        mine["visible"] = json!(false);
+    }
     let fact_path = path.split('.').take(3).collect::<Vec<_>>().join(".");
-    match runtime_fields(&fact_path) {
+    match crate::qthost::present().then(|| runtime_fields(&fact_path)).flatten() {
         Some(keys) => {
             let host = crate::read::object(&backend.get_fields(&fact_path, &keys.join(",")));
             let mut merged = mine;
@@ -377,6 +462,9 @@ pub fn get(backend: &dyn Backend, path: &str) -> Option<String> {
     }
     if path == "settings.remoteIDSettings.operatorIDValidForRegion" {
         return Some(json!({ "kind": "value", "value": operator_id_valid_for_region() }).to_string());
+    }
+    if let Some(whole) = whole_group(backend, path) {
+        return Some(whole);
     }
     let at = address(path)?;
     let fact = described(backend, &at, path);
@@ -655,6 +743,41 @@ impl<B: Backend> Backend for Owner<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_platform_rules_answer_what_qt_answered_on_macos() {
+        let qt: serde_json::Map<String, Value> = serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json")).unwrap();
+        let local = |path: &str| {
+            let at = address(path).unwrap();
+            let hidden = hidden_on_this_platform(at.group, &at.fact);
+            let meta = platform_meta(at.group, &at.fact, at.meta.clone());
+            let mut fact = fact_json(&meta, &qt[path]["rawValue"], None);
+            if hidden {
+                fact["userVisible"] = json!(false);
+                fact["visible"] = json!(false);
+            }
+            fact
+        };
+        ["settings.appSettings.androidDontSaveToSDCard", "settings.appSettings.androidUsePosixSerial"].iter().for_each(|path| {
+            assert_eq!((local(path)["userVisible"].clone(), local(path)["visible"].clone()), (qt[*path]["userVisible"].clone(), qt[*path]["visible"].clone()), "{path}");
+        });
+        let palette = local("settings.appSettings.indoorPalette");
+        assert_eq!((palette["defaultValue"].clone(), palette["valueEqualsDefault"].clone()), (qt["settings.appSettings.indoorPalette"]["defaultValue"].clone(), qt["settings.appSettings.indoorPalette"]["valueEqualsDefault"].clone()));
+        let languages: Vec<Value> = qt["settings.appSettings.qLocaleLanguage"]["enumValues"].as_array().unwrap().clone();
+        let mine: Vec<Value> = local("settings.appSettings.qLocaleLanguage")["enumValues"].as_array().unwrap().clone();
+        assert_eq!(mine[..], languages[..mine.len()], "the macOS fixture is a debug build, which adds pseudo-localization after the list");
+    }
+
+    #[test]
+    fn the_language_list_follows_app_settings_q_locale_language() {
+        let listed = language_enums();
+        let labels: Vec<&str> = listed.iter().map(|e| e.label.as_str()).collect();
+        assert_eq!(labels[..8], ["System", "Azerbaijani (Azerbaijani)", "中文 (Chinese)", "English", "日本語 (Japanese)", "한국어 (Korean)", "Português (Portuguese)", "Pусский (Russian)"], "System first, then the release languages in _rgLanguageInfo order");
+        assert_eq!(listed.len(), LANGUAGES.len() + 1, "Ukrainian is partial but has no _rgLanguageInfo entry, and the test-only loop walks System too");
+        assert_eq!(labels[8], "System (Test Only)");
+        assert!(labels.iter().skip(8).all(|label| label.ends_with(" (Test Only)")));
+        assert_eq!(listed[3].value, json!(75), "QLocale::English");
+    }
+
     #[test]
     fn a_number_is_written_as_qt_arg_f_writes_it_from_its_exact_binary_value() {
         assert_eq!(fixed_as_qt(584.05, 1), "584.0", "584.05 is 584.0499... in binary, so it rounds down, as QString::arg does");

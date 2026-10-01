@@ -155,6 +155,7 @@ pub mod sensorfacts;
 pub mod settings;
 pub mod settingsgroups;
 pub mod settingsini;
+pub mod settingsorder;
 pub mod settingsstore;
 pub mod simcamera;
 pub mod shell;
