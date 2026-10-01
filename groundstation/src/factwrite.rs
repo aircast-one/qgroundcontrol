@@ -68,10 +68,6 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
     }
 }
 
-// A value the fact already holds is written back as it is. Some hold one their own metadata would
-// refuse - a survey's minTriggerInterval of 0 under a declared minimum of 0.1, an unmeasured
-// amslAltAboveTerrain that is NaN and serialises as null - and a head writing a field back untouched
-// must not be told its own reading is out of range.
 fn unchanged(fact: &Value, asked: &Value) -> bool {
     let held = fact.get("value").unwrap_or(&Value::Null);
     match (number(held), number(asked)) {
@@ -81,6 +77,7 @@ fn unchanged(fact: &Value, asked: &Value) -> bool {
 }
 
 const ENUM_INDEX: &str = ".enumIndex";
+const CONVERSION_REFUSALS: &[&str] = &["notANumber", "notText", "notAToggle", "notWhole"];
 const VALIDATE: &str = ".validate";
 
 pub fn owns_validate(path: &str) -> bool {
@@ -91,10 +88,6 @@ fn is_fact(fact: &Value) -> bool {
     fact.get("kind").and_then(Value::as_str) == Some("fact")
 }
 
-// SettingsScreen.kt asked Fact::validate before writing and the core's own metadata check after, so
-// a value could pass the first and be refused by the second in different words. This answers
-// validate with the check the write will apply, in Qt's shape: the result is the reason, or empty.
-// convertOnly asks only whether the text is the right kind of value, as Fact::validate does.
 pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let fact_path = path.strip_suffix(VALIDATE).unwrap_or(path);
@@ -110,7 +103,7 @@ pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
     };
     let found = refusal(&decode(&fact, fact_path), &fact, &asked)
         .filter(|_| !unchanged(&fact, &asked))
-        .filter(|(token, _)| !convert_only || matches!(*token, "notANumber" | "notText" | "notAToggle" | "notWhole"));
+        .filter(|(token, _)| !convert_only || CONVERSION_REFUSALS.contains(token));
     json!({
         "ok": true,
         "result": found.as_ref().map_or(String::new(), |(_, reason)| reason.clone()),
@@ -118,8 +111,6 @@ pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
     })
 }
 
-// QGC writes enumIndex straight into the fact, so an index past the list, or the synthesised
-// "Unknown: N" entry that is a reading and never a choice, was stored as asked.
 fn enum_index_refusal(fact: &Value, index: Option<i64>) -> Option<String> {
     let strings = fact.get("enumStrings").and_then(Value::as_array).cloned().unwrap_or_default();
     let unknown = fact.get("unknownEnumLabel").and_then(Value::as_str).filter(|l| !l.is_empty());
@@ -161,10 +152,12 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         }
         return answered;
     }
-    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let given = serde_json::from_str::<Value>(value).unwrap_or(Value::Null);
+    let asked = given.get("value").cloned().unwrap_or(Value::Null);
+    let forced = given.get("force").and_then(Value::as_bool) == Some(true);
     let fact = crate::actuators::output_function_fact(backend, path, fact);
     let control = decode(&fact, path);
-    if let Some((token, reason)) = refusal(&control, &fact, &asked).filter(|_| !unchanged(&fact, &asked)) {
+    if let Some((token, reason)) = refusal(&control, &fact, &asked).filter(|_| !unchanged(&fact, &asked)).filter(|(token, _)| !forced || *token == "readOnly" || CONVERSION_REFUSALS.contains(token)) {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": path });
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
@@ -262,13 +255,15 @@ mod tests {
         let path = "vehicle.parameterManager.getParameter(1,SERVO_RATE)";
         assert_eq!(write(&vehicle, path, r#"{"value":50.5}"#)["refusal"], "notWhole", "NATIVE_MACOS_REWRITE's open item: an integer parameter accepted a fractional entry and the vehicle was sent the truncation");
         assert_eq!(write(&vehicle, path, r#"{"value":900}"#)["refusal"], "outOfRange");
+        assert_eq!(write(&vehicle, path, r#"{"value":900,"force":true}"#)["result"], true, "ParameterEditorDialog's Force save validates with convertOnly, so the range is not checked");
+        assert_eq!(write(&vehicle, path, r#"{"value":50.5,"force":true}"#)["refusal"], "notWhole", "but the value must still convert");
         assert_eq!(write(&vehicle, path, r#"{"value":50}"#)["result"], true);
         assert_eq!(write(&vehicle, "plan.missionController.visualItems.2.altitudeMode", r#"{"value":1}"#)["ok"], true);
         assert!(unchanged(&json!({ "value": 0.0 }), &json!(0)) && unchanged(&json!({ "value": null }), &Value::Null));
         assert!(!unchanged(&json!({ "value": 0.0 }), &json!(0.05)) && !unchanged(&json!({ "value": null }), &json!(3)));
         assert_eq!(
             vehicle.0.borrow().as_slice(),
-            &[path.to_string(), "plan.missionController.visualItems.2.altitudeFrame".to_string()],
+            &[path.to_string(), path.to_string(), "plan.missionController.visualItems.2.altitudeFrame".to_string()],
             "an item's renamed field is still rewritten when the fact check takes the write before the router's own rename does"
         );
     }

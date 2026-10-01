@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -77,6 +78,9 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
     var advanced by remember { mutableStateOf(false) }
     var forced by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(false) }
+    var forceSave by remember { mutableStateOf(false) }
+    var forcedText by remember { mutableStateOf("") }
+    var forceRefusal by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val fact by produceState<Fact?>(null, name, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name) }
@@ -115,6 +119,20 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                         }
                         if (advanced && loaded.readOnly) CheckRow("Force edit read-only param", forced) { forced = it }
                         if (advanced && editable && hasChoices) CheckRow("Manual Entry", manual) { manual = it }
+                    }
+                    if (editable && !hasChoices && !loaded.isString && !loaded.isBool) {
+                        CheckRow("Force save (dangerous!)", forceSave) { forceSave = it }
+                        if (forceSave) {
+                            OutlinedTextField(value = forcedText, onValueChange = { forcedText = it }, singleLine = true, label = { Text("Value") })
+                            forceRefusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                            TextButton(enabled = forcedText.isNotBlank(), onClick = {
+                                scope.launch {
+                                    val entered = forcedText.trim().toDoubleOrNull() ?: forcedText.trim()
+                                    forceRefusal = withContext(Dispatchers.Default) { Qgc.writeForcedRefusal(loaded.path, entered) }
+                                    if (forceRefusal == null) revision++
+                                }
+                            }) { Text("Save") }
+                        }
                     }
                 } ?: Text("$name is not a parameter on this vehicle.", style = MaterialTheme.typography.bodySmall)
             }
