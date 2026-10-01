@@ -164,6 +164,7 @@ fun VehicleMap(
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     traffic: List<TrafficMark> = emptyList(),
+    gimbals: List<GimbalAzimuth> = emptyList(),
     breachReturn: TrackPoint? = null,
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
@@ -295,6 +296,11 @@ fun VehicleMap(
     LaunchedEffect(style, traffic) {
         val trafficStyle = style ?: return@LaunchedEffect
         (trafficStyle.getSource(TRAFFIC_SOURCE) as? GeoJsonSource)?.setGeoJson(trafficFeatures(traffic))
+    }
+
+    LaunchedEffect(style, latitude, longitude, gimbals) {
+        val gimbalStyle = style ?: return@LaunchedEffect
+        renderGimbals(gimbalStyle, latitude, longitude, gimbals)
     }
 
     LaunchedEffect(style, shots) {
@@ -460,6 +466,7 @@ private fun installLayers(style: Style) {
 }
 
 private fun installVehicleLayer(style: Style) {
+    installGimbalLayer(style)
     if (style.getSource(VEHICLE_SOURCE) == null) {
         style.addSource(GeoJsonSource(VEHICLE_SOURCE))
         style.addLayer(

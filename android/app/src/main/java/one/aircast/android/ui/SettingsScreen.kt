@@ -130,7 +130,6 @@ internal val NOT_BUILT_HERE = mapOf(
     "CameraVFov" to "only the on-screen gimbal control reads it, and this head has none",
     "CameraHFov" to "only the on-screen gimbal control reads it, and this head has none",
     "CameraSlideSpeed" to "only the on-screen gimbal control reads it, and this head has none",
-    "showAzimuthIndicatorOnMap" to "this head draws no gimbal azimuth indicator",
     "toolbarIndicatorShowAzimuth" to "this head has no toolbar to indicate on",
     "toolbarIndicatorShowAcquireReleaseControl" to "this head has no gimbal buttons panel",
     "maxCacheMemorySize" to "the map keeps its own memory cache",

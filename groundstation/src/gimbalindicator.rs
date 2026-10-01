@@ -79,6 +79,24 @@ pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
     )
 }
 
+pub const AZIMUTH_DEPS: &[&str] = &["settings.gimbalControllerSettings.showAzimuthIndicatorOnMap"];
+
+pub fn azimuths(snapshot: &Value, shown: bool) -> Vec<Value> {
+    snapshot["gimbals"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter(|_| shown)
+        .filter_map(|gimbal| gimbal["absoluteYaw"].as_f64().filter(|yaw| yaw.is_finite()).map(|yaw| json!({ "yaw": yaw.rem_euclid(360.0), "active": flag(gimbal, "active") })))
+        .collect()
+}
+
+pub fn azimuth_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let snapshot = crate::gimbal::lock().snapshot(crate::hub::now_ms());
+    json!({ "kind": "object", "class": "GimbalAzimuth", "gimbals": azimuths(&snapshot, setting(backend, "showAzimuthIndicatorOnMap")) })
+}
+
 pub fn owns(path: &str) -> bool {
     [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN].contains(&path)
 }
@@ -151,6 +169,13 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_map_wedge_follows_each_gimbal_absolute_yaw_only_when_the_setting_asks() {
+        let snapshot = json!({ "gimbals": [{ "active": true, "absoluteYaw": -90.0 }, { "active": false, "absoluteYaw": null }, { "active": false, "absoluteYaw": 10.0 }] });
+        assert_eq!(azimuths(&snapshot, true), vec![json!({ "yaw": 270.0, "active": true }), json!({ "yaw": 10.0, "active": false })]);
+        assert!(azimuths(&snapshot, false).is_empty());
+    }
 
     fn snapshot(gimbal: Value) -> Value {
         json!({ "gimbals": [gimbal] })

@@ -737,6 +737,7 @@
         "view.setup.groups.2.pages.2.blockedReason",
         "view.setup.groups.2.pages.2.screen",
         "view.video.nativePipeline",
+        "view.video.nativeRecording",
         "view.video.sourceSize",
         "view.warnings.armingBlocker",
         "view.warnings.armingChecks"
@@ -2457,6 +2458,9 @@
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
         "view.gimbal.ready",
+        "view.gimbalAzimuth.class",
+        "view.gimbalAzimuth.gimbals.#",
+        "view.gimbalAzimuth.kind",
         "view.gimbalIndicator.class",
         "view.gimbalIndicator.kind",
         "view.gimbalIndicator.shown",
@@ -6569,6 +6573,7 @@
         "view.video.kind",
         "view.video.multipleSources",
         "view.video.nativePipeline",
+        "view.video.nativeRecording",
         "view.video.recording",
         "view.video.sourceSize",
         "view.video.streamSource",
@@ -7419,6 +7424,9 @@
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
         "view.gimbal.ready",
+        "view.gimbalAzimuth.class",
+        "view.gimbalAzimuth.gimbals.#",
+        "view.gimbalAzimuth.kind",
         "view.gimbalIndicator.class",
         "view.gimbalIndicator.kind",
         "view.gimbalIndicator.shown",
@@ -9331,6 +9339,7 @@
         "view.video.kind",
         "view.video.multipleSources",
         "view.video.nativePipeline",
+        "view.video.nativeRecording",
         "view.video.recording",
         "view.video.sourceSize",
         "view.video.streamSource",
@@ -10309,6 +10318,7 @@
             "view.gpsRtk",
             "view.speech",
             "view.proximityRadar",
+            "view.gimbalAzimuth",
             "view.videoSource",
             "view.kmlFile",
             "view.shapeFile",
@@ -10803,6 +10813,13 @@
         ],
         "rateUnits": "string",
         "ready": "bool"
+    },
+    "view.gimbalAzimuth": {
+        "class": "string",
+        "gimbals": [
+            "empty"
+        ],
+        "kind": "string"
     },
     "view.gimbalIndicator": {
         "class": "string",
@@ -13368,6 +13385,7 @@
         "kind": "string",
         "multipleSources": "bool",
         "nativePipeline": "null",
+        "nativeRecording": "null",
         "recording": "bool",
         "sourceSize": "null",
         "streamSource": "bool",

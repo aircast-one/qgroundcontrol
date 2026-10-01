@@ -36,6 +36,7 @@ private data class FlownPlan(
     val operator: TrackPoint? = null,
     val shots: List<TrackPoint> = emptyList(),
     val traffic: List<TrafficMark> = emptyList(),
+    val gimbals: List<GimbalAzimuth> = emptyList(),
 )
 
 @Composable
@@ -77,6 +78,7 @@ fun FlyMap(
                         operator = operatorPoint(OperatorBridge.read()),
                         shots = shotPoints(VideoBridge.read()),
                         traffic = TrafficBridge.read(),
+                        gimbals = GimbalBridge.read(),
                     )
                 }
                 plan = next
@@ -92,6 +94,7 @@ fun FlyMap(
             mapStyle = style,
             follow = true,
             keepCentered = keepCentered,
+            gimbals = plan.gimbals,
             cameraBottomPx = cameraBottomPx,
             missionItems = plan.items,
             linkStartToHome = plan.linkStartToHome,

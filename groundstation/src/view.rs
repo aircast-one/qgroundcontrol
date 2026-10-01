@@ -295,6 +295,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.gpsRtk", deps: &[], compute: rtkbase::rtk_view },
     View { path: "view.speech", deps: &[], compute: speech::speech_view },
     View { path: "view.proximityRadar", deps: proximity::DEPS, compute: proximity::proximity_view },
+    View { path: "view.gimbalAzimuth", deps: gimbalindicator::AZIMUTH_DEPS, compute: gimbalindicator::azimuth_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
