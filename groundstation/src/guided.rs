@@ -44,7 +44,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.healthAndArmingCheckReport.canArm",
     "vehicle.healthAndArmingCheckReport.canTakeoff",
     "vehicle.healthAndArmingCheckReport.canStartMission",
-    "plan.missionController.containsItems",
+    "planFly.missionController.containsItems",
     "planFly.missionController.visualItems.count",
     "planFly.missionController.currentMissionIndex",
     "planFly.missionController.resumeMissionIndex",
@@ -355,10 +355,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     ));
     let supports = object(&backend.get_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude"));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
-    let mission = match crate::coreplan::plan_state() {
-        Some(plan) => json!({ "containsItems": plan.has_mission_items }),
-        None => object(&backend.get_fields("plan.missionController", "containsItems")),
-    };
+    let mission = object(&backend.get_fields("planFly.missionController", "containsItems"));
     let flying = object(&backend.get_fields("planFly.missionController", "currentMissionIndex,resumeMissionIndex"));
     let items = object(&backend.get_fields("planFly.missionController.visualItems", "count"));
     let app = object(&backend.get_fields("settings.appSettings", "useChecklist,enforceChecklist"));

@@ -16,7 +16,7 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
         ("plan.geoFenceController" | "plan.rallyPointController", "supported") => Some(json!(true)),
         ("plan.managerVehicle", "capabilitiesKnown") => Some(json!(true)),
         ("plan.geoFenceController", "paramCircularFence") => Some(json!(0)),
-        ("planFly.geoFenceController" | "planFly.rallyPointController", "containsItems") => Some(json!(false)),
+        ("planFly.geoFenceController" | "planFly.rallyPointController" | "planFly.missionController", "containsItems") => Some(json!(false)),
         ("planFly.missionController", "currentMissionIndex") => Some(json!(-1)),
         ("planFly.missionController", "resumeMissionIndex") => Some(json!(0)),
         ("planFly.missionController.visualItems", "count") => Some(json!(1)),
@@ -735,6 +735,7 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             ("planFly.rallyPointController", "containsItems") => Some(json!(known.plan_contents.1)),
             ("planFly.missionController", "resumeMissionIndex") => Some(json!(known.mission_indices.1)),
             ("planFly.missionController.visualItems", "count") => Some(json!(known.mission_indices.2)),
+            ("planFly.missionController", "containsItems") => Some(json!(known.mission_indices.2 > 1)),
             ("plan.geoFenceController", "paramCircularFence") => known.fields.get("paramCircularFence").cloned(),
             ("vehicle.cameraManager", "cameraLabels") => Some(match known.cameras.0.is_empty() {
                 true => json!([SIMULATED_CAMERA]),
@@ -1743,6 +1744,7 @@ mod tests {
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
         assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
+        assert_eq!(answer_fields("planFly.missionController", "containsItems", &known).0.get("containsItems"), Some(&json!(false)), "the vehicle's mission is home alone, as MissionController::containsItems counts visualItems past the first");
         assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
         assert_eq!(answer_fields("vehicle", "coordinate", &known).0.get("coordinate"), Some(&Value::Null), "an unknown position reads as null nested, as the bridge spells it");
         assert_eq!(answer_get("vehicle.coordinate", &known), Some(json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null })), "with no Qt host a direct read of an unknown position is the invalid coordinate QGCBridgeCore spells");
