@@ -8,6 +8,7 @@ pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.vtolInFwdFlight",
     "vehicle.fixedWing",
+    "vehicle.airSpeed",
     "settings.unitsSettings.speedUnits",
 ];
 
@@ -89,7 +90,8 @@ fn range_meters_second(backend: &dyn Backend) -> Option<Range> {
         true => {
             let minimum = number("vehicle.minimumEquivalentAirspeed")?;
             let maximum = number("vehicle.maximumEquivalentAirspeed")?;
-            Range { label: "Airspeed", command: "guidedModeChangeEquivalentAirspeedMetersSecond", minimum, maximum, initial: (minimum + maximum) / 2.0 }
+            let flying_at = crate::read::value_number(&backend.get("vehicle.airSpeed.rawValue")).filter(|v| v.is_finite());
+            Range { label: "Airspeed", command: "guidedModeChangeEquivalentAirspeedMetersSecond", minimum, maximum, initial: flying_at.unwrap_or((minimum + maximum) / 2.0) }
         }
         false => {
             let maximum = number("vehicle.maximumHorizontalSpeedMultirotorMetersSecond")?;

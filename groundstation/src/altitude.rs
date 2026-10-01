@@ -77,7 +77,7 @@ pub(crate) fn range_meters(backend: &dyn Backend) -> Option<Range> {
     let current = value_number(&backend.get("vehicle.altitudeRelative.rawValue"))?;
     let minimum = value_number(&backend.get("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
     let maximum = value_number(&backend.get("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
-    (maximum > minimum).then(|| Range { current, minimum: minimum.min(current), maximum: maximum.max(current) })
+    (maximum > minimum).then_some(Range { current, minimum, maximum })
 }
 
 #[cfg(test)]
@@ -115,16 +115,16 @@ mod tests {
     }
 
     #[test]
-    fn the_range_widens_to_contain_the_aircraft() {
+    fn the_range_stays_within_the_guided_limits_above_the_aircraft() {
         let view = altitude_view(&Fake { current: Some(150.0), feet: false }, &[]);
         assert_eq!(view["available"], true);
         assert_eq!(view["minimum"], 2.0);
-        assert_eq!(view["maximum"], 150.0);
+        assert_eq!(view["maximum"], 121.0, "the slider clamps the aircraft to the guided limits rather than stretching to it");
         assert_eq!(view["current"], 150.0);
         assert_eq!(view["unit"], "m");
         assert_eq!(view["label"], "Height above launch");
         assert!(view.get("sentence").is_none());
-        assert_eq!(view["rangeText"], "2 m to 150 m", "one precision comes from the wider end, so both ends lose the tenth together rather than reading 2.0 m to 150 m - and both heads were formatting these themselves");
+        assert_eq!(view["rangeText"], "2 m to 121 m", "one precision comes from the wider end, so both ends lose the tenth together rather than reading 2.0 m to 150 m - and both heads were formatting these themselves");
         assert_eq!(view["currentText"], "150.0 m");
 
         let grounded = altitude_view(&Fake { current: Some(-0.04), feet: false }, &[]);
