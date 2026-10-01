@@ -165,6 +165,9 @@ private fun VehicleMessageLog(
     onDismiss: () -> Unit,
 ) {
     val lines = remember(messages) { messages.asReversed() }
+    var editing by remember { mutableStateOf<String?>(null) }
+
+    editing?.let { name -> ParameterEditDialog(name) { editing = null } }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -186,10 +189,11 @@ private fun VehicleMessageLog(
                                 },
                             )
                             if (check.description.isNotBlank()) {
-                                Text(
-                                    text = check.description,
+                                LinkedText(
+                                    html = check.description,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    onParameter = { editing = it },
                                 )
                             }
                         }

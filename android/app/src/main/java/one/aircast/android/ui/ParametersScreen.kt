@@ -159,5 +159,5 @@ private fun parameterSummary(names: List<String>): ParameterSummary {
     )
 }
 
-private fun parameterFact(name: String): Fact? =
+internal fun parameterFact(name: String): Fact? =
     factFromParameter(name, Qgc.get(parameterPath(name)))
