@@ -575,6 +575,7 @@ mod deps_cover_reads {
             ("proximity", include_str!("proximity.rs")),
             ("powercalc", include_str!("powercalc.rs")),
             ("mavlinklog", include_str!("mavlinklog.rs")),
+            ("csvlog", include_str!("csvlog.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),

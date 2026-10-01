@@ -272,6 +272,8 @@ pub(crate) fn start_pump() {
                 if crate::vehiclefacade::switched_on() {
                     crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
                     crate::mavlinklog::tick();
+                    let active = crate::hub::lock().active().map(|vehicle| (vehicle.id, vehicle.armed()));
+                    crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), active, crate::hub::now_ms());
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
                     crate::joystickhost::tick(crate::hub::now_ms());
