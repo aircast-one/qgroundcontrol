@@ -793,14 +793,19 @@ fn core_option(name: &str) -> Option<bool> {
 const FIRMWARE_LIMITS: [&str; 4] = ["vehicle.minimumTakeoffAltitudeMeters", "vehicle.maximumHorizontalSpeedMultirotorMetersSecond", "vehicle.maximumEquivalentAirspeed", "vehicle.minimumEquivalentAirspeed"];
 const DEFAULT_TAKEOFF_METRES: f64 = 3.048;
 
-fn firmware_limit(path: &str, autopilot: u8, vtol: bool, param: &dyn Fn(&str) -> Option<f64>) -> Option<f64> {
+pub(crate) fn minimum_takeoff_altitude(autopilot: u8, vtol: bool, param: &dyn Fn(&str) -> Option<f64>) -> f64 {
+    let names: &[(&str, f64)] = match (autopilot, vtol) {
+        (crate::modes::AUTOPILOT_ARDUPILOT, true) => &[("Q_PILOT_TKO_ALT_M", 1.0), ("Q_PILOT_TKOFF_ALT", 0.01), ("Q_RTL_ALT", 1.0)],
+        (crate::modes::AUTOPILOT_ARDUPILOT, false) => &[("PILOT_TKO_ALT_M", 1.0), ("PILOT_TKOFF_ALT", 0.01)],
+        _ => &[],
+    };
+    names.iter().find_map(|(name, scale)| param(name).map(|v| v * scale)).filter(|v| *v != 0.0).unwrap_or(DEFAULT_TAKEOFF_METRES)
+}
+
+pub(crate) fn firmware_limit(path: &str, autopilot: u8, vtol: bool, param: &dyn Fn(&str) -> Option<f64>) -> Option<f64> {
     let first = |names: &[(&str, f64)]| names.iter().find_map(|(name, scale)| param(name).map(|v| v * scale));
     match (autopilot, path) {
-        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.minimumTakeoffAltitudeMeters") => {
-            let names: &[(&str, f64)] = if vtol { &[("Q_PILOT_TKO_ALT_M", 1.0), ("Q_PILOT_TKOFF_ALT", 0.01), ("Q_RTL_ALT", 1.0)] } else { &[("PILOT_TKO_ALT_M", 1.0), ("PILOT_TKOFF_ALT", 0.01)] };
-            Some(first(names).filter(|v| *v != 0.0).unwrap_or(DEFAULT_TAKEOFF_METRES))
-        }
-        (_, "vehicle.minimumTakeoffAltitudeMeters") => Some(DEFAULT_TAKEOFF_METRES),
+        (_, "vehicle.minimumTakeoffAltitudeMeters") => Some(minimum_takeoff_altitude(autopilot, vtol, param)),
         (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.maximumHorizontalSpeedMultirotorMetersSecond") => first(&[("WP_SPD", 1.0), ("WPNAV_SPEED", 0.01)]),
         (crate::modes::AUTOPILOT_PX4, "vehicle.maximumHorizontalSpeedMultirotorMetersSecond") => param("MPC_XY_VEL_MAX"),
         (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.maximumEquivalentAirspeed") => param("AIRSPEED_MAX"),
@@ -1508,7 +1513,7 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(limit) = FIRMWARE_LIMITS.contains(&path).then(|| {
             let hub = crate::hub::lock();
-            hub.active().map(|v| firmware_limit(path, v.autopilot, (19..=25).contains(&v.vehicle_type), &|name| v.parameter(v.component, name).map(|p| p.as_f64())))
+            hub.active().map(|v| v.firmware_limit(path))
         }).flatten().filter(|_| switched_on()) {
             return json!({ "ok": true, "result": limit }).to_string();
         }

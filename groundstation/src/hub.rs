@@ -118,7 +118,6 @@ const PREARM_REPEAT_MS: u64 = 10_000;
 const PREARM_SHOWN_MS: u64 = 35_000;
 const CHUNKED_TEXT_TIMEOUT_MS: u64 = 1000;
 pub const RESULT_UNSUPPORTED: u8 = 3;
-pub const MINIMUM_TAKEOFF_ALTITUDE: f64 = 2.5;
 pub const MAX_ERRORS: usize = 10;
 pub const PROTO_MAVLINK2: u32 = 200;
 pub const ODID_SEND_MS: u64 = 1000;
@@ -1138,6 +1137,18 @@ impl Vehicle {
         self.params.value(component, &self.parameter_name(name))
     }
 
+    fn vtol(&self) -> bool {
+        (19..=25).contains(&self.vehicle_type)
+    }
+
+    fn raw_parameter(&self, name: &str) -> Option<f64> {
+        self.params.value(self.component, name).map(|p| p.as_f64())
+    }
+
+    pub fn firmware_limit(&self, path: &str) -> Option<f64> {
+        crate::vehiclefacade::firmware_limit(path, self.autopilot, self.vtol(), &|name| self.raw_parameter(name))
+    }
+
     pub fn parameter_name(&self, name: &str) -> String {
         let family = (self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then(|| crate::apmmeta::vehicle_file_name(self.vehicle_type)).flatten();
         let version = self.firmware().and_then(|f| f.version).map(|(major, minor, _, _)| (major, minor));
@@ -1374,7 +1385,7 @@ impl Vehicle {
             home_altitude: self.home_altitude,
             capabilities: self.capabilities,
             reposition_supported: self.reposition_supported,
-            minimum_takeoff_altitude: MINIMUM_TAKEOFF_ALTITUDE,
+            minimum_takeoff_altitude: crate::vehiclefacade::minimum_takeoff_altitude(self.autopilot, self.vtol(), &|name| self.raw_parameter(name)),
             current_heading: Some(self.facts.heading),
         }
     }
@@ -4136,6 +4147,7 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         connect_copter(&mut hub, &autopilot);
+        assert_eq!(hub.active().unwrap().planning_state().minimum_takeoff_altitude, 3.048, "with no PILOT_TKOFF_ALT the takeoff floor is the firmware default QGC uses");
         let refused = hub.guided(None, &json!({ "action": "takeoff", "altitude": 10.0 }), 1_000).unwrap_err();
         assert_eq!(refused, "Unable to takeoff, vehicle position not known.");
         let position = MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA { lat: 474000000, lon: 85000000, alt: 500_000, relative_alt: 0, ..Default::default() });
