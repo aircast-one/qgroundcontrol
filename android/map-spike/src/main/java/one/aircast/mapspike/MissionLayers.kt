@@ -152,22 +152,25 @@ fun missionPath(items: List<MissionItem>, linkStartToHome: Boolean): Feature? {
     return Feature.fromGeometry(LineString.fromLngLats(points))
 }
 
+data class OtherMission(val items: List<MissionItem>, val linkStartToHome: Boolean)
+
+private const val OTHER_VEHICLE_WAYPOINT = -1
+
 fun renderMission(
     style: Style,
     items: List<MissionItem>,
     linkStartToHome: Boolean,
     selectedIndex: Int? = null,
+    others: List<OtherMission> = emptyList(),
 ) {
-    (style.getSource(MISSION_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(missionFeatures(items, selectedIndex))
-
-    val path = missionPath(items, linkStartToHome)
-    val pathSource = style.getSource(MISSION_PATH_SOURCE) as? GeoJsonSource ?: return
-    if (path == null) {
-        pathSource.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
-    } else {
-        pathSource.setGeoJson(path)
+    val otherMarkers = others.flatMap { other ->
+        missionFeatures(other.items).features().orEmpty().onEach { it.addNumberProperty(WAYPOINT_ID_PROPERTY, OTHER_VEHICLE_WAYPOINT) }
     }
+    (style.getSource(MISSION_SOURCE) as? GeoJsonSource)
+        ?.setGeoJson(FeatureCollection.fromFeatures(missionFeatures(items, selectedIndex).features().orEmpty() + otherMarkers))
+
+    val paths = listOfNotNull(missionPath(items, linkStartToHome)) + others.mapNotNull { missionPath(it.items, it.linkStartToHome) }
+    (style.getSource(MISSION_PATH_SOURCE) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(paths))
 }
 
 const val FENCE_SOURCE = "aircast-fence"

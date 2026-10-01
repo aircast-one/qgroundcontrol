@@ -12,4 +12,11 @@ class FlyMapFitTest {
         assertFalse(missionArrived(listOf(1), emptyList<Int>()))
     }
 
+
+    @Test
+    fun `other vehicles' missions come from the fly view, as FlyViewMap repeats PlanMapItems for every vehicle`() {
+        val view = org.json.JSONObject("""{"items":[],"others":[{"linksStartToHome":true,"items":[]},{"items":[]}]}""")
+        org.junit.Assert.assertEquals(listOf(true, false), otherMissions(view).map { it.linkStartToHome })
+        org.junit.Assert.assertEquals(emptyList<OtherMission>(), otherMissions(null))
+    }
 }

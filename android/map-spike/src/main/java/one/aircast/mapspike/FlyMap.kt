@@ -46,9 +46,15 @@ private data class FlownPlan(
     val goto: GotoLocation? = null,
     val orbit: OrbitCircle? = null,
     val current: Int? = null,
+    val others: List<OtherMission> = emptyList(),
 )
 
 private const val FLY_MISSION_ITEMS = "view.flyMissionItems(geometry)"
+
+internal fun otherMissions(view: JSONObject?): List<OtherMission> {
+    val others = view?.optJSONArray("others") ?: return emptyList()
+    return (0 until others.length()).mapNotNull { others.optJSONObject(it) }.map { OtherMission(missionItems(it), linksStartToHome(it)) }
+}
 
 internal fun <T> missionArrived(before: List<T>, after: List<T>): Boolean = before.isEmpty() && after.isNotEmpty()
 
@@ -100,6 +106,7 @@ fun FlyMap(
                         goto = GotoBridge.read(),
                         orbit = OrbitBridge.read(),
                         current = raw?.optInt("selected", -1)?.takeIf { it > 0 },
+                        others = otherMissions(raw),
                     )
                 }
                 if (missionArrived(plan.items, next.items)) fitRequest++
@@ -138,6 +145,7 @@ fun FlyMap(
             goto = plan.goto,
             orbit = plan.orbit,
             selectedWaypoint = plan.current,
+            otherMissions = plan.others,
             fitRequest = fitRequest,
             onCentreChanged = { at, level ->
                 centre = at

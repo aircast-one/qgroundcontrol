@@ -181,6 +181,7 @@ fun VehicleMap(
     onRoiClick: ((TrackPoint) -> Unit)? = null,
     goto: GotoLocation? = null,
     orbit: OrbitCircle? = null,
+    otherMissions: List<OtherMission> = emptyList(),
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
@@ -479,7 +480,7 @@ fun VehicleMap(
 
     LaunchedEffect(
         style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys,
-        landings, firmwareFence, selectedWaypoint, linkStartToHome, operator, breachReturn,
+        landings, firmwareFence, selectedWaypoint, linkStartToHome, operator, breachReturn, otherMissions,
     ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
@@ -489,7 +490,7 @@ fun VehicleMap(
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
         (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings)
-        renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint)
+        renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint, otherMissions)
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)

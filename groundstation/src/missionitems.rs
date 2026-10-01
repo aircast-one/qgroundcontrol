@@ -26,7 +26,11 @@ const RETURN_TO_LAUNCH: i64 = 20;
 pub fn fly_items_view(backend: &dyn Backend, args: &[String]) -> Value {
     match crate::coreplan::enabled() {
         true => crate::coreplan::fly_view(backend),
-        false => items_view(backend, args),
+        false => {
+            let mut listed = items_view(backend, args);
+            listed["others"] = json!([]);
+            listed
+        }
     }
 }
 

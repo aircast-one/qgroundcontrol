@@ -2491,6 +2491,7 @@
         "view.flyMissionItems(geometry).items.0.speedChangeText",
         "view.flyMissionItems(geometry).kind",
         "view.flyMissionItems(geometry).linksStartToHome",
+        "view.flyMissionItems(geometry).others.#",
         "view.flyState.class",
         "view.flyState.flying",
         "view.flyState.flyingToSequence",
@@ -7808,6 +7809,7 @@
         "view.flyMissionItems(geometry).items[].speedChangeText",
         "view.flyMissionItems(geometry).kind",
         "view.flyMissionItems(geometry).linksStartToHome",
+        "view.flyMissionItems(geometry).others.#",
         "view.flyMissionItems(geometry).reason",
         "view.flyMissionItems(geometry).selected",
         "view.flyState.armed",
@@ -11659,6 +11661,9 @@
         ],
         "kind": "string",
         "linksStartToHome": "bool",
+        "others": [
+            "empty"
+        ],
         "reason": "string",
         "selected": "number"
     },
