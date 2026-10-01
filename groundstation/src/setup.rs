@@ -132,6 +132,7 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
         ("Tuning - Advanced", false) => Some("px4Tuning"),
         ("Scripting", false) => Some("scripting"),
         ("Joystick", _) => Some("joystick"),
+        ("WiFi Bridge", _) => Some("espBridge"),
         ("Servo Outputs", false) => Some("apmServos"),
         ("Follow Me", false) => Some("apmFollow"),
         ("Actuators", true) if crate::vehiclefacade::switched_on() => Some("actuators"),

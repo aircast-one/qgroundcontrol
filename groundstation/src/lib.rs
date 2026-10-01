@@ -44,6 +44,7 @@ pub mod flystate;
 pub mod followme;
 pub mod frame;
 pub mod firmwareinfo;
+pub mod espbridge;
 pub mod filejobs;
 pub mod ftp;
 pub mod gcsposition;

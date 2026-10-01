@@ -192,6 +192,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == APM_FOLLOW_SCREEN -> ApmFollowScreen(Modifier.weight(1f))
                 nativePage?.screen == SCRIPTING_SCREEN -> ScriptingScreen(Modifier.weight(1f))
                 nativePage?.screen == JOYSTICK_SCREEN -> JoystickScreen(Modifier.weight(1f))
+                nativePage?.screen == ESP_BRIDGE_SCREEN -> EspBridgeScreen(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",

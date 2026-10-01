@@ -63,6 +63,7 @@ use crate::autotune;
 use crate::actuators;
 use crate::apmfollow;
 use crate::apmservos;
+use crate::espbridge;
 use crate::logreplay;
 use crate::mavlinkactions;
 use crate::ntrip;
@@ -196,6 +197,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
     View { path: "view.logReplay", deps: logreplay::DEPS, compute: logreplay::log_replay_view },
+    View { path: "view.espBridge", deps: espbridge::DEPS, compute: espbridge::esp_bridge_view },
     View { path: "view.mavlinkActions", deps: mavlinkactions::DEPS, compute: mavlinkactions::mavlink_actions_view },
     View { path: "view.scripting", deps: scripting::DEPS, compute: scripting::scripting_view },
     View { path: "view.signingKeys", deps: signingkeys::DEPS, compute: signingkeys::signing_keys_view },
@@ -512,6 +514,7 @@ mod deps_cover_reads {
             ("joystickhost", include_str!("joystickhost.rs")),
             ("stickcal", include_str!("stickcal.rs")),
             ("mavlinkactions", include_str!("mavlinkactions.rs")),
+            ("espbridge", include_str!("espbridge.rs")),
             ("kml", include_str!("kml.rs")),
             ("label", include_str!("label.rs")),
             ("landing", include_str!("landing.rs")),
