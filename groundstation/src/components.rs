@@ -91,6 +91,65 @@ pub fn ardupilot(vehicle: &Vehicle) -> Vec<Value> {
         .collect()
 }
 
+const SPEED_CHECK_CIRCUIT_BREAKER: i64 = 162_128;
+const BATTERY_SOURCE_NONE: i64 = -1;
+
+pub struct Px4Actuators {
+    pub show_ui: bool,
+    pub has_unset_required: bool,
+}
+
+fn px4_sensors_complete(param: &dyn Fn(&str) -> Option<f64>, vehicle_type: u8, version: Option<(u8, u8, u8)>) -> bool {
+    let value = |name: &str| param(name).unwrap_or(0.0);
+    let calibrated = ["CAL_GYRO0_ID", "CAL_ACC0_ID"].iter().all(|name| value(name) != 0.0);
+    let mag_enabled = param("SYS_HAS_MAG").is_none_or(|v| v != 0.0);
+    let mag_ok = !mag_enabled || value("CAL_MAG0_ID") != 0.0;
+    let (major, minor, _) = version.unwrap_or((0, 0, 0));
+    let airspeed_ok = match matches!(vehicle_type, 1 | 7 | 19..=25) {
+        false => true,
+        true if major > 1 || (major == 1 && minor > 14) => !(value("SYS_HAS_NUM_ASPD") != 0.0 && value("SENS_DPRES_OFF") == 0.0),
+        true => !(value("FW_ARSP_MODE") == 0.0 && value("CBRK_AIRSPD_CHK") as i64 != SPEED_CHECK_CIRCUIT_BREAKER && value("SENS_DPRES_OFF") == 0.0),
+    };
+    calibrated && mag_ok && airspeed_ok
+}
+
+fn px4_power_complete(param: &dyn Fn(&str) -> Option<f64>) -> bool {
+    match (param("BAT1_SOURCE"), param("BAT1_V_CHARGED"), param("BAT1_V_EMPTY"), param("BAT1_N_CELLS")) {
+        (Some(source), Some(charged), Some(empty), Some(cells)) => source as i64 == BATTERY_SOURCE_NONE || (charged != 0.0 && empty != 0.0 && cells as i64 != 0),
+        _ => true,
+    }
+}
+
+pub fn px4(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<Value> {
+    let param = |name: &str| (vehicle.parameter)(vehicle.default_component, name);
+    let exists = |name: &str| param(name).is_some();
+    let rc_in_manual = param("COM_RC_IN_MODE").is_some_and(|v| v as i64 == 1);
+    let radio_complete = rc_in_manual || ["RC_MAP_ROLL", "RC_MAP_PITCH", "RC_MAP_YAW", "RC_MAP_THROTTLE"].iter().all(|name| param(name).unwrap_or(0.0) as i64 != 0);
+    let outputs = match actuators.filter(|a| a.show_ui) {
+        Some(shown) => Entry { requires_setup: true, setup_complete: !shown.has_unset_required, ..entry("Actuators", "ActuatorComponent", UNKNOWN, false, false) },
+        None => entry("Motors", "MotorComponent", UNKNOWN, false, false),
+    };
+    let entries = [
+        Some(Entry { requires_setup: true, setup_complete: param("SYS_AUTOSTART").unwrap_or(0.0) as i64 != 0, ..entry("Airframe", "AirframeComponent", UNKNOWN, false, false) }),
+        Some(Entry { requires_setup: true, setup_complete: px4_sensors_complete(&param, vehicle.vehicle_type, vehicle.version), ..entry("Sensors", "SensorsComponent", KNOWN_SENSORS, false, false) }),
+        Some(Entry { requires_setup: !rc_in_manual, setup_complete: radio_complete, ..entry("Radio", "PX4RadioComponent", KNOWN_RADIO, false, false) }),
+        Some(entry("Flight Modes", "FlightModesComponent", KNOWN_FLIGHT_MODES, false, false)),
+        Some(Entry { requires_setup: true, setup_complete: px4_power_complete(&param), ..entry("Power", "PowerComponent", KNOWN_POWER, true, false) }),
+        Some(outputs),
+        Some(entry("Safety", "SafetyComponent", KNOWN_SAFETY, true, true)),
+        Some(entry("PID Tuning", "PX4TuningComponent", UNKNOWN, true, true)),
+        exists("SYS_VEHICLE_RESP").then(|| entry("Flight Behavior", "PX4FlightBehavior", UNKNOWN, true, true)),
+        (vehicle.parameter)(UDP_BRIDGE_COMPONENT, "SW_VER").is_some().then(|| entry("WiFi Bridge", "ESP8266Component", UNKNOWN, false, false)),
+        Some(entry("Joystick", "JoystickComponent", KNOWN_JOYSTICK, false, false)),
+        exists("SLNK_RADIO_CHAN").then(|| entry("Syslink", "SyslinkComponent", UNKNOWN, false, false)),
+    ];
+    entries
+        .into_iter()
+        .flatten()
+        .map(|e| json!({ "kind": "object", "name": e.name, "class": e.class, "KnownVehicleComponent": e.known, "requiresSetup": e.requires_setup, "setupComplete": e.setup_complete, "allowSetupWhileArmed": e.armed, "allowSetupWhileFlying": e.flying }))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +165,29 @@ mod tests {
 
     fn named<'a>(list: &'a [Value], name: &str) -> &'a Value {
         list.iter().find(|c| c["name"] == name).unwrap()
+    }
+
+    #[test]
+    fn a_px4_quad_lists_what_px4_auto_pilot_plugin_builds_in_its_order() {
+        let set = |name: &str| match name {
+            "SYS_AUTOSTART" => Some(4001.0),
+            "CAL_GYRO0_ID" | "CAL_ACC0_ID" | "CAL_MAG0_ID" => Some(1.0),
+            "RC_MAP_ROLL" | "RC_MAP_PITCH" | "RC_MAP_YAW" | "RC_MAP_THROTTLE" => Some(1.0),
+            "SYS_VEHICLE_RESP" => Some(0.5),
+            "BAT1_SOURCE" => Some(0.0),
+            "BAT1_V_CHARGED" | "BAT1_V_EMPTY" | "BAT1_N_CELLS" => Some(0.0),
+            _ => None,
+        };
+        let parameter = |_component: u8, name: &str| set(name);
+        let quad = Vehicle { vehicle_type: 2, version: Some((1, 15, 0)), parameter: &parameter, default_component: 1 };
+        let listed = px4(&quad, Some(Px4Actuators { show_ui: true, has_unset_required: false }));
+        let names: Vec<&str> = listed.iter().map(|c| c["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Airframe", "Sensors", "Radio", "Flight Modes", "Power", "Actuators", "Safety", "PID Tuning", "Flight Behavior", "Joystick"], "build order, not sorted - PX4AutoPilotPlugin does not sort as APMAutoPilotPlugin does");
+        let complete = |name: &str| listed.iter().find(|c| c["name"] == name).unwrap()["setupComplete"].as_bool().unwrap();
+        assert!(complete("Airframe") && complete("Sensors") && complete("Radio"));
+        assert!(!complete("Power"), "a battery source with no voltages or cells is not set up");
+        let bare = px4(&quad, None);
+        assert_eq!(bare[5]["name"], "Motors", "without actuator metadata the legacy motor page stands in");
     }
 
     #[test]

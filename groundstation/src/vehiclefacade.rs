@@ -698,13 +698,23 @@ fn vehicle_components() -> Option<Vec<Value>> {
         return None;
     }
     let hub = crate::hub::lock();
-    let v = hub.active().filter(|v| v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)?;
+    let v = hub.active().filter(|v| matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4))?;
     if !v.parameters_ready() {
         return Some(Vec::new());
     }
     let parameter = |component: u8, name: &str| v.parameter(component, name).map(|p| p.as_f64());
     let version = v.firmware().and_then(|f| f.version).map(|(major, minor, patch, _)| (major, minor, patch));
-    Some(crate::components::ardupilot(&crate::components::Vehicle { vehicle_type: v.vehicle_type, version, parameter: &parameter, default_component: v.component }))
+    let described = crate::components::Vehicle { vehicle_type: v.vehicle_type, version, parameter: &parameter, default_component: v.component };
+    if v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
+        return Some(crate::components::ardupilot(&described));
+    }
+    let value_of = |name: &str| v.parameter(v.component, name).map(|p| p.as_f64() as i64);
+    let actuators = v.actuators_metadata.as_ref().and_then(|json| crate::actuators::parse(json).ok()).map(|metadata| {
+        let required = crate::actuators::mixer_functions(&crate::actuators::mixer_state(&metadata, &value_of), true);
+        let configured = crate::actuators::configured_functions(&metadata, &value_of);
+        crate::components::Px4Actuators { show_ui: metadata.show_ui_if.evaluate(&value_of), has_unset_required: !required.is_subset(&configured) }
+    });
+    Some(crate::components::px4(&described, actuators))
 }
 
 fn vehicle_component(path: &str) -> Option<(Value, Option<&str>)> {
