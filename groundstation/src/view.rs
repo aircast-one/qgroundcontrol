@@ -554,6 +554,7 @@ mod deps_cover_reads {
             ("escview", include_str!("escview.rs")),
             ("gcsbattery", include_str!("gcsbattery.rs")),
             ("gpsresilience", include_str!("gpsresilience.rs")),
+            ("ubxbase", include_str!("ubxbase.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),

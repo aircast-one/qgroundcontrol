@@ -56,6 +56,7 @@ pub mod gimbal;
 pub mod geo;
 pub mod gpsfacts;
 pub mod gpsrtk;
+pub mod ubxbase;
 pub mod gpsview;
 pub mod guided;
 pub mod guidedcmd;
