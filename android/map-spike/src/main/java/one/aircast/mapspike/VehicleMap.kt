@@ -17,6 +17,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import android.os.SystemClock
+import androidx.compose.runtime.mutableLongStateOf
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -133,6 +135,7 @@ fun VehicleMap(
     modifier: Modifier = Modifier,
     mapStyle: String = OSM_RASTER_STYLE,
     follow: Boolean = true,
+    keepCentered: Boolean = true,
     missionItems: List<MissionItem> = emptyList(),
     linkStartToHome: Boolean = false,
     fencePolygons: List<FencePolygon> = emptyList(),
@@ -179,6 +182,8 @@ fun VehicleMap(
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
+    var panning by remember { mutableStateOf(false) }
+    var trackingResumesAtMs by remember { mutableLongStateOf(0L) }
     val trackJson by mapPath(TRACK_VIEW)
     val track = trackReading(trackJson)
 
@@ -232,7 +237,16 @@ fun VehicleMap(
                 )
             }
             reportCentre()
-            loaded.addOnCameraIdleListener { reportCentre() }
+            loaded.addOnCameraIdleListener {
+                reportCentre()
+                if (panning) {
+                    panning = false
+                    trackingResumesAtMs = SystemClock.elapsedRealtime() + PAN_RECENTER_DELAY_MS
+                }
+            }
+            loaded.addOnCameraMoveStartedListener { reason ->
+                if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) panning = true
+            }
             val builder = if (mapStyle.trimStart().startsWith("{")) {
                 Style.Builder().fromJson(mapStyle)
             } else {
@@ -320,11 +334,20 @@ fun VehicleMap(
             },
         )
 
-        if (follow && isPlottable(latitude, longitude)) {
-            map?.cameraPosition = CameraPosition.Builder()
-                .target(LatLng(latitude, longitude))
-                .zoom(map?.cameraPosition?.zoom?.takeIf { it > 1.0 } ?: DEFAULT_ZOOM)
-                .build()
+        val tracking = follow && isPlottable(latitude, longitude) && !panning && SystemClock.elapsedRealtime() >= trackingResumesAtMs
+        val shown = map
+        if (tracking && shown != null) {
+            val at = LatLng(latitude, longitude)
+            val zoomed = shown.cameraPosition.zoom > 1.0
+            val point = shown.projection.toScreenLocation(at)
+            when {
+                keepCentered || !zoomed -> shown.cameraPosition = CameraPosition.Builder()
+                    .target(at)
+                    .zoom(shown.cameraPosition.zoom.takeIf { zoomed } ?: DEFAULT_ZOOM)
+                    .build()
+                outsideCentreInset(point.x, point.y, mapView.width.toFloat(), mapView.height.toFloat(), topInsetPx.toFloat(), (bottomInsetPx + cameraBottomPx).toFloat()) ->
+                    shown.animateCamera(CameraUpdateFactory.newLatLng(at), RECENTER_ANIMATION_MS)
+            }
         }
     }
 
@@ -503,4 +526,15 @@ private fun headingArrow(): Bitmap {
 private fun renderLandings(style: Style, landings: List<LandingPattern>) {
     (style.getSource(LANDING_PATH_SOURCE) as? GeoJsonSource)?.setGeoJson(landingPathFeatures(landings))
     (style.getSource(LANDING_LOITER_SOURCE) as? GeoJsonSource)?.setGeoJson(landingLoiterFeatures(landings))
+}
+
+private const val PAN_RECENTER_DELAY_MS = 10_000L
+private const val RECENTER_ANIMATION_MS = 1000
+private const val CENTRE_INSET_FRACTION = 0.15f
+
+fun outsideCentreInset(x: Float, y: Float, width: Float, height: Float, topInset: Float, bottomInset: Float): Boolean {
+    val side = width * CENTRE_INSET_FRACTION
+    val top = topInset + height * CENTRE_INSET_FRACTION
+    val bottom = height - bottomInset - height * CENTRE_INSET_FRACTION
+    return width > 0 && height > 0 && (x < side || x > width - side || y < top || y > bottom)
 }

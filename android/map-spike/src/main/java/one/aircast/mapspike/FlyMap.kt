@@ -50,6 +50,7 @@ fun FlyMap(
     var plan by remember { mutableStateOf(FlownPlan()) }
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
+    val keepCentered by mapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)")
 
     DisposableEffect(Unit) {
         onDispose { MapBridge.release() }
@@ -90,6 +91,7 @@ fun FlyMap(
             modifier = Modifier.fillMaxSize(),
             mapStyle = style,
             follow = true,
+            keepCentered = keepCentered,
             cameraBottomPx = cameraBottomPx,
             missionItems = plan.items,
             linkStartToHome = plan.linkStartToHome,
