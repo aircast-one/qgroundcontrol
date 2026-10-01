@@ -48,9 +48,14 @@ internal data class ActuatorChannel(val label: String, val configs: List<Actuato
 internal data class ActuatorSubgroup(val label: String, val primary: ActuatorFact?, val params: List<ActuatorFact>, val columns: List<ActuatorColumn>, val channels: List<ActuatorChannel>)
 internal data class ActuatorGroup(val label: String, val enable: ActuatorFact?, val groupsVisible: Boolean, val params: List<ActuatorFact>, val subgroups: List<ActuatorSubgroup>, val notes: List<String> = emptyList())
 internal sealed interface GeometryCell {
-    data class Editable(val item: ActuatorFact) : GeometryCell
-    data class Fixed(val label: String, val valueString: String, val advanced: Boolean) : GeometryCell
+    val hidden: Boolean
+    data class Editable(val item: ActuatorFact, val param: String, val channelFunction: Int, override val hidden: Boolean, val disabled: Boolean) : GeometryCell
+    data class Fixed(val label: String, val valueString: String, val advanced: Boolean, override val hidden: Boolean = false) : GeometryCell
+    data class Axis(val options: List<String>, val index: Int, val params: List<String>, val advanced: Boolean, override val hidden: Boolean, val disabled: Boolean) : GeometryCell
 }
+
+internal const val ACTUATOR_MIXER_SET = "actuatorMixer.set"
+internal const val ACTUATOR_MIXER_AXIS = "actuatorMixer.setAxis"
 internal data class GeometryChannel(val label: String, val cells: List<GeometryCell?>)
 internal data class GeometryGroup(val label: String, val count: Fact?, val channels: List<GeometryChannel>, val params: List<ActuatorFact>)
 internal data class Geometry(val title: String, val helpUrl: String, val groups: List<GeometryGroup>)
@@ -72,10 +77,14 @@ private fun actuatorFact(json: JSONObject?): ActuatorFact? =
         factFromControl(control)?.let { ActuatorFact(control.optText("label"), control.optText("showAs"), control.optInt("bit"), control.optBoolean("advanced"), it) }
     }
 
-private fun geometryCell(json: JSONObject?): GeometryCell? = when {
+private fun strings(json: JSONObject, key: String): List<String> =
+    json.optJSONArray(key)?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty()
+
+internal fun geometryCell(json: JSONObject?): GeometryCell? = when {
     json == null -> null
-    json.optBoolean("fixed") -> GeometryCell.Fixed(json.optText("label"), json.optText("valueString"), json.optBoolean("advanced"))
-    else -> actuatorFact(json)?.let { GeometryCell.Editable(it) }
+    json.optBoolean("axis") -> GeometryCell.Axis(strings(json, "options"), json.optInt("index"), strings(json, "params"), json.optBoolean("advanced"), json.optBoolean("hidden"), json.optBoolean("disabled"))
+    json.optBoolean("fixed") -> GeometryCell.Fixed(json.optText("label"), json.optText("valueString"), json.optBoolean("advanced"), json.optBoolean("hidden"))
+    else -> actuatorFact(json)?.let { GeometryCell.Editable(it, json.optText("param"), json.optInt("channelFunction"), json.optBoolean("hidden"), json.optBoolean("disabled")) }
 }
 
 internal fun geometry(json: JSONObject?): Geometry? = json?.let { read ->
@@ -224,20 +233,94 @@ private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (Strin
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(8.dp)) {
                         Text(channel.label, style = MaterialTheme.typography.labelLarge)
-                        channel.cells.forEach { cell ->
+                        channel.cells.filterNotNull().filter { !it.hidden }.forEach { cell ->
                             when (cell) {
-                                is GeometryCell.Editable -> if (advanced || !cell.item.advanced) ActuatorFactRow(cell.item, write, onWrite)
+                                is GeometryCell.Editable -> if (advanced || !cell.item.advanced) MixerCellRow(cell, onWrite)
                                 is GeometryCell.Fixed -> if (advanced || !cell.advanced) Row {
                                     Text(cell.label, modifier = Modifier.weight(1f))
                                     Text(cell.valueString)
                                 }
-                                null -> Unit
+                                is GeometryCell.Axis -> if (advanced || !cell.advanced) AxisRow(cell, onWrite)
                             }
                         }
                     }
                 }
             }
             group.params.forEach { if (advanced || !it.advanced) ActuatorFactRow(it, write, onWrite) }
+        }
+    }
+}
+
+@Composable
+private fun MixerCellRow(cell: GeometryCell.Editable, onWrite: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var typed by remember(cell.item.fact.valueString) { mutableStateOf(cell.item.fact.valueString) }
+    fun set(value: Any) {
+        scope.launch {
+            withContext(Dispatchers.IO) { Qgc.invoke(ACTUATOR_MIXER_SET, cell.param, value, cell.channelFunction) }
+            onWrite()
+        }
+    }
+    val raw = rawNumber(cell.item.fact)
+    when {
+        cell.item.showAs == SHOW_TRUE_IF_POSITIVE && raw != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(cell.item.label, modifier = Modifier.weight(1f))
+            Checkbox(checked = raw > 0.0, enabled = !cell.disabled, onCheckedChange = { set(signWritten(raw, it)) })
+        }
+        cell.item.showAs == SHOW_BITSET && raw != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(cell.item.label, modifier = Modifier.weight(1f))
+            Checkbox(checked = bitsetChecked(raw, cell.item.bit), enabled = !cell.disabled, onCheckedChange = { set(bitsetWritten(raw, cell.item.bit, it)) })
+        }
+        cell.item.fact.enumStrings.isNotEmpty() -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(cell.item.label, modifier = Modifier.weight(1f))
+            var open by remember { mutableStateOf(false) }
+            androidx.compose.foundation.layout.Box {
+                androidx.compose.material3.OutlinedButton(onClick = { open = true }, enabled = !cell.disabled) { Text(cell.item.fact.valueString) }
+                androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    cell.item.fact.enumStrings.forEachIndexed { index, label ->
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = {
+                            open = false
+                            cell.item.fact.enumValues.getOrNull(index)?.toDoubleOrNull()?.let(::set)
+                        })
+                    }
+                }
+            }
+        }
+        else -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(cell.item.label, modifier = Modifier.weight(1f))
+            androidx.compose.material3.OutlinedTextField(
+                value = typed,
+                onValueChange = { typed = it },
+                enabled = !cell.disabled,
+                singleLine = true,
+                suffix = { Text(cell.item.fact.units) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { typed.toDoubleOrNull()?.let(::set) }),
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AxisRow(cell: GeometryCell.Axis, onWrite: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Axis", modifier = Modifier.weight(1f))
+        androidx.compose.foundation.layout.Box {
+            androidx.compose.material3.OutlinedButton(onClick = { open = true }, enabled = !cell.disabled) { Text(cell.options.getOrElse(cell.index) { "" }) }
+            androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                cell.options.forEachIndexed { index, label ->
+                    androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = {
+                        open = false
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Qgc.invoke(ACTUATOR_MIXER_AXIS, org.json.JSONArray(cell.params), index) }
+                            onWrite()
+                        }
+                    })
+                }
+            }
         }
     }
 }

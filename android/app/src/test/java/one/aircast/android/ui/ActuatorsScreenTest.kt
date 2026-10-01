@@ -48,3 +48,13 @@ class ActuatorGeometryTest {
         assertNull(channel.cells[1])
     }
 }
+
+class ActuatorMixerCellTest {
+    @Test
+    fun `an axis cell and a rule-hidden cell read from the geometry`() {
+        val axis = geometryCell(JSONObject("""{"axis":true,"options":["Custom","Upwards"],"index":1,"params":["CA_MC_R0_AX","CA_MC_R0_AY","CA_MC_R0_AZ"],"hidden":false,"disabled":false,"advanced":true}"""))
+        assertEquals(GeometryCell.Axis(listOf("Custom", "Upwards"), 1, listOf("CA_MC_R0_AX", "CA_MC_R0_AY", "CA_MC_R0_AZ"), true, false, false), axis)
+        val hidden = geometryCell(JSONObject("""{"fixed":true,"label":"Pitch Torque","valueString":"0.0000","advanced":false,"hidden":true}"""))
+        assertTrue(hidden!!.hidden)
+    }
+}
