@@ -25,8 +25,7 @@ class AddableLinkTypesTest {
     fun `a type this head cannot create is not offered just because the core lists it`() {
         assertEquals(
             "createAndConnectLink handles udp and tcp and returns false for anything else, and " +
-                "there is no Bluetooth creation path in the bridge at all - listing it would draw " +
-                "a chip that cannot make a link",
+                "Bluetooth is only offered where the core has a Bluetooth host",
             listOf("udp", "tcp", "serial"),
             addableLinkTypes(links("""["serial","udp","tcp","bluetooth","mock"]""")),
         )
@@ -37,5 +36,13 @@ class AddableLinkTypesTest {
         assertEquals(CREATABLE_LINK_TYPES, addableLinkTypes(JSONObject("""{"kind":"object"}""")))
         assertEquals(CREATABLE_LINK_TYPES, addableLinkTypes(null))
         assertEquals(CREATABLE_LINK_TYPES, addableLinkTypes(links("[]")))
+    }
+
+    @Test
+    fun `bluetooth is offered when the core has a bluetooth host`() {
+        val view = JSONObject("""{"kind":"object","linkTypeIds":["serial","udp","tcp","bluetooth"],
+            "bluetooth":{"available":true,"scanning":false,"devices":[{"name":"HC-05","address":"98:D3:31:F6:12:34"}]}}""")
+        assertEquals(listOf("udp", "tcp", "serial", "bluetooth"), addableLinkTypes(view))
+        assertEquals(listOf(BluetoothDeviceChoice("HC-05", "98:D3:31:F6:12:34")), bluetoothState(view).devices)
     }
 }

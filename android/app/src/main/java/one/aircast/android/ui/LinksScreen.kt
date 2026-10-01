@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +50,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.optText
 
@@ -102,12 +105,35 @@ internal fun linkIsEditable(row: LinkRow): Boolean =
     !row.connected && row.editing in setOf("hostAndPort", "portOnly", "serial")
 
 internal val CREATABLE_LINK_TYPES = listOf("udp", "tcp", "serial")
+internal const val BLUETOOTH_LINK = "bluetooth"
+
+internal data class BluetoothDeviceChoice(val name: String, val address: String)
+
+internal data class BluetoothState(val available: Boolean, val scanning: Boolean, val devices: List<BluetoothDeviceChoice>)
+
+internal fun bluetoothState(view: JSONObject?): BluetoothState {
+    val bluetooth = view?.optJSONObject("bluetooth")
+    val devices = bluetooth?.optJSONArray("devices")
+    return BluetoothState(
+        available = bluetooth?.optBoolean("available") == true,
+        scanning = bluetooth?.optBoolean("scanning") == true,
+        devices = (0 until (devices?.length() ?: 0)).mapNotNull { at -> devices!!.optJSONObject(at)?.let { BluetoothDeviceChoice(it.optText("name"), it.optText("address")) } },
+    )
+}
 
 internal fun addableLinkTypes(view: JSONObject?): List<String> {
     val listed = view?.optJSONArray("linkTypeIds") ?: return CREATABLE_LINK_TYPES
     val served = (0 until listed.length()).map { listed.optString(it) }.toSet()
-    return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES }
+    val bluetooth = listOf(BLUETOOTH_LINK).filter { it in served && bluetoothState(view).available }
+    return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES } + bluetooth
 }
+
+internal fun bluetoothPermissions(sdk: Int): Array<String> =
+    if (sdk >= android.os.Build.VERSION_CODES.S) {
+        arrayOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)
+    } else {
+        arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
+    }
 
 internal fun editWrites(
     editing: String,
@@ -276,6 +302,22 @@ private fun writeNewLinkFlags(name: String, autoConnect: Boolean, highLatency: B
 }
 
 @Composable
+private fun BluetoothPicker(state: BluetoothState, chosen: BluetoothDeviceChoice?, onPick: (BluetoothDeviceChoice) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Device: ${chosen?.name.orEmpty()}", style = MaterialTheme.typography.bodySmall)
+        Text("Address: ${chosen?.address.orEmpty()}", style = MaterialTheme.typography.bodySmall)
+        Text("Bluetooth Devices", style = MaterialTheme.typography.titleSmall)
+        state.devices.forEach { device ->
+            FilterChip(selected = device == chosen, onClick = { onPick(device) }, label = { Text(device.name) })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = !state.scanning, onClick = { offMainDetached { Qgc.invoke("links.bluetoothScan", true) } }) { Text("Scan") }
+            OutlinedButton(enabled = state.scanning, onClick = { offMainDetached { Qgc.invoke("links.bluetoothScan", false) } }) { Text("Stop") }
+        }
+    }
+}
+
+@Composable
 private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Unit) {
     var name by remember { mutableStateOf(row.name) }
     var host by remember { mutableStateOf(row.host) }
@@ -396,6 +438,9 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var autoConnect by remember { mutableStateOf(false) }
     var highLatency by remember { mutableStateOf(false) }
+    var device by remember { mutableStateOf<BluetoothDeviceChoice?>(null) }
+    val bluetooth = remember(linksJson) { bluetoothState(linksJson) }
+    val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
     val scope = rememberCoroutineScope()
 
     AlertDialog(
@@ -404,12 +449,15 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     offered.forEach { id ->
                         FilterChip(
                             selected = type == id,
-                            onClick = { type = id },
-                            label = { Text(if (id == "serial") "Serial" else id.uppercase()) },
+                            onClick = {
+                                type = id
+                                if (id == BLUETOOTH_LINK) askBluetooth.launch(bluetoothPermissions(android.os.Build.VERSION.SDK_INT))
+                            },
+                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "Bluetooth"; else -> id.uppercase() }) },
                         )
                     }
                 }
@@ -418,12 +466,15 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         "udp" -> "Listens on a port. Leave the address blank unless you need to " +
                             "reach a specific device."
                         "serial" -> "A radio plugged into this device over USB."
+                        BLUETOOTH_LINK -> "A radio paired with or near this device over Bluetooth."
                         else -> "Calls out to a device that is listening, such as a ground station."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (type == "serial" && ports.isEmpty()) {
+                if (type == BLUETOOTH_LINK) {
+                    BluetoothPicker(bluetooth, device) { device = it }
+                } else if (type == "serial" && ports.isEmpty()) {
                     Text(
                         text = "Nothing is plugged in. Connect a radio over USB and it will " +
                             "appear here.",
@@ -491,7 +542,9 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
             Button(
                 enabled = !busy,
                 onClick = {
-                    val invalid = if (type == "serial") {
+                    val invalid = if (type == BLUETOOTH_LINK) {
+                        if (device == null) "Pick a Bluetooth device." else null
+                    } else if (type == "serial") {
                         serialFormError(portName, baud, taken, name, ports.isNotEmpty())
                     } else {
                         linkFormError(type, host, port)
@@ -500,11 +553,18 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     if (invalid == null) {
                         busy = true
                         val chosen = name.ifBlank {
-                            if (type == "serial") autoSerialName(portName) else autoLinkName(type, host, port)
+                            when (type) {
+                                BLUETOOTH_LINK -> device?.name.orEmpty()
+                                "serial" -> autoSerialName(portName)
+                                else -> autoLinkName(type, host, port)
+                            }
                         }
                         scope.launch {
                             val added = withContext(Dispatchers.Default) {
-                                if (type == "serial") {
+                                if (type == BLUETOOTH_LINK) {
+                                    val picked = device!!
+                                    Qgc.invokeResult("links.createBluetoothLink", chosen, picked.name, picked.address) == true
+                                } else if (type == "serial") {
                                     Qgc.invokeResult("links.createSerialConfiguration", chosen, portName, baud) == true &&
                                         connectNamed(chosen)
                                 } else {
@@ -622,8 +682,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
 
         item(key = "note") {
             FootNote(
-                "Automatic connections are not listed here — they come and go on their own. " +
-                    "Bluetooth links are set up on the desktop.",
+                "Automatic connections are not listed here — they come and go on their own.",
             )
         }
 

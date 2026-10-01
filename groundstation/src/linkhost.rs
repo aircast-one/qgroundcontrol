@@ -22,6 +22,7 @@ pub enum Owned {
     Serial(crate::seriallink::SerialLink),
     #[cfg(target_os = "android")]
     PlatformSerial(crate::platformserial::PlatformSerial),
+    PlatformBluetooth(crate::platformbluetooth::PlatformBluetooth),
     Cloud(crate::cloudlink::CloudLink),
     Replay(crate::logreplay::ReplayLink),
 }
@@ -35,6 +36,7 @@ impl Owned {
             Owned::Serial(link) => link.write(bytes).is_ok(),
             #[cfg(target_os = "android")]
             Owned::PlatformSerial(link) => link.write(bytes),
+            Owned::PlatformBluetooth(link) => link.write(bytes),
             Owned::Cloud(link) => link.write(bytes),
             Owned::Replay(_) => true,
         }
@@ -48,6 +50,7 @@ impl Owned {
             Owned::Serial(link) => link.close(),
             #[cfg(target_os = "android")]
             Owned::PlatformSerial(link) => link.close(),
+            Owned::PlatformBluetooth(link) => link.close(),
             Owned::Cloud(link) => link.close(),
             Owned::Replay(link) => link.close(),
         }
@@ -250,6 +253,15 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
                 crate::platformserial::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
             })
             .map(Owned::PlatformSerial)
+            .map_err(Failure::retry)
+        }
+        Kind::Bluetooth { address, .. } if crate::platformbluetooth::available() => {
+            let shared = shared.clone();
+            crate::platformbluetooth::PlatformBluetooth::open(id, address, move |event| match event {
+                crate::platformserial::Event::Bytes(bytes) => shared.deliver(id, &bytes),
+                crate::platformserial::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
+            })
+            .map(Owned::PlatformBluetooth)
             .map_err(Failure::retry)
         }
         Kind::AircastCloud { api_base, device_id } => {

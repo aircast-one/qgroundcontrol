@@ -604,6 +604,7 @@ mod deps_cover_reads {
             ("plandoc", include_str!("plandoc.rs")),
             ("planitems", include_str!("planitems.rs")),
             ("plankml", include_str!("plankml.rs")),
+            ("platformbluetooth", include_str!("platformbluetooth.rs")),
             ("platformserial", include_str!("platformserial.rs")),
             ("planselect", include_str!("planselect.rs")),
             ("plantransfer", include_str!("plantransfer.rs")),

@@ -116,6 +116,7 @@ pub mod devicesetup;
 pub mod plandoc;
 pub mod planitems;
 pub mod plankml;
+pub mod platformbluetooth;
 pub mod platformserial;
 pub mod planselect;
 pub mod plantransfer;

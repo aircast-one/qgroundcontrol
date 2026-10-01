@@ -8,12 +8,14 @@ use jni::{JNIEnv, JavaVM};
 
 const BRIDGE_CLASS: &str = "org/mavlink/qgroundcontrol/QGCBridge";
 const USB_SERIAL_CLASS: &str = "org/mavlink/qgroundcontrol/QGCUsbSerialManager";
+const BLUETOOTH_CLASS: &str = "one/aircast/android/BluetoothLinks";
 const USB_WRITE_TIMEOUT_MS: i32 = 1000;
 const BAD_DEVICE_ID: i32 = 0;
 
 static VM: OnceLock<JavaVM> = OnceLock::new();
 static BRIDGE: OnceLock<GlobalRef> = OnceLock::new();
 static USB_SERIAL: OnceLock<GlobalRef> = OnceLock::new();
+static BLUETOOTH: OnceLock<GlobalRef> = OnceLock::new();
 static USB_DEVICES: Mutex<BTreeMap<u32, i32>> = Mutex::new(BTreeMap::new());
 
 fn text_of(env: &mut JNIEnv, value: &JString) -> CString {
@@ -57,7 +59,15 @@ enum Arg<'a> {
 }
 
 fn usb_call(name: &str, signature: &str, arguments: &[Arg]) -> Option<JValueOwned<'static>> {
-    let (vm, class) = (VM.get()?, USB_SERIAL.get()?);
+    static_call(USB_SERIAL.get()?, name, signature, arguments)
+}
+
+fn bluetooth_call(name: &str, signature: &str, arguments: &[Arg]) -> Option<JValueOwned<'static>> {
+    static_call(BLUETOOTH.get()?, name, signature, arguments)
+}
+
+fn static_call(class: &GlobalRef, name: &str, signature: &str, arguments: &[Arg]) -> Option<JValueOwned<'static>> {
+    let vm = VM.get()?;
     let mut env = vm.attach_current_thread_as_daemon().ok()?;
     let answer = env
         .with_local_frame(8, |env| -> jni::errors::Result<JValueOwned<'static>> {
@@ -129,13 +139,37 @@ fn usb_close(id: u32) {
     usb_call("close", "(I)Z", &[Arg::Int(device)]);
 }
 
-fn usb_ports() -> Vec<crate::boards::PortInfo> {
-    let (Some(vm), Some(class)) = (VM.get(), USB_SERIAL.get()) else { return Vec::new() };
+fn bluetooth_open(id: u32, address: &str) -> bool {
+    bluetooth_call("open", "(Ljava/lang/String;J)Z", &[Arg::Text(address), Arg::Long(i64::from(id))]).and_then(|value| value.z().ok()).unwrap_or(false)
+}
+
+fn bluetooth_write(id: u32, bytes: &[u8]) -> bool {
+    bluetooth_call("write", "(J[B)Z", &[Arg::Long(i64::from(id)), Arg::Bytes(bytes)]).and_then(|value| value.z().ok()).unwrap_or(false)
+}
+
+fn bluetooth_close(id: u32) {
+    bluetooth_call("close", "(J)V", &[Arg::Long(i64::from(id))]);
+}
+
+fn bluetooth_scan(start: bool) -> bool {
+    bluetooth_call("scan", "(I)Z", &[Arg::Int(i32::from(start))]).and_then(|value| value.z().ok()).unwrap_or(false)
+}
+
+fn bluetooth_scanning() -> bool {
+    bluetooth_call("scanning", "()Z", &[]).and_then(|value| value.z().ok()).unwrap_or(false)
+}
+
+fn bluetooth_devices() -> Vec<String> {
+    let (Some(vm), Some(class)) = (VM.get(), BLUETOOTH.get()) else { return Vec::new() };
+    string_array(vm, class, "devicesInfo")
+}
+
+fn string_array(vm: &JavaVM, class: &GlobalRef, method: &str) -> Vec<String> {
     let Ok(mut env) = vm.attach_current_thread_as_daemon() else { return Vec::new() };
-    let ports = env
+    let lines = env
         .with_local_frame(8, |env| -> jni::errors::Result<Vec<String>> {
             let class: &JClass = class.as_obj().into();
-            let array = JObjectArray::from(env.call_static_method(class, "availableDevicesInfo", "()[Ljava/lang/String;", &[])?.l()?);
+            let array = JObjectArray::from(env.call_static_method(class, method, "()[Ljava/lang/String;", &[])?.l()?);
             let count = if array.is_null() { 0 } else { env.get_array_length(&array)? };
             Ok((0..count)
                 .filter_map(|i| {
@@ -148,7 +182,12 @@ fn usb_ports() -> Vec<crate::boards::PortInfo> {
     if env.exception_check().unwrap_or(false) {
         let _ = env.exception_clear();
     }
-    ports.iter().filter_map(|line| crate::platformserial::port_from_info(line)).collect()
+    lines
+}
+
+fn usb_ports() -> Vec<crate::boards::PortInfo> {
+    let (Some(vm), Some(class)) = (VM.get(), USB_SERIAL.get()) else { return Vec::new() };
+    string_array(vm, class, "availableDevicesInfo").iter().filter_map(|line| crate::platformserial::port_from_info(line)).collect()
 }
 
 #[unsafe(no_mangle)]
@@ -160,6 +199,10 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _reserved: *mut c_void) -> jint {
     if let Some(serial) = env.find_class(USB_SERIAL_CLASS).ok().and_then(|class| env.new_global_ref(class).ok()) {
         let _ = USB_SERIAL.set(serial);
         crate::platformserial::install(crate::platformserial::Hooks { open: usb_open, write: usb_write, close: usb_close, ports: usb_ports });
+    }
+    if let Some(bluetooth) = env.find_class(BLUETOOTH_CLASS).ok().and_then(|class| env.new_global_ref(class).ok()) {
+        let _ = BLUETOOTH.set(bluetooth);
+        crate::platformbluetooth::install(crate::platformbluetooth::Hooks { open: bluetooth_open, write: bluetooth_write, close: bluetooth_close, devices: bluetooth_devices, scan: bluetooth_scan, scanning: bluetooth_scanning });
     }
     if env.exception_check().unwrap_or(false) {
         let _ = env.exception_clear();
@@ -301,4 +344,17 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCUsbSerialManager_nativ
 pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCUsbSerialManager_nativeDeviceException(mut env: JNIEnv, _class: JClass, pointer: jlong, message: JString) {
     let message = text_of(&mut env, &message).to_string_lossy().into_owned();
     crate::platformserial::closed(pointer as u32, &message);
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_one_aircast_android_BluetoothLinks_nativeNewData(env: JNIEnv, _class: JClass, pointer: jlong, data: JByteArray) {
+    if let Ok(bytes) = env.convert_byte_array(&data) {
+        crate::platformbluetooth::received(pointer as u32, bytes);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_one_aircast_android_BluetoothLinks_nativeClosed(mut env: JNIEnv, _class: JClass, pointer: jlong, message: JString) {
+    let message = text_of(&mut env, &message).to_string_lossy().into_owned();
+    crate::platformbluetooth::closed(pointer as u32, &message);
 }

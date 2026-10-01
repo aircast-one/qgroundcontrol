@@ -178,6 +178,14 @@ fn create_serial(name: &str, port_name: &str, baud: i64) -> bool {
     add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port_name.to_string(), port_display_name: String::new() } })
 }
 
+fn create_bluetooth(name: &str, device_name: &str, address: &str) -> bool {
+    if name.is_empty() || address.is_empty() || !add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::Bluetooth { device_name: device_name.to_string(), address: address.to_string() } }) {
+        return false;
+    }
+    let index = listed().iter().position(|e| e.config.name == name).unwrap_or(0);
+    connect(index)
+}
+
 fn remove(index: usize) -> bool {
     let Some(entry) = listed().into_iter().nth(index) else { return false };
     let hooks = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -524,6 +532,8 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createConnectedLink" => json!(connect(given.get(0).and_then(Value::as_str).and_then(indexed)?)),
         "links.createAndConnectLink" => json!(create_and_connect(&text(0), &text(1), &text(2), whole(3))),
         "links.createSerialConfiguration" => json!(create_serial(&text(0), &text(1), whole(2))),
+        "links.createBluetoothLink" => json!(create_bluetooth(&text(0), &text(1), &text(2))),
+        crate::platformbluetooth::SCAN => return crate::platformbluetooth::scan(args),
         "links.removeConfiguration" => json!(remove(given.get(0).and_then(Value::as_str).and_then(indexed)?)),
         "links.commitLinkConfigurations" => {
             save();

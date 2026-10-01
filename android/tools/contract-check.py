@@ -369,6 +369,7 @@ ACCEPTED = {
     "detectionMessages": "view.apmSubMotors is ArduSub's motor page and the recording rig is a PX4 multirotor, so it records only available=false; apmsubmotors.rs apm_sub_motors_view serves it",
     "motor": "view.apmSubMotors is ArduSub's motor page and the recording rig is a PX4 multirotor, so it records only available=false; apmsubmotors.rs apm_sub_motors_view serves it",
     "offersAutoDetect": "view.apmSubMotors is ArduSub's motor page and the recording rig is a PX4 multirotor, so it records only available=false; apmsubmotors.rs apm_sub_motors_view serves it",
+    "address": "view.links bluetooth.devices lists the Android Bluetooth host's paired and scanned devices; the desktop recording rig installs no Bluetooth host, so the list records empty; platformbluetooth.rs links_field serves it",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",

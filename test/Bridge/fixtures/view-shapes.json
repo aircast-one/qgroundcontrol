@@ -3441,6 +3441,9 @@
         "view.links.baudRates.7",
         "view.links.baudRates.8",
         "view.links.baudRates.9",
+        "view.links.bluetooth.available",
+        "view.links.bluetooth.devices.#",
+        "view.links.bluetooth.scanning",
         "view.links.class",
         "view.links.kind",
         "view.links.linkTypeIds.#",
@@ -7747,6 +7750,9 @@
         "view.links.available",
         "view.links.baudRates.#",
         "view.links.baudRates[]",
+        "view.links.bluetooth.available",
+        "view.links.bluetooth.devices.#",
+        "view.links.bluetooth.scanning",
         "view.links.class",
         "view.links.configured.#",
         "view.links.configured[].autoConnect",
@@ -11212,6 +11218,13 @@
         "baudRates": [
             "number"
         ],
+        "bluetooth": {
+            "available": "bool",
+            "devices": [
+                "empty"
+            ],
+            "scanning": "bool"
+        },
         "class": "string",
         "configured": [
             {

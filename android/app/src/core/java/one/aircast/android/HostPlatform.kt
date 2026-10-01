@@ -20,6 +20,7 @@ object HostPlatform {
         started = true
         System.loadLibrary(CORE_LIBRARY)
         QGCUsbSerialManager.initialize(activity)
+        BluetoothLinks.initialize(activity)
         val folder = File(activity.filesDir, "settings/$ORGANIZATION").apply { mkdirs() }
         val settings = folder.listFiles { file -> file.extension == "ini" }?.minByOrNull { it.name }
             ?: File(folder, "$DEFAULT_APPLICATION.ini")
