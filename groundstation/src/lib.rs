@@ -166,6 +166,7 @@ pub mod autotune;
 pub mod actuators;
 pub mod actuatortest;
 pub mod apmfollow;
+pub mod apmsubframe;
 pub mod apmservos;
 pub mod logreplay;
 pub mod mavlinkactions;

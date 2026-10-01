@@ -809,6 +809,12 @@
         "view.apmServos.class",
         "view.apmServos.kind",
         "view.apmServos.servos.#",
+        "view.apmSubFrame.available",
+        "view.apmSubFrame.class",
+        "view.apmSubFrame.kind",
+        "view.apmSubFrameImage(1).class",
+        "view.apmSubFrameImage(1).kind",
+        "view.apmSubFrameImage(1).png",
         "view.appLog(1,hub,link,1,0).categories.#",
         "view.appLog(1,hub,link,1,0).categories.0",
         "view.appLog(1,hub,link,1,0).class",
@@ -6611,6 +6617,12 @@
         "view.apmServos.class",
         "view.apmServos.kind",
         "view.apmServos.servos.#",
+        "view.apmSubFrame.available",
+        "view.apmSubFrame.class",
+        "view.apmSubFrame.kind",
+        "view.apmSubFrameImage(1).class",
+        "view.apmSubFrameImage(1).kind",
+        "view.apmSubFrameImage(1).png",
         "view.appLog(1,hub,link,1,0).categories.#",
         "view.appLog(1,hub,link,1,0).categories[]",
         "view.appLog(1,hub,link,1,0).class",
@@ -9244,6 +9256,16 @@
             "empty"
         ]
     },
+    "view.apmSubFrame": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string"
+    },
+    "view.apmSubFrameImage(1)": {
+        "class": "string",
+        "kind": "string",
+        "png": "string"
+    },
     "view.appLog(1,hub,link,1,0)": {
         "categories": [
             "string"
@@ -9955,6 +9977,8 @@
             "view.actuatorOutputs",
             "view.apmServos",
             "view.apmFollow",
+            "view.apmSubFrame",
+            "view.apmSubFrameImage",
             "view.ntrip",
             "view.logReplay",
             "view.sensorSettings",

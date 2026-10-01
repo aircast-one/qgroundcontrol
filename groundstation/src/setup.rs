@@ -274,6 +274,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), c.needs_attention)).collect();
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
     let (ready, headline, detail) = readiness(connected, parameters_ready, &named, &faults);
+    let sub_frame = components.iter().any(|c| c.class_name == "APMSubFrameComponent");
     json!({
         "kind": "object",
         "class": "VehicleSetup",
@@ -297,7 +298,11 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             "title": title,
             "pages": pages.iter().filter(|p| page_exists(p, px4)).map(|p| {
                 let blocked = page_block(p, &components);
-                json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() || crate::vehicleconfig::has(p, px4), "screen": screen_for(p, px4), "openable": blocked.is_none(), "blockedReason": blocked })
+                let screen = match sub_frame && *p == "Frame" {
+                    true => Some(crate::apmsubframe::SCREEN),
+                    false => screen_for(p, px4),
+                };
+                json!({ "name": p, "parameterSections": screen.is_none() && (sections_for(p, px4).is_some() || crate::vehicleconfig::has(p, px4)), "screen": screen, "openable": blocked.is_none(), "blockedReason": blocked })
             }).collect::<Vec<_>>(),
             "omitted": pages.iter().filter(|p| !page_exists(p, px4)).map(|p| json!({ "name": p, "reason": page_absence(px4) })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),

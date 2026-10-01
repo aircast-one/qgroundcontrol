@@ -62,6 +62,7 @@ use crate::px4airframe;
 use crate::autotune;
 use crate::actuators;
 use crate::apmfollow;
+use crate::apmsubframe;
 use crate::apmservos;
 use crate::espbridge;
 use crate::logreplay;
@@ -116,6 +117,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.itemCamera", "<item index>"),
     ("view.itemFacts", "<item index>"),
     ("view.cameraDefinition", "<file path>[,<locale>]"),
+    ("view.apmSubFrameImage", "<FRAME_CONFIG value>"),
     ("view.debugApi", "<method>,<path>[,<query>]"),
     ("view.geoTag", "<file path>[,<tolerance seconds>]"),
     ("view.packetRadio", "<status>[,<adapter>[,<stats>]]"),
@@ -196,6 +198,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.actuatorOutputs", deps: actuators::DEPS, compute: actuators::outputs_view },
     View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
+    View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
+    View { path: "view.apmSubFrameImage", deps: &[], compute: apmsubframe::apm_sub_frame_image_view },
     View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
     View { path: "view.logReplay", deps: logreplay::DEPS, compute: logreplay::log_replay_view },
     View { path: "view.sensorSettings", deps: sensorsettings::DEPS, compute: sensorsettings::sensor_settings_view },
@@ -552,6 +556,7 @@ mod deps_cover_reads {
             ("autotune", include_str!("autotune.rs")),
             ("actuators", include_str!("actuators.rs")),
             ("apmfollow", include_str!("apmfollow.rs")),
+            ("apmsubframe", include_str!("apmsubframe.rs")),
             ("apmservos", include_str!("apmservos.rs")),
             ("logreplay", include_str!("logreplay.rs")),
             ("ntrip", include_str!("ntrip.rs")),
