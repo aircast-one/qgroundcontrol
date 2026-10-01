@@ -97,7 +97,10 @@ private fun gpsColour(fix: FixLevel): Color = when (fix) {
 @Composable
 fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val available = hasVehicle()
-    if (!available) return
+    if (!available) {
+        Row(modifier) { RtkIndicatorCell() }
+        return
+    }
 
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
@@ -136,6 +139,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         JoystickIndicatorCell()
         RemoteIdIndicatorCell()
         GpsResilienceCell()
+        RtkIndicatorCell()
         GcsBatteryCell()
         GimbalIndicatorCell()
     }

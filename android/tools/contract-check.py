@@ -351,7 +351,6 @@ ACCEPTED = {
     "ssid": "view.espBridge serves the ESP8266 bridge's component-240 parameters and the desktop rig has no bridge, so it records only available=false; espbridge.rs esp_bridge_view serves it",
     "ssidSta": "view.espBridge serves the ESP8266 bridge's component-240 parameters and the desktop rig has no bridge, so it records only available=false; espbridge.rs esp_bridge_view serves it",
     "autoDecPath": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
-    "device": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "manual": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "orientation": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
     "priority": "view.sensorSettings is ArduPilot's AHRS/compass setup and the recording rig is PX4, so it records only available=false; sensorsettings.rs sensor_settings_view serves it",
