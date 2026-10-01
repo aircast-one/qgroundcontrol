@@ -341,6 +341,7 @@ impl Calibration {
     }
 
     fn stop(&mut self, outcome: Outcome) -> Vec<Action> {
+        let failed_compass = !self.px4 && self.running == Some(Kind::Compass) && outcome == Outcome::Failed;
         self.running = None;
         self.outcome = Some(outcome);
         self.waiting_for_cancel = false;
@@ -354,7 +355,8 @@ impl Calibration {
         }
         let restore = std::mem::take(&mut self.mag_cal_started).then(|| self.compass_fitness.take()).flatten().map(|value| Action::SetParam { name: COMPASS_FITNESS_PARAM, value });
         let learn = (!self.px4 && outcome == Outcome::Success && self.compass_learn).then_some(Action::SetParam { name: COMPASS_LEARN_PARAM, value: 0.0 });
-        restore.into_iter().chain(learn).collect()
+        let cancel = failed_compass.then_some(Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false });
+        restore.into_iter().chain(learn).chain(cancel).collect()
     }
 
     pub fn on_text(&mut self, raw: &str, now_ms: u64) -> Vec<Action> {
@@ -886,7 +888,11 @@ mod tests {
         cal.start(Kind::Compass, Inputs { compass_mask: 0b001, compass_fitness: Some(25.0), ..Inputs::default() }, 0).unwrap();
         cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
         let failed = cal.on_mag_report(0, 5, 99.0, 0);
-        assert_eq!(failed, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }]);
+        assert_eq!(
+            failed,
+            vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }],
+            "_stopCalibration sends MAV_CMD_DO_CANCEL_MAG_CAL on a failed compass cal so the autopilot stops and cannot save a late report"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Failed));
         cal.start(Kind::Compass, Inputs { compass_mask: 0b001, compass_fitness: Some(25.0), ..Inputs::default() }, 0).unwrap();
         assert!(!cal.snapshot()["cancelEnabled"].as_bool().unwrap(), "cancel waits for the vehicle to accept the mag cal");
@@ -894,7 +900,7 @@ mod tests {
         assert_eq!(refused.len(), 2);
         assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap());
         let aborted = cal.on_ack(CMD_DO_START_MAG_CAL, 2, 0);
-        assert_eq!(aborted, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }], "a refused start restores the threshold");
+        assert_eq!(aborted, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }], "a refused start restores the threshold and cancels like any failed compass cal");
         cal.start(Kind::Compass, Inputs { compass_mask: 0b001, ..Inputs::default() }, 0).unwrap();
         cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
         let cancelled = cal.cancel().unwrap();
