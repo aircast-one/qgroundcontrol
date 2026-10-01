@@ -48,6 +48,8 @@ private const val VEHICLE_ARROW_IMAGE = "aircast-vehicle-arrow"
 const val HEADING_PROPERTY = "heading"
 const val ACTIVE_PROPERTY = "active"
 const val STALE_PROPERTY = "stale"
+const val VEHICLE_LABEL_PROPERTY = "vehicleLabel"
+private const val VEHICLE_LABEL_LAYER = "aircast-vehicle-label"
 private const val TRAIL_SOURCE = "aircast-trail"
 private const val HOME_SOURCE = "aircast-home"
 private const val HOME_LAYER = "aircast-home-layer"
@@ -111,6 +113,7 @@ fun fleetFeatures(fleet: List<VehicleChoice>): FeatureCollection =
                     heading = flown.heading,
                     stale = flown.contactLost,
                     active = flown.active,
+                    label = if (fleet.size > 1) "Vehicle ${flown.id}" else null,
                 )
             },
     )
@@ -121,10 +124,12 @@ fun vehicleFeature(
     heading: Double,
     stale: Boolean = false,
     active: Boolean = true,
+    label: String? = null,
 ): Feature =
     Feature.fromGeometry(Point.fromLngLat(longitude, latitude)).apply {
         addBooleanProperty(STALE_PROPERTY, stale)
         addBooleanProperty(ACTIVE_PROPERTY, active)
+        label?.let { addStringProperty(VEHICLE_LABEL_PROPERTY, it) }
         if (!heading.isNaN()) {
             addNumberProperty(HEADING_PROPERTY, ((heading % 360) + 360) % 360)
         }
@@ -543,6 +548,19 @@ private fun installVehicleLayer(style: Style) {
                 PropertyFactory.iconAllowOverlap(true),
                 PropertyFactory.iconIgnorePlacement(true),
             ).withFilter(Expression.has(HEADING_PROPERTY)),
+        )
+        style.addLayer(
+            SymbolLayer(VEHICLE_LABEL_LAYER, VEHICLE_SOURCE).withProperties(
+                PropertyFactory.textField(Expression.get(VEHICLE_LABEL_PROPERTY)),
+                PropertyFactory.textSize(11f),
+                PropertyFactory.textColor("#FFFFFF"),
+                PropertyFactory.textHaloColor("#000000"),
+                PropertyFactory.textHaloWidth(1f),
+                PropertyFactory.textOffset(arrayOf(0f, 1.6f)),
+                PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
+                PropertyFactory.textAllowOverlap(true),
+                PropertyFactory.textIgnorePlacement(true),
+            ).withFilter(Expression.has(VEHICLE_LABEL_PROPERTY)),
         )
     }
 }

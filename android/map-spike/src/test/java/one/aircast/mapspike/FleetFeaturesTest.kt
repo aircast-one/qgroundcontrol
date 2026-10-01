@@ -23,6 +23,14 @@ class FleetFeaturesTest {
     )
 
     @Test
+    fun `with more than one aircraft each is labelled with its system id`() {
+        val drawn = fleetFeatures(two).features()!!
+        assertEquals("Vehicle 1", drawn[0].getStringProperty(VEHICLE_LABEL_PROPERTY))
+        assertEquals("Vehicle 2", drawn[1].getStringProperty(VEHICLE_LABEL_PROPERTY))
+        assertFalse("VehicleMapItem hides the label with a single vehicle", fleetFeatures(two.take(1)).features()!![0].hasProperty(VEHICLE_LABEL_PROPERTY))
+    }
+
+    @Test
     fun `every aircraft is drawn, not only the one being flown`() {
         val drawn = fleetFeatures(two).features()!!
         assertEquals(2, drawn.size)
