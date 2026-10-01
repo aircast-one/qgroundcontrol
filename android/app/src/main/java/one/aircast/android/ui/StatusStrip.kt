@@ -228,6 +228,8 @@ internal fun telemetryDetail(link: TelemetryLink?): List<DetailRow> = when (link
         link.localNoise?.let { DetailRow("Noise here", "$it") },
         link.remoteNoise?.let { DetailRow("Noise at the vehicle", "$it") },
         link.receiveErrors?.let { DetailRow("Packets lost", "$it") },
+        link.errorsFixed?.let { DetailRow("Errors fixed", "$it") },
+        link.txBuffer?.let { DetailRow("TX buffer", "$it") },
     )
 }
 

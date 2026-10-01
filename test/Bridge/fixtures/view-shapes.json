@@ -7466,11 +7466,13 @@
         "view.flyState.state",
         "view.flyState.stateText",
         "view.flyState.telemetry",
+        "view.flyState.telemetry.errorsFixed",
         "view.flyState.telemetry.localNoise",
         "view.flyState.telemetry.localRssiDbm",
         "view.flyState.telemetry.receiveErrors",
         "view.flyState.telemetry.remoteNoise",
         "view.flyState.telemetry.remoteRssiDbm",
+        "view.flyState.telemetry.txBuffer",
         "view.followMe.allowedFixAgeMs",
         "view.followMe.class",
         "view.followMe.count",
@@ -10957,11 +10959,13 @@
         "state": "string",
         "stateText": "string",
         "telemetry": {
+            "errorsFixed": "number",
             "localNoise": "number",
             "localRssiDbm": "number",
             "receiveErrors": "number",
             "remoteNoise": "number",
-            "remoteRssiDbm": "number"
+            "remoteRssiDbm": "number",
+            "txBuffer": "number"
         }
     },
     "view.followMe": {

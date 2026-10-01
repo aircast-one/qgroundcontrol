@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer"];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -84,13 +84,15 @@ fn telemetry(radio: &Value) -> Value {
             "localNoise": reading("lNoise"),
             "remoteNoise": reading("rNoise"),
             "receiveErrors": reading("rxErrors"),
+            "errorsFixed": reading("fixed"),
+            "txBuffer": reading("txBuffer"),
         }),
     }
 }
 
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive"));
-    let radio = object(&backend.get_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors"));
+    let radio = object(&backend.get_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors,fixed,txBuffer"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     // _commLostCheck returns early when the watch is disabled, so communicationLost never updates
     // and false means "nobody is looking" rather than "every link is fine". view.frame and
@@ -202,7 +204,7 @@ mod tests {
         let radio = |local: i64| {
             let mut vehicle = aloft(true, true, false);
             let fact = |property: &str, value: i64| json!({ "kind": "fact", "name": property, "property": property, "value": value });
-            vehicle["radioStatus"] = json!({ "kind": "object", "class": "RadioStatusFactGroup", "facts": [fact("lrssi", local), fact("rrssi", -42), fact("rxErrors", 3), fact("lNoise", 12), fact("rNoise", 14)], "children": [] });
+            vehicle["radioStatus"] = json!({ "kind": "object", "class": "RadioStatusFactGroup", "facts": [fact("lrssi", local), fact("rrssi", -42), fact("rxErrors", 3), fact("fixed", 2), fact("txBuffer", 95), fact("lNoise", 12), fact("rNoise", 14)], "children": [] });
             fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])["telemetry"].clone()
         };
 
@@ -218,6 +220,7 @@ mod tests {
             (json!(-91), json!(-42), json!(3))
         );
         assert_eq!((reporting["localNoise"].clone(), reporting["remoteNoise"].clone()), (json!(12), json!(14)));
+        assert_eq!((reporting["errorsFixed"].clone(), reporting["txBuffer"].clone()), (json!(2), json!(95)), "TelemetryRSSIIndicator lists Errors Fixed and TX Buffer");
     }
 
     #[test]

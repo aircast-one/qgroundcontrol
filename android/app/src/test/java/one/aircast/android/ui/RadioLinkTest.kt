@@ -26,11 +26,11 @@ class RadioLinkTest {
     fun `the strip shows this station's own signal`() {
         val reading = state(
             """"rcOverride":false,"telemetry":{"localRssiDbm":-71,"remoteRssiDbm":-68,
-               "localNoise":42,"remoteNoise":39,"receiveErrors":7}""",
+               "localNoise":42,"remoteNoise":39,"receiveErrors":7,"errorsFixed":2,"txBuffer":95}""",
         )
         assertEquals("-71 dBm", telemetryCell(reading))
         assertEquals(
-            listOf("This station", "The vehicle's radio", "Noise here", "Noise at the vehicle", "Packets lost"),
+            listOf("This station", "The vehicle's radio", "Noise here", "Noise at the vehicle", "Packets lost", "Errors fixed", "TX buffer"),
             telemetryDetail(reading?.telemetry).map { it.label },
         )
     }

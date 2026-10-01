@@ -30,6 +30,8 @@ internal data class TelemetryLink(
     val localNoise: Int?,
     val remoteNoise: Int?,
     val receiveErrors: Int?,
+    val errorsFixed: Int? = null,
+    val txBuffer: Int? = null,
 )
 
 internal fun telemetryLink(view: JSONObject?): TelemetryLink? {
@@ -41,6 +43,8 @@ internal fun telemetryLink(view: JSONObject?): TelemetryLink? {
         localNoise = if (radio.isNull("localNoise")) null else radio.optInt("localNoise"),
         remoteNoise = if (radio.isNull("remoteNoise")) null else radio.optInt("remoteNoise"),
         receiveErrors = if (radio.isNull("receiveErrors")) null else radio.optInt("receiveErrors"),
+        errorsFixed = if (radio.isNull("errorsFixed")) null else radio.optInt("errorsFixed"),
+        txBuffer = if (radio.isNull("txBuffer")) null else radio.optInt("txBuffer"),
     )
 }
 
