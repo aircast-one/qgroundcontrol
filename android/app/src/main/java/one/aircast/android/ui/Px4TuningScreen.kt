@@ -110,7 +110,7 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
     var revision by remember { mutableIntStateOf(0) }
     var tabs by remember { mutableStateOf<List<TuningTab>>(emptyList()) }
     var modes by remember { mutableStateOf(TuningModes("", "")) }
-    var useAutoTuning by remember { mutableStateOf(true) }
+    var useAutoTuning by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var tabIndex by remember { mutableIntStateOf(0) }
     var axisIndex by remember { mutableIntStateOf(0) }
@@ -136,6 +136,10 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
     }
     val axis = tab.axes.getOrNull(axisIndex) ?: tab.axes.firstOrNull()
 
+    LaunchedEffect(tabIndex, axisIndex) {
+        axis?.let { current -> clipboard = current.params.map { it.fact to it.fact.valueString } }
+    }
+
     DisposableEffect(tab.tuningMode) {
         scope.launch(Dispatchers.IO) { Qgc.invoke(SET_TUNING_TELEMETRY, tab.tuningMode) }
         onDispose { offMainDetached { Qgc.invoke(SET_TUNING_TELEMETRY, 0) } }
@@ -151,7 +155,7 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
         ScrollableTabRow(selectedTabIndex = tabIndex) {
             tabs.forEachIndexed { index, each ->
-                Tab(selected = index == tabIndex, onClick = { tabIndex = index; axisIndex = 0; clipboard = emptyList() }, text = { Text(each.name) })
+                Tab(selected = index == tabIndex, onClick = { tabIndex = index; axisIndex = 0 }, text = { Text(each.name) })
             }
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

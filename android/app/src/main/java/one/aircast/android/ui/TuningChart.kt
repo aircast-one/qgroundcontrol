@@ -30,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.offMainDetached
 import androidx.compose.material3.Checkbox
 
@@ -43,10 +44,20 @@ internal data class Sample(val seconds: Double, val value: Double)
 internal fun withSample(series: List<Sample>, sample: Sample): List<Sample> =
     (series + sample).dropWhile { it.seconds < sample.seconds - HISTORY_SECONDS }
 
-internal fun visibleRange(series: List<List<Sample>>, from: Double): Pair<Double, Double>? {
-    val values = series.flatMap { list -> list.filter { it.seconds >= from }.map { it.value } }
-    return values.takeIf { it.isNotEmpty() }?.let { it.min() to it.max() }
+private const val TICK_SEPARATION = 5.0
+
+private fun grownLow(current: Double, value: Double): Double {
+    val low = minOf(current, value)
+    return if (low % TICK_SEPARATION != 0.0) kotlin.math.floor((low - TICK_SEPARATION) / TICK_SEPARATION) * TICK_SEPARATION else low
 }
+
+private fun grownHigh(current: Double, value: Double): Double {
+    val high = maxOf(current, value)
+    return if (high % TICK_SEPARATION != 0.0) kotlin.math.floor((high + TICK_SEPARATION) / TICK_SEPARATION) * TICK_SEPARATION else high
+}
+
+internal fun grownRange(range: Pair<Double, Double>?, values: List<Double>): Pair<Double, Double>? =
+    values.fold(range) { held, value -> held?.let { (low, high) -> grownLow(low, value) to grownHigh(high, value) } ?: (value to value) }
 
 private fun factValue(path: String): Double? = Qgc.get(path).optDouble("value").takeIf { !it.isNaN() }
 
@@ -57,6 +68,12 @@ internal fun TuningChart(axis: TuningAxis, unit: String, windowSeconds: Double, 
     var cleared by remember(axis) { mutableStateOf(0) }
     var series by remember(axis, cleared) { mutableStateOf(axis.plot.map { emptyList<Sample>() }) }
     var now by remember(axis, cleared) { mutableStateOf(0.0) }
+    var range by remember(axis, cleared) { mutableStateOf<Pair<Double, Double>?>(null) }
+    val armed = flyState(qgcPath(FLY_STATE).value)?.armed == true
+
+    LaunchedEffect(armed) {
+        if (armed && !running) running = true
+    }
 
     LaunchedEffect(axis, cleared, running) {
         if (!running) return@LaunchedEffect
@@ -65,12 +82,12 @@ internal fun TuningChart(axis: TuningAxis, unit: String, windowSeconds: Double, 
             val values = withContext(Dispatchers.Default) { axis.plot.map { factValue(it.path) } }
             now = (System.nanoTime() - started) / 1e9
             series = series.zip(values) { list, value -> value?.let { withSample(list, Sample(now, it)) } ?: list }
+            range = grownRange(range, values.filterNotNull())
             delay(SAMPLE_MS)
         }
     }
 
     val from = now - windowSeconds
-    val range = visibleRange(series, from)
     val grid = MaterialTheme.colorScheme.outlineVariant
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(axis.chartTitle, style = MaterialTheme.typography.titleSmall)
