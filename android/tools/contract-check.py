@@ -329,6 +329,8 @@ ACCEPTED = {
     "highlighted": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs outputs_json serves it",
     "motorAssignment": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs outputs_json serves it",
     "multirotor": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs outputs_json serves it",
+    "position": "view.apmServos lists ArduPilot SERVOn outputs and the recording rig is PX4, so its list is empty; apmservos.rs servos_view serves it",
+    "pwm": "view.apmServos lists ArduPilot SERVOn outputs and the recording rig is PX4, so its list is empty; apmservos.rs servos_view serves it",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
     "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",

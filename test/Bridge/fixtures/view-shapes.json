@@ -802,6 +802,10 @@
         "view.altitudeModes.omitted.0.raw",
         "view.altitudeModes.omitted.0.reason",
         "view.altitudeModes.omitted.0.title",
+        "view.apmServos.available",
+        "view.apmServos.class",
+        "view.apmServos.kind",
+        "view.apmServos.servos.#",
         "view.appLog(1,hub,link,1,0).categories.#",
         "view.appLog(1,hub,link,1,0).categories.0",
         "view.appLog(1,hub,link,1,0).class",
@@ -6351,6 +6355,10 @@
         "view.altitudeModes.omitted[].raw",
         "view.altitudeModes.omitted[].reason",
         "view.altitudeModes.omitted[].title",
+        "view.apmServos.available",
+        "view.apmServos.class",
+        "view.apmServos.kind",
+        "view.apmServos.servos.#",
         "view.appLog(1,hub,link,1,0).categories.#",
         "view.appLog(1,hub,link,1,0).categories[]",
         "view.appLog(1,hub,link,1,0).class",
@@ -8827,6 +8835,14 @@
             }
         ]
     },
+    "view.apmServos": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string",
+        "servos": [
+            "empty"
+        ]
+    },
     "view.appLog(1,hub,link,1,0)": {
         "categories": [
             "string"
@@ -9434,6 +9450,7 @@
                 "Power",
                 "Airspeed",
                 "ESC",
+                "Servo Outputs",
                 "Motors",
                 "Actuators",
                 "Heli",
@@ -9508,6 +9525,7 @@
             "view.px4Airframe",
             "view.autotune",
             "view.actuatorOutputs",
+            "view.apmServos",
             "view.remoteIdStatus",
             "view.escs",
             "view.gimbalIndicator",

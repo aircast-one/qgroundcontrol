@@ -179,6 +179,7 @@ pub struct Vehicle {
     pub shell: crate::shell::Shell,
     pending_notices: Vec<(&'static str, String)>,
     pub rc_values: Vec<u16>,
+    pub servo_outputs: Vec<i32>,
     pub events_heard: bool,
     pub message_log: crate::messagelog::MessageLog,
     pub control: crate::operatorcontrol::ControlState,
@@ -304,6 +305,7 @@ impl Vehicle {
             shell: crate::shell::Shell::default(),
             pending_notices: Vec::new(),
             rc_values: Vec::new(),
+            servo_outputs: Vec::new(),
             events_heard: false,
             message_log: crate::messagelog::MessageLog::default(),
             control: crate::operatorcontrol::ControlState::default(),
@@ -2171,6 +2173,9 @@ impl Vehicle {
                 self.rc_values = raw[..valid].to_vec();
                 self.rccal.channel_values(&crate::rccal::clamped(&raw[..valid]), now_ms);
             }
+        }
+        if let MavMessage::SERVO_OUTPUT_RAW(s) = message {
+            self.servo_outputs = crate::apmservos::outputs(&[s.servo1_raw, s.servo2_raw, s.servo3_raw, s.servo4_raw, s.servo5_raw, s.servo6_raw, s.servo7_raw, s.servo8_raw, s.servo9_raw, s.servo10_raw, s.servo11_raw, s.servo12_raw, s.servo13_raw, s.servo14_raw, s.servo15_raw, s.servo16_raw]);
         }
         if let MavMessage::SERIAL_CONTROL(d) = message {
             if d.device == mavlink::dialects::ardupilotmega::SerialControlDev::SERIAL_CONTROL_DEV_SHELL {

@@ -161,6 +161,7 @@ pub mod streamconfig;
 pub mod autotune;
 pub mod actuators;
 pub mod actuatortest;
+pub mod apmservos;
 pub mod motorassignment;
 pub mod gimbalindicator;
 pub mod gpsresilience;
