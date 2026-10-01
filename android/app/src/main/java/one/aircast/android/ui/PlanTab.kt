@@ -330,7 +330,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
             planStatus = planStatus,
             centre = centre,
             onRefused = { notice = it },
-            modifier = Modifier.align(Alignment.TopStart).padding(top = 76.dp, start = 12.dp),
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = 16.dp),
         )
     }
 }
