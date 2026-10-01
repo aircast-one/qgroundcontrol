@@ -167,6 +167,7 @@ pub mod gcsheartbeat;
 pub mod messagelog;
 pub mod terrainservice;
 pub mod mavinspect;
+pub mod linkcount;
 pub mod inspectorchart;
 pub mod rccal;
 pub mod shp;

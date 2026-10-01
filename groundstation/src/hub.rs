@@ -285,6 +285,7 @@ pub struct Vehicle {
     metadata_types: BTreeMap<u8, Uris>,
     parameter_metadata: Option<ComponentParameters>,
     pub parameter_download_skipped: bool,
+    pub link_status: crate::linkcount::LinkStatus,
     pub actuators_metadata: Option<Value>,
     pub events: crate::libevents::Session,
     intended_custom_mode: u32,
@@ -438,6 +439,7 @@ impl Vehicle {
             metadata_types: BTreeMap::new(),
             parameter_metadata: None,
             parameter_download_skipped: false,
+            link_status: crate::linkcount::LinkStatus::default(),
             actuators_metadata: None,
             events: crate::libevents::Session::default(),
             intended_custom_mode: 0,
@@ -2839,6 +2841,7 @@ pub struct Hub {
     remote_inputs: Option<RemoteInputs>,
     log_inputs: LogInputs,
     rtcm: crate::rtcm::Fragmenter,
+    link_counts: BTreeMap<LinkId, crate::linkcount::LinkCount>,
 }
 
 pub static HUB: LazyLock<Mutex<Hub>> = LazyLock::new(|| Mutex::new(Hub::default()));
@@ -2851,6 +2854,11 @@ impl Hub {
     }
 
     pub fn on_frame(&mut self, origin: Origin, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
+        let counted = self.link_counts.get(&origin.link).cloned().unwrap_or_default().counted(header.system_id, header.component_id, header.sequence);
+        if let (Some(status), Some(vehicle)) = (counted.status(), self.vehicles.get_mut(&header.system_id)) {
+            vehicle.link_status = status;
+        }
+        self.link_counts.insert(origin.link, counted);
         let mut bytes = Vec::new();
         // adsb::on_message existed with nothing calling it, so a vehicle relaying traffic over
         // MAVLink reached the module through no path at all. Its SBS-1 feed opens its own socket
@@ -2916,6 +2924,7 @@ impl Hub {
     }
 
     pub fn retain_links(&mut self, open: &[LinkId]) {
+        self.link_counts.retain(|link, _| open.contains(link));
         self.vehicles.values_mut().for_each(|v| {
             v.link_states.retain(|(link, _, _)| open.contains(link));
             let _ = v.update_primary_link();
