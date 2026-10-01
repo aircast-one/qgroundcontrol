@@ -11,4 +11,11 @@ class ParameterLinksTest {
         assertNull(paramLinkName("param://"))
         assertNull(paramLinkName("https://docs.px4.io"))
     }
+
+    @Test
+    fun `a read-only parameter says so until force edit is on`() {
+        assertNull(forceEditNote(readOnly = false, forced = false))
+        assertEquals(READ_ONLY_NOTE, forceEditNote(readOnly = true, forced = false))
+        assertEquals(FORCE_EDIT_NOTE, forceEditNote(readOnly = true, forced = true))
+    }
 }

@@ -107,6 +107,7 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
 private fun ParameterRow(name: String, offersRcToParam: Boolean) {
     var revision by remember { mutableStateOf(0) }
     var mapping by remember { mutableStateOf(false) }
+    var forcing by remember { mutableStateOf(false) }
     val fact by produceState<Fact?>(null, name, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name) }
     }
@@ -127,6 +128,11 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
                 )
             }
             if (offersRcToParam && !loaded.readOnly) TextButton(onClick = { mapping = true }) { Text("RC") }
+            if (loaded.readOnly) TextButton(onClick = { forcing = true }) { Text("Edit") }
+            if (forcing) ParameterEditDialog(name) {
+                forcing = false
+                revision++
+            }
             if (mapping) RcToParamDialog(loaded) { mapping = false }
         }
     }
