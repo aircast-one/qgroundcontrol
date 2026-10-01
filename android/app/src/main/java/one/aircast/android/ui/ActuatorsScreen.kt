@@ -58,7 +58,7 @@ internal const val ACTUATOR_MIXER_SET = "actuatorMixer.set"
 internal const val ACTUATOR_MIXER_AXIS = "actuatorMixer.setAxis"
 internal data class GeometryChannel(val label: String, val cells: List<GeometryCell?>)
 internal data class GeometryGroup(val label: String, val count: Fact?, val channels: List<GeometryChannel>, val params: List<ActuatorFact>)
-internal data class Geometry(val title: String, val helpUrl: String, val groups: List<GeometryGroup>)
+internal data class Geometry(val title: String, val helpUrl: String, val groups: List<GeometryGroup>, val motors: List<GeometryMotor> = emptyList())
 internal data class ActuatorOutputs(
     val available: Boolean,
     val reason: String,
@@ -92,6 +92,7 @@ internal fun geometry(json: JSONObject?): Geometry? = json?.let { read ->
     Geometry(
         title = read.optText("title"),
         helpUrl = read.optText("helpUrl"),
+        motors = geometryMotors(read),
         groups = read.optJSONArray("groups").objects { group ->
             GeometryGroup(
                 label = group.optText("label"),
@@ -228,6 +229,7 @@ private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (Strin
             Text(geometry.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             if (geometry.helpUrl.isNotEmpty()) androidx.compose.material3.TextButton(onClick = { uri.openUri(geometry.helpUrl) }) { Text("?") }
         }
+        if (geometry.motors.size > 1) GeometryImage(geometry.motors)
         geometry.groups.forEach { group ->
             Text(group.label, style = MaterialTheme.typography.titleSmall)
             group.count?.let { FactRow(it, onWrite = onWrite) }

@@ -132,6 +132,7 @@ pub struct ActuatorType {
     pub max: f64,
     pub default: Option<f64>,
     pub per_item: Vec<Param>,
+    pub label_index_offset: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -257,6 +258,7 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
                 max: number(&values, "max"),
                 default: (!values.get("default-is-nan").and_then(Value::as_bool).unwrap_or(false)).then(|| number(&values, "default")),
                 per_item: list(t, "per-item-parameters").map(Param::parse).collect(),
+                label_index_offset: t.get("label-index-offset").and_then(Value::as_i64).unwrap_or(0),
             }
         })
         .collect();
@@ -376,6 +378,7 @@ pub fn axis_vector(direction: usize) -> Option<(f64, f64, f64)> {
 pub struct MixerChannel {
     pub label: String,
     pub function: i64,
+    pub type_index: i64,
     pub cells: Vec<MixerCell>,
     pub rule: Option<Rule>,
 }
@@ -429,7 +432,7 @@ pub fn mixer_state(metadata: &Metadata, value_of: &dyn Fn(&str) -> Option<i64>) 
                 });
                 let specific = (kind.is_some() && !prefix.is_empty()).then_some((function, prefix));
                 let rule = metadata.rules.iter().rev().find(|rule| group.per_item.iter().any(|item| !item.identifier.is_empty() && item.identifier == rule.select)).cloned();
-                (MixerChannel { label, function, cells: type_cells.chain(item_cells).collect(), rule }, specific)
+                (MixerChannel { label, function, type_index, cells: type_cells.chain(item_cells).collect(), rule }, specific)
             })
             .collect();
         let labels = labels.into_iter().chain(channels.iter().filter_map(|(_, specific)| specific.clone())).collect();
@@ -471,7 +474,7 @@ fn function_params(output: &Output) -> Vec<String> {
 }
 
 pub fn function_type(metadata: &Metadata, function: i64) -> Option<&str> {
-    metadata.actuator_types.iter().filter(|t| t.name != "DEFAULT" && (t.function_min..=t.function_max).contains(&function)).last().map(|t| t.name.as_str())
+    metadata.actuator_types.iter().rfind(|t| t.name != "DEFAULT" && (t.function_min..=t.function_max).contains(&function)).map(|t| t.name.as_str())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -596,7 +599,7 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
             "actions": group.actions.iter().map(|(label, function)| json!({ "label": label, "function": function })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "hasUnsetRequiredFunctions": mixer_functions(&mixer, true).iter().any(|f| !configured.contains(f)),
-        "geometry": geometry_json(backend, &mixer, &value_of),
+        "geometry": geometry_json(backend, metadata, &mixer, &value_of),
         "groups": kept_outputs(metadata, &exists).into_iter().map(|output| json!({
             "label": output.label,
             "notes": function_params(output).iter().filter_map(|name| value_of(name)).filter_map(|f| metadata.functions.get(&f)).filter(|f| !f.note.is_empty() && f.note_if.evaluate(&value_of)).map(|f| f.note.clone()).collect::<Vec<_>>(),
@@ -725,12 +728,44 @@ pub fn mixer_axis(backend: &dyn Backend, args: &str) -> Value {
     json!({ "ok": all })
 }
 
-fn geometry_json(backend: &dyn Backend, mixer: &MixerState, value_of: &dyn Fn(&str) -> Option<i64>) -> Value {
+#[derive(Debug, Clone, PartialEq)]
+pub struct MotorGeometry {
+    pub index: i64,
+    pub label: i64,
+    pub position: (f64, f64, f64),
+    pub counter_clockwise: bool,
+}
+
+pub fn motor_geometry(metadata: &Metadata, mixer: &MixerState, raw_of: &dyn Fn(&str) -> Option<f64>) -> Vec<MotorGeometry> {
+    mixer
+        .groups
+        .iter()
+        .filter(|state| state.group.actuator_type == "motor")
+        .flat_map(|state| {
+            let offset = metadata.actuator_types.iter().find(|t| t.name == state.group.actuator_type).map_or(0, |t| t.label_index_offset);
+            state.channels.iter().filter_map(move |channel| {
+                let value = |function: &str| channel.cells.iter().find(|c| c.function == function).and_then(|c| match &c.source {
+                    CellSource::Parameter(name, _) => raw_of(name).map(|raw| (raw, c.config.show_as.as_str())),
+                    CellSource::Fixed(v) => Some((*v, "")),
+                });
+                let position = (value("posx")?.0, value("posy")?.0, value("posz")?.0);
+                let counter_clockwise = value("spin-dir").is_some_and(|(raw, show_as)| if show_as == "true-if-positive" { raw > 0.0 } else { raw != 0.0 });
+                Some(MotorGeometry { index: channel.type_index, label: channel.type_index + offset, position, counter_clockwise })
+            })
+        })
+        .collect()
+}
+
+fn geometry_json(backend: &dyn Backend, metadata: &Metadata, mixer: &MixerState, value_of: &dyn Fn(&str) -> Option<i64>) -> Value {
     let Some(option) = mixer.option.as_ref() else { return Value::Null };
     json!({
         "title": if option.title.is_empty() { "Geometry".to_string() } else { format!("Geometry: {}", option.title) },
         "helpUrl": option.help_url,
         "type": option.kind,
+        "motors": motor_geometry(metadata, mixer, &|name| number_of(backend, name))
+            .iter()
+            .map(|m| json!({ "index": m.index, "label": m.label, "x": m.position.0, "y": m.position.1, "z": m.position.2, "counterClockwise": m.counter_clockwise }))
+            .collect::<Vec<_>>(),
         "groups": mixer.groups.iter().map(|state| json!({
             "label": state.group.label,
             "count": (!state.group.count_param.is_empty()).then(|| fact(backend, &state.group.count_param).map(|f| decode(&f, &parameter_path(&state.group.count_param)))).flatten(),
@@ -839,6 +874,35 @@ mod tests {
         assert_eq!(groups.iter().map(|g| (g.label, g.actions.clone())).collect::<Vec<_>>(), [("Set Spin Direction 1", vec![("Motor 1".to_string(), 101)]), ("Set Spin Direction 2", vec![("Motor 1".to_string(), 101)])], "the servo is not a motor and Motor 1 is listed once");
         let pwm = |name: &str| if name == "PWM_AUX_TIM0" { Some(400) } else { dshot(name) };
         assert!(action_groups(&parsed, &outputs, &pwm).is_empty(), "supported-if holds only on DShot");
+    }
+
+    #[test]
+    fn motors_with_all_three_positions_are_drawn_numbered_from_the_label_offset() {
+        let parsed = parse(&example()).unwrap();
+        let quad = |name: &str| match name {
+            "CA_AIRFRAME" => Some(1),
+            "CA_MC_R_COUNT" => Some(2),
+            _ => None,
+        };
+        let state = mixer_state(&parsed, &quad);
+        let raw = |name: &str| match name {
+            "CA_MC_R0_PX" => Some(0.15),
+            "CA_MC_R0_PY" => Some(0.25),
+            "CA_MC_R0_PZ" => Some(0.0),
+            "CA_MC_R0_KM" => Some(0.05),
+            "CA_MC_R1_PX" => Some(-0.15),
+            "CA_MC_R1_PY" => Some(-0.25),
+            "CA_MC_R1_PZ" => Some(0.0),
+            "CA_MC_R1_KM" => Some(-0.05),
+            _ => None,
+        };
+        let motors = motor_geometry(&parsed, &state, &raw);
+        assert_eq!(motors, [
+            MotorGeometry { index: 0, label: 1, position: (0.15, 0.25, 0.0), counter_clockwise: true },
+            MotorGeometry { index: 1, label: 2, position: (-0.15, -0.25, 0.0), counter_clockwise: false },
+        ]);
+        let tilt = |name: &str| (name == "CA_AIRFRAME").then_some(5);
+        assert!(motor_geometry(&parsed, &mixer_state(&parsed, &tilt), &|_| None).is_empty(), "fixed X and Y but no Z is not a full position, so nothing is drawn");
     }
 
     #[test]
