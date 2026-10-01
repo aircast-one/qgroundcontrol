@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -250,7 +251,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
     var sentName by remember { mutableStateOf<String?>(null) }
     var sentSnapshot by remember { mutableStateOf<String?>(null) }
-    var refusal by remember { mutableStateOf<String?>(null) }
+    var refusal by FlyRefusal::text
     val scope = rememberCoroutineScope()
     var takeoffTarget by remember { mutableStateOf<Double?>(null) }
     var takeoffSettled by remember { mutableStateOf<Double?>(null) }
@@ -341,11 +342,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-
-        FlightModePicker(
-            onRefusal = { refusal = it },
-            onWithdraw = { refusal = withdrawn(refusal, it) },
-        )
 
         val liveActions = actionsJson?.toString()
         val confirming = pending
@@ -768,22 +764,24 @@ internal fun commandRefusal(action: String, confirmed: Boolean): String? =
 
 internal const val FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"
 
+internal object FlyRefusal {
+    var text by mutableStateOf<String?>(null)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) -> Unit) {
+internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit) {
     val json by qgcPath(FLIGHT_MODES)
     val modes = remember(json) { flightModesView(json) }
-    var expanded by remember { mutableStateOf(false) }
+    val onRefusal: (String?) -> Unit = { FlyRefusal.text = it }
+    val onWithdraw: (String) -> Unit = { FlyRefusal.text = withdrawn(FlyRefusal.text, it) }
     var showFolded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf<FlightModeOption?>(null) }
     var settings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    if (modes == null) {
-        TextButton(onClick = {}, enabled = false) { Text("No flight modes reported") }
-        return
-    }
+    if (modes == null) return
 
     fun send(mode: FlightModeOption) {
         scope.attemptCommand(
@@ -795,7 +793,7 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
     }
 
     fun choose(mode: FlightModeOption) {
-        expanded = false
+        onDismiss()
         showFolded = false
         if (mode.needsConfirm) confirming = mode else send(mode)
     }
@@ -820,85 +818,82 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
         )
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AssistChip(
-            onClick = { expanded = true },
-            enabled = modes.canSet,
-            label = { Text(modes.current.ifBlank { "Mode" }) },
-        )
-        Icon(Icons.Default.KeyboardArrowDown, null)
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false; showFolded = false; editing = false },
-        ) {
-            modeHeading(modes)?.let { heading ->
-                Text(
-                    heading,
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 280.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            val setting = modes.hiddenSetting
-            if (editing && setting != null) {
-                modes.all.forEach { mode ->
-                    DropdownMenuItem(
-                        text = { Text(mode.name, style = MaterialTheme.typography.bodyMedium) },
-                        trailingIcon = { Switch(checked = !mode.hidden, onCheckedChange = null) },
-                        onClick = {
-                            val value = hiddenModesAfter(modes.hidden, mode.name, !mode.hidden)
-                            scope.launch(Dispatchers.Default) { Qgc.set(setting, value) }
-                        },
-                    )
-                }
-            }
-            val shown = when {
-                editing && setting != null -> emptyList()
-                showFolded -> modes.everyday + modes.folded
-                else -> modes.everyday
-            }
-            shown.forEach { mode ->
-                DropdownMenuItem(
-                    text = {
-                        Column(Modifier.widthIn(max = 280.dp)) {
-                            Text(mode.name, style = MaterialTheme.typography.bodyMedium)
-                            mode.summary.ifBlank { null }?.let {
-                                Text(
-                                    it,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    },
-                    trailingIcon = if (mode.current) {
-                        { Icon(Icons.Default.Check, null) }
-                    } else {
-                        null
-                    },
-                    onClick = { choose(mode) },
-                )
-            }
-            if (modes.folded.isNotEmpty() && !showFolded && !editing) {
-                DropdownMenuItem(
-                    text = { Text("More modes") },
-                    onClick = { showFolded = true },
-                )
-            }
-            DropdownMenuItem(
-                text = { Text("Flight Mode Settings") },
-                onClick = {
-                    expanded = false
-                    settings = true
-                },
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = { onDismiss(); showFolded = false; editing = false },
+        shape = MaterialTheme.shapes.small,
+    ) {
+        modeHeading(modes)?.let { heading ->
+            Text(
+                heading,
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 280.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (modes.hiddenSetting != null) {
+        }
+        val setting = modes.hiddenSetting
+        if (editing && setting != null) {
+            modes.all.forEach { mode ->
                 DropdownMenuItem(
-                    text = { Text("Edit Displayed Flight Modes") },
-                    trailingIcon = { Switch(checked = editing, onCheckedChange = null) },
-                    onClick = { editing = !editing },
+                    text = { Text(mode.name, style = MaterialTheme.typography.bodyMedium) },
+                    trailingIcon = { Switch(checked = !mode.hidden, onCheckedChange = null) },
+                    onClick = {
+                        val value = hiddenModesAfter(modes.hidden, mode.name, !mode.hidden)
+                        scope.launch(Dispatchers.Default) { Qgc.set(setting, value) }
+                    },
                 )
             }
+        }
+        val shown = when {
+            editing && setting != null -> emptyList()
+            showFolded -> modes.everyday + modes.folded
+            else -> modes.everyday
+        }
+        shown.forEach { mode ->
+            DropdownMenuItem(
+                modifier = if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
+                text = {
+                    Column(Modifier.widthIn(max = 280.dp)) {
+                        Text(mode.name, style = MaterialTheme.typography.titleSmall)
+                        mode.summary.ifBlank { null }?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                enabled = modes.canSet,
+                onClick = { choose(mode) },
+            )
+        }
+        if (modes.folded.isNotEmpty() && !showFolded && !editing) {
+            DropdownMenuItem(
+                text = { Text("More modes") },
+                onClick = { showFolded = true },
+            )
+        }
+        DropdownMenuItem(
+            text = { Text("Flight Mode Settings") },
+            onClick = {
+                onDismiss()
+                settings = true
+            },
+        )
+        DropdownMenuItem(
+            text = { Text("Vehicle status") },
+            onClick = {
+                onDismiss()
+                onStatus()
+            },
+        )
+        if (modes.hiddenSetting != null) {
+            DropdownMenuItem(
+                text = { Text("Edit Displayed Flight Modes") },
+                trailingIcon = { Switch(checked = editing, onCheckedChange = null) },
+                onClick = { editing = !editing },
+            )
         }
     }
 }

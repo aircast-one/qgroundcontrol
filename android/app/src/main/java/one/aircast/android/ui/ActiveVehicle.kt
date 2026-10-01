@@ -103,12 +103,14 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     var picking by remember { mutableStateOf(false) }
     var offline by remember { mutableStateOf(false) }
     var statusSettings by remember { mutableStateOf(false) }
+    var modeMenu by remember { mutableStateOf(false) }
     val disconnected = fly?.connected != true
     val scope = rememberCoroutineScope()
     var refusal by remember { mutableStateOf<String?>(null) }
 
+    androidx.compose.foundation.layout.Box(modifier) {
+    FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true })
     androidx.compose.material3.Surface(
-        modifier = modifier,
         shape = MaterialTheme.shapes.small,
         color = when {
             lost -> MaterialTheme.colorScheme.errorContainer
@@ -124,7 +126,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             when {
                 choices.ambiguous || taken -> picking = true
                 disconnected -> offline = true
-                else -> statusSettings = true
+                else -> modeMenu = true
             }
         },
     ) {
@@ -164,6 +166,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(CLOSE_VEHICLE) } }
             }) { Text("Disconnect") }
         }
+    }
     }
     }
 
