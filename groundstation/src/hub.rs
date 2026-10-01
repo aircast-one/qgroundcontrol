@@ -32,6 +32,7 @@ pub const TYPE_ONBOARD_CONTROLLER: u8 = 18;
 pub const TYPE_GIMBAL: u8 = 26;
 pub const TYPE_ADSB: u8 = 27;
 pub const COMP_AUTOPILOT1: u8 = 1;
+const CMD_CONTROL_HIGH_LATENCY: u16 = 2600;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const HIGH_LATENCY_DOWNLOAD: &str = "Download not supported on high latency links.";
@@ -249,6 +250,7 @@ pub struct Vehicle {
     pub link_states: Vec<(LinkId, u64, bool)>,
     pub primary_link: Option<LinkId>,
     pub link_kinds: LinkKinds,
+    link_frames: Vec<(LinkId, Vec<u8>)>,
     pub auto_disconnect: bool,
     pub check_list_state: i64,
     pub mission_last_current: i32,
@@ -411,6 +413,7 @@ impl Vehicle {
             link_states: Vec::new(),
             primary_link: None,
             link_kinds: LinkKinds::default(),
+            link_frames: Vec::new(),
             auto_disconnect: false,
             check_list_state: 0,
             mission_last_current: -1,
@@ -2067,6 +2070,11 @@ impl Vehicle {
             return false;
         }
         let switched = held.is_some() && best != self.primary_link;
+        let stop = self.primary_link.filter(|link| self.link_kinds.high_latency.contains(link)).map(|link| (link, 0.0));
+        let start = best.filter(|link| self.link_kinds.high_latency.contains(link)).map(|link| (link, 1.0));
+        let target = (self.id, COMP_AUTOPILOT1);
+        let frames: Vec<(LinkId, Vec<u8>)> = stop.into_iter().chain(start).filter_map(|(link, on)| self.encode(&Outbound::CommandLong { target, command: CMD_CONTROL_HIGH_LATENCY, params: [on, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }).map(|bytes| (link, bytes))).collect();
+        self.link_frames.extend(frames);
         self.primary_link = best;
         if let Some(sending) = best {
             self.link = sending;
@@ -3181,7 +3189,8 @@ impl Hub {
         let inputs = self.remote_inputs.as_ref();
         self.vehicles.values_mut().flat_map(|vehicle| {
             let (link, replay) = (vehicle.link, vehicle.replay);
-            vehicle.pump_with(now_ms, inputs, now_s).into_iter().filter(move |_| !replay).map(move |bytes| (link, bytes))
+            let switching = std::mem::take(&mut vehicle.link_frames);
+            switching.into_iter().chain(vehicle.pump_with(now_ms, inputs, now_s).into_iter().map(move |bytes| (link, bytes))).filter(move |_| !replay).collect::<Vec<_>>()
         }).collect()
     }
 
@@ -3877,6 +3886,26 @@ mod tests {
         hub.check_links(3_000, &kinds);
         hub.on_frame(Origin { link: 3, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_100);
         assert_eq!(hub.active().unwrap().primary_link, Some(2), "a high-latency link never displaces a live normal one");
+    }
+
+    #[test]
+    fn switching_onto_and_off_a_high_latency_link_starts_and_stops_its_transmission() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let kinds = LinkKinds { high_latency: vec![3], ..LinkKinds::default() };
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.check_links(100, &kinds);
+        hub.on_frame(Origin { link: 3, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 200);
+        let control = |frames: Vec<(LinkId, Vec<u8>)>| frames.iter().filter_map(|(link, bytes)| match decode(bytes) {
+            MavMessage::COMMAND_LONG(c) if c.command as u16 == CMD_CONTROL_HIGH_LATENCY => Some((*link, c.param1)),
+            _ => None,
+        }).collect::<Vec<_>>();
+        assert!(control(hub.tick(300)).is_empty(), "a live normal link keeps the primary");
+        hub.check_links(10_000, &kinds);
+        assert_eq!(hub.active().unwrap().primary_link, Some(3));
+        assert_eq!(control(hub.tick(10_100)), vec![(3, 1.0)], "VehicleLinkManager::_updatePrimaryLink starts transmission on a high-latency primary");
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 10_200);
+        assert_eq!(control(hub.tick(10_300)), vec![(3, 0.0)], "and stops it on that link when leaving it");
     }
 
     #[test]
