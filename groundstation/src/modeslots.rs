@@ -21,6 +21,13 @@ pub const DEPS: &[&str] = &[
     "vehicle.parameterManager.getParameter(-1,MODE4).rawValue",
     "vehicle.parameterManager.getParameter(-1,MODE5).rawValue",
     "vehicle.parameterManager.getParameter(-1,MODE6).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_FLTMODE).rawValue",
+    "vehicle.parameterManager.getParameter(-1,COM_FLTMODE1).rawValue",
+    "vehicle.parameterManager.getParameter(-1,COM_FLTMODE2).rawValue",
+    "vehicle.parameterManager.getParameter(-1,COM_FLTMODE3).rawValue",
+    "vehicle.parameterManager.getParameter(-1,COM_FLTMODE4).rawValue",
+    "vehicle.parameterManager.getParameter(-1,COM_FLTMODE5).rawValue",
+    "vehicle.parameterManager.getParameter(-1,COM_FLTMODE6).rawValue",
 ];
 
 pub const SLOTS: usize = 6;
@@ -42,11 +49,40 @@ pub fn option_enabled(pwm: Option<i64>) -> bool {
     pwm.is_some_and(|value| value > OPTION_ON_ABOVE)
 }
 
+#[derive(Clone, Copy)]
+pub struct Calibration {
+    pub min: f64,
+    pub max: f64,
+    pub trim: f64,
+    pub reversed: bool,
+}
+
+pub fn px4_slot(pwm: Option<i64>, cal: Calibration) -> usize {
+    let Some(value) = pwm.filter(|v| *v != NO_RC) else { return 0 };
+    let (value, trim) = (value as f32, cal.trim as f32);
+    let slots = SLOTS as f32;
+    let slot_width_half = 2.0 / slots / 2.0;
+    let (slot_min, slot_max) = (-1.0f32 - 0.05, 1.0f32 + 0.05);
+    let calibrated = match value {
+        v if v > trim => (v - trim) / (cal.max as f32 - trim),
+        v if v < trim => (v - trim) / (trim - cal.min as f32),
+        _ => 0.0,
+    } * if cal.reversed { -1.0 } else { 1.0 };
+    let index = ((((calibrated - slot_min) * slots) + slot_width_half) / (slot_max - slot_min) + (1.0 / slots)) as i64;
+    index.clamp(0, SLOTS as i64 - 1) as usize + 1
+}
+
 fn names(backend: &dyn Backend) -> (&'static str, &'static str) {
-    match exists(backend, "MODE_CH") {
-        true => ("MODE_CH", "MODE"),
-        false => ("FLTMODE_CH", "FLTMODE"),
+    match (exists(backend, "RC_MAP_FLTMODE"), exists(backend, "MODE_CH")) {
+        (true, _) => ("RC_MAP_FLTMODE", "COM_FLTMODE"),
+        (false, true) => ("MODE_CH", "MODE"),
+        (false, false) => ("FLTMODE_CH", "FLTMODE"),
     }
+}
+
+fn px4_calibration(backend: &dyn Backend, channel: i64) -> Option<Calibration> {
+    let read = |what: &str| parameter(backend, &format!("RC{channel}_{what}"));
+    Some(Calibration { min: read("MIN")?, max: read("MAX")?, trim: read("TRIM")?, reversed: read("REV")? < 0.0 })
 }
 
 fn exists(backend: &dyn Backend, name: &str) -> bool {
@@ -79,9 +115,10 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let radio = object(&backend.get_fields("radioCal", "rcValues"));
     let pwm: Vec<i64> = radio.get("rcValues").and_then(Value::as_array).map(|values| values.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
     let reachable = channel_index >= 0 && (channel_index as usize) < pwm.len();
-    let live = match reachable {
-        true => slot_for(pwm.get(channel_index as usize).copied()),
-        false => 0,
+    let live = match (reachable, channel_name) {
+        (false, _) => 0,
+        (true, "RC_MAP_FLTMODE") => px4_calibration(backend, channel_index + 1).map_or(0, |cal| px4_slot(pwm.get(channel_index as usize).copied(), cal)),
+        (true, _) => slot_for(pwm.get(channel_index as usize).copied()),
     };
 
     let slots: Vec<Value> = (0..SLOTS)
@@ -130,6 +167,16 @@ mod tests {
         assert_eq!(slot_for(Some(1749)), 5);
         assert_eq!(slot_for(Some(1750)), 6, "above every threshold is the last slot rather than none");
         assert_eq!(slot_for(Some(2000)), 6);
+    }
+
+    #[test]
+    fn px4_normalises_around_trim_into_six_slots_as_px4_simple_flight_modes_controller_does() {
+        let cal = Calibration { min: 1000.0, max: 2000.0, trim: 1500.0, reversed: false };
+        let slots: Vec<usize> = [1000, 1150, 1300, 1450, 1500, 1600, 1750, 1900, 2000].iter().map(|pwm| px4_slot(Some(*pwm), cal)).collect();
+        assert_eq!(slots, [1, 2, 3, 3, 4, 4, 5, 6, 6], "1150 normalises to -0.7, which the slot formula floors into slot 2");
+        assert_eq!(px4_slot(Some(1000), Calibration { reversed: true, ..cal }), 6, "RCn_REV flips the channel");
+        assert_eq!(px4_slot(Some(-1), cal), 0);
+        assert_eq!(px4_slot(None, cal), 0);
     }
 
     #[test]
