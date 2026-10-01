@@ -1,0 +1,265 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "bindings": {
+        "_isQuadPlane": "!controller.parameterExists(-1, \"MOT_PWM_TYPE\") && controller.parameterExists(-1, \"Q_M_PWM_TYPE\")"
+    },
+    "sections": [
+        {
+            "title": "Configuration",
+            "controls": [
+                {
+                    "param": "MOT_PWM_TYPE",
+                    "label": "Output type",
+                    "control": "combobox",
+                    "showWhen": "!_isQuadPlane"
+                },
+                {
+                    "control": "label",
+                    "label": "Requires vehicle reboot",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"MOT_PWM_TYPE\")"
+                },
+                {
+                    "param": "MOT_PWM_MIN",
+                    "label": "Output PWM min",
+                    "optional": true,
+                    "showWhen": "!_isQuadPlane"
+                },
+                {
+                    "param": "MOT_PWM_MAX",
+                    "label": "Output PWM max",
+                    "optional": true,
+                    "showWhen": "!_isQuadPlane"
+                },
+                {
+                    "param": "MOT_SPIN_ARM",
+                    "label": "Spin when armed",
+                    "optional": true,
+                    "showWhen": "!_isQuadPlane"
+                },
+                {
+                    "param": "MOT_SPIN_MIN",
+                    "label": "Spin minimum",
+                    "optional": true,
+                    "showWhen": "!_isQuadPlane"
+                },
+                {
+                    "param": "MOT_SPIN_MAX",
+                    "label": "Spin maximum",
+                    "optional": true,
+                    "showWhen": "!_isQuadPlane"
+                },
+                {
+                    "param": "SERVO_DSHOT_ESC",
+                    "label": "DShot ESC type",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!_isQuadPlane && controller.getParameterFact(-1, \"MOT_PWM_TYPE\").rawValue >= 4"
+                },
+                {
+                    "param": "SERVO_DSHOT_RATE",
+                    "label": "DShot output rate",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!_isQuadPlane && controller.getParameterFact(-1, \"MOT_PWM_TYPE\").rawValue >= 4"
+                },
+                {
+                    "param": "Q_M_PWM_TYPE",
+                    "label": "Output type",
+                    "control": "combobox",
+                    "showWhen": "_isQuadPlane"
+                },
+                {
+                    "control": "label",
+                    "label": "Requires vehicle reboot",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_M_PWM_TYPE\")"
+                },
+                {
+                    "param": "Q_M_PWM_MIN",
+                    "label": "Output PWM min",
+                    "optional": true,
+                    "showWhen": "_isQuadPlane"
+                },
+                {
+                    "param": "Q_M_PWM_MAX",
+                    "label": "Output PWM max",
+                    "optional": true,
+                    "showWhen": "_isQuadPlane"
+                },
+                {
+                    "param": "Q_M_SPIN_ARM",
+                    "label": "Spin when armed",
+                    "optional": true,
+                    "showWhen": "_isQuadPlane"
+                },
+                {
+                    "param": "Q_M_SPIN_MIN",
+                    "label": "Spin minimum",
+                    "optional": true,
+                    "showWhen": "_isQuadPlane"
+                },
+                {
+                    "param": "Q_M_SPIN_MAX",
+                    "label": "Spin maximum",
+                    "optional": true,
+                    "showWhen": "_isQuadPlane"
+                },
+                {
+                    "param": "SERVO_DSHOT_ESC",
+                    "label": "DShot ESC type",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "_isQuadPlane && controller.getParameterFact(-1, \"Q_M_PWM_TYPE\").rawValue >= 4"
+                },
+                {
+                    "param": "SERVO_DSHOT_RATE",
+                    "label": "DShot output rate",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "_isQuadPlane && controller.getParameterFact(-1, \"Q_M_PWM_TYPE\").rawValue >= 4"
+                }
+            ]
+        },
+        {
+            "title": "Calibration",
+            "controls": [
+                {
+                    "control": "label",
+                    "label": "WARNING: Remove props prior to calibration!",
+                    "warning": true,
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "param": "ESC_CALIBRATION",
+                    "label": "Calibrate",
+                    "control": "toggleCheckbox",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 0",
+                    "toggleCheckbox": {
+                        "checked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3",
+                        "onChecked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue = 3",
+                        "onUnchecked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue = 0"
+                    }
+                },
+                {
+                    "control": "label",
+                    "label": "Now perform these steps:",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\") && controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
+                },
+                {
+                    "control": "label",
+                    "label": "Click Calibrate to start, then:",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\") && controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue !== 3"
+                },
+                {
+                    "control": "label",
+                    "label": "- Disconnect USB and battery so flight controller powers down",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- Connect the battery",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- The arming tone will be played (if the vehicle has a buzzer attached)",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- If using a flight controller with a safety button press it until it displays solid red",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- You will hear a musical tone then two beeps",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- A few seconds later you should hear a number of beeps (one for each battery cell you're using)",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- And finally a single long beep indicating the end points have been set and the ESC is calibrated",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- Disconnect the battery and power up again normally",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                },
+                {
+                    "control": "label",
+                    "label": "WARNING: Remove props prior to calibration!",
+                    "warning": true,
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "param": "Q_ESC_CAL",
+                    "label": "Calibrate",
+                    "control": "toggleCheckbox",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 0",
+                    "toggleCheckbox": {
+                        "checked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3",
+                        "onChecked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue = 3",
+                        "onUnchecked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue = 0"
+                    }
+                },
+                {
+                    "control": "label",
+                    "label": "Now perform these steps:",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\") && controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
+                },
+                {
+                    "control": "label",
+                    "label": "Click Calibrate to start, then:",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\") && controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue !== 3"
+                },
+                {
+                    "control": "label",
+                    "label": "- Disconnect USB and battery so flight controller powers down",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- Connect the battery",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- The arming tone will be played (if the vehicle has a buzzer attached)",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- If using a flight controller with a safety button press it until it displays solid red",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- You will hear a musical tone then two beeps",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- A few seconds later you should hear a number of beeps (one for each battery cell you're using)",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- And finally a single long beep indicating the end points have been set and the ESC is calibrated",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                },
+                {
+                    "control": "label",
+                    "label": "- Disconnect the battery and power up again normally",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                }
+            ]
+        }
+    ]
+}

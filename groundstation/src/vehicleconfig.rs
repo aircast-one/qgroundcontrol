@@ -16,10 +16,12 @@ const PX4_POWER: &str = include_str!("../../src/AutoPilotPlugins/PX4/VehicleConf
 
 const APM_GIMBAL: &str = include_str!("vehicleconfig/APMGimbal.VehicleConfig.json");
 const APM_AIRSPEED: &str = include_str!("vehicleconfig/APMAirspeed.VehicleConfig.json");
+const APM_ESC: &str = include_str!("vehicleconfig/APMESC.VehicleConfig.json");
 
 const CONFIGS: &[(&str, bool, &str)] = &[
     ("Gimbal", false, APM_GIMBAL),
     ("Airspeed", false, APM_AIRSPEED),
+    ("ESC", false, APM_ESC),
     ("Flight Safety", false, APM_FLIGHT_SAFETY),
     ("Failsafes", false, APM_FAILSAFES),
     ("Logging", false, APM_LOGGING),
@@ -1070,5 +1072,24 @@ mod tests {
         let served = page(&off, "Airspeed", false);
         let titles: Vec<&str> = served["sections"].as_array().unwrap().iter().map(|s| s["title"].as_str().unwrap()).collect();
         assert_eq!(titles, ["Primary Airspeed Sensor"], "a disabled sensor offers only its type");
+    }
+
+    #[test]
+    fn esc_calibration_arms_once_and_quadplanes_use_their_own_parameters() {
+        let fake = Fake::new(&[("MOT_PWM_TYPE", 6.0), ("MOT_PWM_MIN", 1000.0), ("SERVO_DSHOT_ESC", 1.0), ("ESC_CALIBRATION", 0.0)]);
+        let served = page(&fake, "ESC", false);
+        let section = |served: &Value, title: &str| served["sections"].as_array().unwrap().iter().find(|s| s["title"] == title).cloned().unwrap();
+        let labels: Vec<String> = section(&served, "Configuration")["controls"].as_array().unwrap().iter().map(|c| c["label"].as_str().unwrap().to_string()).collect();
+        assert_eq!(labels, ["Output type", "Requires vehicle reboot", "Output PWM min", "DShot ESC type"]);
+        let calibrate = section(&served, "Calibration")["controls"].as_array().unwrap().iter().find(|c| c["label"] == "Calibrate").cloned().unwrap();
+        assert_eq!((calibrate["value"].clone(), calibrate["enabled"].clone()), (json!(false), json!(true)));
+        assert_eq!(write(&fake, calibrate["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
+        assert_eq!(fake.params.borrow()["ESC_CALIBRATION"], 3.0);
+        let started = section(&page(&fake, "ESC", false), "Calibration");
+        assert!(started["controls"].as_array().unwrap().iter().any(|c| c["label"] == "Now perform these steps:"));
+        let quad = Fake::new(&[("Q_M_PWM_TYPE", 0.0), ("Q_ESC_CAL", 0.0), ("ESC_CALIBRATION", 0.0)]);
+        let served = page(&quad, "ESC", false);
+        assert_eq!(section(&served, "Configuration")["controls"][0]["name"], "Q_M_PWM_TYPE");
+        assert!(section(&served, "Calibration")["controls"].as_array().unwrap().iter().any(|c| c["name"] == "Q_ESC_CAL"));
     }
 }

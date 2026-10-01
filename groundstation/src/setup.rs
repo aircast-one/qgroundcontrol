@@ -8,7 +8,7 @@ use crate::sensors;
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
-const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "Lights", "Remote Support"];
+const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Lights", "Remote Support"];
 
 /// Which component backs each page. The join is on the KnownVehicleComponent enum where the
 /// firmware declares one and on the C++ class name otherwise - both untranslated, where the
@@ -31,6 +31,7 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Tuning", &["APMTuningComponent", "PX4TuningComponent"]),
     ("Gimbal", &["APMGimbalComponent"]),
     ("Airspeed", &["APMAirspeedComponent"]),
+    ("ESC", &["APMESCComponent"]),
     ("Lights", &["APMLightsComponent"]),
     ("Flight Behavior", &["PX4FlightBehavior"]),
     ("Remote Support", &["APMRemoteSupportComponent"]),
@@ -74,7 +75,7 @@ pub fn page_absence(px4: bool) -> &'static str {
 
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
-    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Airspeed", "Motors", "Actuators", "Heli", "Tuning", "Gimbal", "Lights", "Flight Behavior", "Follow Me"]),
+    ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Flight Safety", "Failsafes", "Power", "Airspeed", "ESC", "Motors", "Actuators", "Heli", "Tuning", "Gimbal", "Lights", "Flight Behavior", "Follow Me"]),
     ("Advanced", &["Logging", "Remote Support", "WiFi Bridge", "Syslink", "Parameters"]),
 ];
 
