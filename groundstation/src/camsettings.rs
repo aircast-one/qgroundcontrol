@@ -33,6 +33,8 @@ struct Ready {
 }
 
 enum Entry {
+    FtpWaiting(Wanted),
+    FtpDownloading(Wanted),
     Fetching,
     Failed(String),
     Ready(Box<Ready>),
@@ -60,6 +62,7 @@ fn download(uri: &str) -> Result<Vec<u8>, String> {
     answer.body_mut().read_to_vec().map_err(|e| format!("Camera definition ({uri}) download error: {e}"))
 }
 
+#[derive(Clone)]
 pub struct Wanted {
     pub vehicle: u8,
     pub compid: u8,
@@ -77,22 +80,78 @@ pub fn wanted(camera: Wanted) {
         if store.contains_key(&key) || camera.uri.is_empty() || !crate::vehiclefacade::switched_on() {
             return;
         }
+        let over_ftp = camera.uri.to_ascii_lowercase().starts_with(MAVLINK_FTP_SCHEME) && cached(cache_path(&camera.vendor, &camera.model, camera.version).as_deref()).is_none();
+        if over_ftp {
+            store.insert(key, Entry::FtpWaiting(camera));
+            return;
+        }
         store.insert(key, Entry::Fetching);
     }
     std::thread::Builder::new().name("groundstation-camera-definition".to_string()).spawn(move || fetch(camera)).expect("camera definition thread");
+}
+
+fn start_ftp_downloads(now_ms: u64) {
+    let waiting: Vec<Wanted> = STORE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .values()
+        .filter_map(|entry| match entry {
+            Entry::FtpWaiting(camera) => Some(camera.clone()),
+            _ => None,
+        })
+        .collect();
+    waiting.into_iter().for_each(|camera| {
+        let action = json!({ "action": "ftp", "op": "download", "path": camera.uri, "cameraDefinition": camera.compid });
+        let started = crate::hub::lock().guided(Some(camera.vehicle), &action, now_ms);
+        let next = match started {
+            Ok(frames) => {
+                frames.iter().for_each(|(link, bytes)| {
+                    crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+                });
+                Some(Entry::FtpDownloading(camera.clone()))
+            }
+            Err(reason) if reason == crate::hub::FILES_BUSY => None,
+            Err(reason) => Some(Entry::Failed(reason)),
+        };
+        if let Some(next) = next {
+            STORE.lock().unwrap_or_else(PoisonError::into_inner).insert((camera.vehicle, camera.compid), next);
+        }
+    });
+}
+
+pub fn ftp_finished(vehicle: u8, compid: u8, result: Result<crate::filejobs::Outcome, String>) {
+    let Some(Entry::FtpDownloading(camera)) = STORE.lock().unwrap_or_else(PoisonError::into_inner).remove(&(vehicle, compid)) else { return };
+    STORE.lock().unwrap_or_else(PoisonError::into_inner).insert((vehicle, compid), Entry::Fetching);
+    std::thread::Builder::new()
+        .name("groundstation-camera-definition".to_string())
+        .spawn(move || {
+            let bytes = match result {
+                Ok(crate::filejobs::Outcome::Downloaded(bytes)) => crate::compmeta::inflate(&camera.uri, &bytes).map_err(|e| format!("Inflate of compressed xml failed: {e}")),
+                Ok(_) => Err("The camera sent no definition file.".to_string()),
+                Err(reason) => Err(reason),
+            };
+            if let (Ok(bytes), Some(path)) = (&bytes, cache_path(&camera.vendor, &camera.model, camera.version)) {
+                let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path)).and_then(|()| std::fs::write(&path, bytes));
+            }
+            settle(camera, bytes);
+        })
+        .expect("camera definition thread");
 }
 
 fn fetch(camera: Wanted) {
     let path = cache_path(&camera.vendor, &camera.model, camera.version);
     let bytes = match cached(path.as_deref()) {
         Some(bytes) => Ok(bytes),
-        None if camera.uri.to_ascii_lowercase().starts_with(MAVLINK_FTP_SCHEME) => Err("Camera definitions over MAVLink FTP are not loaded yet.".to_string()),
         None => download(&camera.uri).inspect(|bytes| {
             if let Some(path) = &path {
                 let _ = std::fs::create_dir_all(path.parent().unwrap_or(path)).and_then(|()| std::fs::write(path, bytes));
             }
         }),
     };
+    settle(camera, bytes);
+}
+
+fn settle(camera: Wanted, bytes: Result<Vec<u8>, String>) {
     let entry = bytes.and_then(|b| crate::cameradef::from_bytes(&b, DEFINITION_LOCALE).map_err(|refusal| refusal.detail)).map(|definition| Entry::Ready(Box::new(Ready { parameters: CameraParameters::new(definition), uri: camera.uri.clone(), link: camera.link, writes: BTreeMap::new(), updates_due: None })));
     let ready = matches!(entry, Ok(Entry::Ready(ref ready)) if !ready.parameters.is_basic());
     STORE.lock().unwrap_or_else(PoisonError::into_inner).insert((camera.vehicle, camera.compid), entry.unwrap_or_else(Entry::Failed));
@@ -183,6 +242,7 @@ pub fn on_ack(vehicle: u8, compid: u8, name: &str, param_type: u8, raw: &[u8], r
 }
 
 pub fn tick(now_ms: u64) {
+    start_ftp_downloads(now_ms);
     let due: Vec<(u32, Vec<Outbound>)> = STORE
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -268,7 +328,7 @@ pub fn camera_settings_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     let store = STORE.lock().unwrap_or_else(PoisonError::into_inner);
     match store.get(&key) {
         None => unavailable("noDefinition", ""),
-        Some(Entry::Fetching) => unavailable("fetching", ""),
+        Some(Entry::Fetching | Entry::FtpWaiting(_) | Entry::FtpDownloading(_)) => unavailable("fetching", ""),
         Some(Entry::Failed(error)) => unavailable("failed", error),
         Some(Entry::Ready(ready)) => {
             let mut shown = crate::cameradef::definition_json(&ready.parameters, &ready.uri, crate::hub::now_ms());

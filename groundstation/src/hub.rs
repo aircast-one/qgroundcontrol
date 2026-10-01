@@ -36,6 +36,7 @@ pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 const MANUAL_CONTROL_SCALE: f32 = 1000.0;
 const MAV_TYPE_AIRSHIP: u8 = 7;
+pub const FILES_BUSY: &str = "Another file transfer with the vehicle is in progress.";
 const AIRFRAME_PARAMS: [&str; 2] = ["SYS_AUTOSTART", "SYS_AUTOCONFIG"];
 const AIRFRAME_REBOOT_DELAY_MS: u64 = 800;
 const CMD_SET_MESSAGE_INTERVAL: u16 = 511;
@@ -256,6 +257,7 @@ pub struct Vehicle {
     ftp_seq: u16,
     pub files: crate::filejobs::Files,
     download_to: Option<String>,
+    camera_definition_from: Option<u8>,
     plans: [PlanSlot; 3],
     remote: RemoteId,
     odid_due: Option<u64>,
@@ -391,6 +393,7 @@ impl Vehicle {
             ftp_seq: 0,
             files: crate::filejobs::Files::default(),
             download_to: None,
+            camera_definition_from: None,
             plans: [PLAN_MISSION, PLAN_FENCE, PLAN_RALLY].map(|kind| PlanSlot { transfer: Transfer::new(autopilot == crate::modes::AUTOPILOT_ARDUPILOT, kind), due: None, progress: 0.0, error: None }),
             remote: RemoteId::default(),
             odid_due: None,
@@ -779,20 +782,22 @@ impl Vehicle {
             return Ok(self.follow_files(steps, now_ms));
         }
         if self.files.busy() || self.fetch.is_some() {
-            return Err("Another file transfer with the vehicle is in progress.".to_string());
+            return Err(FILES_BUSY.to_string());
         }
         let path = action.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("A file operation needs the path on the vehicle.")?;
         let local = action.get("file").and_then(Value::as_str).unwrap_or("").to_string();
-        let (component, seq) = (self.component, self.ftp_seq);
+        let camera = action.get("cameraDefinition").and_then(Value::as_u64).and_then(|c| u8::try_from(c).ok());
+        let (component, seq) = (camera.unwrap_or(self.component), self.ftp_seq);
         let started = match op {
             "list" => crate::filejobs::Job::list(component, path, seq),
-            "download" if !local.is_empty() => crate::filejobs::Job::download(component, path, seq),
+            "download" if !local.is_empty() || camera.is_some() => crate::filejobs::Job::download(component, path, seq),
             "upload" => std::fs::read(&local).map_err(|e| format!("Upload failed for: {path} - {e}")).and_then(|data| crate::filejobs::Job::upload(component, path, data, seq)),
             "delete" => crate::filejobs::Job::delete(component, path, seq),
             _ => Err(format!("{op} is not a file operation")),
         }?;
         let (job, steps) = started;
-        self.download_to = (op == "download").then_some(local);
+        self.download_to = (op == "download" && camera.is_none()).then_some(local);
+        self.camera_definition_from = camera;
         self.files.job = Some(job);
         self.files.progress = 0.0;
         self.files.generation += 1;
@@ -830,8 +835,13 @@ impl Vehicle {
                         (Ok(Outcome::Downloaded(bytes)), Some(to)) => std::fs::write(&to, &bytes).map(|_| Outcome::Downloaded(Vec::new())).map_err(|e| format!("Download failed for: {} - {e}", job.path)),
                         (other, _) => other,
                     };
-                    self.files.last = Some((job.path, result));
-                    self.files.generation += 1;
+                    match self.camera_definition_from.take() {
+                        Some(compid) => crate::camsettings::ftp_finished(self.id, compid, result),
+                        None => {
+                            self.files.last = Some((job.path, result));
+                            self.files.generation += 1;
+                        }
+                    }
                     Vec::new()
                 }
             })
@@ -3611,6 +3621,19 @@ mod tests {
         let files = &hub.active().unwrap().files;
         assert!(!files.busy());
         assert_eq!(files.last, Some(("/APM/scripts/".to_string(), Ok(crate::filejobs::Outcome::Listed(vec!["Fhello.lua\t120".into(), "Dmodules".into()])))));
+    }
+
+    #[test]
+    fn a_camera_definition_download_asks_the_camera_and_stays_out_of_the_files_list() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        assert!(vehicle.start_guided(&json!({ "action": "ftp", "op": "download", "path": "/x.xml" }), 20_000).is_err(), "a plain download still needs a local file");
+        let sent = vehicle.start_guided(&json!({ "action": "ftp", "op": "download", "path": "mftp://camera.xml", "cameraDefinition": 100 }), 20_000).unwrap();
+        assert!(matches!(decode(&sent[0]), MavMessage::FILE_TRANSFER_PROTOCOL(d) if d.target_component == 100), "QGC downloads the definition from the camera's own component");
+        assert_eq!(vehicle.camera_definition_from, Some(100));
+        assert!(vehicle.start_guided(&json!({ "action": "ftp", "op": "list", "path": "/" }), 20_000).err().as_deref() == Some(FILES_BUSY));
     }
 
     #[test]
