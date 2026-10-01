@@ -83,6 +83,7 @@ fun VideoSurface(
             if (expanded) GimbalScreenControl(Modifier.fillMaxSize())
             DetectionOverlay(Modifier.fillMaxSize())
             TrackingBoxOverlay(Modifier.fillMaxSize())
+            if (expanded) VideoStatsPill(Modifier.fillMaxSize())
         }
         }
 

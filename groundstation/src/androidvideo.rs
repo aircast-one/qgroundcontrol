@@ -126,6 +126,7 @@ impl Driver {
             return;
         }
         let (running, frames, width, height) = unsafe { ((video.running)(), (video.frames)(), (video.width)(), (video.height)()) };
+        crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
         let state = (running, frames.min(1), width, height);
         if self.reported != Some(state) {
             self.reported = Some(state);
