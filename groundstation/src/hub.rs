@@ -1980,7 +1980,7 @@ impl Vehicle {
     }
 
     fn announce_battery(&mut self, id: u8, charge_state: u8) {
-        let lowest = self.battery_announced.get(&id).copied().unwrap_or(0);
+        let lowest = *self.battery_announced.entry(id).or_insert(charge_state);
         let message = match charge_state {
             BATTERY_OK => {
                 self.battery_announced.insert(id, charge_state);
@@ -2820,9 +2820,14 @@ impl Vehicle {
         if !was_armed && self.armed_now {
             self.clear_trigger_points();
             (self.flight_started_ms, self.flight_seconds) = (Some(now_ms), 0.0);
+            self.battery_announced.clear();
         }
         if was_armed && !self.armed_now {
             (self.flight_seconds, self.flight_started_ms) = (self.flight_time(now_ms), None);
+            let disable_video = crate::settingsstore::raw_setting("settings.videoSettings.disableWhenDisarmed").and_then(|v| v.as_bool()).unwrap_or(false);
+            if disable_video && !self.replay && !crate::qthost::present() {
+                crate::settingsstore::written("Video/streamEnabled", "false");
+            }
         }
         self.note_trigger_point(message);
         self.note_mission_index(message);
@@ -4851,6 +4856,9 @@ mod tests {
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
         let spoken = || crate::speech::speech_view(&NullBackend, &[]).get("lines").and_then(Value::as_array).cloned().unwrap_or_default().iter().filter_map(|l| l["text"].as_str().map(str::to_string)).collect::<Vec<_>>();
         let count = |needle: &str| spoken().iter().filter(|t| t.contains(needle)).count();
+        vehicle.announce_battery(8, BATTERY_LOW);
+        assert_eq!(count("battery  level low"), 0, "Vehicle takes the first state a pack reports as already announced, so a pack plugged in low is not called out");
+        vehicle.announce_battery(7, BATTERY_OK);
         vehicle.announce_battery(7, BATTERY_LOW);
         vehicle.announce_battery(7, BATTERY_LOW);
         assert_eq!(count("battery  level low"), 1, "the same level is said once");
