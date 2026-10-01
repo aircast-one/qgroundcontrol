@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -301,8 +302,17 @@ private fun writeNewLinkFlags(name: String, autoConnect: Boolean, highLatency: B
     Qgc.invoke("links.commitLinkConfigurations")
 }
 
+private const val BLUETOOTH_POLL_MS = 1000L
+
 @Composable
-private fun BluetoothPicker(state: BluetoothState, chosen: BluetoothDeviceChoice?, onPick: (BluetoothDeviceChoice) -> Unit) {
+private fun BluetoothPicker(chosen: BluetoothDeviceChoice?, onPick: (BluetoothDeviceChoice) -> Unit) {
+    var state by remember { mutableStateOf(BluetoothState(available = false, scanning = false, devices = emptyList())) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            state = withContext(Dispatchers.Default) { bluetoothState(Qgc.get(LINKS_VIEW)) }
+            delay(BLUETOOTH_POLL_MS)
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Device: ${chosen?.name.orEmpty()}", style = MaterialTheme.typography.bodySmall)
         Text("Address: ${chosen?.address.orEmpty()}", style = MaterialTheme.typography.bodySmall)
@@ -439,7 +449,6 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var autoConnect by remember { mutableStateOf(false) }
     var highLatency by remember { mutableStateOf(false) }
     var device by remember { mutableStateOf<BluetoothDeviceChoice?>(null) }
-    val bluetooth = remember(linksJson) { bluetoothState(linksJson) }
     val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
     val scope = rememberCoroutineScope()
 
@@ -473,7 +482,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (type == BLUETOOTH_LINK) {
-                    BluetoothPicker(bluetooth, device) { device = it }
+                    BluetoothPicker(device) { device = it }
                 } else if (type == "serial" && ports.isEmpty()) {
                     Text(
                         text = "Nothing is plugged in. Connect a radio over USB and it will " +

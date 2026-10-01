@@ -38,13 +38,12 @@ pub fn devices() -> Vec<(String, String)> {
     HOOKS.get().map(|hooks| (hooks.devices)().iter().filter_map(|info| device_from_info(info)).collect()).unwrap_or_default()
 }
 
-pub fn links_field(field: &str) -> Option<Value> {
-    match field {
-        "bluetoothAvailable" => Some(json!(available())),
-        "bluetoothScanning" => Some(json!(HOOKS.get().is_some_and(|hooks| (hooks.scanning)()))),
-        "bluetoothDevices" => Some(json!(devices().iter().map(|(name, address)| json!({ "name": name, "address": address })).collect::<Vec<_>>())),
-        _ => None,
-    }
+pub fn state() -> Value {
+    json!({
+        "available": available(),
+        "scanning": HOOKS.get().is_some_and(|hooks| (hooks.scanning)()),
+        "devices": devices().iter().map(|(name, address)| json!({ "name": name, "address": address })).collect::<Vec<_>>(),
+    })
 }
 
 pub fn scan(args: &str) -> Option<Value> {

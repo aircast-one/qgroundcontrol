@@ -140,7 +140,7 @@ pub(crate) fn serial_ports(ports: Option<&Value>, labels: Option<&Value>) -> Vec
 
 pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get("links.linkConfigurations"));
-    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled,serialPorts,serialPortStrings,bluetoothAvailable,bluetoothScanning,bluetoothDevices"));
+    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled,serialPorts,serialPortStrings"));
     let quiet = quiet_links(backend);
     let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json_with(i, el, &quiet)).collect()).unwrap_or_default();
     let configured: Vec<Value> = links.iter().filter(|l| l["dynamic"] == false).cloned().collect();
@@ -154,11 +154,7 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "supportForwarding": crate::read::flag(&root, "mavlinkSupportForwardingEnabled"),
         "linkTypeIds": root.get("linkTypeIds").cloned().unwrap_or(json!([])),
         "serialPorts": serial_ports(root.get("serialPorts"), root.get("serialPortStrings")),
-        "bluetooth": {
-            "available": crate::read::flag(&root, "bluetoothAvailable"),
-            "scanning": crate::read::flag(&root, "bluetoothScanning"),
-            "devices": root.get("bluetoothDevices").cloned().unwrap_or(json!([])),
-        },
+        "bluetooth": crate::platformbluetooth::state(),
         "baudRates": root.get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).collect::<Vec<_>>()).unwrap_or_default(),
     })
 }
