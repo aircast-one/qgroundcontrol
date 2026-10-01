@@ -190,6 +190,18 @@ fn structure_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, f64
     )
 }
 
+fn flown_segments(items: &[Value], height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<Value> {
+    let stops: Vec<((f64, f64), f64)> = items
+        .iter()
+        .filter(|item| matches!(item.get("command").and_then(Value::as_i64), Some(16 | 4501)))
+        .filter_map(|item| {
+            let param = |i: usize| item.get("params")?.get(i)?.as_f64();
+            Some(((param(4)?, param(5)?), param(6)?))
+        })
+        .collect();
+    stops.windows(2).map(|pair| segment(pair[0].0, pair[0].1, pair[1].0, pair[1].1, height)).collect()
+}
+
 pub fn transect_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Option<Vec<Value>> {
     let kind = item.get("complexItemType").and_then(Value::as_str)?;
     if crate::landingpattern::is_landing(kind) {
@@ -205,6 +217,7 @@ pub fn transect_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, 
     let amsl = match calc.get("DistanceMode")?.as_i64()? {
         crate::altitudemodes::RELATIVE => surface + home_altitude,
         crate::altitudemodes::ABSOLUTE => surface,
+        crate::altitudemodes::CALC_ABOVE_TERRAIN => return Some(flown_segments(transect.get("Items")?.as_array()?, height)),
         _ => return None,
     };
     let points: Vec<(f64, f64)> = transect.get("VisualTransectPoints")?.as_array()?.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect();
@@ -357,6 +370,21 @@ mod tests {
 
     fn point(distance: f64, mission: f64, terrain: Option<f64>) -> Point {
         Point { sequence: 1, distance, mission_altitude: mission, terrain_altitude: terrain, collision: false }
+    }
+
+    #[test]
+    fn a_terrain_following_scan_profiles_the_altitudes_it_flies() {
+        let item = serde_json::json!({ "complexItemType": "survey", "TransectStyleComplexItem": {
+            "CameraCalc": { "DistanceToSurface": 50.0, "DistanceMode": crate::altitudemodes::CALC_ABOVE_TERRAIN },
+            "Items": [
+                { "command": 16, "params": [0, 0, 0, null, 47.0, 8.0, 150.0] },
+                { "command": 206, "params": [40, 0, 1, 0, 0, 0, 0] },
+                { "command": 16, "params": [0, 0, 0, null, 47.001, 8.0, 170.0] }
+            ]
+        }});
+        let segments = transect_segments(&item, 0.0, &|_, _| Some(100.0)).unwrap();
+        assert_eq!(segments.len(), 1, "TransectStyleComplexItem draws one segment between consecutive waypoints of the saved items");
+        assert_eq!((segments[0]["coord1AMSLAlt"].as_f64(), segments[0]["coord2AMSLAlt"].as_f64()), (Some(150.0), Some(170.0)));
     }
 
     #[test]
