@@ -216,6 +216,16 @@ fn remove(index: usize) -> bool {
     true
 }
 
+fn udp_target(text: &str, local_port: u16) -> Option<(String, u16)> {
+    let parts: Vec<&str> = text.split(':').collect();
+    let (host, port) = match parts.as_slice() {
+        [host] => (host.trim(), local_port),
+        [host, port] => (host.trim(), port.trim().parse::<u16>().unwrap_or(0)),
+        _ => return None,
+    };
+    (!host.is_empty()).then(|| (host.to_string(), port))
+}
+
 fn serial_framing(kind: &Kind, field: &str, value: i64) -> Option<Kind> {
     let Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_name, port_display_name } = kind else { return None };
     let valid = match field {
@@ -253,6 +263,15 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
             Kind::Serial { baud: value.as_i64()?, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name: port_name.clone(), port_display_name: port_display_name.clone() }
         }
         (Kind::Serial { .. }, "dataBits" | "stopBits" | "parity" | "flowControl") => serial_framing(&config.kind, field, value.as_i64()?)?,
+        (Kind::Udp { local_port, hosts }, "addHost") => {
+            let (host, port) = udp_target(text.as_deref()?, *local_port)?;
+            let known = hosts.iter().any(|(h, p)| *h == host && *p == port);
+            Kind::Udp { local_port: *local_port, hosts: hosts.iter().cloned().chain((!known).then_some((host, port))).collect() }
+        }
+        (Kind::Udp { local_port, hosts }, "removeHost") => {
+            let (host, port) = udp_target(text.as_deref()?, *local_port)?;
+            Kind::Udp { local_port: *local_port, hosts: hosts.iter().filter(|(h, p)| !(*h == host && *p == port)).cloned().collect() }
+        }
         _ => return None,
     };
     Some(LinkConfig { kind, ..config.clone() })
@@ -581,6 +600,9 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             save();
             Value::Null
         }
+        hosts if hosts.starts_with(MODEL) && (hosts.ends_with(".addHost") || hosts.ends_with(".removeHost")) => {
+            return set(hosts, &json!({ "value": text(0) }).to_string());
+        }
         _ => json!(disconnect(path.strip_prefix(MODEL)?.strip_prefix('.')?.strip_suffix(".link.disconnect")?.parse().ok()?)),
     };
     Some(json!({ "ok": true, "result": result }))
@@ -589,6 +611,18 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn udp_servers_are_added_and_removed_like_udp_configuration() {
+        let udp = LinkConfig { name: "UDP".into(), auto_connect: false, high_latency: false, kind: Kind::Udp { local_port: 14550, hosts: Vec::new() } };
+        let hosts = |config: &LinkConfig| match &config.kind { Kind::Udp { hosts, .. } => hosts.clone(), _ => unreachable!() };
+        let added = edited(&udp, "addHost", &serde_json::json!("192.168.4.1:14555")).unwrap();
+        let bare = edited(&added, "addHost", &serde_json::json!("10.0.0.2")).unwrap();
+        assert_eq!(hosts(&bare), [("192.168.4.1".to_string(), 14555), ("10.0.0.2".to_string(), 14550)], "a bare address takes the local port");
+        assert_eq!(hosts(&edited(&bare, "addHost", &serde_json::json!("10.0.0.2:14550")).unwrap()).len(), 2, "a host already listed is not added twice");
+        assert_eq!(hosts(&edited(&bare, "removeHost", &serde_json::json!("192.168.4.1:14555")).unwrap()), [("10.0.0.2".to_string(), 14550)]);
+        assert!(edited(&udp, "addHost", &serde_json::json!("a:b:c")).is_none());
+    }
 
     #[test]
     fn serial_framing_edits_take_only_the_values_serial_settings_offers() {

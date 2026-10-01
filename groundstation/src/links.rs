@@ -109,6 +109,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "stopBits": number("stopBits"),
         "parity": number("parity"),
         "flowControl": number("flowControl"),
+        "hostList": element.get("hostList").filter(|list| list.is_array()).cloned().unwrap_or(Value::Null),
         "filename": filename,
         "logFileName": filename.rsplit('/').next().unwrap_or("").to_string(),
         "lastError": last_error.clone(),

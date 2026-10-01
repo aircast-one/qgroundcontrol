@@ -75,6 +75,7 @@ data class LinkRow(
     val portName: String = "",
     val baud: Int = 0,
     val framing: SerialFraming = SerialFraming(),
+    val servers: List<String> = emptyList(),
     val autoConnect: Boolean = false,
     val highLatency: Boolean = false,
 )
@@ -98,6 +99,7 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 portName = link.optText("portName"),
                 baud = link.optInt("baud"),
                 framing = SerialFraming(link.optInt("dataBits", 8), link.optInt("stopBits", 1), link.optInt("parity", 0), link.optInt("flowControl", 0)),
+                servers = link.optJSONArray("hostList")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
                 autoConnect = link.optBoolean("autoConnect"),
                 highLatency = link.optBoolean("highLatency"),
             )
@@ -378,6 +380,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     singleLine = true,
                 )
                 LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
+                if (row.editing == "portOnly") UdpServers(row.index, row.servers)
                 if (row.editing == "hostAndPort") {
                     OutlinedTextField(
                         value = host,
@@ -850,6 +853,46 @@ private fun FramingPicker(label: String, shown: String, choices: List<String>, o
                     DropdownMenuItem(text = { Text(choice) }, onClick = { onPick(index); open = false })
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun UdpServers(index: Int, initial: List<String>) {
+    val scope = rememberCoroutineScope()
+    var servers by remember { mutableStateOf(initial) }
+    var typed by remember { mutableStateOf("") }
+
+    fun change(action: String, host: String) {
+        scope.launch {
+            servers = withContext(Dispatchers.Default) {
+                // qtpaths: links.linkConfigurations.0.addHost, links.linkConfigurations.0.removeHost
+                Qgc.invoke("$LINKS_PATH.$index.$action", host)
+                currentRows().firstOrNull { it.index == index }?.servers ?: servers
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Server Addresses (optional)", style = MaterialTheme.typography.labelLarge)
+        servers.forEach { server ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(server, modifier = Modifier.weight(1f))
+                TextButton(onClick = { change("removeHost", server) }) { Text("Remove") }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = typed,
+                onValueChange = { typed = it },
+                placeholder = { Text("Example: 127.0.0.1:14550") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(enabled = typed.isNotBlank(), onClick = {
+                change("addHost", typed.trim())
+                typed = ""
+            }) { Text("Add Server") }
         }
     }
 }

@@ -22,6 +22,16 @@ class LinksScreenTest {
             "heardVehicle":false,"lastError":"Connection refused"}"""
 
     @Test
+    fun `a udp link's server addresses and a serial link's framing are read from the row`() {
+        val udp = """{"index":4,"name":"U","statusLine":"","connected":false,"heardVehicle":false,"lastError":"","hostList":["10.0.0.2:14550"]}"""
+        val serial = """{"index":5,"name":"S","statusLine":"","connected":false,"heardVehicle":false,"lastError":"","dataBits":7,"stopBits":2,"parity":3,"flowControl":1}"""
+        val rows = linkRows(view(udp, serial))
+        assertEquals(listOf("10.0.0.2:14550"), rows[0].servers)
+        assertEquals(SerialFraming(dataBits = 7, stopBits = 2, parity = 3, flowControl = 1), rows[1].framing)
+        assertEquals(SerialFraming(), linkRows(view(heardTcp))[0].framing)
+    }
+
+    @Test
     fun `the sentence comes from the core, not from the head`() {
         val rows = linkRows(view(heardTcp, waitingUdp, idle))
         assertEquals(
