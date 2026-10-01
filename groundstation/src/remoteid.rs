@@ -1,3 +1,4 @@
+const BASIC_ID_MISSING: &str = "missing basic_id message";
 pub const AREA_COUNT: u16 = 1;
 pub const AREA_RADIUS: u16 = 0;
 pub const UNKNOWN_METERS: f32 = -1000.0;
@@ -164,20 +165,24 @@ impl RemoteId {
             out.push(Out::CommsGood(true));
         }
         out.push(Out::StartOdidTimeout);
-        if status == ARM_STATUS_GOOD_TO_ARM && !self.arm_status_good {
+        if status == ARM_STATUS_GOOD_TO_ARM {
             if !self.basic_id_good {
                 self.basic_id_good = true;
                 out.push(Out::BasicIdGood(true));
             }
-            self.arm_status_good = true;
-            out.push(Out::ArmStatus { good: true, error: String::new() });
+            if !self.arm_status_good || !self.arm_status_error.is_empty() {
+                self.arm_status_good = true;
+                self.arm_status_error.clear();
+                out.push(Out::ArmStatus { good: true, error: String::new() });
+            }
         }
         if status == ARM_STATUS_PRE_ARM_FAIL_GENERIC {
             self.arm_status_good = false;
             self.arm_status_error = error.to_string();
-            if error == "missing basic_id message" {
-                self.basic_id_good = false;
-                out.push(Out::BasicIdGood(false));
+            let basic_id_good = error != BASIC_ID_MISSING;
+            if basic_id_good != self.basic_id_good {
+                self.basic_id_good = basic_id_good;
+                out.push(Out::BasicIdGood(basic_id_good));
             }
             out.push(Out::ArmStatus { good: false, error: error.to_string() });
         }
@@ -202,9 +207,11 @@ impl RemoteId {
                 if inside { ((settings.latitude_fixed, settings.longitude_fixed, settings.altitude_fixed), true) } else { ((0.0, 0.0, 0.0), false) }
             }
             _ if !gcs.valid => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
-            _ if settings.region == REGION_FAA && !(gcs.altitude >= 0.0) && self.gcs_gps_good => {
-                self.gcs_gps_good = false;
-                out.push(Out::GcsGpsGood(false));
+            _ if settings.region == REGION_FAA && !gcs.altitude.is_finite() => {
+                if self.gcs_gps_good {
+                    self.gcs_gps_good = false;
+                    out.push(Out::GcsGpsGood(false));
+                }
                 return (Vec::new(), out);
             }
             _ => ((gcs.latitude, gcs.longitude, gcs.altitude), gcs.age_ms <= ALLOWED_GPS_DELAY_MS),
@@ -301,7 +308,19 @@ mod tests {
         let (messages, _) = remote.messages(&fixed, GcsFix { valid: false, ..fresh }, EPOCH_2019_S);
         assert!(matches!(messages[0], Message::System { gps_good: false, .. }));
         let mut faa = RemoteId { gcs_gps_good: true, ..Default::default() };
-        let (messages, out) = faa.messages(&settings(), GcsFix { altitude: -5.0, ..fresh }, EPOCH_2019_S);
+        let (messages, out) = faa.messages(&settings(), GcsFix { altitude: f64::NAN, ..fresh }, EPOCH_2019_S);
         assert!(messages.is_empty() && out == vec![Out::GcsGpsGood(false)]);
+        let (again, out) = faa.messages(&settings(), GcsFix { altitude: f64::NAN, ..fresh }, EPOCH_2019_S);
+        assert!(again.is_empty() && out.is_empty(), "a fix with no altitude stays not good in the FAA region instead of going out on the next tick");
+        let (below_sea, _) = faa.messages(&settings(), GcsFix { altitude: -5.0, ..fresh }, EPOCH_2019_S);
+        assert!(!below_sea.is_empty(), "a 3D fix below sea level is a 3D fix");
+
+        let mut arm = RemoteId::default();
+        arm.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_PRE_ARM_FAIL_GENERIC, BASIC_ID_MISSING);
+        assert!(!arm.basic_id_good);
+        arm.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_PRE_ARM_FAIL_GENERIC, "missing operator_id");
+        assert!(arm.basic_id_good, "the basic-ID warning follows the error the device reports now");
+        arm.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_GOOD_TO_ARM, "");
+        assert!(arm.arm_status_error.is_empty(), "GOOD_TO_ARM clears the stale error text");
     }
 }
