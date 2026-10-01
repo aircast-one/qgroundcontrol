@@ -694,6 +694,20 @@ mod tests {
     }
 
     #[test]
+    fn a_cleared_shape_regenerates_without_flight_lines_until_it_is_refilled() {
+        let corridor: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
+        let cleared = |item: &Value, key: &str| {
+            let mut emptied = item.clone();
+            emptied[key] = json!([]);
+            regenerate_item(&emptied)
+        };
+        assert_eq!(cleared(&corridor["corridor"], "polyline")["polyline"], json!([]));
+        let survey: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-inserted-by-qt.json")).unwrap();
+        let item = survey.get("survey").unwrap_or(&survey);
+        assert_eq!(cleared(item, "polygon")["polygon"], json!([]));
+    }
+
+    #[test]
     fn a_new_corridor_starts_from_the_remembered_corridor_settings_as_qt_builds_it() {
         let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
         let remembered = |key: &str| key.strip_prefix("CorridorScan/").and_then(|name| fixture["remembered"][name].as_str()).map(str::to_string);

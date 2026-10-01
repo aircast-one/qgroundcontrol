@@ -169,6 +169,7 @@ fun VehicleMap(
     breachReturn: TrackPoint? = null,
     proximityRadar: Boolean = false,
     tracePoints: List<TrackPoint> = emptyList(),
+    traceLine: Boolean = false,
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
@@ -308,9 +309,9 @@ fun VehicleMap(
         renderProximityRadar(radarStyle, latitude, longitude, heading, radarReading(radarJson))
     }
 
-    LaunchedEffect(style, tracePoints) {
+    LaunchedEffect(style, tracePoints, traceLine) {
         val traceStyle = style ?: return@LaunchedEffect
-        renderTrace(traceStyle, tracePoints)
+        renderTrace(traceStyle, tracePoints, traceLine)
     }
 
     LaunchedEffect(style, latitude, longitude, gimbals) {

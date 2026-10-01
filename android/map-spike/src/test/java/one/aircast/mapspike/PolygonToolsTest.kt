@@ -43,22 +43,36 @@ class PolygonToolsTest {
 
     @Test
     fun `shape path names the fence or the survey area`() {
-        assertEquals("$FENCE_POLYGONS.2", shapePath(2, null))
-        assertNull(shapePath(null, null))
+        assertEquals(ShapeTarget("$FENCE_POLYGONS.2", line = false), shapeTarget(2, null))
+        assertNull(shapeTarget(null, null))
+        val corridor = Survey(4, emptyList(), emptyList(), 0, "", "", CORRIDOR_PROPERTY)
+        assertEquals(ShapeTarget("$PLAN_ITEMS.4.$CORRIDOR_PROPERTY", line = true), shapeTarget(null, corridor))
     }
 
     @Test
     fun `a file polygon is read and anything else is refused`() {
         val area = JSONObject("""{"shape":"polygon","error":"","points":[{"latitude":1.0,"longitude":2.0},{"latitude":3.0,"longitude":4.0}]}""")
-        assertEquals(listOf(TrackPoint(1.0, 2.0), TrackPoint(3.0, 4.0)) to "", filePolygon(area))
-        assertEquals(NO_POLYGON_IN_FILE, filePolygon(JSONObject("""{"shape":"polyline","error":""}""")).second)
-        assertEquals("bad coordinate: x", filePolygon(JSONObject("""{"valid":false,"error":"bad coordinate: x"}""")).second)
-        assertEquals(NO_POLYGON_IN_FILE, filePolygon(null).second)
+        val polygon = ShapeTarget("p", line = false)
+        val polyline = ShapeTarget("l", line = true)
+        assertEquals(listOf(TrackPoint(1.0, 2.0), TrackPoint(3.0, 4.0)) to "", fileShape(area, polygon))
+        assertEquals("No polylines found in file", fileShape(area, polyline).second)
+        assertEquals("No polygons found in file", fileShape(JSONObject("""{"shape":"polyline","error":""}"""), polygon).second)
+        assertEquals("bad coordinate: x", fileShape(JSONObject("""{"valid":false,"error":"bad coordinate: x"}"""), polygon).second)
+        assertEquals("No polygons found in file", fileShape(null, polygon).second)
     }
 
     @Test
     fun `a trace closes once it is a polygon`() {
         assertEquals(small.take(2), traceOutline(small.take(2)))
         assertEquals(small.take(3) + small[0], traceOutline(small.take(3)))
+        assertEquals(small.take(3), traceOutline(small.take(3), line = true))
+    }
+
+    @Test
+    fun `a default line runs down the middle of the view`() {
+        val (top, bottom) = defaultLine(small)
+        assertEquals(8.5, top.longitude, 1e-9)
+        assertEquals(47.4005, top.latitude, 1e-9)
+        assertEquals(47.3995, bottom.latitude, 1e-9)
     }
 }

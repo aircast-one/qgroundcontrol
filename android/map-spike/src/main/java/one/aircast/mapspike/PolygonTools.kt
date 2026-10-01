@@ -54,26 +54,40 @@ fun defaultCircle(view: List<TrackPoint>): List<TrackPoint> =
         circleRing(viewCentre(view), min(halfWidth, halfHeight), DEFAULT_CIRCLE_SEGMENTS)
     } ?: emptyList()
 
-fun shapePath(fence: Int?, survey: Survey?): String? = when {
-    fence != null -> "$FENCE_POLYGONS.$fence"
-    survey != null -> "$PLAN_ITEMS.${survey.index}.${survey.property}"
+data class ShapeTarget(val path: String, val line: Boolean) {
+    val minimum: Int get() = if (line) 2 else 3
+    val fileShape: String get() = if (line) "polyline" else "polygon"
+    val missing: String get() = if (line) "No polylines found in file" else "No polygons found in file"
+}
+
+fun shapeTarget(fence: Int?, survey: Survey?): ShapeTarget? = when {
+    fence != null -> ShapeTarget("$FENCE_POLYGONS.$fence", line = false)
+    survey != null -> ShapeTarget("$PLAN_ITEMS.${survey.index}.${survey.property}", line = survey.property == CORRIDOR_PROPERTY)
     else -> null
 }
 
-fun replaceShape(path: String, vertices: List<TrackPoint>): Boolean =
-    vertices.size >= 3 &&
-        // qtpaths: plan.geoFenceController.polygons.0.clear, plan.missionController.visualItems.0.surveyAreaPolygon.clear
-        invokeOk("$path.clear") &&
-        // qtpaths: plan.geoFenceController.polygons.0.appendVertices, plan.missionController.visualItems.0.surveyAreaPolygon.appendVertices
-        invokeOk("$path.appendVertices", vertices.joinToString(",", "[[", "]]") { coordinateJson(it) })
+fun defaultLine(view: List<TrackPoint>): List<TrackPoint> =
+    view.takeIf { it.size == 4 }?.let { (topLeft, topRight, bottomRight, bottomLeft) ->
+        val top = TrackPoint((topLeft.latitude + topRight.latitude) / 2, (topLeft.longitude + topRight.longitude) / 2)
+        val bottom = TrackPoint((bottomLeft.latitude + bottomRight.latitude) / 2, (bottomLeft.longitude + bottomRight.longitude) / 2)
+        listOf(0.25, 0.75).map { fraction ->
+            TrackPoint(top.latitude + (bottom.latitude - top.latitude) * fraction, top.longitude + (bottom.longitude - top.longitude) * fraction)
+        }
+    } ?: emptyList()
+
+fun replaceShape(target: ShapeTarget, vertices: List<TrackPoint>): Boolean =
+    vertices.size >= target.minimum &&
+        // qtpaths: plan.geoFenceController.polygons.0.clear, plan.missionController.visualItems.0.surveyAreaPolygon.clear, plan.missionController.visualItems.0.corridorPolyline.clear
+        invokeOk("${target.path}.clear") &&
+        // qtpaths: plan.geoFenceController.polygons.0.appendVertices, plan.missionController.visualItems.0.surveyAreaPolygon.appendVertices, plan.missionController.visualItems.0.corridorPolyline.appendVertices
+        invokeOk("${target.path}.appendVertices", vertices.joinToString(",", "[[", "]]") { coordinateJson(it) })
+
 const val CORRIDOR_PROPERTY = "corridorPolyline"
 
-const val NO_POLYGON_IN_FILE = "No polygons found in file"
-
-fun filePolygon(view: JSONObject?): Pair<List<TrackPoint>, String> = when {
-    view == null -> emptyList<TrackPoint>() to NO_POLYGON_IN_FILE
+fun fileShape(view: JSONObject?, target: ShapeTarget): Pair<List<TrackPoint>, String> = when {
+    view == null -> emptyList<TrackPoint>() to target.missing
     view.optText("error").isNotBlank() -> emptyList<TrackPoint>() to view.optText("error")
-    view.optText("shape") != "polygon" -> emptyList<TrackPoint>() to NO_POLYGON_IN_FILE
+    view.optText("shape") != target.fileShape -> emptyList<TrackPoint>() to target.missing
     else -> view.optJSONArray("points").let { points ->
         (0 until (points?.length() ?: 0)).mapNotNull { index ->
             points?.optJSONObject(index)?.let { TrackPoint(it.optDouble("latitude"), it.optDouble("longitude")) }
@@ -86,26 +100,26 @@ private fun fileName(context: Context, uri: Uri): String = runCatching {
         ?.use { if (it.moveToFirst()) it.getString(0) else null }
 }.getOrNull().orEmpty()
 
-fun importPolygonFile(context: Context, uri: Uri, path: String): String? {
+fun importShapeFile(context: Context, uri: Uri, target: ShapeTarget): String? {
     val extension = fileName(context, uri).substringAfterLast('.', "").lowercase()
-    val staged = File(context.cacheDir, "polygon.$extension")
+    val staged = File(context.cacheDir, "shape.$extension")
     val copied = runCatching {
         context.contentResolver.openInputStream(uri)?.use { source -> staged.outputStream().use { source.copyTo(it) } } != null
     }.getOrDefault(false)
     val view = "view.${if (extension == "shp") "shapeFile" else "kmlFile"}(${staged.absolutePath})"
     val (vertices, error) = when {
         !copied -> emptyList<TrackPoint>() to "That file could not be read."
-        else -> filePolygon(runCatching { JSONObject(QGCBridge.get(view)) }.getOrNull())
+        else -> fileShape(runCatching { JSONObject(QGCBridge.get(view)) }.getOrNull(), target)
     }
     return when {
         error.isNotBlank() -> error
-        replaceShape(path, vertices) -> null
-        else -> NO_POLYGON_IN_FILE
+        replaceShape(target, vertices) -> null
+        else -> target.missing
     }
 }
 
-fun traceOutline(points: List<TrackPoint>): List<TrackPoint> =
-    if (points.size >= 3) points + points.first() else points
+fun traceOutline(points: List<TrackPoint>, line: Boolean = false): List<TrackPoint> =
+    if (!line && points.size >= 3) points + points.first() else points
 
 fun installTraceLayer(style: Style) {
     if (style.getSource(TRACE_SOURCE) != null) return
@@ -124,8 +138,8 @@ fun installTraceLayer(style: Style) {
     )
 }
 
-fun renderTrace(style: Style, points: List<TrackPoint>) {
-    val lngLats = traceOutline(points).map { Point.fromLngLat(it.longitude, it.latitude) }
+fun renderTrace(style: Style, points: List<TrackPoint>, line: Boolean) {
+    val lngLats = traceOutline(points, line).map { Point.fromLngLat(it.longitude, it.latitude) }
     val features = listOfNotNull(
         lngLats.takeIf { it.size >= 2 }?.let { Feature.fromGeometry(LineString.fromLngLats(it)) },
         lngLats.takeIf { it.isNotEmpty() }?.let { Feature.fromGeometry(MultiPoint.fromLngLats(it)) },

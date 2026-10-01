@@ -264,19 +264,19 @@ internal fun MapSpikeScreen(
 
     var visible by remember { mutableStateOf<List<TrackPoint>>(emptyList()) }
     val context = LocalContext.current
-    var importInto by remember { mutableStateOf<String?>(null) }
+    var importInto by remember { mutableStateOf<ShapeTarget?>(null) }
     val polygonFile = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        val path = importInto
+        val target = importInto
         importInto = null
-        if (uri != null && path != null) {
+        if (uri != null && target != null) {
             scope.launch {
-                withContext(Dispatchers.Default) { importPolygonFile(context, uri, path) }?.let { say(it) }
+                withContext(Dispatchers.Default) { importShapeFile(context, uri, target) }?.let { say(it) }
             }
         }
     }
-    var tracing by remember { mutableStateOf<Pair<String, List<TrackPoint>>?>(null) }
+    var tracing by remember { mutableStateOf<Pair<ShapeTarget, List<TrackPoint>>?>(null) }
     var firstRead by remember { mutableStateOf(true) }
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
@@ -382,8 +382,8 @@ internal fun MapSpikeScreen(
             landings = landingList,
             editable = true,
             onAdd = { lat, lon ->
-                tracing?.let { (path, points) ->
-                    tracing = path to points + TrackPoint(lat, lon)
+                tracing?.let { (target, points) ->
+                    tracing = target to points + TrackPoint(lat, lon)
                     return@VehicleMap
                 }
                 addMissionItem(
@@ -407,6 +407,7 @@ internal fun MapSpikeScreen(
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onViewChanged = { visible = it },
             tracePoints = tracing?.second.orEmpty(),
+            traceLine = tracing?.first?.line == true,
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level
@@ -743,12 +744,12 @@ internal fun MapSpikeScreen(
 
                 }
 
-                tracing?.let { (path, points) ->
+                tracing?.let { (target, points) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Click the map to add points \u00B7 ${points.size} of 3", style = MaterialTheme.typography.labelSmall)
-                        TextButton(enabled = points.size >= 3, onClick = {
+                        Text("Click the map to add points \u00B7 ${points.size} of ${target.minimum}", style = MaterialTheme.typography.labelSmall)
+                        TextButton(enabled = points.size >= target.minimum, onClick = {
                             tracing = null
-                            onBridge("Tracing shape") { replaceShape(path, points) }
+                            onBridge("Tracing shape") { replaceShape(target, points) }
                         }) { Text("Done") }
                         TextButton(onClick = { tracing = null }) { Text("Cancel") }
                     }
@@ -938,16 +939,22 @@ internal fun MapSpikeScreen(
                             }
                         }
 
-                        shapePath(fenceHit?.polygon, survey?.takeIf { surveyHit != null && it.property != CORRIDOR_PROPERTY })?.let { path ->
-                            TextButton(enabled = visible.size == 4, onClick = {
-                                onBridge("Drawing rectangle") { replaceShape(path, defaultRectangle(visible)) }
-                            }) { Text("Rectangle") }
-                            TextButton(enabled = visible.size == 4, onClick = {
-                                onBridge("Drawing circle") { replaceShape(path, defaultCircle(visible)) }
-                            }) { Text("Circle") }
-                            TextButton(onClick = { tracing = path to emptyList() }) { Text("Trace") }
+                        shapeTarget(fenceHit?.polygon, survey?.takeIf { surveyHit != null })?.let { target ->
+                            if (target.line) {
+                                TextButton(enabled = visible.size == 4, onClick = {
+                                    onBridge("Drawing line") { replaceShape(target, defaultLine(visible)) }
+                                }) { Text("Line") }
+                            } else {
+                                TextButton(enabled = visible.size == 4, onClick = {
+                                    onBridge("Drawing rectangle") { replaceShape(target, defaultRectangle(visible)) }
+                                }) { Text("Rectangle") }
+                                TextButton(enabled = visible.size == 4, onClick = {
+                                    onBridge("Drawing circle") { replaceShape(target, defaultCircle(visible)) }
+                                }) { Text("Circle") }
+                            }
+                            TextButton(onClick = { tracing = target to emptyList() }) { Text("Trace") }
                             TextButton(onClick = {
-                                importInto = path
+                                importInto = target
                                 polygonFile.launch(arrayOf("*/*"))
                             }) { Text("Import\u2026") }
                         }
