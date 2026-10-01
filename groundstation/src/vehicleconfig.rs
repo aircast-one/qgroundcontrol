@@ -29,6 +29,9 @@ const PX4_MAIN_STATUS: &str = include_str!("vehicleconfig/PX4MainStatusIndicator
 pub const STATUS_SETTINGS: &str = "Status Settings";
 const APM_LIGHTS: &str = include_str!("vehicleconfig/APMLights.VehicleConfig.json");
 const PX4_FLIGHT_BEHAVIOR: &str = include_str!("vehicleconfig/PX4FlightBehavior.VehicleConfig.json");
+const APM_FLIGHT_SAFETY_SUB: &str = include_str!("vehicleconfig/APMFlightSafetySub.VehicleConfig.json");
+const FLIGHT_SAFETY: &str = "Flight Safety";
+const FLIGHT_SAFETY_SUB: &str = "Flight Safety (Sub)";
 const PX4_RADIO_SWITCHES: &str = include_str!("vehicleconfig/PX4RadioSwitches.VehicleConfig.json");
 pub const RADIO_SWITCHES: &str = "Radio Switches";
 pub const FLIGHT_MODE_SETTINGS: &str = "Flight Mode Settings";
@@ -37,7 +40,8 @@ const CONFIGS: &[(&str, bool, &str)] = &[
     ("Gimbal", false, APM_GIMBAL),
     ("Airspeed", false, APM_AIRSPEED),
     ("ESC", false, APM_ESC),
-    ("Flight Safety", false, APM_FLIGHT_SAFETY),
+    (FLIGHT_SAFETY, false, APM_FLIGHT_SAFETY),
+    (FLIGHT_SAFETY_SUB, false, APM_FLIGHT_SAFETY_SUB),
     ("Failsafes", false, APM_FAILSAFES),
     ("Logging", false, APM_LOGGING),
     ("Power", false, APM_POWER),
@@ -64,7 +68,9 @@ pub fn has(page: &str, px4: bool) -> bool {
     CONFIGS.iter().any(|(name, firmware, _)| *name == page && *firmware == px4)
 }
 
-fn config(page: &str, px4: bool) -> Option<Value> {
+fn config(backend: &dyn Backend, page: &str, px4: bool) -> Option<Value> {
+    let sub = !px4 && page == FLIGHT_SAFETY && flag(&object(&backend.get_fields("vehicle", "sub")), "sub");
+    let page = if sub { FLIGHT_SAFETY_SUB } else { page };
     CONFIGS.iter().find(|(name, firmware, _)| *name == page && *firmware == px4).and_then(|(_, _, text)| serde_json::from_str(text).ok())
 }
 
@@ -757,7 +763,7 @@ fn disabled_companion(scope: &Scope, page: &str, section_index: usize, section: 
 }
 
 pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
-    let Some(config) = config(page, px4) else { return crate::read::refused(&format!("{page} has no VehicleConfig definition for this firmware")) };
+    let Some(config) = config(backend, page, px4) else { return crate::read::refused(&format!("{page} has no VehicleConfig definition for this firmware")) };
     let base = scope_for(backend, &config);
     let sections: Vec<Value> = config["sections"]
         .as_array()
@@ -852,7 +858,7 @@ struct Resolved {
 
 fn resolve(backend: &dyn Backend, path: &str) -> Result<Resolved, String> {
     let at = target(path.strip_suffix(ENUM_INDEX).unwrap_or(path)).ok_or_else(|| format!("{path} is not a setup row"))?;
-    let config = config(&at.page, px4(backend)).ok_or_else(|| format!("{} has no definition for this firmware", at.page))?;
+    let config = config(backend, &at.page, px4(backend)).ok_or_else(|| format!("{} has no definition for this firmware", at.page))?;
     let section = config["sections"].get(at.section).cloned().ok_or("That section is gone.")?;
     let repeat = match section.get("repeat") {
         None => None,
@@ -958,12 +964,13 @@ mod tests {
         params: RefCell<BTreeMap<String, f64>>,
         multi_rotor: bool,
         px4: bool,
+        sub: bool,
         writes: RefCell<Vec<(String, f64)>>,
     }
 
     impl Fake {
         fn new(params: &[(&str, f64)]) -> Self {
-            Fake { params: RefCell::new(params.iter().map(|(n, v)| (n.to_string(), *v)).collect()), multi_rotor: true, px4: false, writes: RefCell::new(vec![]) }
+            Fake { params: RefCell::new(params.iter().map(|(n, v)| (n.to_string(), *v)).collect()), multi_rotor: true, px4: false, sub: false, writes: RefCell::new(vec![]) }
         }
     }
 
@@ -980,7 +987,7 @@ mod tests {
             .to_string()
         }
         fn get_fields(&self, _p: &str, _f: &str) -> String {
-            json!({ "kind": "object", "multiRotor": self.multi_rotor, "fixedWing": !self.multi_rotor, "px4Firmware": self.px4 }).to_string()
+            json!({ "kind": "object", "multiRotor": self.multi_rotor, "fixedWing": !self.multi_rotor, "px4Firmware": self.px4, "sub": self.sub }).to_string()
         }
         fn set(&self, path: &str, value: &str) -> String {
             let v = serde_json::from_str::<Value>(value).unwrap()["value"].as_f64().unwrap();
@@ -1285,5 +1292,16 @@ mod tests {
         let names = |fake: &Fake| -> Vec<String> { page(fake, RADIO_SWITCHES, true)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).filter_map(|c| c["name"].as_str().map(str::to_string)).collect() };
         assert_eq!(names(&Fake { px4: true, ..Fake::new(&params) }), ["RC_MAP_AUX1", "RC_MAP_PAY_SW"]);
         assert_eq!(names(&Fake { px4: true, multi_rotor: false, ..Fake::new(&params) }), ["RC_MAP_FLAPS", "RC_MAP_AUX1", "RC_MAP_PAY_SW"]);
+    }
+
+    #[test]
+    fn a_sub_gets_its_own_flight_safety_page() {
+        let params = [("FS_GCS_ENABLE", 1.0), ("FS_LEAK_ENABLE", 0.0), ("LEAK1_PIN", 27.0), ("FS_TEMP_ENABLE", 1.0), ("FS_TEMP_MAX", 62.0), ("FS_PRESS_ENABLE", 0.0), ("FS_PRESS_MAX", 105000.0), ("FS_EKF_ACTION", 1.0), ("ARMING_CHECK", 1.0)];
+        let titles = |fake: &Fake| -> Vec<String> { page(fake, "Flight Safety", false)["sections"].as_array().unwrap().iter().filter_map(|s| s["title"].as_str().map(str::to_string)).collect() };
+        let sub = Fake { sub: true, ..Fake::new(&params) };
+        assert_eq!(titles(&sub), ["Failsafe Actions", "Arming Checks"]);
+        let labels: Vec<String> = page(&sub, "Flight Safety", false)["sections"][0]["controls"].as_array().unwrap().iter().filter_map(|c| c["label"].as_str().map(str::to_string)).collect();
+        assert_eq!(labels, ["GCS Heartbeat", "Leak", "Internal Temperature", "Threshold", "Internal Pressure"], "leak pin and pressure threshold hide while disabled; EKF waits for 3.5 parameters");
+        assert!(!titles(&Fake::new(&params)).contains(&"Failsafe Actions".to_string()), "a copter keeps the fence page");
     }
 }

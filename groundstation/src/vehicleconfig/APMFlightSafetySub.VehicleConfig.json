@@ -1,0 +1,46 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "params": {
+        "_leakEnable": "FS_LEAK_ENABLE",
+        "_batteryEnable": { "name": "BATT_FS_LOW_ACT", "required": false },
+        "_batteryDetected": { "name": "BATT_LOW_MAH", "existsOnly": true },
+        "_ekfEnable": "FS_EKF_ACTION",
+        "_pilotEnable": { "name": "FS_PILOT_INPUT", "required": false },
+        "_temperatureEnable": "FS_TEMP_ENABLE",
+        "_pressureEnable": "FS_PRESS_ENABLE",
+        "_armingCheck": { "name": "ARMING_CHECK", "required": false },
+        "_armingSkipCheck": { "name": "ARMING_SKIPCHK", "required": false }
+    },
+    "sections": [
+        {
+            "title": "Failsafe Actions",
+            "controls": [
+                { "param": "FS_GCS_ENABLE", "label": "GCS Heartbeat", "control": "combobox" },
+                { "param": "FS_LEAK_ENABLE", "label": "Leak", "control": "combobox" },
+                { "param": "LEAK1_PIN", "label": "Detector Pin", "control": "combobox", "indent": true, "showWhen": "_leakEnable.rawValue !== 0" },
+                { "param": "LEAK1_LOGIC", "label": "Logic when Dry", "control": "combobox", "indent": true, "showWhen": "_leakEnable.rawValue !== 0" },
+                { "param": "BATT_FS_LOW_ACT", "label": "Battery", "control": "combobox", "optional": true, "enableWhen": "_batteryDetected" },
+                { "control": "label", "label": "Power module not set up", "warning": true, "showWhen": "_batteryEnable && !_batteryDetected" },
+                { "param": "BATT_LOW_VOLT", "label": "Voltage", "control": "textfield", "optional": true, "indent": true, "showWhen": "_batteryEnable && _batteryEnable.rawValue !== 0" },
+                { "param": "BATT_LOW_MAH", "label": "Remaining Capacity", "control": "textfield", "optional": true, "indent": true, "showWhen": "_batteryEnable && _batteryEnable.rawValue !== 0" },
+                { "param": "FS_EKF_ACTION", "label": "EKF", "control": "combobox", "showWhen": "_pilotEnable" },
+                { "param": "FS_EKF_THRESH", "label": "Threshold", "control": "textfield", "indent": true, "showWhen": "_pilotEnable && _ekfEnable.rawValue !== 0" },
+                { "param": "FS_PILOT_INPUT", "label": "Pilot Input", "control": "combobox", "optional": true },
+                { "param": "FS_PILOT_TIMEOUT", "label": "Timeout", "control": "textfield", "optional": true, "indent": true, "showWhen": "_pilotEnable && _pilotEnable.rawValue !== 0" },
+                { "param": "FS_TEMP_ENABLE", "label": "Internal Temperature", "control": "combobox" },
+                { "param": "FS_TEMP_MAX", "label": "Threshold", "control": "textfield", "indent": true, "showWhen": "_temperatureEnable.rawValue !== 0" },
+                { "param": "FS_PRESS_ENABLE", "label": "Internal Pressure", "control": "combobox" },
+                { "param": "FS_PRESS_MAX", "label": "Threshold", "control": "textfield", "indent": true, "showWhen": "_pressureEnable.rawValue !== 0" }
+            ]
+        },
+        {
+            "title": "Arming Checks",
+            "controls": [
+                { "param": "ARMING_CHECK", "label": "Arming Checks", "control": "bitmask", "optional": true, "firstEntryIsAll": true, "showWhen": "_armingCheck" },
+                { "param": "ARMING_SKIPCHK", "label": "Skip Arming Checks", "control": "bitmask", "optional": true, "showWhen": "!_armingCheck && _armingSkipCheck" },
+                { "control": "label", "label": "Warning: Turning off arming checks can lead to loss of Vehicle control.", "warning": true, "showWhen": "_armingCheck ? _armingCheck.value !== 1 : (_armingSkipCheck && _armingSkipCheck.value !== 0)" }
+            ]
+        }
+    ]
+}
