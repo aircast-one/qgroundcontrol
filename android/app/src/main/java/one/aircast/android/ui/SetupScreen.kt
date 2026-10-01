@@ -146,8 +146,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     val components = remember(setupJson) { setupComponents(setupJson) }
     var summaries by remember { mutableStateOf(emptyMap<String, List<SummaryLine>>()) }
-    LaunchedEffect(hasVehicle) {
-        while (hasVehicle) {
+    val overviewShown = hasVehicle && openComponent == null && !parametersOpen
+    LaunchedEffect(overviewShown, hasVehicle) {
+        if (!hasVehicle) summaries = emptyMap()
+        while (overviewShown) {
             summaries = withContext(Dispatchers.Default) { setupSummaries(Qgc.get(SETUP_SUMMARY)) }
             delay(SETUP_SUMMARY_POLL_MS)
         }
