@@ -163,6 +163,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                     TextButton(onClick = { choosing = true }) { Text("Change command") }
                 }
             }
+            if (index == 0) MissionAltitudeFrame()
             altitudeHint(view)?.let { hint ->
                 Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             }
