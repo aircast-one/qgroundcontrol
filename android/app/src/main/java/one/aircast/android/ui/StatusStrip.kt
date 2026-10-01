@@ -150,6 +150,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         RtkIndicatorCell()
         GcsBatteryCell()
         GimbalIndicatorCell()
+        SupportForwardingCell()
     }
 
     detail?.let { shown ->
