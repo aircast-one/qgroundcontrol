@@ -6660,6 +6660,8 @@
         "view.setup.groups.2.title",
         "view.setup.kind",
         "view.setup.parametersText",
+        "view.setupSummary.class",
+        "view.setupSummary.kind",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).class",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).count",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).entities",
@@ -9611,6 +9613,13 @@
         "view.setup.parametersReason",
         "view.setup.parametersText",
         "view.setup.ready",
+        "view.setupSummary.class",
+        "view.setupSummary.components.#",
+        "view.setupSummary.components[].name",
+        "view.setupSummary.components[].rows.#",
+        "view.setupSummary.components[].rows[].label",
+        "view.setupSummary.components[].rows[].value",
+        "view.setupSummary.kind",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).class",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).count",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).entities",
@@ -10730,6 +10739,7 @@
             "view.opticalFlow",
             "view.mapTypes",
             "view.apmFollow",
+            "view.setupSummary",
             "view.apmAirframe",
             "view.apmSubFrame",
             "view.apmSubMotors",
@@ -13903,6 +13913,21 @@
         "sections": [
             "empty"
         ]
+    },
+    "view.setupSummary": {
+        "class": "string",
+        "components": [
+            {
+                "name": "string",
+                "rows": [
+                    {
+                        "label": "string",
+                        "value": "string"
+                    }
+                ]
+            }
+        ],
+        "kind": "string"
     },
     "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp)": {
         "class": "string",

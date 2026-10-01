@@ -47,6 +47,7 @@ internal fun SetupRow(
     status: String = "",
     state: SetupState = SetupState.Neutral,
     onClick: (() -> Unit)? = null,
+    summary: List<SummaryLine> = emptyList(),
 ) {
     val row = Modifier
         .fillMaxWidth()
@@ -54,36 +55,46 @@ internal fun SetupRow(
         .heightIn(min = 64.dp)
         .padding(horizontal = 20.dp, vertical = 12.dp)
 
-    Row(row, verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontSize = 18.sp,
-            color = if (state == SetupState.Unavailable) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-            modifier = Modifier.weight(1f),
-        )
-        if (status.isNotBlank()) {
+    Column(row) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = status,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (state == SetupState.NeedsAttention) FontWeight.Bold else FontWeight.Normal,
-                color = setupStateColor(state),
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 18.sp,
+                color = if (state == SetupState.Unavailable) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.weight(1f),
             )
+            if (status.isNotBlank()) {
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (state == SetupState.NeedsAttention) FontWeight.Bold else FontWeight.Normal,
+                    color = setupStateColor(state),
+                )
+            }
+            if (onClick != null) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
-        if (onClick != null) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp),
-            )
+        summary.forEach { line ->
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                Text(line.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Text(line.value, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
+
+internal data class SummaryLine(val label: String, val value: String)
 
 @Composable
 internal fun FootNote(text: String) {

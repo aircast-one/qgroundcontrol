@@ -67,6 +67,10 @@ pub fn current(types: &[AirframeType], autostart: i64) -> Option<(usize, usize)>
         .last()
 }
 
+pub fn current_names(autostart: i64) -> Option<(String, String)> {
+    current(&TYPES, autostart).map(|(t, i)| (TYPES[t].name.clone(), TYPES[t].airframes[i].name.clone()))
+}
+
 fn fact_value(backend: &dyn Backend, path: &str) -> Option<f64> {
     let fact = object(&backend.get(path));
     (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| fact.get("rawValue").or_else(|| fact.get("value")).and_then(Value::as_f64)).flatten()

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import org.json.JSONObject
@@ -81,6 +82,16 @@ internal fun parameterWait(view: JSONObject?): ParameterWait? {
 
 internal const val SETUP_PARAMETERS_PAGE = "Parameters"
 internal const val SETUP_OVERVIEW_PAGE = ""
+internal const val SETUP_SUMMARY = "view.setupSummary"
+private const val SETUP_SUMMARY_POLL_MS = 2000L
+
+internal fun setupSummaries(view: JSONObject?): Map<String, List<SummaryLine>> {
+    val listed = view?.optJSONArray("components") ?: return emptyMap()
+    return (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }.associate { component ->
+        val rows = component.optJSONArray("rows")
+        component.optText("name") to (0 until (rows?.length() ?: 0)).mapNotNull { rows?.optJSONObject(it) }.map { SummaryLine(it.optText("label"), it.optText("value")) }
+    }
+}
 
 internal fun setupMatches(name: String, search: String): Boolean =
     search.isBlank() || name.lowercase().contains(search.trim().lowercase())
@@ -134,6 +145,13 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = openComponent != null) { openComponent = null }
 
     val components = remember(setupJson) { setupComponents(setupJson) }
+    var summaries by remember { mutableStateOf(emptyMap<String, List<SummaryLine>>()) }
+    LaunchedEffect(hasVehicle) {
+        while (hasVehicle) {
+            summaries = withContext(Dispatchers.Default) { setupSummaries(Qgc.get(SETUP_SUMMARY)) }
+            delay(SETUP_SUMMARY_POLL_MS)
+        }
+    }
 
     LaunchedEffect(AppNavigation.setupPage, components) {
         AppNavigation.setupPage?.takeIf { components.isNotEmpty() }?.let { requested ->
@@ -300,6 +318,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     } else {
                         null
                     },
+                    summary = summaries[component.name].orEmpty(),
                 )
             }
         }
@@ -334,6 +353,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     } else {
                         null
                     },
+                    summary = summaries[component.name].orEmpty(),
                 )
             }
         }
