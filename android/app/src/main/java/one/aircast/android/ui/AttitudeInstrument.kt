@@ -1,5 +1,16 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import one.aircast.android.bridge.Qgc
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -83,10 +94,47 @@ private fun pointOnRing(center: Offset, radius: Float, degrees: Float): Offset {
     return Offset(center.x + radius * sin(radians).toFloat(), center.y - radius * cos(radians).toFloat())
 }
 
+internal enum class InstrumentStyle { Integrated, Horizontal, Vertical }
+
+private const val INSTRUMENT_STYLE_PATH = "settings.flyViewSettings.instrumentQmlFile2"
+private const val STYLE_POLL_MS = 1000L
+private val SPLIT_SIZE = 96.dp
+private val LARGE_SIZE = 132.dp
+
+internal fun instrumentStyle(file: String?): InstrumentStyle = when {
+    file?.contains("HorizontalCompassAttitude") == true -> InstrumentStyle.Horizontal
+    file?.contains("VerticalCompassAttitude") == true -> InstrumentStyle.Vertical
+    else -> InstrumentStyle.Integrated
+}
+
 @Composable
 fun AttitudeInstrument(modifier: Modifier = Modifier) {
     val view by qgcPath(ATTITUDE_PATH)
     val reading = remember(view) { attitude(view) } ?: return
+    var style by remember { mutableStateOf(InstrumentStyle.Integrated) }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            style = withContext(Dispatchers.Default) { instrumentStyle(Qgc.get(INSTRUMENT_STYLE_PATH)?.opt("value")?.toString()) }
+            delay(STYLE_POLL_MS)
+        }
+    }
+
+    when (style) {
+        InstrumentStyle.Integrated -> InstrumentDial(reading, horizon = true, compass = true, size = INSTRUMENT_SIZE, modifier = modifier)
+        InstrumentStyle.Horizontal -> Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            InstrumentDial(reading, horizon = true, compass = false, size = SPLIT_SIZE)
+            InstrumentDial(reading, horizon = false, compass = true, size = SPLIT_SIZE)
+        }
+        InstrumentStyle.Vertical -> Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            InstrumentDial(reading, horizon = true, compass = false, size = LARGE_SIZE)
+            InstrumentDial(reading, horizon = false, compass = true, size = LARGE_SIZE)
+        }
+    }
+}
+
+@Composable
+private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
     val sky = MaterialTheme.aircast.mapWater
     val ground = MaterialTheme.aircast.mapLand
@@ -101,19 +149,19 @@ fun AttitudeInstrument(modifier: Modifier = Modifier) {
 
     Surface(
         modifier = modifier
-            .size(INSTRUMENT_SIZE)
+            .size(size)
             .semantics { contentDescription = "Attitude and heading ${reading.headingText}" },
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f),
     ) {
-        Canvas(Modifier.size(INSTRUMENT_SIZE)) {
-            val outer = size.minDimension / 2f
-            val horizon = outer * HORIZON_FRACTION
+        Canvas(Modifier.size(size)) {
+            val outer = this.size.minDimension / 2f
+            val ball = if (compass) outer * HORIZON_FRACTION else outer - 2.dp.toPx()
             val dial = if (reading.noseUp) -reading.heading else 0f
 
-            drawHorizon(reading, horizon, sky, ground, ink, label, measurer)
+            if (horizon) drawHorizon(reading, ball, sky, ground, ink, label, measurer)
 
-            rotate(dial) {
+            if (compass) rotate(dial) {
                 (0 until 360 step 10).forEach { degrees ->
                     val long = degrees % 30 == 0
                     drawLine(
@@ -154,8 +202,11 @@ fun AttitudeInstrument(modifier: Modifier = Modifier) {
                 }
             }
 
-            val headingText = measurer.measure(reading.headingText, headingStyle)
-            drawText(headingText, topLeft = Offset(center.x - headingText.size.width / 2f, center.y + horizon * 0.45f))
+            if (compass) {
+                val headingText = measurer.measure(reading.headingText, headingStyle)
+                val below = if (horizon) ball * 0.45f else -headingText.size.height / 2f
+                drawText(headingText, topLeft = Offset(center.x - headingText.size.width / 2f, center.y + below))
+            }
         }
     }
 }
