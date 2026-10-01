@@ -1,6 +1,9 @@
 package one.aircast.mapspike
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.verticalScroll
@@ -260,6 +263,19 @@ internal fun MapSpikeScreen(
     }
 
     var visible by remember { mutableStateOf<List<TrackPoint>>(emptyList()) }
+    val context = LocalContext.current
+    var importInto by remember { mutableStateOf<String?>(null) }
+    val polygonFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val path = importInto
+        importInto = null
+        if (uri != null && path != null) {
+            scope.launch {
+                withContext(Dispatchers.Default) { importPolygonFile(context, uri, path) }?.let { say(it) }
+            }
+        }
+    }
     var tracing by remember { mutableStateOf<Pair<String, List<TrackPoint>>?>(null) }
     var firstRead by remember { mutableStateOf(true) }
     var listOpen by remember { mutableStateOf(false) }
@@ -929,6 +945,10 @@ internal fun MapSpikeScreen(
                                 onBridge("Drawing circle") { replaceShape(path, defaultCircle(visible)) }
                             }) { Text("Circle") }
                             TextButton(onClick = { tracing = path to emptyList() }) { Text("Trace") }
+                            TextButton(onClick = {
+                                importInto = path
+                                polygonFile.launch(arrayOf("*/*"))
+                            }) { Text("Import\u2026") }
                         }
 
                         fenceHit?.let { hit ->

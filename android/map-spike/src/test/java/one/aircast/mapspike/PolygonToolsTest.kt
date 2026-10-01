@@ -3,6 +3,7 @@ package one.aircast.mapspike
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.json.JSONObject
 import org.junit.Test
 
 class PolygonToolsTest {
@@ -44,5 +45,14 @@ class PolygonToolsTest {
     fun `shape path names the fence or the survey area`() {
         assertEquals("$FENCE_POLYGONS.2", shapePath(2, null))
         assertNull(shapePath(null, null))
+    }
+
+    @Test
+    fun `a file polygon is read and anything else is refused`() {
+        val area = JSONObject("""{"shape":"polygon","error":"","points":[{"latitude":1.0,"longitude":2.0},{"latitude":3.0,"longitude":4.0}]}""")
+        assertEquals(listOf(TrackPoint(1.0, 2.0), TrackPoint(3.0, 4.0)) to "", filePolygon(area))
+        assertEquals(NO_POLYGON_IN_FILE, filePolygon(JSONObject("""{"shape":"polyline","error":""}""")).second)
+        assertEquals("bad coordinate: x", filePolygon(JSONObject("""{"valid":false,"error":"bad coordinate: x"}""")).second)
+        assertEquals(NO_POLYGON_IN_FILE, filePolygon(null).second)
     }
 }

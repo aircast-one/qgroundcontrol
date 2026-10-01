@@ -1,5 +1,11 @@
 package one.aircast.mapspike
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import org.json.JSONObject
+import org.mavlink.qgroundcontrol.QGCBridge
+import java.io.File
 import kotlin.math.cos
 import kotlin.math.min
 
@@ -47,3 +53,39 @@ fun replaceShape(path: String, vertices: List<TrackPoint>): Boolean =
         // qtpaths: plan.geoFenceController.polygons.0.appendVertices, plan.missionController.visualItems.0.surveyAreaPolygon.appendVertices
         invokeOk("$path.appendVertices", vertices.joinToString(",", "[[", "]]") { coordinateJson(it) })
 const val CORRIDOR_PROPERTY = "corridorPolyline"
+
+const val NO_POLYGON_IN_FILE = "No polygons found in file"
+
+fun filePolygon(view: JSONObject?): Pair<List<TrackPoint>, String> = when {
+    view == null -> emptyList<TrackPoint>() to NO_POLYGON_IN_FILE
+    view.optText("error").isNotBlank() -> emptyList<TrackPoint>() to view.optText("error")
+    view.optText("shape") != "polygon" -> emptyList<TrackPoint>() to NO_POLYGON_IN_FILE
+    else -> view.optJSONArray("points").let { points ->
+        (0 until (points?.length() ?: 0)).mapNotNull { index ->
+            points?.optJSONObject(index)?.let { TrackPoint(it.optDouble("latitude"), it.optDouble("longitude")) }
+        } to ""
+    }
+}
+
+private fun fileName(context: Context, uri: Uri): String = runCatching {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { if (it.moveToFirst()) it.getString(0) else null }
+}.getOrNull().orEmpty()
+
+fun importPolygonFile(context: Context, uri: Uri, path: String): String? {
+    val extension = fileName(context, uri).substringAfterLast('.', "").lowercase()
+    val staged = File(context.cacheDir, "polygon.$extension")
+    val copied = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { source -> staged.outputStream().use { source.copyTo(it) } } != null
+    }.getOrDefault(false)
+    val view = "view.${if (extension == "shp") "shapeFile" else "kmlFile"}(${staged.absolutePath})"
+    val (vertices, error) = when {
+        !copied -> emptyList<TrackPoint>() to "That file could not be read."
+        else -> filePolygon(runCatching { JSONObject(QGCBridge.get(view)) }.getOrNull())
+    }
+    return when {
+        error.isNotBlank() -> error
+        replaceShape(path, vertices) -> null
+        else -> NO_POLYGON_IN_FILE
+    }
+}
