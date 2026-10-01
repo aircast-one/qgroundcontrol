@@ -19,6 +19,33 @@ pub const CALIBRATION: &str = "joystick.calibration";
 pub const BUTTON_ACTION: &str = "joystick.buttonAction";
 pub const BUTTON_REPEAT: &str = "joystick.buttonRepeat";
 const BUTTON_GROUP: &str = "JoystickButtonActionSettingsArray";
+const STEP_THROTTLE_MS: u64 = 40;
+const CAMERA_CHANGE_THROTTLE_MS: u64 = 1000;
+const GIMBAL_SPEED_SETTING: &str = "settings.gimbalControllerSettings.joystickButtonsSpeed";
+const GIMBAL_SPEED_DEFAULT: f64 = 20.0;
+
+#[derive(Default)]
+struct Throttles {
+    zoom_ms: Option<u64>,
+    focus_ms: Option<u64>,
+    camera_ms: Option<u64>,
+}
+
+static THROTTLES: Mutex<Throttles> = Mutex::new(Throttles { zoom_ms: None, focus_ms: None, camera_ms: None });
+
+fn passes(slot: fn(&mut Throttles) -> &mut Option<u64>, gap_ms: u64, now_ms: u64) -> bool {
+    let mut throttles = THROTTLES.lock().unwrap_or_else(PoisonError::into_inner);
+    let last = slot(&mut throttles);
+    let open = last.is_none_or(|at| now_ms.saturating_sub(at) > gap_ms);
+    if open {
+        *last = Some(now_ms);
+    }
+    open
+}
+
+fn gimbal_speed() -> f64 {
+    crate::settingsstore::raw_setting(GIMBAL_SPEED_SETTING).and_then(|v| v.as_f64()).unwrap_or(GIMBAL_SPEED_DEFAULT)
+}
 const AXIS_GROUP: &str = "JoystickAxisSettingsArray";
 const STORED_TRANSMITTER_MODE: u8 = 2;
 const SETTINGS_JSON: &str = include_str!("../../src/Settings/Joystick.SettingsGroup.json");
@@ -196,12 +223,13 @@ pub fn button_entries(joystick: &str, model: &Joystick) -> BTreeMap<String, Sett
         .collect()
 }
 
-pub fn assignable_actions(flight_modes: &[String], assigned: &[String]) -> Vec<(String, bool)> {
+pub fn assignable_actions(flight_modes: &[String], custom: &[String], assigned: &[String]) -> Vec<(String, bool)> {
     let fixed = |range: std::ops::Range<usize>| ACTIONS[range].iter().map(|(_, name, _, repeat)| (name.to_string(), *repeat)).collect::<Vec<_>>();
     let listed: Vec<(String, bool)> = std::iter::once((ACTION_NONE.to_string(), false))
         .chain(fixed(0..3))
         .chain(flight_modes.iter().map(|mode| (mode.clone(), false)))
         .chain(fixed(3..ACTIONS.len()))
+        .chain(custom.iter().map(|label| (label.clone(), false)))
         .collect();
     let extra: Vec<(String, bool)> = assigned.iter().filter(|a| !listed.iter().any(|(name, _)| name == *a)).map(|a| (a.clone(), false)).collect();
     listed.into_iter().chain(extra).collect()
@@ -227,7 +255,42 @@ pub fn execute(backend: &dyn Backend, id: u8, armed: bool, action: &str, event: 
     let toggle_recording = || {
         crate::actions::run(backend, "camera.toggleRecording", "[]");
     };
+    let now_ms = crate::hub::now_ms();
+    let camera = |op: &str, axis: &str, direction: i32| guided(id, json!({ "action": "camera", "op": op, "axis": axis, "direction": direction }));
+    let step = |axis: &str, direction: i32| {
+        let slot: fn(&mut Throttles) -> &mut Option<u64> = if axis == "zoom" { |t| &mut t.zoom_ms } else { |t| &mut t.focus_ms };
+        if passes(slot, STEP_THROTTLE_MS, now_ms) {
+            camera("step", axis, direction);
+        }
+    };
+    let switch = |op: &str, direction: i32| {
+        if passes(|t| &mut t.camera_ms, CAMERA_CHANGE_THROTTLE_MS, now_ms) {
+            camera(op, "", direction);
+        }
+    };
+    let rates = |pitch: Option<f64>, yaw: Option<f64>| guided(id, json!({ "action": "gimbal", "op": "rates", "pitch": pitch, "yaw": yaw }));
+    let speed = gimbal_speed();
     match (action, event) {
+        ("Continuous Zoom In", ButtonEvent::Down) => camera("slew", "zoom", 1),
+        ("Continuous Zoom Out", ButtonEvent::Down) => camera("slew", "zoom", -1),
+        ("Continuous Zoom In" | "Continuous Zoom Out", ButtonEvent::Up) => camera("slew", "zoom", 0),
+        ("Continuous Focus In", ButtonEvent::Down) => camera("slew", "focus", 1),
+        ("Continuous Focus Out", ButtonEvent::Down) => camera("slew", "focus", -1),
+        ("Continuous Focus In" | "Continuous Focus Out", ButtonEvent::Up) => camera("slew", "focus", 0),
+        ("Step Zoom In", ButtonEvent::Down | ButtonEvent::Repeat) => step("zoom", 1),
+        ("Step Zoom Out", ButtonEvent::Down | ButtonEvent::Repeat) => step("zoom", -1),
+        ("Step Focus In", ButtonEvent::Down | ButtonEvent::Repeat) => step("focus", 1),
+        ("Step Focus Out", ButtonEvent::Down | ButtonEvent::Repeat) => step("focus", -1),
+        ("Next Video Stream", ButtonEvent::Down) => switch("stepStream", 1),
+        ("Previous Video Stream", ButtonEvent::Down) => switch("stepStream", -1),
+        ("Next Camera", ButtonEvent::Down) => switch("stepCamera", 1),
+        ("Previous Camera", ButtonEvent::Down) => switch("stepCamera", -1),
+        ("Gimbal Down", ButtonEvent::Down) => rates(Some(-speed), None),
+        ("Gimbal Up", ButtonEvent::Down) => rates(Some(speed), None),
+        ("Gimbal Down" | "Gimbal Up", ButtonEvent::Up) => rates(Some(0.0), None),
+        ("Gimbal Left", ButtonEvent::Down) => rates(None, Some(-speed)),
+        ("Gimbal Right", ButtonEvent::Down) => rates(None, Some(speed)),
+        ("Gimbal Left" | "Gimbal Right", ButtonEvent::Up) => rates(None, Some(0.0)),
         ("Arm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": true })),
         ("Disarm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": false })),
         ("Toggle Arm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": !armed })),
@@ -249,7 +312,8 @@ pub fn execute(backend: &dyn Backend, id: u8, armed: bool, action: &str, event: 
         ("Motor Interlock enable", ButtonEvent::Down) => guided(id, json!({ "action": "motorInterlock", "enable": true })),
         ("Motor Interlock disable", ButtonEvent::Down) => guided(id, json!({ "action": "motorInterlock", "enable": false })),
         (mode, ButtonEvent::Down) if modes.iter().any(|m| m == mode) => guided(id, json!({ "action": "setMode", "mode": mode })),
-        (other, _) => log::info!("joystick action {other} has no executor in the core yet"),
+        (label, ButtonEvent::Down) if let Some(custom) = crate::mavlinkactions::joystick_actions(backend).iter().find(|a| a.label == label) => guided(id, crate::mavlinkactions::command(custom)),
+        (other, _) => log::info!("joystick action {other} is not a QGC action, flight mode or MAVLink action the core can run"),
     }
 }
 
@@ -533,9 +597,10 @@ pub fn tick(now_ms: u64) {
     sync_polling(now_ms);
 }
 
-pub fn joystick_state_view(_backend: &dyn Backend, _args: &[String]) -> Value {
+pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = active_vehicle();
     let modes = settable_modes();
+    let custom: Vec<String> = crate::mavlinkactions::joystick_actions(backend).into_iter().map(|a| a.label).collect();
     let support = support_for(vehicle.map(|v| v.2));
     let host = host();
     let active = active_name(&host.devices);
@@ -543,7 +608,7 @@ pub fn joystick_state_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     let now_ms = crate::hub::now_ms();
     let state = active.as_ref().and_then(|name| host.joysticks.get(name).map(|j| j.snapshot(&settings_for(name), support, now_ms)));
     let assigned: Vec<String> = active.as_ref().and_then(|name| host.joysticks.get(name)).map(|j| (0..j.total_button_count()).filter_map(|b| j.binding(b).map(|binding| binding.action.clone())).collect()).unwrap_or_default();
-    let assignable: Vec<Value> = assignable_actions(&modes, &assigned).into_iter().map(|(action, repeat)| json!({ "action": action, "canRepeat": repeat })).collect();
+    let assignable: Vec<Value> = assignable_actions(&modes, &custom, &assigned).into_iter().map(|(action, repeat)| json!({ "action": action, "canRepeat": repeat })).collect();
     json!({
         "kind": "object",
         "class": "Joystick",
@@ -619,9 +684,9 @@ mod tests {
         let mut restored = Joystick::new(4, 6, 0);
         load_buttons("Pad", &mut restored, &entries);
         assert_eq!(restored.binding(2).map(|b| (b.action.clone(), b.repeat)), Some(("Step Zoom In".to_string(), true)));
-        let list = assignable_actions(&["Loiter".to_string()], &["Old Mode".to_string()]);
+        let list = assignable_actions(&["Loiter".to_string()], &["Lights".to_string()], &["Old Mode".to_string()]);
         let names: Vec<&str> = list.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names[..6], ["No Action", "Arm", "Disarm", "Toggle Arm", "Loiter", "VTOL: Fixed Wing"]);
-        assert_eq!(names.last(), Some(&"Old Mode"), "an assignment that is not available right now stays listed");
+        assert_eq!(names[names.len() - 2..], ["Lights", "Old Mode"], "custom MAVLink actions follow the built-ins, and an assignment that is not available right now stays listed");
     }
 }

@@ -509,6 +509,7 @@ mod deps_cover_reads {
             ("joystick", include_str!("joystick.rs")),
             ("joystickhost", include_str!("joystickhost.rs")),
             ("stickcal", include_str!("stickcal.rs")),
+            ("mavlinkactions", include_str!("mavlinkactions.rs")),
             ("kml", include_str!("kml.rs")),
             ("label", include_str!("label.rs")),
             ("landing", include_str!("landing.rs")),

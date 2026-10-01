@@ -1426,6 +1426,15 @@ impl Vehicle {
             }
             Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("ftp") => return self.file_job(action, now_ms),
+            Some("camera") => return self.camera_action(action, now_ms),
+            Some("mavlinkCommand") => {
+                let command = action.get("command").and_then(Value::as_u64).and_then(|c| u16::try_from(c).ok()).ok_or("A MAVLink action needs its command id.")?;
+                let component = action.get("component").and_then(Value::as_u64).and_then(|c| u8::try_from(c).ok()).unwrap_or(self.component);
+                let given: Vec<f64> = action.get("params").and_then(Value::as_array).map(|p| p.iter().map(|v| v.as_f64().unwrap_or(0.0)).collect()).unwrap_or_default();
+                let params: [f64; 7] = std::array::from_fn(|i| given.get(i).copied().unwrap_or(0.0));
+                let outs = self.commands.send(Command { component, command, command_int: false, frame: guidedcmd::FRAME_GLOBAL, params, show_error: true, tag: 0 }, now_ms);
+                return Ok(self.handle(outs, now_ms));
+            }
             Some("refreshParameters") => {
                 let actions = match action.get("names").and_then(Value::as_array) {
                     Some(names) => names.iter().filter_map(Value::as_str).flat_map(|name| self.params.refresh(self.component, name)).collect(),
@@ -1812,6 +1821,39 @@ impl Vehicle {
             _ => return Vec::new(),
         };
         self.onboard_log_outs(was_busy, outs)
+    }
+
+    fn camera_action(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        use crate::cameraproto::Axis;
+        let direction = action.get("direction").and_then(Value::as_i64).unwrap_or(0) as i32;
+        let axis = match action.get("axis").and_then(Value::as_str) {
+            Some("focus") => Axis::Focus,
+            _ => Axis::Zoom,
+        };
+        let wrap = |current: Option<usize>, count: usize| -> Option<usize> {
+            (count > 0).then(|| (current.unwrap_or(0) as i64 + i64::from(direction)).rem_euclid(count as i64) as usize)
+        };
+        let commands = match action.get("op").and_then(Value::as_str).unwrap_or("") {
+            "step" => self.cameras.step(axis, direction, now_ms),
+            "slew" => self.cameras.slew(axis, direction, now_ms),
+            "stepCamera" => {
+                let next = wrap(self.cameras.selected_index(), self.cameras.count()).and_then(|i| self.cameras.compid_at(i));
+                return match next.map(|compid| self.cameras.select(compid)) {
+                    Some(Ok(())) => Ok(Vec::new()),
+                    _ => Err("No camera is connected.".to_string()),
+                };
+            }
+            "stepStream" => {
+                let (streams, current) = self.cameras.selected().map(|c| (c.streams.iter().map(|s| s.stream_id).collect::<Vec<_>>(), c.selected_stream)).unwrap_or_default();
+                let at = current.and_then(|id| streams.iter().position(|s| *s == id));
+                match wrap(at, streams.len()).and_then(|i| streams.get(i).copied()) {
+                    Some(stream) => self.cameras.select_stream(stream, now_ms),
+                    None => Err(crate::cameraproto::Refusal::UnknownStream),
+                }
+            }
+            other => return Err(format!("Unknown camera action {other:?}")),
+        };
+        commands.map(|c| self.camera_commands(c)).map_err(|refusal| format!("The camera refused: {}", refusal.token()))
     }
 
     fn camera_commands(&mut self, commands: Vec<crate::cameraproto::Command>) -> Vec<Vec<u8>> {
@@ -2342,6 +2384,10 @@ impl Vehicle {
                 "tilt90" => gimbals.send_pitch_body_yaw(-90.0, 0.0, true, now_ms),
                 "retract" => gimbals.set_retract(true, now_ms),
                 "yawLock" => gimbals.set_yaw_lock(flag("lock"), now_ms),
+                "rates" => {
+                    let rate = |key: &str| action.get(key).and_then(Value::as_f64).map(|v| v as f32);
+                    gimbals.set_rates(rate("pitch"), rate("yaw"), now_ms)
+                }
                 "acquire" => gimbals.acquire_control(),
                 "release" => gimbals.release_control(),
                 "onScreen" => {

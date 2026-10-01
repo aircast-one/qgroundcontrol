@@ -166,6 +166,7 @@ pub mod actuatortest;
 pub mod apmfollow;
 pub mod apmservos;
 pub mod logreplay;
+pub mod mavlinkactions;
 pub mod ntrip;
 pub mod scripting;
 pub mod signingkeys;
