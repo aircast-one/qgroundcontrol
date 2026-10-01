@@ -338,7 +338,7 @@ fn insert_structure(backend: &dyn Backend, args: &str) -> Value {
             distance_mode,
             previous_mode: None,
         });
-        Ok(plandoc::insert_complex(doc, "StructureScan", built, (latitude, longitude), index))
+        Ok(plandoc::with_survey_camera(plandoc::insert_complex(doc, "StructureScan", built, (latitude, longitude), index)))
     })
 }
 
@@ -385,7 +385,7 @@ fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
             true => ("CorridorScan", crate::surveydoc::fresh_corridor(&fresh)),
             false => ("survey", crate::surveydoc::fresh(&fresh)),
         };
-        Ok(plandoc::insert_complex(doc, kind, with_flight_speed(doc, built), (latitude, longitude), index))
+        Ok(plandoc::with_survey_camera(plandoc::insert_complex(doc, kind, with_flight_speed(doc, built), (latitude, longitude), index)))
     })
 }
 
@@ -527,7 +527,7 @@ fn remove(args: &str) -> Value {
     let Some(index) = index.and_then(|i| usize::try_from(i).ok()) else {
         return refused("Remove needs the index of the item.");
     };
-    edit(|doc| plandoc::remove(doc, index).ok_or_else(|| format!("This plan has no item {index} to remove.")))
+    edit(|doc| plandoc::remove(doc, index).map(|after| plandoc::after_scan_removed(doc, after)).ok_or_else(|| format!("This plan has no item {index} to remove.")))
 }
 
 const WAYPOINTS_HEADER: &str = "QGC WPL";

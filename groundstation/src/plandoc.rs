@@ -731,6 +731,32 @@ fn with_camera(sections: &[Simple], property: &str, value: &Value) -> Option<Vec
     Some(camera_items(&state).into_iter().chain(others).collect())
 }
 
+const CAMERA_MODE_IMAGE_SURVEY: f64 = 2.0;
+const CAMERA_MODE_IMAGE: f64 = 0.0;
+
+fn camera_mode_supported(doc: &Document) -> bool {
+    camera_state(&doc.settings_sections).mode.is_some() || cmdinfo::tree(firmware(doc.firmware_type), VehicleClass::Generic).contains_key(&CMD_SET_CAMERA_MODE)
+}
+
+pub fn with_survey_camera(doc: Document) -> Document {
+    match camera_mode_supported(&doc) && camera_state(&doc.settings_sections).mode.is_none() {
+        true => set_camera(&doc, 0, "specifyCameraMode", &json!(true)).and_then(|moded| set_camera(&moded, 0, "cameraMode", &json!(CAMERA_MODE_IMAGE_SURVEY))).unwrap_or(doc),
+        false => doc,
+    }
+}
+
+fn has_area_scan(doc: &Document) -> bool {
+    doc.items.iter().any(|item| matches!(item, Item::Complex { kind, .. } if TRANSECT_STYLE.contains(&kind.as_str())))
+}
+
+pub fn after_scan_removed(before: &Document, after: Document) -> Document {
+    let undo = has_area_scan(before) && !has_area_scan(&after) && camera_state(&after.settings_sections).mode == Some(CAMERA_MODE_IMAGE);
+    match undo {
+        true => set_camera(&after, 0, "specifyCameraMode", &json!(false)).unwrap_or(after),
+        false => after,
+    }
+}
+
 pub fn set_camera(doc: &Document, visual_index: usize, property: &str, value: &Value) -> Option<Document> {
     match visual_index {
         0 => Some(Document { settings_sections: with_camera(&doc.settings_sections, property, value)?, ..doc.clone() }),
@@ -1026,6 +1052,19 @@ mod tests {
         let last = second.items.len() as i64;
         assert_eq!(previous_coordinate(&second, last), Some((47.1, 8.1)), "an ROI is a standalone coordinate and is skipped, as _setPlanViewState skips it");
         assert_eq!(previous_coordinate(&second, 1), None);
+    }
+
+    #[test]
+    fn a_scan_sets_the_mission_camera_to_survey_mode_unless_one_is_chosen() {
+        let px4 = Document { firmware_type: 12, ..section() };
+        let surveyed = with_survey_camera(px4.clone());
+        assert_eq!(camera_state(&surveyed.settings_sections).mode, Some(CAMERA_MODE_IMAGE_SURVEY), "_insertComplexMissionItemWorker sets CAMERA_MODE_IMAGE_SURVEY on the mission's camera section");
+        let chosen = set_camera(&px4, 0, "specifyCameraMode", &json!(true)).unwrap();
+        assert_eq!(camera_state(&with_survey_camera(chosen).settings_sections).mode, Some(0.0), "a mode the operator already set is left alone");
+        let photo = set_camera(&surveyed, 0, "cameraMode", &json!(CAMERA_MODE_IMAGE)).unwrap();
+        let with_scan = Document { items: vec![Item::Complex { kind: "survey".into(), json: json!({}), item_count: 1 }], ..photo.clone() };
+        assert_eq!(camera_state(&after_scan_removed(&with_scan, photo.clone()).settings_sections).mode, None, "removing the last area scan unspecifies an Image mode, as removeVisualItem does");
+        assert_eq!(camera_state(&after_scan_removed(&with_scan, surveyed.clone()).settings_sections).mode, Some(CAMERA_MODE_IMAGE_SURVEY), "QGC only clears a mode left at 0");
     }
 
     #[test]
