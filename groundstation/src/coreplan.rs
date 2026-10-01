@@ -530,8 +530,20 @@ fn remove(args: &str) -> Value {
     edit(|doc| plandoc::remove(doc, index).ok_or_else(|| format!("This plan has no item {index} to remove.")))
 }
 
+const WAYPOINTS_HEADER: &str = "QGC WPL";
+
+fn plan_text(text: &str) -> Result<String, String> {
+    match text.trim_start().starts_with(WAYPOINTS_HEADER) {
+        true => {
+            let (firmware_type, vehicle_type) = planned_types();
+            crate::waypoints::parse(text).map(|file| crate::planfile::write(&crate::planfile::from_waypoints(&file, firmware_type, vehicle_type)))
+        }
+        false => Ok(text.to_string()),
+    }
+}
+
 fn open(file: &str) -> Value {
-    let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| plandoc::load(&text));
+    let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| plandoc::load(&plan_text(&text)?));
     match loaded {
         Ok(document) => {
             let count = document.items.len();
@@ -1666,6 +1678,16 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
             other => other,
         }
+    }
+
+    #[test]
+    fn a_waypoints_file_opens_as_a_plan_like_load_text_file() {
+        let text = "QGC WPL 110\n0\t1\t0\t16\t0\t0\t0\t0\t47.66\t-122.10\t5.2\t1\n1\t0\t3\t22\t0\t0\t0\t0\t47.661\t-122.103\t100\t1\n2\t0\t3\t16\t0\t0\t0\t0\t47.662\t-122.104\t100\t1\n";
+        let doc = plandoc::load(&plan_text(text).unwrap()).unwrap();
+        assert_eq!(doc.items.len(), 2);
+        assert_eq!(doc.home.map(|h| h[2]), Some(5.2), "the first row of a 110 file is the planned home");
+        assert!(plan_text("QGC WPL 110\n0\t1\t0\n").is_err());
+        assert_eq!(plan_text("{}").unwrap(), "{}", "a plan file passes through untouched");
     }
 
     #[test]

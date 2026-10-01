@@ -101,6 +101,13 @@ private fun lastDistance(items: JSONArray): Double? {
     return (last.opt("patternDistance") as? Number)?.toDouble()
 }
 
+private const val WAYPOINTS_HEADER = "QGC WPL"
+
+internal fun isWaypointsText(head: String): Boolean = head.trimStart().startsWith(WAYPOINTS_HEADER)
+
+private fun isWaypointsFile(file: File): Boolean =
+    runCatching { file.bufferedReader().use { isWaypointsText(it.readLine().orEmpty()) } }.getOrDefault(false)
+
 private fun displayName(context: Context, uri: Uri): String? = runCatching {
     context.contentResolver
         .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
@@ -200,8 +207,8 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val opener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
+            val staged = File(context.cacheDir, OPEN_CACHE)
             val failure = withContext(Dispatchers.Default) {
-                val staged = File(context.cacheDir, OPEN_CACHE)
                 staged.delete()
                 if (!copyIn(context, chosen, staged)) {
                     return@withContext "That file could not be read."
@@ -212,7 +219,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 onResult(failure)
                 return@launch
             }
-            adopt(chosen)
+            if (withContext(Dispatchers.IO) { isWaypointsFile(staged) }) forget() else adopt(chosen)
             onResult("Plan opened.")
         }
     }
