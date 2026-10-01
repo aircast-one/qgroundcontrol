@@ -52,6 +52,11 @@ internal fun itemRawEditPath(index: Int): String = "plan.missionController.visua
 internal const val RAW_EDIT_NOTE = "Provides advanced access to all commands/parameters. Be very careful!"
 internal const val RAW_EDIT_STUCK = "You have made changes to the mission item which cannot be shown in Simple Mode"
 
+internal data class EntryPoint(val label: String, val value: String, val path: String)
+
+internal fun entryPoint(view: JSONObject?): EntryPoint? =
+    view?.optJSONObject("entryPoint")?.let { EntryPoint(it.optText("label"), it.optText("value"), it.optText("path")) }?.takeIf { it.path.isNotBlank() }
+
 internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
 
 internal data class RawEdit(val on: Boolean, val friendlyAllowed: Boolean)
@@ -148,6 +153,19 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                     }
                     items(shownCameraFacts(block), key = { it.path }) { fact ->
                         FactRow(fact) { revision++ }
+                    }
+                }
+                entryPoint(view)?.let { entry ->
+                    item(key = "entry") {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${entry.label}: ${entry.value}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                scope.launch {
+                                    refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(entry.path) }
+                                    revision++
+                                }
+                            }) { Text("Rotate") }
+                        }
                     }
                 }
                 presetKind(view)?.let { kind ->

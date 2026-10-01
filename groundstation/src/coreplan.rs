@@ -1517,6 +1517,15 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
     if let Some(answer) = fence_invoke(backend, path, args) {
         return Some(answer);
     }
+    if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|rest| rest.strip_suffix(".rotateEntryPoint")).and_then(|i| i.parse::<usize>().ok()) {
+        return Some(edit(|doc| {
+            let at = index.checked_sub(1).filter(|i| *i < doc.items.len()).ok_or("No such item.")?;
+            let plandoc::Item::Complex { kind, json, item_count } = &doc.items[at] else { return Err("Only a pattern has an entry point.".to_string()) };
+            let rotated = crate::surveydoc::rotated_entry(kind, json).ok_or("This pattern has no entry point to rotate.")?;
+            let item = plandoc::Item::Complex { kind: kind.clone(), item_count: plandoc::complex_count(kind, &rotated).unwrap_or(*item_count), json: rotated };
+            Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })
+        }));
+    }
     let current = || held().file.clone();
     Some(match path {
         "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| {
@@ -1927,7 +1936,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
         Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" => {
             let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
-            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null, "presetKind": crate::presets::settings_group(kind).map(|_| kind.clone()), "areaHelp": crate::itemfacts::area_help(kind, shape_complete(kind, survey)) })
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null, "presetKind": crate::presets::settings_group(kind).map(|_| kind.clone()), "areaHelp": crate::itemfacts::area_help(kind, shape_complete(kind, survey)), "entryPoint": crate::surveydoc::entry_point_name(kind, crate::surveydoc::entry_point(kind, survey)).map(|name| json!({ "label": "Start from", "value": name, "path": format!("{item}.rotateEntryPoint") })) })
         }
         Some(Some(plandoc::Item::Complex { kind, json: pattern, .. })) if crate::landingpattern::is_landing(kind) => {
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };

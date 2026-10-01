@@ -63,6 +63,16 @@ fn qt_area_help(backend: &dyn Backend, item: &str, read: &Value) -> Option<&'sta
     area_help(kind, flag(&object(&backend.get(&format!("{item}.{shape}"))), "isValid"))
 }
 
+fn qt_entry_point(item: &str, read: &Value) -> Option<Value> {
+    let kind = match read.get("class").and_then(Value::as_str)? {
+        "SurveyComplexItem" => "survey",
+        "CorridorScanComplexItem" => "CorridorScan",
+        _ => return None,
+    };
+    let name = crate::surveydoc::entry_point_name(kind, read.get("entryPoint")?.as_i64()?)?;
+    Some(json!({ "label": "Start from", "value": name, "path": format!("{item}.rotateEntryPoint") }))
+}
+
 fn owned(read: &Value, item: &str) -> Vec<Value> {
     read.get("facts")
         .and_then(Value::as_array)
@@ -148,6 +158,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         "simple": simple,
         "fields": fields,
         "areaHelp": (available && !simple).then(|| qt_area_help(backend, &item, &read)).flatten(),
+        "entryPoint": qt_entry_point(&item, &read),
         "camera": match available && !simple {
             true => camera(backend, &item),
             false => Value::Null,

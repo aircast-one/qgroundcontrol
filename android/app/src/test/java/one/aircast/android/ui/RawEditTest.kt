@@ -24,4 +24,10 @@ class RawEditTest {
         assertEquals("Use the Polygon Tools", areaHelp(JSONObject("""{"areaHelp":"Use the Polygon Tools"}""")))
         assertNull(areaHelp(JSONObject("""{"areaHelp":null}""")))
     }
+
+    @Test
+    fun `a pattern offers its start corner to rotate`() {
+        assertEquals(EntryPoint("Start from", "top left", "p.rotateEntryPoint"), entryPoint(JSONObject("""{"entryPoint":{"label":"Start from","value":"top left","path":"p.rotateEntryPoint"}}""")))
+        assertNull(entryPoint(JSONObject("""{"entryPoint":null}""")))
+    }
 }

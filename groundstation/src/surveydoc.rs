@@ -587,6 +587,39 @@ pub fn fresh_structure(fresh: &Fresh) -> Value {
     })
 }
 
+const SURVEY_ENTRY_NAMES: [&str; 4] = ["top left", "top right", "bottom left", "bottom right"];
+const CORRIDOR_ENTRY_NAMES: [&str; 4] = ["start", "start, other side", "end", "end, other side"];
+
+pub fn entry_point_name(kind: &str, entry: i64) -> Option<&'static str> {
+    let names = match kind {
+        "CorridorScan" => CORRIDOR_ENTRY_NAMES,
+        "survey" => SURVEY_ENTRY_NAMES,
+        _ => return None,
+    };
+    names.get(usize::try_from(entry).ok()?).copied()
+}
+
+pub fn entry_point(kind: &str, item: &Value) -> i64 {
+    let key = if kind == "CorridorScan" { "EntryPoint" } else { "entryLocation" };
+    item.get(key).and_then(Value::as_i64).unwrap_or(0)
+}
+
+pub fn rotated_entry(kind: &str, item: &Value) -> Option<Value> {
+    let entry = entry_point(kind, item);
+    let (key, next) = match kind {
+        "survey" => ("entryLocation", if entry >= 3 { 0 } else { entry + 1 }),
+        "CorridorScan" => {
+            let spacing = item.get("TransectStyleComplexItem").and_then(|t| t.get("CameraCalc")).and_then(|c| number(c, "AdjustedFootprintSide")).unwrap_or(0.0);
+            let step = if crate::corridorscan::transect_count(number(item, "CorridorWidth").unwrap_or(0.0), spacing) < 2 { 2 } else { 1 };
+            ("EntryPoint", if entry + step > 3 { 0 } else { entry + step })
+        }
+        _ => return None,
+    };
+    let mut moved = item.clone();
+    moved[key] = json!(next);
+    Some(regenerate_item(&moved))
+}
+
 pub fn regenerate_corridor(corridor: &Value) -> Value {
     let transect = corridor.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
     let calc = transect.get("CameraCalc").cloned().unwrap_or(Value::Null);
@@ -691,6 +724,23 @@ mod tests {
         assert_eq!(pitched["GimbalPitch"], -45.0);
         let shown = fields(&pitched, "i", true, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
         assert_eq!((shown["value"].as_f64(), shown["minimum"].as_f64(), shown["maximum"].as_f64(), shown["units"].as_str()), (Some(45.0), Some(0.0), Some(90.0), Some("deg")));
+    }
+
+    #[test]
+    fn rotating_the_entry_walks_the_corners_and_a_single_pass_corridor_jumps_ends() {
+        let corridor: Value = serde_json::from_str(include_str!("../tests/fixtures/corridor-inserted-by-qt.json")).unwrap();
+        let survey: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-inserted-by-qt.json")).unwrap();
+        let item = survey.get("survey").unwrap_or(&survey).clone();
+        let mut last = item.clone();
+        last["entryLocation"] = json!(3);
+        assert_eq!(entry_point("survey", &rotated_entry("survey", &last).unwrap()), 0);
+        assert_eq!(entry_point("survey", &rotated_entry("survey", &item).unwrap()), entry_point("survey", &item) + 1);
+        let mut narrow = corridor["corridor"].clone();
+        narrow["CorridorWidth"] = json!(0.0);
+        narrow["EntryPoint"] = json!(0);
+        assert_eq!(entry_point("CorridorScan", &rotated_entry("CorridorScan", &narrow).unwrap()), 2, "one transect has no other side");
+        assert_eq!(entry_point_name("CorridorScan", 3), Some("end, other side"));
+        assert_eq!(rotated_entry("StructureScan", &item), None);
     }
 
     #[test]
