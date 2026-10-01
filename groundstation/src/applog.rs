@@ -22,6 +22,7 @@ const CSV_HEADER: &str = "timestamp,level,category,message,file,line";
 pub struct Entry {
     pub sequence: u64,
     pub timestamp: DateTime<Local>,
+    pub elapsed_ms: u64,
     pub level: usize,
     pub category: String,
     pub message: String,
@@ -150,7 +151,7 @@ pub fn record_entry(level: usize, category: &str, message: &str, file: &str, lin
     let Ok(mut store) = STORE.lock() else { return };
     let sequence = store.next;
     store.next += 1;
-    store.entries.push_back(Entry { sequence, timestamp: Local::now(), level, category: category.to_string(), message: message.to_string(), file: file.to_string(), line });
+    store.entries.push_back(Entry { sequence, timestamp: Local::now(), elapsed_ms: STARTED.elapsed().as_millis() as u64, level, category: category.to_string(), message: message.to_string(), file: file.to_string(), line });
     if store.entries.len() > MAX_LOG_ENTRIES {
         store.entries.pop_front();
     }
@@ -255,13 +256,23 @@ pub fn passes(filter: &Filter, entry: &Entry) -> bool {
     accepts(filter, &filter.category.to_lowercase(), &filter.matcher(), entry)
 }
 
+static STARTED: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+const ELAPSED_SETTING: &str = "settings.appSettings.showAppLogTimestampAsElapsedTime";
+
+pub fn shown_time(entry: &Entry, elapsed: bool) -> String {
+    match elapsed {
+        true => format!("{:.3}", entry.elapsed_ms as f64 / 1000.0),
+        false => entry.timestamp.format("%H:%M:%S%.3f").to_string(),
+    }
+}
+
 fn entry_json(entry: &Entry) -> Value {
     json!({
         "sequence": entry.sequence,
         "level": entry.level,
         "message": format!("{} {}", LEVEL_LABELS[entry.level], entry.message),
         "category": entry.category,
-        "timestamp": entry.timestamp.format("%H:%M:%S%.3f").to_string(),
+        "timestamp": shown_time(entry, crate::settingsstore::raw_setting(ELAPSED_SETTING).and_then(|v| v.as_bool()).unwrap_or(false)),
         "source": source(entry),
     })
 }
@@ -300,6 +311,13 @@ pub fn log_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_log_time_is_the_clock_or_the_seconds_since_start() {
+        let at = Entry { sequence: 0, timestamp: Local.with_ymd_and_hms(2026, 10, 1, 3, 20, 11).unwrap(), elapsed_ms: 12_345, level: 1, category: String::new(), message: String::new(), file: String::new(), line: 0 };
+        assert_eq!(shown_time(&at, false), "03:20:11.000");
+        assert_eq!(shown_time(&at, true), "12.345");
+    }
     use chrono::TimeZone;
 
     struct Nothing;
@@ -333,7 +351,7 @@ mod tests {
     }
 
     fn entry(level: usize, category: &str, message: &str, file: &str, line: u32) -> Entry {
-        Entry { sequence: 0, timestamp: Local.with_ymd_and_hms(2026, 10, 1, 3, 20, 11).unwrap(), level, category: category.into(), message: message.into(), file: file.into(), line }
+        Entry { sequence: 0, timestamp: Local.with_ymd_and_hms(2026, 10, 1, 3, 20, 11).unwrap(), elapsed_ms: 12_345, level, category: category.into(), message: message.into(), file: file.into(), line }
     }
 
     #[test]

@@ -102,6 +102,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Map providers", &["mapboxToken", "mapboxAccount", "mapboxStyle", "esriToken", "vworldToken", "customURL"]),
         ("AirLink", &["loginAirLink", "passAirLink"]),
         ("Files", &["savePath", "androidSaveToSDCard", "disableAllPersistence"]),
+        ("Logging", &["showAppLogTimestampAsElapsedTime"]),
     ]),
     ("videoSettings", &[
         ("Cameras", &["videoSource", "primaryCameraName", "activeVideoSource", "multiViewEnabled"]),
