@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +28,7 @@ internal data class ParameterRows(
     val title: String,
     val facts: List<Fact>,
     val note: String,
+    val calculators: Map<String, PowerCalculator> = emptyMap(),
 )
 
 internal fun factFromParameter(name: String, json: JSONObject): Fact? =
@@ -104,7 +106,10 @@ private fun readPage(page: String): List<ParameterRows> {
                     section.optText("note").ifBlank { null },
                     readOnlyNote(facts),
                 )
-                ParameterRows(section.optText("title"), facts, note.joinToString(" "))
+                val calculators = (0 until (controls?.length() ?: 0)).mapNotNull { control ->
+                    controls!!.optJSONObject(control)?.let { row -> powerCalculator(row.optJSONObject("calculator"))?.let { row.optText("path") to it } }
+                }.toMap()
+                ParameterRows(section.optText("title"), facts, note.joinToString(" "), calculators)
             }
         }
     }
@@ -118,6 +123,7 @@ internal fun ParameterForm(
     var rows by remember { mutableStateOf(emptyList<ParameterRows>()) }
     var loaded by remember { mutableStateOf(false) }
     var reloads by remember { mutableIntStateOf(0) }
+    var calculating by remember { mutableStateOf<PowerCalculator?>(null) }
 
     LaunchedEffect(page, reloads) {
         rows = withContext(Dispatchers.Default) { readPage(page) }
@@ -161,11 +167,21 @@ internal fun ParameterForm(
                     )
                 } else {
                     FactRow(fact) { reloads++ }
+                    section.calculators[fact.path]?.let { calculator ->
+                        TextButton(onClick = { calculating = calculator }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Calculate") }
+                    }
                 }
             }
         }
         item(key = "refresh") {
             FootNote("Values refresh after each change.")
+        }
+    }
+
+    calculating?.let { calculator ->
+        PowerCalcDialog(calculator) {
+            calculating = null
+            reloads++
         }
     }
 }

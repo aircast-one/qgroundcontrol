@@ -60,6 +60,7 @@ pub mod ubxbase;
 pub mod speech;
 pub mod telemetrylog;
 pub mod proximity;
+pub mod powercalc;
 pub mod sbfbase;
 pub mod rtkbase;
 pub mod gpsview;

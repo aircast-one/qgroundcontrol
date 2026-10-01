@@ -556,6 +556,24 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
 }
 
 fn rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
+    let calculator = (control["control"] == "dialogButton")
+        .then(|| {
+            let index = scope.eval_text(control["dialogButton"]["dialogParams"]["batteryIndex"].as_str().unwrap_or("0")).number().unwrap_or(0.0) as usize;
+            let param = control["param"].as_str().map(|p| scope.full_name(p)).unwrap_or_default();
+            crate::powercalc::calculator(control["dialogButton"]["dialogComponent"].as_str().unwrap_or_default(), index, &param)
+        })
+        .flatten();
+    let built = control_rows(scope, page, id, control);
+    match calculator {
+        Some(calculator) => built.into_iter().map(|mut row| {
+            row["calculator"] = calculator.clone();
+            row
+        }).collect(),
+        None => built,
+    }
+}
+
+fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
     if !scope.shown(control, "showWhen") {
         return vec![];
     }
@@ -691,7 +709,7 @@ pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
             let shown: Vec<Value> = instances(&base, section)
                     .into_iter()
                     .filter_map(|instance| {
-                        let scope = base.with(instance.repeat, BTreeMap::new());
+                        let scope = base.with(instance.repeat, BTreeMap::from([("_rawIndex".to_string(), Val::Num((instance.index + 1) as f64))]));
                         if !scope.shown(section, "showWhen") {
                             return None;
                         }
@@ -907,6 +925,18 @@ mod tests {
 
     fn eval(fake: &Fake, config: &Value, text: &str) -> Val {
         scope_for(fake, config).eval_text(text)
+    }
+
+    #[test]
+    fn px4_power_rows_carry_their_calculators_for_the_right_battery() {
+        let mut fake = Fake::new(&[("BAT1_SOURCE", 0.0), ("BAT1_V_DIV", 10.0), ("BAT1_A_PER_V", 36.0), ("BAT2_SOURCE", 0.0), ("BAT2_V_DIV", 11.0)]);
+        fake.px4 = true;
+        let served = page(&fake, "Power", true);
+        let rows: Vec<Value> = served["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
+        let calculators: Vec<(String, u64)> = rows.iter().filter_map(|r| Some((r["calculator"]["param"].as_str()?.to_string(), r["calculator"]["batteryIndex"].as_u64()?))).collect();
+        assert!(calculators.contains(&("BAT1_V_DIV".to_string(), 1)), "{calculators:?}");
+        assert!(calculators.contains(&("BAT1_A_PER_V".to_string(), 1)));
+        assert!(calculators.contains(&("BAT2_V_DIV".to_string(), 2)));
     }
 
     #[test]

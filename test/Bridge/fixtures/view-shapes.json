@@ -4332,6 +4332,8 @@
         "view.positionForms(47.397,8.546).utm.northing",
         "view.positionForms(47.397,8.546).utm.southern",
         "view.positionForms(47.397,8.546).utm.zone",
+        "view.powerCalc(voltage,1,BAT1_V_DIV).class",
+        "view.powerCalc(voltage,1,BAT1_V_DIV).kind",
         "view.preflight.class",
         "view.preflight.groups.#",
         "view.preflight.groups.0.checks.#",
@@ -8821,6 +8823,11 @@
         "view.positionForms(47.397,8.546).utm.northing",
         "view.positionForms(47.397,8.546).utm.southern",
         "view.positionForms(47.397,8.546).utm.zone",
+        "view.powerCalc(voltage,1,BAT1_V_DIV).class",
+        "view.powerCalc(voltage,1,BAT1_V_DIV).kind",
+        "view.powerCalc(voltage,1,BAT1_V_DIV).paramText",
+        "view.powerCalc(voltage,1,BAT1_V_DIV).readingAvailable",
+        "view.powerCalc(voltage,1,BAT1_V_DIV).readingText",
         "view.preflight.airframe",
         "view.preflight.blocked.#",
         "view.preflight.blocked[]",
@@ -10319,6 +10326,7 @@
             "view.speech",
             "view.proximityRadar",
             "view.gimbalAzimuth",
+            "view.powerCalc",
             "view.videoSource",
             "view.kmlFile",
             "view.shapeFile",
@@ -12667,6 +12675,13 @@
             "southern": "bool",
             "zone": "number"
         }
+    },
+    "view.powerCalc(voltage,1,BAT1_V_DIV)": {
+        "class": "string",
+        "kind": "string",
+        "paramText": "null|string",
+        "readingAvailable": "bool",
+        "readingText": "null|string"
     },
     "view.preflight": {
         "airframe": "string",

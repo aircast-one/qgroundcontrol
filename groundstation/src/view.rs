@@ -55,6 +55,7 @@ use crate::gpsresilience;
 use crate::rtkbase;
 use crate::speech;
 use crate::proximity;
+use crate::powercalc;
 use crate::firstrun;
 use crate::applog;
 use crate::offlinemaps;
@@ -165,6 +166,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.gcsBattery", "<percent>,<charging>"),
     ("view.appLog", "<level>,<category>,<text>,<regex>,<after>"),
     ("view.speech", "<after>"),
+    ("view.powerCalc", "<measure>,<batteryIndex>,<param>"),
     ("view.offlineMaps", "<mapType>,<topLeftLon>,<topLeftLat>,<bottomRightLon>,<bottomRightLat>,<minZoom>,<maxZoom>"),
     ("view.mgrsToGeo", "<mgrs>"),
     ("view.coreVehicle", "<vehicle id>"),
@@ -296,6 +298,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.speech", deps: &[], compute: speech::speech_view },
     View { path: "view.proximityRadar", deps: proximity::DEPS, compute: proximity::proximity_view },
     View { path: "view.gimbalAzimuth", deps: gimbalindicator::AZIMUTH_DEPS, compute: gimbalindicator::azimuth_view },
+    View { path: "view.powerCalc", deps: powercalc::DEPS, compute: powercalc::power_calc_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
@@ -568,6 +571,7 @@ mod deps_cover_reads {
             ("speech", include_str!("speech.rs")),
             ("telemetrylog", include_str!("telemetrylog.rs")),
             ("proximity", include_str!("proximity.rs")),
+            ("powercalc", include_str!("powercalc.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),
