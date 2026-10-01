@@ -3329,6 +3329,10 @@ impl Hub {
         }
     }
 
+    pub fn any_pending_parameter_writes(&self) -> bool {
+        self.vehicles.values().any(Vehicle::pending_parameter_writes)
+    }
+
     pub fn vehicle_ids(&self) -> Vec<u8> {
         self.arrival.clone()
     }

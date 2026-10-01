@@ -1,9 +1,17 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use serde_json::{Value, json};
 
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.pendingWrites", "plan.dirtyForSave", "plan.dirtyForUpload", crate::coreplan::CHANGED];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicle.parameterManager.pendingWrites", "plan.dirtyForSave", "plan.dirtyForUpload", crate::coreplan::CHANGED];
+static VEHICLES_SEEN: AtomicU64 = AtomicU64::new(0);
+
+pub fn deps() -> Vec<String> {
+    DEPS.iter().map(|d| d.to_string()).chain((0..VEHICLES_SEEN.load(Ordering::Relaxed)).map(|index| format!("vehicles.vehicles.{index}.parameterManager.pendingWrites"))).collect()
+}
+
 const UNSAVED_MISSION: &str = "You have a mission edit in progress which has not been saved/sent. If you close you will lose changes. Are you sure you want to close?";
 const PENDING_WRITES: &str = "You have pending parameter updates to a vehicle. If you close you will lose changes. Are you sure you want to close?";
 const ACTIVE_CONNECTIONS: &str = "There are still active connections to vehicles. Are you sure you want to exit?";
@@ -35,7 +43,14 @@ pub fn close_checks_view(backend: &dyn Backend, _args: &[String]) -> Value {
             (flag(&plan, "dirtyForSave"), flag(&plan, "dirtyForUpload"))
         }
     };
-    let pending_writes = vehicle && flag(&object(&backend.get_fields("vehicle.parameterManager", "pendingWrites")), "pendingWrites");
+    let pending_writes = match crate::vehiclefacade::switched_on() {
+        true => crate::hub::lock().any_pending_parameter_writes(),
+        false => {
+            let count = object(&backend.get("vehicles.vehicles.count")).get("value").and_then(Value::as_u64).unwrap_or(0);
+            VEHICLES_SEEN.store(count, Ordering::Relaxed);
+            (0..count).any(|index| flag(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}.parameterManager"), "pendingWrites")), "pendingWrites"))
+        }
+    };
     let state = State { vehicle, dirty_for_save, dirty_for_upload, pending_writes };
     json!({
         "kind": "object",
