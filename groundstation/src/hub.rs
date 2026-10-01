@@ -34,6 +34,9 @@ pub const TYPE_ADSB: u8 = 27;
 pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
+const HIGH_LATENCY_DOWNLOAD: &str = "Download not supported on high latency links.";
+const HIGH_LATENCY_UPLOAD: &str = "Upload not supported on high latency links.";
+
 const MANUAL_CONTROL_SCALE: f32 = 1000.0;
 const MAV_TYPE_AIRSHIP: u8 = 7;
 pub const FILES_BUSY: &str = "Another file transfer with the vehicle is in progress.";
@@ -102,6 +105,7 @@ pub const CMD_LOGGING_STOP: u16 = 2511;
 pub const RESULT_DENIED: u8 = 2;
 
 #[derive(Debug, Clone, Default)]
+
 pub struct LogInputs {
     pub path: String,
     pub extension: String,
@@ -740,6 +744,11 @@ impl Vehicle {
         };
         if self.plans[kind as usize].transfer.in_progress() {
             return Err("A plan transfer is still in progress.".to_string());
+        }
+        match (self.commands.high_latency, request.get("action").and_then(Value::as_str).unwrap_or("")) {
+            (true, "load") => return Err(HIGH_LATENCY_DOWNLOAD.to_string()),
+            (true, "write") => return Err(HIGH_LATENCY_UPLOAD.to_string()),
+            _ => {}
         }
         match request.get("action").and_then(Value::as_str).unwrap_or("") {
             "load" => Ok(self.load_plan(kind, now_ms)),
@@ -3112,6 +3121,9 @@ impl Hub {
     pub fn write_mission(&mut self, id: Option<u8>, items: Vec<plantransfer::Item>, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
         let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
         let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
+        if vehicle.commands.high_latency {
+            return Err(HIGH_LATENCY_UPLOAD.to_string());
+        }
         let link = vehicle.link;
         vehicle.write_mission(items, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
     }
@@ -4433,6 +4445,17 @@ mod tests {
         let listed: Vec<MavMessage> = refuse_pack(&mut hub, &autopilot, &timed_out, 1_100).into_iter().map(|(_, b)| decode(&b)).collect();
         assert!(matches!(listed.last(), Some(MavMessage::PARAM_REQUEST_LIST(_))), "an unanswered open fails the fetch and the parameters are requested anyway");
         assert!(hub.guided_snapshot(None)["guided"]["errors"].as_array().unwrap().iter().any(|e| e.as_str().unwrap().contains("Download failed")));
+    }
+
+    #[test]
+    fn a_high_latency_link_refuses_plan_transfers_like_plan_master_controller() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        hub.vehicles.get_mut(&1).unwrap().commands.high_latency = true;
+        assert_eq!(hub.mission_request(None, &json!({ "action": "load" }), 10_000), Err(HIGH_LATENCY_DOWNLOAD.to_string()));
+        assert_eq!(hub.mission_request(None, &json!({ "plan": "rally", "action": "write", "points": [[47.0, 8.0, 40.0]] }), 10_000), Err(HIGH_LATENCY_UPLOAD.to_string()));
+        assert_eq!(hub.write_mission(None, Vec::new(), 10_000), Err(HIGH_LATENCY_UPLOAD.to_string()));
     }
 
     #[test]
