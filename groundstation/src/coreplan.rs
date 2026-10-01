@@ -248,7 +248,8 @@ pub fn set_map_center_hint(latitude: f64, longitude: f64) {
 
 fn edit_defaults(backend: &dyn Backend) -> Option<plandoc::EditDefaults> {
     let map_center = *MAP_CENTER_HINT.lock().unwrap_or_else(PoisonError::into_inner);
-    crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude, map_center })
+    let vtol_transition_distance = crate::read::value_number(&backend.get("settings.planViewSettings.vtolTransitionDistance.rawValue")).unwrap_or(plandoc::VTOL_TRANSITION_DISTANCE_DEFAULT);
+    crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude, map_center, vtol_transition_distance })
 }
 
 fn insert_at(backend: &dyn Backend, args: &str, land: bool) -> Value {
@@ -292,7 +293,7 @@ fn remember_item(backend: &dyn Backend, visual_index: i64) {
     remember_patterns(backend, document.vehicle_type, at.and_then(|i| document.items.get(i)).into_iter());
 }
 
-fn insert_landing(_backend: &dyn Backend, args: &str) -> Value {
+fn insert_landing(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
     let (Some(latitude), Some(longitude)) = (number(0), number(1)) else {
@@ -306,6 +307,7 @@ fn insert_landing(_backend: &dyn Backend, args: &str) -> Value {
             land: (latitude, longitude),
             ardupilot: plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
             relative: doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE,
+            transition_distance: crate::read::value_number(&backend.get("settings.planViewSettings.vtolTransitionDistance.rawValue")),
         });
         let kind = if vtol { crate::landingpattern::VTOL_PATTERN } else { crate::landingpattern::FIXED_WING_PATTERN };
         Ok(plandoc::insert_complex(doc, kind, built, (latitude, longitude), index))

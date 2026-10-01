@@ -51,6 +51,7 @@ pub struct Fresh {
     pub land: (f64, f64),
     pub ardupilot: bool,
     pub relative: bool,
+    pub transition_distance: Option<f64>,
 }
 
 fn fact(fresh: &Fresh, name: &str) -> Value {
@@ -64,6 +65,7 @@ pub fn fresh(fresh: &Fresh) -> Value {
     let on = |name: &str| fact(fresh, name).as_bool().unwrap_or(false);
     let (approach_altitude, land_altitude) = (number("FinalApproachAltitude"), number("LandingAltitude"));
     let distance = match fresh.vtol || on("ValueSetIsDistance") {
+        true if fresh.vtol => fresh.transition_distance.unwrap_or_else(|| number("LandingDistance")),
         true => number("LandingDistance"),
         false => (approach_altitude - land_altitude) / number("GlideSlope").to_radians().tan(),
     };
@@ -315,7 +317,7 @@ fn scan_at(items: &[crate::plandoc::Item], start: usize, vtol: bool, ardupilot: 
     let after_speed = after_photos - usize::from(speed.is_some());
     let first = after_speed.checked_sub(1)?;
     simple(first).filter(|s| s.command == i64::from(CMD_DO_LAND_START) && zeros(s, 1..=7))?;
-    let defaults = |name: &str| fact(&Fresh { vtol, land: (0.0, 0.0), ardupilot, relative: true }, name);
+    let defaults = |name: &str| fact(&Fresh { vtol, land: (0.0, 0.0), ardupilot, relative: true, transition_distance: None }, name);
     let radius = if loiter { json!(p(approach, 2).abs()) } else { defaults("LoiterRadius") };
     let mut pattern = json!({
         "altitudesAreRelative": land.frame == i64::from(FRAME_GLOBAL_RELATIVE_ALT),
@@ -496,7 +498,7 @@ mod tests {
     fn a_new_landing_pattern_is_laid_out_behind_the_touchdown_as_qt_lays_it() {
         let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/landing-inserted-by-qt.json")).unwrap();
         [(false, "fixedWing"), (true, "vtol")].iter().for_each(|(vtol, name)| {
-            let built = fresh(&Fresh { vtol: *vtol, land: (-35.37, 149.172), ardupilot: true, relative: true });
+            let built = fresh(&Fresh { vtol: *vtol, land: (-35.37, 149.172), ardupilot: true, relative: true, transition_distance: None });
             assert_eq!(built[WIZARD], json!(!vtol), "Qt opens a fixed wing landing in its wizard and a VTOL one finished");
             let mut saved = built.clone();
             saved.as_object_mut().unwrap().remove(WIZARD);

@@ -215,7 +215,10 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
 pub struct EditDefaults {
     pub mission_item_altitude: f64,
     pub map_center: Option<(f64, f64)>,
+    pub vtol_transition_distance: f64,
 }
+
+pub const VTOL_TRANSITION_DISTANCE_DEFAULT: f64 = 300.0;
 
 const CMD_NAV_WAYPOINT: i64 = 16;
 const PLANNED_HOME_OFFSET_M: f64 = 30.0;
@@ -387,11 +390,15 @@ pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults
     let home = doc.home.ok_or("A takeoff is placed at the launch position, and this plan has none yet.")?;
     match vehicle_class(doc.vehicle_type) {
         VehicleClass::FixedWing => Err("A fixed-wing takeoff needs its climb-out placed on the map.".to_string()),
-        _ => {
-            let inserted = insert_simple(doc, CMD_NAV_TAKEOFF, home[0], home[1], visual_index, defaults);
+        class => {
+            let at_point = match class {
+                VehicleClass::Vtol => crate::surveygrid::at_distance_and_azimuth((home[0], home[1]), defaults.vtol_transition_distance, 0.0),
+                _ => (home[0], home[1]),
+            };
+            let inserted = insert_simple(doc, CMD_NAV_TAKEOFF, at_point.0, at_point.1, visual_index, defaults);
             let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
             let launched = |item: &Item| match item {
-                Item::Simple(s) => Item::Simple(Simple { params: [s.params[0], s.params[1], s.params[2], s.params[3], Some(home[0]), Some(home[1]), s.params[6]], ..s.clone() }),
+                Item::Simple(s) => Item::Simple(Simple { params: [s.params[0], s.params[1], s.params[2], s.params[3], Some(at_point.0), Some(at_point.1), s.params[6]], ..s.clone() }),
                 other => other.clone(),
             };
             Ok(Document { items: inserted.items.iter().enumerate().map(|(i, item)| if i == at { launched(item) } else { item.clone() }).collect(), ..inserted })
@@ -760,7 +767,7 @@ mod tests {
         load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap()
     }
 
-    const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0, map_center: None };
+    const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0, map_center: None, vtol_transition_distance: VTOL_TRANSITION_DISTANCE_DEFAULT };
 
     #[test]
     fn a_command_that_gains_a_coordinate_lands_on_the_map_centre_hint() {
@@ -831,7 +838,12 @@ mod tests {
         let without_takeoff = remove(&section(), 1).unwrap();
         matches_qt(&insert_takeoff(&without_takeoff, 1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-takeoff-by-qt.plan"));
         assert!(insert_takeoff(&Document { home: None, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err());
-        assert!(insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff }, 1, &QT_DEFAULTS).is_err(), "Qt opens a plane's takeoff in the wizard for its climb-out");
+        assert!(insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err(), "Qt opens a plane's takeoff in the wizard for its climb-out");
+        let vtol = insert_takeoff(&Document { vehicle_type: 20, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).unwrap();
+        let Item::Simple(takeoff) = &vtol.items[0] else { panic!("takeoff") };
+        let home = without_takeoff.home.unwrap();
+        let at = (takeoff.params[4].unwrap(), takeoff.params[5].unwrap());
+        assert!((crate::surveygrid::distance_between((home[0], home[1]), at) - VTOL_TRANSITION_DISTANCE_DEFAULT).abs() < 0.5, "a VTOL takes off the transition distance north of launch");
     }
 
     #[test]
