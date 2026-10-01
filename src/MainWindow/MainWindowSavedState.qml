@@ -33,7 +33,7 @@ Item {
         if (ScreenTools.isFakeMobile) {
             window.width = ScreenTools.screenWidth
             window.height = ScreenTools.screenHeight
-        } else if (ScreenTools.isAndroid) {
+        } else if (ScreenTools.isAndroid && !QGroundControl.isRadiomasterAx12) {
             window.showMaximized();
         } else if (ScreenTools.isMobile) {
             window.showFullScreen();
