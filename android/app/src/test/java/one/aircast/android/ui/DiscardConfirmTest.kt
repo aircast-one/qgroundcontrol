@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.json.JSONObject
@@ -25,5 +26,12 @@ class DiscardConfirmTest {
         assertFalse(planIsDirty(null))
         assertFalse(planIsSyncing(null))
         assertFalse(planIsSyncing(JSONObject("""{"kind":"object","class":"PlanStatus"}""")))
+    }
+
+    @Test
+    fun `sync progress comes off the plan view, clamped, and reads zero without one`() {
+        assertEquals(0.4f, planSyncProgress(JSONObject("""{"sync":{"state":"busy","progress":0.4}}""")), 1e-6f)
+        assertEquals(1f, planSyncProgress(JSONObject("""{"sync":{"progress":3}}""")), 0f)
+        assertEquals(0f, planSyncProgress(null), 0f)
     }
 }

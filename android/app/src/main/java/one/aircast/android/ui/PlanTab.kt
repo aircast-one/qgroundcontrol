@@ -24,6 +24,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +77,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
     val containsItems = remember(planStatus) { planContainsItems(planStatus) }
     val dirty = remember(planStatus) { planIsDirty(planStatus) }
     val syncing = remember(planStatus) { planIsSyncing(planStatus) }
+    val syncProgress = remember(planStatus) { planSyncProgress(planStatus) }
     var showDefaults by remember { mutableStateOf(false) }
     var showTransform by remember { mutableStateOf(false) }
     val can = planActions(planStatus)
@@ -216,13 +219,19 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                             color = if (upload.emphasised) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
                             contentColor = if (upload.emphasised) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                         ) {
-                            Row(
-                                Modifier.height(40.dp).padding(start = 16.dp, end = 20.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(painterResource(R.drawable.ic_upload), null, Modifier.size(20.dp))
-                                Text("Upload", style = MaterialTheme.typography.labelLarge)
+                            Box(Modifier.height(40.dp)) {
+                                if (syncing) {
+                                    val ink = LocalContentColor.current.copy(alpha = 0.28f)
+                                    Box(Modifier.matchParentSize().drawBehind { drawRect(ink, size = size.copy(width = size.width * syncProgress)) })
+                                }
+                                Row(
+                                    Modifier.height(40.dp).padding(start = 16.dp, end = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(painterResource(R.drawable.ic_upload), null, Modifier.size(20.dp))
+                                    Text("Upload", style = MaterialTheme.typography.labelLarge)
+                                }
                             }
                         }
                         Box {

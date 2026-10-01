@@ -1878,6 +1878,7 @@ mod tests {
 
 pub struct PlanState {
     pub syncing: bool,
+    pub progress: f64,
     pub dirty: bool,
     pub contains_items: bool,
     pub has_mission_items: bool,
@@ -1893,12 +1894,15 @@ pub fn plan_state() -> Option<PlanState> {
     if !enabled() {
         return None;
     }
-    let syncing = crate::hub::lock().active().is_some_and(|v| v.mission_snapshot()["mission"]["inProgress"].as_bool() == Some(true));
+    let mission = crate::hub::lock().active().map(|v| v.mission_snapshot()["mission"].clone()).unwrap_or_default();
+    let syncing = mission["inProgress"].as_bool() == Some(true);
+    let progress = mission["progress"].as_f64().unwrap_or(0.0);
     let state = held();
     let document = state.document.clone().unwrap_or_else(empty_document);
     let has_mission_items = !document.items.is_empty();
     Some(PlanState {
         syncing,
+        progress,
         dirty: state.dirty,
         contains_items: has_mission_items || has_entries(&document.fence, "polygons") || has_entries(&document.fence, "circles") || has_entries(&document.rally, "points"),
         has_mission_items,

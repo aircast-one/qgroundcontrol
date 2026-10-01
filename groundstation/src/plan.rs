@@ -15,6 +15,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.containsItems",
     "plan.missionController.complexMissionItems",
     "plan.missionController.globalAltitudeFrame",
+    "plan.missionController.progressPct",
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
     crate::coreplan::CHANGED,
@@ -131,10 +132,11 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     };
     let mission = match core {
         Some(_) => json!({ "kind": "object", "complexMissionItems": offered_patterns(backend).iter().map(|name| json!({ "canonicalName": name, "translatedName": name })).collect::<Vec<_>>() }),
-        None => object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame")),
+        None => object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame,progressPct")),
     };
     let offline = core.as_ref().map_or_else(|| flag(&plan, "offline"), |_| crate::coreplan::offline());
     let syncing = core.as_ref().map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
+    let progress = core.as_ref().map_or_else(|| mission.get("progressPct").and_then(Value::as_f64).unwrap_or(0.0), |c| c.progress);
     let dirty = core.as_ref().map_or_else(|| flag(&plan, "dirty"), |c| c.dirty);
     let contains_items = core.as_ref().map_or_else(|| flag(&plan, "containsItems"), |c| c.contains_items);
     let has_mission_items = core.as_ref().map_or_else(|| flag(&mission, "containsItems"), |c| c.has_mission_items);
@@ -184,7 +186,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
             (Some(true), Some(false)) => Some("This link does not accept rally points."),
             (Some(true), Some(true)) => None,
         },
-        "sync": sync_json(offline, syncing),
+        "sync": sync_json(offline, syncing, progress),
         "status": status_text(name, dirty, offline, contains_items),
         "file": name,
         "filePath": (!file.is_empty()).then_some(file),
@@ -242,13 +244,13 @@ fn upload_json(state: Option<i64>) -> Value {
     })
 }
 
-fn sync_json(offline: bool, syncing: bool) -> Value {
+fn sync_json(offline: bool, syncing: bool, progress: f64) -> Value {
     let (state, refusal) = match (offline, syncing) {
         (true, _) => ("offline", Some("No vehicle is connected.")),
         (false, true) => ("busy", Some("Already syncing, wait for it to finish.")),
         (false, false) => ("ready", None),
     };
-    json!({ "state": state, "refusal": refusal })
+    json!({ "state": state, "refusal": refusal, "progress": if syncing { progress.clamp(0.0, 1.0) } else { 0.0 } })
 }
 
 fn status_text(name: Option<&str>, dirty: bool, offline: bool, has_items: bool) -> String {
@@ -363,6 +365,13 @@ mod tests {
             "max": fact.get("max").cloned().unwrap_or(json!(f64::MAX)), "maxIsDefaultForType": fact.get("max").is_none(),
             "decimalPlaces": fact["decimalPlaces"],
         })
+    }
+
+    #[test]
+    fn sync_carries_the_transfer_progress_only_while_syncing_as_plan_toolbar_draws_it() {
+        assert_eq!(sync_json(false, true, 0.4)["progress"], 0.4);
+        assert_eq!(sync_json(false, false, 1.0)["progress"], 0.0, "the bar is hidden once the sync ends");
+        assert_eq!(sync_json(false, true, 1.7)["progress"], 1.0);
     }
 
     #[test]

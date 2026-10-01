@@ -57,6 +57,9 @@ internal fun planIsDirty(view: JSONObject?): Boolean = view?.optBoolean("dirty")
 internal fun planIsSyncing(view: JSONObject?): Boolean =
     view?.optJSONObject("sync")?.optText("state") == "busy"
 
+internal fun planSyncProgress(view: JSONObject?): Float =
+    view?.optJSONObject("sync")?.optDouble("progress", 0.0)?.toFloat()?.coerceIn(0f, 1f) ?: 0f
+
 internal fun planContainsItems(view: JSONObject?): Boolean = view?.optBoolean("containsItems") == true
 
 // The core maps readyForSaveState to a sentence in readiness.reason. This head

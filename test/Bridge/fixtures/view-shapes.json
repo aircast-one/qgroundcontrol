@@ -4453,6 +4453,7 @@
         "view.plan.readiness.ready",
         "view.plan.readiness.reason",
         "view.plan.readiness.state",
+        "view.plan.sync.progress",
         "view.plan.templates.names.#",
         "view.plan.templates.names.0",
         "view.plan.templates.names.1",
@@ -9199,6 +9200,7 @@
         "view.plan.readiness.reason",
         "view.plan.readiness.state",
         "view.plan.status",
+        "view.plan.sync.progress",
         "view.plan.sync.refusal",
         "view.plan.sync.state",
         "view.plan.templates.enabled",
@@ -13353,6 +13355,7 @@
         },
         "status": "string",
         "sync": {
+            "progress": "number",
             "refusal": "null|string",
             "state": "string"
         },
