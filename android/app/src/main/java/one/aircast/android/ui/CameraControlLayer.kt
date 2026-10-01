@@ -26,6 +26,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
@@ -89,6 +92,8 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 ),
                 border = if (shutter.recording) null else BorderStroke(2.dp, SHUTTER_RING),
             ) { Text(shutter.label) }
+
+            if (!camera.isVideoMode && camera.canPhoto) PhotoCount()
 
             FilterChip(
                 selected = false,
@@ -320,4 +325,21 @@ private fun CameraDetailsSheet(
 
         Spacer(Modifier.padding(bottom = 24.dp))
     }
+}
+
+private const val TRIGGER_COUNT = "vehicle.cameraTriggerPoints.count"
+private const val TRIGGER_POLL_MS = 1000L
+
+internal fun photoCountText(count: Int): String = ("00000$count").takeLast(5)
+
+@Composable
+private fun PhotoCount() {
+    var count by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            count = withContext(Dispatchers.Default) { Qgc.get(TRIGGER_COUNT)?.optInt("value") ?: 0 }
+            delay(TRIGGER_POLL_MS)
+        }
+    }
+    Text(photoCountText(count), style = MaterialTheme.typography.labelMedium)
 }
