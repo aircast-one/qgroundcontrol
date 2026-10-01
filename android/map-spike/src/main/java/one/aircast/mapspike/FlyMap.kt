@@ -78,7 +78,7 @@ fun FlyMap(
             while (true) {
                 val next = withContext(Dispatchers.Default) {
                     val raw = runCatching { JSONObject(QGCBridge.get(FLY_MISSION_ITEMS)) }.getOrNull()
-                    val fences = FenceBridge.read()
+                    val fences = FenceBridge.readFlown()
                     if (raw != null) {
                         MapBridge.markReachable()
                     }

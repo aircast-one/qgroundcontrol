@@ -214,6 +214,13 @@ fn document_fences(backend: &dyn Backend, fence: &Value, rally: &Value) -> Value
     })
 }
 
+pub fn fly_fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    match crate::coreplan::fly_fence_and_rally() {
+        Some((fence, rally)) => document_fences(backend, &fence, &rally),
+        None => fences_view(backend, &[]),
+    }
+}
+
 pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
     if let Some((fence, rally)) = crate::coreplan::fence_and_rally() {
         return document_fences(backend, &fence, &rally);

@@ -266,6 +266,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.settings", deps: settings::DEPS, compute: settings::settings_view },
     View { path: "view.surveyStats", deps: survey::DEPS, compute: survey::survey_stats_view },
     View { path: "view.fences", deps: fences::DEPS, compute: fences::fences_view },
+    View { path: "view.flyFences", deps: fences::DEPS, compute: fences::fly_fences_view },
     View { path: "view.polygon", deps: &[crate::coreplan::CHANGED], compute: fences::polygon_view },
     View { path: "view.setup", deps: setup::DEPS, compute: setup::setup_view },
     View { path: "view.video", deps: video::VIDEO_DEPS, compute: video::video_view },

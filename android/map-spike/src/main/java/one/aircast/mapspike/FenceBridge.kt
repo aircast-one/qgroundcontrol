@@ -11,6 +11,7 @@ const val FENCE_POLYGONS = "$FENCE_ROOT.polygons"
 const val FENCE_CIRCLES = "$FENCE_ROOT.circles"
 const val RALLY_POINTS = "$RALLY_ROOT.points"
 const val FENCES_VIEW = "view.fences"
+const val FLY_FENCES_VIEW = "view.flyFences"
 
 data class FencePolygon(
     val index: Int,
@@ -175,6 +176,9 @@ fun breachReturn(json: JSONObject?): BreachReturn? {
 object FenceBridge {
     fun read(): JSONObject? =
         runCatching { JSONObject(QGCBridge.get(FENCES_VIEW)) }.getOrNull()
+
+    fun readFlown(): JSONObject? =
+        runCatching { JSONObject(QGCBridge.get(FLY_FENCES_VIEW)) }.getOrNull()
 
     fun addInclusionPolygon(topLeft: TrackPoint, bottomRight: TrackPoint): Boolean =
         invokeOk(

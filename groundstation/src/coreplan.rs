@@ -2305,6 +2305,17 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
     }
 }
 
+pub fn fly_fence_and_rally() -> Option<(Value, Value)> {
+    if !enabled() {
+        return None;
+    }
+    let snapshot = crate::hub::lock().active().map(|v| v.mission_snapshot());
+    Some(match snapshot {
+        Some(snapshot) => (fence_from(&snapshot["fence"]), json!({ "version": 2, "points": snapshot["rally"]["points"] })),
+        None => (empty_document().fence, empty_document().rally),
+    })
+}
+
 pub fn fence_and_rally() -> Option<(Value, Value)> {
     if !enabled() {
         return None;

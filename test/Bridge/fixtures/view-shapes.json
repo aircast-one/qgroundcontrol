@@ -164,6 +164,8 @@
         "view.firstRun.vehiclePreferences.1.minimum",
         "view.firstRun.vehiclePreferences.1.minimumText",
         "view.firstRun.vehiclePreferences.1.valueMeters",
+        "view.flyFences.breachReturnAltitude",
+        "view.flyFences.breachReturnPoint",
         "view.flyMissionItems(geometry).items.0.altitudeBandText",
         "view.flyMissionItems(geometry).items.0.altitudeMode",
         "view.flyMissionItems(geometry).items.0.blockedReason",
@@ -2433,6 +2435,13 @@
         "view.firstRun.vehiclePreferences.1.wholeNumbersOnly",
         "view.flightModes.class",
         "view.flightModes.kind",
+        "view.flyFences.available",
+        "view.flyFences.breachReturnAltitude",
+        "view.flyFences.breachReturnPoint",
+        "view.flyFences.class",
+        "view.flyFences.fenceSupported",
+        "view.flyFences.kind",
+        "view.flyFences.rallySupported",
         "view.flyMissionItems(geometry).class",
         "view.flyMissionItems(geometry).items.0.abbreviation",
         "view.flyMissionItems(geometry).items.0.altitude",
@@ -7648,6 +7657,62 @@
         "view.flightModes.modes[].needsConfirm",
         "view.flightModes.modes[].section",
         "view.flightModes.modes[].summary",
+        "view.flyFences.available",
+        "view.flyFences.breachReturnAltitude",
+        "view.flyFences.breachReturnPoint",
+        "view.flyFences.circles.#",
+        "view.flyFences.circles[].centre.latitude",
+        "view.flyFences.circles[].centre.longitude",
+        "view.flyFences.circles[].centreText",
+        "view.flyFences.circles[].detailText",
+        "view.flyFences.circles[].framing.#",
+        "view.flyFences.circles[].framing[].latitude",
+        "view.flyFences.circles[].framing[].longitude",
+        "view.flyFences.circles[].inclusion",
+        "view.flyFences.circles[].index",
+        "view.flyFences.circles[].kindText",
+        "view.flyFences.circles[].path",
+        "view.flyFences.circles[].radius",
+        "view.flyFences.circles[].radiusMaximum",
+        "view.flyFences.circles[].radiusMetres",
+        "view.flyFences.circles[].radiusMinimum",
+        "view.flyFences.circles[].radiusUnits",
+        "view.flyFences.circles[].shape",
+        "view.flyFences.circles[].usable",
+        "view.flyFences.class",
+        "view.flyFences.count",
+        "view.flyFences.fenceSupported",
+        "view.flyFences.firmwareFence",
+        "view.flyFences.firmwareFence.centre.latitude",
+        "view.flyFences.firmwareFence.centre.longitude",
+        "view.flyFences.firmwareFence.radiusMetres",
+        "view.flyFences.firmwareFence.radiusText",
+        "view.flyFences.kind",
+        "view.flyFences.polygons.#",
+        "view.flyFences.polygons[].detailText",
+        "view.flyFences.polygons[].framing.#",
+        "view.flyFences.polygons[].framing[].latitude",
+        "view.flyFences.polygons[].framing[].longitude",
+        "view.flyFences.polygons[].inclusion",
+        "view.flyFences.polygons[].index",
+        "view.flyFences.polygons[].kindText",
+        "view.flyFences.polygons[].path",
+        "view.flyFences.polygons[].shape",
+        "view.flyFences.polygons[].usable",
+        "view.flyFences.polygons[].vertices.#",
+        "view.flyFences.polygons[].vertices[].latitude",
+        "view.flyFences.polygons[].vertices[].longitude",
+        "view.flyFences.rallyPoints.#",
+        "view.flyFences.rallyPoints[].altitude",
+        "view.flyFences.rallyPoints[].altitudeMetres",
+        "view.flyFences.rallyPoints[].altitudePath",
+        "view.flyFences.rallyPoints[].altitudeText",
+        "view.flyFences.rallyPoints[].altitudeUnits",
+        "view.flyFences.rallyPoints[].index",
+        "view.flyFences.rallyPoints[].latitude",
+        "view.flyFences.rallyPoints[].longitude",
+        "view.flyFences.rallyPoints[].path",
+        "view.flyFences.rallySupported",
         "view.flyMissionItems(geometry).available",
         "view.flyMissionItems(geometry).class",
         "view.flyMissionItems(geometry).editing",
@@ -10978,6 +11043,7 @@
             "view.settings",
             "view.surveyStats",
             "view.fences",
+            "view.flyFences",
             "view.polygon",
             "view.setup",
             "view.video",
@@ -11395,6 +11461,87 @@
                 "summary": "string"
             }
         ]
+    },
+    "view.flyFences": {
+        "available": "bool",
+        "breachReturnAltitude": "null",
+        "breachReturnPoint": "null",
+        "circles": [
+            {
+                "centre": {
+                    "latitude": "number",
+                    "longitude": "number"
+                },
+                "centreText": "string",
+                "detailText": "string",
+                "framing": [
+                    {
+                        "latitude": "number",
+                        "longitude": "number"
+                    }
+                ],
+                "inclusion": "bool",
+                "index": "number",
+                "kindText": "string",
+                "path": "string",
+                "radius": "number",
+                "radiusMaximum": "null",
+                "radiusMetres": "number",
+                "radiusMinimum": "number",
+                "radiusUnits": "string",
+                "shape": "string",
+                "usable": "bool"
+            }
+        ],
+        "class": "string",
+        "count": "number",
+        "fenceSupported": "bool",
+        "firmwareFence": {
+            "centre": {
+                "latitude": "number",
+                "longitude": "number"
+            },
+            "radiusMetres": "number",
+            "radiusText": "string"
+        },
+        "kind": "string",
+        "polygons": [
+            {
+                "detailText": "string",
+                "framing": [
+                    {
+                        "latitude": "number",
+                        "longitude": "number"
+                    }
+                ],
+                "inclusion": "bool",
+                "index": "number",
+                "kindText": "string",
+                "path": "string",
+                "shape": "string",
+                "usable": "bool",
+                "vertices": [
+                    {
+                        "latitude": "number",
+                        "longitude": "number"
+                    }
+                ]
+            }
+        ],
+        "rallyPoints": [
+            {
+                "altitude": "number",
+                "altitudeMetres": "number",
+                "altitudePath": "string",
+                "altitudeText": "string",
+                "altitudeUnits": "string",
+                "index": "number",
+                "latitude": "number",
+                "longitude": "number",
+                "path": "string"
+            }
+        ],
+        "rallySupported": "bool"
     },
     "view.flyMissionItems(geometry)": {
         "available": "bool",
