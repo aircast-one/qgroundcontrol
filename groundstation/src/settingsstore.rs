@@ -134,6 +134,13 @@ pub fn metadata(group: &str, fact: &str) -> Option<MetaData> {
     crate::factmeta::from_file(json).ok()?.remove(fact)
 }
 
+fn with_property(fact: Value, property: &str) -> Value {
+    match fact {
+        Value::Object(fields) => Value::Object(fields.into_iter().chain(std::iter::once(("property".to_string(), json!(property)))).collect()),
+        other => other,
+    }
+}
+
 fn whole_group(backend: &dyn Backend, path: &str) -> Option<String> {
     let object = path.strip_prefix("settings.").filter(|rest| !rest.contains('.'))?;
     let group = OBJECTS.iter().find(|(name, _)| *name == object)?.1;
@@ -143,7 +150,7 @@ fn whole_group(backend: &dyn Backend, path: &str) -> Option<String> {
         .filter_map(|fact| {
             let fact_path = format!("{path}.{fact}");
             let at = address(&fact_path)?;
-            Some(crate::vehiclefact::compact(&described(backend, &at, &fact_path), fact))
+            Some(with_property(described(backend, &at, &fact_path), fact))
         })
         .collect();
     Some(json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] }).to_string())
@@ -796,6 +803,25 @@ mod tests {
     }
 
     use super::*;
+
+    struct Silent;
+    impl Backend for Silent {
+        fn get(&self, _path: &str) -> String { String::new() }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String { String::new() }
+        fn set(&self, _path: &str, _value: &str) -> String { String::new() }
+        fn invoke(&self, _path: &str, _args: &str) -> String { String::new() }
+        fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn a_whole_group_serves_full_facts_a_settings_page_can_edit() {
+        let group: Value = serde_json::from_str(&get(&Silent, "settings.appSettings").unwrap()).unwrap();
+        let facts = group["facts"].as_array().unwrap();
+        let muted = facts.iter().find(|f| f["property"] == "audioMuted").unwrap();
+        assert_eq!(muted["readOnly"], json!(false), "a compact fact without readOnly decodes as read-only and the page cannot edit it");
+        let palette = facts.iter().find(|f| f["property"] == "indoorPalette").unwrap();
+        assert!(palette["enumStrings"].as_array().is_some_and(|e| !e.is_empty()), "an enum keeps its choices");
+    }
 
     #[test]
     fn asking_to_clear_settings_empties_them_on_the_next_start() {
