@@ -63,6 +63,7 @@ use crate::autotune;
 use crate::actuators;
 use crate::apmfollow;
 use crate::maptypes;
+use crate::presets;
 use crate::apmsubframe;
 use crate::apmsubmotors;
 use crate::apmservos;
@@ -120,6 +121,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.itemFacts", "<item index>"),
     ("view.cameraDefinition", "<file path>[,<locale>]"),
     ("view.apmSubFrameImage", "<FRAME_CONFIG value>"),
+    ("view.patternPresets", "<complexItemType>"),
     ("view.debugApi", "<method>,<path>[,<query>]"),
     ("view.geoTag", "<file path>[,<tolerance seconds>]"),
     ("view.packetRadio", "<status>[,<adapter>[,<stats>]]"),
@@ -199,6 +201,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.autotune", deps: autotune::DEPS, compute: autotune::autotune_view },
     View { path: "view.actuatorOutputs", deps: actuators::DEPS, compute: actuators::outputs_view },
     View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
+    View { path: "view.patternPresets", deps: presets::DEPS, compute: presets::pattern_presets_view },
     View { path: "view.mapTypes", deps: maptypes::DEPS, compute: maptypes::map_types_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
@@ -609,6 +612,7 @@ mod deps_cover_reads {
             ("plankml", include_str!("plankml.rs")),
             ("platformbluetooth", include_str!("platformbluetooth.rs")),
             ("platformserial", include_str!("platformserial.rs")),
+            ("presets", include_str!("presets.rs")),
             ("rctoparam", include_str!("rctoparam.rs")),
             ("planselect", include_str!("planselect.rs")),
             ("plantransfer", include_str!("plantransfer.rs")),

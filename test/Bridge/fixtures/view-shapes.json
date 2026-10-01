@@ -4034,6 +4034,10 @@
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).videoPort",
         "view.parameterTools.class",
         "view.parameterTools.kind",
+        "view.patternPresets(survey).class",
+        "view.patternPresets(survey).kind",
+        "view.patternPresets(survey).names.#",
+        "view.patternPresets(survey).supported",
         "view.plan.actions.addFence",
         "view.plan.actions.addRally",
         "view.plan.actions.newPlan",
@@ -8414,6 +8418,10 @@
         "view.parameterTools.tools[].confirmTitle",
         "view.parameterTools.tools[].label",
         "view.parameterTools.tools[].path",
+        "view.patternPresets(survey).class",
+        "view.patternPresets(survey).kind",
+        "view.patternPresets(survey).names.#",
+        "view.patternPresets(survey).supported",
         "view.plan.actions.addFence",
         "view.plan.actions.addRally",
         "view.plan.actions.clearMission",
@@ -10017,6 +10025,7 @@
             "view.autotune",
             "view.actuatorOutputs",
             "view.apmServos",
+            "view.patternPresets",
             "view.mapTypes",
             "view.apmFollow",
             "view.apmSubFrame",
@@ -12074,6 +12083,14 @@
                 "path": "string"
             }
         ]
+    },
+    "view.patternPresets(survey)": {
+        "class": "string",
+        "kind": "string",
+        "names": [
+            "empty"
+        ],
+        "supported": "bool"
     },
     "view.plan": {
         "actions": {

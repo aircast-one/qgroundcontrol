@@ -1776,7 +1776,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
         Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" => {
             let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
-            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null })
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null, "presetKind": crate::presets::settings_group(kind).map(|_| kind.clone()) })
         }
         Some(Some(plandoc::Item::Complex { kind, json: pattern, .. })) if crate::landingpattern::is_landing(kind) => {
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };

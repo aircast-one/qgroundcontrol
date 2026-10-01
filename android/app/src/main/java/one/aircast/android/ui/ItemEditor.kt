@@ -118,6 +118,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                         FactRow(fact) { revision++ }
                     }
                 }
+                presetKind(view)?.let { kind ->
+                    item(key = "presets") { PatternPresets(index, kind) { revision++ } }
+                }
                 speedSection(view)?.let { speed ->
                     item(key = "speed") {
                         SpeedSectionRow(speed) { written ->

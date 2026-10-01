@@ -374,6 +374,7 @@ ACCEPTED = {
     "inputsText": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves it",
     "typeText": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves it",
     "warn": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves it",
+    "presetKind": "view.itemFacts is recorded under the Qt plan, and presetKind is served only by the core plan's pattern editor (coreplan.rs item facts for survey/corridor), which is what offers presets",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
