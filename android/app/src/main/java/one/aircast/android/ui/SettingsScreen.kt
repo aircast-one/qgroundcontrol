@@ -104,6 +104,7 @@ internal data class SettingsPageEntry(
     val sectionCount: Int,
     val showsAbout: Boolean = false,
     val showsConsole: Boolean = false,
+    val showsNtrip: Boolean = false,
     val helpLinks: List<HelpLink> = emptyList(),
 )
 
@@ -157,6 +158,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
                 sectionCount = page.optJSONArray("sections")?.length() ?: 0,
                 showsAbout = page.optBoolean("showsAbout"),
                 showsConsole = page.optBoolean("showsConsole"),
+                showsNtrip = page.optBoolean("showsNtrip"),
                 helpLinks = page.optJSONArray("helpLinks")?.let { links ->
                     (0 until links.length()).mapNotNull { i ->
                         links.optJSONObject(i)?.let { HelpLink(it.optText("name"), it.optText("url"), it.optText("host")) }
@@ -354,6 +356,7 @@ private fun SettingsControls(
     sections: List<SettingsSectionRows>,
     onWrite: () -> Unit,
 ) {
+    if (page.showsNtrip) NtripStatusSection(onWrite)
     sections.forEach { section ->
         if (section.group == UNITS_GROUP) {
             SectionHeader(section.title)
@@ -375,6 +378,8 @@ private fun SettingsControls(
         if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
     }
 }
+
+internal fun isSecret(fact: Fact): Boolean = fact.name.endsWith("Password", ignoreCase = true)
 
 internal fun enumLabel(fact: Fact): String =
     fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
@@ -641,11 +646,19 @@ private suspend fun rejectionFor(fact: Fact, text: String): String? =
 private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
     var editing by remember(fact.path) { mutableStateOf<String?>(null) }
     var rejection by remember(fact.path) { mutableStateOf<String?>(null) }
+    var revealed by remember(fact.path) { mutableStateOf(false) }
+    val secret = isSecret(fact)
     val scope = rememberCoroutineScope()
 
     Column {
         OutlinedTextField(
             value = editing ?: fact.valueString,
+            visualTransformation = if (secret && !revealed) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            leadingIcon = if (secret) {
+                { TextButton(onClick = { revealed = !revealed }) { Text(if (revealed) "Hide" else "Show") } }
+            } else {
+                null
+            },
             onValueChange = {
                 editing = typedValue(it)
                 rejection = null

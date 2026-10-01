@@ -422,6 +422,7 @@ dependencies = [
 name = "groundstation"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "chrono",
  "flate2",
  "geoconvert",
@@ -438,6 +439,7 @@ dependencies = [
  "regex",
  "roxmltree",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "serialport",
@@ -448,6 +450,7 @@ dependencies = [
  "ureq",
  "url",
  "utm",
+ "webpki-roots 1.0.9",
  "zip",
 ]
 

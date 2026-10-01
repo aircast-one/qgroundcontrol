@@ -51,6 +51,7 @@ pub enum Outbound {
     LogRequestEnd { target: (u8, u8) },
     LogErase { target: (u8, u8) },
     ShellData { target: (u8, u8), data: Vec<u8> },
+    GpsRtcmData { data: mavlink::dialects::ardupilotmega::GPS_RTCM_DATA_DATA },
     GcsHeartbeat,
 }
 
@@ -227,6 +228,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
                 operator_id: chars(operator_id),
             }),
         }),
+        Outbound::GpsRtcmData { data } => Some(MavMessage::GPS_RTCM_DATA(data.clone())),
         Outbound::ManualControl { target, x, y, z, r } => Some(MavMessage::MANUAL_CONTROL(MANUAL_CONTROL_DATA { x: *x, y: *y, z: *z, r: *r, target: *target, ..MANUAL_CONTROL_DATA::default() })),
         Outbound::RcOverride { target, channels: c } => Some(MavMessage::RC_CHANNELS_OVERRIDE(RC_CHANNELS_OVERRIDE_DATA {
             chan1_raw: c[0],

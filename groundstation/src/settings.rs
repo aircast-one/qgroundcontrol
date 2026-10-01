@@ -14,37 +14,54 @@ struct Page {
     shows_video_sources: bool,
     shows_packet_radio: bool,
     shows_console: bool,
+    shows_ntrip: bool,
 }
 
 const PAGES: &[Page] = &[
-    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings"), ("Brand Image", "brandImageSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false },
-    Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Connections", sections: &[("Auto Connect", "autoConnectSettings")], shows_links: true, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "MAVLink", sections: &[("MAVLink", "mavlinkSettings"), ("APM Stream Rates", "apmMavlinkStreamRateSettings"), ("Actions", "mavlinkActionsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Flight Modes", sections: &[("Flight Modes", "flightModeSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "ADSB Server", sections: &[("ADSB Server", "adsbVehicleManagerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Packet Radio", sections: &[("Packet Radio", "packetRadioSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: true, shows_console: false },
-    Page { title: "Remote ID", sections: &[("Remote ID", "remoteIDSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "RTK GPS", sections: &[("RTK GPS", "rtkSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Firmware Upgrade", sections: &[("Firmware Upgrade", "firmwareUpgradeSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "3D Viewer", sections: &[("3D Viewer", "viewer3DSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "About", sections: &[], shows_links: false, shows_about: true, shows_video_sources: false, shows_packet_radio: false, shows_console: false },
-    Page { title: "Console", sections: &[], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: true },
+    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings"), ("Brand Image", "brandImageSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Connections", sections: &[("Auto Connect", "autoConnectSettings")], shows_links: true, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "MAVLink", sections: &[("MAVLink", "mavlinkSettings"), ("APM Stream Rates", "apmMavlinkStreamRateSettings"), ("Actions", "mavlinkActionsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Flight Modes", sections: &[("Flight Modes", "flightModeSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "ADSB Server", sections: &[("ADSB Server", "adsbVehicleManagerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Packet Radio", sections: &[("Packet Radio", "packetRadioSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: true, shows_console: false, shows_ntrip: false },
+    Page { title: "Remote ID", sections: &[("Remote ID", "remoteIDSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "NTRIP / RTK", sections: &[("NTRIP", "ntripSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: true },
+    Page { title: "RTK GPS", sections: &[("RTK GPS", "rtkSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Firmware Upgrade", sections: &[("Firmware Upgrade", "firmwareUpgradeSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "3D Viewer", sections: &[("3D Viewer", "viewer3DSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "About", sections: &[], shows_links: false, shows_about: true, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false },
+    Page { title: "Console", sections: &[], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: true, shows_ntrip: false },
 ];
 
 // deviceName is drawn by the Packet Radio page's own block as a picker over the adapters the
 // radio reports. Left in the generic list it renders a second control writing the same fact - a
 // free-text field beside the picker, where a name that is not an adapter gets no feedback at all.
 // Same shape as extraVideoSources: when a bespoke block owns a fact, the fact leaves the list.
-const HIDDEN: &[&str] = &["firstRunPromptIdsShown", "instrumentQmlFile2", "deviceName"];
+const HIDDEN: &[&str] = &["firstRunPromptIdsShown", "instrumentQmlFile2", "deviceName", "ntripServerConnectEnabled", "ntripGgaPositionSource", "ntripGgaIntervalSec", "rtcmUdpInputEnabled", "rtcmUdpInputPort", "rtcmUdpValidate"];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
 
 const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.";
 
-const GATED: &[(&str, &str, &str)] = &[("enforceChecklist", "useChecklist", CHECKLIST_OFF)];
+const NTRIP_ACTIVE: &str = "Disconnect from the NTRIP server to change this.";
+const NTRIP_NO_TLS: &str = "Only applies with TLS encryption on.";
+const NTRIP_NO_FORWARD: &str = "Has no effect while UDP forwarding is off.";
+
+const GATED: &[(&str, &str, bool, &str)] = &[
+    ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
+    ("ntripServerHostAddress", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
+    ("ntripServerPort", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
+    ("ntripUsername", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
+    ("ntripPassword", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
+    ("ntripUseTls", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
+    ("ntripAllowSelfSignedCerts", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
+    ("ntripAllowSelfSignedCerts", "ntripUseTls", true, NTRIP_NO_TLS),
+    ("ntripUdpTargetAddress", "ntripUdpForwardEnabled", true, NTRIP_NO_FORWARD),
+    ("ntripUdpTargetPort", "ntripUdpForwardEnabled", true, NTRIP_NO_FORWARD),
+];
 
 // QGC distinguishes the two, and which binding a page uses is what decides this. FlyViewSettings
 // binds the checklist row's `enabled`, so that control is real but inert and says why. The RTK
@@ -62,6 +79,11 @@ const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
 ];
 
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
+    ("ntripSettings", &[
+        ("Server", &["ntripServerHostAddress", "ntripServerPort", "ntripUsername", "ntripPassword", "ntripMountpoint", "ntripUseTls", "ntripAllowSelfSignedCerts"]),
+        ("Options", &["ntripWhitelist"]),
+        ("UDP Forwarding", &["ntripUdpForwardEnabled", "ntripUdpTargetAddress", "ntripUdpTargetPort"]),
+    ]),
     ("appSettings", &[
         ("Appearance", &["indoorPalette", "appFontPointSize", "overlayGlassFrost", "qLocaleLanguage"]),
         ("Sound", &["audioMuted", "batteryPercentRemainingAnnounce"]),
@@ -110,6 +132,7 @@ fn page_json(page: &Page, with_controls: Option<&dyn Backend>) -> Value {
         "showsVideoSources": page.shows_video_sources,
         "showsPacketRadio": page.shows_packet_radio,
         "showsConsole": page.shows_console,
+        "showsNtrip": page.shows_ntrip,
         "sections": page.sections.iter().map(|(title, group)| section_json(title, group, with_controls)).collect::<Vec<_>>(),
     })
 }
@@ -153,9 +176,9 @@ fn gated(controls: &[Value], facts: &[Value]) -> Vec<Value> {
             let name = control.get("name").and_then(Value::as_str).unwrap_or("");
             let blocked = GATED
                 .iter()
-                .find(|(gated, _, _)| *gated == name)
-                .filter(|(_, requires, _)| value_of(requires).as_ref().and_then(Value::as_bool) == Some(false))
-                .map(|(_, _, reason)| *reason);
+                .filter(|(gated, _, _, _)| *gated == name)
+                .find(|(_, requires, wanted, _)| value_of(requires).as_ref().and_then(Value::as_bool) == Some(!wanted))
+                .map(|(_, _, _, reason)| *reason);
             let mut with_gate = control.clone();
             with_gate["enabled"] = json!(blocked.is_none());
             with_gate["disabledReason"] = blocked.map_or(Value::Null, |reason| json!(reason));
@@ -242,6 +265,7 @@ mod tests {
             ("FlyView", include_str!("../../src/Settings/FlyView.SettingsGroup.json")),
             ("PacketRadio", include_str!("../../src/Settings/PacketRadio.SettingsGroup.json")),
             ("Viewer3D", include_str!("../../src/Settings/Viewer3D.SettingsGroup.json")),
+            ("NTRIP", include_str!("../../src/Settings/NTRIP.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
@@ -253,7 +277,7 @@ mod tests {
             .iter()
             .copied()
             .chain(DESKTOP_ONLY.iter().map(|(name, _)| *name))
-            .chain(GATED.iter().flat_map(|(gated, requires, _)| [*gated, *requires]))
+            .chain(GATED.iter().flat_map(|(gated, requires, _, _)| [*gated, *requires]))
             .chain(HIDDEN_WHEN.iter().flat_map(|(hidden, requires, _)| [*hidden, *requires]))
             .collect();
 
@@ -269,6 +293,39 @@ mod tests {
                 "{name} is declared in {groups:?}. These tables key on a BARE fact name and the filters run per group, so an entry naming a shared name applies to every page that declares it - one line that looks like it names one control silently reaching two"
             );
         });
+    }
+
+    #[test]
+    fn the_ntrip_server_is_locked_while_connected_and_the_connect_switch_lives_in_the_status_block() {
+        struct Ntrip(bool, bool);
+        impl Backend for Ntrip {
+            fn get(&self, path: &str) -> String {
+                let facts = json!([
+                    { "kind": "fact", "name": "ntripServerConnectEnabled", "typeIsBool": true, "value": self.0 },
+                    { "kind": "fact", "name": "ntripServerHostAddress", "typeIsString": true, "value": "caster" },
+                    { "kind": "fact", "name": "ntripUseTls", "typeIsBool": true, "value": self.1 },
+                    { "kind": "fact", "name": "ntripAllowSelfSignedCerts", "typeIsBool": true, "value": false },
+                ]);
+                match path {
+                    "settings.ntripSettings" => json!({ "kind": "object", "facts": facts }),
+                    _ => json!({ "kind": "object", "facts": [] }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let controls = |connected: bool, tls: bool| -> Vec<(String, Value)> {
+            let page = settings_view(&Ntrip(connected, tls), &["NTRIP / RTK".to_string()]);
+            assert_eq!(page["showsNtrip"], true);
+            page["sections"][0]["subsections"].as_array().unwrap().iter().flat_map(|sub| sub["controls"].as_array().unwrap().clone()).map(|c| (c["name"].as_str().unwrap().to_string(), c["disabledReason"].clone())).collect()
+        };
+        let idle = controls(false, true);
+        assert_eq!(idle, [("ntripServerHostAddress".to_string(), Value::Null), ("ntripUseTls".to_string(), Value::Null), ("ntripAllowSelfSignedCerts".to_string(), Value::Null)]);
+        assert!(controls(true, true).iter().all(|(_, reason)| *reason == json!(NTRIP_ACTIVE)));
+        assert_eq!(controls(false, false)[2].1, json!(NTRIP_NO_TLS));
     }
 
     #[test]
@@ -419,7 +476,7 @@ mod tests {
         assert_eq!(flagged, vec!["Packet Radio"], "a head draws its bespoke block from this flag, so a second page carrying it draws the radio twice and none carrying it draws the settings with no status line at all");
         let bespoke: Vec<&str> = PAGES
             .iter()
-            .filter(|page| [page.shows_links, page.shows_about, page.shows_video_sources, page.shows_packet_radio].iter().filter(|on| **on).count() > 1)
+            .filter(|page| [page.shows_links, page.shows_about, page.shows_video_sources, page.shows_packet_radio, page.shows_ntrip].iter().filter(|on| **on).count() > 1)
             .map(|page| page.title)
             .collect();
         assert!(bespoke.is_empty(), "these pages claim more than one bespoke block and a head has one slot for it: {bespoke:?}");
@@ -428,8 +485,8 @@ mod tests {
     #[test]
     fn the_page_list_carries_no_controls_and_the_page_carries_decoded_ones() {
         let list = settings_view(&Fake, &[]);
-        assert_eq!(list["pages"].as_array().unwrap().len(), 16);
-        assert_eq!(list["pages"][15]["showsConsole"], true, "Console closes the list, under Diagnostics as in SettingsPagesModel");
+        assert_eq!(list["pages"].as_array().unwrap().len(), 17);
+        assert_eq!(list["pages"][16]["showsConsole"], true, "Console closes the list, under Diagnostics as in SettingsPagesModel");
         assert!(list["pages"][0]["sections"][0].get("subsections").is_none());
         let general = settings_view(&Fake, &["General".to_string()]);
         let app = &general["sections"][0];

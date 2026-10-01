@@ -35,6 +35,9 @@ num-traits = "0.2"
 log = "0.4.34"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "logging"] }
+webpki-roots = "1.0.9"
+base64 = "0.23.1"
 url = "2"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 geoconvert = "1.0.2"

@@ -2349,11 +2349,18 @@ pub struct Hub {
     selected: Vec<u8>,
     remote_inputs: Option<RemoteInputs>,
     log_inputs: LogInputs,
+    rtcm: crate::rtcm::Fragmenter,
 }
 
 pub static HUB: LazyLock<Mutex<Hub>> = LazyLock::new(|| Mutex::new(Hub::default()));
 
 impl Hub {
+    pub fn inject_rtcm(&mut self, rtcm: &[u8]) -> Vec<(LinkId, Vec<u8>)> {
+        let packets = self.rtcm.fragments(rtcm);
+        let links: std::collections::BTreeSet<LinkId> = self.vehicles.values().filter(|v| !v.replay).map(|v| v.link).collect();
+        links.iter().flat_map(|link| packets.iter().filter_map(|data| mavout::encode_next(&Outbound::GpsRtcmData { data: data.clone() }).map(|bytes| (*link, bytes)))).collect()
+    }
+
     pub fn on_frame(&mut self, origin: Origin, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
         let mut bytes = Vec::new();
         // adsb::on_message existed with nothing calling it, so a vehicle relaying traffic over
@@ -3426,6 +3433,17 @@ mod tests {
         let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();
         assert!(matches!(decode(&refreshed[0].1), MavMessage::PARAM_REQUEST_READ(r) if r.param_index == -1 && r.param_id.to_str().unwrap() == "WPNAV_SPEED"));
         assert!(hub.parameter_request(Some(9), &json!({ "name": "X", "value": 1.0 }), 12_000).is_err());
+    }
+
+    #[test]
+    fn rtcm_goes_once_to_each_vehicle_link_as_gps_rtcm_data() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let sent = hub.inject_rtcm(&[0xD3; 10]);
+        assert_eq!(sent.len(), 1);
+        assert!(matches!(decode(&sent[0].1), MavMessage::GPS_RTCM_DATA(d) if d.len == 10 && d.flags == 0));
+        assert!(Hub::default().inject_rtcm(&[0xD3; 10]).is_empty(), "no vehicle, nothing sent");
     }
 
     #[test]
