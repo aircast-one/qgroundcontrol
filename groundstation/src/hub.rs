@@ -159,6 +159,8 @@ pub struct Vehicle {
     pub messages: u64,
     pub last_heartbeat_us: u64,
     pub gps: GpsFacts,
+    pub gps2: GpsFacts,
+    pub integrity_heard_ms: Option<u64>,
     pub batteries: Batteries,
     pub facts: VehicleFacts,
     pub wind: WindFacts,
@@ -295,6 +297,8 @@ impl Vehicle {
             messages: 0,
             last_heartbeat_us: 0,
             gps: GpsFacts::default(),
+            gps2: GpsFacts::default(),
+            integrity_heard_ms: None,
             batteries: Batteries::default(),
             facts: VehicleFacts::for_vehicle(id, component),
             wind: WindFacts::default(),
@@ -2289,6 +2293,7 @@ impl Vehicle {
             _ => {}
         }
         self.gps.apply(message);
+        self.gps2.apply_second(message);
         self.batteries.apply(message);
         self.facts.apply(from, message);
         self.wind.apply(message);
@@ -2858,6 +2863,18 @@ impl Hub {
         let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return };
         match (msgid, payload.first(), payload.get(1)) {
             (crate::operatorcontrol::CONTROL_STATUS, Some(flags), Some(main)) => vehicle.control.on_status(*flags, *main),
+            (crate::gpsfacts::GNSS_INTEGRITY, _, _) => {
+                let (receiver, integrity) = crate::gpsfacts::integrity_of(payload);
+                let target = match receiver {
+                    0 => Some(&mut vehicle.gps),
+                    1 => Some(&mut vehicle.gps2),
+                    _ => None,
+                };
+                if let Some(gps) = target {
+                    gps.integrity = integrity;
+                    vehicle.integrity_heard_ms = Some(now_ms());
+                }
+            }
             (COMMAND_LONG_ID, _, _) => {
                 let param = |i: usize| payload.get(i * 4..i * 4 + 4).and_then(|b| b.try_into().ok()).map_or(0.0, f32::from_le_bytes);
                 let command = payload.get(28..30).and_then(|b| b.try_into().ok()).map_or(0, u16::from_le_bytes);

@@ -5,7 +5,8 @@ use crate::factmeta::{MetaData, ValueType};
 
 const BATTERY_META: &str = include_str!("../../src/Vehicle/FactGroups/BatteryFact.json");
 const GPS_META: &str = include_str!("../../src/Vehicle/FactGroups/GPSFact.json");
-const GPS_ANSWERED: [&str; 9] = ["lat", "lon", "mgrs", "hdop", "vdop", "courseOverGround", "yaw", "count", "lock"];
+const GPS_ANSWERED: [&str; 17] = ["lat", "lon", "mgrs", "hdop", "vdop", "courseOverGround", "yaw", "count", "lock", "systemErrors", "spoofingState", "jammingState", "authenticationState", "correctionsQuality", "systemQuality", "gnssSignalQuality", "postProcessingQuality"];
+const INTEGRITY_STALE_MS: u64 = 5000;
 
 fn invalid_text(value_type: &ValueType, decimals: i64) -> String {
     match value_type {
@@ -789,6 +790,14 @@ fn gps_raw(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
         "yaw" => number(gps.yaw),
         "count" => json!(gps.count),
         "lock" => json!(gps.lock),
+        "systemErrors" => json!(gps.integrity.system_errors),
+        "spoofingState" => json!(gps.integrity.spoofing),
+        "jammingState" => json!(gps.integrity.jamming),
+        "authenticationState" => json!(gps.integrity.authentication),
+        "correctionsQuality" => json!(gps.integrity.corrections_quality),
+        "systemQuality" => json!(gps.integrity.system_quality),
+        "gnssSignalQuality" => json!(gps.integrity.signal_quality),
+        "postProcessingQuality" => json!(gps.integrity.post_processing_quality),
         _ => return None,
     })
 }
@@ -797,6 +806,25 @@ pub fn gps_fact(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
     GPS_ANSWERED.contains(&name).then_some(())?;
     let meta = crate::factmeta::from_file(GPS_META).ok()?.remove(name)?;
     Some(fact(&meta, &gps_raw(gps, name)?, None))
+}
+
+pub fn integrity_stale(heard_ms: Option<u64>, now_ms: u64) -> bool {
+    heard_ms.is_none_or(|heard| now_ms.saturating_sub(heard) >= INTEGRITY_STALE_MS)
+}
+
+pub fn gps_aggregate_fact(gps: &crate::gpsfacts::GpsFacts, gps2: &crate::gpsfacts::GpsFacts, stale: bool, name: &str) -> Option<Value> {
+    let (spoofing, jamming, authentication) = match stale {
+        true => (255, 255, 255),
+        false => crate::gpsfacts::aggregate(&gps.integrity, &gps2.integrity),
+    };
+    let raw = match name {
+        "spoofingState" => spoofing,
+        "jammingState" => jamming,
+        "authenticationState" => authentication,
+        _ => return None,
+    };
+    let meta = crate::factmeta::from_file(GPS_META).ok()?.remove(name)?;
+    Some(fact(&meta, &json!(raw), None))
 }
 
 #[cfg(test)]
@@ -888,6 +916,6 @@ mod tests {
         let gps = crate::gpsfacts::GpsFacts::default();
         assert_eq!(gps_fact(&gps, "mgrs").unwrap()["valueString"], "", "no position, no grid reference");
         assert_eq!(gps_fact(&gps, "lat").unwrap()["valueString"], "–.–––––––");
-        assert!(gps_fact(&gps, "spoofingState").is_none(), "the integrity facts stay with the host until the hub can read GNSS_INTEGRITY");
+        assert_eq!(gps_fact(&gps, "spoofingState").unwrap()["enumOrValueString"], "Unknown", "a receiver that never sent GNSS_INTEGRITY reads 0, as Qt's uninitialised fact does");
     }
 }
