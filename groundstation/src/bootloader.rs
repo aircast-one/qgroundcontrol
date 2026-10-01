@@ -277,6 +277,10 @@ pub mod simulated {
             Board { bootloader_version, board_id, flash: vec![0u8; flash_size], address: 0, booted: false, erased: false, pending: Vec::new(), out: VecDeque::new() }
         }
 
+        pub fn output(&mut self) -> Vec<u8> {
+            self.out.drain(..).collect()
+        }
+
         fn ok(&mut self) {
             self.out.extend([PROTO_INSYNC, PROTO_OK]);
         }
