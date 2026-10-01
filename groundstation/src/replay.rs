@@ -37,6 +37,10 @@ impl Replay {
         self.duration_us / 1_000_000
     }
 
+    pub fn has_frames(&self) -> bool {
+        !self.entries.is_empty()
+    }
+
     pub fn is_playing(&self) -> bool {
         self.playing
     }

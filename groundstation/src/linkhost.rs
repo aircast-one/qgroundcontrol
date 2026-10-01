@@ -23,6 +23,7 @@ pub enum Owned {
     #[cfg(target_os = "android")]
     PlatformSerial(crate::platformserial::PlatformSerial),
     Cloud(crate::cloudlink::CloudLink),
+    Replay(crate::logreplay::ReplayLink),
 }
 
 impl Owned {
@@ -35,6 +36,7 @@ impl Owned {
             #[cfg(target_os = "android")]
             Owned::PlatformSerial(link) => link.write(bytes),
             Owned::Cloud(link) => link.write(bytes),
+            Owned::Replay(_) => true,
         }
     }
 
@@ -47,6 +49,7 @@ impl Owned {
             #[cfg(target_os = "android")]
             Owned::PlatformSerial(link) => link.close(),
             Owned::Cloud(link) => link.close(),
+            Owned::Replay(link) => link.close(),
         }
     }
 }
@@ -255,6 +258,10 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             let token = token.ok_or_else(|| Failure::edit_address("Sign in to your Aircast account in this link's settings to use the cloud backup link."))?;
             let shared = shared.clone();
             Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(url, token, move |bytes| shared.deliver(id, bytes))))
+        }
+        Kind::LogReplay { file } => {
+            let shared = shared.clone();
+            crate::logreplay::ReplayLink::open(file, move |bytes| shared.deliver(id, bytes)).map(Owned::Replay).map_err(Failure::retry)
         }
         other => Err(Failure::retry(format!("the core does not own {other:?} links on this platform"))),
     }

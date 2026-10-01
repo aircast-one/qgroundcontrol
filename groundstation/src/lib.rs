@@ -163,6 +163,7 @@ pub mod actuators;
 pub mod actuatortest;
 pub mod apmfollow;
 pub mod apmservos;
+pub mod logreplay;
 pub mod ntrip;
 pub mod signingkeys;
 pub mod motorassignment;

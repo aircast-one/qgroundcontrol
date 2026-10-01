@@ -57,6 +57,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import one.aircast.android.ui.LogReplayBar
 import one.aircast.android.ui.StatusReadingsInline
 import one.aircast.android.ui.VehicleStateChip
 import one.aircast.android.ui.VirtualJoystick
@@ -323,6 +324,8 @@ fun AircastShell(hostView: android.view.View?) {
                 }
             },
             bottomBar = {
+                Column {
+                LogReplayBar()
                 NavigationBar {
                     Tab.entries.forEach { entry ->
                         NavigationBarItem(
@@ -339,6 +342,7 @@ fun AircastShell(hostView: android.view.View?) {
                             label = { Text(entry.label) },
                         )
                     }
+                }
                 }
             },
         ) { padding ->
