@@ -72,6 +72,7 @@ use crate::apmfollow;
 use crate::flowimage;
 use crate::maptypes;
 use crate::presets;
+use crate::apmairframe;
 use crate::apmsubframe;
 use crate::apmsubmotors;
 use crate::apmservos;
@@ -216,6 +217,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.opticalFlow", deps: flowimage::DEPS, compute: flowimage::optical_flow_view },
     View { path: "view.mapTypes", deps: maptypes::DEPS, compute: maptypes::map_types_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
+    View { path: "view.apmAirframe", deps: apmairframe::DEPS, compute: apmairframe::apm_airframe_view },
     View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
     View { path: "view.apmSubMotors", deps: apmsubmotors::DEPS, compute: apmsubmotors::apm_sub_motors_view },
     View { path: "view.apmSubFrameImage", deps: &[], compute: apmsubframe::apm_sub_frame_image_view },
@@ -606,6 +608,7 @@ mod deps_cover_reads {
             ("autotune", include_str!("autotune.rs")),
             ("actuators", include_str!("actuators.rs")),
             ("apmfollow", include_str!("apmfollow.rs")),
+            ("apmairframe", include_str!("apmairframe.rs")),
             ("apmsubframe", include_str!("apmsubframe.rs")),
             ("apmsubmotors", include_str!("apmsubmotors.rs")),
             ("apmservos", include_str!("apmservos.rs")),

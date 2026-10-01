@@ -98,6 +98,11 @@ val copyInstrumentIcons by tasks.registering(Copy::class) {
     into(instrumentIconAssets.map { it.dir("InstrumentValueIcons") })
 }
 
+val copyAirframeImages by tasks.registering(Copy::class) {
+    from(rootProject.file("../src/AutoPilotPlugins/Common/Images")) { include("*.svg") }
+    into(instrumentIconAssets.map { it.dir("Airframe") })
+}
+
 val copyCoreBridge by tasks.registering(Copy::class) {
     from(rootProject.file("../deploy/android/src")) {
         include(listOf("QGCBridge", "QGCUsbSerialManager", "QGCUsbSerialProber", "QGCUsbId", "QGCFtdiDriver", "QGCFtdiSerialDriver", "QGCLogger").map { "org/mavlink/qgroundcontrol/$it.java" })
@@ -137,7 +142,7 @@ val buildCoreVideo by tasks.registering(Exec::class) {
     }
 }
 
-tasks.named("preBuild") { dependsOn(copyInstrumentIcons) }
+tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages) }
 
 tasks.matching { it.name.startsWith("preCore") && it.name.endsWith("Build") }.configureEach {
     dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo)

@@ -89,9 +89,6 @@ pub struct Section {
     pub parameters: &'static [&'static str],
 }
 
-const FRAME_APM: &[Section] = &[
-    Section { title: "Airframe", note: "The class picks the layout, the type picks how its arms are oriented. Changing either changes motor numbering and direction; re-check motor order before flying.", parameters: &["FRAME_CLASS", "FRAME_TYPE"] },
-];
 const FLIGHT_MODES_APM: &[Section] = &[
     Section { title: "Mode switch channel", note: "", parameters: &["FLTMODE_CH"] },
     Section { title: "Mode slots", note: "", parameters: &["FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6"] },
@@ -123,6 +120,7 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
     match (page, px4) {
         ("Tuning", true) => Some("px4Tuning"),
         ("Frame", true) => Some("px4Airframe"),
+        ("Frame", false) => Some(crate::apmairframe::AIRFRAME_SCREEN),
         ("Tuning - Advanced", false) => Some("px4Tuning"),
         ("Scripting", false) => Some("scripting"),
         ("Joystick", _) => Some("joystick"),
@@ -136,7 +134,6 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
 
 pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     match (page, px4) {
-        ("Frame", false) => Some(FRAME_APM),
         ("Flight Modes", true) => Some(FLIGHT_MODES_PX4),
         ("Flight Modes", false) => Some(FLIGHT_MODES_APM),
         ("Heli", false) => Some(HELI_APM),

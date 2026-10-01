@@ -154,7 +154,7 @@ internal fun writeDisplay(context: Context, id: String, display: ValueDisplay) {
 internal fun iconNames(context: Context): List<String> =
     context.assets.list(ICON_FOLDER).orEmpty().filter { it.endsWith(".svg") }.sorted()
 
-private object IconLoader {
+internal object IconLoader {
     @Volatile private var loader: ImageLoader? = null
 
     fun of(context: Context): ImageLoader =

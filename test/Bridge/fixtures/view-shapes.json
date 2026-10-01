@@ -882,6 +882,9 @@
         "view.altitudeModes.omitted.0.raw",
         "view.altitudeModes.omitted.0.reason",
         "view.altitudeModes.omitted.0.title",
+        "view.apmAirframe.available",
+        "view.apmAirframe.class",
+        "view.apmAirframe.kind",
         "view.apmFollow.available",
         "view.apmFollow.class",
         "view.apmFollow.kind",
@@ -7008,6 +7011,9 @@
         "view.altitudeModes.omitted[].raw",
         "view.altitudeModes.omitted[].reason",
         "view.altitudeModes.omitted[].title",
+        "view.apmAirframe.available",
+        "view.apmAirframe.class",
+        "view.apmAirframe.kind",
         "view.apmFollow.available",
         "view.apmFollow.class",
         "view.apmFollow.kind",
@@ -9971,6 +9977,11 @@
             }
         ]
     },
+    "view.apmAirframe": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string"
+    },
     "view.apmFollow": {
         "available": "bool",
         "class": "string",
@@ -10719,6 +10730,7 @@
             "view.opticalFlow",
             "view.mapTypes",
             "view.apmFollow",
+            "view.apmAirframe",
             "view.apmSubFrame",
             "view.apmSubMotors",
             "view.apmSubFrameImage",

@@ -240,6 +240,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == JOYSTICK_SCREEN -> JoystickScreen(Modifier.weight(1f))
                 nativePage?.screen == ESP_BRIDGE_SCREEN -> EspBridgeScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_SUB_FRAME_SCREEN -> ApmSubFrameScreen(Modifier.weight(1f))
+                nativePage?.screen == APM_AIRFRAME_SCREEN -> ApmAirframeScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_SUB_MOTORS_SCREEN -> ApmSubMotorsScreen(Modifier.weight(1f))
                 nativePage?.screen == OPTICAL_FLOW_SCREEN -> OpticalFlowScreen(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))

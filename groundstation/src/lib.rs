@@ -195,6 +195,7 @@ pub mod autotune;
 pub mod actuators;
 pub mod actuatortest;
 pub mod apmfollow;
+pub mod apmairframe;
 pub mod apmsubframe;
 pub mod apmsubmotors;
 pub mod apmservos;
