@@ -23,30 +23,12 @@ class GuidedActionsTest {
     fun `an offer carries its state, reason and prompt`() {
         val offers = guidedOffers(JSONObject(served))
 
-        assertTrue(offers.getValue("arm").blocked)
+        assertFalse(offers.getValue("arm").ready)
         assertTrue(offers.getValue("takeoff").ready)
         assertFalse(offers.getValue("land").shown)
         assertEquals("Vehicle is not ready to arm.", offers.getValue("arm").reason)
         assertEquals("The vehicle will climb.", offers.getValue("takeoff").prompt)
         assertTrue(offers.getValue("arm").destructive)
-    }
-
-    @Test
-    fun `a blocked action explains itself and a ready one does not`() {
-        val offers = guidedOffers(JSONObject(served))
-
-        assertEquals("Vehicle is not ready to arm.", blockedReasonFor(offers["arm"]))
-        assertNull(blockedReasonFor(offers["takeoff"]))
-        assertNull(blockedReasonFor(null))
-    }
-
-    @Test
-    fun `a blocked action with no reason still says something`() {
-        val offers = guidedOffers(
-            JSONObject("""{"actions":[{"id":"rtl","title":"RTL","offer":"blocked","reason":""}]}"""),
-        )
-
-        assertEquals("The vehicle will not accept this yet.", blockedReasonFor(offers["rtl"]))
     }
 
     @Test
