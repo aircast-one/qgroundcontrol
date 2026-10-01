@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.res.painterResource
+import one.aircast.android.R
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -19,6 +22,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -197,9 +201,8 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
     FlowRow(
         modifier
             .fillMaxWidth()
-            .padding(8.dp)
             .alpha(if (silent) 0.45f else 1f),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalArrangement = Arrangement.spacedBy(6.dp),
         maxItemsInEachRow = rowWidth(shown.size + 1),
     ) {
@@ -207,33 +210,31 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
             val display = displays[instrument.id] ?: ValueDisplay()
             Column(
                 Modifier
-                    .padding(horizontal = 6.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
                     .then(if (instrument.id.isBlank()) Modifier else Modifier.clickable { styling = instrument }),
-                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    displayReading(display, instrument.value, instrument.units),
-                    style = TelemetryNumber,
-                    color = displayColour(display, instrument.raw)?.let { Color(it) } ?: Color.Unspecified,
-                )
-                ValueLabel(display, instrument.raw, instrument.label, MaterialTheme.colorScheme.onSurfaceVariant)
+                ValueLabel(display, instrument.raw, instrument.label.uppercase(), MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        instrument.value,
+                        style = TelemetryNumber,
+                        color = displayColour(display, instrument.raw)?.let { Color(it) } ?: MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                    if (display.showUnits && instrument.units.isNotBlank()) Text(
+                        instrument.units,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                }
             }
         }
-        Column(
-            Modifier
-                .clickable { choosing = true }
-                .padding(horizontal = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+        IconButton(onClick = { choosing = true }) {
             Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = null,
+                painter = painterResource(R.drawable.ic_tune),
+                contentDescription = "Readings",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Readings",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -262,6 +263,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
     var altitudePauses by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    var deckRest by remember { mutableStateOf<List<DeckEntry>>(emptyList()) }
+    var deckShown by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingLoiter by remember { mutableStateOf<LoiterOffer?>(null) }
     val mapClickJson by qgcPath(MAP_CLICK_PATH)
     val loiter = remember(mapClickJson) { loiterOffer(mapClickJson) }
@@ -362,111 +365,107 @@ fun FlightActions(modifier: Modifier = Modifier) {
             SentNotice(sentName.orEmpty(), onDismiss = { sentName = null })
         }
 
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val armAction = offers[if (armed) "disarm" else "arm"]
-            Offered(armAction) {
-                Button(
-                    enabled = armAction?.ready == true,
-                    onClick = {
-                        pending = GuidedAction(
-                            name = armAction?.title ?: if (armed) "Disarm" else "Arm",
-                            confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
-                                "Disarming cuts the motors. In flight the aircraft will fall."
-                            } else {
-                                "Arming spins the propellers. Stand clear of the aircraft."
-                            },
-                            destructive = armAction?.destructive ?: true,
-                        ) {
-                            val target = !armed
-                            scope.attemptCommand(
-                                action = if (target) "Arm" else "Disarm",
-                                report = { refusal = it },
-                                withdraw = { refusal = withdrawn(refusal, it) },
-                                reached = { armedNow() == target },
-                            ) { Qgc.set("vehicle.armed", target) }
-                        }
+        val armAction = offers[if (armed) "disarm" else "arm"]
+        val entries = listOfNotNull(
+            DeckEntry(
+                id = "arm",
+                label = armAction?.title ?: if (armed) "Disarm" else "Arm",
+                icon = R.drawable.ic_bolt,
+                enabled = armAction?.ready == true,
+                warning = armed,
+            ) {
+                pending = GuidedAction(
+                    name = armAction?.title ?: if (armed) "Disarm" else "Arm",
+                    confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
+                        "Disarming cuts the motors. In flight the aircraft will fall."
+                    } else {
+                        "Arming spins the propellers. Stand clear of the aircraft."
                     },
-                    colors = if (armed) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    else ButtonDefaults.buttonColors(),
-                ) { Text(if (armed) "Disarm" else "Arm") }
-            }
-
-            Offered(offers["takeoff"]) {
-                OutlinedButton(
-                    enabled = offers["takeoff"]?.ready == true,
-                    onClick = {
-                        scope.launch {
-                            val fresh = withContext(Dispatchers.Default) {
-                                guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
-                            }
-                            if (!takeoffRangeUsable(fresh)) {
-                                refusal = "This vehicle did not report a takeoff height range."
-                                return@launch
-                            }
-                            takeoffRange = fresh
-                            takeoffTarget = fresh?.initial
-                            takeoffSettled = fresh?.initial
-                        }
-                    },
-                ) { Text(offers["takeoff"]?.title ?: "Takeoff") }
-            }
-
-            Offered(offers["land"]) {
-                OutlinedButton(enabled = offers["land"]?.ready == true, onClick = {
-                    pending = GuidedAction(
-                        name = offers["land"]?.title ?: "Land",
-                        confirm = offers["land"]?.prompt?.ifBlank { null }
-                            ?: "The aircraft will descend and land where it is now.",
-                        destructive = false,
-                    ) {
-                        offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
+                    destructive = armAction?.destructive ?: true,
+                ) {
+                    val target = !armed
+                    scope.attemptCommand(
+                        action = if (target) "Arm" else "Disarm",
+                        report = { refusal = it },
+                        withdraw = { refusal = withdrawn(refusal, it) },
+                        reached = { armedNow() == target },
+                    ) { Qgc.set("vehicle.armed", target) }
+                }
+            }.takeIf { armAction?.shown == true },
+            DeckEntry("takeoff", offers["takeoff"]?.title ?: "Takeoff", R.drawable.ic_flight_takeoff, offers["takeoff"]?.ready == true) {
+                scope.launch {
+                    val fresh = withContext(Dispatchers.Default) {
+                        guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
                     }
-                }) { Text("Land") }
-            }
-
-            Offered(offers["rtl"]) {
-                OutlinedButton(enabled = offers["rtl"]?.ready == true, onClick = {
-                    pending = GuidedAction(
-                        name = "Return",
-                        confirm = "The aircraft will fly back to its launch point and land.",
-                        destructive = false,
-                    ) {
-                        offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
+                    if (!takeoffRangeUsable(fresh)) {
+                        refusal = "This vehicle did not report a takeoff height range."
+                        return@launch
                     }
-                }) { Text("RTL") }
-            }
+                    takeoffRange = fresh
+                    takeoffTarget = fresh?.initial
+                    takeoffSettled = fresh?.initial
+                }
+            }.takeIf { offers["takeoff"]?.shown == true },
+            DeckEntry(PAUSE, offers[PAUSE]?.title ?: "Pause", R.drawable.ic_pause, offers[PAUSE]?.ready == true) {
+                openAltitude(true)
+            }.takeIf { offers[PAUSE]?.shown == true },
+            DeckEntry("rtl", "Return", R.drawable.ic_home, offers["rtl"]?.ready == true) {
+                pending = GuidedAction(
+                    name = "Return",
+                    confirm = "The aircraft will fly back to its launch point and land.",
+                    destructive = false,
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
+                }
+            }.takeIf { offers["rtl"]?.shown == true },
+            DeckEntry("land", offers["land"]?.title ?: "Land", R.drawable.ic_flight_land, offers["land"]?.ready == true) {
+                pending = GuidedAction(
+                    name = offers["land"]?.title ?: "Land",
+                    confirm = offers["land"]?.prompt?.ifBlank { null }
+                        ?: "The aircraft will descend and land where it is now.",
+                    destructive = false,
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
+                }
+            }.takeIf { offers["land"]?.shown == true },
+            DeckEntry("changeSpeed", "Speed", R.drawable.ic_speed, offers["changeSpeed"]?.ready == true) {
+                scope.launch {
+                    val fresh = withContext(Dispatchers.Default) {
+                        guidedSpeed(Qgc.get(GUIDED_SPEED))
+                    }
+                    if (!speedRangeUsable(fresh)) {
+                        refusal = "This vehicle did not report a speed range."
+                        return@launch
+                    }
+                    speedRange = fresh
+                    speedTarget = fresh?.initial
+                    speedSettled = fresh?.initial
+                }
+            }.takeIf { offers["changeSpeed"]?.shown == true },
+            DeckEntry("changeAltitude", "Altitude", R.drawable.ic_height, offers["changeAltitude"]?.ready == true) {
+                openAltitude(false)
+            }.takeIf { offers["changeAltitude"]?.shown == true },
+            DeckEntry(CHECKLIST, "Checklist", R.drawable.ic_check_circle, true) {
+                showChecklist = true
+            }.takeIf { useChecklist && checklistOffered(armed) == null },
+        )
+        val deck = deckIds(entries.map { it.id }.toSet(), armed)
+        deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
+        deckShown = deck.map { it.first }.toSet()
 
-            Offered(offers["changeSpeed"]) {
-                OutlinedButton(
-                    enabled = offers["changeSpeed"]?.ready == true,
-                    onClick = {
-                        scope.launch {
-                            val fresh = withContext(Dispatchers.Default) {
-                                guidedSpeed(Qgc.get(GUIDED_SPEED))
-                            }
-                            if (!speedRangeUsable(fresh)) {
-                                refusal = "This vehicle did not report a speed range."
-                                return@launch
-                            }
-                            speedRange = fresh
-                            speedTarget = fresh?.initial
-                            speedSettled = fresh?.initial
-                        }
-                    },
-                ) { Text("Speed") }
-            }
+        TelemetryRow()
 
-            Offered(offers["changeAltitude"]) {
-                OutlinedButton(
-                    enabled = offers["changeAltitude"]?.ready == true,
-                    onClick = { openAltitude(false) },
-                ) { Text("Alt") }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            deck.forEach { (id, primary) ->
+                entries.firstOrNull { it.id == id }?.let { entry ->
+                    DeckButton(entry, primary, Modifier.weight(1f))
+                }
             }
-
-            OutlinedButton(onClick = { showMore = true }) { Text("Actions") }
+            DeckButton(
+                DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true },
+                primary = false,
+                modifier = if (deck.isEmpty()) Modifier.weight(1f) else Modifier.width(64.dp),
+            )
         }
 
         primaryBlockedReason(offers)?.let { reason ->
@@ -477,8 +476,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-
-        TelemetryRow()
     }
 
     speedTarget?.let { target ->
@@ -598,6 +595,23 @@ fun FlightActions(modifier: Modifier = Modifier) {
             title = { Text("Actions") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    deckRest.filter { it.id != CHECKLIST }.forEach { entry ->
+                        TextButton(
+                            enabled = entry.enabled,
+                            onClick = {
+                                showMore = false
+                                entry.onClick()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = entry.label,
+                                fontWeight = FontWeight.Bold,
+                                color = if (entry.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                     val checklistPast = checklistOffered(armed)
                     if (preflightOffered(preflightJson)) TextButton(
                         onClick = {
@@ -640,7 +654,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
 
                     FlyViewMavlinkActions { showMore = false }
 
-                    extras.forEach { offer ->
+                    extras.filter { it.id !in deckShown }.forEach { offer ->
                         TextButton(
                             enabled = offer.ready,
                             onClick = {

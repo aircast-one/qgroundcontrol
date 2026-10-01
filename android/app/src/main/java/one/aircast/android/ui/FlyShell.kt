@@ -176,7 +176,7 @@ internal fun FlyPortrait(
 
         Surface(
             Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceContainer,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) { actions() }
     }
 }
