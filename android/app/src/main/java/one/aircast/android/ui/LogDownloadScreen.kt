@@ -1,5 +1,25 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.semantics.semantics
+
+import androidx.compose.ui.semantics.contentDescription
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import one.aircast.android.R
+
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -17,14 +37,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,7 +58,6 @@ import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMain
 import one.aircast.android.bridge.qgcPath
-import one.aircast.android.bridge.qgcString
 import one.aircast.mapspike.optText
 
 private const val LOG_ROOT = "logDownload"
@@ -161,24 +176,40 @@ private fun EraseConfirmDialog(erase: EraseKind, onConfirm: () -> Unit, onDismis
 @Composable
 private fun LogRow(entry: LogEntry, enabled: Boolean, onToggle: (Boolean) -> Unit) {
     val selectable = enabled && entry.received
-    ListItem(
-        modifier = Modifier.clickable(enabled = selectable) { onToggle(!entry.selected) },
-        leadingContent = {
-            Checkbox(
-                checked = entry.selected,
-                onCheckedChange = onToggle,
-                enabled = selectable,
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = entry.selected, enabled = selectable, role = Role.Checkbox, onValueChange = onToggle)
+            .background(if (entry.selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .heightIn(min = 72.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).background(
+                if (entry.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                CircleShape,
+            ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(if (entry.selected) R.drawable.ic_check_circle else R.drawable.ic_description),
+                null,
+                tint = if (entry.selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
             )
-        },
-        headlineContent = { Text("Log ${entry.id}") },
-        supportingContent = { Text(entry.time) },
-        trailingContent = {
-            Column(horizontalAlignment = Alignment.End) {
-                Text(entry.sizeStr, style = MaterialTheme.typography.labelLarge)
-                Text(entry.status, style = MaterialTheme.typography.labelMedium)
-            }
-        },
-    )
+        }
+        Column(Modifier.weight(1f)) {
+            Text("Log ${entry.id}", style = MaterialTheme.typography.titleMedium)
+            Text(
+                listOf(entry.time, entry.sizeStr).filter { it.isNotBlank() }.joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(entry.status, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+    }
 }
 
 @Composable
@@ -237,29 +268,21 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
         FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedButton(
+            TextButton(
                 onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.refresh") } },
                 enabled = logs.canRefresh,
             ) { Text("Refresh") }
 
-            Button(
-                onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.download") } },
-                enabled = logs.canDownload && selectedCount > 0,
-            ) { Text(if (selectedCount > 0) "Download ($selectedCount)" else "Download") }
-
-            if (logs.canCancel) {
-                OutlinedButton(onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.cancel") } }) { Text("Cancel") }
-            }
-
             if (logs.sortText.isNotBlank()) {
-                OutlinedButton(
+                TextButton(
                     onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.toggleSortByDate") } },
                     enabled = logs.canSort,
                 ) { Text(logs.sortText) }
@@ -294,7 +317,21 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         }
 
         if (busy) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Surface(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Downloading", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        if (logs.canCancel) {
+                            TextButton(onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.cancel") } }) { Text("Cancel") }
+                        }
+                    }
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
         }
 
         when {
@@ -306,7 +343,6 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                     LogRow(entry, enabled = !busy) { checked ->
                         scope.offMain { Qgc.set("$LOG_MODEL.${entry.index}.selected", checked) }
                     }
-                    HorizontalDivider()
                 }
                 item(key = "erase") {
                     if (!busy && logs.eraseSelectedShown) {
@@ -329,6 +365,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                             modifier = Modifier.padding(horizontal = 12.dp),
                         ) { Text("Erase All") }
                     }
+                    Spacer(Modifier.height(88.dp))
                 }
             }
         }
@@ -342,5 +379,16 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                     .padding(16.dp),
             )
         }
+    }
+    if (logs.canDownload && selectedCount > 0) {
+        ExtendedFloatingActionButton(
+            onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.download") } },
+            icon = { Icon(painterResource(R.drawable.ic_download), null) },
+            text = { Text("Download ($selectedCount)") },
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Download ($selectedCount)" },
+        )
+    }
     }
 }
