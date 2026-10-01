@@ -154,11 +154,24 @@ internal val AircastShapes = Shapes(
 )
 
 val TelemetryNumber = TextStyle(
-    fontFamily = FontFamily.Monospace,
+    fontFamily = FontFamily.Default,
     fontWeight = FontWeight.Medium,
     fontSize = 22.sp,
-    lineHeight = 26.sp,
+    lineHeight = 26.4.sp,
+    fontFeatureSettings = "tnum",
 )
+
+val TelemetryNumberMedium = TelemetryNumber.copy(fontSize = 16.sp, lineHeight = 20.sp)
+
+object AircastSpace {
+    val s1 = 4.dp
+    val s2 = 8.dp
+    val s3 = 12.dp
+    val s4 = 16.dp
+    val s5 = 20.dp
+    val s6 = 24.dp
+    val s8 = 32.dp
+}
 
 private val LocalAircastColors = staticCompositionLocalOf { AircastDarkColors }
 
