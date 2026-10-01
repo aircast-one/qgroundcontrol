@@ -147,7 +147,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
 
     detail?.let { shown ->
         val rows = when (shown) {
-            StripDetail.Battery -> batteryDetail(batteryJson)
+            StripDetail.Battery -> listOfNotNull(totalDraw(batteryJson)?.let { DetailRow("Total draw", it) }) + batteryDetail(batteryJson)
             StripDetail.Gps -> gpsDetail(fix, gps)
             StripDetail.Telemetry -> telemetryDetail(state?.telemetry)
             StripDetail.Links -> linkDetail(
@@ -156,7 +156,11 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
                 linksJson?.optText("primary"),
             )
         }
-        InstrumentSheet(instrumentTitle(shown), rows) { detail = null }
+        InstrumentSheet(instrumentTitle(shown), rows, action = if (shown == StripDetail.Battery && batteryReturnOffered(batteryJson)) {
+            { BatteryReturnButton { detail = null } }
+        } else {
+            null
+        }) { detail = null }
     }
 }
 
@@ -171,13 +175,14 @@ internal fun instrumentTitle(instrument: StripDetail): String = when (instrument
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InstrumentSheet(title: String, rows: List<DetailRow>, onDismiss: () -> Unit) {
+private fun InstrumentSheet(title: String, rows: List<DetailRow>, action: (@Composable () -> Unit)? = null, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
         )
+        action?.invoke()
         when {
             rows.isEmpty() -> Text(
                 text = "The vehicle has not reported anything else about this yet.",
@@ -224,4 +229,32 @@ internal fun telemetryDetail(link: TelemetryLink?): List<DetailRow> = when (link
         link.remoteNoise?.let { DetailRow("Noise at the vehicle", "$it") },
         link.receiveErrors?.let { DetailRow("Packets lost", "$it") },
     )
+}
+
+@Composable
+private fun BatteryReturnButton(onClosed: () -> Unit) {
+    val actionsJson by qgcPath(GUIDED_ACTIONS)
+    val rtl = remember(actionsJson) { guidedOffers(actionsJson)["rtl"] }
+    var confirming by remember { mutableStateOf(false) }
+    if (rtl?.shown != true) return
+    androidx.compose.material3.TextButton(
+        enabled = rtl.ready,
+        onClick = { confirming = true },
+        modifier = Modifier.padding(horizontal = 12.dp),
+    ) { Text("Return", color = MaterialTheme.colorScheme.error) }
+    if (confirming) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("Return") },
+            text = { Text("The aircraft will fly back to its launch point and land.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirming = false
+                    onClosed()
+                    one.aircast.android.bridge.offMainDetached { one.aircast.android.bridge.Qgc.invoke("vehicle.guidedModeRTL", false) }
+                }) { Text("Return") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirming = false }) { Text("Cancel") } },
+        )
+    }
 }

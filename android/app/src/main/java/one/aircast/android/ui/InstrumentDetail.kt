@@ -26,6 +26,30 @@ internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
     }
 }
 
+private val CRITICAL_CHARGE_STATES = 3..6
+
+internal fun batteryReturnOffered(view: JSONObject?): Boolean {
+    val packs = view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs") ?: return false
+    return (0 until packs.length()).any { packs.optJSONObject(it)?.optInt("chargeState", 0) in CRITICAL_CHARGE_STATES }
+}
+
+internal fun totalDraw(view: JSONObject?): String? {
+    val packs = view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs") ?: return null
+    val number = { pack: JSONObject, name: String ->
+        pack.optJSONArray("facts")?.let { facts -> (0 until facts.length()).mapNotNull { facts.optJSONObject(it) }.firstOrNull { it.optText("name") == name } }
+            ?.optDouble("value")?.takeIf { !it.isNaN() }
+    }
+    val all = (0 until packs.length()).mapNotNull { packs.optJSONObject(it) }
+    val watts = all.map { number(it, "instantPower") }
+    val amps = all.map { number(it, "current") }
+    return when {
+        all.isEmpty() -> null
+        watts.all { it != null } -> "${Math.round(watts.sumOf { it ?: 0.0 })}W"
+        amps.all { it != null } -> "%.1fA".format(java.util.Locale.ROOT, amps.sumOf { it ?: 0.0 })
+        else -> null
+    }
+}
+
 internal fun factLabel(name: String): String = when (name) {
     "voltage" -> "Voltage"
     "current" -> "Current"
