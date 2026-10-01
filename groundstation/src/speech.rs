@@ -101,10 +101,17 @@ pub fn say(text: &str) {
     enqueue(&fix_text(text), volume / 100.0);
 }
 
+#[cfg(test)]
+thread_local! {
+    static HEARD_HERE: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn enqueue(text: &str, volume: f64) {
     if text.trim().is_empty() {
         return;
     }
+    #[cfg(test)]
+    HEARD_HERE.with(|heard| heard.borrow_mut().push(text.to_string()));
     let mut queue = QUEUE.lock().unwrap_or_else(PoisonError::into_inner);
     let sequence = queue.next;
     queue.next += 1;
@@ -116,7 +123,7 @@ fn enqueue(text: &str, volume: f64) {
 
 #[cfg(test)]
 pub fn spoken_lines() -> Vec<String> {
-    QUEUE.lock().unwrap_or_else(PoisonError::into_inner).spoken.iter().map(|(_, text, _)| text.clone()).collect()
+    HEARD_HERE.with(|heard| heard.borrow().clone())
 }
 
 pub fn vehicle_prefix(id: u8, vehicles: usize) -> String {
