@@ -54,6 +54,7 @@ internal fun SetupRow(
     onClick: (() -> Unit)? = null,
     summary: List<SummaryLine> = emptyList(),
     @DrawableRes icon: Int? = null,
+    subtitle: String = "",
 ) {
     val row = Modifier
         .fillMaxWidth()
@@ -105,6 +106,9 @@ internal fun SetupRow(
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
+        }
+        if (subtitle.isNotBlank()) {
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         summary.forEach { line ->
             Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {

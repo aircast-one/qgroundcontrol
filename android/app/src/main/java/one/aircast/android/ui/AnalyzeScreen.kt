@@ -1,5 +1,8 @@
 package one.aircast.android.ui
 
+import androidx.annotation.DrawableRes
+import one.aircast.android.R
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -26,33 +29,49 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
 
+enum class AnalyzeSection(val title: String) { FlightData("Flight data"), Live("Live"), Vehicle("Vehicle") }
+
 enum class AnalyzePage(
     val label: String,
     val description: String,
+    val section: AnalyzeSection,
+    @DrawableRes val icon: Int,
 ) {
     LogDownload(
         "Log Download",
         "Download flight logs from the vehicle",
-    ),
-    Vibration(
-        "Vibration",
-        "Accelerometer vibration levels and clipping",
-    ),
-    Console(
-        "MAVLink Console",
-        "Shell over the vehicle link",
-    ),
-    Inspector(
-        "MAVLink Inspector",
-        "Live message rates and field values",
+        AnalyzeSection.FlightData,
+        R.drawable.ic_download,
     ),
     GeoTag(
         "GeoTag Images",
         "Match photographs to where the vehicle was when it took them",
+        AnalyzeSection.FlightData,
+        R.drawable.ic_photo_camera,
+    ),
+    Vibration(
+        "Vibration",
+        "Accelerometer vibration levels and clipping",
+        AnalyzeSection.Live,
+        R.drawable.ic_vibration,
+    ),
+    Inspector(
+        "MAVLink Inspector",
+        "Live message rates and field values",
+        AnalyzeSection.Live,
+        R.drawable.ic_analytics,
+    ),
+    Console(
+        "MAVLink Console",
+        "Shell over the vehicle link",
+        AnalyzeSection.Live,
+        R.drawable.ic_terminal,
     ),
     Firmware(
         "Firmware",
         "Flash a board through its bootloader over USB",
+        AnalyzeSection.Vehicle,
+        R.drawable.ic_developer_board,
     ),
     ;
 }
@@ -95,25 +114,26 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
     val caveat = remember(vibrationJson) { vibrationCaveat(vibrationJson) }
 
     LazyColumn(modifier.fillMaxSize()) {
-        items(AnalyzePage.entries, key = { it.name }) { page ->
-            val note = analyzeNote(page, connected, px4, caveat)
-            ListItem(
-                headlineContent = { Text(page.label) },
-                supportingContent = {
-                    Column {
-                        Text(page.description)
-                        note?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
-                modifier = Modifier.clickable { onSelect(page) },
-            )
-            HorizontalDivider()
+        item(key = "title") {
+            Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)) {
+                Text("Analyze", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    "Logs and tools for the connected vehicle",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        AnalyzePage.entries.groupBy { it.section }.forEach { (section, pages) ->
+            item(key = section.name) { SectionHeader(section.title) }
+            items(pages, key = { it.name }) { page ->
+                SetupRow(
+                    title = page.label,
+                    subtitle = listOfNotNull(page.description, analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
+                    onClick = { onSelect(page) },
+                    icon = page.icon,
+                )
+            }
         }
     }
 }
