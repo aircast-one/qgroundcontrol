@@ -246,6 +246,15 @@ fn previous_altitude(doc: &Document, commands: &std::collections::BTreeMap<i64, 
     })
 }
 
+pub fn previous_coordinate(doc: &Document, visual_index: i64) -> Option<(f64, f64)> {
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let before = usize::try_from(visual_index - 1).ok()?.min(doc.items.len());
+    doc.items[..before].iter().rev().find_map(|item| match item {
+        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate) => s.params[4].zip(s.params[5]),
+        _ => None,
+    })
+}
+
 pub fn previous_altitude_mode(doc: &Document, visual_index: i64) -> Option<i64> {
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
     previous_altitude(doc, &commands, visual_index).map(|(_, mode)| mode)
@@ -865,6 +874,17 @@ mod tests {
         let last = mixed.items.len() as i64;
         assert_eq!(previous_altitude_mode(&mixed, last + 1), Some(crate::altitudemodes::ABSOLUTE));
         assert_eq!(previous_altitude_mode(&mixed, -1), None, "appending finds nothing, as _findPreviousAltitude walks down from index -2");
+    }
+
+    #[test]
+    fn move_to_previous_item_takes_the_last_positioned_item_before_this_one() {
+        let apm = Document { firmware_type: 3, ..section() };
+        let first = insert_waypoint(&apm, 47.1, 8.1, -1, &QT_DEFAULTS);
+        let roi = insert_roi(&first, 47.9, 8.9, -1, &QT_DEFAULTS);
+        let second = insert_waypoint(&roi, 47.2, 8.2, -1, &QT_DEFAULTS);
+        let last = second.items.len() as i64;
+        assert_eq!(previous_coordinate(&second, last), Some((47.1, 8.1)), "an ROI is a standalone coordinate and is skipped, as _setPlanViewState skips it");
+        assert_eq!(previous_coordinate(&second, 1), None);
     }
 
     #[test]

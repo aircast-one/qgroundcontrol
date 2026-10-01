@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
@@ -98,6 +101,9 @@ internal fun categoryNames(result: Any?): List<String> {
     return (0 until listed.length()).map { listed.optText(it) }
 }
 
+internal fun previousCoordinate(view: JSONObject?): Pair<Double, Double>? =
+    view?.optJSONObject("previousCoordinate")?.let { it.optDouble("latitude") to it.optDouble("longitude") }?.takeIf { !it.first.isNaN() && !it.second.isNaN() }
+
 internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact> {
     val listed = view?.optJSONArray("fields") ?: return emptyList()
     return (0 until listed.length()).mapNotNull { listed.optJSONObject(it)?.let(::factFromControl) }
@@ -110,6 +116,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
     var view by remember(index) { mutableStateOf<JSONObject?>(null) }
     var choosing by remember(index) { mutableStateOf(false) }
     var editingPosition by remember(index) { mutableStateOf(false) }
+    var positionMenu by remember(index) { mutableStateOf(false) }
     var refusal by remember(index) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -129,7 +136,25 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
             ) {
                 Text("Item ${index}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (at != null) {
-                    TextButton(onClick = { editingPosition = true }) { Text("Edit position") }
+                    Box {
+                        TextButton(onClick = { positionMenu = true }) { Text("Position") }
+                        val previous = previousCoordinate(view)
+                        val moveTo: (Pair<Double, Double>?) -> Unit = { target ->
+                            positionMenu = false
+                            scope.launch {
+                                val moved = withContext(Dispatchers.Default) {
+                                    (target ?: geoOf(Qgc.get("vehicle.coordinate")))?.let { PlanBridge.moveItem(index, it.first, it.second) } ?: false
+                                }
+                                refusal = if (moved) null else "The item could not be moved there."
+                                revision++
+                            }
+                        }
+                        DropdownMenu(expanded = positionMenu, onDismissRequest = { positionMenu = false }) {
+                            DropdownMenuItem(text = { Text("Move to Vehicle Position") }, enabled = connected, onClick = { moveTo(null) })
+                            DropdownMenuItem(text = { Text("Move to Previous Item") }, enabled = previous != null, onClick = { moveTo(previous) })
+                            DropdownMenuItem(text = { Text("Edit Position…") }, onClick = { positionMenu = false; editingPosition = true })
+                        }
+                    }
                 }
                 if (view?.optBoolean("simple") == true) {
                     TextButton(onClick = { choosing = true }) { Text("Change command") }

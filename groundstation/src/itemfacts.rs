@@ -174,6 +174,19 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         "altitudeMode": crate::missionitems::frame(&read).map(|mode| mode as i64),
         "rawEdit": simple && flag(&read, "rawEdit"),
         "friendlyEditAllowed": simple && flag(&read, "friendlyEditAllowed"),
+        "previousCoordinate": match available {
+            true => qt_previous_coordinate(backend, index).map_or(Value::Null, |(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+            false => Value::Null,
+        },
+    })
+}
+
+fn qt_previous_coordinate(backend: &dyn Backend, index: usize) -> Option<(f64, f64)> {
+    (1..index).rev().find_map(|before| {
+        let read = object(&backend.get_fields(&format!("{ITEM_ROOT}.{before}"), "isSimpleItem,specifiesCoordinate,isStandaloneCoordinate,coordinate"));
+        let placed = flag(&read, "isSimpleItem") && flag(&read, "specifiesCoordinate") && !flag(&read, "isStandaloneCoordinate");
+        let at = read.get("coordinate")?;
+        placed.then(|| at.get("latitude")?.as_f64().zip(at.get("longitude")?.as_f64())).flatten()
     })
 }
 

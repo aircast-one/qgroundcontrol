@@ -1989,7 +1989,17 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let document = held().document.clone().unwrap_or_else(empty_document);
     let speed = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
     let (vertical, horizontal) = (crate::read::Unit::vertical(backend), crate::read::Unit::horizontal(backend));
-    document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0), (&vertical, &horizontal))
+    let facts = document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0), (&vertical, &horizontal));
+    with_previous_coordinate(facts, plandoc::previous_coordinate(&document, index as i64))
+}
+
+pub fn with_previous_coordinate(facts: Value, previous: Option<(f64, f64)>) -> Value {
+    match facts {
+        Value::Object(fields) if fields.get("available") == Some(&json!(true)) => {
+            Value::Object(fields.into_iter().chain([("previousCoordinate".to_string(), previous.map_or(Value::Null, |(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })))]).collect())
+        }
+        other => other,
+    }
 }
 
 const CMD_NAV_TAKEOFF: i64 = 22;
