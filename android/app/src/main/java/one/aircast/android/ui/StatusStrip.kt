@@ -118,6 +118,8 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val satellites = gps?.satellites?.toString() ?: ""
     var detail by remember { mutableStateOf<StripDetail?>(null) }
     var batterySettings by remember { mutableStateOf(false) }
+    val setupJson by qgcPath(SETUP)
+    val hasPowerSetup = remember(setupJson) { setupComponents(setupJson).any { it.name == POWER_SETUP_PAGE } }
 
     Row(
         modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
@@ -163,7 +165,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             {
                 if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery Failsafes") }
-                TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle Power: Configure") }
+                if (hasPowerSetup) TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle Power: Configure") }
             }
         } else {
             null
