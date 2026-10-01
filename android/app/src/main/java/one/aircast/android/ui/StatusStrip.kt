@@ -135,6 +135,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         links?.let {
             InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified) { detail = StripDetail.Links }
         }
+        AircastLinkCell()
         EscIndicatorCell()
         JoystickIndicatorCell()
         RemoteIdIndicatorCell()

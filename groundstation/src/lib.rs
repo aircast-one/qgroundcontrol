@@ -60,6 +60,7 @@ pub mod ubxbase;
 pub mod speech;
 pub mod telemetrylog;
 pub mod proximity;
+pub mod aircastlink;
 pub mod powercalc;
 pub mod mavlinklog;
 pub mod escal;

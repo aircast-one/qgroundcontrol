@@ -335,6 +335,78 @@ impl RadioStatusFacts {
     }
 }
 
+pub const AIRCAST_LINK: GroupSpec = GroupSpec {
+    class: "AircastLinkFactGroup",
+    meta: AIRCAST_LINK_META,
+    properties: &[("quality", "quality"), ("radioType", "radioType"), ("status", "status"), ("videoBitrate", "videoBitrate")],
+    added: &["quality", "radioType", "status", "videoBitrate"],
+};
+
+const AIRCAST_HISTORY_LENGTH: usize = 720;
+const CELLULAR_QUALITY_UNKNOWN: u8 = u8::MAX;
+const CELLULAR_RX_RATE_OFFSET: usize = 15;
+const MAVLINK_V2_HEADER_LENGTH: usize = 10;
+
+pub fn cellular_rx_rate(raw: &[u8]) -> u32 {
+    let payload = raw.get(MAVLINK_V2_HEADER_LENGTH..).unwrap_or_default();
+    let byte = |i: usize| payload.get(CELLULAR_RX_RATE_OFFSET + i).copied().unwrap_or(0);
+    u32::from_le_bytes([byte(0), byte(1), byte(2), byte(3)])
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct AircastLinkFacts {
+    pub quality: u8,
+    pub radio_type: u8,
+    pub status: u8,
+    pub bitrate_kbps: u32,
+    pub quality_history: std::collections::VecDeque<i64>,
+    pub bitrate_history: std::collections::VecDeque<u32>,
+    pub telemetry: bool,
+}
+
+fn remembered<T: Clone>(history: &std::collections::VecDeque<T>, value: T) -> std::collections::VecDeque<T> {
+    history.iter().cloned().chain(std::iter::once(value)).skip((history.len() + 1).saturating_sub(AIRCAST_HISTORY_LENGTH)).collect()
+}
+
+impl AircastLinkFacts {
+    pub fn apply(&mut self, cellular: &mavlink::dialects::ardupilotmega::CELLULAR_STATUS_DATA, rx_rate: u32) {
+        let bitrate_kbps = if rx_rate == u32::MAX { 0 } else { (f64::from(rx_rate) * 1024.0 * 8.0 / 1000.0).round() as u32 };
+        let quality = if cellular.quality == CELLULAR_QUALITY_UNKNOWN { -1 } else { i64::from(cellular.quality) };
+        *self = AircastLinkFacts {
+            quality: cellular.quality,
+            radio_type: cellular.mavtype as u8,
+            status: cellular.status as u8,
+            bitrate_kbps,
+            quality_history: remembered(&self.quality_history, quality),
+            bitrate_history: remembered(&self.bitrate_history, bitrate_kbps),
+            telemetry: true,
+        };
+    }
+
+    pub fn raw(&self, name: &str) -> Value {
+        match name {
+            "quality" => json!(self.quality),
+            "radioType" => json!(self.radio_type),
+            "status" => json!(self.status),
+            "videoBitrate" => json!(self.bitrate_kbps),
+            _ => Value::Null,
+        }
+    }
+
+    pub fn group(&self) -> Value {
+        let group = spec_group(&AIRCAST_LINK, |n| self.raw(n), self.telemetry);
+        match group {
+            Value::Object(fields) => Value::Object(
+                fields
+                    .into_iter()
+                    .chain([("qualityHistory".to_string(), json!(self.quality_history)), ("bitrateHistory".to_string(), json!(self.bitrate_history))])
+                    .collect(),
+            ),
+            other => other,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ObstacleFacts {
     pub distances: Vec<i64>,
@@ -717,7 +789,7 @@ pub fn instrument_catalogue() -> (Vec<(&'static str, Value)>, Value) {
         ("generator", spec(&GENERATOR)),
         ("efi", spec(&EFI)),
         ("radioStatus", spec(&RADIO)),
-        ("aircastLink", listing(AIRCAST_LINK_META, same_names(&["quality", "radioType", "status", "videoBitrate"]))),
+        ("aircastLink", spec(&AIRCAST_LINK)),
     ];
     (groups, listing(VEHICLE_META, same_names(&VEHICLE_PROPERTIES)))
 }

@@ -398,7 +398,12 @@ fn install_hub_sink() {
             if crate::vehiclefacade::switched_on() {
                 crate::telemetrylog::received(frame);
             }
-            let outbound = crate::hub::lock().on_frame(crate::hub::Origin { link: frame.link, replay: frame.replay, v2: frame.v2 }, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
+            let outbound = {
+                let mut hub = crate::hub::lock();
+                let outbound = hub.on_frame(crate::hub::Origin { link: frame.link, replay: frame.replay, v2: frame.v2 }, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
+                hub.note_cellular(frame.header.system_id, &frame.message, &frame.raw);
+                outbound
+            };
             deliver(outbound);
             if crate::vehiclefacade::switched_on() {
                 crate::forwarding::forward(frame);

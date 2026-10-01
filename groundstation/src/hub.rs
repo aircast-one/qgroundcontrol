@@ -235,6 +235,7 @@ pub struct Vehicle {
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
+    pub aircast: crate::vehiclefact::AircastLinkFacts,
     pub obstacle: crate::vehiclefact::ObstacleFacts,
     pub rc_rssi: crate::vehiclefact::RcRssi,
     pub orbit_heard_ms: Option<u64>,
@@ -378,6 +379,7 @@ impl Vehicle {
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
+            aircast: crate::vehiclefact::AircastLinkFacts::default(),
             obstacle: crate::vehiclefact::ObstacleFacts::default(),
             rc_rssi: crate::vehiclefact::RcRssi::default(),
             orbit_heard_ms: None,
@@ -3030,6 +3032,12 @@ impl Hub {
 
     pub fn active(&self) -> Option<&Vehicle> {
         self.active.and_then(|id| self.vehicles.get(&id))
+    }
+
+    pub fn note_cellular(&mut self, system: u8, message: &MavMessage, raw: &[u8]) {
+        if let (MavMessage::CELLULAR_STATUS(cellular), Some(vehicle)) = (message, self.vehicles.get_mut(&system)) {
+            vehicle.aircast.apply(cellular, crate::vehiclefact::cellular_rx_rate(raw));
+        }
     }
 
     pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId]) {

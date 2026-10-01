@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
 
+use crate::aircastlink;
 use crate::altitude;
 use crate::altitudemodes;
 use crate::battery;
@@ -299,6 +300,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.gpsRtk", deps: &[], compute: rtkbase::rtk_view },
     View { path: "view.speech", deps: &[], compute: speech::speech_view },
     View { path: "view.proximityRadar", deps: proximity::DEPS, compute: proximity::proximity_view },
+    View { path: "view.aircastLink", deps: aircastlink::DEPS, compute: aircastlink::aircast_link_view },
     View { path: "view.gimbalAzimuth", deps: gimbalindicator::AZIMUTH_DEPS, compute: gimbalindicator::azimuth_view },
     View { path: "view.powerCalc", deps: powercalc::DEPS, compute: powercalc::power_calc_view },
     View { path: "view.mavlinkLog", deps: &[], compute: mavlinklog::mavlink_log_view },
@@ -575,6 +577,7 @@ mod deps_cover_reads {
             ("speech", include_str!("speech.rs")),
             ("telemetrylog", include_str!("telemetrylog.rs")),
             ("proximity", include_str!("proximity.rs")),
+            ("aircastlink", include_str!("aircastlink.rs")),
             ("powercalc", include_str!("powercalc.rs")),
             ("mavlinklog", include_str!("mavlinklog.rs")),
             ("escal", include_str!("escal.rs")),
