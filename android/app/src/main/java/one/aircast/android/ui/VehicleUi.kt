@@ -762,7 +762,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         }
         val shown = when {
             editing && setting != null -> emptyList()
-            showFolded -> modes.everyday + modes.folded
+            showFolded -> modes.all
             else -> modes.everyday
         }
         shown.forEach { mode ->

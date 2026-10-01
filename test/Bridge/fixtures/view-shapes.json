@@ -2674,6 +2674,7 @@
         "view.guidedActions.actions.2.carriesValue",
         "view.guidedActions.actions.2.destructive",
         "view.guidedActions.actions.2.id",
+        "view.guidedActions.actions.2.offer",
         "view.guidedActions.actions.2.prompt",
         "view.guidedActions.actions.2.reason",
         "view.guidedActions.actions.2.title",
@@ -3591,8 +3592,6 @@
         "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).points.2.longitude",
         "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).points.3.latitude",
         "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).points.3.longitude",
-        "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).points.4.latitude",
-        "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).points.4.longitude",
         "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).readable",
         "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).shape",
         "view.kmlFile(<checkout>/test/MissionManager/PolygonGood.kml).valid",
@@ -4572,6 +4571,7 @@
         "view.preflight.groups.1.checks.1.blocked",
         "view.preflight.groups.1.checks.1.verdict",
         "view.preflight.groups.1.checks.2.blocked",
+        "view.preflight.groups.1.checks.2.verdict",
         "view.preflight.groups.1.name",
         "view.preflight.groups.2.checks.#",
         "view.preflight.groups.2.checks.0.blocked",
@@ -7562,6 +7562,7 @@
         "view.flightModes.everyday[].hidden",
         "view.flightModes.everyday[].name",
         "view.flightModes.everyday[].needsConfirm",
+        "view.flightModes.everyday[].section",
         "view.flightModes.everyday[].summary",
         "view.flightModes.folded.#",
         "view.flightModes.folded[].advanced",
@@ -7569,6 +7570,7 @@
         "view.flightModes.folded[].hidden",
         "view.flightModes.folded[].name",
         "view.flightModes.folded[].needsConfirm",
+        "view.flightModes.folded[].section",
         "view.flightModes.folded[].summary",
         "view.flightModes.hidden.#",
         "view.flightModes.hiddenSetting",
@@ -7580,6 +7582,7 @@
         "view.flightModes.modes[].hidden",
         "view.flightModes.modes[].name",
         "view.flightModes.modes[].needsConfirm",
+        "view.flightModes.modes[].section",
         "view.flightModes.modes[].summary",
         "view.flyState.armed",
         "view.flyState.class",
@@ -11199,6 +11202,7 @@
                 "hidden": "bool",
                 "name": "string",
                 "needsConfirm": "bool",
+                "section": "string",
                 "summary": "string"
             }
         ],
@@ -11209,6 +11213,7 @@
                 "hidden": "bool",
                 "name": "string",
                 "needsConfirm": "bool",
+                "section": "string",
                 "summary": "string"
             }
         ],
@@ -11224,6 +11229,7 @@
                 "hidden": "bool",
                 "name": "string",
                 "needsConfirm": "bool",
+                "section": "string",
                 "summary": "string"
             }
         ]

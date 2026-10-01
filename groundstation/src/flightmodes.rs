@@ -9,6 +9,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.flightModes",
     "vehicle.advancedFlightModes",
     "vehicle.flying",
+    "vehicle.armed",
     "vehicle.px4Firmware",
     "vehicle.apmFirmware",
     "vehicle.vtol",
@@ -104,8 +105,23 @@ pub fn description(mode: &str) -> &'static str {
     DESCRIPTIONS.iter().find(|(name, _)| *name == mode).map(|(_, d)| *d).unwrap_or("")
 }
 
-pub fn needs_confirming(mode: &str, flying: bool, rtl: &str, land: &str) -> bool {
-    flying && !mode.is_empty() && (mode == rtl || mode == land)
+const RETURN_KEYWORDS: [&str; 3] = ["return", "rtl", "land"];
+
+pub fn section(mode: &str) -> &'static str {
+    let name = mode.to_lowercase();
+    match () {
+        _ if RETURN_KEYWORDS.iter().any(|keyword| name.contains(keyword)) => "return",
+        _ if name.contains("mocklink") => "dev",
+        _ => "normal",
+    }
+}
+
+fn section_rank(mode: &Value) -> usize {
+    ["normal", "return", "dev"].iter().position(|s| mode["section"] == *s).unwrap_or(0)
+}
+
+pub fn needs_confirming(mode: &str, armed: bool, flying: bool) -> bool {
+    section(mode) == "return" && armed && flying
 }
 
 pub fn hidden_modes_setting(vehicle: &Value) -> Option<String> {
@@ -124,15 +140,14 @@ fn hidden_modes(backend: &dyn Backend, setting: Option<&str>) -> Vec<String> {
 }
 
 pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "flightMode,flightModes,advancedFlightModes,flying,rtlFlightMode,landFlightMode,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship"));
+    let vehicle = object(&backend.get_fields("vehicle", "flightMode,flightModes,advancedFlightModes,armed,flying,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship"));
     let hidden_setting = hidden_modes_setting(&vehicle);
     let hidden = hidden_modes(backend, hidden_setting.as_deref());
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let strings = |key: &str| -> Vec<String> { vehicle.get(key).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default() };
     let (all, advanced) = (strings("flightModes"), strings("advancedFlightModes"));
     let current = text(&vehicle, "flightMode");
-    let flying = flag(&vehicle, "flying");
-    let (rtl, land) = (text(&vehicle, "rtlFlightMode"), text(&vehicle, "landFlightMode"));
+    let (armed, flying) = (flag(&vehicle, "armed"), flag(&vehicle, "flying"));
     let modes: Vec<Value> = all
         .iter()
         .map(|name| {
@@ -142,9 +157,18 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "hidden": hidden.contains(name),
                 "current": *name == current,
                 "summary": description(name),
-                "needsConfirm": needs_confirming(name, flying, &rtl, &land),
+                "needsConfirm": needs_confirming(name, armed, flying),
+                "section": section(name),
             })
         })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .enumerate()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|(order, mode)| ((section_rank(&mode), order), mode))
+        .collect::<std::collections::BTreeMap<_, _>>()
+        .into_values()
         .collect();
     json!({
         "kind": "object",
@@ -264,10 +288,13 @@ mod tests {
     fn descriptions_and_confirmation_follow_the_vehicles_own_names() {
         assert_eq!(description("Return"), "Climbs, returns home and lands");
         assert_eq!(description("Nope"), "");
-        assert!(needs_confirming("Return", true, "Return", "Land"));
-        assert!(!needs_confirming("Return", false, "Return", "Land"));
-        assert!(!needs_confirming("Hold", true, "Return", "Land"));
-        assert!(!needs_confirming("", true, "", ""));
+        assert!(needs_confirming("Return", true, true));
+        assert!(needs_confirming("Smart RTL", true, true), "FlightModeIndicator confirms any mode whose name holds return, rtl or land");
+        assert!(needs_confirming("QLand", true, true));
+        assert!(!needs_confirming("Return", true, false));
+        assert!(!needs_confirming("Return", false, true), "and only while armed");
+        assert!(!needs_confirming("Hold", true, true));
+        assert_eq!((section("Mission"), section("Precision Land"), section("MockLink Dev")), ("normal", "return", "dev"));
     }
 
     #[test]
