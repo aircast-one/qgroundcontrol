@@ -1898,11 +1898,9 @@ impl Vehicle {
         if self.primary_link == Some(link) { "primary" } else { "secondary" }
     }
 
-    fn switch_primary(&mut self, text: &str) {
-        if self.update_primary_link() {
-            self.say_link(text);
-            self.pending_notices.push((crate::noticeboard::MESSAGE, format!("{}{text}", self.speech_prefix)));
-        }
+    fn announce_switch(&mut self, text: &str) {
+        self.say_link(text);
+        self.pending_notices.push((crate::noticeboard::MESSAGE, format!("{}{text}", self.speech_prefix)));
     }
 
     pub fn note_link(&mut self, link: LinkId, now_ms: u64) {
@@ -1915,7 +1913,9 @@ impl Vehicle {
                     if self.link_states.len() > 1 {
                         self.say_link(&format!("Communication regained on {} link", self.link_role(link)));
                     }
-                    self.switch_primary("Switching communication to new primary link");
+                    if self.update_primary_link() {
+                        self.announce_switch("Switching communication to new primary link");
+                    }
                 }
             }
             None => {
@@ -1925,7 +1925,7 @@ impl Vehicle {
         }
     }
 
-    pub fn check_links(&mut self, now_ms: u64) {
+    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId]) {
         if !self.comm_lost_enabled {
             return;
         }
@@ -1938,7 +1938,12 @@ impl Vehicle {
             }
         });
         self.link_states.iter_mut().filter(|(link, _, _)| silenced.contains(link)).for_each(|state| state.2 = true);
-        self.switch_primary("Switching communication to secondary link.");
+        let was_relayed = self.primary_link.is_some_and(|link| cloud.contains(&link));
+        if self.update_primary_link() {
+            let back_to_direct = was_relayed && self.primary_link.is_some_and(|link| !cloud.contains(&link));
+            let text = if back_to_direct { "Switching communication back to the direct link." } else { "Switching communication to secondary link." };
+            self.announce_switch(text);
+        }
     }
 
     fn log_extension(&self) -> &'static str {
@@ -3027,8 +3032,8 @@ impl Hub {
         self.active.and_then(|id| self.vehicles.get(&id))
     }
 
-    pub fn check_links(&mut self, now_ms: u64) {
-        self.vehicles.values_mut().for_each(|v| v.check_links(now_ms));
+    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId]) {
+        self.vehicles.values_mut().for_each(|v| v.check_links(now_ms, cloud));
     }
 
     pub fn expire(&mut self, now_us: u64) -> Vec<u8> {
@@ -3414,6 +3419,17 @@ mod tests {
     }
 
     #[test]
+    fn losing_a_relayed_primary_switches_back_to_the_direct_link() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 7, component_id: 1, sequence: 0 };
+        hub.on_frame(Origin { link: 11, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(Origin { link: 12, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_000);
+        hub.check_links(4_000, &[11]);
+        assert_eq!(hub.vehicles[&7].primary_link, Some(12));
+        assert!(crate::speech::spoken_lines().iter().any(|line| line == "switching communication back to the direct link."));
+    }
+
+    #[test]
     fn the_primary_link_stays_until_it_goes_quiet_and_then_moves_to_a_live_one() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
@@ -3421,7 +3437,7 @@ mod tests {
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 100);
         assert_eq!(hub.active().unwrap().primary_link, Some(1), "the first link heard is primary and a second one does not take over");
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_000);
-        hub.check_links(4_000);
+        hub.check_links(4_000, &[]);
         let vehicle = hub.active().unwrap();
         assert_eq!((vehicle.primary_link, vehicle.link_states.iter().map(|(_, _, lost)| *lost).collect::<Vec<_>>()), (Some(2), vec![true, false]), "link 1 was silent past 3.5 s");
         hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 4_100);
