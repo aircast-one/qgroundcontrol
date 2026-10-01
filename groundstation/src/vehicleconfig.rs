@@ -640,7 +640,10 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
     if !scope.shown(control, "showWhen") {
         return vec![];
     }
-    let enabled = scope.shown(control, "enableWhen");
+    let channel_gate = control.get("enableWhenChannel").is_none_or(|of| {
+        of["channelParam"].as_str().zip(of["functionValue"].as_f64()).is_some_and(|(template, function)| channel_for(scope, template, function).is_some())
+    });
+    let enabled = scope.shown(control, "enableWhen") && channel_gate;
     let kind = control["control"].as_str().unwrap_or("");
     let label = control["label"].clone();
     let path = row_path(page, id);

@@ -66,7 +66,7 @@
             "controls": [
                 { "control": "channelFunction", "label": "Pitch output channel", "channelParam": "SERVO#_FUNCTION", "functionValue": 7 },
                 { "param": "REVERSED", "label": "Pitch servo reversed", "control": "checkbox", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 7 } },
-                { "param": "_LEAD_PTCH", "label": "Pitch stabilization lead", "optional": true },
+                { "param": "_LEAD_PTCH", "label": "Pitch stabilization lead", "optional": true, "enableWhenChannel": { "channelParam": "SERVO#_FUNCTION", "functionValue": 7 } },
                 { "param": "MIN", "label": "Pitch min PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 7 } },
                 { "param": "MAX", "label": "Pitch max PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 7 } },
                 { "control": "channelFunction", "label": "Yaw output channel", "channelParam": "SERVO#_FUNCTION", "functionValue": 6 },
@@ -75,7 +75,7 @@
                 { "param": "MAX", "label": "Yaw max PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 6 } },
                 { "control": "channelFunction", "label": "Roll output channel", "channelParam": "SERVO#_FUNCTION", "functionValue": 8 },
                 { "param": "REVERSED", "label": "Roll servo reversed", "control": "checkbox", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 8 } },
-                { "param": "_LEAD_RLL", "label": "Roll stabilization lead", "optional": true },
+                { "param": "_LEAD_RLL", "label": "Roll stabilization lead", "optional": true, "enableWhenChannel": { "channelParam": "SERVO#_FUNCTION", "functionValue": 8 } },
                 { "param": "MIN", "label": "Roll min PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 8 } },
                 { "param": "MAX", "label": "Roll max PWM", "channelOf": { "channelParam": "SERVO#_FUNCTION", "functionValue": 8 } }
             ]
