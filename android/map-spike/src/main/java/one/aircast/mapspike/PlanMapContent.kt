@@ -256,6 +256,8 @@ internal fun MapSpikeScreen(
     val missionSummaryView by mapPath("view.missionSummary")
     val terrainView by mapPath(TERRAIN_VIEW)
     val profile = remember(terrainView) { terrainProfile(terrainView) }
+    val elevationProviderJson by mapPath(ELEVATION_PROVIDER)
+    val elevationNotice = elevationProviderJson?.optText("value").orEmpty()
 
     fun placeAt(): TrackPoint? = when {
         isPlottable(latitude, longitude) -> TrackPoint(latitude, longitude)
@@ -1120,7 +1122,7 @@ internal fun MapSpikeScreen(
                     }
                 }
 
-                TerrainProfileView(profile)
+                TerrainProfileView(profile, elevationNotice)
             }
         }
 

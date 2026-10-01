@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 private val TERRAIN_COLOUR = Color(0xFF8D6E63)
@@ -69,8 +70,12 @@ internal fun profileLabel(profile: TerrainProfile): String =
             else -> ""
         }
 
+internal const val ELEVATION_PROVIDER = "settings.flightMapSettings.elevationMapProvider.rawValue"
+
+internal fun elevationCredit(notice: String): String? = notice.takeIf { it.isNotBlank() }?.let { "Powered by $it" }
+
 @Composable
-fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
+fun TerrainProfileView(profile: TerrainProfile, notice: String, modifier: Modifier = Modifier) {
     if (profile.points.isEmpty()) {
         return
     }
@@ -92,6 +97,9 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
         return
     }
 
+    elevationCredit(notice)?.let {
+        Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+    }
     Surface(
         modifier.fillMaxWidth().height(110.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
