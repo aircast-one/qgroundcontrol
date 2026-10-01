@@ -572,12 +572,15 @@ fn save(file: &str) -> Value {
     let Some(text) = held().document.as_ref().map(|d| plandoc::save(d).to_string()) else {
         return refused("There is no plan to save.");
     };
+    let offline = offline();
     match std::fs::write(file, text) {
         Ok(()) => {
             {
                 let mut state = held();
                 state.file = Some(file.to_string());
-                settle_clean(&mut state);
+                if offline {
+                    settle_clean(&mut state);
+                }
             }
             changed();
             json!({ "ok": true, "result": true })
