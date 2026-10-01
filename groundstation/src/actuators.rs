@@ -107,10 +107,44 @@ pub struct Output {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Function {
+    pub label: String,
+    pub note: String,
+    pub note_if: Condition,
+    pub exclude_from_testing: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActuatorType {
+    pub name: String,
+    pub function_min: i64,
+    pub function_max: i64,
+    pub min: f64,
+    pub max: f64,
+    pub default: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Metadata {
     pub show_ui_if: Condition,
     pub outputs: Vec<Output>,
+    pub functions: std::collections::BTreeMap<i64, Function>,
+    pub actuator_types: Vec<ActuatorType>,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TestActuator {
+    pub label: String,
+    pub function: i64,
+    pub min: f64,
+    pub max: f64,
+    pub default: Option<f64>,
+    pub is_motor: bool,
+}
+
+pub const TEST_ACTIVE: &str = "actuatorTest.setActive";
+pub const TEST_SET: &str = "actuatorTest.setChannelTo";
+pub const TEST_STOP: &str = "actuatorTest.stopControl";
 
 pub fn parse(json: &Value) -> Result<Metadata, String> {
     let missing: Vec<&str> = ["outputs_v1", "functions_v1", "mixer_v1"].into_iter().filter(|key| json.get(key).is_none_or(Value::is_null)).collect();
@@ -140,7 +174,68 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
             }
         })
         .collect();
-    Ok(Metadata { show_ui_if: Condition::parse(&text(json, "show-ui-if")), outputs })
+    let functions = json
+        .get("functions_v1")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(key, f)| {
+            let label = text(f, "label");
+            (!label.is_empty()).then(|| {
+                let note = f.get("note").cloned().unwrap_or(Value::Null);
+                Some((key.parse::<i64>().ok()?, Function { label, note: text(&note, "text"), note_if: Condition::parse(&text(&note, "condition")), exclude_from_testing: f.get("exclude-from-actuator-testing").and_then(Value::as_bool).unwrap_or(false) }))
+            })?
+        })
+        .collect();
+    let mut actuator_types: Vec<ActuatorType> = json
+        .pointer("/mixer_v1/actuator-types")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .map(|(name, t)| {
+            let values = t.get("values").cloned().unwrap_or(Value::Null);
+            let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+            ActuatorType {
+                name: name.clone(),
+                function_min: t.get("function-min").and_then(Value::as_i64).unwrap_or(0),
+                function_max: t.get("function-max").and_then(Value::as_i64).unwrap_or(0),
+                min: number(&values, "min"),
+                max: number(&values, "max"),
+                default: (!values.get("default-is-nan").and_then(Value::as_bool).unwrap_or(false)).then(|| number(&values, "default")),
+            }
+        })
+        .collect();
+    actuator_types.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(Metadata { show_ui_if: Condition::parse(&text(json, "show-ui-if")), outputs, functions, actuator_types })
+}
+
+fn function_params(output: &Output) -> Vec<String> {
+    output
+        .subgroups
+        .iter()
+        .flat_map(|subgroup| subgroup.channels.iter().flat_map(move |channel| subgroup.channel_configs.iter().filter(|c| c.function == "function").map(move |c| channel_param(c, channel))))
+        .collect()
+}
+
+pub fn kept_outputs<'a>(metadata: &'a Metadata, exists: &dyn Fn(&str) -> bool) -> Vec<&'a Output> {
+    metadata.outputs.iter().filter(|output| output.enable.is_some() || function_params(output).iter().any(|name| exists(name))).collect()
+}
+
+pub fn test_actuators(metadata: &Metadata, value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<TestActuator> {
+    let configured: std::collections::BTreeSet<i64> = metadata.outputs.iter().flat_map(function_params).filter_map(|name| value_of(&name)).filter(|f| *f != 0).collect();
+    configured
+        .into_iter()
+        .filter(|f| !metadata.functions.get(f).is_some_and(|known| known.exclude_from_testing))
+        .filter_map(|function| {
+            let label = metadata.functions.get(&function).map(|f| f.label.clone()).unwrap_or_default();
+            let typed = metadata.actuator_types.iter().find(|t| (t.function_min..=t.function_max).contains(&function));
+            let (kind, is_motor) = match typed {
+                Some(t) => (t, t.name == "motor"),
+                None => (metadata.actuator_types.iter().find(|t| t.name == "DEFAULT")?, false),
+            };
+            Some(TestActuator { label, function, min: kind.min, max: kind.max, default: kind.default, is_motor })
+        })
+        .collect()
 }
 
 pub fn channel_param(config: &Param, channel: &Channel) -> String {
@@ -176,11 +271,23 @@ fn params_json(backend: &dyn Backend, params: &[Param]) -> Vec<Value> {
     params.iter().filter_map(|p| control(backend, p, &p.name, 0)).collect()
 }
 
+fn actuator_json(actuator: &TestActuator) -> Value {
+    json!({ "label": actuator.label, "function": actuator.function, "min": actuator.min, "max": actuator.max, "default": actuator.default, "isMotor": actuator.is_motor })
+}
+
 pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
     let value_of = |name: &str| integer(backend, name);
+    let exists = |name: &str| fact(backend, name).is_some();
+    let testing = test_actuators(metadata, &value_of);
+    let all_motors = testing.iter().rev().find(|a| a.is_motor).map(|motor| TestActuator { label: "All Motors".to_string(), ..motor.clone() });
     json!({
         "showUi": metadata.show_ui_if.evaluate(&value_of),
-        "groups": metadata.outputs.iter().map(|output| json!({
+        "testing": {
+            "actuators": testing.iter().map(actuator_json).collect::<Vec<_>>(),
+            "allMotors": all_motors.as_ref().map(actuator_json),
+            "hadFailure": crate::hub::lock().active().is_some_and(|v| v.actuator_test.had_failure),
+        },
+        "groups": kept_outputs(metadata, &exists).into_iter().map(|output| json!({
             "label": output.label,
             "enable": output.enable.as_ref().and_then(|p| control(backend, p, &p.name, 0)),
             "groupsVisible": output.show_subgroups_if.evaluate(&value_of),
@@ -213,6 +320,20 @@ pub fn outputs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         Some(Err(reason)) => json!({ "kind": "object", "class": "ActuatorOutputs", "available": false, "reason": reason, "groups": [] }),
         None => json!({ "kind": "object", "class": "ActuatorOutputs", "available": false, "reason": "This vehicle sent no actuator metadata.", "groups": [] }),
     }
+}
+
+pub fn test_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let action = match path {
+        TEST_ACTIVE => json!({ "action": "actuatorTest", "op": "active", "on": given.get(0).and_then(Value::as_bool).unwrap_or(false) }),
+        TEST_SET => json!({ "action": "actuatorTest", "op": "set", "function": given.get(0), "value": given.get(1) }),
+        _ => json!({ "action": "actuatorTest", "op": "stop", "function": given.get(0).filter(|f| f.as_i64() != Some(-1)) }),
+    };
+    crate::guided::dispatch(backend, Some(action), crate::guided::active_id(backend), path, args)
+}
+
+pub fn owns(path: &str) -> bool {
+    [TEST_ACTIVE, TEST_SET, TEST_STOP].contains(&path)
 }
 
 #[cfg(test)]
@@ -250,5 +371,27 @@ mod tests {
         assert_eq!(channel_param(&first.channel_configs[0], &first.channels[2]), "PWM_MAIN_FUNC3");
         assert!(first.channel_configs[1].advanced);
         assert!(parse(&json!({ "outputs_v1": [] })).unwrap_err().contains("functions_v1, mixer_v1"));
+        assert_eq!(parsed.functions[&101].label, "Motor 1");
+        assert!(parsed.functions[&2032].exclude_from_testing);
+        assert_eq!(parsed.actuator_types.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["DEFAULT", "motor", "servo"], "QMap order puts DEFAULT first");
+    }
+
+    #[test]
+    fn the_test_list_is_the_configured_functions_once_each_typed_by_range() {
+        let parsed = parse(&example()).unwrap();
+        let functions = |name: &str| match name {
+            "PWM_MAIN_FUNC1" => Some(101),
+            "PWM_MAIN_FUNC2" => Some(102),
+            "PWM_MAIN_FUNC3" => Some(201),
+            "PWM_MAIN_FUNC4" => Some(2032),
+            "PWM_AUX_FUNC1" => Some(101),
+            "PWM_AUX_FUNC2" => Some(407),
+            _ => Some(0),
+        };
+        let listed = test_actuators(&parsed, &functions);
+        assert_eq!(listed.iter().map(|a| (a.function, a.label.as_str(), a.is_motor)).collect::<Vec<_>>(), [(101, "Motor 1", true), (102, "Motor 2", true), (201, "Servo 1", false), (407, "RC AUX 1", false)], "sorted, unique, camera capture excluded, RC AUX falls to DEFAULT");
+        assert_eq!((listed[0].min, listed[0].max, listed[0].default), (0.0, 1.0, None), "a motor's default is NaN");
+        assert_eq!((listed[3].min, listed[3].default), (-1.0, Some(-1.0)));
+        assert!(kept_outputs(&parsed, &|_| false).iter().all(|o| o.enable.is_some()), "a group with no enable and no function parameter the vehicle has is dropped");
     }
 }

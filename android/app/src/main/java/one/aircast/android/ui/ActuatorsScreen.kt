@@ -46,7 +46,7 @@ internal data class ActuatorColumn(val label: String, val advanced: Boolean, val
 internal data class ActuatorChannel(val label: String, val configs: List<ActuatorFact?>)
 internal data class ActuatorSubgroup(val label: String, val primary: ActuatorFact?, val params: List<ActuatorFact>, val columns: List<ActuatorColumn>, val channels: List<ActuatorChannel>)
 internal data class ActuatorGroup(val label: String, val enable: ActuatorFact?, val groupsVisible: Boolean, val params: List<ActuatorFact>, val subgroups: List<ActuatorSubgroup>)
-internal data class ActuatorOutputs(val available: Boolean, val reason: String, val showUi: Boolean, val groups: List<ActuatorGroup>)
+internal data class ActuatorOutputs(val available: Boolean, val reason: String, val showUi: Boolean, val groups: List<ActuatorGroup>, val testing: ActuatorTesting? = null)
 
 private fun <T> JSONArray?.objects(read: (JSONObject) -> T?): List<T> =
     (0 until (this?.length() ?: 0)).mapNotNull { index -> this?.optJSONObject(index)?.let(read) }
@@ -62,6 +62,7 @@ internal fun actuatorOutputs(view: JSONObject?): ActuatorOutputs? =
             available = read.optBoolean("available"),
             reason = read.optText("reason"),
             showUi = read.optBoolean("showUi", true),
+            testing = actuatorTesting(read),
             groups = read.optJSONArray("groups").objects { group ->
                 ActuatorGroup(
                     label = group.optText("label"),
@@ -122,6 +123,7 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
 
     val group = outputs.groups.getOrNull(tab) ?: outputs.groups.firstOrNull() ?: return
     Column(modifier.fillMaxSize()) {
+        outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it) } }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Actuator Outputs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Checkbox(checked = advanced, onCheckedChange = { advanced = it })

@@ -168,6 +168,7 @@ pub struct Vehicle {
     pub airframe_reboot: Option<Option<u64>>,
     stream: crate::streamconfig::StreamConfig,
     pub autotune: crate::autotune::Autotune,
+    pub actuator_test: crate::actuatortest::ActuatorTest,
     autotune_due: Option<u64>,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
@@ -323,6 +324,7 @@ impl Vehicle {
             airframe_reboot: None,
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
+            actuator_test: crate::actuatortest::ActuatorTest::default(),
             autotune_due: None,
             rc_due: None,
             temperature: TemperatureFacts::default(),
@@ -1141,6 +1143,13 @@ impl Vehicle {
         Ok(self.follow_params(actions, now_ms))
     }
 
+    fn actuator_request(&mut self, request: Option<crate::actuatortest::Request>) -> Vec<Vec<u8>> {
+        let Some(request) = request else { return Vec::new() };
+        let target = (self.id, COMP_AUTOPILOT1);
+        let params = [f64::from(request.value), f64::from(request.timeout), 0.0, 0.0, (crate::actuatortest::FUNCTION_OFFSET + request.function) as f64, 0.0, 0.0];
+        self.encode(&Outbound::CommandLong { target, command: crate::actuatortest::CMD_ACTUATOR_TEST, params }).into_iter().collect()
+    }
+
     fn autotune_poll(&mut self) -> Vec<Vec<u8>> {
         let target = (self.id, COMP_AUTOPILOT1);
         self.encode(&Outbound::CommandLong { target, command: crate::autotune::CMD_DO_AUTOTUNE_ENABLE, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }).into_iter().collect()
@@ -1240,6 +1249,19 @@ impl Vehicle {
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("changeAutostart") => return self.change_autostart(action, now_ms),
+            Some("actuatorTest") => {
+                let number = |key: &str| action.get(key).and_then(Value::as_f64);
+                let request = match action.get("op").and_then(Value::as_str) {
+                    Some("active") => self.actuator_test.set_active(action.get("on").and_then(Value::as_bool).unwrap_or(false), now_ms),
+                    Some("set") => {
+                        let (Some(function), Some(value)) = (number("function"), number("value")) else { return Err("An actuator test sets a function to a value.".to_string()) };
+                        self.actuator_test.set(function as i64, value as f32, now_ms)
+                    }
+                    Some("stop") => self.actuator_test.stop(number("function").map(|f| f as i64), now_ms),
+                    _ => return Err("An actuator test is active, set or stop.".to_string()),
+                };
+                return Ok(self.actuator_request(request));
+            }
             Some("autotune") => {
                 self.autotune.request();
                 self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
@@ -1426,6 +1448,8 @@ impl Vehicle {
         bytes.extend(self.tick_rc_override(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
+        let actuator = self.actuator_test.tick(now_ms);
+        bytes.extend(self.actuator_request(actuator));
         let camera_due = self.cameras.tick(now_ms);
         bytes.extend(self.camera_commands(camera_due));
         let was_busy = self.onboard_logs.busy();
@@ -1859,6 +1883,16 @@ impl Vehicle {
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
                 let announced = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
+                let tested = match a.command as u32 as u16 == crate::actuatortest::CMD_ACTUATOR_TEST {
+                    true => {
+                        let (next, message) = self.actuator_test.on_ack(a.result as u8, now_ms);
+                        if let Some(text) = message {
+                            self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
+                        }
+                        self.actuator_request(next)
+                    }
+                    false => Vec::new(),
+                };
                 if a.command as u32 as u16 == crate::autotune::CMD_DO_AUTOTUNE_ENABLE {
                     if let Some(text) = self.autotune.on_ack(a.result as u8, a.progress) {
                         self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
@@ -1871,7 +1905,7 @@ impl Vehicle {
                     }
                     false => Vec::new(),
                 };
-                return camera.into_iter().chain(announced).chain(self.handle(outs, now_ms)).chain(streamed).collect();
+                return camera.into_iter().chain(announced).chain(self.handle(outs, now_ms)).chain(streamed).chain(tested).collect();
             }
             MavMessage::COMMAND_LONG(c) if c.command as u32 as u16 == sensorcal::CMD_ACCELCAL_VEHICLE_POS => {
                 let actions = self.calibrate.on_accel_position(c.param1 as u32, now_ms);
@@ -3308,6 +3342,20 @@ mod tests {
         assert_eq!(interval(&next), Some((31.0, 10_000.0)));
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
         assert!(vehicle.start_guided(&json!({ "action": "pidTuningMode", "mode": 7 }), 20_200).is_err());
+    }
+
+    #[test]
+    fn an_actuator_test_sends_the_value_to_function_plus_1000_on_the_autopilot() {
+        use mavlink::dialects::ardupilotmega::MavCmd;
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        vehicle.start_guided(&json!({ "action": "actuatorTest", "op": "active", "on": true }), 40_000).unwrap();
+        let sent = vehicle.start_guided(&json!({ "action": "actuatorTest", "op": "set", "function": 101, "value": 0.25 }), 40_000).unwrap();
+        let test = sent.iter().find_map(|b| match decode(b) { MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_ACTUATOR_TEST => Some(c), _ => None }).expect("an actuator test command");
+        assert_eq!((test.param1, test.param2, test.param5, test.target_component), (0.25, 1.0, 1101.0, 1));
+        assert!(vehicle.start_guided(&json!({ "action": "actuatorTest", "op": "spin" }), 40_000).is_err());
     }
 
     #[test]

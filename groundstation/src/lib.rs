@@ -160,6 +160,7 @@ pub mod px4airframe;
 pub mod streamconfig;
 pub mod autotune;
 pub mod actuators;
+pub mod actuatortest;
 pub mod gimbalindicator;
 pub mod gpsresilience;
 pub mod paramfile;

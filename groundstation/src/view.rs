@@ -524,6 +524,7 @@ mod deps_cover_reads {
             ("streamconfig", include_str!("streamconfig.rs")),
             ("autotune", include_str!("autotune.rs")),
             ("actuators", include_str!("actuators.rs")),
+            ("actuatortest", include_str!("actuatortest.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
