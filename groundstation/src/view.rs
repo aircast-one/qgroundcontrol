@@ -187,7 +187,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
 ];
 
 pub const VIEWS: &[View] = &[
-    View { path: "view.messages", deps: &["vehicle.formattedMessages"], compute: messages_view },
+    View { path: "view.messages", deps: &["vehicle.formattedMessages", "vehicle.messageCount"], compute: messages_view },
     View { path: "view.plan", deps: plan::DEPS, compute: plan::plan_view },
     View { path: "view.guidedActions", deps: guided::DEPS, compute: guided::guided_view },
     View { path: "view.guidedAltitude", deps: altitude::DEPS, compute: altitude::altitude_view },
@@ -458,7 +458,8 @@ fn dependencies_view(_backend: &dyn Backend, _args: &[String]) -> Value {
 
 fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let items = messages::parse(&value_string(&backend.get("vehicle.formattedMessages")));
-    json!({ "kind": "object", "class": "VehicleMessages", "order": ORDER, "count": items.len(), "items": items })
+    let unread = crate::read::integer(&crate::read::object(&backend.get_fields("vehicle", "messageCount")), "messageCount").unwrap_or(0).clamp(0, items.len() as i64);
+    json!({ "kind": "object", "class": "VehicleMessages", "order": ORDER, "count": items.len(), "unread": unread, "items": items })
 }
 
 #[cfg(test)]

@@ -315,7 +315,7 @@ mod tests {
     fn watching_a_view_watches_its_dependencies_upstream() {
         let core = Core::new(Fake::default());
         core.watch("", &["view.messages".to_string(), "vehicle.armed".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.armed".to_string(), "vehicle.formattedMessages".to_string()]);
+        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.armed".to_string(), "vehicle.formattedMessages".to_string(), "vehicle.messageCount".to_string()]);
     }
 
     #[test]
@@ -365,9 +365,9 @@ mod tests {
         let core = Core::new(Fake::default());
         core.watch("fly", &["vehicle.armed".to_string()]);
         core.watch("plan", &["view.messages".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.armed".to_string(), "vehicle.formattedMessages".to_string()]);
+        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.armed".to_string(), "vehicle.formattedMessages".to_string(), "vehicle.messageCount".to_string()]);
         core.watch("fly", &["vehicle.flying".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.flying".to_string(), "vehicle.formattedMessages".to_string()]);
+        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.flying".to_string(), "vehicle.formattedMessages".to_string(), "vehicle.messageCount".to_string()]);
         assert!(core.on_event("vehicle.armed", "{}").is_empty());
         core.watch("plan", &[]);
         assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.flying".to_string()]);

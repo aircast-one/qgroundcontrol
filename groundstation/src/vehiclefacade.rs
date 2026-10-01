@@ -510,7 +510,11 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "isROIEnabled": v.roi_enabled,
         "communicationLostEnabled": v.comm_lost_enabled,
-        "messageCount": v.message_log.count(),
+        "messageCount": v.message_log.unread(),
+        "messageTypeNone": v.message_log.unread_type() == "none",
+        "messageTypeNormal": v.message_log.unread_type() == "normal",
+        "messageTypeWarning": v.message_log.unread_type() == "warning",
+        "messageTypeError": v.message_log.unread_type() == "error",
         "autoDisconnect": v.auto_disconnect,
         "paramCircularFence": circular_fence(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
         "checkListState": v.check_list_state,
@@ -1568,6 +1572,12 @@ impl<B: Backend> Backend for Facade<B> {
                 hub.remove(id);
             }
             drop(hub);
+            if !crate::qthost::present() {
+                return json!({ "ok": true }).to_string();
+            }
+        }
+        if path == "vehicle.resetAllMessages" && switched_on() {
+            crate::hub::lock().reset_message_log();
             if !crate::qthost::present() {
                 return json!({ "ok": true }).to_string();
             }

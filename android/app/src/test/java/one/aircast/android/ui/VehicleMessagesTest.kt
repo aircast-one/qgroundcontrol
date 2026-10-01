@@ -174,11 +174,12 @@ class VehicleMessagesContractTest {
             VehicleMessage(0, "", "error", MessageSeverity.Error, "EKF variance"),
             VehicleMessage(1, "", "info", MessageSeverity.Normal, "Armed"),
         )
-        assertEquals(2, unreadMessages(messages, -1).size)
-        assertEquals("an old error no longer turns the banner red", emptyList<VehicleMessage>(), unreadMessages(messages, 1))
+        assertEquals(2, unreadMessages(messages, 2).size)
+        assertEquals("an old error no longer turns the banner red", emptyList<VehicleMessage>(), unreadMessages(messages, 0))
         val newer = messages + VehicleMessage(2, "", "warning", MessageSeverity.Warning, "Low battery")
-        assertEquals(listOf("Low battery"), unreadMessages(newer, 1).map { it.text })
-        assertEquals("a cleared log starts unread again", -1, seenThroughFor(listOf(VehicleMessage(0, "", "info", MessageSeverity.Normal, "x")), 5))
+        assertEquals("the core counts what arrived since resetAllMessages, newest last", listOf("Low battery"), unreadMessages(newer, 1).map { it.text })
+        assertEquals(1, unreadCount(JSONObject("""{"unread":1}""")))
+        assertEquals(0, unreadCount(null))
         assertEquals("2 messages from the vehicle", messageCountText(2))
     }
 

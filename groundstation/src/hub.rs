@@ -3354,6 +3354,12 @@ impl Hub {
         self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.rccal.set_centered_throttle(centered)).is_some()
     }
 
+    pub fn reset_message_log(&mut self) {
+        if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
+            vehicle.message_log.reset_all();
+        }
+    }
+
     pub fn clear_message_log(&mut self) {
         if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
             vehicle.message_log.clear();

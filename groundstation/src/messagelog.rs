@@ -15,6 +15,7 @@ pub struct MessageLog {
     active: Option<u8>,
     multi: bool,
     items: Vec<Logged>,
+    read_through: usize,
 }
 
 pub fn admitted(px4: bool, events_heard: bool, severity: u8, text: &str) -> Option<String> {
@@ -50,6 +51,25 @@ impl MessageLog {
 
     pub fn clear(&mut self) {
         self.items.clear();
+        self.read_through = 0;
+    }
+
+    pub fn unread(&self) -> usize {
+        self.items.len() - self.read_through
+    }
+
+    pub fn reset_all(&mut self) {
+        self.read_through = self.items.len();
+    }
+
+    pub fn unread_type(&self) -> &'static str {
+        let unread = &self.items[self.read_through..];
+        match () {
+            _ if unread.iter().any(|m| kind(m.severity) == Kind::Error) => "error",
+            _ if unread.iter().any(|m| kind(m.severity) == Kind::Warning) => "warning",
+            _ if !unread.is_empty() => "normal",
+            _ => "none",
+        }
     }
 
     pub fn formatted(&self) -> String {
@@ -82,6 +102,21 @@ mod tests {
         assert_eq!(admitted(true, true, 1, "Preflight Fail: baro").as_deref(), Some("Preflight Fail: baro"), "PX4's preflight rule only covers critical and milder, as Vehicle compares severity >= CRITICAL");
         assert_eq!(admitted(false, false, 2, "PreArm: RC not calibrated").as_deref(), Some("PreArm: RC not calibrated"), "without a health report the text is the only place the operator learns it");
         assert_eq!(admitted(false, false, 6, "#Spoken").as_deref(), Some("Spoken"), "a leading # asks to be read aloud and is not part of the message");
+    }
+
+    #[test]
+    fn unread_counts_and_the_worst_unread_kind_reset_when_read_as_status_text_handler_does() {
+        let mut log = MessageLog::default();
+        assert_eq!((log.unread(), log.unread_type()), (0, "none"));
+        log.record(1, 6, "a".into(), "t".into());
+        log.record(1, 3, "b".into(), "t".into());
+        assert_eq!((log.unread(), log.unread_type()), (2, "error"));
+        log.reset_all();
+        assert_eq!((log.unread(), log.unread_type(), log.count()), (0, "none", 2), "reading keeps the messages and clears only what is new");
+        log.record(1, 4, "c".into(), "t".into());
+        assert_eq!((log.unread(), log.unread_type()), (1, "warning"));
+        log.clear();
+        assert_eq!(log.unread(), 0);
     }
 
     #[test]

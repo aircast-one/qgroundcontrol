@@ -19,7 +19,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,11 +57,10 @@ internal fun bannerText(blocker: String?, messages: List<VehicleMessage>): Strin
 
 internal fun messageCountText(count: Int): String = "$count message${if (count == 1) "" else "s"} from the vehicle"
 
-internal fun unreadMessages(messages: List<VehicleMessage>, seenThrough: Int): List<VehicleMessage> =
-    messages.filter { it.index > seenThrough }
+internal fun unreadMessages(messages: List<VehicleMessage>, unread: Int): List<VehicleMessage> =
+    messages.takeLast(unread.coerceAtLeast(0))
 
-internal fun seenThroughFor(messages: List<VehicleMessage>, seenThrough: Int): Int =
-    seenThrough.takeIf { seen -> messages.any { it.index >= seen } } ?: -1
+internal fun unreadCount(view: JSONObject?): Int = view?.optInt("unread", 0) ?: 0
 
 internal fun levelOf(name: String): MessageSeverity = when (name) {
     "error" -> MessageSeverity.Error
@@ -123,9 +121,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     val messages = remember(messagesJson) { vehicleMessages(messagesJson) }
 
     var showing by remember { mutableStateOf(false) }
-    var seenThrough by remember { mutableIntStateOf(-1) }
-    val seen = seenThroughFor(messages, seenThrough)
-    val unread = unreadMessages(messages, seen)
+    val unread = unreadMessages(messages, unreadCount(messagesJson))
 
     val blocker = armingBlocker(warnings)
     val checks = remember(warnings) { armingChecks(warnings).orEmpty() }
@@ -146,7 +142,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .clickable {
                 showing = true
-                seenThrough = messages.maxOfOrNull { it.index } ?: -1
+                offMainDetached { Qgc.invoke("vehicle.resetAllMessages") }
             }
             .heightIn(min = 48.dp)
             .padding(horizontal = 4.dp, vertical = 4.dp),

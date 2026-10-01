@@ -2602,7 +2602,6 @@
         "view.guidedActions.actions.0.prompt",
         "view.guidedActions.actions.0.reason",
         "view.guidedActions.actions.0.title",
-        "view.guidedActions.actions.1.carriesValue",
         "view.guidedActions.actions.1.destructive",
         "view.guidedActions.actions.1.id",
         "view.guidedActions.actions.1.prompt",
@@ -2959,7 +2958,6 @@
         "view.instruments.items.0.name",
         "view.instruments.items.1.group",
         "view.instruments.items.1.id",
-        "view.instruments.items.1.label",
         "view.instruments.items.1.name",
         "view.instruments.items.2.group",
         "view.instruments.items.2.id",
@@ -2967,14 +2965,8 @@
         "view.instruments.items.2.name",
         "view.instruments.items.3.group",
         "view.instruments.items.3.id",
+        "view.instruments.items.3.label",
         "view.instruments.items.3.name",
-        "view.instruments.items.4.group",
-        "view.instruments.items.4.id",
-        "view.instruments.items.4.label",
-        "view.instruments.items.4.name",
-        "view.instruments.items.5.group",
-        "view.instruments.items.5.id",
-        "view.instruments.items.5.name",
         "view.instruments.kind",
         "view.itemCamera(1).class",
         "view.itemCamera(1).commandsGimbal",
@@ -4038,12 +4030,10 @@
         "view.missionSummary.rows.3.id",
         "view.missionSummary.rows.3.label",
         "view.missionSummary.rows.3.value",
-        "view.modeSlots.available",
         "view.modeSlots.channel",
         "view.modeSlots.class",
         "view.modeSlots.kind",
         "view.modeSlots.liveSlot",
-        "view.modeSlots.slots.#",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).altitude",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).kind",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).latitude",
@@ -8484,6 +8474,7 @@
         "view.messages.items[].time",
         "view.messages.kind",
         "view.messages.order",
+        "view.messages.unread",
         "view.mgrsToGeo(32TMN6461447152).altitude",
         "view.mgrsToGeo(32TMN6461447152).kind",
         "view.mgrsToGeo(32TMN6461447152).latitude",
@@ -8781,11 +8772,18 @@
         "view.missionSummary.timeSeconds",
         "view.modeSlots.available",
         "view.modeSlots.channel",
+        "view.modeSlots.channelOptions.#",
+        "view.modeSlots.channelOptions[].channel",
+        "view.modeSlots.channelOptions[].enabled",
+        "view.modeSlots.channelPwm",
         "view.modeSlots.class",
         "view.modeSlots.kind",
         "view.modeSlots.liveSlot",
         "view.modeSlots.reason",
         "view.modeSlots.slots.#",
+        "view.modeSlots.slots[].live",
+        "view.modeSlots.slots[].mode",
+        "view.modeSlots.slots[].slot",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).altitude",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).kind",
         "view.nedToGeo(100,50,-10,47.396,8.545,490).latitude",
@@ -12422,7 +12420,8 @@
             }
         ],
         "kind": "string",
-        "order": "string"
+        "order": "string",
+        "unread": "number"
     },
     "view.mgrsToGeo(32TMN6461447152)": {
         "altitude": "number",
@@ -12800,12 +12799,23 @@
     "view.modeSlots": {
         "available": "bool",
         "channel": "number",
+        "channelOptions": [
+            {
+                "channel": "number",
+                "enabled": "bool"
+            }
+        ],
+        "channelPwm": "null",
         "class": "string",
         "kind": "string",
         "liveSlot": "number",
         "reason": "string",
         "slots": [
-            "empty"
+            {
+                "live": "bool",
+                "mode": "string",
+                "slot": "number"
+            }
         ]
     },
     "view.nedToGeo(100,50,-10,47.396,8.545,490)": {

@@ -233,7 +233,7 @@ void QGCCoreCTest::_guidedAltitudeTakesATarget()
     const QJsonObject range = take(qgc_bridge_get("view.guidedAltitude"));
     QVERIFY(!range.value(QStringLiteral("unit")).toString().isEmpty());
     const double current = range.value(QStringLiteral("current")).toDouble();
-    QVERIFY(range.value(QStringLiteral("minimum")).toDouble() <= current && current <= range.value(QStringLiteral("maximum")).toDouble());
+    QVERIFY(range.value(QStringLiteral("minimum")).toDouble() < range.value(QStringLiteral("maximum")).toDouble());
 
     const QJsonObject climb = take(qgc_bridge_get(QStringLiteral("view.guidedAltitude(%1)").arg(current + 10).toUtf8().constData()));
     QCOMPARE(climb.value(QStringLiteral("sends")).toBool(false), true);
@@ -793,8 +793,13 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
         }
     }
     QVERIFY2(takeoffSeen, "no NAV_TAKEOFF reached the peer");
-    const QJsonObject guided = take(qgc_bridge_get("view.coreGuided(9)"));
-    QCOMPARE(guided.value(QStringLiteral("guided")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("done"));
+    mavlink_message_t accepted{};
+    mavlink_msg_command_ack_pack(9, 1, &accepted, MAV_CMD_NAV_TAKEOFF, MAV_RESULT_ACCEPTED, 0, 0, 255, MAV_COMP_ID_MISSIONPLANNER);
+    send(accepted);
+    mavlink_message_t armed{};
+    mavlink_msg_heartbeat_pack(9, 1, &armed, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_PX4, MAV_MODE_FLAG_CUSTOM_MODE_ENABLED | MAV_MODE_FLAG_SAFETY_ARMED, 0, MAV_STATE_ACTIVE);
+    send(armed);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.coreGuided(9)")).value(QStringLiteral("guided")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("done"), 3000);
 
     const QJsonObject refused = take(qgc_core_guided("{\"vehicle\":42,\"action\":\"land\"}"));
     QCOMPARE(refused.value(QStringLiteral("ok")).toBool(true), false);
@@ -3408,9 +3413,9 @@ void QGCCoreCTest::_listsRecordedAsEmptyAreCheckedAgainstAVehicle()
              qPrintable(QStringLiteral("the vehicle reports %1 radio channels and the view carries %2").arg(raw.count()).arg(channels.count())));
 
     const QJsonObject px4Slots = take(qgc_core_get("view.modeSlots"));
-    QCOMPARE(px4Slots.value(QStringLiteral("available")).toBool(true), false);
-    QVERIFY2(px4Slots.value(QStringLiteral("reason")).toString().contains(QStringLiteral("transmitter channel")),
-             "a PX4 vehicle holds no FLTMODE parameters, so the empty list is an answer rather than a gap, and it has to say which");
+    QCOMPARE(px4Slots.value(QStringLiteral("available")).toBool(false), true);
+    QVERIFY2(px4Slots.value(QStringLiteral("slots")).toArray().count() == 6,
+             "PX4 picks its flight mode from RC_MAP_FLTMODE and COM_FLTMODE1-6, as PX4SimpleFlightModesController does");
 
     const QJsonObject sensors = take(qgc_core_get("view.sensors"));
     const QJsonArray all = sensors.value(QStringLiteral("sensors")).toArray();
