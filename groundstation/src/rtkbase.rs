@@ -20,6 +20,14 @@ fn session() -> MutexGuard<'static, Session> {
     SESSION.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+fn owned<R: Default>(stop: &AtomicBool, change: impl FnOnce(&mut Session) -> R) -> R {
+    let mut held = session();
+    match stop.load(Ordering::Relaxed) {
+        true => R::default(),
+        false => change(&mut held),
+    }
+}
+
 fn setting(name: &str) -> Value {
     crate::settingsstore::raw_setting(&format!("{}.{name}", crate::gpsrtk::SETTINGS_GROUP)).unwrap_or(Value::Null)
 }
@@ -152,15 +160,14 @@ impl Transport for SerialTransport {
     }
 }
 
-fn apply(event: Event, now_ms: u64) {
+fn apply(event: Event, now_ms: u64, stop: &AtomicBool) {
     match event {
-        Event::SurveyIn(status) => {
-            session().survey_in_status(status.duration_s as f32, status.mean_accuracy_mm as f32, status.latitude, status.longitude, status.altitude_m, status.flags, now_ms)
-        }
-        Event::Satellites { count, list } => session().satellite_info(count, &list, now_ms),
+        Event::SurveyIn(status) => owned(stop, |held| held.survey_in_status(status.duration_s as f32, status.mean_accuracy_mm as f32, status.latitude, status.longitude, status.altitude_m, status.flags, now_ms)),
+        Event::Satellites { count, list } => owned(stop, |held| held.satellite_info(count, &list, now_ms)),
         Event::Rtcm(bytes) => {
-            session().rtcm(&bytes, now_ms);
-            crate::ntrip::inject(&bytes);
+            if owned(stop, |held| !held.rtcm(&bytes, now_ms).is_empty()) {
+                crate::ntrip::inject(&bytes);
+            }
         }
     }
 }
@@ -171,8 +178,8 @@ fn stream<T: Transport>(base: &mut UbxBase<T>, stop: &AtomicBool) -> Result<(), 
         let events = base.take_events();
         let progress = handled || !events.is_empty();
         let now = crate::hub::now_ms();
-        events.into_iter().for_each(|event| apply(event, now));
-        if session().received(i32::from(progress)).contains(&Out::RestartDriver) {
+        events.into_iter().for_each(|event| apply(event, now, stop));
+        if owned(stop, |held| held.received(i32::from(progress))).contains(&Out::RestartDriver) {
             return Ok(());
         }
     }
@@ -180,30 +187,30 @@ fn stream<T: Transport>(base: &mut UbxBase<T>, stop: &AtomicBool) -> Result<(), 
 }
 
 pub fn run<T: Transport>(transport: T, stop: &AtomicBool) {
-    let configure = session().serial_opened().into_iter().find_map(|out| match out {
+    let configure = owned(stop, Session::serial_opened).into_iter().find_map(|out| match out {
         Out::ConfigureDriver { driver, plan, .. } => Some((driver, plan)),
         _ => None,
     });
     let Some((Driver::UBlox, plan)) = configure else {
-        session().serial_failed(Fault::ConfigureFailed);
+        owned(stop, |held| held.serial_failed(Fault::ConfigureFailed));
         return;
     };
     let mut base = UbxBase::new(transport, plan);
     while !stop.load(Ordering::Relaxed) {
         if !base.configure() {
             if base.transport_lost() {
-                session().serial_failed(Fault::SerialError);
+                owned(stop, |held| held.serial_failed(Fault::SerialError));
                 return;
             }
             if !stop.load(Ordering::Relaxed) {
-                session().driver_configure_failed();
+                owned(stop, Session::driver_configure_failed);
                 std::thread::sleep(Duration::from_millis(CONFIGURE_RETRY_MS));
             }
             continue;
         }
-        session().driver_configured();
+        owned(stop, Session::driver_configured);
         if let Err(fault) = stream(&mut base, stop) {
-            session().serial_failed(fault);
+            owned(stop, |held| held.serial_failed(fault));
             return;
         }
     }
@@ -223,7 +230,7 @@ pub fn connect(port: &str, name: &str) {
         Ok(transport) => run(transport, &stop),
         Err(reason) => {
             log::warn!("RTK base {reason}");
-            session().serial_failed(Fault::DeviceMissing);
+            owned(&stop, |held| held.serial_failed(Fault::DeviceMissing));
         }
     });
 }
@@ -263,8 +270,10 @@ mod tests {
     }
 
     #[test]
-    fn a_receiver_that_never_answers_counts_failed_configures_until_the_port_dies() {
+    fn a_stopped_worker_leaves_the_session_alone_and_a_dead_port_fails_it() {
         session().connect("/dev/gps", "u-blox", Settings::default());
+        run(Silent(0), &AtomicBool::new(true));
+        assert!(matches!(session().link, Link::Opening { .. }), "a worker replaced by a newer connect never writes into its session");
         run(Silent(0), &AtomicBool::new(false));
         let after = session();
         assert_eq!(after.link, Link::Failed);
