@@ -495,6 +495,9 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
             });
         }
         persist();
+        if at.group == "App" && at.fact == "defaultMissionItemAltitude" && before != new {
+            crate::coreplan::default_altitude_changed();
+        }
     }
     match crate::qthost::present() {
         true => Some(backend.set(path, value)),

@@ -18,7 +18,14 @@ pub const CORE_SET_ALTITUDE: &str = "core.plan.setAltitude";
 pub const CORE_INSERT_TAKEOFF: &str = "core.plan.insertTakeoff";
 pub const CORE_SET_ALTITUDE_MODE: &str = "core.plan.setAltitudeMode";
 pub const CORE_ITEMS: &str = "core.plan.items";
-const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE, CORE_INSERT_TAKEOFF, CORE_SET_ALTITUDE_MODE, CORE_ITEMS];
+pub const APPLY_DEFAULT_ALTITUDE: &str = "core.plan.applyDefaultAltitude";
+pub const DISMISS_ALTITUDE_PROMPT: &str = "core.plan.dismissAltitudePrompt";
+const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE, CORE_INSERT_TAKEOFF, CORE_SET_ALTITUDE_MODE, CORE_ITEMS, APPLY_DEFAULT_ALTITUDE, DISMISS_ALTITUDE_PROMPT];
+const CMD_NAV_LAND: i64 = 21;
+const CMD_NAV_VTOL_LAND: i64 = 85;
+const APPLY_ALTITUDE_TITLE: &str = "Apply new altitude";
+const APPLY_ALTITUDE_TEXT: &str = "You have changed the default altitude for mission items. Would you like to apply that altitude to all the items in the current mission?";
+static ASK_APPLY_ALTITUDE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const DEFAULT_ALTITUDE: &str = "settings.appSettings.defaultMissionItemAltitude";
 
 #[derive(Default)]
@@ -117,6 +124,12 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         CORE_INSERT_TAKEOFF => insert_takeoff(backend, args),
         CORE_SET_ALTITUDE_MODE => set_altitude_mode(args),
         CORE_ITEMS => items(backend, args),
+        APPLY_DEFAULT_ALTITUDE => apply_default_altitude(backend),
+        DISMISS_ALTITUDE_PROMPT => {
+            ASK_APPLY_ALTITUDE.store(false, std::sync::atomic::Ordering::Relaxed);
+            changed();
+            json!({ "ok": true })
+        }
         CORE_REMOVE => remove(args),
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
@@ -405,6 +418,53 @@ fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
         };
         changed.ok_or_else(|| format!("Item {index} cannot take that edit."))
     })
+}
+
+pub fn default_altitude_changed() {
+    let has_items = held().document.as_ref().is_some_and(|d| !d.items.is_empty());
+    if has_items {
+        ASK_APPLY_ALTITUDE.store(true, std::sync::atomic::Ordering::Relaxed);
+        changed();
+    }
+}
+
+pub fn altitude_prompt() -> Value {
+    match ASK_APPLY_ALTITUDE.load(std::sync::atomic::Ordering::Relaxed) {
+        true => json!({ "title": APPLY_ALTITUDE_TITLE, "text": APPLY_ALTITUDE_TEXT }),
+        false => Value::Null,
+    }
+}
+
+pub fn with_new_altitude(item: &plandoc::Item, altitude: f64) -> plandoc::Item {
+    let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+    let units = crate::surveydoc::Units { vertical: &metres, horizontal: &metres };
+    match item {
+        plandoc::Item::Simple(simple) if simple.altitude.is_some() && ![CMD_NAV_LAND, CMD_NAV_VTOL_LAND].contains(&simple.command) => {
+            let params = std::array::from_fn(|i| if i == 6 { Some(altitude) } else { simple.params[i] });
+            plandoc::Item::Simple(plandoc::Simple { params, altitude: simple.altitude.clone().map(|held| plandoc::Altitude { altitude, ..held }), ..simple.clone() })
+        }
+        plandoc::Item::Complex { kind, json, item_count } => {
+            let edited = match kind.as_str() {
+                k if crate::landingpattern::is_landing(k) => crate::landingpattern::edit(json, "finalApproachAltitude", &json!(altitude)),
+                "StructureScan" => crate::surveydoc::set(json, "entranceAlt", &json!(altitude), &units),
+                _ => crate::surveydoc::set(json, "cameraCalc.valueSetIsDistance", &json!(true), &units).and_then(|distance| crate::surveydoc::set(&distance, "cameraCalc.distanceToSurface", &json!(altitude), &units)),
+            };
+            match edited {
+                Some(edited) => plandoc::Item::Complex { kind: kind.clone(), item_count: plandoc::complex_count(kind, &edited).unwrap_or(*item_count), json: edited },
+                None => item.clone(),
+            }
+        }
+        other => other.clone(),
+    }
+}
+
+fn apply_default_altitude(backend: &dyn Backend) -> Value {
+    ASK_APPLY_ALTITUDE.store(false, std::sync::atomic::Ordering::Relaxed);
+    let Some(defaults) = edit_defaults(backend) else {
+        changed();
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| Ok(Document { items: doc.items.iter().map(|item| with_new_altitude(item, defaults.mission_item_altitude)).collect(), ..doc.clone() }))
 }
 
 fn remove(args: &str) -> Value {
@@ -1446,6 +1506,21 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
             other => other,
         }
+    }
+
+    #[test]
+    fn a_new_default_altitude_lands_on_every_item_like_apply_new_altitude() {
+        let doc = plandoc::load(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let survey = doc.items.iter().find(|i| matches!(i, plandoc::Item::Complex { kind, .. } if kind == "survey")).unwrap();
+        let plandoc::Item::Complex { json, .. } = with_new_altitude(survey, 77.0) else { panic!("a survey stays a survey") };
+        assert_eq!(json["TransectStyleComplexItem"]["CameraCalc"]["DistanceToSurface"], 77.0);
+        assert_eq!(json["TransectStyleComplexItem"]["CameraCalc"]["ValueSetIsDistance"], true, "TransectStyleComplexItem::applyNewAltitude switches the camera to distance first");
+        assert!(json["TransectStyleComplexItem"]["Items"].as_array().unwrap().iter().filter(|i| i["command"] == 16).all(|i| i["params"][6] == 77.0), "the transects are rebuilt at the new height");
+        let simple = |command: i64| plandoc::Item::Simple(plandoc::Simple { command, frame: 3, params: [Some(0.0); 7], auto_continue: true, altitude: Some(plandoc::Altitude { mode: 1, altitude: 30.0, amsl_above_terrain: None }), sections: Vec::new() });
+        assert!(matches!(with_new_altitude(&simple(16), 77.0), plandoc::Item::Simple(s) if s.params[6] == Some(77.0) && s.altitude.as_ref().is_some_and(|a| a.altitude == 77.0)));
+        assert!(matches!(with_new_altitude(&simple(CMD_NAV_LAND), 77.0), plandoc::Item::Simple(s) if s.params[6] == Some(0.0)), "a land item is left alone");
+        let unplaced = plandoc::Item::Simple(plandoc::Simple { altitude: None, ..match simple(178) { plandoc::Item::Simple(s) => s, _ => unreachable!() } });
+        assert_eq!(with_new_altitude(&unplaced, 77.0), unplaced, "a command without an altitude keeps its params");
     }
 
     #[test]

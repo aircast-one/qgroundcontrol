@@ -62,9 +62,6 @@ fn planning_for(backend: &dyn Backend) -> Value {
     if crate::coreplan::enabled() {
         return offline_vehicle(backend);
     }
-    // type and firmware alone left the reader on plan.controllerVehicle for the three flags it
-    // branches on, so the view existed and retired nothing. A view retires a path when it carries
-    // every field the reader dereferences, not when it carries the natural summary.
     let read = object(&backend.get_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition"));
     let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_string);
     match text("vehicleTypeString").zip(text("firmwareTypeString")) {
@@ -74,9 +71,6 @@ fn planning_for(backend: &dyn Backend) -> Value {
             "multiRotor": flag(&read, "multiRotor"),
             "vtol": flag(&read, "vtol"),
             "apmFirmware": flag(&read, "apmFirmware"),
-            // LaunchPosition(home:) reads home["valid"] and nothing else, so an object carrying
-            // only the coordinate answers false for every vehicle that has a home. Serving the
-            // path the reader names is not enough; it has to carry the keys the reader subscripts.
             "home": crate::read::nested_coordinate_at(&read, "homePosition").map(|(latitude, longitude)| json!({ "kind": "coordinate", "valid": true, "latitude": latitude, "longitude": longitude })),
         }),
         None => Value::Null,
@@ -89,11 +83,6 @@ pub fn capability(backend: &dyn Backend, controller: &str) -> Option<bool> {
     known.then_some(supported)
 }
 
-// Mission.swift reads these three as raw Facts and rebuilds their units and bounds itself, then
-// picks a speed unit with `cruise.units ?? hover.units ?? "m/s"` - a guess for a case that cannot
-// arise, since App.SettingsGroup.json declares units on both. The guess is not the defect; the
-// re-derivation is. These go through control::decode, the same serialiser the settings controls
-// use, so the bounds and the unit are resolved once here rather than per reader.
 fn plan_default(backend: &dyn Backend, name: &str) -> Value {
     let path = format!("settings.appSettings.{name}");
     crate::control::decode(&object(&backend.get(&path)), &path)
@@ -103,8 +92,6 @@ fn defaults_json(backend: &dyn Backend) -> Value {
     let altitude = plan_default(backend, "defaultMissionItemAltitude");
     let cruise = plan_default(backend, "offlineEditingCruiseSpeed");
     let hover = plan_default(backend, "offlineEditingHoverSpeed");
-    // One unit for both speeds, and null rather than a guess when the two disagree or neither
-    // reports - a speed drawn in an invented unit is worse than a speed drawn with none.
     let unit_of = |c: &Value| c.get("units").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string);
     let speed_units = match (unit_of(&cruise), unit_of(&hover)) {
         (Some(c), Some(h)) if c == h => json!(c),
@@ -163,19 +150,13 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "PlanStatus",
-        // The plan is edited against a vehicle even with none connected: offline it is the
-        // controllerVehicle, and a head showing "which aircraft is this plan for" had to read that
-        // object itself. Empty strings mean the controller has not resolved one, which is not the
-        // same as a plan for no vehicle.
         "planningFor": planning_for(backend),
-        // Both heads checked that plan.missionController answered as an object and then read its
-        // pattern list and altitude frame off the raw controller - by the names those had before
-        // upstream renamed them, so both reads had been answering null since the merge.
         "available": mission.get("kind").and_then(Value::as_str) == Some("object"),
         "patterns": patterns(&mission),
         "templates": crate::plantemplates::templates_json(backend, &patterns(&mission).iter().filter_map(|p| p.get("name").and_then(Value::as_str).map(str::to_string)).collect::<Vec<_>>(), contains_items),
         "globalAltitudeFrame": core.as_ref().map(|c| c.global_mode).or_else(|| mission.get("globalAltitudeFrame").and_then(Value::as_i64)),
         "defaults": defaults_json(backend),
+        "applyAltitudePrompt": crate::coreplan::altitude_prompt(),
         "readiness": readiness_json(readiness),
         "upload": upload_json(upload),
         "actions": {
@@ -199,11 +180,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "sync": sync_json(offline, syncing),
         "status": status_text(name, dirty, offline, contains_items),
         "file": name,
-        // The whole path, so saving back to the file that was opened needs no raw currentPlanFile.
         "filePath": (!file.is_empty()).then_some(file),
         "dirty": dirty,
-        // PlanTab.kt and the map spike read plan.containsItems and plan.offline raw beside this view,
-        // two reads that could land either side of a change the view had already answered for.
         "containsItems": contains_items,
         "offline": offline,
         "canUndo": crate::coreplan::history().map_or_else(|| flag(&plan, "canUndo"), |(undo, _)| undo && crate::coreplan::undo_tracking()),
@@ -323,8 +301,6 @@ fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<
     let sync_refusal = || (view["sync"]["state"] != "ready").then(|| (if view["sync"]["state"] == "offline" { "offline" } else { "busy" }, text(&view["sync"]["refusal"])));
     let not_ready = || (view["readiness"]["ready"] != true).then(|| ("notReady", text(&view["readiness"]["reason"])));
     match action {
-        // removeAllFromVehicle offline or mid-sync only logs a critical and returns, so the head
-        // was told the clear went through while the vehicle still held its mission.
         PlanAction::Download | PlanAction::ClearVehicle => sync_refusal(),
         PlanAction::Send => sync_refusal().or_else(not_ready).or_else(|| match view["upload"]["state"].as_i64() {
             Some(0 | 2 | 3) => None,
@@ -517,9 +493,6 @@ mod tests {
 
     #[test]
     fn the_actions_a_plan_offers_are_shown_open_as_well_as_shut() {
-        // Every assertion on these said they were unavailable. Pinning save and clearMission to
-        // false passed the crate, so a plan editor whose Save was never offered was a passing
-        // build - the guards had been shown to refuse and never shown to let anything through.
         let ready = fake(
             json!({ "kind": "object", "syncInProgress": false, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/plans/ridge.plan" }),
             true,

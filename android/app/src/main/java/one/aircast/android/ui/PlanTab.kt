@@ -38,6 +38,14 @@ import one.aircast.mapspike.PlanMapScreen
 
 private const val NOTICE_MILLIS = 4000L
 
+internal const val APPLY_DEFAULT_ALTITUDE = "core.plan.applyDefaultAltitude"
+internal const val DISMISS_ALTITUDE_PROMPT = "core.plan.dismissAltitudePrompt"
+
+internal data class AltitudePrompt(val title: String, val text: String)
+
+internal fun applyAltitudePrompt(view: org.json.JSONObject?): AltitudePrompt? =
+    view?.optJSONObject("applyAltitudePrompt")?.let { AltitudePrompt(it.optString("title"), it.optString("text")) }
+
 @Composable
 fun PlanTab(modifier: Modifier = Modifier) {
     var notice by remember { mutableStateOf<String?>(null) }
@@ -74,6 +82,16 @@ fun PlanTab(modifier: Modifier = Modifier) {
 
     if (showDefaults) {
         PlanDefaultsDialog(planStatus) { showDefaults = false }
+    }
+
+    applyAltitudePrompt(planStatus)?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = { offMainDetached { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } },
+            title = { Text(prompt.title) },
+            text = { Text(prompt.text) },
+            confirmButton = { TextButton(onClick = { offMainDetached { Qgc.invoke(APPLY_DEFAULT_ALTITUDE) } }) { Text("Yes") } },
+            dismissButton = { TextButton(onClick = { offMainDetached { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } }) { Text("No") } },
+        )
     }
 
     if (showTransform) {
