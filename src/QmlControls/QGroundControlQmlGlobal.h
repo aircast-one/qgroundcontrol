@@ -49,162 +49,173 @@ class QGroundControlQmlGlobal : public QObject
     QML_SINGLETON
 
 public:
-    static constexpr int kDefaultMessageDialogButtons = 0x00000400; // Dialog.Ok (Qt 6 StandardButton::Ok)
+    static constexpr int kDefaultMessageDialogButtons = 0x00000400;
 
-    explicit QGroundControlQmlGlobal(QObject *parent = nullptr);
+    explicit QGroundControlQmlGlobal(QObject* parent = nullptr);
     ~QGroundControlQmlGlobal();
 
-    enum AltitudeFrame {
-        AltitudeFrameMixed,              // Used by global altitude frame for mission planning
-        AltitudeFrameRelative,           // MAV_FRAME_GLOBAL_RELATIVE_ALT
-        AltitudeFrameAbsolute,           // MAV_FRAME_GLOBAL
-        AltitudeFrameCalcAboveTerrain,   // Absolute altitude above terrain calculated from terrain data
-        AltitudeFrameTerrain,       // MAV_FRAME_GLOBAL_TERRAIN_ALT
-        AltitudeFrameNone,               // Being used as distance value unrelated to ground (for example distance to structure)
+    enum AltitudeFrame
+    {
+        AltitudeFrameMixed,
+        AltitudeFrameRelative,
+        AltitudeFrameAbsolute,
+        AltitudeFrameCalcAboveTerrain,
+        AltitudeFrameTerrain,
+        AltitudeFrameNone,
     };
     Q_ENUM(AltitudeFrame)
 
-    Q_PROPERTY(QString              appName                 READ    appName                 CONSTANT)
-    Q_PROPERTY(LinkManager*         linkManager             READ    linkManager             CONSTANT)
-    Q_PROPERTY(MultiVehicleManager* multiVehicleManager     READ    multiVehicleManager     CONSTANT)
-    Q_PROPERTY(QGCMapEngineManager* mapEngineManager        READ    mapEngineManager        CONSTANT)
-    Q_PROPERTY(QGCPositionManager*  qgcPositionManger       READ    qgcPositionManger       CONSTANT)
-    Q_PROPERTY(VideoManager*        videoManager            READ    videoManager            CONSTANT)
-    Q_PROPERTY(SettingsManager*     settingsManager         READ    settingsManager         CONSTANT)
-    Q_PROPERTY(ADSBVehicleManager*  adsbVehicleManager      READ    adsbVehicleManager      CONSTANT)
-    Q_PROPERTY(NTRIPManager*        ntripManager            READ    ntripManager            CONSTANT)
+    Q_PROPERTY(QString appName READ appName CONSTANT)
+    Q_PROPERTY(LinkManager* linkManager READ linkManager CONSTANT)
+    Q_PROPERTY(MultiVehicleManager* multiVehicleManager READ multiVehicleManager CONSTANT)
+    Q_PROPERTY(QGCMapEngineManager* mapEngineManager READ mapEngineManager CONSTANT)
+    Q_PROPERTY(QGCPositionManager* qgcPositionManger READ qgcPositionManger CONSTANT)
+    Q_PROPERTY(VideoManager* videoManager READ videoManager CONSTANT)
+    Q_PROPERTY(SettingsManager* settingsManager READ settingsManager CONSTANT)
+    Q_PROPERTY(ADSBVehicleManager* adsbVehicleManager READ adsbVehicleManager CONSTANT)
+    Q_PROPERTY(NTRIPManager* ntripManager READ ntripManager CONSTANT)
 #ifdef QGC_WFB_ENABLED
-    Q_PROPERTY(PacketRadioManager*  packetRadioManager      READ    packetRadioManager      CONSTANT)
+    Q_PROPERTY(PacketRadioManager* packetRadioManager READ packetRadioManager CONSTANT)
 #endif
-    Q_PROPERTY(QGCCorePlugin*       corePlugin              READ    corePlugin              CONSTANT)
-    Q_PROPERTY(MissionCommandTree*  missionCommandTree      READ    missionCommandTree      CONSTANT)
-    Q_PROPERTY(MAVLinkSigningKeys*   mavlinkSigningKeys      READ    mavlinkSigningKeys      CONSTANT)
+    Q_PROPERTY(QGCCorePlugin* corePlugin READ corePlugin CONSTANT)
+    Q_PROPERTY(MissionCommandTree* missionCommandTree READ missionCommandTree CONSTANT)
+    Q_PROPERTY(MAVLinkSigningKeys* mavlinkSigningKeys READ mavlinkSigningKeys CONSTANT)
 #ifndef QGC_NO_SERIAL_LINK
-    Q_PROPERTY(FactGroup*           gpsRtk                  READ    gpsRtkFactGroup         CONSTANT)
+    Q_PROPERTY(FactGroup* gpsRtk READ gpsRtkFactGroup CONSTANT)
 #endif
-    Q_PROPERTY(QGCPalette*          globalPalette           MEMBER  _globalPalette          CONSTANT)   ///< This palette will always return enabled colors
-    Q_PROPERTY(QmlUnitsConversion*  unitsConversion         READ    unitsConversion         CONSTANT)
-    Q_PROPERTY(bool                 singleFirmwareSupport   READ    singleFirmwareSupport   CONSTANT)
-    Q_PROPERTY(bool                 singleVehicleSupport    READ    singleVehicleSupport    CONSTANT)
-    Q_PROPERTY(bool                 px4ProFirmwareSupported READ    px4ProFirmwareSupported CONSTANT)
-    Q_PROPERTY(bool                 apmFirmwareSupported    READ    apmFirmwareSupported    CONSTANT)
-    Q_PROPERTY(QGeoCoordinate       flightMapPosition       READ    flightMapPosition       WRITE setFlightMapPosition  NOTIFY flightMapPositionChanged)
-    Q_PROPERTY(double               flightMapZoom           READ    flightMapZoom           WRITE setFlightMapZoom      NOTIFY flightMapZoomChanged)
-    Q_PROPERTY(double               flightMapInitialZoom    MEMBER  _flightMapInitialZoom   CONSTANT)   ///< Zoom level to use when either gcs or vehicle shows up for first time
+    Q_PROPERTY(QGCPalette* globalPalette MEMBER _globalPalette CONSTANT)
+    Q_PROPERTY(QmlUnitsConversion* unitsConversion READ unitsConversion CONSTANT)
+    Q_PROPERTY(bool singleFirmwareSupport READ singleFirmwareSupport CONSTANT)
+    Q_PROPERTY(bool singleVehicleSupport READ singleVehicleSupport CONSTANT)
+    Q_PROPERTY(bool px4ProFirmwareSupported READ px4ProFirmwareSupported CONSTANT)
+    Q_PROPERTY(bool apmFirmwareSupported READ apmFirmwareSupported CONSTANT)
+    Q_PROPERTY(QGeoCoordinate flightMapPosition READ flightMapPosition WRITE setFlightMapPosition NOTIFY
+                   flightMapPositionChanged)
+    Q_PROPERTY(double flightMapZoom READ flightMapZoom WRITE setFlightMapZoom NOTIFY flightMapZoomChanged)
+    Q_PROPERTY(double flightMapInitialZoom MEMBER _flightMapInitialZoom CONSTANT)
 
-    Q_PROPERTY(QString  parameterFileExtension  READ parameterFileExtension CONSTANT)
-    Q_PROPERTY(QString  telemetryFileExtension  READ telemetryFileExtension CONSTANT)
+    Q_PROPERTY(QString parameterFileExtension READ parameterFileExtension CONSTANT)
+    Q_PROPERTY(QString telemetryFileExtension READ telemetryFileExtension CONSTANT)
 
-    Q_PROPERTY(QString qgcVersion       READ qgcVersion         CONSTANT)
-    Q_PROPERTY(QString qgcAppDate       READ qgcAppDate         CONSTANT)
-    Q_PROPERTY(bool    qgcDailyBuild    READ qgcDailyBuild      CONSTANT)
+    Q_PROPERTY(QString qgcVersion READ qgcVersion CONSTANT)
+    Q_PROPERTY(QString qgcAppDate READ qgcAppDate CONSTANT)
+    Q_PROPERTY(bool qgcDailyBuild READ qgcDailyBuild CONSTANT)
+    Q_PROPERTY(bool isRadiomasterAx12 READ isRadiomasterAx12 CONSTANT)
 
-    Q_PROPERTY(qreal zOrderTopMost              READ zOrderTopMost              CONSTANT) ///< z order for top most items, toolbar, main window sub view
-    Q_PROPERTY(qreal zOrderWidgets              READ zOrderWidgets              CONSTANT) ///< z order value to widgets, for example: zoom controls, hud widgetss
-    Q_PROPERTY(qreal zOrderMapItems             READ zOrderMapItems             CONSTANT)
-    Q_PROPERTY(qreal zOrderVehicles             READ zOrderVehicles             CONSTANT)
-    Q_PROPERTY(qreal zOrderWaypointIndicators   READ zOrderWaypointIndicators   CONSTANT)
-    Q_PROPERTY(qreal zOrderTrajectoryLines      READ zOrderTrajectoryLines      CONSTANT)
-    Q_PROPERTY(qreal zOrderWaypointLines        READ zOrderWaypointLines        CONSTANT)
+    Q_PROPERTY(qreal zOrderTopMost READ zOrderTopMost CONSTANT)
+    Q_PROPERTY(qreal zOrderWidgets READ zOrderWidgets CONSTANT)
+    Q_PROPERTY(qreal zOrderMapItems READ zOrderMapItems CONSTANT)
+    Q_PROPERTY(qreal zOrderVehicles READ zOrderVehicles CONSTANT)
+    Q_PROPERTY(qreal zOrderWaypointIndicators READ zOrderWaypointIndicators CONSTANT)
+    Q_PROPERTY(qreal zOrderTrajectoryLines READ zOrderTrajectoryLines CONSTANT)
+    Q_PROPERTY(qreal zOrderWaypointLines READ zOrderWaypointLines CONSTANT)
 
+    Q_PROPERTY(QString elevationProviderName READ elevationProviderName CONSTANT)
+    Q_PROPERTY(QString elevationProviderNotice READ elevationProviderNotice CONSTANT)
 
-    //-------------------------------------------------------------------------
-    // Elevation Provider
-    Q_PROPERTY(QString  elevationProviderName           READ elevationProviderName              CONSTANT)
-    Q_PROPERTY(QString  elevationProviderNotice         READ elevationProviderNotice            CONSTANT)
+    Q_INVOKABLE void saveGlobalSetting(const QString& key, const QString& value);
+    Q_INVOKABLE QString loadGlobalSetting(const QString& key, const QString& defaultValue);
+    Q_INVOKABLE void saveBoolGlobalSetting(const QString& key, bool value);
+    Q_INVOKABLE bool loadBoolGlobalSetting(const QString& key, bool defaultValue);
 
-    Q_INVOKABLE void    saveGlobalSetting       (const QString& key, const QString& value);
-    Q_INVOKABLE QString loadGlobalSetting       (const QString& key, const QString& defaultValue);
-    Q_INVOKABLE void    saveBoolGlobalSetting   (const QString& key, bool value);
-    Q_INVOKABLE bool    loadBoolGlobalSetting   (const QString& key, bool defaultValue);
-
-
-
-    Q_INVOKABLE void    startPX4MockLink            (bool sendStatusText, bool enableCamera, bool enableGimbal, bool enableProximity = false, int videoStreamType = 0);
-    Q_INVOKABLE void    startGenericMockLink        (bool sendStatusText, bool enableCamera, bool enableGimbal, bool enableProximity = false, int videoStreamType = 0);
-    Q_INVOKABLE void    startAPMArduCopterMockLink  (bool sendStatusText, bool enableCamera, bool enableGimbal, bool enableProximity = false, bool apmStartFreshParams = false, int videoStreamType = 0);
-    Q_INVOKABLE void    startAPMArduPlaneMockLink   (bool sendStatusText, bool enableCamera, bool enableGimbal, bool enableProximity = false, bool apmStartFreshParams = false, int videoStreamType = 0);
-    Q_INVOKABLE void    startAPMArduSubMockLink     (bool sendStatusText, bool enableCamera, bool enableGimbal, bool enableProximity = false, bool apmStartFreshParams = false, int videoStreamType = 0);
-    Q_INVOKABLE void    startAPMArduRoverMockLink   (bool sendStatusText, bool enableCamera, bool enableGimbal, bool enableProximity = false, bool apmStartFreshParams = false, int videoStreamType = 0);
-    Q_INVOKABLE void    stopOneMockLink             (void);
+    Q_INVOKABLE void startPX4MockLink(bool sendStatusText, bool enableCamera, bool enableGimbal,
+                                      bool enableProximity = false, int videoStreamType = 0);
+    Q_INVOKABLE void startGenericMockLink(bool sendStatusText, bool enableCamera, bool enableGimbal,
+                                          bool enableProximity = false, int videoStreamType = 0);
+    Q_INVOKABLE void startAPMArduCopterMockLink(bool sendStatusText, bool enableCamera, bool enableGimbal,
+                                                bool enableProximity = false, bool apmStartFreshParams = false,
+                                                int videoStreamType = 0);
+    Q_INVOKABLE void startAPMArduPlaneMockLink(bool sendStatusText, bool enableCamera, bool enableGimbal,
+                                               bool enableProximity = false, bool apmStartFreshParams = false,
+                                               int videoStreamType = 0);
+    Q_INVOKABLE void startAPMArduSubMockLink(bool sendStatusText, bool enableCamera, bool enableGimbal,
+                                             bool enableProximity = false, bool apmStartFreshParams = false,
+                                             int videoStreamType = 0);
+    Q_INVOKABLE void startAPMArduRoverMockLink(bool sendStatusText, bool enableCamera, bool enableGimbal,
+                                               bool enableProximity = false, bool apmStartFreshParams = false,
+                                               int videoStreamType = 0);
+    Q_INVOKABLE void stopOneMockLink(void);
 
     Q_INVOKABLE bool linesIntersect(QPointF xLine1, QPointF yLine1, QPointF xLine2, QPointF yLine2);
 
-    Q_INVOKABLE QString altitudeFrameExtraUnits(AltitudeFrame altFrame);        ///< String shown in the FactTextField.extraUnits ui
-    Q_INVOKABLE QString altitudeFrameShortDescription(AltitudeFrame altFrame);  ///< String shown when a user needs to select an altitude frame
+    Q_INVOKABLE QString altitudeFrameExtraUnits(AltitudeFrame altFrame);
+    Q_INVOKABLE QString altitudeFrameShortDescription(AltitudeFrame altFrame);
 
-    /// Shows a simple message dialog. The dialog is parented to owner and will automatically close
-    /// if the owner is destroyed, preventing orphaned dialogs that can cause crashes.
-    ///   @param owner          The QML item that owns this dialog. The dialog will be destroyed when this item is destroyed.
-    ///                             Typically mainWindow should not be used as the owner, instead use a more specific item such as the one that
-    ///                             triggered the dialog to ensure proper cleanup.
-    ///   @param title          Dialog title
-    ///   @param text           Dialog message text
-    ///   @param buttons        Dialog button flags (e.g. Dialog.Ok, Dialog.Yes | Dialog.No)
-    ///   @param acceptFunction Optional callback invoked when the dialog is accepted
-    ///   @param closeFunction  Optional callback invoked when the dialog is closed
-    Q_INVOKABLE void showMessageDialog(
-        QObject* owner,
-        const QString& title,
-        const QString& text,
-        int buttons = kDefaultMessageDialogButtons,
-        QJSValue acceptFunction = QJSValue(),
-        QJSValue closeFunction = QJSValue());
+    Q_INVOKABLE void showMessageDialog(QObject* owner, const QString& title, const QString& text,
+                                       int buttons = kDefaultMessageDialogButtons, QJSValue acceptFunction = QJSValue(),
+                                       QJSValue closeFunction = QJSValue());
 
-    // Test audio output
     Q_INVOKABLE void testAudioOutput();
 
-    /// Copy text to the system clipboard
     Q_INVOKABLE static void copyToClipboard(const QString& text);
 
-    // Property accessors
-
     static QString appName();
-    LinkManager*            linkManager         ()  { return _linkManager; }
-    MultiVehicleManager*    multiVehicleManager ()  { return _multiVehicleManager; }
-    QGCMapEngineManager*    mapEngineManager    ()  { return _mapEngineManager; }
-    QGCPositionManager*     qgcPositionManger   ()  { return _qgcPositionManager; }
-    MissionCommandTree*     missionCommandTree  ()  { return _missionCommandTree; }
-    MAVLinkSigningKeys*     mavlinkSigningKeys  ()  { return _mavlinkSigningKeys; }
-    VideoManager*           videoManager        ()  { return _videoManager; }
-    QGCCorePlugin*          corePlugin          ()  { return _corePlugin; }
-    SettingsManager*        settingsManager     ()  { return _settingsManager; }
+
+    LinkManager* linkManager() { return _linkManager; }
+
+    MultiVehicleManager* multiVehicleManager() { return _multiVehicleManager; }
+
+    QGCMapEngineManager* mapEngineManager() { return _mapEngineManager; }
+
+    QGCPositionManager* qgcPositionManger() { return _qgcPositionManager; }
+
+    MissionCommandTree* missionCommandTree() { return _missionCommandTree; }
+
+    MAVLinkSigningKeys* mavlinkSigningKeys() { return _mavlinkSigningKeys; }
+
+    VideoManager* videoManager() { return _videoManager; }
+
+    QGCCorePlugin* corePlugin() { return _corePlugin; }
+
+    SettingsManager* settingsManager() { return _settingsManager; }
 #ifndef QGC_NO_SERIAL_LINK
-    FactGroup*              gpsRtkFactGroup     ()  { return _gpsRtkFactGroup; }
+    FactGroup* gpsRtkFactGroup() { return _gpsRtkFactGroup; }
 #endif
-    ADSBVehicleManager*     adsbVehicleManager  ()  { return _adsbVehicleManager; }
-    NTRIPManager*           ntripManager        ()  { return _ntripManager; }
+    ADSBVehicleManager* adsbVehicleManager() { return _adsbVehicleManager; }
+
+    NTRIPManager* ntripManager() { return _ntripManager; }
 #ifdef QGC_WFB_ENABLED
-    PacketRadioManager*     packetRadioManager  ()  { return _packetRadioManager; }
+    PacketRadioManager* packetRadioManager() { return _packetRadioManager; }
 #endif
-    QmlUnitsConversion*     unitsConversion     ()  { return &_unitsConversion; }
-    static QGeoCoordinate   flightMapPosition   ()  { return _coord; }
-    static double           flightMapZoom       ()  { return _zoom; }
+    QmlUnitsConversion* unitsConversion() { return &_unitsConversion; }
 
-    qreal zOrderTopMost             () { return 1000; }
-    qreal zOrderWidgets             () { return 100; }
-    qreal zOrderMapItems            () { return 50; }
-    qreal zOrderWaypointIndicators  () { return 50; }
-    qreal zOrderVehicles            () { return 49; }
-    qreal zOrderTrajectoryLines     () { return 48; }
-    qreal zOrderWaypointLines       () { return 47; }
+    static QGeoCoordinate flightMapPosition() { return _coord; }
 
-    QString elevationProviderName   ();
-    QString elevationProviderNotice ();
+    static double flightMapZoom() { return _zoom; }
 
-    bool    singleFirmwareSupport   ();
-    bool    singleVehicleSupport    ();
-    bool    px4ProFirmwareSupported ();
-    bool    apmFirmwareSupported    ();
+    qreal zOrderTopMost() { return 1000; }
 
-    void    setFlightMapPosition        (QGeoCoordinate& coordinate);
-    void    setFlightMapZoom            (double zoom);
+    qreal zOrderWidgets() { return 100; }
 
-    QString parameterFileExtension  (void) const;
-    QString telemetryFileExtension  (void) const;
+    qreal zOrderMapItems() { return 50; }
+
+    qreal zOrderWaypointIndicators() { return 50; }
+
+    qreal zOrderVehicles() { return 49; }
+
+    qreal zOrderTrajectoryLines() { return 48; }
+
+    qreal zOrderWaypointLines() { return 47; }
+
+    QString elevationProviderName();
+    QString elevationProviderNotice();
+
+    bool singleFirmwareSupport();
+    bool singleVehicleSupport();
+    bool px4ProFirmwareSupported();
+    bool apmFirmwareSupported();
+
+    void setFlightMapPosition(QGeoCoordinate& coordinate);
+    void setFlightMapZoom(double zoom);
+
+    QString parameterFileExtension(void) const;
+    QString telemetryFileExtension(void) const;
 
     static QString qgcVersion();
+
     static QString qgcAppDate() { return QGC_APP_DATE; }
+
+    static bool isRadiomasterAx12();
 #ifdef QGC_DAILY_BUILD
     static bool qgcDailyBuild() { return true; }
 #else
@@ -212,43 +223,44 @@ public:
 #endif
 
 signals:
-    void isMultiplexingEnabledChanged   (bool enabled);
-    void mavlinkSystemIDChanged         (int id);
-    void flightMapPositionChanged       (QGeoCoordinate flightMapPosition);
-    void flightMapZoomChanged           (double flightMapZoom);
-    void showMessageDialogRequested     (QObject* owner, QString title, QString text, int buttons, QJSValue acceptFunction, QJSValue closeFunction);
+    void isMultiplexingEnabledChanged(bool enabled);
+    void mavlinkSystemIDChanged(int id);
+    void flightMapPositionChanged(QGeoCoordinate flightMapPosition);
+    void flightMapZoomChanged(double flightMapZoom);
+    void showMessageDialogRequested(QObject* owner, QString title, QString text, int buttons, QJSValue acceptFunction,
+                                    QJSValue closeFunction);
 
 private:
-    QGCMapEngineManager*    _mapEngineManager       = nullptr;
-    ADSBVehicleManager*     _adsbVehicleManager     = nullptr;
-    NTRIPManager*           _ntripManager           = nullptr;
+    QGCMapEngineManager* _mapEngineManager = nullptr;
+    ADSBVehicleManager* _adsbVehicleManager = nullptr;
+    NTRIPManager* _ntripManager = nullptr;
 #ifdef QGC_WFB_ENABLED
-    PacketRadioManager*     _packetRadioManager     = nullptr;
+    PacketRadioManager* _packetRadioManager = nullptr;
 #endif
-    QGCPositionManager*     _qgcPositionManager     = nullptr;
-    MissionCommandTree*     _missionCommandTree     = nullptr;
-    MAVLinkSigningKeys*     _mavlinkSigningKeys     = nullptr;
-    VideoManager*           _videoManager           = nullptr;
-    LinkManager*            _linkManager            = nullptr;
-    MultiVehicleManager*    _multiVehicleManager    = nullptr;
-    SettingsManager*        _settingsManager        = nullptr;
-    QGCCorePlugin*          _corePlugin             = nullptr;
-    QGCPalette*             _globalPalette          = nullptr;
+    QGCPositionManager* _qgcPositionManager = nullptr;
+    MissionCommandTree* _missionCommandTree = nullptr;
+    MAVLinkSigningKeys* _mavlinkSigningKeys = nullptr;
+    VideoManager* _videoManager = nullptr;
+    LinkManager* _linkManager = nullptr;
+    MultiVehicleManager* _multiVehicleManager = nullptr;
+    SettingsManager* _settingsManager = nullptr;
+    QGCCorePlugin* _corePlugin = nullptr;
+    QGCPalette* _globalPalette = nullptr;
 #ifndef QGC_NO_SERIAL_LINK
-    FactGroup*              _gpsRtkFactGroup        = nullptr;
+    FactGroup* _gpsRtkFactGroup = nullptr;
 #endif
 
-    double                  _flightMapInitialZoom   = 17.0;
-    QmlUnitsConversion      _unitsConversion;
+    double _flightMapInitialZoom = 17.0;
+    QmlUnitsConversion _unitsConversion;
 
-    QStringList             _altitudeFrameEnumString;
+    QStringList _altitudeFrameEnumString;
 
-    static QGeoCoordinate   _coord;
-    static double           _zoom;
-    QTimer                  _flightMapPositionSettledTimer;
+    static QGeoCoordinate _coord;
+    static double _zoom;
+    QTimer _flightMapPositionSettledTimer;
 
-    static constexpr const char* _flightMapPositionSettingsGroup =          "FlightMapPosition";
-    static constexpr const char* _flightMapPositionLatitudeSettingsKey =    "Latitude";
-    static constexpr const char* _flightMapPositionLongitudeSettingsKey =   "Longitude";
-    static constexpr const char* _flightMapZoomSettingsKey =                "FlightMapZoom";
+    static constexpr const char* _flightMapPositionSettingsGroup = "FlightMapPosition";
+    static constexpr const char* _flightMapPositionLatitudeSettingsKey = "Latitude";
+    static constexpr const char* _flightMapPositionLongitudeSettingsKey = "Longitude";
+    static constexpr const char* _flightMapZoomSettingsKey = "FlightMapZoom";
 };

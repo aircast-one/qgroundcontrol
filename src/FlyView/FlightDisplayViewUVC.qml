@@ -1,7 +1,9 @@
 import QtQuick
+import QtQuick.Window
 import QtMultimedia
 
 import QGroundControl
+import QGroundControl.Controls
 
 Rectangle {
     id:                 _root
@@ -17,7 +19,6 @@ Rectangle {
     property var _videoManager: QGroundControl.videoManager
 
     function adjustAspectRatio() {
-        //-- Set aspect ratio
         var resolution = camera.cameraFormat.resolution
         if (resolution.height > 0 && resolution.width > 0) {
             var aspectRatio = resolution.width / resolution.height
@@ -43,7 +44,7 @@ Rectangle {
         camera: Camera {
             id:             camera
             cameraDevice:   mediaDevices.findCameraDevice(_videoManager.uvcVideoSourceID)
-            active:         _videoManager.isUvc
+            active:         _videoManager.isUvc && (!ScreenTools.isMobile || Qt.application.state === Qt.ApplicationActive)
 
             onCameraDeviceChanged: {
                 if (active) {
@@ -64,5 +65,19 @@ Rectangle {
         id:             videoOutput
         anchors.fill:   parent
         fillMode:       VideoOutput.PreserveAspectCrop
+        orientation:    QGroundControl.isRadiomasterAx12 ? videoOutput._undoCameraRotation(Screen.orientation) : 0
+
+        function _undoCameraRotation(screenOrientation) {
+            switch (screenOrientation) {
+            case Qt.LandscapeOrientation:
+                return 90
+            case Qt.InvertedLandscapeOrientation:
+                return 270
+            case Qt.InvertedPortraitOrientation:
+                return 180
+            default:
+                return 0
+            }
+        }
     }
 }
