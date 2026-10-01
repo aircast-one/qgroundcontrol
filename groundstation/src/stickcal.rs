@@ -64,6 +64,38 @@ enum Message {
     Complete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stick {
+    Left,
+    Right,
+}
+
+fn stick_for(message: Message, mode: u8) -> Stick {
+    let left_in = |modes: [u8; 2]| if modes.contains(&mode) { Stick::Left } else { Stick::Right };
+    match message {
+        Message::ThrottleUp | Message::ThrottleDown => left_in([2, 4]),
+        Message::YawRight | Message::YawLeft => left_in([1, 2]),
+        Message::RollRight | Message::RollLeft => left_in([3, 4]),
+        _ => left_in([1, 3]),
+    }
+}
+
+fn stick_positions(message: Message, mode: u8) -> [i32; 4] {
+    let moved = match message {
+        Message::ThrottleUp | Message::PitchUp => Some((0, 1)),
+        Message::ThrottleDown | Message::PitchDown => Some((0, -1)),
+        Message::YawRight | Message::RollRight => Some((1, 0)),
+        Message::YawLeft | Message::RollLeft => Some((-1, 0)),
+        Message::ExtensionHigh => return [1, 0, 0, 0],
+        Message::ExtensionLow => return [-1, 0, 0, 0],
+        Message::Neutral | Message::Complete => None,
+    };
+    moved.map_or([0; 4], |(x, y)| match stick_for(message, mode) {
+        Stick::Left => [x, y, 0, 0],
+        Stick::Right => [0, 0, x, y],
+    })
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Step {
     function: Option<Function>,
@@ -390,6 +422,10 @@ impl StickCal {
         AxisCalibration { min: channel.min, max: channel.max, center: channel.trim, deadband: channel.deadband, reversed: channel.reversed }
     }
 
+    pub fn stick_positions(&self, transmitter_mode: u8) -> [i32; 4] {
+        self.current().map_or([0; 4], |step| stick_positions(step.message, transmitter_mode))
+    }
+
     pub fn json(&self) -> Value {
         json!({
             "calibrating": self.calibrating(),
@@ -412,6 +448,17 @@ impl StickCal {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_diagram_moves_the_stick_each_mode_puts_the_function_on() {
+        assert_eq!(stick_positions(Message::ThrottleUp, 2), [0, 1, 0, 0], "mode 2 throttle is on the left");
+        assert_eq!(stick_positions(Message::ThrottleUp, 1), [0, 0, 0, 1]);
+        assert_eq!(stick_positions(Message::YawLeft, 3), [0, 0, -1, 0]);
+        assert_eq!(stick_positions(Message::RollRight, 4), [1, 0, 0, 0]);
+        assert_eq!(stick_positions(Message::PitchDown, 2), [0, 0, 0, -1]);
+        assert_eq!(stick_positions(Message::Neutral, 2), [0; 4]);
+        assert_eq!(stick_positions(Message::ExtensionLow, 4), [-1, 0, 0, 0]);
+    }
 
     fn hold(cal: &mut StickCal, values: [i32; 4], from_ms: u64) -> u64 {
         (0..5).fold(from_ms, |at, i| {

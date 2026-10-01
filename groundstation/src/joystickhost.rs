@@ -645,7 +645,10 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "value": setting_value(name, &m.name),
         })).collect::<Vec<_>>()).unwrap_or_default(),
         "state": state,
-        "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(_, cal)| cal.json()),
+        "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(name, cal)| match cal.json() {
+            Value::Object(fields) => Value::Object(fields.into_iter().chain(std::iter::once(("stickPositions".to_string(), json!(cal.stick_positions(transmitter_mode(name)))))).collect()),
+            other => other,
+        }),
         "transmitterMode": active.as_ref().map(|name| transmitter_mode(name)),
         "assignableActions": assignable,
         "indicator": indicator(active.as_ref().and_then(|name| host.devices.iter().find(|d| &d.name == name)), vehicle.is_some(), enabled),

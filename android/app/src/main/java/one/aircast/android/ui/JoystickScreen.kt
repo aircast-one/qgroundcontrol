@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -67,6 +68,8 @@ internal data class JoystickCalibration(
     val nextEnabled: Boolean,
     val cancelEnabled: Boolean,
     val oneSidedVisible: Boolean,
+    val stickPositions: List<Int> = List(4) { 0 },
+    val singleStick: Boolean = false,
 )
 
 internal fun joystickCalibration(json: JSONObject?): JoystickCalibration = JoystickCalibration(
@@ -76,6 +79,8 @@ internal fun joystickCalibration(json: JSONObject?): JoystickCalibration = Joyst
     nextEnabled = json?.optBoolean("nextEnabled", true) ?: true,
     cancelEnabled = json?.optBoolean("cancelEnabled") == true,
     oneSidedVisible = json?.optBoolean("oneSidedVisible") == true,
+    stickPositions = json?.optJSONArray("stickPositions")?.let { a -> (0 until 4).map { a.optInt(it) } } ?: List(4) { 0 },
+    singleStick = json?.optBoolean("singleStickDisplay") == true,
 )
 
 internal data class JoystickPage(
@@ -260,6 +265,7 @@ private fun ButtonRow(button: JoystickButton, actions: List<AssignableAction>, c
 @Composable
 private fun CalibrationPanel(page: JoystickPage, onStep: (String) -> Unit) {
     val cal = page.calibration
+    if (cal.calibrating) StickDiagram(cal.stickPositions, cal.singleStick)
     if (cal.statusText.isNotBlank()) Text(cal.statusText, style = MaterialTheme.typography.bodyMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(enabled = cal.cancelEnabled, onClick = { onStep("cancel") }) { Text("Cancel") }
@@ -320,6 +326,23 @@ private fun SettingRow(setting: JoystickSetting, onChange: (Any) -> Unit) {
                     keyboardActions = KeyboardActions(onDone = { typed.toDoubleOrNull()?.let(onChange) }),
                     modifier = Modifier.width(140.dp),
                 )
+            }
+        }
+    }
+}
+
+private val STICK_BOX = 72.dp
+
+@Composable
+private fun StickDiagram(positions: List<Int>, single: Boolean) {
+    val ring = MaterialTheme.colorScheme.outline
+    val knob = MaterialTheme.colorScheme.primary
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        positions.chunked(2).take(if (single) 1 else 2).forEach { (x, y) ->
+            androidx.compose.foundation.Canvas(Modifier.size(STICK_BOX)) {
+                val half = size.minDimension / 2f
+                drawRect(ring, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                drawCircle(knob, radius = half * 0.18f, center = center + androidx.compose.ui.geometry.Offset(x * half * 0.75f, -y * half * 0.75f))
             }
         }
     }

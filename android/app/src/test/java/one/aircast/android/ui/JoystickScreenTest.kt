@@ -44,4 +44,11 @@ class JoystickScreenTest {
         assertEquals(listOf(JoystickButton(0, "No Action", false, false), JoystickButton(1, "Step Zoom In", true, true)), page.buttons)
         assertEquals(AssignableAction("Step Zoom In", true), page.actions[1])
     }
+
+    @Test
+    fun `calibration reads the stick diagram positions`() {
+        val cal = joystickCalibration(org.json.JSONObject("""{"calibrating":true,"stickPositions":[0,1,0,0],"singleStickDisplay":false}"""))
+        org.junit.Assert.assertEquals(listOf(0, 1, 0, 0), cal.stickPositions)
+        org.junit.Assert.assertEquals(listOf(0, 0, 0, 0), joystickCalibration(null).stickPositions)
+    }
 }
