@@ -1,0 +1,73 @@
+package one.aircast.android.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import one.aircast.android.bridge.qgcPath
+
+private const val SENSOR_FAULT_STATE = "unhealthy"
+private const val SENSORS_SETUP_PAGE = "Sensors"
+
+internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<SensorHealth> =
+    if (showAll) sensors else sensors.filter { it.state == SENSOR_FAULT_STATE }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
+    val setupJson by qgcPath(SETUP)
+    val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
+    val healthJson by qgcPath(SENSOR_HEALTH)
+    val health = remember(healthJson) { sensorHealth(healthJson) }
+    var showAll by remember { mutableStateOf(false) }
+    val open: (String) -> Unit = { page ->
+        AppNavigation.setupPage = page
+        onDismiss()
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            health?.takeIf { !px4 && it.available && it.sensors.isNotEmpty() }?.let { reading ->
+                Text("Sensors", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                shownSensors(reading.sensors, showAll).forEach { sensor ->
+                    val fault = sensor.state == SENSOR_FAULT_STATE
+                    Row(
+                        Modifier.fillMaxWidth().clickable { open(SENSORS_SETUP_PAGE) }.padding(horizontal = 20.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(sensor.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Text(sensor.label, style = MaterialTheme.typography.bodySmall, color = if (fault) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                val normal = reading.sensors.count { it.state != SENSOR_FAULT_STATE }
+                if (normal > 0) TextButton(onClick = { showAll = !showAll }, modifier = Modifier.padding(horizontal = 12.dp)) {
+                    Text(if (showAll) "Show Less" else "Show $normal More")
+                }
+            }
+            ParameterForm(STATUS_SETTINGS_PAGE, Modifier.heightIn(max = 360.dp))
+            listOf("Vehicle Parameters" to SETUP_PARAMETERS_PAGE, "Vehicle Configuration" to SETUP_OVERVIEW_PAGE).forEach { (label, page) ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = { open(page) }) { Text("Configure") }
+                }
+            }
+        }
+    }
+}

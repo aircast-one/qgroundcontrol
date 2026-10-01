@@ -79,6 +79,9 @@ internal fun parameterWait(view: JSONObject?): ParameterWait? {
     }
 }
 
+internal const val SETUP_PARAMETERS_PAGE = "Parameters"
+internal const val SETUP_OVERVIEW_PAGE = ""
+
 internal fun setupMatches(name: String, search: String): Boolean =
     search.isBlank() || name.lowercase().contains(search.trim().lowercase())
 
@@ -134,7 +137,13 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(AppNavigation.setupPage, components) {
         AppNavigation.setupPage?.takeIf { components.isNotEmpty() }?.let { requested ->
-            components.firstOrNull { it.name == requested }?.let { openComponent = it }
+            when (requested) {
+                SETUP_PARAMETERS_PAGE -> {
+                    parametersSearch = ""
+                    parametersOpen = true
+                }
+                else -> components.firstOrNull { it.name == requested }?.let { openComponent = it }
+            }
             AppNavigation.setupPage = null
         }
     }

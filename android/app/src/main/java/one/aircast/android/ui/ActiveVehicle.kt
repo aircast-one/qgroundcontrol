@@ -158,9 +158,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         OfflineStatusSheet { offline = false }
     }
     if (statusSettings && !disconnected) {
-        ModalBottomSheet(onDismissRequest = { statusSettings = false }) {
-            ParameterForm(STATUS_SETTINGS_PAGE)
-        }
+        VehicleStatusSheet { statusSettings = false }
     }
 
     if (picking) {
