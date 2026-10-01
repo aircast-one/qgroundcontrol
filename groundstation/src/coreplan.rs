@@ -304,9 +304,6 @@ fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
             mode => mode,
         };
         let previous_mode = (doc.global_altitude_mode == crate::altitudemodes::MIXED && !corridor).then(|| plandoc::previous_altitude_mode(doc, index)).flatten();
-        if [Some(distance_mode), previous_mode].iter().flatten().any(|m| matches!(*m, crate::altitudemodes::CALC_ABOVE_TERRAIN | crate::altitudemodes::TERRAIN_FRAME)) {
-            return Err("The core cannot build a scan that follows terrain yet.".to_string());
-        }
         let fresh = crate::surveydoc::Fresh {
             center: (latitude, longitude),
             remembered: &crate::settingsstore::stored_text,
@@ -320,8 +317,57 @@ fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
             true => ("CorridorScan", crate::surveydoc::fresh_corridor(&fresh)),
             false => ("survey", crate::surveydoc::fresh(&fresh)),
         };
-        Ok(plandoc::insert_complex(doc, kind, built, (latitude, longitude), index))
+        Ok(plandoc::insert_complex(doc, kind, with_flight_speed(doc, built), (latitude, longitude), index))
     })
+}
+
+fn flight_speed(doc: &Document) -> f64 {
+    use crate::cmdinfo::VehicleClass::{MultiRotor, Vtol};
+    match plandoc::vehicle_class(doc.vehicle_type) {
+        MultiRotor | Vtol => doc.hover_speed,
+        _ => doc.cruise_speed,
+    }
+}
+
+fn with_flight_speed(doc: &Document, item: Value) -> Value {
+    let calc_mode = item.pointer("/TransectStyleComplexItem/CameraCalc/DistanceMode").and_then(Value::as_i64);
+    if calc_mode != Some(crate::altitudemodes::CALC_ABOVE_TERRAIN) {
+        return item;
+    }
+    let mut stamped = item;
+    stamped["TransectStyleComplexItem"][crate::surveydoc::TERRAIN_FLIGHT_SPEED] = json!(flight_speed(doc));
+    crate::surveydoc::regenerate_item(&stamped)
+}
+
+const WAITING_ON_TERRAIN: &str = "Plan is waiting on terrain data from server for correct altitude values.";
+
+fn waiting_on_terrain(document: &Document) -> bool {
+    document.items.iter().any(|item| matches!(item, plandoc::Item::Complex { json, .. } if crate::surveydoc::waiting_for_terrain(json)))
+}
+
+pub fn terrain_arrived() {
+    let refreshed = {
+        let mut state = held();
+        let Some(current) = state.document.clone().filter(waiting_on_terrain) else { return };
+        let items = current
+            .items
+            .iter()
+            .map(|item| match item {
+                plandoc::Item::Complex { kind, json, item_count } if crate::surveydoc::waiting_for_terrain(json) => {
+                    let regenerated = crate::surveydoc::regenerate_item(json);
+                    plandoc::Item::Complex { kind: kind.clone(), item_count: plandoc::complex_count(kind, &regenerated).unwrap_or(*item_count), json: regenerated }
+                }
+                other => other.clone(),
+            })
+            .collect();
+        let refreshed = Document { items, ..current };
+        let changed_any = state.document.as_ref() != Some(&refreshed);
+        state.document = Some(refreshed);
+        changed_any
+    };
+    if refreshed {
+        changed();
+    }
 }
 
 fn set_altitude_mode(args: &str) -> Value {
@@ -392,6 +438,9 @@ fn open(file: &str) -> Value {
 }
 
 fn save(file: &str) -> Value {
+    if held().document.as_ref().is_some_and(waiting_on_terrain) {
+        return refused(format!("Unable to Save. {WAITING_ON_TERRAIN}"));
+    }
     let Some(text) = held().document.as_ref().map(|d| plandoc::save(d).to_string()) else {
         return refused("There is no plan to save.");
     };
@@ -488,6 +537,9 @@ fn send_through_host(backend: &dyn Backend) -> Value {
     let Some(document) = held().document.clone() else {
         return refused("There is no plan to send.");
     };
+    if waiting_on_terrain(&document) {
+        return refused(format!("Unable to Upload. {WAITING_ON_TERRAIN}"));
+    }
     let file = host_file();
     if let Err(e) = std::fs::write(&file, plandoc::save(&document).to_string()) {
         return refused(format!("The plan could not be handed to the vehicle link: {e}"));
@@ -622,6 +674,9 @@ fn send() -> Value {
     let Some(document) = held().document.clone() else {
         return refused("There is no plan to send.");
     };
+    if waiting_on_terrain(&document) {
+        return refused(format!("Unable to Upload. {WAITING_ON_TERRAIN}"));
+    }
     let items = match crate::planitems::flatten(&plandoc::save(&document)) {
         Ok(items) => items,
         Err(reason) => return refused(reason),

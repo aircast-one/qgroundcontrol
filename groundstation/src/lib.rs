@@ -194,6 +194,7 @@ pub mod tilecache;
 pub mod surveydoc;
 pub mod surveygrid;
 pub mod surveyitems;
+pub mod terrainfollow;
 pub mod sysstatus;
 pub mod takeoff;
 pub mod tcplink;

@@ -41,18 +41,22 @@ fn trigger(distance: f64) -> Item {
 }
 
 pub fn items(transects: &[Vec<Coord>], plan: &Plan) -> Vec<Item> {
+    let flight: Vec<(Coord, f64)> = transects.iter().flatten().map(|coord| (*coord, plan.altitude)).collect();
+    flown(&flight, plan)
+}
+
+pub fn flown(flight: &[(Coord, f64)], plan: &Plan) -> Vec<Item> {
     let frame = frame_for(plan.altitude_mode);
     let triggering = plan.trigger_distance > 0.0;
-    let flight: Vec<Coord> = transects.iter().flatten().copied().collect();
     let last = flight.len().saturating_sub(1);
     flight
         .iter()
         .enumerate()
-        .flat_map(|(index, coord)| {
+        .flat_map(|(index, (coord, altitude))| {
             let first_turnaround = plan.images_in_turnaround && coord.kind == Kind::Turnaround && index == 0;
             let opens = triggering && (coord.kind == Kind::SurveyEntry || first_turnaround);
             let closes = triggering && index == last;
-            std::iter::once(waypoint(coord.at, plan.altitude, frame, 0.0))
+            std::iter::once(waypoint(coord.at, *altitude, frame, 0.0))
                 .chain(opens.then(|| trigger(plan.trigger_distance)))
                 .chain(closes.then(|| trigger(0.0)))
         })
@@ -102,6 +106,19 @@ mod tests {
         assert_eq!(checked.len(), 3, "every recorded plan is checked, the turnaround one included");
         let wrong: Vec<&str> = checked.iter().filter(|(_, matched, _)| !matched).map(|(_, _, report)| report.as_str()).collect();
         assert!(wrong.is_empty(), "{} of {} plans differ from the Qt builder:\n{}", wrong.len(), checked.len(), wrong.join("\n"));
+    }
+
+    #[test]
+    fn a_terrain_path_flies_each_point_at_its_own_amsl_altitude() {
+        let flight = [
+            (Coord { at: (47.0, 8.0), kind: Kind::SurveyEntry }, 150.0),
+            (Coord { at: (47.0, 8.001), kind: Kind::InteriorTerrainAdded }, 162.0),
+            (Coord { at: (47.0, 8.002), kind: Kind::SurveyExit }, 170.0),
+        ];
+        let plan = Plan { altitude: 50.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::CALC_ABOVE_TERRAIN, images_in_turnaround: false };
+        let built = flown(&flight, &plan);
+        assert!(built.iter().all(|i| i.frame == FRAME_GLOBAL));
+        assert_eq!(built.iter().map(|i| i.params[6].unwrap()).collect::<Vec<_>>(), [150.0, 162.0, 170.0]);
     }
 
     fn same_item(ours: &str, theirs: &str) -> bool {

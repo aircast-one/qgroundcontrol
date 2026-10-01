@@ -611,6 +611,20 @@ pub fn regenerate_corridor(corridor: &Value) -> Value {
     changed
 }
 
+const TERRAIN_TOLERANCE_DEFAULT: f64 = 10.0;
+const TERRAIN_FLIGHT_SPEED_DEFAULT: f64 = 5.0;
+pub const TERRAIN_FLIGHT_SPEED: &str = "TerrainFlightSpeed";
+
+fn terrain_adjust(transect: &Value, distance_to_surface: f64) -> crate::terrainfollow::Adjust {
+    crate::terrainfollow::Adjust {
+        distance_to_surface,
+        tolerance: number(transect, "TerrainAdjustTolerance").unwrap_or(TERRAIN_TOLERANCE_DEFAULT),
+        max_climb_rate: number(transect, "TerrainAdjustMaxClimbRate").unwrap_or(0.0),
+        max_descent_rate: number(transect, "TerrainAdjustMaxDescentRate").unwrap_or(0.0),
+        flight_speed: number(transect, TERRAIN_FLIGHT_SPEED).unwrap_or(TERRAIN_FLIGHT_SPEED_DEFAULT),
+    }
+}
+
 fn rebuilt(transect: &Value, calc: &Value, transects: &[Vec<Coord>], trigger_distance: f64, in_turnaround: bool, shots: impl Fn(f64) -> i64) -> Value {
     let plan = Plan {
         altitude: number(calc, "DistanceToSurface").unwrap_or(0.0),
@@ -618,9 +632,17 @@ fn rebuilt(transect: &Value, calc: &Value, transects: &[Vec<Coord>], trigger_dis
         altitude_mode: calc.get("DistanceMode").and_then(Value::as_i64).unwrap_or(crate::altitudemodes::RELATIVE),
         images_in_turnaround: in_turnaround,
     };
+    let follows_terrain = plan.altitude_mode == crate::altitudemodes::CALC_ABOVE_TERRAIN;
+    let adjust = terrain_adjust(transect, plan.altitude);
+    let followed = follows_terrain.then(|| crate::terrainfollow::follow(transects, &adjust, &crate::terrainservice::height)).flatten();
+    let built = match (follows_terrain, &followed) {
+        (false, _) => surveyitems::items(transects, &plan),
+        (true, Some(path)) => surveyitems::flown(&path.iter().map(|w| (w.coord, w.altitude)).collect::<Vec<_>>(), &plan),
+        (true, None) => Vec::new(),
+    };
     let visual: Vec<Point> = transects.iter().flatten().map(|c| c.at).collect();
     let complex_distance: f64 = visual.windows(2).map(|pair| surveygrid::distance_between(pair[0], pair[1])).sum();
-    let items: Vec<Value> = surveyitems::items(transects, &plan)
+    let items: Vec<Value> = built
         .iter()
         .enumerate()
         .map(|(i, item)| json!({ "autoContinue": true, "command": item.command, "doJumpId": i + 1, "frame": item.frame, "params": item.params, "type": "SimpleItem" }))
@@ -629,7 +651,23 @@ fn rebuilt(transect: &Value, calc: &Value, transects: &[Vec<Coord>], trigger_dis
     rebuilt["Items"] = Value::Array(items);
     rebuilt["VisualTransectPoints"] = json!(visual.iter().map(|(lat, lon)| json!([lat, lon])).collect::<Vec<_>>());
     rebuilt["CameraShots"] = json!(shots(complex_distance));
+    let terrain_keys = [("TerrainAdjustTolerance", adjust.tolerance), ("TerrainAdjustMaxClimbRate", adjust.max_climb_rate), ("TerrainAdjustMaxDescentRate", adjust.max_descent_rate), (TERRAIN_FLIGHT_SPEED, adjust.flight_speed)];
+    let object = rebuilt.as_object_mut().expect("a transect is an object");
+    match follows_terrain {
+        true => terrain_keys.iter().for_each(|(key, value)| {
+            object.insert((*key).to_string(), json!(value));
+        }),
+        false => terrain_keys.iter().for_each(|(key, _)| {
+            object.remove(*key);
+        }),
+    }
     rebuilt
+}
+
+pub fn waiting_for_terrain(item: &Value) -> bool {
+    let transect = item.get("TransectStyleComplexItem").unwrap_or(&Value::Null);
+    let empty = |key: &str| transect.get(key).and_then(Value::as_array).is_none_or(Vec::is_empty);
+    calc_of(item).get("DistanceMode").and_then(Value::as_i64) == Some(crate::altitudemodes::CALC_ABOVE_TERRAIN) && empty("Items") && !empty("VisualTransectPoints")
 }
 
 #[cfg(test)]
@@ -683,6 +721,16 @@ mod tests {
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let listed: Vec<String> = fields(corridor, "i", true, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
         assert!(listed.contains(&"corridorWidth".to_string()) && !listed.contains(&"gridAngle".to_string()), "{listed:?}");
+    }
+
+    #[test]
+    fn a_terrain_following_scan_waits_for_its_heights_before_save_or_upload() {
+        let scan = |mode: i64, items: Value| json!({ "complexItemType": "survey", "TransectStyleComplexItem": { "CameraCalc": { "DistanceMode": mode }, "Items": items, "VisualTransectPoints": [[47.0, 8.0], [47.0, 8.01]] } });
+        assert!(waiting_for_terrain(&scan(crate::altitudemodes::CALC_ABOVE_TERRAIN, json!([]))));
+        assert!(!waiting_for_terrain(&scan(crate::altitudemodes::CALC_ABOVE_TERRAIN, json!([{ "command": 16 }]))));
+        assert!(!waiting_for_terrain(&scan(crate::altitudemodes::RELATIVE, json!([]))), "only calc-above-terrain needs heights to build");
+        let adjust = terrain_adjust(&json!({ "TerrainAdjustMaxClimbRate": 3.0 }), 50.0);
+        assert_eq!((adjust.tolerance, adjust.max_climb_rate, adjust.flight_speed), (10.0, 3.0, 5.0), "QGC's defaults: 10 m tolerance, 5 m/s until the flight status arrives");
     }
 
     #[test]

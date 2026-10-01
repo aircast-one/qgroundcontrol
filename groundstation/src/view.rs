@@ -635,6 +635,7 @@ mod deps_cover_reads {
             ("tcplink", include_str!("tcplink.rs")),
             ("terrain", include_str!("terrain.rs")),
             ("terraindownload", include_str!("terraindownload.rs")),
+            ("terrainfollow", include_str!("terrainfollow.rs")),
             ("terrainquery", include_str!("terrainquery.rs")),
             ("terraintile", include_str!("terraintile.rs")),
             ("tilecache", include_str!("tilecache.rs")),

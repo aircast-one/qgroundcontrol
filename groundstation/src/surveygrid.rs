@@ -29,6 +29,7 @@ pub enum Kind {
     SurveyEntry,
     Interior,
     SurveyExit,
+    InteriorTerrainAdded,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
