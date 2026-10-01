@@ -438,20 +438,22 @@ struct AnalyzeView: View {
     @ObservedObject var inspector: MavlinkInspectorStore
     @ObservedObject var console: MavlinkConsoleStore
     @ObservedObject var tlog: TlogStore
+    @ObservedObject var firmware: FirmwareStore
     @ObservedObject var selection: PageSelection
 
     static let pages = ["Vibration", "Log Download", "Geotag Images", "Telemetry Log",
-                        "MAVLink Inspector", "MAVLink Console"]
+                        "MAVLink Inspector", "MAVLink Console", "Firmware"]
 
     static let symbols = ["Vibration": "waveform.path.ecg", "Log Download": "doc.text.fill",
                           "Geotag Images": "mappin.and.ellipse",
                           "MAVLink Inspector": "dot.radiowaves.left.and.right",
                           "MAVLink Console": "terminal",
-                          "Telemetry Log": "doc.text.magnifyingglass"]
+                          "Telemetry Log": "doc.text.magnifyingglass",
+                          "Firmware": "cpu"]
     static let colours: [String: Color] = ["Vibration": .pink, "Log Download": .indigo,
                                            "Geotag Images": .teal, "MAVLink Inspector": .orange,
                                            "MAVLink Console": .gray,
-                                           "Telemetry Log": .brown]
+                                           "Telemetry Log": .brown, "Firmware": .green]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -473,6 +475,7 @@ struct AnalyzeView: View {
             case "MAVLink Inspector": MavlinkInspectorView(store: inspector)
             case "Telemetry Log": TlogView(store: tlog)
             case "MAVLink Console": MavlinkConsoleView(store: console)
+            case "Firmware": FirmwareView(store: firmware)
             default: VibrationView(store: vibration)
             }
         }
@@ -489,6 +492,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
     private let inspector = MavlinkInspectorStore()
     private let console = MavlinkConsoleStore()
     private let tlog = TlogStore()
+    private let firmware = FirmwareStore()
     private let selection = PageSelection(owner: "analyze", pages: AnalyzeView.pages)
     private var window: NSWindow?
 
@@ -500,6 +504,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(inspector)
         NativeProbe.register(console)
         NativeProbe.register(tlog)
+        NativeProbe.register(firmware)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -521,7 +526,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         window.title = "Analyze"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, inspector: inspector, console: console, tlog: tlog, selection: selection))
+        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, inspector: inspector, console: console, tlog: tlog, firmware: firmware, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
@@ -531,6 +536,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         vibration.stop()
         inspector.stop()
         logs.stopWatching()
+        firmware.stopWatching()
         window = nil
     }
 }

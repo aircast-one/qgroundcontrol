@@ -187,6 +187,27 @@ fn look_at(port: &str) -> Sighting {
     }
 }
 
+#[cfg(not(target_os = "android"))]
+fn ports() -> Vec<Value> {
+    serialport::available_ports()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| !p.port_name.starts_with("/dev/tty."))
+        .map(|p| {
+            let description = match &p.port_type {
+                serialport::SerialPortType::UsbPort(usb) => usb.product.clone().or_else(|| usb.manufacturer.clone()).unwrap_or_default(),
+                _ => String::new(),
+            };
+            json!({ "port": p.port_name, "bootloader": in_bootloader(&description), "description": description })
+        })
+        .collect()
+}
+
+#[cfg(target_os = "android")]
+fn ports() -> Vec<Value> {
+    Vec::new()
+}
+
 #[cfg(target_os = "android")]
 fn look_at(_port: &str) -> Sighting {
     Sighting::Absent
@@ -270,6 +291,10 @@ pub fn view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
         "file": held.file,
         "board": held.board.map(|b| json!({ "bootloaderVersion": b.bootloader_version, "boardId": b.board_id, "flashSize": b.flash_size })),
     })
+}
+
+pub fn ports_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
+    json!({ "kind": "object", "class": "FirmwarePorts", "ports": ports() })
 }
 
 pub fn invoke(path: &str, args: &str) -> Option<Value> {

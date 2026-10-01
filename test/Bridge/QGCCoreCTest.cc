@@ -1492,6 +1492,7 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
         { QStringLiteral("view.coreCameras"), QStringLiteral("same") },
         { QStringLiteral("view.transports"), QStringLiteral("lists links the core hosts, and it hosts none while coreLinks is off") },
         { QStringLiteral("view.dependencies"), QStringLiteral("describes the registry itself, and its content is already pinned inside other recordings") },
+        { QStringLiteral("view.firmwarePorts"), QStringLiteral("lists the serial ports of the machine running the test, which differ from one machine to the next") },
         { QStringLiteral("view.contract"), QStringLiteral("enumerates VIEWS and their enumerations, so recording its shape pins the fixture against itself") },
     };
 

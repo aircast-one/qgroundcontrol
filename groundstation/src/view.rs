@@ -298,6 +298,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
     View { path: "view.packetRadio", deps: &[], compute: packetradio::packet_radio_view },
     View { path: "view.firmwareUpgrade", deps: &[], compute: crate::firmwareflash::view },
+    View { path: "view.firmwarePorts", deps: &[], compute: crate::firmwareflash::ports_view },
     View { path: "view.mavlinkConsole", deps: console::DEPS, compute: console::console_view },
     View { path: "view.itemCamera", deps: itemcamera::DEPS, compute: itemcamera::item_camera_view },
     View { path: "view.itemFacts", deps: itemfacts::DEPS, compute: itemfacts::item_facts_view },

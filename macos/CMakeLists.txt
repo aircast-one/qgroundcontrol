@@ -21,6 +21,7 @@ set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "")
 add_library(QGCNativeUI STATIC
     Sources/AnalyzeWindow.swift
     Sources/LogDownload.swift
+    Sources/Firmware.swift
     Sources/LogEntryModel.swift
     Sources/LabelModel.swift
     Sources/HostNoticeModel.swift
