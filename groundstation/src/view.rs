@@ -651,6 +651,7 @@ mod deps_cover_reads {
             ("platformbluetooth", include_str!("platformbluetooth.rs")),
             ("paramremap", include_str!("paramremap.rs")),
             ("libevents", include_str!("libevents.rs")),
+            ("wfbhost", include_str!("wfbhost.rs")),
             ("settingsorder", include_str!("settingsorder.rs")),
             ("platformserial", include_str!("platformserial.rs")),
             ("presets", include_str!("presets.rs")),

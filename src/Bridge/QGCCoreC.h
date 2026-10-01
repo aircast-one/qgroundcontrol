@@ -52,6 +52,20 @@ void qgc_core_host_link_bytes(uint32_t id, const uint8_t *bytes, size_t len);
 bool qgc_core_host_link_closed(uint32_t id, const char *reason);
 bool qgc_core_packet_radio_report(const char *report_json);
 void qgc_core_packet_radio_forgotten(void);
+
+typedef struct QGCPacketRadioNative {
+    char *(*devices)(void);
+    bool (*start)(const char *adapter, uint8_t channel, int32_t channel_width, const char *key_path, char **error);
+    void (*stop)(void);
+    void (*poll)(int32_t *values);
+    void (*adaptive)(bool enabled, int32_t tx_power);
+    int64_t (*rtp_packets)(void);
+    char *(*take_codec)(void);
+    bool (*take_stopped)(void);
+    void (*free)(char *text);
+} QGCPacketRadioNative;
+
+bool qgc_core_packet_radio_register(const QGCPacketRadioNative *native);
 void qgc_core_set_link_writer(QGCCoreLinkWriterFn writer, void *user);
 void qgc_core_link_announce_on_state(void);
 char *qgc_core_guided(const char *action_json);

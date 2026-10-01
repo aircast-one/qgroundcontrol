@@ -1476,6 +1476,9 @@ impl<B: Backend> Backend for Facade<B> {
             let started = rate.zip(target).and_then(|(rate, (vehicle, component, message))| self.0.core_guided(&json!({ "action": "messageInterval", "vehicle": vehicle, "component": component, "message": message, "rate": rate })));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
+        if let Some(done) = (path == "packetRadio.refreshAdapters").then(crate::wfbhost::refresh).flatten() {
+            return done.to_string();
+        }
         if let Some(index) = (path == "video.cameraName" && switched_on()).then(|| serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64()).flatten() {
             return json!({ "ok": true, "result": video_camera_name(index) }).to_string();
         }

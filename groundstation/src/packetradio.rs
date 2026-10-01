@@ -611,6 +611,9 @@ pub fn host_forgotten() {
 }
 
 pub fn packet_radio_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
+    if let Some(driven) = args.is_empty().then(|| crate::wfbhost::snapshot(crate::hub::now_ms())).flatten() {
+        return driven;
+    }
     match args.is_empty() {
         true => reported()
             .as_ref()

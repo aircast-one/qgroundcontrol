@@ -282,6 +282,7 @@ pub(crate) fn start_pump() {
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
                     crate::joystickhost::tick(crate::hub::now_ms());
+                    crate::wfbhost::tick(crate::hub::now_ms());
                     crate::camsettings::tick(crate::hub::now_ms());
                     crate::gcsheartbeat::tick(crate::hub::now_ms());
                     if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
@@ -473,6 +474,14 @@ pub unsafe extern "C" fn qgc_core_packet_radio_report(report_json: *const c_char
     match serde_json::from_str::<serde_json::Value>(&text(report_json)) {
         Ok(report) => crate::packetradio::host_report(&report),
         Err(_) => false,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_packet_radio_register(native: *const crate::wfbhost::Native) -> bool {
+    match unsafe { native.as_ref() } {
+        Some(native) => crate::wfbhost::register(crate::wfbhost::Native { ..*native }),
+        None => false,
     }
 }
 

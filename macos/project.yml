@@ -58,6 +58,8 @@ targets:
       - path: Sources
       - path: ../src/Bridge/QGCVideoC.cc
       - path: ../src/Bridge/QGCSpeechC.cc
+      - path: ../src/Bridge/QGCWfbC.cc
+        compilerFlags: "-I$(QGC_ROOT)/libs/wfb -I$(QGC_ROOT)/libs/wfb/wifi -I$(QGC_ROOT)/libs/wfb/wifi/compat -I$(QGC_ROOT)/libs/wfb/devourer/src -I$(QGC_ROOT)/libs/wfb/devourer/hal -I/opt/homebrew/include -I/opt/homebrew/include/libusb-1.0"
       - path: ../deploy/macos/qgroundcontrol.icns
         buildPhase: resources
 
@@ -74,7 +76,7 @@ targets:
         GCC_PREPROCESSOR_DEFINITIONS: $(inherited) QGC_GST_STREAMING=1
         FRAMEWORK_SEARCH_PATHS: $(inherited) /Library/Frameworks
         LD_RUNPATH_SEARCH_PATHS: $(inherited) /Library/Frameworks
-        OTHER_LDFLAGS: $(inherited) $(QGC_ROOT)/groundstation/target/release/libgroundstation.a -framework GStreamer -framework Security -framework SystemConfiguration -framework IOKit -framework CoreFoundation
+        OTHER_LDFLAGS: $(inherited) $(QGC_ROOT)/groundstation/target/release/libgroundstation.a $(QGC_CORE_BUILD_DIR)/wfb/wfb/libwfblink.a $(QGC_CORE_BUILD_DIR)/wfb/wfb/devourer/libdevourer.a -L/opt/homebrew/lib -lusb-1.0 -lsodium -lpcap -framework GStreamer -framework Security -framework SystemConfiguration -framework IOKit -framework CoreFoundation
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
@@ -85,6 +87,10 @@ targets:
         basedOnDependencyAnalysis: false
         showEnvVars: false
         script: '"$QGC_CARGO" build --release --features native-host --lib --manifest-path "$QGC_ROOT/groundstation/Cargo.toml"'
+      - name: Packet radio
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        script: '"$QGC_CMAKE" -S "$QGC_ROOT/macos/wfb" -B "$QGC_CORE_BUILD_DIR/wfb" -DCMAKE_BUILD_TYPE=Release && "$QGC_CMAKE" --build "$QGC_CORE_BUILD_DIR/wfb"'
 
   AircastQGCChecks:
     type: tool
