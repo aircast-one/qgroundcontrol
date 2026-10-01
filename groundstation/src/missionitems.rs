@@ -16,7 +16,7 @@ pub const DEPS: &[&str] = &[
     crate::coreplan::CHANGED,
 ];
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -612,6 +612,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "specifiedFlightSpeed": specified_speed(&s.sections).or_else(|| (s.command == 178).then_some(s.params[1]).flatten().filter(|speed| *speed > 0.0)),
                 "facts": altitude_fact("altitude", altitude.map_or(0.0, |a| a.altitude)),
                 "additionalTimeDelay": match s.command { 16 | 112 | 93 => s.params[0].unwrap_or(0.0), _ => 0.0 },
+                "specifiedVehicleYaw": if s.command == 16 { s.params[3] } else { None },
                 "altDifference": leg.alt_difference,
                 "azimuth": leg.azimuth,
                 "distance": leg.distance,
@@ -620,7 +621,42 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
             })
         })
         .collect();
-    Ok(std::iter::once(settings).chain(reads).collect())
+    Ok(with_vehicle_yaws(std::iter::once(settings).chain(reads).collect()))
+}
+
+fn spot(read: &Value, key: &str) -> Option<(f64, f64)> {
+    let at = read.get(key)?;
+    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?))
+}
+
+fn with_vehicle_yaws(reads: Vec<Value>) -> Vec<Value> {
+    let flown = |read: &Value| !read["homePosition"].as_bool().unwrap_or(false) && read["specifiesCoordinate"].as_bool().unwrap_or(false) && !read["isStandaloneCoordinate"].as_bool().unwrap_or(false);
+    let last_flown = reads.iter().rposition(flown);
+    let yaws: Vec<Option<f64>> = reads
+        .iter()
+        .scan((None::<(f64, f64)>, f64::NAN), |(last_exit, yaw), read| {
+            let home = read["homePosition"].as_bool().unwrap_or(false);
+            if !home && !flown(read) {
+                return Some(None);
+            }
+            let simple = read["isSimpleItem"].as_bool().unwrap_or(false);
+            if simple {
+                *yaw = read["specifiedVehicleYaw"].as_f64().filter(|y| !y.is_nan()).or_else(|| Some(crate::surveygrid::azimuth_to((*last_exit)?, spot(read, "coordinate")?))).unwrap_or(*yaw);
+            }
+            *last_exit = spot(read, "exitCoordinate").or_else(|| spot(read, "coordinate"));
+            Some((!home && simple).then_some(*yaw))
+        })
+        .collect();
+    let final_yaw = last_flown.and_then(|last| yaws[..=last].iter().rev().flatten().next().copied());
+    reads
+        .into_iter()
+        .zip(yaws)
+        .enumerate()
+        .map(|(index, (read, yaw))| match (yaw.or(final_yaw.filter(|_| Some(index) == last_flown)).filter(|y| y.is_finite()), read) {
+            (Some(yaw), Value::Object(fields)) => Value::Object(fields.into_iter().chain(std::iter::once(("missionVehicleYaw".to_string(), json!(yaw)))).collect()),
+            (_, read) => read,
+        })
+        .collect()
 }
 
 // MissionController::_recalcFlightPathSegments walks from i = 1: item 0 is the MissionSettingsItem
@@ -703,6 +739,8 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "altitudeChangeText": number(read, "altDifference").map(|change| crate::read::altitude_text(change, vertical, true)),
         "azimuth": number(read, "azimuth"),
         "azimuthText": number(read, "azimuth").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
+        "heading": number(read, "missionVehicleYaw"),
+        "headingText": number(read, "missionVehicleYaw").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
         "distance": number(read, "distance"),
         "distanceText": number(read, "distance").map(|metres| crate::missionsummary::distance_text(metres, imperial)),
         "gradientText": gradient_text(number(read, "altDifference"), number(read, "distance")),
@@ -1973,6 +2011,25 @@ mod reported {
         );
     }
 
+
+    #[test]
+    fn vehicle_yaw_follows_each_leg_unless_a_waypoint_names_one() {
+        let at = |lat: f64, lon: f64| json!({ "latitude": lat, "longitude": lon });
+        let home = json!({ "homePosition": true, "specifiesCoordinate": true, "coordinate": at(47.0, 8.0) });
+        let waypoint = |lat: f64, lon: f64, yaw: Option<f64>| json!({ "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": at(lat, lon), "specifiedVehicleYaw": yaw });
+        let roi = json!({ "isSimpleItem": true, "specifiesCoordinate": true, "isStandaloneCoordinate": true, "coordinate": at(0.0, 0.0) });
+        let survey = json!({ "isSimpleItem": false, "specifiesCoordinate": true, "coordinate": at(47.1, 8.1), "exitCoordinate": at(47.2, 8.1) });
+        let reads = with_vehicle_yaws(vec![home, waypoint(47.001, 8.0, None), waypoint(47.001, 8.001, Some(200.0)), roi, waypoint(47.001, 8.002, None), survey]);
+        let yaw = |i: usize| reads[i]["missionVehicleYaw"].as_f64();
+        assert_eq!(yaw(0), None, "home has no vehicle yaw");
+        assert!(yaw(1).is_some_and(|y| y.abs() < 1.0), "the first leg heads north from home");
+        assert_eq!(yaw(2), Some(200.0), "a waypoint yaw overrides the leg");
+        assert_eq!(yaw(3), None, "a standalone coordinate is not flown through");
+        assert!(yaw(4).is_some_and(|y| (y - 90.0).abs() < 1.0), "the next leg heads east from the yawed waypoint");
+        assert_eq!(yaw(5), yaw(4), "the last fly-through item, even a pattern, keeps the running yaw");
+        let unit = |name: &str| crate::read::Unit { name: name.to_string(), factor: 1.0 };
+        assert_eq!(item(&reads[4], 4, &unit("m"), &unit("m/s"), false)["headingText"], "90\u{b0}");
+    }
 
     #[test]
     fn the_speed_section_says_whether_an_item_can_change_speed_and_to_what() {

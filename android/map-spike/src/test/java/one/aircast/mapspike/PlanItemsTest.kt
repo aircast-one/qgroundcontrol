@@ -308,6 +308,11 @@ class LegTextTest {
     }
 
     @Test
+    fun `the expected vehicle heading closes the line`() {
+        assertEquals("449 m · 47° · heading 90°", legText(item(449.0).copy(headingText = "90°")))
+    }
+
+    @Test
     fun `the first item has no leg into it, and QGC says so with a zero rather than a null`() {
         assertNull(legText(item(0.0)))
     }
