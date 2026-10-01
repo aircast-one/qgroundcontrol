@@ -78,7 +78,6 @@ internal val PAGES_WITHOUT_A_SCREEN = mapOf(
 )
 
 internal val SECTIONS_WITHOUT_A_SCREEN = mapOf(
-    "brandImageSettings" to "two paths to image files, with no way to choose a file on a phone",
     "mavlinkActionsSettings" to "two paths to JSON files that have to be on the device already",
 )
 

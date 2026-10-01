@@ -524,7 +524,7 @@ void QGCCoreCTest::_settingsPagesDecodeTheirControls()
     QCOMPARE(take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray().count(), 18);
     const QJsonObject general = take(qgc_bridge_get("view.settings(General)"));
     const QJsonArray sections = general.value(QStringLiteral("sections")).toArray();
-    QCOMPARE(sections.count(), 3);
+    QCOMPARE(sections.count(), 2);
     const QJsonArray subsections = sections.first().toObject().value(QStringLiteral("subsections")).toArray();
     QVERIFY(!subsections.isEmpty());
     const QJsonArray controls = subsections.first().toObject().value(QStringLiteral("controls")).toArray();

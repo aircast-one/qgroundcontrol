@@ -19,7 +19,7 @@ struct Page {
 }
 
 const PAGES: &[Page] = &[
-    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings"), ("Brand Image", "brandImageSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },

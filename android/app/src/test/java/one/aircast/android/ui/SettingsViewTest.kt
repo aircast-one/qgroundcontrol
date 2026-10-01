@@ -54,8 +54,8 @@ class SettingsViewTest {
     fun `a section this head deliberately leaves out is not drawn`() {
         val view = JSONObject(
             """{"title":"General","sections":[
-                 {"title":"Brand Image","group":"brandImageSettings","subsections":[
-                   {"title":"","controls":[{"name":"userBrandImageIndoor","label":"Indoor","control":"text","path":"p"}]}]},
+                 {"title":"Actions","group":"mavlinkActionsSettings","subsections":[
+                   {"title":"","controls":[{"name":"flyViewActionsFile","label":"Fly View","control":"text","path":"p"}]}]},
                  {"title":"Application","group":"appSettings","subsections":[
                    {"title":"","controls":[{"name":"audioMuted","label":"Mute","control":"toggle","path":"q"}]}]}
                ]}""",
