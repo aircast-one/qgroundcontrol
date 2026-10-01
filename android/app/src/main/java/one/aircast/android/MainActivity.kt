@@ -61,6 +61,8 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import one.aircast.android.ui.AppFontScale
+import one.aircast.android.ui.OverlayEditBar
+import one.aircast.android.ui.Hideable
 import one.aircast.android.ui.LogReplayBar
 import one.aircast.android.ui.StatusReadingsInline
 import one.aircast.android.ui.VehicleStateChip
@@ -244,13 +246,13 @@ fun AircastShell(hostView: android.view.View?) {
             )
         }
     }
-    val flyVideoSourceLayer = remember { movableContentOf { VideoSourceLayer() } }
-    val flyCameraControlLayer = remember { movableContentOf { CameraControlLayer() } }
-    val flyObstacleArc = remember { movableContentOf { ObstacleArc() } }
-    val flyAttitude = remember { movableContentOf { AttitudeInstrument() } }
-    val flyOrbitReadout = remember { movableContentOf { OrbitReadout() } }
-    val flyFollowMeReadout = remember { movableContentOf { FollowMeReadout() } }
-    val flyTrafficReadout = remember { movableContentOf { TrafficReadout() } }
+    val flyVideoSourceLayer = remember { movableContentOf { Hideable("videoSource") { VideoSourceLayer() } } }
+    val flyCameraControlLayer = remember { movableContentOf { Hideable("cameraControl") { CameraControlLayer() } } }
+    val flyObstacleArc = remember { movableContentOf { Hideable("obstacleArc") { ObstacleArc() } } }
+    val flyAttitude = remember { movableContentOf { Hideable("instrumentPanel") { AttitudeInstrument() } } }
+    val flyOrbitReadout = remember { movableContentOf { Hideable("orbit") { OrbitReadout() } } }
+    val flyFollowMeReadout = remember { movableContentOf { Hideable("followMe") { FollowMeReadout() } } }
+    val flyTrafficReadout = remember { movableContentOf { Hideable("traffic") { TrafficReadout() } } }
     val flyRcControlsLayer = remember { movableContentOf { RcControlsLayer() } }
 
     val snackbars = remember { SnackbarHostState() }
@@ -360,6 +362,7 @@ fun AircastShell(hostView: android.view.View?) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
+                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.TopCenter).zIndex(2f).padding(top = 8.dp))
 
                 if (tab == Tab.Fly && flyIsPortrait()) {
                     val controllable = hasVehicle()
@@ -381,7 +384,6 @@ fun AircastShell(hostView: android.view.View?) {
                         overlays = {
                             flyAttitude()
                             ObstacleReadout()
-                        TerrainProgress()
                             TerrainProgress()
                             flyOrbitReadout()
                             flyFollowMeReadout()
