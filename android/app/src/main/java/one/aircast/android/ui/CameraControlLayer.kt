@@ -237,6 +237,39 @@ private fun CameraDetailsSheet(
                 )
             }
         }
+        if (camera.canPhoto) {
+            Text(
+                "Photo Mode",
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            listOf("Single" to false, "Time Lapse" to true).forEachIndexed { index, (label, lapse) ->
+                FilterChip(
+                    selected = camera.timelapse == lapse,
+                    onClick = { offMainDetached { Qgc.set(CAMERA_PHOTO_MODE, index) } },
+                    label = { Text(label) },
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+            }
+            if (camera.timelapse) {
+                var interval by remember(camera.lapseSeconds) {
+                    mutableFloatStateOf((camera.lapseSeconds ?: 1.0).toFloat().coerceIn(PHOTO_LAPSE_MIN_S, PHOTO_LAPSE_MAX_S))
+                }
+                Text(
+                    "Photo Interval (seconds)  ${interval.toInt()}",
+                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Slider(
+                    value = interval,
+                    onValueChange = { interval = it },
+                    onValueChangeFinished = { offMainDetached { Qgc.set(CAMERA_PHOTO_LAPSE, interval.toInt().toDouble()) } },
+                    valueRange = PHOTO_LAPSE_MIN_S..PHOTO_LAPSE_MAX_S,
+                    steps = (PHOTO_LAPSE_MAX_S - PHOTO_LAPSE_MIN_S).toInt() - 1,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+        }
         tracking?.let { reading ->
             TextButton(
                 onClick = {

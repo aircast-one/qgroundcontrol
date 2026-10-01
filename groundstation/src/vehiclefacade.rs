@@ -613,6 +613,19 @@ fn clock_text(ms: u64) -> String {
     format!("{:02}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
 }
 
+const CAMERA_STORED: &[(&str, &str)] = &[
+    ("photoCaptureMode", "PhotoCaptureMode"),
+    ("photoLapse", "PhotoLapse"),
+    ("photoLapseCount", "PhotoLapseCount"),
+    ("thermalMode", "ThermalMode"),
+    ("thermalOpacity", "ThermalOpacity"),
+];
+
+pub fn camera_stored_key(path: &str) -> Option<&'static str> {
+    let field = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.")?;
+    CAMERA_STORED.iter().find(|(name, _)| *name == field).map(|(_, key)| *key)
+}
+
 fn stored_number(key: &str) -> Option<f64> {
     crate::settingsstore::stored_text(key).and_then(|text| text.trim().parse().ok())
 }
@@ -1339,6 +1352,16 @@ impl<B: Backend> Backend for Facade<B> {
             }
             return self.0.set(path, value);
         }
+        if let Some(key) = camera_stored_key(path).filter(|_| switched_on() && crate::hub::lock().active().is_some_and(|v| v.cameras.selected().is_some())) {
+            let number = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
+            return match number.filter(|n| n.is_finite()) {
+                Some(number) => {
+                    crate::settingsstore::written(key, &number.to_string());
+                    json!({ "ok": true }).to_string()
+                }
+                None => json!({ "ok": false, "error": "A camera setting is a number." }).to_string(),
+            };
+        }
         if path == "vehicle.cameraManager.currentCameraInstance.currentStream" && switched_on() {
             let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
             let vehicle = crate::hub::lock().active_id();
@@ -1556,6 +1579,14 @@ impl<B: Backend> Backend for Facade<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn camera_local_settings_are_kept_under_qgcs_own_keys() {
+        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.photoCaptureMode"), Some("PhotoCaptureMode"));
+        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.photoLapse"), Some("PhotoLapse"));
+        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.thermalOpacity"), Some("ThermalOpacity"));
+        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.zoomLevel"), None, "zoom is a command to the camera, not a stored setting");
+    }
+
     use super::*;
 
     #[test]

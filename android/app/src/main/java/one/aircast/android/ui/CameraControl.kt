@@ -219,6 +219,10 @@ internal fun destructiveInvokePath(id: String): String? = when (id) {
     else -> null
 }
 
+internal const val CAMERA_PHOTO_MODE = "vehicle.cameraManager.currentCameraInstance.photoCaptureMode"
+internal const val CAMERA_PHOTO_LAPSE = "vehicle.cameraManager.currentCameraInstance.photoLapse"
+internal const val PHOTO_LAPSE_MIN_S = 1f
+internal const val PHOTO_LAPSE_MAX_S = 60f
 internal const val CAMERA_CURRENT_STREAM = "vehicle.cameraManager.currentCameraInstance.currentStream"
 internal const val CAMERA_THERMAL_MODE = "vehicle.cameraManager.currentCameraInstance.thermalMode"
 internal const val CAMERA_THERMAL_OPACITY = "vehicle.cameraManager.currentCameraInstance.thermalOpacity"
