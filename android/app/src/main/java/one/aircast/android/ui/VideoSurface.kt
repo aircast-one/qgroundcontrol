@@ -4,6 +4,8 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Box
@@ -32,6 +34,7 @@ fun VideoSurface(
     modifier: Modifier = Modifier,
     expanded: Boolean = false,
     onClick: () -> Unit = {},
+    onDoubleTap: () -> Unit = {},
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
@@ -46,7 +49,7 @@ fun VideoSurface(
     val aspect = videoAspect(video?.sourceSize, (aspectSetting as? Number)?.toDouble() ?: aspectSetting?.toString()?.toDoubleOrNull())
 
     BoxWithConstraints(
-        (if (expanded) modifier else modifier.clickable { onClick() }).clipToBounds(),
+        (if (expanded) modifier.pointerInput(video?.decoding) { if (video?.decoding == true) detectTapGestures(onDoubleTap = { onDoubleTap() }) } else modifier.clickable { onClick() }).clipToBounds(),
         contentAlignment = Alignment.Center,
     ) {
         val (contentWidth, contentHeight) = videoContentSize(maxWidth.value, maxHeight.value, aspect, (fitMode as? Number)?.toInt() ?: fitMode?.toString()?.toIntOrNull() ?: VIDEO_FIT_HEIGHT)

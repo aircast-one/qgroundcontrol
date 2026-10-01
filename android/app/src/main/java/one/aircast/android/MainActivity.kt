@@ -11,6 +11,9 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.activity.compose.BackHandler
+import one.aircast.android.ui.videoReading
+import one.aircast.android.ui.VIDEO_VIEW
+import one.aircast.android.bridge.qgcPath
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
@@ -233,12 +236,13 @@ fun AircastShell(hostView: android.view.View?) {
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var popEpoch by remember { mutableIntStateOf(0) }
     var videoExpanded by remember { mutableStateOf(true) }
+    var videoFullScreen by remember { mutableStateOf(false) }
 
     val flightActions = remember { movableContentOf { FlightActions() } }
     val emergencyStop = remember { movableContentOf { PinnedEmergencyStop() } }
     val flyVideo = remember {
         movableContentOf<Modifier, Boolean> { mod, expanded ->
-            VideoSurface(modifier = mod, expanded = expanded, onClick = { videoExpanded = !videoExpanded })
+            VideoSurface(modifier = mod, expanded = expanded, onClick = { videoExpanded = !videoExpanded }, onDoubleTap = { videoFullScreen = !videoFullScreen })
         }
     }
     var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
@@ -328,7 +332,16 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 
+    val fullScreenVideoJson by qgcPath(VIDEO_VIEW)
+    val fullScreen = videoFullScreen && tab == Tab.Fly && videoExpanded && videoReading(fullScreenVideoJson)?.decoding == true
+    LaunchedEffect(fullScreen) { if (!fullScreen) videoFullScreen = false }
+    BackHandler(enabled = fullScreen) { videoFullScreen = false }
+
     AircastTheme {
+        if (fullScreen) {
+            Box(Modifier.fillMaxSize()) { flyVideo(Modifier.fillMaxSize(), true) }
+            return@AircastTheme
+        }
         Scaffold(
             snackbarHost = { SnackbarHost(snackbars) },
             topBar = {
@@ -434,8 +447,8 @@ fun AircastShell(hostView: android.view.View?) {
                 }
 
                 if (!flyIsPortrait()) {
-                    VideoSurface(
-                        modifier = if (videoExpanded) {
+                    flyVideo(
+                        if (videoExpanded) {
                             Modifier.fillMaxSize()
                         } else {
                             Modifier
@@ -443,8 +456,7 @@ fun AircastShell(hostView: android.view.View?) {
                                 .padding(12.dp)
                                 .size(width = VIDEO_INSET_WIDTH, height = VIDEO_INSET_HEIGHT)
                         },
-                        expanded = videoExpanded,
-                        onClick = { videoExpanded = !videoExpanded },
+                        videoExpanded,
                     )
                 }
 
