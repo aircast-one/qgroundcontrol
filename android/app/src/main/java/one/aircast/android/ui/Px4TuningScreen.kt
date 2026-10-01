@@ -31,16 +31,29 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
+import androidx.compose.runtime.DisposableEffect
 import one.aircast.mapspike.optText
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
 
 internal const val PX4_TUNING_VIEW = "view.px4Tuning"
+internal const val SET_TUNING_TELEMETRY = "vehicle.setPIDTuningTelemetryMode"
+private const val DEFAULT_CHART_SECONDS = 8.0
 
 internal data class TuningParam(val title: String, val description: String, val min: Float, val max: Float, val step: Float, val fact: Fact)
-internal data class TuningAxis(val name: String, val params: List<TuningParam>)
-internal data class TuningTab(val name: String, val title: String, val unit: String, val extras: List<Fact>, val axes: List<TuningAxis>)
+internal data class TuningPlot(val name: String, val path: String)
+internal data class TuningAxis(val name: String, val chartTitle: String = "", val plot: List<TuningPlot> = emptyList(), val params: List<TuningParam>)
+internal data class TuningTab(
+    val name: String,
+    val title: String,
+    val unit: String,
+    val extras: List<Fact>,
+    val axes: List<TuningAxis>,
+    val tuningMode: Int = 0,
+    val chartSeconds: Double = DEFAULT_CHART_SECONDS,
+)
 
 private fun <T> JSONArray?.mapObjects(read: (JSONObject) -> T?): List<T> =
     (0 until (this?.length() ?: 0)).mapNotNull { index -> this?.optJSONObject(index)?.let(read) }
@@ -52,9 +65,13 @@ internal fun tuningTabs(view: JSONObject?): List<TuningTab> =
             title = tab.optText("title"),
             unit = tab.optText("unit"),
             extras = tab.optJSONArray("extras").mapObjects(::factFromControl),
+            tuningMode = tab.optInt("tuningMode"),
+            chartSeconds = tab.optDouble("chartSeconds", DEFAULT_CHART_SECONDS),
             axes = tab.optJSONArray("axes").mapObjects { axis ->
                 TuningAxis(
                     name = axis.optText("name"),
+                    chartTitle = axis.optText("chartTitle"),
+                    plot = axis.optJSONArray("plot").mapObjects { TuningPlot(it.optText("name"), it.optText("path")) },
                     params = axis.optJSONArray("params").mapObjects { param ->
                         param.optJSONObject("fact")?.let(::factFromControl)?.let { fact ->
                             TuningParam(
@@ -104,6 +121,11 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
     }
     val axis = tab.axes.getOrNull(axisIndex) ?: tab.axes.firstOrNull()
 
+    DisposableEffect(tab.tuningMode) {
+        scope.launch(Dispatchers.IO) { Qgc.invoke(SET_TUNING_TELEMETRY, tab.tuningMode) }
+        onDispose { offMainDetached { Qgc.invoke(SET_TUNING_TELEMETRY, 0) } }
+    }
+
     fun write(path: String, value: Any) {
         scope.launch {
             refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(path, value) }
@@ -119,12 +141,12 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             tab.extras.forEach { fact -> FactRow(fact) { revision++ } }
-            Text("${tab.title} (${tab.unit})", style = MaterialTheme.typography.titleSmall)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 tab.axes.forEachIndexed { index, each ->
                     FilterChip(selected = each == axis, onClick = { axisIndex = index }, label = { Text(each.name) })
                 }
             }
+            axis?.let { TuningChart(it, tab.unit, tab.chartSeconds) }
             axis?.params?.forEach { param ->
                 TuningSlider(param) { value -> write(param.fact.path, value) }
             }

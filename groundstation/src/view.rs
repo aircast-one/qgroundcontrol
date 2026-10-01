@@ -517,6 +517,7 @@ mod deps_cover_reads {
             ("plantransform", include_str!("plantransform.rs")),
             ("px4tuning", include_str!("px4tuning.rs")),
             ("px4airframe", include_str!("px4airframe.rs")),
+            ("streamconfig", include_str!("streamconfig.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),

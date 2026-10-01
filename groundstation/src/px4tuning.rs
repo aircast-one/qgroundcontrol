@@ -9,6 +9,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.vehicleTypeString", "vehicle.parameterManager.parametersReady", "vehicle.px4Firmware"];
 
+const DEFAULT_CHART_SECONDS: f64 = 8.0;
 const PAGES: &[(&str, &str)] = &[
     ("PX4TuningComponentCopterAll.qml", include_str!("../../src/AutoPilotPlugins/PX4/PX4TuningComponentCopterAll.qml")),
     ("PX4TuningComponentPlaneAll.qml", include_str!("../../src/AutoPilotPlugins/PX4/PX4TuningComponentPlaneAll.qml")),
@@ -37,8 +38,16 @@ pub struct Param {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Plot {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Axis {
     pub name: String,
+    pub plot_title: String,
+    pub plot: Vec<Plot>,
     pub params: Vec<Param>,
 }
 
@@ -48,8 +57,13 @@ pub struct Page {
     pub title: String,
     pub unit: String,
     pub extras: Vec<String>,
+    pub tuning_mode: i64,
+    pub chart_seconds: f64,
     pub axes: Vec<Axis>,
 }
+
+pub const SET_TELEMETRY_MODE: &str = "vehicle.setPIDTuningTelemetryMode";
+const TUNING_MODES: [&str; 4] = ["ModeDisabled", "ModeRateAndAttitude", "ModeVelocityAndPosition", "ModeAltitudeAndAirspeed"];
 
 fn regex(pattern: &str) -> Regex {
     Regex::new(pattern).unwrap_or_else(|error| panic!("tuning pattern {pattern}: {error}"))
@@ -60,6 +74,9 @@ static ELEMENT: LazyLock<Regex> = LazyLock::new(|| regex(r"(?s)ListElement\s*\{(
 static AXIS_ORDER: LazyLock<Regex> = LazyLock::new(|| regex(r"axis:\s*\[([^\]]*)\]"));
 static UNIT: LazyLock<Regex> = LazyLock::new(|| regex(r#"unit:\s*(?:qsTr\()?"([^"]*)""#));
 static TITLE: LazyLock<Regex> = LazyLock::new(|| regex(r#"PIDTuning\s*\{[^}]*?title:\s*qsTr\("([^"]+)"\)"#));
+static PLOT: LazyLock<Regex> = LazyLock::new(|| regex(r#"\{\s*name:\s*"([^"]+)",\s*value:\s*globals\.activeVehicle\.([A-Za-z0-9_.]+)\.value\s*\}"#));
+static MODE: LazyLock<Regex> = LazyLock::new(|| regex(r"tuningMode:\s*Vehicle\.(Mode\w+)"));
+static SECONDS: LazyLock<Regex> = LazyLock::new(|| regex(r"chartDisplaySec:\s*([0-9.]+)"));
 static EXTRA: LazyLock<Regex> = LazyLock::new(|| regex(r#"getParameterFact\(-1,\s*"([A-Z0-9_]+)""#));
 
 fn source(file: &str) -> Option<&'static str> {
@@ -79,9 +96,10 @@ fn number(block: &str, key: &str) -> Option<f64> {
 }
 
 fn axis_block<'a>(text: &'a str, name: &str) -> Option<&'a str> {
-    let start = text.find(&format!("property var {name}: QtObject"))?;
-    let rest = &text[start + 1..];
-    let end = rest.find("property var ").filter(|end| rest[..*end].contains("ListModel")).map_or(rest.len(), |end| end);
+    let header = format!("property var {name}: QtObject");
+    let start = text.find(&header)? + header.len();
+    let rest = &text[start..];
+    let end = rest.find(": QtObject").and_then(|next| rest[..next].rfind("property var ")).unwrap_or(rest.len());
     Some(&rest[..end])
 }
 
@@ -100,7 +118,8 @@ fn page_of(tab: &str, file: &str) -> Option<Page> {
                     Some(Param { title: quoted(body, "title"), description: quoted(body, "description"), param, min: number(body, "min")?, max: number(body, "max")?, step: number(body, "step")? })
                 })
                 .collect();
-            Some(Axis { name: quoted(block, "property string name"), params })
+            let plot = PLOT.captures_iter(block).map(|c| Plot { name: c[1].to_string(), path: format!("vehicle.{}", &c[2]) }).collect();
+            Some(Axis { name: quoted(block, "property string name"), plot_title: quoted(block, "property string plotTitle"), plot, params })
         })
         .collect();
     Some(Page {
@@ -108,6 +127,8 @@ fn page_of(tab: &str, file: &str) -> Option<Page> {
         title: TITLE.captures(&text).map(|c| c[1].to_string()).unwrap_or_default(),
         unit: UNIT.captures(&text).map(|c| c[1].to_string()).unwrap_or_default(),
         extras: EXTRA.captures_iter(&text).map(|c| c[1].to_string()).collect(),
+        tuning_mode: MODE.captures(&text).and_then(|c| TUNING_MODES.iter().position(|m| *m == &c[1])).map_or(0, |i| i as i64),
+        chart_seconds: SECONDS.captures(&text).and_then(|c| c[1].parse().ok()).unwrap_or(DEFAULT_CHART_SECONDS),
         axes,
     })
 }
@@ -167,9 +188,13 @@ pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "name": page.tab,
                 "title": page.title,
                 "unit": page.unit,
+                "tuningMode": page.tuning_mode,
+                "chartSeconds": page.chart_seconds,
                 "extras": page.extras.iter().filter_map(|name| control(backend, name)).collect::<Vec<_>>(),
                 "axes": page.axes.iter().map(|axis| json!({
                     "name": axis.name,
+                    "chartTitle": format!("{} {}", if axis.plot_title.is_empty() { &axis.name } else { &axis.plot_title }, page.title),
+                    "plot": axis.plot.iter().map(|p| json!({ "name": p.name, "path": p.path })).collect::<Vec<_>>(),
                     "params": axis.params.iter().filter_map(|p| control(backend, &p.param).map(|fact| json!({
                         "title": p.title,
                         "description": p.description,
@@ -184,6 +209,13 @@ pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .collect();
     json!({ "kind": "object", "class": "Px4Tuning", "available": !tabs.is_empty(), "tabs": tabs })
+}
+
+pub fn set_telemetry_mode(backend: &dyn Backend, args: &str) -> Value {
+    let Some(mode) = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_i64()).filter(|m| (0..TUNING_MODES.len() as i64).contains(m)) else {
+        return json!({ "ok": false, "reason": "The PID tuning telemetry mode is 0 to 3." });
+    };
+    crate::guided::dispatch(backend, Some(json!({ "action": "pidTuningMode", "mode": mode })), crate::guided::active_id(backend), SET_TELEMETRY_MODE, &json!([mode]).to_string())
 }
 
 #[cfg(test)]
@@ -206,6 +238,12 @@ mod tests {
             max: 3.0,
             step: 0.05,
         });
+        assert_eq!(rate.axes.iter().map(|a| a.params.len()).collect::<Vec<_>>(), [3, 3, 2], "each axis holds only its own gains; yaw has no D");
+        assert_eq!(rate.tuning_mode, 1);
+        assert_eq!(rate.chart_seconds, 3.0);
+        assert_eq!(rate.axes[0].plot, [Plot { name: "Response".into(), path: "vehicle.rollRate".into() }, Plot { name: "Setpoint".into(), path: "vehicle.setpoint.rollRate".into() }]);
+        assert_eq!(copter[2].tuning_mode, 2, "velocity tunes with the velocity and position streams");
+        assert!(copter.iter().all(|page| page.axes.iter().all(|axis| axis.plot.len() == 2)), "every axis plots a response against its setpoint");
         assert!(copter.iter().all(|page| !page.axes.is_empty() && page.axes.iter().all(|axis| !axis.params.is_empty())), "every tab parses to axes with sliders: {copter:#?}");
     }
 

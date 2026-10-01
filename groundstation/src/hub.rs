@@ -37,6 +37,7 @@ pub const ARMED_FLAG: u8 = 128;
 const MANUAL_CONTROL_SCALE: f32 = 1000.0;
 const AIRFRAME_PARAMS: [&str; 2] = ["SYS_AUTOSTART", "SYS_AUTOCONFIG"];
 const AIRFRAME_REBOOT_DELAY_MS: u64 = 800;
+const CMD_SET_MESSAGE_INTERVAL: u16 = 511;
 const MAV_STATE_ACTIVE: u8 = 4;
 const SEVERITY_ERROR: u8 = 3;
 const COMMAND_LONG_ID: u32 = 76;
@@ -165,6 +166,7 @@ pub struct Vehicle {
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
     pub airframe_reboot: Option<Option<u64>>,
+    stream: crate::streamconfig::StreamConfig,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
@@ -316,6 +318,7 @@ impl Vehicle {
             image_captured_seen: false,
             rc_release_ticks: 0,
             airframe_reboot: None,
+            stream: crate::streamconfig::StreamConfig::default(),
             rc_due: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
@@ -1114,6 +1117,13 @@ impl Vehicle {
         Ok(self.follow_params(actions, now_ms))
     }
 
+    fn send_interval(&mut self, interval: Option<crate::streamconfig::Interval>, now_ms: u64) -> Vec<Vec<u8>> {
+        let Some((message, rate)) = interval else { return Vec::new() };
+        let params = [f64::from(message), f64::from(rate), 0.0, 0.0, 0.0, 0.0, 0.0];
+        let outs = self.commands.send(Command { component: self.component, command: CMD_SET_MESSAGE_INTERVAL, command_int: false, frame: 0, params, show_error: true, tag: 0 }, now_ms);
+        self.handle(outs, now_ms)
+    }
+
     fn tick_airframe_reboot(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let acked = !AIRFRAME_PARAMS.iter().any(|name| self.params.writing(self.component, name));
         match self.airframe_reboot {
@@ -1187,6 +1197,11 @@ impl Vehicle {
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("changeAutostart") => return self.change_autostart(action, now_ms),
+            Some("pidTuningMode") => {
+                let mode = action.get("mode").and_then(Value::as_i64).and_then(crate::streamconfig::Mode::from_index).ok_or("The PID tuning telemetry mode is 0 to 3.")?;
+                let next = self.stream.set_mode(mode);
+                return Ok(self.send_interval(next, now_ms));
+            }
             Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("refreshParameters") => {
                 let actions = self.params.refresh_all(params::ALL_COMPONENTS);
@@ -1795,7 +1810,14 @@ impl Vehicle {
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
                 let announced = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
-                return camera.into_iter().chain(announced).chain(self.handle(outs, now_ms)).collect();
+                let streamed = match a.command as u32 as u16 == CMD_SET_MESSAGE_INTERVAL {
+                    true => {
+                        let next = self.stream.got_ack();
+                        self.send_interval(next, now_ms)
+                    }
+                    false => Vec::new(),
+                };
+                return camera.into_iter().chain(announced).chain(self.handle(outs, now_ms)).chain(streamed).collect();
             }
             MavMessage::COMMAND_LONG(c) if c.command as u32 as u16 == sensorcal::CMD_ACCELCAL_VEHICLE_POS => {
                 let actions = self.calibrate.on_accel_position(c.param1 as u32, now_ms);
@@ -3216,6 +3238,22 @@ mod tests {
         let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();
         assert!(matches!(decode(&refreshed[0].1), MavMessage::PARAM_REQUEST_READ(r) if r.param_index == -1 && r.param_id.to_str().unwrap() == "WPNAV_SPEED"));
         assert!(hub.parameter_request(Some(9), &json!({ "name": "X", "value": 1.0 }), 12_000).is_err());
+    }
+
+    #[test]
+    fn pid_tuning_raises_the_attitude_streams_one_acknowledged_interval_at_a_time() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let interval = |bytes: &[Vec<u8>]| bytes.iter().find_map(|b| match decode(b) { MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL => Some((c.param1, c.param2)), _ => None });
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        assert_eq!(interval(&vehicle.start_guided(&json!({ "action": "pidTuningMode", "mode": 1 }), 20_000).unwrap()), Some((83.0, 10_000.0)));
+        let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        let next: Vec<Vec<u8>> = hub.on_frame(origin(4), &autopilot, &ack, 20_100_000, 20_100).into_iter().map(|(_, b)| b).collect();
+        assert_eq!(interval(&next), Some((31.0, 10_000.0)));
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        assert!(vehicle.start_guided(&json!({ "action": "pidTuningMode", "mode": 7 }), 20_200).is_err());
     }
 
     #[test]

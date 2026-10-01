@@ -8250,6 +8250,7 @@
         "view.px4Tuning.kind",
         "view.px4Tuning.tabs.#",
         "view.px4Tuning.tabs[].axes.#",
+        "view.px4Tuning.tabs[].axes[].chartTitle",
         "view.px4Tuning.tabs[].axes[].name",
         "view.px4Tuning.tabs[].axes[].params.#",
         "view.px4Tuning.tabs[].axes[].params[].description",
@@ -8286,6 +8287,10 @@
         "view.px4Tuning.tabs[].axes[].params[].param",
         "view.px4Tuning.tabs[].axes[].params[].step",
         "view.px4Tuning.tabs[].axes[].params[].title",
+        "view.px4Tuning.tabs[].axes[].plot.#",
+        "view.px4Tuning.tabs[].axes[].plot[].name",
+        "view.px4Tuning.tabs[].axes[].plot[].path",
+        "view.px4Tuning.tabs[].chartSeconds",
         "view.px4Tuning.tabs[].extras.#",
         "view.px4Tuning.tabs[].extras[].applicationRestartRequired",
         "view.px4Tuning.tabs[].extras[].bits.#",
@@ -8319,6 +8324,7 @@
         "view.px4Tuning.tabs[].extras[].wholeNumbersOnly",
         "view.px4Tuning.tabs[].name",
         "view.px4Tuning.tabs[].title",
+        "view.px4Tuning.tabs[].tuningMode",
         "view.px4Tuning.tabs[].unit",
         "view.radio.calibrating",
         "view.radio.cancelEnabled",
@@ -11721,6 +11727,7 @@
             {
                 "axes": [
                     {
+                        "chartTitle": "string",
                         "name": "string",
                         "params": [
                             {
@@ -11767,9 +11774,16 @@
                                 "step": "number",
                                 "title": "string"
                             }
+                        ],
+                        "plot": [
+                            {
+                                "name": "string",
+                                "path": "string"
+                            }
                         ]
                     }
                 ],
+                "chartSeconds": "number",
                 "extras": [
                     {
                         "applicationRestartRequired": "bool",
@@ -11813,6 +11827,7 @@
                 ],
                 "name": "string",
                 "title": "string",
+                "tuningMode": "number",
                 "unit": "string"
             }
         ]
