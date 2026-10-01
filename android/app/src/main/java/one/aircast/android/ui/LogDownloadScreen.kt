@@ -85,6 +85,8 @@ internal data class LogsView(
     val canDownload: Boolean,
     val canCancel: Boolean,
     val canErase: Boolean,
+    val eraseSelectedShown: Boolean = false,
+    val canEraseSelected: Boolean = false,
     val canSort: Boolean = false,
     val sortText: String = "",
     val busy: Boolean,
@@ -120,6 +122,8 @@ internal fun logsView(view: JSONObject?): LogsView? {
         canDownload = view.optBoolean("canDownload"),
         canCancel = view.optBoolean("canCancel"),
         canErase = view.optBoolean("canErase"),
+        eraseSelectedShown = view.optBoolean("eraseSelectedShown"),
+        canEraseSelected = view.optBoolean("canEraseSelected"),
         canSort = view.optBoolean("canSort"),
         sortText = view.optText("sortText"),
         busy = view.optBoolean("busy"),
@@ -129,21 +133,24 @@ internal fun logsView(view: JSONObject?): LogsView? {
     )
 }
 
+internal enum class EraseKind(val action: String, val title: String, val text: String, val confirm: String) {
+    All("eraseAll", "Erase all logs?", "This permanently deletes every log on the vehicle. It cannot be undone.", "Erase all"),
+    Selected("eraseSelected", "Delete Selected Onboard Log Files", "The selected onboard log files will be erased permanently. Is this really what you want?", "Erase selected"),
+}
+
 @Composable
-private fun EraseConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun EraseConfirmDialog(erase: EraseKind, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Erase all logs?") },
-        text = {
-            Text("This permanently deletes every log on the vehicle. It cannot be undone.")
-        },
+        title = { Text(erase.title) },
+        text = { Text(erase.text) },
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(); onDismiss() },
                 colors = ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.error,
                 ),
-            ) { Text("Erase all") }
+            ) { Text(erase.confirm) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -203,7 +210,7 @@ internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, hasEntries: Boolean, bus
 fun LogDownloadScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(LOGS_VIEW)
     val logs = remember(json) { logsView(json) }
-    var confirmErase by remember { mutableStateOf(false) }
+    var confirmErase by remember { mutableStateOf<EraseKind?>(null) }
     val scope = rememberCoroutineScope()
 
     val entries = logs?.entries.orEmpty()
@@ -216,10 +223,11 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    if (confirmErase) {
+    confirmErase?.let { erase ->
         EraseConfirmDialog(
-            onConfirm = { scope.offMain { Qgc.invoke("$LOG_ROOT.eraseAll") } },
-            onDismiss = { confirmErase = false },
+            erase = erase,
+            onConfirm = { scope.offMain { Qgc.invoke("$LOG_ROOT.${erase.action}") } },
+            onDismiss = { confirmErase = null },
         )
     }
 
@@ -301,10 +309,20 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                     HorizontalDivider()
                 }
                 item(key = "erase") {
+                    if (!busy && logs.eraseSelectedShown) {
+                        TextButton(
+                            enabled = logs.canEraseSelected,
+                            onClick = { confirmErase = EraseKind.Selected },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        ) { Text("Erase selected logs from the vehicle") }
+                    }
                     if (!busy) {
                         TextButton(
                             enabled = logs.canErase,
-                            onClick = { confirmErase = true },
+                            onClick = { confirmErase = EraseKind.All },
                             colors = ButtonDefaults.textButtonColors(
                                 contentColor = MaterialTheme.colorScheme.error,
                             ),

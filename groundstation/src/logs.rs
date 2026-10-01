@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.selectedCount", "logDownload.model", "vehicle.id", "logDownload.sortAscending"];
+pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.selectedCount", "logDownload.model", "vehicle.id", "logDownload.sortAscending", "logDownload.transport"];
 
 pub fn human_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["bytes", "KB", "MB", "GB"];
@@ -20,6 +20,7 @@ pub fn human_size(bytes: i64) -> String {
 }
 
 const CLOCK_SET_YEAR: i64 = 2010;
+pub const FTP_TRANSPORT: &str = "ftp";
 
 pub fn time_state(received: bool, raw: &str) -> &'static str {
     let year = raw.get(..4).and_then(|y| y.parse::<i64>().ok());
@@ -76,7 +77,8 @@ fn answered(vehicle: Option<i64>, requesting: bool) -> bool {
 
 pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,sortAscending"));
+    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,sortAscending,selectedCount,transport"));
+    let ftp = crate::read::text(&root, "transport") == FTP_TRANSPORT;
     let saving = object(&backend.get_fields("settings.appSettings", "logSavePath,savePath"));
     let save_path = saving.get("logSavePath").and_then(Value::as_str).unwrap_or("").to_string();
     let chosen = crate::read::text(saving.get("savePath").unwrap_or(&Value::Null), "valueString");
@@ -137,6 +139,8 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canSort": connected && !busy && entries.len() > 1,
         "sortText": if flag(&root, "sortAscending") { "Sort Descending" } else { "Sort Ascending" },
         "canErase": connected && !entries.is_empty() && !busy,
+        "eraseSelectedShown": ftp,
+        "canEraseSelected": ftp && connected && !busy && root.get("selectedCount").and_then(Value::as_u64).unwrap_or(0) > 0,
         "anyDownloaded": entries.iter().any(|e| e["statusId"] == "downloaded"),
         "emptyText": empty_text(connected, requesting, answered(vehicle, requesting)),
         "eraseWarning": erase_warning(entries.len()),
@@ -150,6 +154,7 @@ pub enum Action {
     Download,
     Cancel,
     EraseAll,
+    EraseSelected,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -159,6 +164,7 @@ struct Controller {
     entries: usize,
     selected: usize,
     save_path: bool,
+    ftp: bool,
 }
 
 fn refusal(action: Action, state: Controller) -> Option<(&'static str, &'static str)> {
@@ -170,13 +176,15 @@ fn refusal(action: Action, state: Controller) -> Option<(&'static str, &'static 
         Action::Download if state.selected == 0 => Some(("nothingSelected", "Select at least one log to download.")),
         Action::Download if !state.save_path => Some(("noSavePath", "Choose a folder to save logs in.")),
         Action::EraseAll if state.entries == 0 => Some(("noLogs", "The vehicle has no logs listed to erase.")),
+        Action::EraseSelected if !state.ftp => Some(("needsFtp", "Erasing single logs needs the vehicle to offer MAVLink FTP.")),
+        Action::EraseSelected if state.selected == 0 => Some(("nothingSelected", "Select at least one log to erase.")),
         _ => None,
     }
 }
 
 pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Value {
     let chosen = serde_json::from_str::<Value>(args).ok().and_then(|a| a.as_array()?.first()?.as_str().map(str::to_string)).filter(|p| !p.trim().is_empty());
-    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,selectedCount"));
+    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,selectedCount,transport"));
     let saving = object(&backend.get_fields("settings.appSettings", "logSavePath"));
     let state = Controller {
         connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
@@ -184,6 +192,7 @@ pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Val
         entries: object(&backend.get("logDownload.model")).get("elements").and_then(Value::as_array).map_or(0, Vec::len),
         selected: root.get("selectedCount").and_then(Value::as_u64).unwrap_or(0) as usize,
         save_path: chosen.is_some() || saving.get("logSavePath").and_then(Value::as_str).is_some_and(|p| !p.is_empty()),
+        ftp: crate::read::text(&root, "transport") == FTP_TRANSPORT,
     };
     if let Some((token, reason)) = refusal(action, state) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
@@ -342,7 +351,7 @@ mod tests {
     }
     #[test]
     fn every_log_action_says_why_it_would_have_done_nothing() {
-        let ready = Controller { connected: true, busy: false, entries: 3, selected: 1, save_path: true };
+        let ready = Controller { connected: true, busy: false, entries: 3, selected: 1, save_path: true, ftp: true };
         let token = |action, state| refusal(action, state).map(|(t, _)| t);
         [Action::Refresh, Action::Download, Action::EraseAll].iter().for_each(|a| assert_eq!(token(*a, ready), None, "{a:?}"));
         assert_eq!(token(Action::Refresh, Controller { connected: false, ..ready }), Some("noVehicle"));
@@ -351,6 +360,9 @@ mod tests {
         assert_eq!(token(Action::Download, Controller { selected: 0, ..ready }), Some("nothingSelected"), "download() with nothing selected is a no-op");
         assert_eq!(token(Action::Download, Controller { save_path: false, ..ready }), Some("noSavePath"), "_downloadToDirectory returns on an empty path after clearing the download state");
         assert_eq!(token(Action::EraseAll, Controller { entries: 0, ..ready }), Some("noLogs"));
+        assert_eq!(token(Action::EraseSelected, ready), None);
+        assert_eq!(token(Action::EraseSelected, Controller { ftp: false, ..ready }), Some("needsFtp"), "eraseSelected only works on the FTP transport and logs a warning otherwise");
+        assert_eq!(token(Action::EraseSelected, Controller { selected: 0, ..ready }), Some("nothingSelected"));
         assert_eq!(token(Action::Cancel, ready), Some("idle"));
         assert_eq!(token(Action::Cancel, Controller { connected: false, busy: true, ..ready }), None, "a cancel has to reach a transfer whose vehicle has already gone");
     }
