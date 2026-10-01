@@ -389,8 +389,17 @@ fn sensors_request(path: &str, args: &str) -> Option<Value> {
     }
 }
 
+fn without_any_vehicle() -> bool {
+    !crate::qthost::present() && crate::hub::lock().active().is_none()
+}
+
 fn inspector_owned() -> bool {
-    switched_on() && crate::hub::lock().active().is_some()
+    switched_on() && (without_any_vehicle() || crate::hub::lock().active().is_some())
+}
+
+fn calibration_without_vehicle(path: &str) -> bool {
+    let root = path.split('.').next().unwrap_or(path);
+    matches!(root, "sensorsCal" | "radioCal") && switched_on() && without_any_vehicle()
 }
 
 fn inspector_get(path: &str) -> Option<Value> {
@@ -413,7 +422,8 @@ fn only_fields(answer: Value, wanted: &[&str]) -> Value {
 
 fn shell_lines() -> Option<Vec<String>> {
     switched_on().then_some(())?;
-    crate::hub::lock().active().map(|vehicle| vehicle.shell.lines())
+    let lines = crate::hub::lock().active().map(|vehicle| vehicle.shell.lines());
+    lines.or_else(|| without_any_vehicle().then(Vec::new))
 }
 
 fn selected_member(path: &str) -> Option<(usize, &str)> {
@@ -547,7 +557,9 @@ const CAMERA_INSTANCE: &str = "vehicle.cameraManager.currentCameraInstance";
 
 fn onboard_logs<T>(read: impl FnOnce(&crate::onboardlogs::OnboardLogs) -> T) -> Option<T> {
     switched_on().then_some(())?;
-    crate::hub::lock().active().map(|v| read(&v.onboard_logs))
+    let idle = without_any_vehicle().then(crate::onboardlogs::OnboardLogs::default);
+    let hub = crate::hub::lock();
+    hub.active().map(|v| &v.onboard_logs).or(idle.as_ref()).map(read)
 }
 
 fn onboard_log_get(path: &str) -> Option<Value> {
@@ -1096,6 +1108,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = inspector_get(path) {
             return answer.to_string();
         }
+        if calibration_without_vehicle(path) {
+            return json!({ "kind": "null" }).to_string();
+        }
         if let Some(sensors) = path.strip_prefix("sensorsCal").filter(|_| switched_on()).and_then(|rest| {
             let sensors = crate::hub::lock().sensors_json()?;
             match rest.strip_prefix('.') {
@@ -1206,6 +1221,9 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
             return json!({ "kind": "object", "lines": lines }).to_string();
+        }
+        if calibration_without_vehicle(asked_path) {
+            return json!({ "kind": "null" }).to_string();
         }
         if let Some(sensors) = (asked_path == "sensorsCal" && switched_on()).then(|| crate::hub::lock().sensors_json()).flatten() {
             return only_fields(sensors, &fields_of(fields)).to_string();
