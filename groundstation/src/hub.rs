@@ -1634,6 +1634,10 @@ impl Vehicle {
                     })
                     .collect());
             }
+            Some("revertTakeoverTimer") => {
+                self.control.start_revert(now_ms);
+                return Ok(Vec::new());
+            }
             Some("requestControl") => {
                 let allow = action.get("allowTakeover").and_then(Value::as_bool).unwrap_or(false);
                 let (Some(timeout), Some(safe)) = (action.get("timeout").and_then(Value::as_i64), action.get("safeTimeout").and_then(Value::as_i64)) else {
@@ -1765,6 +1769,10 @@ impl Vehicle {
         let ticked = self.commands.tick(now_ms);
         self.control.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
+        if self.control.revert_due(now_ms, mavout::gcs_system()) {
+            let revert = Outbound::RawCommandLong { target: (self.id, self.component), command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params: [0.0, 1.0, 0.0, crate::operatorcontrol::DEFAULT_REQUEST_TIMEOUT_SECS as f64, 0.0, 0.0, 0.0] };
+            bytes.extend(self.encode(&revert));
+        }
         bytes.extend(self.tick_rc_override(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));

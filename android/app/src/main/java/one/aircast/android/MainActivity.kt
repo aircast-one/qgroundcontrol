@@ -67,6 +67,7 @@ import one.aircast.android.ui.Hideable
 import one.aircast.android.ui.LogReplayBar
 import one.aircast.android.ui.StatusReadingsInline
 import one.aircast.android.ui.VehicleStateChip
+import one.aircast.android.ui.ControlRequestPrompt
 import one.aircast.android.ui.VirtualJoystick
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -340,6 +341,7 @@ fun AircastShell(hostView: android.view.View?) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     VehicleStateChip()
+                    ControlRequestPrompt()
                     if (tab == Tab.Fly) {
                         StatusReadingsInline(Modifier.weight(1f))
                     }

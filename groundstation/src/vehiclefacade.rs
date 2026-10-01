@@ -1471,6 +1471,11 @@ impl<B: Backend> Backend for Facade<B> {
         }).flatten().filter(|_| switched_on()) {
             return json!({ "ok": true, "result": limit }).to_string();
         }
+        if path == "vehicle.startTimerRevertAllowTakeover" && inspector_owned() {
+            let vehicle = crate::hub::lock().active_id();
+            let started = self.0.core_guided(&json!({ "action": "revertTakeoverTimer", "vehicle": vehicle }));
+            return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
+        }
         if path == "vehicle.requestOperatorControl" && inspector_owned() {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
             let allow = given.get(0).and_then(Value::as_bool).unwrap_or(false);
@@ -1487,6 +1492,9 @@ impl<B: Backend> Backend for Facade<B> {
             let target = crate::mavinspect::lock().selected_target();
             let started = rate.zip(target).and_then(|(rate, (vehicle, component, message))| self.0.core_guided(&json!({ "action": "messageInterval", "vehicle": vehicle, "component": component, "message": message, "rate": rate })));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
+        }
+        if let Some(done) = crate::firmwareflash::invoke(path, args) {
+            return done.to_string();
         }
         if let Some(done) = (path == "packetRadio.refreshAdapters").then(crate::wfbhost::refresh).flatten() {
             return done.to_string();

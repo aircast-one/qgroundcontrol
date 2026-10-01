@@ -28,6 +28,7 @@ pub struct ControlState {
     pub request_allowed: bool,
     allowed_again_ms: Option<u64>,
     incoming: Option<Incoming>,
+    revert_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,7 +41,7 @@ pub struct Incoming {
 
 impl Default for ControlState {
     fn default() -> Self {
-        ControlState { gcs_main: 0, flags: 0, first: false, request_allowed: true, allowed_again_ms: None, incoming: None }
+        ControlState { gcs_main: 0, flags: 0, first: false, request_allowed: true, allowed_again_ms: None, incoming: None, revert_at_ms: None }
     }
 }
 
@@ -73,6 +74,22 @@ impl ControlState {
         let secs = if timeout_secs > 0.0 { timeout_secs as u64 } else { u64::try_from(default_secs).unwrap_or(0) };
         let timeout_ms = secs * 1000;
         self.incoming = Some(Incoming { from, allow_takeover, timeout_ms, until_ms: now_ms + timeout_ms });
+    }
+
+    pub fn start_revert(&mut self, now_ms: u64) {
+        self.revert_at_ms = Some(now_ms + TAKEOVER_TIMEOUT_MSECS as u64);
+    }
+
+    pub fn revert_remaining_ms(&self, now_ms: u64) -> Option<u64> {
+        self.revert_at_ms.filter(|at| now_ms < *at).map(|at| at - now_ms)
+    }
+
+    pub fn revert_due(&mut self, now_ms: u64, ours: u8) -> bool {
+        let due = self.revert_at_ms.is_some_and(|at| now_ms >= at);
+        if due {
+            self.revert_at_ms = None;
+        }
+        due && self.gcs_main == ours
     }
 
     pub fn answered(&mut self) {
@@ -121,6 +138,10 @@ fn incoming_request() -> Value {
         .unwrap_or(Value::Null)
 }
 
+fn takeover_revert_ms() -> Option<u64> {
+    crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().and_then(|v| v.control.revert_remaining_ms(crate::hub::now_ms()))).flatten()
+}
+
 pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = object(&backend.get_fields("vehicle", FIELDS));
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
@@ -151,6 +172,7 @@ pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "systemManager": answered(flag(&vehicle, "gcsControlStatusFlags_SystemManager")),
         "requestAllowed": flag(&vehicle, "sendControlRequestAllowed"),
         "incomingRequest": incoming_request(),
+        "takeoverRevertMs": takeover_revert_ms(),
         "takeoverTimeoutMs": integer(&vehicle, "operatorControlTakeoverTimeoutMsecs"),
         "reason": match (known, holder, ours) {
             (false, _, _) => "This vehicle has not said who is flying it.",
@@ -164,6 +186,22 @@ pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn allowing_a_takeover_reverts_after_ten_seconds_unless_another_station_took_control() {
+        let mut held = ControlState::default();
+        held.on_status(0, 255);
+        held.start_revert(1_000);
+        assert_eq!(held.revert_remaining_ms(6_000), Some(5_000));
+        assert!(!held.revert_due(10_999, 255));
+        assert!(held.revert_due(11_000, 255), "startTimerRevertAllowTakeover sends requestOperatorControl(false) while this station still holds control");
+        assert!(!held.revert_due(12_000, 255), "the timer is single shot");
+        let mut taken = ControlState::default();
+        taken.on_status(0, 9);
+        taken.start_revert(0);
+        assert!(!taken.revert_due(10_000, 255), "the other station took control, so nothing is reverted");
+        assert_eq!(taken.revert_remaining_ms(10_000), None);
+    }
+
     use super::*;
 
     #[test]

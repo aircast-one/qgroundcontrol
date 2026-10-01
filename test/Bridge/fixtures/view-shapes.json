@@ -8699,6 +8699,7 @@
         "view.operatorControl.requestAllowed",
         "view.operatorControl.systemManager",
         "view.operatorControl.takeoverAllowed",
+        "view.operatorControl.takeoverRevertMs",
         "view.operatorControl.takeoverTimeoutMs",
         "view.opticalFlow.class",
         "view.opticalFlow.image",
@@ -12604,6 +12605,7 @@
         "requestAllowed": "bool",
         "systemManager": "null",
         "takeoverAllowed": "null",
+        "takeoverRevertMs": "null",
         "takeoverTimeoutMs": "number"
     },
     "view.opticalFlow": {
