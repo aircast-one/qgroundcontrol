@@ -142,9 +142,12 @@ internal fun parameterShown(name: String, description: String, search: String, m
     parameterMatches(name, description, search) && (!modifiedOnly || name in modified)
 
 internal fun parameterMatches(name: String, description: String, search: String): Boolean =
-    search.isBlank() ||
-        name.contains(search, ignoreCase = true) ||
-        description.contains(search, ignoreCase = true)
+    search.split(' ').filter { it.isNotEmpty() }.all { word ->
+        val pattern = runCatching { Regex(word, RegexOption.IGNORE_CASE) }.getOrNull()
+        listOf(name, description).any { text ->
+            pattern?.containsMatchIn(text) ?: text.contains(word, ignoreCase = true)
+        }
+    }
 
 internal fun parameterSubtitle(description: String, units: String): String =
     listOf(description, units).filter { it.isNotBlank() }.joinToString(" · ")

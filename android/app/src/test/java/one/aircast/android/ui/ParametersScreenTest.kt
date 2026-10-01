@@ -30,6 +30,16 @@ class ParametersScreenTest {
     }
 
     @Test
+    fun `every word must match and each word is a regular expression, as ParameterEditorController does`() {
+        assertTrue(parameterMatches("BATT_VOLT_MULT", "Voltage multiplier", "batt volt"))
+        assertFalse(parameterMatches("BATT_VOLT_MULT", "Voltage multiplier", "batt compass"))
+        assertTrue(parameterMatches("RC1_MIN", "RC min PWM", "^RC"))
+        assertFalse(parameterMatches("SERVO_RC_ON", "Servo", "^RC"))
+        assertTrue(parameterMatches("ATC_RATE_P", "Roll axis rate P gain", "RATE.*P"))
+        assertTrue("an invalid pattern is matched literally", parameterMatches("A(B", "", "A(B"))
+    }
+
+    @Test
     fun `searching is case insensitive on both halves`() {
         assertTrue(parameterMatches("RTL_ALT", "Return to launch altitude", "rtl_alt"))
         assertTrue(parameterMatches("RTL_ALT", "Return to launch altitude", "LAUNCH"))
