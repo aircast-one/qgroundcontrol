@@ -479,9 +479,9 @@ const val MISSION_SPLIT_PATH = "plan.missionController"
 const val MISSION_SPLIT_INVOKABLE = "insertSimpleMissionItem"
 
 fun legSplit(items: List<MissionItem>, selected: Int?): TrackPoint? {
-    val current = items.firstOrNull { it.index == selected } ?: return null
-    val previous = items.filter { it.index < current.index }.maxByOrNull { it.index } ?: return null
-    val from = TrackPoint(previous.latitude, previous.longitude)
+    val current = items.firstOrNull { it.index == selected }?.takeIf { it.routed } ?: return null
+    val previous = items.filter { it.index in 1 until current.index && it.routed }.maxByOrNull { it.index } ?: return null
+    val from = previous.exit ?: TrackPoint(previous.latitude, previous.longitude)
     val to = TrackPoint(current.latitude, current.longitude)
     return pointAt(from, metresBetween(from, to) / 2, azimuthBetween(from, to))
 }

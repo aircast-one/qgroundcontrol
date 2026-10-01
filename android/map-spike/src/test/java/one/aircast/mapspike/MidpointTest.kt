@@ -97,4 +97,18 @@ class MidpointTest {
         org.junit.Assert.assertNull(legSplit(items, 1))
         org.junit.Assert.assertNull(legSplit(items, null))
     }
+
+    @Test
+    fun `the split skips home and standalone items and starts at a pattern's exit, as MissionController does`() {
+        val item = { index: Int, lat: Double, routed: Boolean, exit: TrackPoint? -> MissionItem(index, index, lat, 8.0, "Waypoint", false, 50.0, exit = exit, routed = routed) }
+        val home = item(0, 46.0, true, null)
+        org.junit.Assert.assertNull("the leg from home is not split", legSplit(listOf(home, item(1, 47.0, true, null)), 1))
+        val roi = item(2, 47.5, false, null)
+        org.junit.Assert.assertNull("a standalone item has no split of its own", legSplit(listOf(home, item(1, 47.0, true, null), roi), 2))
+        val after = legSplit(listOf(home, item(1, 47.0, true, null), roi, item(3, 48.0, true, null)), 3) ?: error("split")
+        org.junit.Assert.assertEquals("the ROI is skipped when looking back", 47.5, after.latitude, 0.01)
+        val survey = item(1, 47.0, true, TrackPoint(47.4, 8.0))
+        val fromExit = legSplit(listOf(home, survey, item(2, 48.0, true, null)), 2) ?: error("split")
+        org.junit.Assert.assertEquals(47.7, fromExit.latitude, 0.01)
+    }
 }
