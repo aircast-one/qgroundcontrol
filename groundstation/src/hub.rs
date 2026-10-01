@@ -286,6 +286,8 @@ pub struct Vehicle {
     parameter_metadata: Option<ComponentParameters>,
     pub parameter_download_skipped: bool,
     pub actuators_metadata: Option<Value>,
+    pub events: crate::libevents::Session,
+    intended_custom_mode: u32,
     fetch: Option<Fetch>,
     ftp_due: Option<u64>,
     ftp_seq: u16,
@@ -437,6 +439,8 @@ impl Vehicle {
             parameter_metadata: None,
             parameter_download_skipped: false,
             actuators_metadata: None,
+            events: crate::libevents::Session::default(),
+            intended_custom_mode: 0,
             fetch: None,
             ftp_due: None,
             ftp_seq: 0,
@@ -799,6 +803,13 @@ impl Vehicle {
     }
 
     fn after_parameter_metadata(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        match self.metadata_types.get(&compmeta::TYPE_EVENTS).map(|u| u.uri.clone()) {
+            Some(uri) => self.start_fetch(compmeta::TYPE_EVENTS, &uri, now_ms),
+            None => self.after_event_metadata(now_ms),
+        }
+    }
+
+    fn after_event_metadata(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         match self.metadata_types.get(&compmeta::TYPE_ACTUATORS).map(|u| u.uri.clone()) {
             Some(uri) => self.start_fetch(compmeta::TYPE_ACTUATORS, &uri, now_ms),
             None => self.step_done(connect::Step::ComponentInformation, now_ms),
@@ -811,6 +822,10 @@ impl Vehicle {
             TYPE_PARAMETER => {
                 self.note(reason);
                 self.after_parameter_metadata(now_ms)
+            }
+            compmeta::TYPE_EVENTS => {
+                self.note(reason);
+                self.after_event_metadata(now_ms)
             }
             _ => {
                 self.note(reason);
@@ -961,6 +976,16 @@ impl Vehicle {
                     self.step_done(connect::Step::ComponentInformation, now_ms)
                 }
             },
+            (compmeta::TYPE_EVENTS, Ok(text)) => {
+                match crate::libevents::parse(&text) {
+                    Ok(definitions) => {
+                        let delivered = self.events.load(definitions, self.component);
+                        delivered.into_iter().for_each(|d| self.event_delivered(d));
+                    }
+                    Err(reason) => self.note(reason),
+                }
+                self.after_event_metadata(now_ms)
+            }
             (compmeta::TYPE_ACTUATORS, Ok(text)) => {
                 match serde_json::from_str::<Value>(&text) {
                     Ok(parsed) => self.actuators_metadata = Some(parsed),
@@ -1742,6 +1767,8 @@ impl Vehicle {
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
+        let event_retry = self.events.receiver.on_tick(now_ms);
+        bytes.extend(self.event_request(event_retry));
         let actuator = self.actuator_test.tick(now_ms);
         bytes.extend(self.actuator_request(actuator));
         let spin = self.motor_assignment.tick(now_ms);
@@ -2561,6 +2588,7 @@ impl Vehicle {
         if matches!(message, MavMessage::EVENT(_) | MavMessage::CURRENT_EVENT_SEQUENCE(_)) {
             self.events_heard = true;
         }
+        let event_requests = self.apply_events(from, message, now_ms);
         if let MavMessage::RC_CHANNELS(c) = message {
             let raw = [c.chan1_raw, c.chan2_raw, c.chan3_raw, c.chan4_raw, c.chan5_raw, c.chan6_raw, c.chan7_raw, c.chan8_raw, c.chan9_raw, c.chan10_raw, c.chan11_raw, c.chan12_raw, c.chan13_raw, c.chan14_raw, c.chan15_raw, c.chan16_raw, c.chan17_raw, c.chan18_raw];
             let valid = raw.iter().filter(|v| **v != u16::MAX).count();
@@ -2581,7 +2609,72 @@ impl Vehicle {
         }
         let camera = self.note_camera(header.component_id, message, now_ms);
         let gimbal = self.note_gimbal(header.component_id, message, now_ms);
-        camera.into_iter().chain(gimbal).chain(self.note_onboard_log(message, now_ms)).collect()
+        camera.into_iter().chain(gimbal).chain(self.note_onboard_log(message, now_ms)).chain(event_requests).collect()
+    }
+
+    fn apply_events(&mut self, from: (u8, u8), message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
+        if from != (self.id, self.component) {
+            return Vec::new();
+        }
+        let requested = match message {
+            MavMessage::EVENT(e) => {
+                let incoming = crate::libevents::Incoming {
+                    sequence: e.sequence,
+                    timestamp_ms: e.event_time_boot_ms,
+                    for_us: (e.destination_system == 0 || e.destination_system == mavout::gcs_system()) && (e.destination_component == 0 || e.destination_component == mavout::GCS_COMPONENT),
+                };
+                let (deliver, requested) = self.events.receiver.on_event(&incoming, now_ms);
+                if deliver && let Some(delivered) = self.events.deliver(crate::libevents::Raw { id: e.id, arguments: e.arguments, log_levels: e.log_levels }, self.component) {
+                    self.event_delivered(delivered);
+                }
+                requested
+            }
+            MavMessage::CURRENT_EVENT_SEQUENCE(c) => {
+                let reset = c.flags.bits() & 1 != 0;
+                self.events.receiver.on_current(c.sequence, reset, now_ms)
+            }
+            MavMessage::RESPONSE_EVENT_ERROR(r) if (r.target_system, r.target_component) == (mavout::gcs_system(), mavout::GCS_COMPONENT) => {
+                self.events.checks.reset();
+                self.events.receiver.on_error(r.sequence, r.sequence_oldest_available, now_ms)
+            }
+            MavMessage::CURRENT_MODE(m) => {
+                if m.intended_custom_mode != 0 {
+                    self.intended_custom_mode = m.intended_custom_mode;
+                    self.refresh_arming_report();
+                }
+                None
+            }
+            MavMessage::HEARTBEAT(_) => {
+                self.refresh_arming_report();
+                None
+            }
+            _ => None,
+        };
+        self.event_request(requested)
+    }
+
+    fn event_request(&mut self, sequence: Option<u16>) -> Vec<Vec<u8>> {
+        let target = (self.id, self.component);
+        sequence.and_then(|sequence| self.encode(&Outbound::RequestEvent { target, sequence })).into_iter().collect()
+    }
+
+    fn event_delivered(&mut self, delivered: crate::libevents::Delivered) {
+        match delivered {
+            crate::libevents::Delivered::Checks => self.refresh_arming_report(),
+            crate::libevents::Delivered::Message { severity, text } => {
+                if severity <= SEVERITY_ERROR {
+                    self.pending_notices.push((crate::noticeboard::VEHICLE_ERROR, text.clone()));
+                }
+                self.message_log.record_html(self.component, severity, text, crate::messagelog::clock_now());
+            }
+        }
+    }
+
+    fn refresh_arming_report(&mut self) {
+        let mode = if self.intended_custom_mode != 0 { self.intended_custom_mode } else { self.custom_mode };
+        let takeoff = crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, "Takeoff");
+        let mission = crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, "Mission");
+        self.events.refresh(self.component, mode, takeoff, mission);
     }
 
     fn note_gimbal(&mut self, compid: u8, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {

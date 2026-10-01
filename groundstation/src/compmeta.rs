@@ -6,6 +6,7 @@ use crate::compression;
 pub const MSG_COMPONENT_METADATA: u32 = 397;
 pub const TYPE_GENERAL: u8 = 0;
 pub const TYPE_PARAMETER: u8 = 1;
+pub const TYPE_EVENTS: u8 = 4;
 pub const TYPE_ACTUATORS: u8 = 5;
 pub const FTP_ACK_TIMEOUT_MS: u64 = 1000;
 pub const SLOW_AFTER_MS: u64 = 10_000;

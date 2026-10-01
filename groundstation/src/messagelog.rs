@@ -35,6 +35,10 @@ pub fn clock_now() -> String {
 
 impl MessageLog {
     pub fn record(&mut self, component: u8, severity: u8, text: String, time: String) {
+        self.record_html(component, severity, escaped(&text), time);
+    }
+
+    pub fn record_html(&mut self, component: u8, severity: u8, text: String, time: String) {
         let active = *self.active.get_or_insert(component);
         self.multi |= component != active;
         self.items.push(Logged { component: self.multi.then_some(component), severity, time, text });
@@ -59,7 +63,7 @@ impl MessageLog {
                     Kind::Normal => "<#N>",
                 };
                 let component = m.component.map(|c| format!("COMP:{c}")).unwrap_or_default();
-                format!("<font style=\"{style}\">[{} {component}] {}: {}</font><br/>", m.time, severity_label(m.severity), escaped(&m.text).replace('\n', "<br/>"))
+                format!("<font style=\"{style}\">[{} {component}] {}: {}</font><br/>", m.time, severity_label(m.severity), m.text.replace('\n', "<br/>"))
             })
             .collect()
     }
