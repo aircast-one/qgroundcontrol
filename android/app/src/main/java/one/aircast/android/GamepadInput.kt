@@ -1,6 +1,10 @@
 package one.aircast.android
 
 import android.content.Context
+import android.hardware.BatteryState
+import android.hardware.Sensor
+import android.os.Build
+import androidx.annotation.RequiresApi
 import android.hardware.input.InputManager
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -37,6 +41,36 @@ internal val GAMEPAD_BUTTONS = listOf(
 )
 
 private val HAT_AXES = setOf(MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y)
+
+internal fun powerStateText(status: Int): String = when (status) {
+    BatteryState.STATUS_CHARGING -> "Charging"
+    BatteryState.STATUS_DISCHARGING -> "Discharging"
+    BatteryState.STATUS_FULL -> "Full"
+    BatteryState.STATUS_NOT_CHARGING -> "Not charging"
+    else -> ""
+}
+
+@RequiresApi(Build.VERSION_CODES.S)
+private fun reportedSince31(device: InputDevice, into: JSONObject): JSONObject {
+    val battery = device.batteryState.takeIf { it.isPresent && !it.capacity.isNaN() }
+    return into
+        .put("batteryPercent", battery?.let { (it.capacity * 100).roundToInt() } ?: -1)
+        .put("powerState", battery?.let { powerStateText(it.status) } ?: "")
+        .put("rumble", device.vibratorManager.vibratorIds.isNotEmpty())
+        .put("led", device.lightsManager.lights.isNotEmpty())
+        .put("gyroscope", device.sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE) != null)
+        .put("accelerometer", device.sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null)
+}
+
+@Suppress("DEPRECATION")
+private fun deviceDetails(device: InputDevice, into: JSONObject): JSONObject {
+    val known = into
+        .put("vendorId", device.vendorId)
+        .put("productId", device.productId)
+        .put("guid", device.descriptor ?: "")
+        .put("playerIndex", device.controllerNumber - 1)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) reportedSince31(device, known) else known.put("rumble", device.vibrator.hasVibrator())
+}
 
 internal fun hatBits(x: Float, y: Float): Int =
     (if (y < -HAT_THRESHOLD) HAT_UP else 0) or (if (y > HAT_THRESHOLD) HAT_DOWN else 0) or
@@ -84,7 +118,7 @@ object GamepadInput : InputManager.InputDeviceListener {
         }
         val devices = JSONArray(
             synchronized(pads) {
-                pads.values.map { pad -> JSONObject().put("name", pad.device.name).put("axes", pad.axes.size).put("buttons", GAMEPAD_BUTTONS.size).put("hats", if (pad.hasHat) 1 else 0).put("gamepad", pad.device.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD) }
+                pads.values.map { pad -> deviceDetails(pad.device, JSONObject()).put("name", pad.device.name).put("axes", pad.axes.size).put("buttons", GAMEPAD_BUTTONS.size).put("hats", if (pad.hasHat) 1 else 0).put("gamepad", pad.device.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD) }
             },
         )
         offMainDetached { Qgc.invoke(JOYSTICK_DEVICES, devices) }

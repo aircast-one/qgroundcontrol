@@ -22,11 +22,17 @@ import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
 import org.json.JSONObject
 
-internal data class JoystickBadge(val heading: String, val enabledText: String, val warn: Boolean, val typeText: String, val inputsText: String)
+internal data class JoystickDetail(val label: String, val value: String, val warn: Boolean)
+
+internal data class JoystickBadge(val heading: String, val enabledText: String, val warn: Boolean, val typeText: String, val inputsText: String, val details: List<JoystickDetail> = emptyList())
 
 internal fun joystickBadge(view: JSONObject?): JoystickBadge? =
     view?.optJSONObject("indicator")?.let {
-        JoystickBadge(it.optText("heading"), it.optText("enabledText"), it.optBoolean("warn"), it.optText("typeText"), it.optText("inputsText"))
+        val rows = it.optJSONArray("details")
+        JoystickBadge(
+            it.optText("heading"), it.optText("enabledText"), it.optBoolean("warn"), it.optText("typeText"), it.optText("inputsText"),
+            (0 until (rows?.length() ?: 0)).mapNotNull { i -> rows?.optJSONObject(i) }.map { row -> JoystickDetail(row.optText("label"), row.optText("value"), row.optBoolean("warn")) },
+        )
     }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +52,9 @@ internal fun JoystickIndicatorCell() {
                 Text("Enabled:  ${badge.enabledText}", style = MaterialTheme.typography.bodyMedium, color = tint)
                 Text("Type:  ${badge.typeText}", style = MaterialTheme.typography.bodyMedium)
                 Text("Inputs:  ${badge.inputsText}", style = MaterialTheme.typography.bodyMedium)
+                badge.details.forEach { detail ->
+                    Text("${detail.label}  ${detail.value}", style = MaterialTheme.typography.bodyMedium, color = if (detail.warn) MaterialTheme.colorScheme.error else Color.Unspecified)
+                }
             }
         }
     }

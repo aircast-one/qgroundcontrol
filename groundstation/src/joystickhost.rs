@@ -140,13 +140,65 @@ fn coerce(meta: &Meta, value: &Value) -> Option<String> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Device {
     pub name: String,
     pub axes: usize,
     pub buttons: usize,
     pub hats: usize,
     pub gamepad: bool,
+    pub details: DeviceDetails,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DeviceDetails {
+    pub battery_percent: Option<i64>,
+    pub power_state: String,
+    pub rumble: bool,
+    pub led: bool,
+    pub gyroscope: bool,
+    pub accelerometer: bool,
+    pub player_index: Option<i64>,
+    pub vendor_id: i64,
+    pub product_id: i64,
+    pub guid: String,
+}
+
+const LOW_JOYSTICK_BATTERY: i64 = 20;
+
+impl DeviceDetails {
+    fn from_json(d: &Value) -> DeviceDetails {
+        let text = |key: &str| d[key].as_str().unwrap_or_default().to_string();
+        DeviceDetails {
+            battery_percent: d["batteryPercent"].as_i64().filter(|p| *p >= 0),
+            power_state: text("powerState"),
+            rumble: d["rumble"].as_bool().unwrap_or(false),
+            led: d["led"].as_bool().unwrap_or(false),
+            gyroscope: d["gyroscope"].as_bool().unwrap_or(false),
+            accelerometer: d["accelerometer"].as_bool().unwrap_or(false),
+            player_index: d["playerIndex"].as_i64().filter(|p| *p >= 0),
+            vendor_id: d["vendorId"].as_i64().unwrap_or(0),
+            product_id: d["productId"].as_i64().unwrap_or(0),
+            guid: text("guid"),
+        }
+    }
+
+    fn rows(&self) -> Vec<Value> {
+        let row = |label: &str, value: String, warn: bool| json!({ "label": label, "value": value, "warn": warn });
+        let features: Vec<&str> = [(self.rumble, "Rumble"), (self.led, "LED"), (self.gyroscope, "Gyroscope"), (self.accelerometer, "Accelerometer")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).collect();
+        let motion: Vec<&str> = [(self.gyroscope, "Gyroscope"), (self.accelerometer, "Accelerometer")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).collect();
+        [
+            self.battery_percent.map(|p| row("Battery:", if self.power_state.is_empty() { format!("{p}%") } else { format!("{p}% ({})", self.power_state) }, p < LOW_JOYSTICK_BATTERY)),
+            (!features.is_empty()).then(|| row("Features:", features.join(", "), false)),
+            self.player_index.map(|p| row("Player:", (p + 1).to_string(), false)),
+            (self.vendor_id > 0).then(|| row("Vendor/Product:", format!("0x{:04X} / 0x{:04X}", self.vendor_id, self.product_id), false)),
+            (!self.guid.is_empty()).then(|| row("GUID:", self.guid.clone(), false)),
+            (!motion.is_empty()).then(|| row("Motion Sensors:", motion.join(", "), false)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
 }
 
 #[derive(Default)]
@@ -438,7 +490,7 @@ fn devices(text: &str) -> Value {
         .iter()
         .filter_map(|d| {
             let count = |key: &str| d[key].as_u64().map(|n| n as usize);
-            Some(Device { name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(), axes: count("axes")?, buttons: count("buttons")?, hats: count("hats").unwrap_or(0), gamepad: d["gamepad"].as_bool().unwrap_or(false) })
+            Some(Device { name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(), axes: count("axes")?, buttons: count("buttons")?, hats: count("hats").unwrap_or(0), gamepad: d["gamepad"].as_bool().unwrap_or(false), details: DeviceDetails::from_json(d) })
         })
         .collect();
     {
@@ -610,6 +662,7 @@ pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value
         "warn": vehicle && !enabled,
         "typeText": if device.gamepad { "Gamepad" } else { "Joystick" },
         "inputsText": format!("{} axes, {} buttons", device.axes, device.buttons),
+        "details": device.details.rows(),
     })
 }
 
@@ -673,18 +726,26 @@ mod tests {
 
     #[test]
     fn the_toolbar_indicator_reads_like_joystick_indicator_qml() {
-        let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, hats: 1, gamepad: true };
+        let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, hats: 1, gamepad: true, ..Device::default() };
         let shown = indicator(Some(&pad), true, false);
         assert_eq!((shown["heading"].as_str(), shown["enabledText"].as_str(), shown["warn"].as_bool()), (Some("Xbox"), Some("No"), Some(true)), "a joystick not enabled for the vehicle shows orange");
         assert_eq!((shown["typeText"].as_str(), shown["inputsText"].as_str()), (Some("Gamepad"), Some("6 axes, 15 buttons")));
         assert_eq!(indicator(Some(&pad), false, false)["enabledText"], "No Vehicle");
         assert_eq!(indicator(Some(&pad), false, false)["warn"], false);
         assert!(indicator(None, true, true).is_null(), "no joystick, no indicator");
+        assert_eq!(shown["details"], json!([]), "a device that reports nothing more has no detail rows");
+        let detailed = DeviceDetails::from_json(&json!({ "batteryPercent": 15, "powerState": "Discharging", "rumble": true, "gyroscope": true, "playerIndex": 0, "vendorId": 1118, "productId": 2835, "guid": "abc" }));
+        let rows = detailed.rows();
+        let labels: Vec<&str> = rows.iter().filter_map(|r| r["label"].as_str()).collect();
+        assert_eq!(labels, ["Battery:", "Features:", "Player:", "Vendor/Product:", "GUID:", "Motion Sensors:"]);
+        assert_eq!((rows[0]["value"].as_str(), rows[0]["warn"].as_bool()), (Some("15% (Discharging)"), Some(true)), "JoystickIndicator paints a battery under twenty percent red");
+        assert_eq!(rows[3]["value"], "0x045E / 0x0B13");
+        assert_eq!(rows[2]["value"], "1");
     }
 
     #[test]
     fn an_unknown_stored_name_falls_back_to_the_first_device() {
-        let devices = vec![Device { name: "Pad".into(), axes: 4, buttons: 10, hats: 1, gamepad: true }];
+        let devices = vec![Device { name: "Pad".into(), axes: 4, buttons: 10, hats: 1, gamepad: true, ..Device::default() }];
         assert_eq!(active_name(&devices), Some("Pad".into()));
         assert_eq!(active_name(&[]), None);
         assert_eq!(polling(true, true, false), Polling::default(), "an uncalibrated stick never commands");
