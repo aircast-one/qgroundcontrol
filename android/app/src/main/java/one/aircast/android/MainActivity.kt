@@ -98,6 +98,7 @@ import one.aircast.android.ui.MapPoint
 import one.aircast.android.ui.FirstRunDialog
 import one.aircast.android.ui.MissionCompleteDialog
 import one.aircast.android.ui.SetWaypointSheet
+import one.aircast.android.ui.RoiSheet
 import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.TerrainProgress
@@ -110,6 +111,7 @@ import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.TrafficReadout
 import one.aircast.android.ui.VehicleTitle
 import one.aircast.mapspike.FlyMap
+import one.aircast.mapspike.TrackPoint
 import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
 import one.aircast.android.ui.FlyPortrait
@@ -240,6 +242,7 @@ fun AircastShell(hostView: android.view.View?) {
     }
     var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
     var waypointTapped by remember { mutableStateOf<Int?>(null) }
+    var roiTapped by remember { mutableStateOf<TrackPoint?>(null) }
     val flyMap = remember {
         movableContentOf<Modifier> { mod ->
             FlyMap(
@@ -247,6 +250,7 @@ fun AircastShell(hostView: android.view.View?) {
                 cameraBottomPx = 0,
                 onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
                 onMissionItemClick = { waypointTapped = it },
+                onRoiClick = { roiTapped = it },
             )
         }
     }
@@ -415,6 +419,7 @@ fun AircastShell(hostView: android.view.View?) {
                             cameraBottomPx = if (videoExpanded || !controlsExpanded) 0 else actionsHeightPx,
                             onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
                             onMissionItemClick = { waypointTapped = it },
+                            onRoiClick = { roiTapped = it },
                         )
                         if (videoExpanded) {
                             Box(
@@ -455,6 +460,9 @@ fun AircastShell(hostView: android.view.View?) {
                 }
                 waypointTapped?.takeIf { tab == Tab.Fly }?.let { sequence ->
                     SetWaypointSheet(sequence) { waypointTapped = null }
+                }
+                roiTapped?.takeIf { tab == Tab.Fly }?.let { at ->
+                    RoiSheet(at) { roiTapped = null }
                 }
                 MissionCompleteDialog()
                 FirstRunDialog()

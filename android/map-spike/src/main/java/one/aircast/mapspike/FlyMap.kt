@@ -37,6 +37,7 @@ private data class FlownPlan(
     val shots: List<TrackPoint> = emptyList(),
     val traffic: List<TrafficMark> = emptyList(),
     val gimbals: List<GimbalAzimuth> = emptyList(),
+    val roi: TrackPoint? = null,
 )
 
 @Composable
@@ -45,6 +46,7 @@ fun FlyMap(
     cameraBottomPx: Int = 0,
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
+    onRoiClick: ((TrackPoint) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var style by remember(context) { mutableStateOf(planMapStyle(context)) }
@@ -79,6 +81,7 @@ fun FlyMap(
                         shots = shotPoints(VideoBridge.read()),
                         traffic = TrafficBridge.read(),
                         gimbals = GimbalBridge.read(),
+                        roi = RoiBridge.read(),
                     )
                 }
                 plan = next
@@ -109,6 +112,8 @@ fun FlyMap(
             editable = false,
             onMapClick = onMapClick,
             onMissionItemClick = onMissionItemClick,
+            roi = plan.roi,
+            onRoiClick = onRoiClick,
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level

@@ -170,9 +170,13 @@ fun VehicleMap(
     proximityRadar: Boolean = false,
     tracePoints: List<TrackPoint> = emptyList(),
     traceLine: Boolean = false,
+    roi: TrackPoint? = null,
+    onRoiClick: ((TrackPoint) -> Unit)? = null,
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
+    val latestRoi by rememberUpdatedState(roi)
+    val latestRoiClick by rememberUpdatedState(onRoiClick)
     val latestItems by rememberUpdatedState(missionItems)
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
     val fleetJson by mapPath(VEHICLES_VIEW)
@@ -269,9 +273,17 @@ fun VehicleMap(
                 installFenceHandleLayer(loadedStyle)
                 installVehicleLayer(loadedStyle)
                 installTrafficLayer(loadedStyle)
+                installRoiLayer(loadedStyle)
                 if (!editable && onMapClick != null) {
                     loaded.addOnMapClickListener { at ->
                         val screen = loaded.projection.toScreenLocation(at)
+                        val roiTapped = latestRoi?.takeIf {
+                            loaded.queryRenderedFeatures(android.graphics.RectF(screen.x - 24f, screen.y - 24f, screen.x + 24f, screen.y + 24f), ROI_LAYER).isNotEmpty()
+                        }
+                        if (roiTapped != null && latestRoiClick != null) {
+                            latestRoiClick?.invoke(roiTapped)
+                            return@addOnMapClickListener true
+                        }
                         val item = (hitTest(loaded, screen.x, screen.y) as? MapHit.Waypoint)
                             ?.let { hit -> latestItems.firstOrNull { it.index == hit.index } }
                         val itemClick = latestItemClick
@@ -307,6 +319,11 @@ fun VehicleMap(
     LaunchedEffect(style, latitude, longitude, heading, radarJson) {
         val radarStyle = style ?: return@LaunchedEffect
         renderProximityRadar(radarStyle, latitude, longitude, heading, radarReading(radarJson))
+    }
+
+    LaunchedEffect(style, roi) {
+        val roiStyle = style ?: return@LaunchedEffect
+        renderRoi(roiStyle, roi)
     }
 
     LaunchedEffect(style, tracePoints, traceLine) {

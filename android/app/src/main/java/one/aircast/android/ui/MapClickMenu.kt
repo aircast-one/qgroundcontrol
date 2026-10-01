@@ -12,6 +12,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -34,6 +35,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.optText
+import one.aircast.mapspike.TrackPoint
 import org.json.JSONObject
 import java.util.Locale
 
@@ -322,6 +324,42 @@ internal fun LoiterRadiusSheet(offer: LoiterOffer, units: OrbitDefaults, onDismi
                     }
                 }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}
+
+internal const val STOP_ROI_PATH = "vehicle.stopGuidedModeROI"
+internal const val SET_ROI_PATH = "vehicle.guidedModeROI"
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RoiSheet(at: TrackPoint, onDismiss: () -> Unit) {
+    var editing by remember(at) { mutableStateOf(false) }
+    var refusal by remember(at) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val run: (String, Array<Any>) -> Unit = { path, args ->
+        scope.launch {
+            val refused = withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) }
+            if (refused == null) onDismiss() else refusal = refused
+        }
+    }
+    if (editing) {
+        EditPositionDialog(at, onDismiss = { editing = false }, title = "Edit ROI Position", vehicleNote = "Move the ROI to the vehicle's current position.") { latitude, longitude ->
+            editing = false
+            run(SET_ROI_PATH, arrayOf(JSONObject().put("latitude", latitude).put("longitude", longitude)))
+        }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("ROI", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { run(STOP_ROI_PATH, emptyArray()) }) { Text("Cancel ROI") }
+                OutlinedButton(onClick = { editing = true }) { Text("Edit Position") }
             }
             refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
