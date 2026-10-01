@@ -16,6 +16,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -173,6 +177,12 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { send() }),
             )
+            listOf("historyUp" to "\u2191", "historyDown" to "\u2193").forEach { (step, arrow) ->
+                TextButton(onClick = {
+                    val current = command
+                    scope.launch { command = withContext(Dispatchers.Default) { Qgc.invokeResult("$CONSOLE_ROOT.$step", current) as? String } ?: current }
+                }) { Text(arrow) }
+            }
             Button(onClick = { send() }, enabled = command.isNotBlank()) { Text("Send") }
         }
     }
