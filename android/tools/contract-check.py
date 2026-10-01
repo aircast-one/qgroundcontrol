@@ -388,6 +388,7 @@ ACCEPTED = {
     "noReading": "the PX4 SITL rig simulates its battery without an analog voltage divider or current sensor, so Power records no Calculate rows; powercalc.rs calculator serves these on BATn_V_DIV/A_PER_V and ArduPilot's VOLT_MULT/AMP_PERVLT",
     "paramLabel": "the PX4 SITL rig simulates its battery without an analog voltage divider or current sensor, so Power records no Calculate rows; powercalc.rs calculator serves these on BATn_V_DIV/A_PER_V and ArduPilot's VOLT_MULT/AMP_PERVLT",
     "readingLabel": "the PX4 SITL rig simulates its battery without an analog voltage divider or current sensor, so Power records no Calculate rows; powercalc.rs calculator serves these on BATn_V_DIV/A_PER_V and ArduPilot's VOLT_MULT/AMP_PERVLT",
+    "uploaded": "view.mavlinkLog lists the saved .ulg logs, and the recording rig's log folder is empty, so the list records empty; mavlinklog.rs files serves uploaded per file",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",

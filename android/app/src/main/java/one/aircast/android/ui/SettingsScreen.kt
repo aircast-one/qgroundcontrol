@@ -105,6 +105,7 @@ internal data class SettingsPageEntry(
     val showsAbout: Boolean = false,
     val showsConsole: Boolean = false,
     val showsNtrip: Boolean = false,
+    val showsPx4Logs: Boolean = false,
     val showsPacketRadio: Boolean = false,
     val helpLinks: List<HelpLink> = emptyList(),
 )
@@ -151,6 +152,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
                 showsAbout = page.optBoolean("showsAbout"),
                 showsConsole = page.optBoolean("showsConsole"),
                 showsNtrip = page.optBoolean("showsNtrip"),
+                showsPx4Logs = page.optBoolean("showsPx4Logs"),
                 showsPacketRadio = page.optBoolean("showsPacketRadio"),
                 helpLinks = page.optJSONArray("helpLinks")?.let { links ->
                     (0 until links.length()).mapNotNull { i ->
@@ -161,7 +163,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
         }
     }.filter {
         it.title.isNotBlank() && it.title !in PAGES_WITHOUT_A_SCREEN.keys &&
-            (it.sectionCount > 0 || it.showsLinks || it.showsAbout || it.showsConsole)
+            (it.sectionCount > 0 || it.showsLinks || it.showsAbout || it.showsConsole || it.showsPx4Logs)
     }
 }
 
@@ -325,6 +327,11 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
 
     if (page.showsConsole) {
         AppLogPage(modifier)
+        return
+    }
+
+    if (page.showsPx4Logs) {
+        Px4LogTransferPage(modifier)
         return
     }
 

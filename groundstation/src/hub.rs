@@ -561,7 +561,7 @@ impl Vehicle {
         self.stop_log(now_ms).unwrap_or_default()
     }
 
-    fn log_snapshot(&self) -> Value {
+    pub fn log_snapshot(&self) -> Value {
         json!({
             "running": self.log.is_some(),
             "file": self.log.as_ref().map(|l| l.path.clone()).or_else(|| self.last_log.clone()),

@@ -271,6 +271,7 @@ pub(crate) fn start_pump() {
                 crate::signingkeys::tick(crate::hub::now_ms());
                 if crate::vehiclefacade::switched_on() {
                     crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
+                    crate::mavlinklog::tick();
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
                     crate::joystickhost::tick(crate::hub::now_ms());
