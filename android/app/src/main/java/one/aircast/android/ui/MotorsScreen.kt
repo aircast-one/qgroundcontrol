@@ -84,7 +84,7 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
     val gate = remember(frameJson) { motorGate(frameJson) }
     val motors = motorCount(reported)
     var propsOff by remember { mutableStateOf(false) }
-    var throttle by remember { mutableFloatStateOf(20f) }
+    var throttle by remember { mutableFloatStateOf(0f) }
     val setupJson by qgcPath(SETUP)
     val letters = remember(setupJson) { setupReadiness(setupJson)?.firmware == "apm" }
 

@@ -394,6 +394,7 @@ pub fn insert_land(doc: &Document, latitude: f64, longitude: f64, visual_index: 
 }
 
 const CMD_NAV_TAKEOFF: i64 = 22;
+const CMD_NAV_VTOL_TAKEOFF: i64 = 84;
 
 pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults) -> Result<Document, String> {
     let home = doc.home.ok_or("A takeoff is placed at the launch position, and this plan has none yet.")?;
@@ -404,7 +405,8 @@ pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults
                 VehicleClass::Vtol => crate::surveygrid::at_distance_and_azimuth((home[0], home[1]), defaults.vtol_transition_distance, 0.0),
                 _ => (home[0], home[1]),
             };
-            let inserted = insert_simple(doc, CMD_NAV_TAKEOFF, at_point.0, at_point.1, visual_index, defaults);
+            let command = if class == VehicleClass::Vtol { CMD_NAV_VTOL_TAKEOFF } else { CMD_NAV_TAKEOFF };
+            let inserted = insert_simple(doc, command, at_point.0, at_point.1, visual_index, defaults);
             let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
             let launched = |item: &Item| match item {
                 Item::Simple(s) => Item::Simple(Simple { params: [s.params[0], s.params[1], s.params[2], s.params[3], Some(at_point.0), Some(at_point.1), s.params[6]], ..s.clone() }),
@@ -973,6 +975,7 @@ mod tests {
         let home = without_takeoff.home.unwrap();
         let at = (takeoff.params[4].unwrap(), takeoff.params[5].unwrap());
         assert!((crate::surveygrid::distance_between((home[0], home[1]), at) - VTOL_TRANSITION_DISTANCE_DEFAULT).abs() < 0.5, "a VTOL takes off the transition distance north of launch");
+        assert_eq!(takeoff.command, CMD_NAV_VTOL_TAKEOFF, "insertTakeoffItem sends MAV_CMD_NAV_VTOL_TAKEOFF for a VTOL; command 22 is a fixed-wing takeoff on a QuadPlane");
     }
 
     #[test]
