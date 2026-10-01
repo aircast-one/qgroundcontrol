@@ -313,6 +313,10 @@ fn sensors_request(path: &str, args: &str) -> Option<Value> {
         "calibratePressure" => start("pressure"),
         "calibrateMotorInterference" => start("compassMot"),
         "calibrateAirspeed" => start("airspeed"),
+        "calibrateCompassNorth" => {
+            let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
+            Some(json!({ "action": "start", "type": "compassNorth", "latitude": given.first(), "longitude": given.get(1), "mask": given.get(2) }))
+        }
         "nextClicked" => Some(json!({ "action": "next" })),
         "cancelCalibration" => Some(json!({ "action": "cancel" })),
         _ => None,

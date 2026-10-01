@@ -6,6 +6,8 @@
         "view.adsbTraffic.mavlinkAgeMs",
         "view.adsbTraffic.updatedMs",
         "view.appLog(1,hub,link,1,0).first",
+        "view.calibration.fastCompass.gcsPosition.latitude",
+        "view.calibration.fastCompass.gcsPosition.longitude",
         "view.camera.lapseCount",
         "view.camera.lapseSeconds",
         "view.camera.thermalMode",
@@ -845,6 +847,11 @@
         "view.calibration.class",
         "view.calibration.compassNeeded",
         "view.calibration.connected",
+        "view.calibration.fastCompass.gcsPosition.latitude",
+        "view.calibration.fastCompass.gcsPosition.longitude",
+        "view.calibration.fastCompass.gcsPosition.valid",
+        "view.calibration.fastCompass.help",
+        "view.calibration.fastCompass.invocation",
         "view.calibration.helpText",
         "view.calibration.inProgress",
         "view.calibration.kind",
@@ -6644,6 +6651,12 @@
         "view.calibration.class",
         "view.calibration.compassNeeded",
         "view.calibration.connected",
+        "view.calibration.fastCompass.gcsPosition.latitude",
+        "view.calibration.fastCompass.gcsPosition.longitude",
+        "view.calibration.fastCompass.gcsPosition.valid",
+        "view.calibration.fastCompass.help",
+        "view.calibration.fastCompass.invocation",
+        "view.calibration.fastCompass.vehicleHasPosition",
         "view.calibration.helpText",
         "view.calibration.inProgress",
         "view.calibration.kind",
@@ -9286,6 +9299,16 @@
         "class": "string",
         "compassNeeded": "bool",
         "connected": "bool",
+        "fastCompass": {
+            "gcsPosition": {
+                "latitude": "null",
+                "longitude": "null",
+                "valid": "bool"
+            },
+            "help": "string",
+            "invocation": "string",
+            "vehicleHasPosition": "bool"
+        },
         "helpText": "string",
         "inProgress": "bool",
         "kind": "string",
@@ -9659,6 +9682,7 @@
                 "airspeed",
                 "compassMot",
                 "accelSimple",
+                "compassNorth",
                 null
             ],
             "view.coreCalibration.calibration.outcome": [
@@ -9675,7 +9699,8 @@
                 "pressure",
                 "airspeed",
                 "compassMot",
-                "accelSimple"
+                "accelSimple",
+                "compassNorth"
             ],
             "view.coreCalibration.calibration.running": [
                 "accelerometer",
@@ -9686,6 +9711,7 @@
                 "airspeed",
                 "compassMot",
                 "accelSimple",
+                "compassNorth",
                 null
             ],
             "view.coreCalibration.calibration.sides[].stage": [

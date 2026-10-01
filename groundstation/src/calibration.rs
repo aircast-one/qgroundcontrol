@@ -3,9 +3,12 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["sensorsCal", "vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub", "vehicle.fixedWing"];
+pub const DEPS: &[&str] = &["sensorsCal", "vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.coordinate", "positionManager.gcsPosition", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub", "vehicle.fixedWing"];
 
 const SIDES: &[(&str, &str)] = &[("Down", "Level"), ("UpsideDown", "Upside down"), ("Left", "Left side"), ("Right", "Right side"), ("NoseDown", "Nose down"), ("TailDown", "Tail down")];
+const COMPASS_NORTH: &str = "calibrateCompassNorth";
+const PRIORITY_PARAMS: [&str; 3] = ["COMPASS_PRIO1_ID", "COMPASS_PRIO2_ID", "COMPASS_PRIO3_ID"];
+const FAST_COMPASS_HELP: &str = "Fast compass calibration given vehicle position and yaw. This results in zero diagonal and off-diagonal elements, so is only suitable for vehicles where the field is close to spherical. It is useful for large vehicles where moving the vehicle to calibrate it is difficult. Point the vehicle North before using it.";
 const ACCEL_FIRST: &str = "Calibrate the accelerometer first.";
 
 pub struct Classes {
@@ -57,6 +60,46 @@ const PX4_ROUTINES: &[Routine] = &[
 
 fn table(cal: &Value) -> &'static [Routine] {
     if flag(cal, "px4") { PX4_ROUTINES } else { APM_ROUTINES }
+}
+
+fn gated_as(method: &str) -> &str {
+    if method == COMPASS_NORTH { "calibrateCompass" } else { method }
+}
+
+fn coordinate(backend: &dyn Backend, path: &str) -> Value {
+    let point = object(&backend.get(path));
+    let valid = flag(&point, "valid") && point.get("latitude").and_then(Value::as_f64).is_some();
+    json!({ "valid": valid, "latitude": if valid { point["latitude"].clone() } else { Value::Null }, "longitude": if valid { point["longitude"].clone() } else { Value::Null } })
+}
+
+fn fast_compass(backend: &dyn Backend, cal: &Value) -> Value {
+    if flag(cal, "px4") {
+        return Value::Null;
+    }
+    json!({
+        "invocation": format!("sensorsCal.{COMPASS_NORTH}"),
+        "help": FAST_COMPASS_HELP,
+        "vehicleHasPosition": coordinate(backend, "vehicle.coordinate")["valid"],
+        "gcsPosition": coordinate(backend, "positionManager.gcsPosition"),
+    })
+}
+
+pub fn compass_priority_mask(priorities: &[Option<f64>]) -> u8 {
+    priorities.iter().enumerate().filter(|(_, id)| id.is_some_and(|id| id != 0.0)).map(|(i, _)| 1u8 << i).sum()
+}
+
+fn priority_mask(backend: &dyn Backend) -> u8 {
+    let priorities: Vec<Option<f64>> = PRIORITY_PARAMS
+        .iter()
+        .map(|name| object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})"))).get("rawValue").and_then(Value::as_f64))
+        .collect();
+    compass_priority_mask(&priorities)
+}
+
+pub fn north_arguments(given: &str, mask: u8) -> Option<Value> {
+    let given = serde_json::from_str::<Vec<Value>>(given).ok()?;
+    let degrees = |at: usize, limit: f64| given.get(at).and_then(Value::as_f64).filter(|v| v.is_finite() && v.abs() <= limit);
+    Some(json!([degrees(0, 90.0)?, degrees(1, 180.0)?, mask]))
 }
 
 fn drives_this_firmware(cal: &Value, vehicle: &Value) -> bool {
@@ -167,6 +210,7 @@ pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "px4": flag(&cal, "px4"),
         "settingsTitle": if flag(&cal, "px4") { "Orientations" } else { "Sensor Settings" },
         "routines": routines(&cal, connected, busy, classes.as_ref()),
+        "fastCompass": fast_compass(backend, &cal),
     })
 }
 
@@ -177,7 +221,7 @@ pub enum Action {
     Cancel,
 }
 
-pub const METHODS: &[&str] = &["calibrateAccel", "calibrateCompass", "levelHorizon", "calibrateGyro", "calibratePressure", "calibrateMotorInterference", "calibrateAirspeed"];
+pub const METHODS: &[&str] = &["calibrateAccel", "calibrateCompass", "levelHorizon", "calibrateGyro", "calibratePressure", "calibrateMotorInterference", "calibrateAirspeed", COMPASS_NORTH];
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Session {
@@ -196,7 +240,7 @@ fn refusal(action: Action, state: Session, cal: &Value, classes: Option<&Classes
         Action::Cancel if !state.cancel_enabled => Some(("notCancellable", "This calibration cannot be cancelled now.")),
         Action::Next | Action::Cancel => None,
         Action::Start(method) => {
-            let Some(routine) = table(cal).iter().find(|r| r.method == method) else { return Some(("notForThisVehicle", "This calibration does not apply to this vehicle.")) };
+            let Some(routine) = table(cal).iter().find(|r| r.method == gated_as(method)) else { return Some(("notForThisVehicle", "This calibration does not apply to this vehicle.")) };
             match () {
                 _ if state.busy => Some(("busy", "Another calibration is still running.")),
                 _ if !offered(routine, cal, classes) => Some(("notForThisVehicle", "This calibration does not apply to this vehicle.")),
@@ -226,6 +270,11 @@ pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Val
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
     let args = match action {
+        Action::Start(COMPASS_NORTH) if flag(&cal, "px4") => return json!({ "ok": false, "refusal": "notForThisVehicle", "reason": "This calibration does not apply to this vehicle." }),
+        Action::Start(COMPASS_NORTH) => match north_arguments(args, priority_mask(backend)) {
+            Some(north) => north.to_string(),
+            None => return json!({ "ok": false, "refusal": "badPosition", "reason": "Enter a valid latitude and longitude." }),
+        },
         Action::Start(method) => {
             let given = serde_json::from_str::<Value>(args).ok().filter(|a| a.as_array().is_some_and(|a| !a.is_empty()));
             let defaults = table(&cal).iter().find(|r| r.method == method).map_or(json!([]), |r| json!(r.arguments));
@@ -360,7 +409,7 @@ mod tests {
         let copter = Classes { multi_rotor: true, rover: false, sub: false, fixed_wing: false };
         let plane = Classes { multi_rotor: false, rover: false, sub: false, fixed_wing: true };
         let token = |action, state, classes| refusal(action, state, &apm, classes).map(|(t, _)| t);
-        assert_eq!(METHODS, APM_ROUTINES.iter().chain(PX4_ROUTINES).map(|r| r.method).fold(Vec::new(), |seen, m| if seen.contains(&m) { seen } else { [seen, vec![m]].concat() }).as_slice(), "a routine the view offers and the core does not claim reaches Qt ungated, and a claimed one the view does not list starts with no table entry to gate it");
+        assert_eq!(METHODS, APM_ROUTINES.iter().chain(PX4_ROUTINES).map(|r| r.method).chain([COMPASS_NORTH]).fold(Vec::new(), |seen, m| if seen.contains(&m) { seen } else { [seen, vec![m]].concat() }).as_slice(), "a routine the view offers and the core does not claim reaches Qt ungated, and a claimed one the view does not list starts with no table entry to gate it");
         APM_ROUTINES.iter().for_each(|r| assert_eq!(token(Action::Start(r.method), idle, Some(&copter)), None, "{}", r.method));
         assert_eq!(token(Action::Start("calibrateAirspeed"), idle, Some(&plane)), Some("notForThisVehicle"), "airspeed is a PX4 routine");
         assert_eq!(
@@ -376,6 +425,23 @@ mod tests {
         assert_eq!(token(Action::Cancel, idle, None), Some("notCancellable"));
         assert_eq!(token(Action::Cancel, Session { busy: true, cancel_enabled: true, ..idle }, None), None, "cancel is the one action a running calibration must not refuse as busy");
         assert_eq!(token(Action::Start("calibrateAccel"), Session { connected: false, ..idle }, None), Some("noVehicle"));
+    }
+
+    #[test]
+    fn fast_compass_sends_the_priority_mask_and_a_checked_position() {
+        assert_eq!(compass_priority_mask(&[Some(97_539.0), Some(0.0), Some(131_874.0)]), 0b101, "QGC's compassMask: one bit per priority slot that holds a device");
+        assert_eq!(compass_priority_mask(&[None, None, None]), 0);
+        assert_eq!(north_arguments("[41.7, 44.8]", 0b11), Some(json!([41.7, 44.8, 3])));
+        assert_eq!(north_arguments("[91.0, 44.8]", 1), None);
+        assert_eq!(north_arguments("[\"x\", 44.8]", 1), None, "QGC drops the request when parseFloat gives NaN");
+        let view = calibration_view(&Fake(json!({ "kind": "object", "valid": true, "latitude": 41.7, "longitude": 44.8 })), &[]);
+        assert_eq!(view["fastCompass"]["invocation"], "sensorsCal.calibrateCompassNorth");
+        assert_eq!(view["fastCompass"]["gcsPosition"]["latitude"], 41.7);
+        let px4 = calibration_view(&Fake(json!({ "kind": "object", "px4": true, "px4Firmware": true })), &[]);
+        assert!(px4["fastCompass"].is_null(), "PX4 has no fixed-yaw compass calibration");
+        let token = |cal: Value| refusal(Action::Start(COMPASS_NORTH), Session { connected: true, ..Session::default() }, &cal, None).map(|(t, _)| t);
+        assert_eq!(token(json!({ "kind": "object", "accelSetupNeeded": true })), Some("blocked"), "the fast path shares the compass button and its accelerometer gate");
+        assert_eq!(token(json!({ "kind": "object" })), None);
     }
 
     #[test]

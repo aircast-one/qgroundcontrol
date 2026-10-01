@@ -4,6 +4,8 @@ pub const CMD_PREFLIGHT_CALIBRATION: u16 = 241;
 pub const CMD_DO_START_MAG_CAL: u16 = 42424;
 pub const CMD_DO_CANCEL_MAG_CAL: u16 = 42426;
 pub const CMD_ACCELCAL_VEHICLE_POS: u16 = 42429;
+pub const CMD_FIXED_MAG_CAL_YAW: u16 = 42006;
+const YAW_NORTH: f64 = 0.0;
 pub use crate::mavcmd::{RESULT_ACCEPTED, RESULT_IN_PROGRESS};
 
 pub const MAG_CAL_SUCCESS: u8 = 4;
@@ -42,6 +44,7 @@ pub enum Kind {
     Airspeed,
     CompassMot,
     AccelSimple,
+    CompassNorth,
 }
 
 pub const KINDS: &[(Kind, &str, &str)] = &[
@@ -53,6 +56,7 @@ pub const KINDS: &[(Kind, &str, &str)] = &[
     (Kind::Airspeed, "airspeed", "Airspeed"),
     (Kind::CompassMot, "compassMot", "CompassMot"),
     (Kind::AccelSimple, "accelSimple", "Simple Accelerometer"),
+    (Kind::CompassNorth, "compassNorth", "Fast Compass"),
 ];
 
 impl Kind {
@@ -71,7 +75,7 @@ impl Kind {
     fn supported(self, px4: bool) -> bool {
         match self {
             Kind::Airspeed => px4,
-            Kind::Pressure | Kind::CompassMot | Kind::AccelSimple => !px4,
+            Kind::Pressure | Kind::CompassMot | Kind::AccelSimple | Kind::CompassNorth => !px4,
             _ => true,
         }
     }
@@ -86,6 +90,7 @@ impl Kind {
             Kind::Airspeed => [0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0],
             Kind::CompassMot => [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
             Kind::AccelSimple => [0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0],
+            Kind::CompassNorth => [0.0; 7],
         }
     }
 
@@ -142,6 +147,14 @@ pub struct Inputs {
     pub compass_mask: u8,
     pub compass_fitness: Option<f64>,
     pub compass_learn: bool,
+    pub north: Option<North>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct North {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub mask: u8,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -266,6 +279,9 @@ impl Calibration {
         if !kind.supported(self.px4) {
             return Err(format!("{} calibration is not offered for this firmware.", kind.title()));
         }
+        if kind == Kind::CompassNorth && inputs.north.is_none() {
+            return Err("Fast compass calibration needs the vehicle's latitude and longitude.".to_string());
+        }
         self.begin(kind, now_ms);
         self.mag_sides = inputs.mag_sides.unwrap_or(0b11_1111);
         self.compass_mask = inputs.compass_mask;
@@ -275,6 +291,10 @@ impl Calibration {
             return Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }]);
         }
         match kind {
+            Kind::CompassNorth => {
+                let north = inputs.north.unwrap_or_default();
+                Ok(vec![Action::Command { command: CMD_FIXED_MAG_CAL_YAW, params: [YAW_NORTH, f64::from(north.mask), north.latitude, north.longitude, 0.0, 0.0, 0.0], show_error: true }])
+            }
             Kind::Compass => Ok(vec![Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }]),
             Kind::Accelerometer => {
                 self.reset_sides(u32::MAX);
@@ -443,6 +463,14 @@ impl Calibration {
                 let start = Action::Command { command: CMD_DO_START_MAG_CAL, params: [self.compass_mask as f64, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], show_error: true };
                 fitness.into_iter().chain(std::iter::once(start)).collect()
             }
+            (Some(Kind::CompassNorth), CMD_FIXED_MAG_CAL_YAW, RESULT_ACCEPTED) => {
+                self.note("Successfully completed");
+                self.stop(Outcome::Success)
+            }
+            (Some(Kind::CompassNorth), CMD_FIXED_MAG_CAL_YAW, _) => {
+                self.note("Failed");
+                self.stop(Outcome::Failed)
+            }
             (Some(Kind::Compass), CMD_DO_START_MAG_CAL, result) if result != RESULT_ACCEPTED => {
                 self.note("Compass calibration could not start");
                 self.stop(Outcome::Failed)
@@ -549,7 +577,7 @@ impl Calibration {
             "sides": SIDES.iter().zip(self.sides.iter()).map(|((key, title, _, _), side)| json!({ "key": key, "title": title, "visible": side.visible, "stage": side.stage.name(), "rotate": side.rotate })).collect::<Vec<_>>(),
             "compasses": self.compasses.iter().enumerate().map(|(i, c)| json!({ "id": i, "progress": c.progress as f64 / 100.0, "complete": c.complete, "succeeded": c.succeeded, "fitness": c.fitness })).collect::<Vec<_>>(),
             "log": self.log,
-            "routines": KINDS.iter().filter(|(k, _, _)| k.supported(self.px4) && *k != Kind::AccelSimple).map(|(_, id, title)| json!({ "id": id, "title": title, "enabled": running.is_none() && !self.waiting_for_cancel })).collect::<Vec<_>>(),
+            "routines": KINDS.iter().filter(|(k, _, _)| k.supported(self.px4) && !matches!(k, Kind::AccelSimple | Kind::CompassNorth)).map(|(_, id, title)| json!({ "id": id, "title": title, "enabled": running.is_none() && !self.waiting_for_cancel })).collect::<Vec<_>>(),
         })
     }
 }
@@ -563,6 +591,11 @@ pub fn compass_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
         .iter()
         .filter(|(device, used, _)| parameter(device) as i64 != 0 && parameter(used) as i64 != 0)
         .any(|(_, _, offsets)| ["X", "Y", "Z"].iter().any(|axis| parameter(&format!("{offsets}_{axis}")) as f32 == 0.0))
+}
+
+pub fn north_request(request: &Value) -> Option<North> {
+    let degrees = |key: &str, limit: f64| request.get(key).and_then(Value::as_f64).filter(|v| v.is_finite() && v.abs() <= limit);
+    Some(North { latitude: degrees("latitude", 90.0)?, longitude: degrees("longitude", 180.0)?, mask: request.get("mask").and_then(Value::as_u64).and_then(|m| u8::try_from(m).ok())? })
 }
 
 pub fn apm_setup_needs(parameter: &dyn Fn(&str) -> Option<f64>) -> Value {
@@ -660,6 +693,26 @@ mod tests {
         assert!(!compass_setup_needed(&params(&[])), "no compass device, nothing to calibrate");
         assert!(compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 1.0), ("COMPASS_OFS_X", 5.0), ("COMPASS_OFS_Y", 3.0)])));
         assert!(!compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 0.0)])), "an unused compass is not asked for");
+    }
+
+    #[test]
+    fn fast_compass_calibration_is_one_fixed_yaw_command_and_its_ack() {
+        let mut cal = Calibration::new(false);
+        assert!(cal.start(Kind::CompassNorth, Inputs::default(), 0).is_err(), "no position, no command");
+        assert!(cal.snapshot()["running"].is_null());
+        let north = North { latitude: 41.7, longitude: 44.8, mask: 0b11 };
+        let sent = cal.start(Kind::CompassNorth, Inputs { north: Some(north), ..Inputs::default() }, 0).unwrap();
+        assert!(matches!(sent.as_slice(), [Action::Command { command: CMD_FIXED_MAG_CAL_YAW, params, show_error: true }] if *params == [0.0, 3.0, 41.7, 44.8, 0.0, 0.0, 0.0]));
+        assert!(cal.snapshot()["routines"].as_array().unwrap().iter().all(|r| r["id"] != "compassNorth"), "it is a checkbox on the compass dialog, not a row");
+        cal.on_ack(CMD_FIXED_MAG_CAL_YAW, RESULT_ACCEPTED, 1);
+        assert_eq!(cal.snapshot()["outcome"], "success");
+        assert_eq!(cal.snapshot()["log"][0], "Successfully completed");
+        cal.start(Kind::CompassNorth, Inputs { north: Some(north), ..Inputs::default() }, 2).unwrap();
+        cal.on_ack(CMD_FIXED_MAG_CAL_YAW, 4, 3);
+        assert_eq!(cal.snapshot()["outcome"], "failed");
+        assert!(Calibration::new(true).start(Kind::CompassNorth, Inputs { north: Some(north), ..Inputs::default() }, 0).is_err(), "ArduPilot only");
+        assert_eq!(north_request(&json!({ "latitude": 41.7, "longitude": 44.8, "mask": 3 })), Some(north));
+        assert_eq!(north_request(&json!({ "latitude": null, "longitude": 44.8, "mask": 3 })), None);
     }
 
     #[test]
@@ -786,7 +839,7 @@ mod tests {
     #[test]
     fn compassmot_logs_the_steps_and_next_acknowledges_and_completes() {
         let mut cal = Calibration::new(false);
-        let inputs = Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false };
+        let inputs = Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false, north: None };
         assert_eq!(cal.start(Kind::CompassMot, inputs, 0).unwrap(), vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0], show_error: false }]);
         assert_eq!(cal.log.len(), 3);
         assert!(cal.snapshot()["nextEnabled"].as_bool().unwrap());
@@ -794,14 +847,14 @@ mod tests {
         cal.on_text("Starting calibration", 10);
         assert_eq!(cal.next().unwrap(), vec![Action::Ack]);
         assert_eq!((cal.running, cal.outcome, cal.progress), (None, Some(Outcome::Success), 1.0));
-        assert!(Calibration::new(true).start(Kind::CompassMot, Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false }, 0).is_err(), "PX4 has no CompassMot");
+        assert!(Calibration::new(true).start(Kind::CompassMot, Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false, north: None }, 0).is_err(), "PX4 has no CompassMot");
         assert_eq!(Kind::Airspeed.params()[5], 2.0, "PX4 deprecated param6 = 1 for airspeed");
     }
 
     #[test]
     fn apm_compass_cancels_then_starts_and_reports_per_compass() {
         let mut cal = Calibration::new(false);
-        let inputs = Inputs { mag_sides: None, compass_mask: 0b111, compass_fitness: Some(30.0), compass_learn: true };
+        let inputs = Inputs { mag_sides: None, compass_mask: 0b111, compass_fitness: Some(30.0), compass_learn: true, north: None };
         let started = cal.start(Kind::Compass, inputs, 0).unwrap();
         assert_eq!(started, vec![Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }]);
         let begun = cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);

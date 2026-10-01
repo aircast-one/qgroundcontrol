@@ -418,6 +418,7 @@ impl Vehicle {
             compass_mask: (0..3).map(compass_bit).sum(),
             compass_fitness: number(sensorcal::COMPASS_FITNESS_PARAM),
             compass_learn: number(sensorcal::COMPASS_LEARN_PARAM).is_some(),
+            north: None,
         }
     }
 
@@ -454,7 +455,7 @@ impl Vehicle {
             "start" => {
                 let id = request.get("type").and_then(Value::as_str).ok_or_else(|| "A calibration start needs a type.".to_string())?;
                 let kind = sensorcal::Kind::parse(id).ok_or_else(|| format!("Unknown calibration type {id:?}"))?;
-                let inputs = self.calibration_inputs();
+                let inputs = sensorcal::Inputs { north: sensorcal::north_request(request), ..self.calibration_inputs() };
                 self.calibrate.start(kind, inputs, now_ms)?
             }
             "cancel" => self.calibrate.cancel()?,

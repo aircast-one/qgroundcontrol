@@ -41,6 +41,7 @@ internal data class CalibrationState(
     val needsAttention: String,
     val px4: Boolean,
     val settingsTitle: String,
+    val fastCompass: FastCompass?,
     val sides: List<CalibrationSide>,
     val routines: List<CalibrationRoutine>,
 )
@@ -66,6 +67,7 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
         needsAttention = view.optText("needsAttention"),
         px4 = view.optBoolean("px4"),
         settingsTitle = view.optText("settingsTitle"),
+        fastCompass = fastCompass(view.optJSONObject("fastCompass")),
         sides = view.list("sides") {
             CalibrationSide(
                 key = it.optText("key"),

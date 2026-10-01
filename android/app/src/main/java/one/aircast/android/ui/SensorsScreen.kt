@@ -107,11 +107,14 @@ internal const val ACCEL_ROUTINE = "accelerometer"
 @Composable
 private fun StartDialog(
     calibration: CalibrationRoutine,
-    onConfirm: (List<Boolean>) -> Unit,
+    fast: FastCompass?,
+    onConfirm: (String, List<Any>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val copy = routineCopy(calibration)
     var simple by remember { mutableStateOf(false) }
+    val offersFast = fast?.takeIf { calibration.id == COMPASS_ROUTINE }
+    var fastChoice by remember(offersFast != null) { mutableStateOf(offersFast?.let(::initialFastCompassChoice)) }
     val offersSimple = calibration.id == ACCEL_ROUTINE && calibration.arguments.isNotEmpty()
     val orientationFirst = calibration.id == ACCEL_ROUTINE || calibration.id == COMPASS_ROUTINE
     AlertDialog(
@@ -127,6 +130,7 @@ private fun StartDialog(
                     )
                 }
                 Text(copy.instruction)
+                offersFast?.let { offered -> fastChoice?.let { choice -> FastCompassBlock(offered, choice) { fastChoice = it } } }
                 if (copy.warning.isNotBlank()) {
                     Text(
                         text = copy.warning,
@@ -138,7 +142,12 @@ private fun StartDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onConfirm(if (offersSimple) listOf(simple) else calibration.arguments)
+                val north = offersFast?.let { offered -> fastChoice?.takeIf { it.enabled }?.let { offered to it } }
+                when {
+                    north != null -> onConfirm(north.first.invocation, fastCompassArguments(north.first, north.second))
+                    offersSimple -> onConfirm(calibration.invocation, listOf(simple))
+                    else -> onConfirm(calibration.invocation, calibration.arguments)
+                }
                 onDismiss()
             }) { Text("Start") }
         },
@@ -314,14 +323,15 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     pending?.let { calibration ->
         StartDialog(
             calibration = calibration,
-            onConfirm = { arguments ->
+            fast = state.fastCompass,
+            onConfirm = { invocation, arguments ->
                 runningName = calibration.title
                 rebootOffered = rebootOffered || calibration.id == COMPASS_ROUTINE
                 notice = null
                 scope.launch {
                     val before = withContext(Dispatchers.Default) { calibrationStatus() }
                     val dispatched = withContext(Dispatchers.Default) {
-                        Qgc.invoke(calibration.invocation, *arguments.toTypedArray())
+                        Qgc.invoke(invocation, *arguments.toTypedArray())
                     }
                     val started = dispatched && withTimeoutOrNull(CAL_START_MS) {
                         while (
