@@ -24,6 +24,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import org.mavlink.qgroundcontrol.QGCBridge
 
 private const val FLY_POLL_MS = 2000L
 
@@ -43,7 +45,13 @@ private data class FlownPlan(
     val roi: TrackPoint? = null,
     val goto: GotoLocation? = null,
     val orbit: OrbitCircle? = null,
+    val currentSequence: Int = -1,
 )
+
+private const val FLY_MISSION = "planFly.missionController"
+
+internal fun currentItemIndex(items: List<MissionItem>, sequence: Int): Int? =
+    items.firstOrNull { it.sequence == sequence && sequence > 0 }?.index
 
 internal fun <T> missionArrived(before: List<T>, after: List<T>): Boolean = before.isEmpty() && after.isNotEmpty()
 
@@ -94,6 +102,7 @@ fun FlyMap(
                         roi = RoiBridge.read(),
                         goto = GotoBridge.read(),
                         orbit = OrbitBridge.read(),
+                        currentSequence = runCatching { JSONObject(QGCBridge.getFields(FLY_MISSION, "currentMissionIndex")).optInt("currentMissionIndex", -1) }.getOrDefault(-1),
                     )
                 }
                 if (missionArrived(plan.items, next.items)) fitRequest++
@@ -131,6 +140,7 @@ fun FlyMap(
             onRoiClick = onRoiClick,
             goto = plan.goto,
             orbit = plan.orbit,
+            selectedWaypoint = currentItemIndex(plan.items, plan.currentSequence),
             fitRequest = fitRequest,
             onCentreChanged = { at, level ->
                 centre = at
