@@ -32,3 +32,19 @@ class ActuatorsScreenTest {
         assertNull(subgroup.channels.single().configs.single())
     }
 }
+
+class ActuatorGeometryTest {
+    @Test
+    fun `fixed geometry cells read as read-only values`() {
+        val read = geometry(
+            JSONObject(
+                """{"title":"Geometry: Tiltrotor","helpUrl":"","groups":[{"label":"Motors","count":null,"params":[],""" +
+                    """"channels":[{"label":"Rear Motor (Motor 3)","cells":[{"fixed":true,"label":"Position X","valueString":"-0.7500","advanced":false},null]}]}]}""",
+            ),
+        )!!
+        val channel = read.groups.single().channels.single()
+        assertEquals("Rear Motor (Motor 3)", channel.label)
+        assertEquals(GeometryCell.Fixed("Position X", "-0.7500", false), channel.cells[0])
+        assertNull(channel.cells[1])
+    }
+}

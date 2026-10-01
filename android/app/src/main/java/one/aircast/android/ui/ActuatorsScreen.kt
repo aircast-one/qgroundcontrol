@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
@@ -45,8 +46,23 @@ internal data class ActuatorFact(val label: String, val showAs: String, val bit:
 internal data class ActuatorColumn(val label: String, val advanced: Boolean, val visible: Boolean)
 internal data class ActuatorChannel(val label: String, val configs: List<ActuatorFact?>)
 internal data class ActuatorSubgroup(val label: String, val primary: ActuatorFact?, val params: List<ActuatorFact>, val columns: List<ActuatorColumn>, val channels: List<ActuatorChannel>)
-internal data class ActuatorGroup(val label: String, val enable: ActuatorFact?, val groupsVisible: Boolean, val params: List<ActuatorFact>, val subgroups: List<ActuatorSubgroup>)
-internal data class ActuatorOutputs(val available: Boolean, val reason: String, val showUi: Boolean, val groups: List<ActuatorGroup>, val testing: ActuatorTesting? = null)
+internal data class ActuatorGroup(val label: String, val enable: ActuatorFact?, val groupsVisible: Boolean, val params: List<ActuatorFact>, val subgroups: List<ActuatorSubgroup>, val notes: List<String> = emptyList())
+internal sealed interface GeometryCell {
+    data class Editable(val item: ActuatorFact) : GeometryCell
+    data class Fixed(val label: String, val valueString: String, val advanced: Boolean) : GeometryCell
+}
+internal data class GeometryChannel(val label: String, val cells: List<GeometryCell?>)
+internal data class GeometryGroup(val label: String, val count: Fact?, val channels: List<GeometryChannel>, val params: List<ActuatorFact>)
+internal data class Geometry(val title: String, val helpUrl: String, val groups: List<GeometryGroup>)
+internal data class ActuatorOutputs(
+    val available: Boolean,
+    val reason: String,
+    val showUi: Boolean,
+    val groups: List<ActuatorGroup>,
+    val testing: ActuatorTesting? = null,
+    val geometry: Geometry? = null,
+    val hasUnsetRequiredFunctions: Boolean = false,
+)
 
 private fun <T> JSONArray?.objects(read: (JSONObject) -> T?): List<T> =
     (0 until (this?.length() ?: 0)).mapNotNull { index -> this?.optJSONObject(index)?.let(read) }
@@ -56,6 +72,30 @@ private fun actuatorFact(json: JSONObject?): ActuatorFact? =
         factFromControl(control)?.let { ActuatorFact(control.optText("label"), control.optText("showAs"), control.optInt("bit"), control.optBoolean("advanced"), it) }
     }
 
+private fun geometryCell(json: JSONObject?): GeometryCell? = when {
+    json == null -> null
+    json.optBoolean("fixed") -> GeometryCell.Fixed(json.optText("label"), json.optText("valueString"), json.optBoolean("advanced"))
+    else -> actuatorFact(json)?.let { GeometryCell.Editable(it) }
+}
+
+internal fun geometry(json: JSONObject?): Geometry? = json?.let { read ->
+    Geometry(
+        title = read.optText("title"),
+        helpUrl = read.optText("helpUrl"),
+        groups = read.optJSONArray("groups").objects { group ->
+            GeometryGroup(
+                label = group.optText("label"),
+                count = group.optJSONObject("count")?.let(::factFromControl),
+                channels = group.optJSONArray("channels").objects { channel ->
+                    val cells = channel.optJSONArray("cells")
+                    GeometryChannel(channel.optText("label"), (0 until (cells?.length() ?: 0)).map { geometryCell(cells?.optJSONObject(it)) })
+                },
+                params = group.optJSONArray("params").objects(::actuatorFact),
+            )
+        },
+    )
+}
+
 internal fun actuatorOutputs(view: JSONObject?): ActuatorOutputs? =
     view?.takeIf { it.optString("class") == "ActuatorOutputs" }?.let { read ->
         ActuatorOutputs(
@@ -63,11 +103,14 @@ internal fun actuatorOutputs(view: JSONObject?): ActuatorOutputs? =
             reason = read.optText("reason"),
             showUi = read.optBoolean("showUi", true),
             testing = actuatorTesting(read),
+            geometry = geometry(read.optJSONObject("geometry")),
+            hasUnsetRequiredFunctions = read.optBoolean("hasUnsetRequiredFunctions"),
             groups = read.optJSONArray("groups").objects { group ->
                 ActuatorGroup(
                     label = group.optText("label"),
                     enable = actuatorFact(group.optJSONObject("enable")),
                     groupsVisible = group.optBoolean("groupsVisible"),
+                    notes = group.optJSONArray("notes").let { list -> (0 until (list?.length() ?: 0)).map { list!!.optString(it) } },
                     params = group.optJSONArray("params").objects(::actuatorFact),
                     subgroups = group.optJSONArray("subgroups").objects { subgroup ->
                         val configs = { channel: JSONObject -> channel.optJSONArray("configs").let { list -> (0 until (list?.length() ?: 0)).map { actuatorFact(list?.optJSONObject(it)) } } }
@@ -122,17 +165,22 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
     }
 
     val group = outputs.groups.getOrNull(tab) ?: outputs.groups.firstOrNull() ?: return
-    Column(modifier.fillMaxSize()) {
-        outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it) } }
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Actuator Outputs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Spacer(Modifier.weight(1f))
             Checkbox(checked = advanced, onCheckedChange = { advanced = it })
             Text("Advanced")
+        }
+        outputs.geometry?.let { Column(Modifier.padding(16.dp)) { GeometrySection(it, advanced, ::write) { revision++ } } }
+        outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it) } }
+        Text("Actuator Outputs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+        if (outputs.hasUnsetRequiredFunctions) {
+            Text("One or more actuator still needs to be assigned to an output.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
         }
         ScrollableTabRow(selectedTabIndex = outputs.groups.indexOf(group)) {
             outputs.groups.forEachIndexed { index, each -> Tab(selected = each == group, onClick = { tab = index }, text = { Text(each.label) }) }
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             group.enable?.let { ActuatorFactRow(it, ::write) { revision++ } }
             if (group.groupsVisible) {
                 group.subgroups.forEach { subgroup ->
@@ -155,7 +203,41 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
                 }
             }
             group.params.forEach { ActuatorFactRow(it, ::write) { revision++ } }
+            group.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
+    }
+}
+
+@Composable
+private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (String, Any) -> Unit, onWrite: () -> Unit) {
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(geometry.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            if (geometry.helpUrl.isNotEmpty()) androidx.compose.material3.TextButton(onClick = { uri.openUri(geometry.helpUrl) }) { Text("?") }
+        }
+        geometry.groups.forEach { group ->
+            Text(group.label, style = MaterialTheme.typography.titleSmall)
+            group.count?.let { FactRow(it, onWrite = onWrite) }
+            group.channels.forEach { channel ->
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(8.dp)) {
+                        Text(channel.label, style = MaterialTheme.typography.labelLarge)
+                        channel.cells.forEach { cell ->
+                            when (cell) {
+                                is GeometryCell.Editable -> if (advanced || !cell.item.advanced) ActuatorFactRow(cell.item, write, onWrite)
+                                is GeometryCell.Fixed -> if (advanced || !cell.advanced) Row {
+                                    Text(cell.label, modifier = Modifier.weight(1f))
+                                    Text(cell.valueString)
+                                }
+                                null -> Unit
+                            }
+                        }
+                    }
+                }
+            }
+            group.params.forEach { if (advanced || !it.advanced) ActuatorFactRow(it, write, onWrite) }
         }
     }
 }
