@@ -476,6 +476,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "rover": class == Rover,
         "sub": class == Sub,
         "initialConnectComplete": v.connected,
+        "loadProgress": v.connect_progress,
         "rcRSSI": crate::vehiclefact::vehicle_fact("rcRSSI", &json!(v.rc_rssi.shown)),
         "heading": crate::vehiclefact::vehicle_fact("heading", &json!(v.facts.heading)),
         "roll": crate::vehiclefact::vehicle_fact("roll", &json!(v.facts.roll)),

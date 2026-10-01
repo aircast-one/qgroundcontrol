@@ -1,7 +1,10 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import kotlinx.coroutines.isActive
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -75,6 +78,11 @@ internal fun mvReasonFor(action: MvAction): String? =
     action.reason.ifBlank { null }?.takeIf { !action.ready }
 
 internal const val CLOSE_VEHICLE = "vehicle.closeVehicle"
+private const val LOAD_POLL_MS = 500L
+
+internal fun loadingProgress(fields: org.json.JSONObject?): Float? =
+    fields?.takeIf { it.has("initialConnectComplete") && !it.optBoolean("initialConnectComplete") }
+        ?.let { it.optDouble("loadProgress", 0.0).toFloat().coerceIn(0f, 1f) }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,6 +124,19 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     MaterialTheme.colorScheme.error
                 },
             )
+        }
+        var loading by remember { mutableStateOf<Float?>(null) }
+        androidx.compose.runtime.LaunchedEffect(choices.choices.size) {
+            while (isActive) {
+                loading = withContext(Dispatchers.Default) { loadingProgress(Qgc.get("vehicle", listOf("initialConnectComplete", "loadProgress"))) }
+                kotlinx.coroutines.delay(LOAD_POLL_MS)
+            }
+        }
+        loading?.let { progress ->
+            Column(Modifier.padding(start = 8.dp)) {
+                Text("Loading vehicle", style = MaterialTheme.typography.labelSmall)
+                androidx.compose.material3.LinearProgressIndicator(progress = { progress }, modifier = Modifier.width(72.dp))
+            }
         }
         if (lost) {
             androidx.compose.material3.TextButton(onClick = {
