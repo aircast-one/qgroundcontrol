@@ -181,24 +181,35 @@ class LinkEditRulesTest {
 
     @Test
     fun `udp writes its own port property and not tcp's`() {
-        val writes = editWrites("portOnly", "n", "", 14551, "", 0)
-        assertEquals(listOf("name" to "n", "localPort" to 14551), writes)
+        val writes = editWrites("portOnly", "n", "", 14551, "", 0, false, false)
+        assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to false, "localPort" to 14551), writes)
     }
 
     @Test
     fun `tcp writes host and port`() {
-        val writes = editWrites("hostAndPort", "n", "1.2.3.4", 5760, "", 0)
-        assertEquals(listOf<Pair<String, Any>>("name" to "n", "host" to "1.2.3.4", "port" to 5760), writes)
+        val writes = editWrites("hostAndPort", "n", "1.2.3.4", 5760, "", 0, true, false)
+        assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to true, "highLatency" to false, "host" to "1.2.3.4", "port" to 5760), writes)
     }
 
     @Test
     fun `serial writes the port name and baud`() {
-        val writes = editWrites("serial", "n", "", 0, "/dev/ttyUSB0", 57600)
-        assertEquals(listOf<Pair<String, Any>>("name" to "n", "portName" to "/dev/ttyUSB0", "baud" to 57600), writes)
+        val writes = editWrites("serial", "n", "", 0, "/dev/ttyUSB0", 57600, false, true)
+        assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to true, "portName" to "/dev/ttyUSB0", "baud" to 57600), writes)
     }
 
     @Test
     fun `an unknown kind still renames and writes nothing else`() {
-        assertEquals(listOf<Pair<String, Any>>("name" to "n"), editWrites("none", "n", "h", 1, "p", 2))
+        assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to false), editWrites("none", "n", "h", 1, "p", 2, false, false))
+    }
+
+    @Test
+    fun `a new link's flags are written to its row`() {
+        assertEquals(listOf("links.linkConfigurations.3.autoConnect" to true, "links.linkConfigurations.3.highLatency" to false), linkFlagWrites(3, true, false))
+    }
+
+    @Test
+    fun `a row reads its connect-on-start and high latency flags`() {
+        val rows = linkRows(org.json.JSONObject("""{"configured":[{"index":0,"name":"n","autoConnect":true,"highLatency":true}]}"""))
+        assertEquals(true to true, rows[0].autoConnect to rows[0].highLatency)
     }
 }

@@ -196,6 +196,8 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
     let port = value.as_u64().and_then(|p| u16::try_from(p).ok());
     let kind = match (&config.kind, field) {
         (_, "name") => return text.filter(|t| !t.is_empty()).map(|name| LinkConfig { name, ..config.clone() }),
+        (_, "autoConnect") => return value.as_bool().map(|auto_connect| LinkConfig { auto_connect, ..config.clone() }),
+        (_, "highLatency") => return value.as_bool().map(|high_latency| LinkConfig { high_latency, ..config.clone() }),
         (Kind::Tcp { port, .. }, "host") => Kind::Tcp { host: text?, port: *port },
         (Kind::Tcp { host, .. }, "port") => Kind::Tcp { host: host.clone(), port: port? },
         (Kind::Udp { hosts, .. }, "localPort") => Kind::Udp { local_port: port?, hosts: hosts.clone() },
@@ -548,6 +550,9 @@ mod tests {
         assert_eq!(edited(&tcp, "port", &json!(5761)).unwrap().kind, Kind::Tcp { host: "10.0.0.5".into(), port: 5761 });
         assert_eq!(edited(&tcp, "name", &json!("Bench 2")).unwrap().name, "Bench 2");
         assert_eq!(edited(&tcp, "localPort", &json!(1)), None, "a field the kind does not carry is not written");
+        assert!(edited(&tcp, "autoConnect", &json!(true)).is_some_and(|c| c.auto_connect), "Automatically Connect on Start");
+        assert!(edited(&tcp, "highLatency", &json!(true)).is_some_and(|c| c.high_latency));
+        assert_eq!(edited(&tcp, "highLatency", &json!("yes")), None);
         assert_eq!(edited(&tcp, "port", &json!(70000)), None);
     }
 

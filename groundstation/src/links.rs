@@ -99,6 +99,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "heardVehicle": heard,
         "goneQuiet": gone_quiet,
         "autoConnect": flag("autoConnect"),
+        "highLatency": flag("highLatency"),
         "dynamic": flag("dynamic"),
         "host": host,
         "port": number("port").or_else(|| number("localPort")),

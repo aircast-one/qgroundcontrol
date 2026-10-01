@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -68,6 +69,8 @@ data class LinkRow(
     val port: Int = 0,
     val portName: String = "",
     val baud: Int = 0,
+    val autoConnect: Boolean = false,
+    val highLatency: Boolean = false,
 )
 
 internal fun linkRows(view: JSONObject?): List<LinkRow> {
@@ -88,6 +91,8 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 port = link.optInt("port"),
                 portName = link.optText("portName"),
                 baud = link.optInt("baud"),
+                autoConnect = link.optBoolean("autoConnect"),
+                highLatency = link.optBoolean("highLatency"),
             )
         }
     }
@@ -111,7 +116,9 @@ internal fun editWrites(
     port: Int,
     portName: String,
     baud: Int,
-): List<Pair<String, Any>> = listOf<Pair<String, Any>>("name" to name) + when (editing) {
+    autoConnect: Boolean,
+    highLatency: Boolean,
+): List<Pair<String, Any>> = listOf<Pair<String, Any>>("name" to name, "autoConnect" to autoConnect, "highLatency" to highLatency) + when (editing) {
     "hostAndPort" -> listOf("host" to host, "port" to port)
     "portOnly" -> listOf("localPort" to port)
     "serial" -> listOf("portName" to portName, "baud" to baud)
@@ -249,6 +256,26 @@ private fun LinkRowItem(
 }
 
 @Composable
+private fun LinkFlagSwitches(autoConnect: Boolean, highLatency: Boolean, onAutoConnect: (Boolean) -> Unit, onHighLatency: (Boolean) -> Unit) {
+    listOf(Triple("Automatically Connect on Start", autoConnect, onAutoConnect), Triple("High Latency", highLatency, onHighLatency)).forEach { (label, checked, onChange) ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, modifier = Modifier.weight(1f))
+            Switch(checked = checked, onCheckedChange = onChange)
+        }
+    }
+}
+
+internal fun linkFlagWrites(index: Int, autoConnect: Boolean, highLatency: Boolean): List<Pair<String, Boolean>> =
+    listOf("$LINKS_PATH.$index.autoConnect" to autoConnect, "$LINKS_PATH.$index.highLatency" to highLatency)
+
+private fun writeNewLinkFlags(name: String, autoConnect: Boolean, highLatency: Boolean) {
+    if (!autoConnect && !highLatency) return
+    val row = currentRows().firstOrNull { it.name == name } ?: return
+    linkFlagWrites(row.index, autoConnect, highLatency).forEach { (path, value) -> Qgc.set(path, value) }
+    Qgc.invoke("links.commitLinkConfigurations")
+}
+
+@Composable
 private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Unit) {
     var name by remember { mutableStateOf(row.name) }
     var host by remember { mutableStateOf(row.host) }
@@ -257,6 +284,8 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     var baud by remember { mutableIntStateOf(if (row.baud > 0) row.baud else DEFAULT_BAUD) }
     var baudsOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var autoConnect by remember { mutableStateOf(row.autoConnect) }
+    var highLatency by remember { mutableStateOf(row.highLatency) }
     val scope = rememberCoroutineScope()
     val linksJson by qgcPath(LINKS_VIEW)
     val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
@@ -272,6 +301,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     label = { Text("Name") },
                     singleLine = true,
                 )
+                LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 if (row.editing == "hostAndPort") {
                     OutlinedTextField(
                         value = host,
@@ -330,9 +360,9 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                                 return@launch
                             }
                             withContext(Dispatchers.Default) {
-                                editWrites(row.editing, name, host, parsed, portName, baud)
+                                editWrites(row.editing, name, host, parsed, portName, baud, autoConnect, highLatency)
                                     .forEach { (field, value) ->
-                                        // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud
+                                        // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.autoConnect, links.linkConfigurations.0.highLatency, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud
                                         Qgc.set("$LINKS_PATH.${row.index}.$field", value)
                                     }
                                 Qgc.invoke("links.commitLinkConfigurations")
@@ -364,6 +394,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     val offered = remember(linksJson) { addableLinkTypes(linksJson) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var autoConnect by remember { mutableStateOf(false) }
+    var highLatency by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     AlertDialog(
@@ -371,6 +403,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
         title = { Text("Add a link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     offered.forEach { id ->
                         FilterChip(
@@ -478,7 +511,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                     Qgc.invokeResult(
                                         "links.createAndConnectLink", type, chosen, host, port.toInt(),
                                     ) == true
-                                }
+                                }.also { created -> if (created) writeNewLinkFlags(chosen, autoConnect, highLatency) }
                             }
                             busy = false
                             if (added) {
