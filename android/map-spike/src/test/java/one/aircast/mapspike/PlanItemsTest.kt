@@ -538,4 +538,11 @@ class SurveyStatsRowTest {
         assertEquals(true, selectionSurvives(MapHit.BreachReturn, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), breach = true))
         assertEquals(false, selectionSurvives(MapHit.BreachReturn, emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
     }
+
+    @Test
+    fun `deleting keeps the selection at the same index or the new last item, as removeVisualItem does`() {
+        assertEquals(MapHit.Waypoint(2), selectionAfterRemove(2, 5))
+        assertEquals(MapHit.Waypoint(3), selectionAfterRemove(4, 5))
+        assertEquals(null, selectionAfterRemove(1, 2))
+    }
 }

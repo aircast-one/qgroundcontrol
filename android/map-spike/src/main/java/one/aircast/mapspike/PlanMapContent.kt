@@ -968,7 +968,7 @@ internal fun MapSpikeScreen(
                                         val outcome = withContext(Dispatchers.Default) {
                                             removeMissionItem(item.index)
                                         }
-                                        selected = null
+                                        selected = if (outcome.ok) selectionAfterRemove(item.index, allItems.size) else null
                                         if (outcome.ok) {
                                             busy = null
                                         } else {

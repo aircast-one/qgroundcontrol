@@ -71,6 +71,9 @@ fun worthListing(items: List<MissionItem>): Boolean = items.any { it.index != HO
 
 fun rowAt(rows: List<ItemRow>, index: Int): ItemRow? = rows.firstOrNull { it.index == index }
 
+fun selectionAfterRemove(removed: Int, countBefore: Int): MapHit? =
+    (countBefore - 2).takeIf { it > HOME_ITEM }?.let { last -> MapHit.Waypoint(minOf(removed, last)) }
+
 fun insertAfter(selected: MapHit?, items: List<MissionItem>): Int {
     val index = (selected as? MapHit.Waypoint)?.index ?: return AT_END
     if (items.none { it.index == index }) return AT_END

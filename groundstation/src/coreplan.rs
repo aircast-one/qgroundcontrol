@@ -528,7 +528,17 @@ fn remove(args: &str) -> Value {
     let Some(index) = index.and_then(|i| usize::try_from(i).ok()) else {
         return refused("Remove needs the index of the item.");
     };
-    edit(|doc| plandoc::remove(doc, index).map(|after| plandoc::after_scan_removed(doc, after)).ok_or_else(|| format!("This plan has no item {index} to remove.")))
+    let answer = edit(|doc| plandoc::remove(doc, index).map(|after| plandoc::after_scan_removed(doc, after)).ok_or_else(|| format!("This plan has no item {index} to remove.")));
+    if answer["ok"] == true {
+        let mut state = held();
+        let last = state.document.as_ref().map_or(0, |d| d.items.len());
+        state.selected = current_after_remove(index, last);
+    }
+    answer
+}
+
+fn current_after_remove(removed: usize, last_visual: usize) -> i64 {
+    removed.min(last_visual) as i64
 }
 
 const WAYPOINTS_HEADER: &str = "QGC WPL";
@@ -1712,6 +1722,13 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
             other => other,
         }
+    }
+
+    #[test]
+    fn a_removed_item_hands_current_to_the_one_now_at_its_index_or_the_last() {
+        assert_eq!(current_after_remove(2, 4), 2, "MissionController::removeVisualItem keeps the index");
+        assert_eq!(current_after_remove(5, 4), 4, "and steps back past the end");
+        assert_eq!(current_after_remove(1, 0), 0, "with nothing left the settings item is current");
     }
 
     #[test]
