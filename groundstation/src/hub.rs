@@ -2095,6 +2095,14 @@ impl Vehicle {
                     _ => Err("No camera is connected.".to_string()),
                 };
             }
+            "selectStream" => {
+                let index = action.get("stream").and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok());
+                let chosen = self.cameras.selected().zip(index).and_then(|(camera, i)| camera.listed_streams().get(i).map(|stream| stream.stream_id));
+                match chosen {
+                    Some(stream) => self.cameras.select_stream(stream, now_ms),
+                    None => Err(crate::cameraproto::Refusal::UnknownStream),
+                }
+            }
             "stepStream" => {
                 let (streams, current) = self.cameras.selected().map(|c| (c.streams.iter().map(|s| s.stream_id).collect::<Vec<_>>(), c.selected_stream)).unwrap_or_default();
                 let at = current.and_then(|id| streams.iter().position(|s| *s == id));

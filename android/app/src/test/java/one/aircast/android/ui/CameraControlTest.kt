@@ -12,6 +12,13 @@ class CameraControlTest {
     private fun camera(json: String) = cameraReading(JSONObject(json))
 
     @Test
+    fun `a camera with several streams names them and the one showing`() {
+        val reading = camera("""{"present":true,"streamLabels":["Wide","Narrow"],"currentStream":1}""")!!
+        assertEquals(listOf("Wide", "Narrow"), reading.streamLabels)
+        assertEquals(1, reading.currentStream)
+    }
+
+    @Test
     fun `a photo camera offers a photo shutter`() {
         val shutter = shutterFor(
             camera("""{"present":true,"hasModes":true,"modeText":"Photo","mode":0,

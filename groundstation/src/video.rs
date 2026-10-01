@@ -19,7 +19,7 @@ pub fn no_video_text(source: &str, udp: &str, rtsp: &str, tcp: &str, whep: &str)
     };
     format!("No video from {}", if url.is_empty() { source } else { url })
 }
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint,streamLabels,currentStream";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
@@ -46,6 +46,8 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.trackingImageIsActive",
     "vehicle.cameraManager.currentCameraInstance.trackingImageRect",
     "vehicle.cameraManager.currentCameraInstance.thermalMode",
+    "vehicle.cameraManager.currentCameraInstance.streamLabels",
+    "vehicle.cameraManager.currentCameraInstance.currentStream",
     "vehicle.cameraManager.currentCamera",
     "vehicle.cameraTriggerPoints.count",
 ];
@@ -242,6 +244,10 @@ fn destructive_offers(present: bool, reports_storage: bool, recording: bool) -> 
         .into()
 }
 
+fn stream_labels(camera: &Value) -> Vec<String> {
+    camera.get("streamLabels").and_then(Value::as_array).map(|labels| labels.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+}
+
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // The only field any head took from vehicle.cameraManager: the switcher needs every camera's
     // name, and this view carried only the current one's. One field short kept a whole Qt path
@@ -312,6 +318,8 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "batteryRemaining": battery,
         "batteryText": if battery >= 0 { format!("{battery}%") } else { String::new() },
         "thermalAvailable": thermal_available,
+        "streamLabels": stream_labels(&camera),
+        "currentStream": integer(&camera, "currentStream").unwrap_or(0),
         "thermalMode": thermal_available.then(|| thermal_token(integer(&camera, "thermalMode"))).flatten(),
         "thermalOpacity": (thermal_available && integer(&camera, "thermalMode") == Some(THERMAL_BLEND))
             .then(|| camera.get("thermalOpacity").and_then(Value::as_f64))
@@ -399,6 +407,12 @@ mod tests {
             }
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_camera_lists_its_streams_and_the_one_showing() {
+        let view = camera_view(&Fake::new(json!({ "kind": "object" }), json!({ "kind": "object", "modelName": "ZR30", "streamLabels": ["Wide", "Narrow"], "currentStream": 1 })), &[]);
+        assert_eq!((view["streamLabels"].clone(), view["currentStream"].clone()), (json!(["Wide", "Narrow"]), json!(1)));
     }
 
     #[test]

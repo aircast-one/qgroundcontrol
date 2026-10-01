@@ -222,6 +222,21 @@ private fun CameraDetailsSheet(
                 )
             }
         }
+        if (camera.streamLabels.size > 1) {
+            Text(
+                "Video Stream",
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            camera.streamLabels.forEachIndexed { index, label ->
+                FilterChip(
+                    selected = index == camera.currentStream,
+                    onClick = { offMainDetached { Qgc.set(CAMERA_CURRENT_STREAM, index) } },
+                    label = { Text(label) },
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+            }
+        }
         tracking?.let { reading ->
             TextButton(
                 onClick = {

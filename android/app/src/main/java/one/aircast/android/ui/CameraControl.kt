@@ -47,6 +47,8 @@ internal data class CameraReading(
     val hasZoom: Boolean,
     val zoomLevel: Double,
     val selected: Int? = null,
+    val streamLabels: List<String> = emptyList(),
+    val currentStream: Int = 0,
 )
 
 internal fun cameraReading(view: JSONObject?): CameraReading? {
@@ -78,6 +80,10 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         hasZoom = view.optBoolean("hasZoom"),
         zoomLevel = view.optDouble("zoomLevel", ZOOM_LOWEST).takeIf { it.isFinite() } ?: ZOOM_LOWEST,
         selected = if (view.isNull("selected")) null else view.optInt("selected"),
+        streamLabels = view.optJSONArray("streamLabels").let { listed ->
+            (0 until (listed?.length() ?: 0)).map { listed?.optText(it).orEmpty() }
+        },
+        currentStream = view.optInt("currentStream"),
     )
 }
 
@@ -213,6 +219,7 @@ internal fun destructiveInvokePath(id: String): String? = when (id) {
     else -> null
 }
 
+internal const val CAMERA_CURRENT_STREAM = "vehicle.cameraManager.currentCameraInstance.currentStream"
 internal const val CAMERA_THERMAL_MODE = "vehicle.cameraManager.currentCameraInstance.thermalMode"
 internal const val CAMERA_THERMAL_OPACITY = "vehicle.cameraManager.currentCameraInstance.thermalOpacity"
 

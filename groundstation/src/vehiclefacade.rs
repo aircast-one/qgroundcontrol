@@ -666,6 +666,8 @@ fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, trackin
         ("trackingEnabled", json!(tracking_enabled)),
         ("supportsTrackingRect", json!(flag(CAP_HAS_TRACKING_RECTANGLE))),
         ("supportsTrackingPoint", json!(flag(CAP_HAS_TRACKING_POINT))),
+        ("streamLabels", json!(camera.listed_streams().iter().map(|stream| stream.name.clone()).collect::<Vec<_>>())),
+        ("currentStream", json!(camera.current_stream().and_then(|current| camera.listed_streams().iter().position(|stream| stream.stream_id == current.stream_id)).unwrap_or(0))),
     ];
     let unthermal = camera.thermal_stream().is_none().then(|| ("thermalStreamInstance", Value::Null));
     let untracked = (!tracking).then(|| [("trackingImageIsActive", json!(false)), ("trackingImageRect", Value::Null)]).into_iter().flatten();
@@ -1336,6 +1338,16 @@ impl<B: Backend> Backend for Facade<B> {
                 crate::hub::lock().set_camera_tracking(on);
             }
             return self.0.set(path, value);
+        }
+        if path == "vehicle.cameraManager.currentCameraInstance.currentStream" && switched_on() {
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
+            let vehicle = crate::hub::lock().active_id();
+            if let Some(chosen) = index.zip(vehicle).and_then(|(stream, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "selectStream", "stream": stream, "vehicle": vehicle }))) {
+                return match chosen {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
+                };
+            }
         }
         if path == "vehicle.cameraManager.currentCamera" && switched_on() {
             let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));

@@ -1042,6 +1042,7 @@
         "view.camera.canStopPhoto",
         "view.camera.class",
         "view.camera.clockText",
+        "view.camera.currentStream",
         "view.camera.destructiveActions.#",
         "view.camera.destructiveActions.0.destructive",
         "view.camera.destructiveActions.0.id",
@@ -1070,6 +1071,7 @@
         "view.camera.shots",
         "view.camera.shotsText",
         "view.camera.stateText",
+        "view.camera.streamLabels.#",
         "view.camera.thermalAvailable",
         "view.camera.thermalMode",
         "view.camera.thermalOpacity",
@@ -7026,6 +7028,7 @@
         "view.camera.choices",
         "view.camera.class",
         "view.camera.clockText",
+        "view.camera.currentStream",
         "view.camera.destructiveActions.#",
         "view.camera.destructiveActions[].destructive",
         "view.camera.destructiveActions[].id",
@@ -7057,6 +7060,7 @@
         "view.camera.stateText",
         "view.camera.storageStatus",
         "view.camera.storageText",
+        "view.camera.streamLabels.#",
         "view.camera.thermalAvailable",
         "view.camera.thermalMode",
         "view.camera.thermalOpacity",
@@ -9931,6 +9935,7 @@
         "choices": "number",
         "class": "string",
         "clockText": "string",
+        "currentStream": "number",
         "destructiveActions": [
             {
                 "destructive": "bool",
@@ -9968,6 +9973,9 @@
         "stateText": "string",
         "storageStatus": "null|number",
         "storageText": "string",
+        "streamLabels": [
+            "empty"
+        ],
         "thermalAvailable": "bool",
         "thermalMode": "null",
         "thermalOpacity": "null",
