@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.selectedCount", "logDownload.model", "vehicle.id"];
+pub const DEPS: &[&str] = &["settings.appSettings.logSavePath", "settings.appSettings.savePath", "vehicles.activeVehicleAvailable", "logDownload.requestingList", "logDownload.downloadingLogs", "logDownload.selectedCount", "logDownload.model", "vehicle.id", "logDownload.sortAscending"];
 
 pub fn human_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["bytes", "KB", "MB", "GB"];
@@ -76,7 +76,7 @@ fn answered(vehicle: Option<i64>, requesting: bool) -> bool {
 
 pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs"));
+    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,sortAscending"));
     let saving = object(&backend.get_fields("settings.appSettings", "logSavePath,savePath"));
     let save_path = saving.get("logSavePath").and_then(Value::as_str).unwrap_or("").to_string();
     let chosen = crate::read::text(saving.get("savePath").unwrap_or(&Value::Null), "valueString");
@@ -134,6 +134,8 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canRefresh": connected && !busy,
         "canDownload": connected && !busy,
         "canCancel": busy,
+        "canSort": connected && !busy && entries.len() > 1,
+        "sortText": if flag(&root, "sortAscending") { "Sort Descending" } else { "Sort Ascending" },
         "canErase": connected && !entries.is_empty() && !busy,
         "anyDownloaded": entries.iter().any(|e| e["statusId"] == "downloaded"),
         "emptyText": empty_text(connected, requesting, answered(vehicle, requesting)),
@@ -309,6 +311,8 @@ mod tests {
         }
         let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
         assert_eq!(idle["canRefresh"], true);
+        assert_eq!(idle["sortText"], "Sort Ascending", "OnboardLogPage names the order a press will give");
+        assert_eq!(idle["canSort"], idle["entries"].as_array().unwrap().len() > 1);
         assert_eq!(idle["canDownload"], true, "the head selects the row inside download(), so requiring a selection the click has not made yet would disable every Download button there is");
         assert_eq!(idle["canErase"], true);
         assert_eq!(idle["anyDownloaded"], true);
@@ -323,6 +327,7 @@ mod tests {
         assert_eq!(asking["canRefresh"], false);
         assert_eq!(asking["canDownload"], false);
         assert_eq!(asking["canCancel"], true);
+        assert_eq!(asking["canSort"], false);
         assert_eq!(asking["emptyText"], "Asking the vehicle for its logs\u{2026}");
         let none = logs_view(&Fake { connected: false, requesting: false, entries: json!([]) }, &[]);
         assert_eq!(none["emptyText"], "Connect a vehicle to list its logs.");

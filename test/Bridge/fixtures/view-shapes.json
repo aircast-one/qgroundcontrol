@@ -3671,6 +3671,7 @@
         "view.logs.busy",
         "view.logs.canCancel",
         "view.logs.canErase",
+        "view.logs.canSort",
         "view.logs.class",
         "view.logs.downloading",
         "view.logs.entries.#",
@@ -3679,6 +3680,7 @@
         "view.logs.requestingList",
         "view.logs.savePath",
         "view.logs.savePathReason",
+        "view.logs.sortText",
         "view.mapClick.class",
         "view.mapClick.gotoLocation",
         "view.mapClick.kind",
@@ -8254,6 +8256,7 @@
         "view.logs.canDownload",
         "view.logs.canErase",
         "view.logs.canRefresh",
+        "view.logs.canSort",
         "view.logs.class",
         "view.logs.connected",
         "view.logs.downloading",
@@ -8264,6 +8267,7 @@
         "view.logs.requestingList",
         "view.logs.savePath",
         "view.logs.savePathReason",
+        "view.logs.sortText",
         "view.mapClick.actions.#",
         "view.mapClick.actions[].confirm",
         "view.mapClick.actions[].id",
@@ -12030,6 +12034,7 @@
         "canDownload": "bool",
         "canErase": "bool",
         "canRefresh": "bool",
+        "canSort": "bool",
         "class": "string",
         "connected": "bool",
         "downloading": "bool",
@@ -12041,7 +12046,8 @@
         "kind": "string",
         "requestingList": "bool",
         "savePath": "string",
-        "savePathReason": "null"
+        "savePathReason": "null",
+        "sortText": "string"
     },
     "view.mapClick": {
         "actions": [

@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -83,6 +85,8 @@ internal data class LogsView(
     val canDownload: Boolean,
     val canCancel: Boolean,
     val canErase: Boolean,
+    val canSort: Boolean = false,
+    val sortText: String = "",
     val busy: Boolean,
     val anyDownloaded: Boolean,
     val savePath: String,
@@ -116,6 +120,8 @@ internal fun logsView(view: JSONObject?): LogsView? {
         canDownload = view.optBoolean("canDownload"),
         canCancel = view.optBoolean("canCancel"),
         canErase = view.optBoolean("canErase"),
+        canSort = view.optBoolean("canSort"),
+        sortText = view.optText("sortText"),
         busy = view.optBoolean("busy"),
         anyDownloaded = view.optBoolean("anyDownloaded"),
         savePath = view.optText("savePath"),
@@ -192,6 +198,7 @@ internal fun savedToText(logs: LogsView?): String? {
 internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, hasEntries: Boolean, busy: Boolean) =
     hasVehicle && !hasEntries && !busy
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LogDownloadScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(LOGS_VIEW)
@@ -223,12 +230,11 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
     }
 
     Column(modifier.fillMaxSize()) {
-        Row(
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedButton(
                 onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.refresh") } },
@@ -242,6 +248,13 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
 
             if (logs.canCancel) {
                 OutlinedButton(onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.cancel") } }) { Text("Cancel") }
+            }
+
+            if (logs.sortText.isNotBlank()) {
+                OutlinedButton(
+                    onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.toggleSortByDate") } },
+                    enabled = logs.canSort,
+                ) { Text(logs.sortText) }
             }
         }
 
