@@ -39,7 +39,7 @@ class ThermalViewTest {
         assertEquals("Off", thermalModeLabel("off"))
         assertEquals("Blend", thermalModeLabel("blend"))
         assertEquals("Full", thermalModeLabel("full"))
-        assertEquals("Picture in picture", thermalModeLabel("picInPic"))
+        assertEquals("Picture In Picture", thermalModeLabel("picInPic"))
         assertEquals(
             "a token the core adds later is drawn as itself; dropping it would leave the " +
                 "operator a mode they cannot see they are in",

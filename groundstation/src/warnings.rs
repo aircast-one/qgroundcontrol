@@ -31,7 +31,7 @@ pub struct State {
 pub fn warnings(s: &State) -> Vec<Value> {
     let no_gps = (s.connected && s.requires_gps_fix && !s.has_position).then(|| json!({
         "id": "noGpsLock",
-        "text": "No GPS lock for vehicle",
+        "text": "No GPS Lock for Vehicle",
         "detail": "This vehicle needs a position fix before it will arm.",
     }));
     let prearm = (s.connected && !s.armed && !s.prearm_error.is_empty() && !s.report_supported).then(|| json!({

@@ -23,7 +23,15 @@ pub const DEPS: &[&str] = &[
 const FAILURE_SATELLITES: i64 = 9;
 const FAILURE_PERCENT: f64 = 40.0;
 const SENSOR_MASK: i64 = 1 | 2 | 4 | 8 | 16 | 32 | 2097152;
-const SENSOR_NAMES: &[(i64, &str)] = &[(1, "Gyro"), (2, "Accelerometer"), (4, "Magnetometer"), (8, "Barometer"), (16, "Airspeed"), (32, "GPS"), (2097152, "AHRS")];
+const SENSOR_FAILURES: &[(i64, &str)] = &[
+    (4, "Failure. Magnetometer issues. Check console."),
+    (2, "Failure. Accelerometer issues. Check console."),
+    (1, "Failure. Gyroscope issues. Check console."),
+    (8, "Failure. Barometer issues. Check console."),
+    (16, "Failure. Airspeed sensor issues. Check console."),
+    (2097152, "Failure. AHRS issues. Check console."),
+    (32, "Failure. GPS issues. Check console."),
+];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Airframe {
@@ -67,6 +75,17 @@ impl Airframe {
         }
     }
 
+    fn initial_checks(self) -> &'static str {
+        match self {
+            Airframe::MultiRotor => "Multirotor Initial Checks",
+            Airframe::Vtol => "VTOL Initial Checks",
+            Airframe::Rover => "Rover Initial Checks",
+            Airframe::Sub => "Submarine Initial checks",
+            Airframe::FixedWing => "Fixed Wing Initial Checks",
+            Airframe::Generic => "Generic Initial checks",
+        }
+    }
+
     fn checks_actuators(self) -> bool {
         !matches!(self, Airframe::MultiRotor | Airframe::Rover)
     }
@@ -78,16 +97,16 @@ impl Airframe {
     fn wind_prompt(self) -> Option<&'static str> {
         match self {
             Airframe::Sub => None,
-            Airframe::MultiRotor | Airframe::Rover => Some("Within limits for this airframe?"),
-            Airframe::Vtol | Airframe::FixedWing | Airframe::Generic => Some("Within limits, and are you launching into the wind?"),
+            Airframe::MultiRotor | Airframe::Rover => Some("OK for your platform?"),
+            Airframe::Vtol | Airframe::FixedWing | Airframe::Generic => Some("OK for your platform? Launching into the wind?"),
         }
     }
 
     fn area(self) -> Option<(&'static str, &'static str)> {
         match self {
             Airframe::Sub => None,
-            Airframe::Rover => Some(("Mission area", "Mission area and path clear of obstacles and people?")),
-            _ => Some(("Flight area", "Launch area and path clear of obstacles and people?")),
+            Airframe::Rover => Some(("Mission area", "Mission area and path free of obstacles/people?")),
+            _ => Some(("Flight area", "Launch area and path free of obstacles/people?")),
         }
     }
 }
@@ -137,7 +156,7 @@ pub fn gps(lock: Option<i64>, satellites: Option<i64>) -> Check {
     match (lock, satellites.unwrap_or(0)) {
         (None, _) => Check::failing("GPS", PROMPT, "No vehicle is reporting a GPS.".to_string()),
         (Some(l), _) if l < 3 => Check::failing("GPS", PROMPT, "Waiting for 3D lock.".to_string()),
-        (Some(_), n) if n < FAILURE_SATELLITES => Check::overridable("GPS", PROMPT, format!("Only {n} satellite{}; {FAILURE_SATELLITES} wanted.", if n == 1 { "" } else { "s" })),
+        (Some(_), n) if n <= FAILURE_SATELLITES => Check::overridable("GPS", PROMPT, format!("Warning - Sat count below {}.", FAILURE_SATELLITES + 1)),
         _ => Check::passing("GPS", PROMPT),
     }
 }
@@ -146,7 +165,7 @@ pub fn battery(percent: Option<f64>) -> Check {
     const PROMPT: &str = "Battery connector firmly plugged?";
     match percent {
         None => Check::failing("Battery", PROMPT, "No vehicle is reporting a battery.".to_string()),
-        Some(p) if p < FAILURE_PERCENT => Check::failing("Battery", PROMPT, format!("Charge is {p:.0}%, below {FAILURE_PERCENT:.0}%. Recharge.")),
+        Some(p) if p < FAILURE_PERCENT => Check::failing("Battery", PROMPT, format!("Battery charge below {FAILURE_PERCENT:.0}%. Please recharge.")),
         Some(_) => Check::passing("Battery", PROMPT),
     }
 }
@@ -156,15 +175,7 @@ pub fn sensors(unhealthy_bits: Option<i64>) -> Check {
     match unhealthy_bits.map(|b| b & SENSOR_MASK) {
         None => Check::failing("Sensors", PROMPT, "No vehicle is reporting sensor health.".to_string()),
         Some(0) => Check::passing("Sensors", PROMPT),
-        Some(bits) => Check::failing("Sensors", PROMPT, format!("{} unhealthy.", sensor_names(bits))),
-    }
-}
-
-fn sensor_names(bits: i64) -> String {
-    let listed: Vec<&str> = SENSOR_NAMES.iter().filter(|(bit, _)| bits & bit != 0).map(|(_, name)| *name).collect();
-    match listed.is_empty() {
-        true => "A sensor is".to_string(),
-        false => listed.join(", "),
+        Some(bits) => Check::failing("Sensors", PROMPT, SENSOR_FAILURES.iter().find(|(bit, _)| bits & bit != 0).map_or("Failure. Check console.", |(_, text)| text).to_string()),
     }
 }
 
@@ -180,9 +191,9 @@ pub fn contact(lost: bool) -> Option<Check> {
 }
 
 fn sound(muted: bool) -> Check {
-    const PROMPT: &str = "QGC audio warnings are on. Is the system output on too?";
+    const PROMPT: &str = "QGC audio output enabled. System audio output enabled, too?";
     match muted {
-        true => Check::failing("Sound output", PROMPT, "QGC audio output is muted; enable it in Settings to hear warnings.".to_string()),
+        true => Check::failing("Sound output", PROMPT, "QGC audio output is disabled. Please enable it under application settings->general to hear audio warnings!".to_string()),
         false => Check::passing("Sound output", PROMPT),
     }
 }
@@ -191,25 +202,25 @@ pub fn groups(inputs: &Inputs) -> Vec<Group> {
     let airframe = inputs.airframe;
     vec![
         Group {
-            name: "Before you power up",
+            name: airframe.initial_checks(),
             checks: [
                 contact(inputs.contact_lost),
                 Some(Check::manual("Hardware", airframe.hardware_prompt())),
                 Some(battery(inputs.battery_percent)),
                 Some(sensors(inputs.unhealthy_bits)),
                 Some(gps(inputs.lock, inputs.satellites)),
-                Some(Check::manual("Radio control", "Receiving signal. Range test done and confirmed?")),
+                Some(Check::manual("Radio Control", "Receiving signal. Perform range test & confirm.")),
             ]
             .into_iter()
             .flatten()
             .collect(),
         },
         Group {
-            name: "Arm the vehicle here",
+            name: "Please arm the vehicle here",
             checks: [
-                airframe.checks_actuators().then(|| Check::manual("Actuators", "Move every control surface. Did they all work properly?")),
-                airframe.checks_motors().then(|| Check::manual("Motors", "Propellers free? Throttle up gently. Working properly?")),
-                Some(Check::manual("Mission", "Waypoints valid and no terrain collision?")),
+                airframe.checks_actuators().then(|| Check::manual("Actuators", "Move all control surfaces. Did they work properly?")),
+                airframe.checks_motors().then(|| Check::manual("Motors", "Propellers free? Then throttle up gently. Working properly?")),
+                Some(Check::manual("Mission", "Please confirm mission is valid (waypoints valid, no terrain collision).")),
                 Some(sound(inputs.audio_muted)),
             ]
             .into_iter()
@@ -217,10 +228,10 @@ pub fn groups(inputs: &Inputs) -> Vec<Group> {
             .collect(),
         },
         Group {
-            name: "Before launch",
+            name: "Last preparations before launch",
             checks: [
-                Some(Check::manual("Payload", "Configured, started, and the lid closed?")),
-                airframe.wind_prompt().map(|p| Check::manual("Wind and weather", p)),
+                Some(Check::manual("Payload", "Configured and started? Payload lid closed?")),
+                airframe.wind_prompt().map(|p| Check::manual("Wind & weather", p)),
                 airframe.area().map(|(name, prompt)| Check::manual(name, prompt)),
             ]
             .into_iter()
@@ -269,21 +280,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gps_wants_a_3d_lock_and_nine_satellites() {
+    fn gps_wants_a_3d_lock_and_more_than_nine_satellites() {
         assert_eq!(gps(None, None).verdict, "failing");
         assert_eq!(gps(Some(2), Some(12)).reason, "Waiting for 3D lock.");
         let few = gps(Some(3), Some(1));
         assert_eq!(few.verdict, "overridable");
-        assert_eq!(few.reason, "Only 1 satellite; 9 wanted.");
+        assert_eq!(few.reason, "Warning - Sat count below 10.");
         assert!(!few.blocked);
-        assert_eq!(gps(Some(3), Some(9)).verdict, "passing");
+        assert_eq!(gps(Some(3), Some(9)).verdict, "overridable", "PreFlightGPSCheck fails a count at or below failureSatCount");
+        assert_eq!(gps(Some(3), Some(10)).verdict, "passing");
     }
 
     #[test]
     fn battery_and_sensors_name_what_is_wrong() {
-        assert_eq!(battery(Some(35.0)).reason, "Charge is 35%, below 40%. Recharge.");
+        assert_eq!(battery(Some(35.0)).reason, "Battery charge below 40%. Please recharge.");
         assert_eq!(battery(Some(40.0)).verdict, "passing");
-        assert_eq!(sensors(Some(4 | 32)).reason, "Magnetometer, GPS unhealthy.");
+        assert_eq!(sensors(Some(4 | 32)).reason, "Failure. Magnetometer issues. Check console.", "the first failure in PreFlightSensorsHealthCheck's order");
         assert_eq!(sensors(Some(1 << 10)).verdict, "passing");
         assert_eq!(sensors(None).verdict, "failing");
     }

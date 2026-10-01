@@ -148,7 +148,7 @@ fun RcControlsEditor(modifier: Modifier = Modifier) {
                 draft = Draft(-1, "", firstFreeChannel(json, reserved).toString(), RcControlType.Slider)
             },
             modifier = Modifier.padding(16.dp),
-        ) { Text("Add control") }
+        ) { Text("Add Control") }
     }
 
     draft?.let { current ->

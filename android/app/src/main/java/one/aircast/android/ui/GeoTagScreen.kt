@@ -30,7 +30,7 @@ private fun telemetryLogs(savePath: String): List<TelemetryLog> =
         .sortedByDescending { it.lastModified() }
         .map { TelemetryLog(path = it.absolutePath, name = it.name, bytes = it.length()) }
 
-internal const val TELEMETRY_LOG_SETTING = "Save telemetry Log after each flight"
+internal const val TELEMETRY_LOG_SETTING = "Save log after each flight"
 internal const val TELEMETRY_LOG_PAGE = "MAVLink"
 
 internal fun noTelemetryLogsText(): String =

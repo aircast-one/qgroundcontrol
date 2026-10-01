@@ -155,7 +155,7 @@ class ParameterFormTest {
     @Test
     fun `a vehicle reboot is named ahead of an app restart`() {
         assertEquals(
-            "Reboot the vehicle for this to take effect.",
+            "Reboot vehicle for changes to take effect.",
             factRebootNote(ranged(vehicleReboot = true, qgcReboot = true)),
         )
     }

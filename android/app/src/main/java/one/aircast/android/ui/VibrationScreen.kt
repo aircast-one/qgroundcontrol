@@ -64,7 +64,7 @@ internal data class SilentState(val title: String, val body: String)
 internal fun silentState(view: JSONObject?): SilentState? {
     val token = view?.optText("silentReason").orEmpty()
     if (view == null) {
-        return SilentState("No vehicle connected", CONNECT_PROMPT)
+        return SilentState("No Vehicle Connected", CONNECT_PROMPT)
     }
     if (token.isBlank()) {
         return null
@@ -245,7 +245,7 @@ private fun partlyReported(view: JSONObject?): SilentState =
     if (view?.optBoolean("connected") == true) {
         SilentState(PARTIAL_TITLE, PARTIAL_BODY)
     } else {
-        SilentState("No vehicle connected", CONNECT_PROMPT)
+        SilentState("No Vehicle Connected", CONNECT_PROMPT)
     }
 
 @Composable
@@ -291,7 +291,7 @@ private fun VibrationBody(reading: VibrationReading, modifier: Modifier = Modifi
         HorizontalDivider()
 
         Text(
-            text = "Accelerometer clipping events",
+            text = "Clip count",
             style = MaterialTheme.typography.titleSmall,
         )
         Row(

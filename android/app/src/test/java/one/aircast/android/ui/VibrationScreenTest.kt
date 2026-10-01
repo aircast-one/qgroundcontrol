@@ -121,7 +121,7 @@ class VibrationScreenTest {
             "vibration facts latch after the vehicle goes, so silentReason stays null with nothing " +
                 "connected - saying what THIS VEHICLE is reporting would be a claim about one that " +
                 "is not there",
-            "No vehicle connected",
+            "No Vehicle Connected",
             vibrationEmptyState(latched, vibrationReading(latched))?.title,
         )
     }
@@ -181,6 +181,6 @@ class SilentStateTest {
     fun `no view at all is the disconnected case`() {
         val nothing = silentState(null)!!
 
-        assertEquals("No vehicle connected", nothing.title)
+        assertEquals("No Vehicle Connected", nothing.title)
     }
 }

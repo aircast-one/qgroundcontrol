@@ -112,7 +112,7 @@ internal fun OverlayEditBar(modifier: Modifier = Modifier) {
     Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 3.dp) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Hide or show widgets", style = MaterialTheme.typography.labelMedium)
-            TextButton(onClick = { resetLayout(context) }) { Text("Reset layout") }
+            TextButton(onClick = { resetLayout(context) }) { Text("Reset Layout") }
             TextButton(onClick = { OverlayLayout.editing = false }) { Text("Done") }
         }
     }

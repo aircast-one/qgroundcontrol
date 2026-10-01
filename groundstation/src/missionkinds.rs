@@ -18,10 +18,10 @@ pub struct Kind {
 }
 
 pub const KINDS: &[Kind] = &[
-    Kind { id: "waypoint", title: "Waypoint", invokable: "insertSimpleMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a waypoint." },
+    Kind { id: "waypoint", title: "Waypoint", invokable: "insertSimpleMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a waypoint" },
     Kind { id: "takeoff", title: "Takeoff", invokable: "insertTakeoffItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a takeoff." },
     Kind { id: "land", title: "Land", invokable: "insertLandItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a land." },
-    Kind { id: "roi", title: "Region of Interest", invokable: "insertROIMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a region of interest." },
+    Kind { id: "roi", title: "Region of Interest", invokable: "insertROIMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place the region of interest" },
     Kind { id: "survey", title: "Survey", invokable: "insertComplexMissionItem", complex_name: Some("Survey"), class_name: Some("SurveyComplexItem"), geometry: Some(("area", "surveyAreaPolygon")), placement_hint: "Click the map to place a survey area." },
     Kind { id: "corridor", title: "Corridor Scan", invokable: "insertComplexMissionItem", complex_name: Some("Corridor Scan"), class_name: Some("CorridorScanComplexItem"), geometry: Some(("line", "corridorPolyline")), placement_hint: "Click the map to place a corridor to scan along." },
     Kind { id: "structure", title: "Structure Scan", invokable: "insertComplexMissionItem", complex_name: Some("Structure Scan"), class_name: Some("StructureScanComplexItem"), geometry: Some(("area", "structurePolygon")), placement_hint: "Click the map to place a structure to scan around." },

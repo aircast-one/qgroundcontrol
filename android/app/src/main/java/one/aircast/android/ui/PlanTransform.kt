@@ -122,7 +122,7 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
                 HorizontalDivider()
                 Text("Reposition Mission", style = MaterialTheme.typography.titleSmall)
                 if (home == null) Text("Home position must be set to reposition the mission.", style = note)
-                OutlinedButton(onClick = { repositioning = true }, enabled = home != null) { Text("Move to Position…") }
+                OutlinedButton(onClick = { repositioning = true }, enabled = home != null) { Text("Move to Position") }
 
                 HorizontalDivider()
                 Text("Rotate Mission", style = MaterialTheme.typography.titleSmall)

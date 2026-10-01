@@ -92,7 +92,7 @@ class InstrumentDetailTest {
         val gps = gpsStatus(view)
         assertEquals(11, gps?.satellites)
         assertEquals(FixLevel.Good, fixLevel(gps!!.lock))
-        assertEquals(listOf("GPS lock", "Satellites", "HDOP"), gpsDetail(fixLevel(gps.lock), gps).map { it.label })
+        assertEquals(listOf("GPS Lock", "Satellites", "HDOP"), gpsDetail(fixLevel(gps.lock), gps).map { it.label })
     }
 
     @Test

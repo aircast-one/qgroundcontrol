@@ -47,7 +47,7 @@ enum class AnalyzePage(
         "Live message rates and field values",
     ),
     GeoTag(
-        "Geotag Images",
+        "GeoTag Images",
         "Match photographs to where the vehicle was when it took them",
     ),
     Firmware(

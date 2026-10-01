@@ -637,7 +637,7 @@ internal fun factConstraintNote(fact: Fact): String? {
 }
 
 internal fun factRebootNote(fact: Fact): String? = when {
-    fact.vehicleRebootRequired -> "Reboot the vehicle for this to take effect."
+    fact.vehicleRebootRequired -> "Reboot vehicle for changes to take effect."
     fact.qgcRebootRequired -> "Restart Aircast for this to take effect."
     else -> null
 }

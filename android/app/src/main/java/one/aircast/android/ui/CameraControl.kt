@@ -233,7 +233,7 @@ internal fun thermalModeLabel(token: String): String = when (token) {
     "off" -> "Off"
     "blend" -> "Blend"
     "full" -> "Full"
-    "picInPic" -> "Picture in picture"
+    "picInPic" -> "Picture In Picture"
     else -> token
 }
 

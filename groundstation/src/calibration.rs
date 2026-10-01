@@ -9,7 +9,7 @@ const SIDES: &[(&str, &str)] = &[("Down", "Level"), ("UpsideDown", "Upside down"
 const COMPASS_NORTH: &str = "calibrateCompassNorth";
 const PRIORITY_PARAMS: [&str; 3] = ["COMPASS_PRIO1_ID", "COMPASS_PRIO2_ID", "COMPASS_PRIO3_ID"];
 const FAST_COMPASS_HELP: &str = "Fast compass calibration given vehicle position and yaw. This results in zero diagonal and off-diagonal elements, so is only suitable for vehicles where the field is close to spherical. It is useful for large vehicles where moving the vehicle to calibrate it is difficult. Point the vehicle North before using it.";
-const ACCEL_FIRST: &str = "Calibrate the accelerometer first.";
+const ACCEL_FIRST: &str = "Calibrate Accelerometer first";
 
 pub struct Classes {
     pub multi_rotor: bool,

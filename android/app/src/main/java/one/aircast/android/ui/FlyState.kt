@@ -67,7 +67,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
 }
 
 internal fun vehicleSubtitle(state: FlyState?): String = when {
-    state == null || !state.connected -> "No vehicle"
+    state == null || !state.connected -> "No Vehicle"
     state.contactLost == true -> state.stateText
     else -> listOfNotNull(state.mode.ifBlank { null }, state.stateText).joinToString(" · ")
 }

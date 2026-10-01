@@ -20,7 +20,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.gps.systemErrors",
 ];
 
-const DETAIL: &[(&str, &str)] = &[("count", "Satellites"), ("hdop", "HDOP"), ("vdop", "VDOP"), ("courseOverGround", "Course over ground"), ("mgrs", "MGRS")];
+const DETAIL: &[(&str, &str)] = &[("count", "Satellites"), ("hdop", "HDOP"), ("vdop", "VDOP"), ("courseOverGround", "Course Over Ground"), ("mgrs", "MGRS")];
 // Fact::invalidValueString spells a NaN as en dashes ("–.–", "––:––:––") since the upstream merge,
 // where the heads' lists still carried the old "--.--". The bridge sends such a value as null, which
 // is what `unset` reads; the strings stay for a fact that does not say.

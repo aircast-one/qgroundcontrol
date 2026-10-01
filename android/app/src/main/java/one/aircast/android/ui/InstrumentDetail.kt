@@ -55,7 +55,7 @@ internal fun factLabel(name: String): String = when (name) {
     "current" -> "Current"
     "instantPower" -> "Power"
     "mahConsumed" -> "Consumed"
-    "timeRemainingStr" -> "Time remaining"
+    "timeRemainingStr" -> "Time Remaining"
     "temperature" -> "Temperature"
     "percentRemaining" -> "Remaining"
     else -> name.replaceFirstChar { it.uppercase() }
@@ -85,7 +85,7 @@ internal fun gpsStatus(view: JSONObject?): GpsStatus? {
 }
 
 internal fun gpsDetail(fix: FixLevel?, gps: GpsStatus?): List<DetailRow> =
-    listOfNotNull(lockName(fix)?.let { DetailRow("GPS lock", it) }) + (gps?.rows ?: emptyList())
+    listOfNotNull(lockName(fix)?.let { DetailRow("GPS Lock", it) }) + (gps?.rows ?: emptyList())
 
 internal fun notYetComputed(shown: String): Boolean =
     shown.isBlank() || shown.all { it == '-' || it == ':' || it == '.' || it == ' ' }

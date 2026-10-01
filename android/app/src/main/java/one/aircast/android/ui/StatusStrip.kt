@@ -257,13 +257,13 @@ internal fun telemetryCell(state: FlyState?): String? =
 internal fun telemetryDetail(link: TelemetryLink?): List<DetailRow> = when (link) {
     null -> emptyList()
     else -> listOfNotNull(
-        DetailRow("This station", "${link.localRssiDbm} dBm"),
-        link.remoteRssiDbm?.let { DetailRow("The vehicle's radio", "$it dBm") },
-        link.localNoise?.let { DetailRow("Noise here", "$it") },
-        link.remoteNoise?.let { DetailRow("Noise at the vehicle", "$it") },
-        link.receiveErrors?.let { DetailRow("Packets lost", "$it") },
-        link.errorsFixed?.let { DetailRow("Errors fixed", "$it") },
-        link.txBuffer?.let { DetailRow("TX buffer", "$it") },
+        DetailRow("Local RSSI:", "${link.localRssiDbm} dBm"),
+        link.remoteRssiDbm?.let { DetailRow("Remote RSSI:", "$it dBm") },
+        link.localNoise?.let { DetailRow("Local Noise:", "$it") },
+        link.remoteNoise?.let { DetailRow("Remote Noise:", "$it") },
+        link.receiveErrors?.let { DetailRow("RX Errors:", "$it") },
+        link.errorsFixed?.let { DetailRow("Errors Fixed:", "$it") },
+        link.txBuffer?.let { DetailRow("TX Buffer:", "$it") },
     )
 }
 
