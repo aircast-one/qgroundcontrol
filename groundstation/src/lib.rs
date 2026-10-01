@@ -158,6 +158,7 @@ pub mod plantransform;
 pub mod px4tuning;
 pub mod px4airframe;
 pub mod streamconfig;
+pub mod autotune;
 pub mod gimbalindicator;
 pub mod gpsresilience;
 pub mod paramfile;

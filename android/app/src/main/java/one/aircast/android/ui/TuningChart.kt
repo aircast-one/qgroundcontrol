@@ -30,8 +30,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
+import androidx.compose.material3.Checkbox
 
 private const val SAMPLE_MS = 10L
+internal const val FLIGHT_MODE_PATH = "vehicle.flightMode"
 private const val HISTORY_SECONDS = 180.0
 private val SERIES_COLOURS = listOf(Color(0xFF2196F3), Color(0xFFFF9800))
 
@@ -48,8 +51,9 @@ internal fun visibleRange(series: List<List<Sample>>, from: Double): Pair<Double
 private fun factValue(path: String): Double? = Qgc.get(path).optDouble("value").takeIf { !it.isNaN() }
 
 @Composable
-internal fun TuningChart(axis: TuningAxis, unit: String, windowSeconds: Double) {
+internal fun TuningChart(axis: TuningAxis, unit: String, windowSeconds: Double, modes: TuningModes?) {
     var running by remember(axis) { mutableStateOf(true) }
+    var autoModeChange by remember { mutableStateOf(false) }
     var cleared by remember(axis) { mutableStateOf(0) }
     var series by remember(axis, cleared) { mutableStateOf(axis.plot.map { emptyList<Sample>() }) }
     var now by remember(axis, cleared) { mutableStateOf(0.0) }
@@ -97,7 +101,26 @@ internal fun TuningChart(axis: TuningAxis, unit: String, windowSeconds: Double) 
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { cleared++ }) { Text("Clear") }
-            OutlinedButton(onClick = { running = !running }) { Text(if (running) "Stop" else "Start") }
+            OutlinedButton(onClick = {
+                running = !running
+                if (modes != null && autoModeChange) {
+                    val mode = if (running) modes.stabilized else modes.pause
+                    offMainDetached { Qgc.writeRefusal(FLIGHT_MODE_PATH, mode) }
+                }
+            }) { Text(if (running) "Stop" else "Start") }
+        }
+        modes?.let { names ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = autoModeChange, onCheckedChange = { checked ->
+                    autoModeChange = checked
+                    if (checked) running = false
+                })
+                Text("Automatic Flight Mode Switching")
+            }
+            if (autoModeChange) {
+                Text("Switches to 'Stabilized' when you click Start.", style = MaterialTheme.typography.bodySmall)
+                Text("Switches to '${names.pause}' when you click Stop.", style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }

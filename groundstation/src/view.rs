@@ -58,6 +58,7 @@ use crate::virtualjoystick;
 use crate::plantransform;
 use crate::px4tuning;
 use crate::px4airframe;
+use crate::autotune;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -180,6 +181,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.planTransform", deps: plantransform::DEPS, compute: plantransform::transform_view },
     View { path: "view.px4Tuning", deps: px4tuning::DEPS, compute: px4tuning::tuning_view },
     View { path: "view.px4Airframe", deps: px4airframe::DEPS, compute: px4airframe::airframe_view },
+    View { path: "view.autotune", deps: autotune::DEPS, compute: autotune::autotune_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
     View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
     View { path: "view.gimbalIndicator", deps: gimbalindicator::DEPS, compute: gimbalindicator::indicator_view },
@@ -518,6 +520,7 @@ mod deps_cover_reads {
             ("px4tuning", include_str!("px4tuning.rs")),
             ("px4airframe", include_str!("px4airframe.rs")),
             ("streamconfig", include_str!("streamconfig.rs")),
+            ("autotune", include_str!("autotune.rs")),
             ("commandtree", include_str!("commandtree.rs")),
             ("account", include_str!("account.rs")),
             ("cloudlink", include_str!("cloudlink.rs")),
@@ -641,6 +644,7 @@ mod deps_cover_reads {
         "vehicle.smartRTLFlightMode",
         "vehicle.missionFlightMode",
         "vehicle.pauseFlightMode",
+        "vehicle.stabilizedFlightMode",
     ];
 
     fn deps_of(module: &str) -> Option<BTreeSet<String>> {

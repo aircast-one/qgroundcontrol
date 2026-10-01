@@ -14,6 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +54,8 @@ internal data class TuningTab(
     val extras: List<Fact>,
     val axes: List<TuningAxis>,
     val tuningMode: Int = 0,
+    val autoModeChange: Boolean = false,
+    val autoTuning: Boolean = false,
     val chartSeconds: Double = DEFAULT_CHART_SECONDS,
 )
 
@@ -66,6 +70,8 @@ internal fun tuningTabs(view: JSONObject?): List<TuningTab> =
             unit = tab.optText("unit"),
             extras = tab.optJSONArray("extras").mapObjects(::factFromControl),
             tuningMode = tab.optInt("tuningMode"),
+            autoModeChange = tab.optBoolean("autoModeChange"),
+            autoTuning = tab.optBoolean("autoTuning"),
             chartSeconds = tab.optDouble("chartSeconds", DEFAULT_CHART_SECONDS),
             axes = tab.optJSONArray("axes").mapObjects { axis ->
                 TuningAxis(
@@ -89,6 +95,11 @@ internal fun tuningTabs(view: JSONObject?): List<TuningTab> =
         )
     }.orEmpty()
 
+internal data class TuningModes(val stabilized: String, val pause: String)
+
+internal fun tuningModes(view: JSONObject?): TuningModes =
+    TuningModes(view?.optText("stabilizedFlightMode").orEmpty(), view?.optText("pauseFlightMode").orEmpty())
+
 internal fun sliderSteps(min: Float, max: Float, step: Float): Int =
     if (step <= 0f || max <= min) 0 else (((max - min) / step).roundToInt() - 1).coerceAtLeast(0)
 
@@ -98,6 +109,8 @@ internal fun factNumber(fact: Fact): Float? = (fact.value as? Number)?.toFloat()
 fun Px4TuningScreen(modifier: Modifier = Modifier) {
     var revision by remember { mutableIntStateOf(0) }
     var tabs by remember { mutableStateOf<List<TuningTab>>(emptyList()) }
+    var modes by remember { mutableStateOf(TuningModes("", "")) }
+    var useAutoTuning by remember { mutableStateOf(true) }
     var loaded by remember { mutableStateOf(false) }
     var tabIndex by remember { mutableIntStateOf(0) }
     var axisIndex by remember { mutableIntStateOf(0) }
@@ -106,7 +119,9 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(revision) {
-        tabs = withContext(Dispatchers.Default) { tuningTabs(Qgc.get(PX4_TUNING_VIEW)) }
+        val read = withContext(Dispatchers.Default) { Qgc.get(PX4_TUNING_VIEW) }
+        tabs = tuningTabs(read)
+        modes = tuningModes(read)
         loaded = true
     }
 
@@ -146,20 +161,32 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
                     FilterChip(selected = each == axis, onClick = { axisIndex = index }, label = { Text(each.name) })
                 }
             }
-            axis?.let { TuningChart(it, tab.unit, tab.chartSeconds) }
-            axis?.params?.forEach { param ->
-                TuningSlider(param) { value -> write(param.fact.path, value) }
-            }
-            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            axis?.let { current ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { clipboard = current.params.map { it.fact to it.fact.valueString } }) { Text("Save To Clipboard") }
-                    OutlinedButton(
-                        onClick = { clipboard.forEach { (fact, value) -> value.toDoubleOrNull()?.let { write(fact.path, it) } } },
-                        enabled = clipboard.isNotEmpty(),
-                    ) { Text("Restore From Clipboard") }
+            axis?.let { TuningChart(it, tab.unit, tab.chartSeconds, if (tab.autoModeChange) modes else null) }
+            if (tab.autoTuning) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = useAutoTuning, onClick = { useAutoTuning = true })
+                    Text("Use auto-tuning")
+                    RadioButton(selected = !useAutoTuning, onClick = { useAutoTuning = false })
+                    Text("Use manual tuning")
                 }
             }
+            if (tab.autoTuning && useAutoTuning) {
+                AutotuneSection()
+            } else {
+                axis?.params?.forEach { param ->
+                    TuningSlider(param) { value -> write(param.fact.path, value) }
+                }
+                axis?.let { current ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { clipboard = current.params.map { it.fact to it.fact.valueString } }) { Text("Save To Clipboard") }
+                        OutlinedButton(
+                            onClick = { clipboard.forEach { (fact, value) -> value.toDoubleOrNull()?.let { write(fact.path, it) } } },
+                            enabled = clipboard.isNotEmpty(),
+                        ) { Text("Restore From Clipboard") }
+                    }
+                }
+            }
+            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (clipboard.isNotEmpty()) {
                 Text("Clipboard Values:", style = MaterialTheme.typography.labelLarge)
                 clipboard.forEach { (fact, value) -> Text("${fact.name}  $value", style = MaterialTheme.typography.bodySmall) }

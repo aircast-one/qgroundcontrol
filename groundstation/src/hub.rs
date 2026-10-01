@@ -167,6 +167,8 @@ pub struct Vehicle {
     pub rc_override: BTreeMap<u8, u16>,
     pub airframe_reboot: Option<Option<u64>>,
     stream: crate::streamconfig::StreamConfig,
+    pub autotune: crate::autotune::Autotune,
+    autotune_due: Option<u64>,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
@@ -319,6 +321,8 @@ impl Vehicle {
             rc_release_ticks: 0,
             airframe_reboot: None,
             stream: crate::streamconfig::StreamConfig::default(),
+            autotune: crate::autotune::Autotune::default(),
+            autotune_due: None,
             rc_due: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
@@ -1117,6 +1121,25 @@ impl Vehicle {
         Ok(self.follow_params(actions, now_ms))
     }
 
+    fn autotune_poll(&mut self) -> Vec<Vec<u8>> {
+        let target = (self.id, COMP_AUTOPILOT1);
+        self.encode(&Outbound::CommandLong { target, command: crate::autotune::CMD_DO_AUTOTUNE_ENABLE, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }).into_iter().collect()
+    }
+
+    fn tick_autotune(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        match self.autotune_due {
+            Some(due) if self.autotune.in_progress && now_ms >= due => {
+                self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
+                self.autotune_poll()
+            }
+            Some(_) if !self.autotune.in_progress => {
+                self.autotune_due = None;
+                Vec::new()
+            }
+            _ => Vec::new(),
+        }
+    }
+
     fn send_interval(&mut self, interval: Option<crate::streamconfig::Interval>, now_ms: u64) -> Vec<Vec<u8>> {
         let Some((message, rate)) = interval else { return Vec::new() };
         let params = [f64::from(message), f64::from(rate), 0.0, 0.0, 0.0, 0.0, 0.0];
@@ -1197,6 +1220,11 @@ impl Vehicle {
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("changeAutostart") => return self.change_autostart(action, now_ms),
+            Some("autotune") => {
+                self.autotune.request();
+                self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
+                return Ok(self.autotune_poll());
+            }
             Some("pidTuningMode") => {
                 let mode = action.get("mode").and_then(Value::as_i64).and_then(crate::streamconfig::Mode::from_index).ok_or("The PID tuning telemetry mode is 0 to 3.")?;
                 let next = self.stream.set_mode(mode);
@@ -1377,6 +1405,7 @@ impl Vehicle {
         let mut bytes = self.handle(ticked, now_ms);
         bytes.extend(self.tick_rc_override(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
+        bytes.extend(self.tick_autotune(now_ms));
         let camera_due = self.cameras.tick(now_ms);
         bytes.extend(self.camera_commands(camera_due));
         let was_busy = self.onboard_logs.busy();
@@ -1810,6 +1839,11 @@ impl Vehicle {
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
                 let announced = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
+                if a.command as u32 as u16 == crate::autotune::CMD_DO_AUTOTUNE_ENABLE {
+                    if let Some(text) = self.autotune.on_ack(a.result as u8, a.progress) {
+                        self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
+                    }
+                }
                 let streamed = match a.command as u32 as u16 == CMD_SET_MESSAGE_INTERVAL {
                     true => {
                         let next = self.stream.got_ack();
@@ -3254,6 +3288,27 @@ mod tests {
         assert_eq!(interval(&next), Some((31.0, 10_000.0)));
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
         assert!(vehicle.start_guided(&json!({ "action": "pidTuningMode", "mode": 7 }), 20_200).is_err());
+    }
+
+    #[test]
+    fn autotune_polls_each_second_until_the_vehicle_reports_it_done() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let polls = |bytes: &[Vec<u8>]| bytes.iter().filter(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_AUTOTUNE_ENABLE && c.param1 == 1.0)).count();
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        assert_eq!(polls(&vehicle.start_guided(&json!({ "action": "autotune" }), 30_000).unwrap()), 1);
+        assert_eq!(polls(&vehicle.pump_with(30_500, None, 0)), 0);
+        assert_eq!(polls(&vehicle.pump_with(31_000, None, 0)), 1, "the request repeats every second while it runs");
+        let ack = |progress: u8, result: MavResult| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_AUTOTUNE_ENABLE, result, progress, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &ack(30, MavResult::MAV_RESULT_IN_PROGRESS), 31_100_000, 31_100);
+        assert_eq!(hub.vehicles[&1].autotune.status, "Autotune: roll");
+        hub.on_frame(origin(4), &autopilot, &ack(100, MavResult::MAV_RESULT_ACCEPTED), 31_200_000, 31_200);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        assert_eq!(vehicle.autotune.status, "Autotune: Success");
+        assert!(vehicle.pending_notices.iter().any(|(_, text)| text == "Autotune successful."));
+        assert_eq!(polls(&vehicle.pump_with(33_000, None, 0)), 0, "finished, so polling stops");
     }
 
     #[test]

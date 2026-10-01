@@ -58,6 +58,8 @@ pub struct Page {
     pub unit: String,
     pub extras: Vec<String>,
     pub tuning_mode: i64,
+    pub auto_mode_change: bool,
+    pub auto_tuning: bool,
     pub chart_seconds: f64,
     pub axes: Vec<Axis>,
 }
@@ -127,6 +129,8 @@ fn page_of(tab: &str, file: &str) -> Option<Page> {
         title: TITLE.captures(&text).map(|c| c[1].to_string()).unwrap_or_default(),
         unit: UNIT.captures(&text).map(|c| c[1].to_string()).unwrap_or_default(),
         extras: EXTRA.captures_iter(&text).map(|c| c[1].to_string()).collect(),
+        auto_mode_change: regex(r"showAutoModeChange:\s*true").is_match(&text),
+        auto_tuning: regex(r"showAutoTuning:\s*true").is_match(&text),
         tuning_mode: MODE.captures(&text).and_then(|c| TUNING_MODES.iter().position(|m| *m == &c[1])).map_or(0, |i| i as i64),
         chart_seconds: SECONDS.captures(&text).and_then(|c| c[1].parse().ok()).unwrap_or(DEFAULT_CHART_SECONDS),
         axes,
@@ -189,6 +193,8 @@ pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "title": page.title,
                 "unit": page.unit,
                 "tuningMode": page.tuning_mode,
+                "autoModeChange": page.auto_mode_change,
+                "autoTuning": page.auto_tuning,
                 "chartSeconds": page.chart_seconds,
                 "extras": page.extras.iter().filter_map(|name| control(backend, name)).collect::<Vec<_>>(),
                 "axes": page.axes.iter().map(|axis| json!({
@@ -208,7 +214,16 @@ pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
             })
         })
         .collect();
-    json!({ "kind": "object", "class": "Px4Tuning", "available": !tabs.is_empty(), "tabs": tabs })
+    let modes = object(&backend.get_fields("vehicle", "pauseFlightMode,stabilizedFlightMode"));
+    let mode = |key: &str| modes.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+    json!({
+        "kind": "object",
+        "class": "Px4Tuning",
+        "available": !tabs.is_empty(),
+        "stabilizedFlightMode": mode("stabilizedFlightMode"),
+        "pauseFlightMode": mode("pauseFlightMode"),
+        "tabs": tabs,
+    })
 }
 
 pub fn set_telemetry_mode(backend: &dyn Backend, args: &str) -> Value {
@@ -240,6 +255,8 @@ mod tests {
         });
         assert_eq!(rate.axes.iter().map(|a| a.params.len()).collect::<Vec<_>>(), [3, 3, 2], "each axis holds only its own gains; yaw has no D");
         assert_eq!(rate.tuning_mode, 1);
+        assert!(rate.auto_mode_change && rate.auto_tuning, "the rate tab offers mode switching and autotune");
+        assert!(!copter[2].auto_tuning);
         assert_eq!(rate.chart_seconds, 3.0);
         assert_eq!(rate.axes[0].plot, [Plot { name: "Response".into(), path: "vehicle.rollRate".into() }, Plot { name: "Setpoint".into(), path: "vehicle.setpoint.rollRate".into() }]);
         assert_eq!(copter[2].tuning_mode, 2, "velocity tunes with the velocity and position streams");
