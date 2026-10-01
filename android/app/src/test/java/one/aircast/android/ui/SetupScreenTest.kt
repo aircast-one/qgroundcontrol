@@ -129,4 +129,11 @@ class SetupScreenTest {
         org.junit.Assert.assertEquals("Frame", setupComponents(view).first().prerequisite)
         org.junit.Assert.assertEquals("Frame has to be set up before Flight Modes.", prerequisiteText("Frame", "Flight Modes"))
     }
+
+    @Test
+    fun `the setup search narrows pages by name, ignoring case and spaces`() {
+        org.junit.Assert.assertTrue(setupMatches("Flight Modes", "  flight "))
+        org.junit.Assert.assertTrue(setupMatches("Radio", ""))
+        org.junit.Assert.assertFalse(setupMatches("Radio", "sensor"))
+    }
 }

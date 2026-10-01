@@ -10,6 +10,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,6 +79,9 @@ internal fun parameterWait(view: JSONObject?): ParameterWait? {
     }
 }
 
+internal fun setupMatches(name: String, search: String): Boolean =
+    search.isBlank() || name.lowercase().contains(search.trim().lowercase())
+
 internal fun remainingSetup(components: List<SetupComponent>): List<SetupComponent> =
     components.filterNot { it.needsAttention }
 
@@ -118,6 +125,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val vehicleType = line.vehicleType
     var openComponent by remember { mutableStateOf<SetupComponent?>(null) }
     var parametersOpen by remember { mutableStateOf(false) }
+    var setupSearch by remember { mutableStateOf("") }
+    var parametersSearch by remember { mutableStateOf("") }
 
     BackHandler(enabled = openComponent != null) { openComponent = null }
 
@@ -168,7 +177,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 Text("Parameters", style = MaterialTheme.typography.titleMedium)
             }
             HorizontalDivider()
-            ParametersScreen(Modifier.weight(1f))
+            ParametersScreen(Modifier.weight(1f), initialSearch = parametersSearch)
         }
         return
     }
@@ -228,7 +237,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     val firmware = line.summary
-    val needSetup = components.filter { it.needsAttention }
+    val needSetup = components.filter { it.needsAttention && setupMatches(it.name, setupSearch) }
 
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "verdict") {
@@ -239,6 +248,23 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 firmware = firmware,
                 headline = readiness?.headline.orEmpty(),
                 detail = readiness?.detail.orEmpty(),
+            )
+        }
+
+        item(key = "search") {
+            OutlinedTextField(
+                value = setupSearch,
+                onValueChange = { setupSearch = it },
+                placeholder = { Text("Search") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    if (setupSearch.isNotBlank()) {
+                        parametersSearch = setupSearch.trim()
+                        parametersOpen = true
+                    }
+                }),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
 
@@ -261,7 +287,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        val remaining = remainingSetup(components)
+        val remaining = remainingSetup(components).filter { setupMatches(it.name, setupSearch) }
         if (components.isEmpty()) {
             item(key = "empty") {
                 SetupNotice("This vehicle reports no setup components.")
@@ -295,13 +321,16 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        item(key = "parameters") {
+        if (setupMatches("Parameters", setupSearch)) item(key = "parameters") {
             SectionHeader("Everything else")
             SetupRow(
                 title = "Parameters",
                 status = "Every setting the vehicle has",
                 state = SetupState.Neutral,
-                onClick = { parametersOpen = true },
+                onClick = {
+                    parametersSearch = ""
+                    parametersOpen = true
+                },
             )
         }
 

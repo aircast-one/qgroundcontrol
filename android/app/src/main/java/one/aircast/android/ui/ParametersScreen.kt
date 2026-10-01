@@ -38,11 +38,11 @@ private const val DEFAULT_COMPONENT = -1
 internal fun parameterPath(name: String) = "$PARAMETER_MANAGER.getParameter($DEFAULT_COMPONENT,$name)"
 
 @Composable
-fun ParametersScreen(modifier: Modifier = Modifier) {
+fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") {
     val setupJson by qgcPath(SETUP)
     val ready = remember(setupJson) { parametersReady(setupJson) }
     val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
-    var search by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf(initialSearch) }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
     var descriptions by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var modified by remember { mutableStateOf<Set<String>>(emptySet()) }
