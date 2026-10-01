@@ -1459,6 +1459,16 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "ok": done.is_ok(), "reason": done.err() }).to_string();
             }
         }
+        if path == "vehicle.closeVehicle" && switched_on() {
+            let mut hub = crate::hub::lock();
+            if let Some(id) = hub.active_id() {
+                hub.remove(id);
+            }
+            drop(hub);
+            if !crate::qthost::present() {
+                return json!({ "ok": true }).to_string();
+            }
+        }
         if path == "vehicle.clearMessages" && switched_on() {
             crate::hub::lock().clear_message_log();
             if !crate::qthost::present() {

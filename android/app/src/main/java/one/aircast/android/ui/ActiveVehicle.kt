@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
 import one.aircast.mapspike.CHOOSER_TITLE
@@ -73,6 +74,8 @@ internal fun mvActions(view: JSONObject?): List<MvAction> {
 internal fun mvReasonFor(action: MvAction): String? =
     action.reason.ifBlank { null }?.takeIf { !action.ready }
 
+internal const val CLOSE_VEHICLE = "vehicle.closeVehicle"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VehicleStateChip(modifier: Modifier = Modifier) {
@@ -113,6 +116,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     MaterialTheme.colorScheme.error
                 },
             )
+        }
+        if (lost) {
+            androidx.compose.material3.TextButton(onClick = {
+                scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(CLOSE_VEHICLE) } }
+            }) { Text("Disconnect") }
         }
     }
 
