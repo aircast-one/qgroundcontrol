@@ -463,15 +463,6 @@ fun FlightActions(modifier: Modifier = Modifier, simple: Boolean = false) {
                 modifier = if (deck.isEmpty()) Modifier.weight(1f) else Modifier.width(64.dp),
             )
         }
-
-        primaryBlockedReason(offers)?.let { reason ->
-            Text(
-                text = reason,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
     }
 
     speedTarget?.let { target ->
@@ -678,7 +669,7 @@ fun FlightActions(modifier: Modifier = Modifier, simple: Boolean = false) {
                                     else MaterialTheme.colorScheme.primary,
                                 )
                                 Text(
-                                    text = blockedReasonFor(offer) ?: offer.prompt,
+                                    text = offer.prompt,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }

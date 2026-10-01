@@ -309,7 +309,7 @@ fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<
     let not_ready = || (view["readiness"]["ready"] != true).then(|| ("notReady", text(&view["readiness"]["reason"])));
     match action {
         PlanAction::Download | PlanAction::ClearVehicle => sync_refusal(),
-        PlanAction::Send => sync_refusal().or_else(not_ready).or_else(|| match view["upload"]["state"].as_i64() {
+        PlanAction::Send => sync_refusal().or_else(|| (view["containsItems"] != true).then(|| ("empty", "There is nothing in this plan to upload.".to_string()))).or_else(not_ready).or_else(|| match view["upload"]["state"].as_i64() {
             Some(0 | 2 | 3) => None,
             _ => Some(("cannotUpload", text(&view["upload"]["refusal"]))),
         }),
@@ -651,11 +651,15 @@ mod tests {
             "readiness": { "ready": ready, "reason": if ready { Value::Null } else { json!("Waiting for terrain heights before the plan can be saved or sent.") } },
             "upload": { "state": upload, "refusal": if upload == 0 { Value::Null } else { json!("No vehicle is connected, so there is nowhere to send this plan.") } },
             "actions": { "save": true, "exportKml": true, "open": true, "newPlan": true },
+            "containsItems": true,
             "file": file,
         });
         let token = |action, v: &Value, path: Option<&str>| plan_refusal(action, v, path).map(|(t, _)| t);
         let good = view("ready", true, 0, json!("ridge.plan"));
         assert_eq!(token(PlanAction::Send, &good, None), None);
+        let mut empty = good.clone();
+        empty["containsItems"] = json!(false);
+        assert_eq!(token(PlanAction::Send, &empty, None), Some("empty"), "PlanToolBarIndicators greys Upload out on an empty plan; sending one would wipe the vehicle's mission");
         assert_eq!(
             plan_refusal(PlanAction::Send, &view("ready", false, 0, Value::Null), None),
             Some(("notReady", "Waiting for terrain heights before the plan can be saved or sent.".to_string())),

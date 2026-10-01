@@ -4,10 +4,27 @@ use serde_json::{Value, json};
 use crate::read::{fact_flag, flag, integer, object, text, value_number};
 use crate::router::Backend;
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct FlightMemory {
+    vehicle: i64,
+    flying: bool,
+    was_flying: bool,
+}
+
+static FLIGHT_MEMORY: std::sync::Mutex<Option<FlightMemory>> = std::sync::Mutex::new(None);
+
+pub fn remember_flight(previous: Option<FlightMemory>, vehicle: i64, flying: bool) -> FlightMemory {
+    match previous.filter(|p| p.vehicle == vehicle) {
+        Some(p) => FlightMemory { vehicle, flying, was_flying: p.was_flying || (p.flying && !flying) },
+        None => FlightMemory { vehicle, flying, was_flying: false },
+    }
+}
+
 pub const DEPS: &[&str] = &[
     "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad",
     "vehicles.activeVehicleAvailable",
     "vehicle.parameterManager.parametersReady",
+    "vehicle.id",
     "vehicle.armed",
     "vehicle.flying",
     "vehicle.isROIEnabled",
@@ -71,6 +88,7 @@ pub struct GuidedState {
     pub resume_from_sequence: i64,
     pub roi_supported: bool,
     pub roi_active: bool,
+    pub was_flying: bool,
 }
 
 impl GuidedState {
@@ -86,6 +104,7 @@ impl GuidedState {
 
     pub fn can_resume(&self) -> bool {
         !self.armed
+            && self.was_flying
             && self.mission_available
             && self.resume_from_sequence > 0
             && self.resume_from_sequence < self.mission_item_count - 2
@@ -221,7 +240,7 @@ impl Action {
                     s.mission_available && !s.mission_active() && s.armed && s.flying && s.has_more_mission()
                 }
                 Action::ResumeMission => s.can_resume(),
-                Action::CancelRoi => s.roi_supported && s.roi_active && s.flying,
+                Action::CancelRoi => s.roi_active,
                 Action::Pause => s.armed && s.pause_supported && s.flying && !s.paused && !s.on_approach(),
                 Action::LandAbort => s.flying && s.on_approach(),
                 Action::ChangeAltitude => s.armed && s.guided_supported && s.flying && !s.mission_active(),
@@ -231,7 +250,7 @@ impl Action {
                 Action::EmergencyStop => s.armed && s.flying,
                 Action::VtolTransitionToFixedWing => s.vtol && s.flying && !s.vtol_in_fwd_flight,
                 Action::VtolTransitionToMultiRotor => s.vtol && s.flying && s.vtol_in_fwd_flight,
-                Action::ForceArm => !s.armed && !s.can_arm,
+                Action::ForceArm => !s.armed,
             }
     }
 
@@ -250,10 +269,9 @@ impl Action {
     }
 
     pub fn offer(self, s: &GuidedState) -> Offer {
-        let (offer, reason) = match (self.shown(s), self.gate(s)) {
-            (false, _) => ("hidden", ""),
-            (true, None) => ("ready", ""),
-            (true, Some(reason)) => ("blocked", reason),
+        let (offer, reason) = match self.shown(s) && self.gate(s).is_none() {
+            true => ("ready", ""),
+            false => ("hidden", ""),
         };
         Offer {
             id: self,
@@ -332,7 +350,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = object(&backend.get_fields(
         "vehicle",
-        "armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     ));
     let supports = object(&backend.get_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude"));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
@@ -387,6 +405,12 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         resume_from_sequence: integer(&flying, "resumeMissionIndex").unwrap_or(0),
         roi_supported: flag(&supports, "roiMode"),
         roi_active: flag(&vehicle, "isROIEnabled"),
+        was_flying: {
+            let mut memory = FLIGHT_MEMORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let now = remember_flight(*memory, integer(&vehicle, "id").unwrap_or(-1), flag(&vehicle, "flying"));
+            *memory = Some(now);
+            now.was_flying
+        },
     }
 }
 
@@ -408,8 +432,8 @@ fn invoke_refusal(offered: &[Action], s: &GuidedState) -> Option<(&'static str, 
     if offers.iter().any(|o| o.offer == "ready") {
         return None;
     }
-    match offers.iter().find(|o| o.offer == "blocked") {
-        Some(blocked) => Some(("blocked", blocked.reason.to_string())),
+    match offered.iter().filter(|a| a.shown(s)).find_map(|a| a.gate(s)) {
+        Some(reason) => Some(("blocked", reason.to_string())),
         None if !s.connected => Some(("noVehicle", "No vehicle is connected.".to_string())),
         None => Some(("notOffered", format!("{} is not available right now.", offers.first().map_or("That action", |o| o.title)))),
     }
@@ -688,11 +712,8 @@ mod tests {
         let released = GuidedState { roi_active: false, ..pointing.clone() };
         assert_eq!(offer_of(&released, Action::CancelRoi), "hidden", "isROIEnabled is what says one is in force - offering a cancel with nothing to cancel sends a command the vehicle answers with nothing");
 
-        let unsupported = GuidedState { roi_supported: false, ..pointing.clone() };
-        assert_eq!(offer_of(&unsupported, Action::CancelRoi), "hidden");
-
-        let landed = GuidedState { flying: false, ..pointing };
-        assert_eq!(offer_of(&landed, Action::CancelRoi), "hidden");
+        let landed = GuidedState { flying: false, roi_supported: false, ..pointing };
+        assert_eq!(offer_of(&landed, Action::CancelRoi), "ready", "FlyViewMap shows the ROI marker and its Cancel ROI whenever isROIEnabled, on the ground too");
 
         struct Pointed(bool);
         impl Backend for Pointed {
@@ -722,7 +743,7 @@ mod tests {
 
     #[test]
     fn resume_is_offered_from_the_waypoint_reached_and_zero_means_it_is_not() {
-        let landed = GuidedState { armed: false, mission_available: true, mission_item_count: 12, resume_from_sequence: 5, ..GuidedState::default() };
+        let landed = GuidedState { armed: false, was_flying: true, mission_available: true, mission_item_count: 12, resume_from_sequence: 5, ..GuidedState::default() };
         assert!(landed.can_resume(), "after the vehicle lands part way through - a battery swap or an aborted leg - this is the only offer that carries on from where it got to instead of flying the plan again");
 
         let unavailable = GuidedState { resume_from_sequence: 0, ..landed.clone() };
@@ -730,6 +751,12 @@ mod tests {
 
         let armed = GuidedState { armed: true, ..landed.clone() };
         assert!(!armed.can_resume(), "resuming is an offer for a vehicle on the ground");
+
+        let never_flew = GuidedState { was_flying: false, ..landed.clone() };
+        assert!(!never_flew.can_resume(), "QGC offers it only once flying has gone false this session, so a stale resume index on connect or during Start Mission does not pop it up");
+        assert_eq!(remember_flight(None, 1, false).was_flying, false);
+        assert!(remember_flight(Some(remember_flight(None, 1, true)), 1, false).was_flying);
+        assert!(!remember_flight(Some(remember_flight(Some(remember_flight(None, 1, true)), 1, false)), 2, false).was_flying, "another vehicle starts its own memory");
 
         let near_the_end = GuidedState { resume_from_sequence: 10, ..landed.clone() };
         assert!(!near_the_end.can_resume(), "QGC stops offering it within two items of the end, where regenerating a truncated plan buys nothing");
@@ -774,14 +801,15 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_gate_blocks_with_the_right_reason() {
+    fn a_failing_gate_hides_the_action_and_still_names_why_when_invoked() {
         let checks = GuidedState { can_arm: false, ..ready_on_ground() };
-        let arm = Action::Arm.offer(&checks);
-        assert_eq!(arm.offer, "blocked");
-        assert_eq!(arm.reason, "The vehicle's arming checks are failing.");
+        assert_eq!(offer_of(&checks, Action::Arm), "hidden", "showArm requires _canArm");
+        assert_eq!(invoke_refusal(&[Action::Arm], &checks), Some(("blocked", "The vehicle's arming checks are failing.".to_string())));
         let checklist = GuidedState { can_arm: false, checklist_passed: false, ..ready_on_ground() };
-        assert_eq!(Action::Arm.offer(&checklist).reason, "The pre-flight checklist has not been completed.");
+        assert_eq!(invoke_refusal(&[Action::Arm], &checklist).map(|(_, r)| r).as_deref(), Some("The pre-flight checklist has not been completed."));
         assert_eq!(offer_of(&checks, Action::Takeoff), "ready");
+        assert_eq!(offer_of(&GuidedState { can_takeoff: false, ..ready_on_ground() }, Action::Takeoff), "hidden");
+        assert_eq!(offer_of(&GuidedState { can_start_mission: false, mission_available: true, ..ready_on_ground() }, Action::StartMission), "hidden");
     }
 
     #[test]
@@ -854,12 +882,12 @@ mod tests {
     }
 
     #[test]
-    fn force_arm_appears_only_where_the_ordinary_arm_was_refused() {
+    fn force_arm_is_offered_whenever_the_vehicle_is_disarmed() {
         let ready = ready_on_ground();
         assert_eq!(offer_of(&ready, Action::Arm), "ready");
-        assert_eq!(offer_of(&ready, Action::ForceArm), "hidden", "a vehicle that will arm normally is never offered the way past its checks");
+        assert_eq!(offer_of(&ready, Action::ForceArm), "ready", "showForceArm is only !_vehicleArmed");
         let refused = GuidedState { can_arm: false, ..ready_on_ground() };
-        assert_eq!(offer_of(&refused, Action::Arm), "blocked", "the ordinary arm is blocked by the failing checks");
+        assert_eq!(offer_of(&refused, Action::Arm), "hidden", "the ordinary arm is hidden by the failing checks");
         assert_eq!(offer_of(&refused, Action::ForceArm), "ready", "force arm is the escape hatch, so the checks that refused the arm do not gate it");
         let force = Action::ForceArm.offer(&refused);
         assert!(force.destructive, "bypassing the safety checks is destructive and a head must say so");
@@ -921,8 +949,7 @@ mod tests {
         assert_eq!(view["connected"], true);
         let arm = &view["actions"][0];
         assert_eq!(arm["id"], "arm");
-        assert_eq!(arm["offer"], "blocked");
-        assert_eq!(arm["reason"], "The vehicle's arming checks are failing.");
+        assert_eq!(arm["offer"], "hidden");
         assert_eq!(view["actions"][1]["id"], "takeoff");
         assert_eq!(view["actions"][1]["offer"], "ready");
         let named = |id: &str| view["actions"].as_array().unwrap().iter().find(|a| a["id"] == id).cloned().unwrap_or(Value::Null);

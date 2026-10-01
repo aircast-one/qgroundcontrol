@@ -38,7 +38,7 @@ internal fun VtolStateCell() {
         AlertDialog(
             onDismissRequest = { confirming = false },
             title = { Text(offer?.title?.ifBlank { null } ?: if (state.forward) "Transition to Multi-Rotor" else "Transition to Fixed Wing") },
-            text = { offer?.let { Text(blockedReasonFor(it) ?: it.prompt) } },
+            text = { offer?.let { Text(it.prompt) } },
             confirmButton = {
                 TextButton(enabled = offer?.ready == true && command != null, onClick = {
                     confirming = false

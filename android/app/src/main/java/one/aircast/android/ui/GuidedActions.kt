@@ -15,7 +15,6 @@ internal data class GuidedOffer(
     val carriesValue: Boolean,
 ) {
     val ready: Boolean get() = offer == "ready"
-    val blocked: Boolean get() = offer == "blocked"
     val shown: Boolean get() = offer != "hidden"
 }
 
@@ -44,10 +43,3 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
 internal fun resumeFromSequence(view: JSONObject?): Int? =
     view?.takeIf { !it.isNull("resumeFromSequence") }?.optInt("resumeFromSequence")?.takeIf { it > 0 }
 
-internal val PRIMARY_ACTIONS = listOf("arm", "disarm", "takeoff", "land", "rtl")
-
-internal fun primaryBlockedReason(offers: Map<String, GuidedOffer>): String? =
-    PRIMARY_ACTIONS.firstNotNullOfOrNull { offers[it]?.let(::blockedReasonFor) }
-
-internal fun blockedReasonFor(offer: GuidedOffer?): String? =
-    offer?.takeIf { it.blocked }?.reason?.ifBlank { "The vehicle will not accept this yet." }

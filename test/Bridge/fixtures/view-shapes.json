@@ -2669,7 +2669,6 @@
         "view.guidedActions.actions.19.carriesValue",
         "view.guidedActions.actions.19.destructive",
         "view.guidedActions.actions.19.id",
-        "view.guidedActions.actions.19.offer",
         "view.guidedActions.actions.19.prompt",
         "view.guidedActions.actions.19.reason",
         "view.guidedActions.actions.19.title",
@@ -4577,7 +4576,6 @@
         "view.preflight.groups.0.checks.4.prompt",
         "view.preflight.groups.0.checks.4.reason",
         "view.preflight.groups.0.checks.4.verdict",
-        "view.preflight.groups.0.name",
         "view.preflight.groups.1.checks.0.blocked",
         "view.preflight.groups.1.checks.0.verdict",
         "view.preflight.groups.1.checks.1.blocked",
@@ -10599,8 +10597,7 @@
             ],
             "view.guidedActions.actions[].offer": [
                 "hidden",
-                "ready",
-                "blocked"
+                "ready"
             ],
             "view.guidedSpeed.command": [
                 "guidedModeChangeGroundSpeedMetersSecond",

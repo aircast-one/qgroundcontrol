@@ -88,12 +88,13 @@ private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
 @Composable
 private fun PlanUploadButton(
     emphasised: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     contentPadding: PaddingValues,
     content: @Composable RowScope.() -> Unit,
 ) = when (emphasised) {
-    true -> Button(onClick = onClick, contentPadding = contentPadding, content = content)
-    false -> TextButton(onClick = onClick, contentPadding = contentPadding, content = content)
+    true -> Button(onClick = onClick, enabled = enabled, contentPadding = contentPadding, content = content)
+    false -> TextButton(onClick = onClick, enabled = enabled, contentPadding = contentPadding, content = content)
 }
 
 private fun sendPlan(
@@ -540,7 +541,7 @@ internal fun MapSpikeScreen(
                     val uploadBlocked = syncRefusal(
                         vehicleSyncState(planOffline, planSyncing), "upload to",
                     ) != null
-                    PlanUploadButton(emphasised = !uploadBlocked, onClick = {
+                    PlanUploadButton(emphasised = !uploadBlocked, enabled = planHasItems, onClick = {
                         val refusal = syncRefusal(
                             vehicleSyncState(planOffline, planSyncing), "upload to",
                         )
