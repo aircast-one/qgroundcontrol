@@ -38,7 +38,7 @@ pub struct Mode {
     pub advanced: bool,
 }
 
-pub const PX4_MODES: [Mode; 17] = [
+pub const PX4_MODES: [Mode; 22] = [
     Mode { name: "Manual", custom_mode: px4(1, 0), can_be_set: true, advanced: false },
     Mode { name: "Stabilized", custom_mode: px4(7, 0), can_be_set: true, advanced: false },
     Mode { name: "Acro", custom_mode: px4(5, 0), can_be_set: true, advanced: true },
@@ -47,15 +47,20 @@ pub const PX4_MODES: [Mode; 17] = [
     Mode { name: "Offboard", custom_mode: px4(6, 0), can_be_set: true, advanced: true },
     Mode { name: "Simple", custom_mode: px4(9, 0), can_be_set: false, advanced: true },
     Mode { name: "Position", custom_mode: px4(3, 0), can_be_set: true, advanced: false },
+    Mode { name: "Position Slow", custom_mode: px4(3, 2), can_be_set: true, advanced: true },
+    Mode { name: "Altitude Cruise", custom_mode: px4(11, 0), can_be_set: true, advanced: true },
     Mode { name: "Orbit", custom_mode: px4(3, 1), can_be_set: false, advanced: true },
     Mode { name: "Hold", custom_mode: px4(4, 3), can_be_set: true, advanced: false },
     Mode { name: "Mission", custom_mode: px4(4, 4), can_be_set: true, advanced: false },
     Mode { name: "Return", custom_mode: px4(4, 5), can_be_set: true, advanced: false },
+    Mode { name: "Follow Me", custom_mode: px4(4, 8), can_be_set: false, advanced: true },
     Mode { name: "Land", custom_mode: px4(4, 6), can_be_set: false, advanced: false },
     Mode { name: "Precision Land", custom_mode: px4(4, 9), can_be_set: true, advanced: true },
     Mode { name: "Ready", custom_mode: px4(4, 1), can_be_set: false, advanced: false },
-    Mode { name: "Return to Groundstation", custom_mode: px4(4, 7), can_be_set: false, advanced: true },
     Mode { name: "Takeoff", custom_mode: px4(4, 2), can_be_set: false, advanced: false },
+    Mode { name: "VTOL Takeoff", custom_mode: px4(4, 10), can_be_set: false, advanced: true },
+    Mode { name: "Termination", custom_mode: px4(10, 0), can_be_set: false, advanced: true },
+    Mode { name: "Guided Course", custom_mode: px4(4, 19), can_be_set: false, advanced: true },
 ];
 
 pub const COPTER_MODES: [Mode; 26] = [
@@ -190,10 +195,11 @@ mod tests {
         assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 4)), "Mission");
         assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(3, 0)), "Position");
         assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(3, 1)), "Orbit");
-        assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 8)), "Mode 134479872");
+        assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 8)), "Follow Me", "PX4FirmwarePlugin names every mode it knows, Follow Me included");
+        assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 7)), "Mode 117702656", "RTGS was deleted from PX4 and from QGC's table");
         assert_eq!(name(AUTOPILOT_PX4, 2, 0, px4(4, 4)), "");
         assert_eq!(custom_mode_for(AUTOPILOT_PX4, 1, "Return"), Some(px4(4, 5)));
-        assert_eq!(PX4_MODES.iter().filter(|m| m.can_be_set).count(), 11);
+        assert_eq!(PX4_MODES.iter().filter(|m| m.can_be_set).count(), 13);
     }
 
     #[test]

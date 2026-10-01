@@ -54,7 +54,6 @@ const DESCRIPTIONS: &[(&str, &str)] = &[
     ("Return", "Climbs, returns home and lands"),
     ("Smart RTL", "Retraces its own path back home"),
     ("AutoRTL", "Follows the mission's landing sequence home"),
-    ("Return to Groundstation", "Returns to the ground station"),
     ("Land", "Lands straight down where it is"),
     ("Precision Land", "Lands on the landing target"),
     ("Precision Landing", "Lands on the landing target"),
