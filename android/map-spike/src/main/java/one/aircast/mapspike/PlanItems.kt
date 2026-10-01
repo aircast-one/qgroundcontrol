@@ -108,6 +108,7 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     is MapHit.FenceVertex -> "Moved a fence corner"
     is MapHit.SurveyVertex -> "Moved a survey corner"
     is MapHit.Rally -> "Moved a rally point"
+    MapHit.BreachReturn -> "Moved the breach return point"
     is MapHit.CircleCentre -> "Moved a fence circle"
     is MapHit.Circle -> "Changed a fence radius"
     is MapHit.Midpoint -> "Added a corner"
@@ -136,6 +137,7 @@ fun writeMove(
             rallyAltitudeFor(rally, hit.index),
         )
         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, latitude, longitude)
+        MapHit.BreachReturn -> FenceBridge.setBreachReturn(TrackPoint(latitude, longitude))
         is MapHit.Circle -> true
         is MapHit.Midpoint -> false
         is MapHit.LandingPlace ->

@@ -327,6 +327,7 @@ internal fun MapSpikeScreen(
                 operator = nextOperator
                 if (!selectionSurvives(
                         selected, nextAll, nextFences, nextCircles, nextRally, nextSurveys, nextLandings,
+                        breach = nextBreach != null,
                     )
                 ) {
                     selected = null
@@ -398,6 +399,7 @@ internal fun MapSpikeScreen(
                         // qtpaths: plan.geoFenceController.polygons.0.splitPolygonSegment, plan.missionController.visualItems.0.surveyAreaPolygon.splitPolygonSegment, plan.missionController.visualItems.0.corridorPolyline.splitSegment
                         invokeOk("${hit.path}.${hit.invokable}", "[${hit.segment}]")
                     }
+                    MapHit.BreachReturn -> editingBreach = true
                     else -> selected = hit
                 }
             },

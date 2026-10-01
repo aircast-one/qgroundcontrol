@@ -66,5 +66,6 @@ internal fun selectionText(
         else -> "touchdown"
     }
     is MapHit.Rally -> null
+    MapHit.BreachReturn -> null
     null -> null
 }

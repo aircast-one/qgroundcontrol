@@ -531,4 +531,11 @@ class SurveyStatsRowTest {
         assertNull(holdText(-3.0))
     }
 
+
+    @Test
+    fun `dragging the breach return point says so and survives only while the point exists`() {
+        assertEquals("Moved the breach return point", movedText(MapHit.BreachReturn, emptyList()))
+        assertEquals(true, selectionSurvives(MapHit.BreachReturn, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), breach = true))
+        assertEquals(false, selectionSurvives(MapHit.BreachReturn, emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
+    }
 }

@@ -21,6 +21,8 @@ sealed interface MapHit {
 
     data class Rally(val index: Int) : MapHit
 
+    data object BreachReturn : MapHit
+
     data class Circle(val index: Int) : MapHit
 
     data class CircleCentre(val index: Int) : MapHit
@@ -83,6 +85,10 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         if (owner != null && vertex != null) {
             handleHit(kind, owner, vertex)?.let { return it }
         }
+    }
+
+    if (map.queryRenderedFeatures(box, BREACH_LAYER).isNotEmpty()) {
+        return MapHit.BreachReturn
     }
 
     nearest(map, map.queryRenderedFeatures(box, RALLY_LAYER), x, y)?.let { feature ->

@@ -8,6 +8,7 @@ fun selectionSurvives(
     rally: List<RallyPoint>,
     surveys: List<Survey>,
     landings: List<LandingPattern> = emptyList(),
+    breach: Boolean = false,
 ): Boolean = when (selected) {
     null -> true
     is MapHit.Waypoint -> items.any { it.index == selected.index }
@@ -18,6 +19,7 @@ fun selectionSurvives(
         it.index == selected.item && selected.vertex in it.area.indices
     }
     is MapHit.Rally -> rally.any { it.index == selected.index }
+    MapHit.BreachReturn -> breach
     is MapHit.Circle -> circles.any { it.index == selected.index }
     is MapHit.CircleCentre -> circles.any { it.index == selected.index }
     is MapHit.Midpoint -> false
