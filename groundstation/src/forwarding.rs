@@ -23,8 +23,20 @@ fn lock() -> MutexGuard<'static, Forwards> {
 }
 
 pub fn host_port(text: &str) -> Option<(String, u16)> {
-    let (host, port) = text.trim().rsplit_once(':')?;
-    Some((host.to_string(), port.parse().ok()?)).filter(|(host, _)| !host.is_empty())
+    host_port_or(text, listen_port())
+}
+
+fn listen_port() -> u16 {
+    crate::settingsstore::raw_setting("settings.autoConnectSettings.udpListenPort").and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()).unwrap_or(14550)
+}
+
+fn host_port_or(text: &str, listen: u16) -> Option<(String, u16)> {
+    let trimmed = text.trim();
+    let (host, port) = match trimmed.rsplit_once(':') {
+        Some((host, port)) => (host, port.parse().ok()?),
+        None => (trimmed, listen),
+    };
+    Some((host.to_string(), port)).filter(|(host, _)| !host.is_empty())
 }
 
 pub fn outgoing(frame: &Frame) -> Option<Vec<u8>> {
@@ -125,6 +137,7 @@ mod tests {
         assert_eq!(host_port("localhost:14445"), Some(("localhost".to_string(), 14445)));
         assert_eq!(host_port("support.ardupilot.org:xxxx"), None, "the placeholder default names no port, so nothing is opened");
         assert_eq!(host_port(":14445"), None);
+        assert_eq!(host_port_or("10.0.0.5", 14550), Some(("10.0.0.5".to_string(), 14550)), "UDPConfiguration::addHost sends a bare host to the UDP listen port");
     }
 
     #[test]
