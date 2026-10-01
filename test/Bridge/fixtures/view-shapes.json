@@ -3962,6 +3962,11 @@
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).plan",
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).readable",
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).valid",
+        "view.planTransform.class",
+        "view.planTransform.coordinateSystems.0",
+        "view.planTransform.coordinateSystems.1",
+        "view.planTransform.coordinateSystems.2",
+        "view.planTransform.kind",
         "view.positionForms(47.397,8.546).class",
         "view.positionForms(47.397,8.546).kind",
         "view.positionForms(47.397,8.546).latitude",
@@ -8135,6 +8140,17 @@
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).plan",
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).readable",
         "view.planFromWaypoints(<checkout>/test/MissionManager/MissionPlanner.waypoints).valid",
+        "view.planTransform.class",
+        "view.planTransform.coordinateSystems.#",
+        "view.planTransform.coordinateSystems[]",
+        "view.planTransform.hasHome",
+        "view.planTransform.home",
+        "view.planTransform.home.latitude",
+        "view.planTransform.home.longitude",
+        "view.planTransform.kind",
+        "view.planTransform.vehicle",
+        "view.planTransform.vehicle.latitude",
+        "view.planTransform.vehicle.longitude",
         "view.polygon(plan.geoFenceController.polygons.0).adjustInvokable",
         "view.polygon(plan.geoFenceController.polygons.0).canRemoveVertex",
         "view.polygon(plan.geoFenceController.polygons.0).class",
@@ -9307,6 +9323,7 @@
             "view.appLog",
             "view.offlineMaps",
             "view.virtualJoystick",
+            "view.planTransform",
             "view.remoteIdStatus",
             "view.escs",
             "view.gimbalIndicator",
@@ -11460,6 +11477,22 @@
         "plan": "string",
         "readable": "bool",
         "valid": "bool"
+    },
+    "view.planTransform": {
+        "class": "string",
+        "coordinateSystems": [
+            "string"
+        ],
+        "hasHome": "bool",
+        "home": {
+            "latitude": "number",
+            "longitude": "number"
+        },
+        "kind": "string",
+        "vehicle": {
+            "latitude": "number",
+            "longitude": "number"
+        }
     },
     "view.polygon(plan.geoFenceController.polygons.0)": {
         "adjustInvokable": "string",

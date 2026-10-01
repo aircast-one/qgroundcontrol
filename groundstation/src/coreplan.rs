@@ -177,6 +177,10 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
     answer
 }
 
+pub fn apply(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
+    edit(change)
+}
+
 fn edit_defaults(backend: &dyn Backend) -> Option<plandoc::EditDefaults> {
     crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude })
 }

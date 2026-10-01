@@ -50,6 +50,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
     val dirty = remember(planStatus) { planIsDirty(planStatus) }
     val syncing = remember(planStatus) { planIsSyncing(planStatus) }
     var showDefaults by remember { mutableStateOf(false) }
+    var showTransform by remember { mutableStateOf(false) }
     val can = planActions(planStatus)
     val history = planHistory(planStatus)
     var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -73,6 +74,10 @@ fun PlanTab(modifier: Modifier = Modifier) {
 
     if (showDefaults) {
         PlanDefaultsDialog(planStatus) { showDefaults = false }
+    }
+
+    if (showTransform) {
+        PlanTransformDialog { showTransform = false }
     }
 
     pending?.let { kind ->
@@ -170,6 +175,11 @@ fun PlanTab(modifier: Modifier = Modifier) {
                     DropdownMenuItem(
                         text = { Text("Defaults…") },
                         onClick = { menuOpen = false; showDefaults = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Transform…") },
+                        enabled = containsItems,
+                        onClick = { menuOpen = false; showTransform = true },
                     )
                     HorizontalDivider()
                     DropdownMenuItem(

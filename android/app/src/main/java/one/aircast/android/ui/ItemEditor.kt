@@ -279,7 +279,14 @@ internal fun geoOf(view: JSONObject?): Pair<Double, Double>? =
     view?.takeIf { it.optBoolean("valid") }?.let { it.optDouble("latitude") to it.optDouble("longitude") }
 
 @Composable
-private fun EditPositionDialog(at: TrackPoint, onDismiss: () -> Unit, onMove: (Double, Double) -> Unit) {
+internal fun EditPositionDialog(
+    at: TrackPoint,
+    onDismiss: () -> Unit,
+    title: String = "Edit Position",
+    confirm: String = "Move",
+    vehicleNote: String = "Move the item to the vehicle's current position.",
+    onMove: (Double, Double) -> Unit,
+) {
     var system by remember { mutableStateOf(CoordinateSystem.Geographic) }
     var latitude by remember { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.latitude)) }
     var longitude by remember { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.longitude)) }
@@ -319,7 +326,7 @@ private fun EditPositionDialog(at: TrackPoint, onDismiss: () -> Unit, onMove: (D
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Position") },
+        title = { Text(title) },
         text = {
             Column {
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
@@ -343,12 +350,12 @@ private fun EditPositionDialog(at: TrackPoint, onDismiss: () -> Unit, onMove: (D
                         PositionField("Northing", northing) { northing = it }
                     }
                     CoordinateSystem.Mgrs -> PositionField("MGRS", mgrs, KeyboardType.Text) { mgrs = it }
-                    CoordinateSystem.Vehicle -> Text("Move the item to the vehicle's current position.")
+                    CoordinateSystem.Vehicle -> Text(vehicleNote)
                 }
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { move() }) { Text("Move") } },
+        confirmButton = { TextButton(onClick = { move() }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

@@ -154,6 +154,7 @@ pub mod applog;
 pub mod offlinemaps;
 pub mod virtualjoystick;
 pub mod plantemplates;
+pub mod plantransform;
 pub mod gimbalindicator;
 pub mod gpsresilience;
 pub mod paramfile;
