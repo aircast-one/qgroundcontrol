@@ -274,6 +274,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "resumeFromSequence": (state.resume_from_sequence > 0).then_some(state.resume_from_sequence),
         "roiSupported": state.roi_supported,
         "roiActive": state.roi_active,
+        "resumeFailedIndex": crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().and_then(|v| v.resume_failed)).flatten(),
         "roi": state.roi_active.then(|| crate::read::object(&backend.get("vehicle.roiCoord"))).and_then(|at| {
             Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? }))
         }),
@@ -450,6 +451,7 @@ fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Va
         [Action::Pause] => Some(json!({ "action": "pause" })),
         [Action::EmergencyStop] => Some(json!({ "action": "emergencyStop" })),
         [Action::CancelRoi] => Some(json!({ "action": "cancelRoi" })),
+        [Action::ResumeMission] => given.get(0).and_then(Value::as_i64).map(|index| json!({ "action": "resumeMission", "index": index })),
         [Action::LandAbort] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "abortLanding", "climbOut": metres })),
         [Action::Grab] | [Action::Release] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip })),
         [Action::Takeoff] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "takeoff", "altitude": metres })),
@@ -1066,7 +1068,8 @@ mod core_route {
 
     #[test]
     fn actions_the_hub_cannot_plan_never_reach_it() {
-        assert_eq!(core_action(&[Action::ResumeMission], "[50]", &GuidedState::default()), None);
+        assert_eq!(core_action(&[Action::ResumeMission], "[50]", &GuidedState::default()), Some(json!({ "action": "resumeMission", "index": 50 })), "the hub builds and uploads the resume mission as generateResumeMission does");
+        assert_eq!(core_action(&[Action::ResumeMission], "[]", &GuidedState::default()), None);
         assert_eq!(
             core_action(&[Action::StartMission, Action::ContinueMission], "[]", &GuidedState { flying: true, ..GuidedState::default() }),
             Some(json!({ "action": "startMission", "flying": true })),

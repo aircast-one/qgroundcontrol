@@ -227,6 +227,8 @@ pub struct Vehicle {
     pub check_list_state: i64,
     pub mission_last_current: i32,
     mission_cached_last: i32,
+    resume_upload: Option<i64>,
+    pub resume_failed: Option<i64>,
     pub trigger_points: Vec<(f64, f64, f64)>,
     pub trigger_points_appended: bool,
     image_captured_seen: bool,
@@ -374,6 +376,8 @@ impl Vehicle {
             check_list_state: 0,
             mission_last_current: -1,
             mission_cached_last: -1,
+            resume_upload: None,
+            resume_failed: None,
             trigger_points: Vec::new(),
             trigger_points_appended: false,
             image_captured_seen: false,
@@ -656,6 +660,9 @@ impl Vehicle {
                     Vec::new()
                 }
                 plantransfer::Out::Done { success, error } => {
+                    if kind == plantransfer::PLAN_MISSION && self.plans[plan].transfer.wrote {
+                        self.resume_failed = self.resume_upload.take().filter(|_| !success);
+                    }
                     if kind == plantransfer::PLAN_MISSION {
                         self.clear_trigger_points();
                         if self.plans[plan].transfer.wrote {
@@ -1633,6 +1640,17 @@ impl Vehicle {
                         _ => Vec::new(),
                     })
                     .collect());
+            }
+            Some("resumeMission") => {
+                let index = action.get("index").and_then(Value::as_i64).ok_or("A resume names the mission index to resume from.")?;
+                let on_vehicle = if self.sends_home() { index } else { index - 1 };
+                let commands = crate::cmdinfo::tree(crate::plandoc::firmware(i64::from(self.autopilot)), crate::plandoc::vehicle_class(i64::from(self.vehicle_type)));
+                let items = crate::resumemission::resume_items(self.mission_items(), usize::try_from(on_vehicle.max(0)).unwrap_or(0), self.sends_home(), |command| crate::resumemission::shape(&commands, command))
+                    .inspect_err(|refusal| { crate::noticeboard::post(crate::noticeboard::MESSAGE, "", refusal); })?;
+                self.resume_failed = None;
+                let sent = self.write_mission(items, now_ms)?;
+                self.resume_upload = Some(index);
+                return Ok(sent);
             }
             Some("revertTakeoverTimer") => {
                 self.control.start_revert(now_ms);

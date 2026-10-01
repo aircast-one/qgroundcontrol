@@ -509,6 +509,7 @@ mod deps_cover_reads {
             ("videostats", include_str!("videostats.rs")),
             ("linkcount", include_str!("linkcount.rs")),
             ("offlinestatus", include_str!("offlinestatus.rs")),
+            ("resumemission", include_str!("resumemission.rs")),
             ("inspectorchart", include_str!("inspectorchart.rs")),
             ("rccal", include_str!("rccal.rs")),
             ("cmdinfo", include_str!("cmdinfo.rs")),
