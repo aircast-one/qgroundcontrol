@@ -114,6 +114,11 @@ fn enqueue(text: &str, volume: f64) {
     }
 }
 
+#[cfg(test)]
+pub fn spoken_lines() -> Vec<String> {
+    QUEUE.lock().unwrap_or_else(PoisonError::into_inner).spoken.iter().map(|(_, text, _)| text.clone()).collect()
+}
+
 pub fn vehicle_prefix(id: u8, vehicles: usize) -> String {
     match vehicles > 1 {
         true => format!("Vehicle {id} "),

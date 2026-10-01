@@ -968,6 +968,13 @@ impl Vehicle {
         }
     }
 
+    pub fn parameter_definition(&self, name: &str, value_type: crate::factmeta::ValueType) -> crate::factmeta::MetaData {
+        match &self.parameter_metadata {
+            Some(described) => described.metadata_for(name, value_type, self.component),
+            None => crate::px4meta::bundled().get(name).cloned().unwrap_or_else(|| crate::factmeta::MetaData { name: name.to_string(), ..crate::px4meta::bare(value_type) }),
+        }
+    }
+
     pub fn parameter_meta(&self, name: &str, value: Option<ParamValue>) -> Option<Value> {
         let described = self.parameter_metadata.as_ref()?;
         let value_type = value.and_then(|v| crate::factmeta::ValueType::from_param_type(v.param_type())).unwrap_or(crate::factmeta::ValueType::Float);
@@ -1852,7 +1859,7 @@ impl Vehicle {
         if armed != last_armed {
             crate::speech::say(&format!("{prefix} {}", if armed { "armed" } else { "disarmed" }).to_lowercase());
         }
-        if lost != last_lost {
+        if lost != last_lost && (lost || self.link_states.len() <= 1) {
             crate::speech::say(&format!("{prefix}{}", if lost { "Communication lost" } else { "Communication regained" }).to_lowercase());
         }
         self.announced = (if mode.is_empty() { last_mode } else { Some(mode) }, armed, lost);
@@ -1869,16 +1876,33 @@ impl Vehicle {
         }
     }
 
-    fn update_primary_link(&mut self) {
+    fn update_primary_link(&mut self) -> bool {
         let held = self.primary_link.and_then(|id| self.link_states.iter().find(|(link, _, _)| *link == id));
         if held.is_some_and(|(_, _, lost)| !lost) {
-            return;
+            return false;
         }
         let best = self.link_states.iter().find(|(_, _, lost)| !lost).map(|(link, _, _)| *link);
         if held.is_some() && best.is_none() {
-            return;
+            return false;
         }
+        let switched = held.is_some() && best != self.primary_link;
         self.primary_link = best;
+        switched
+    }
+
+    fn say_link(&self, text: &str) {
+        crate::speech::say(&format!("{}{text}", self.speech_prefix).to_lowercase());
+    }
+
+    fn link_role(&self, link: LinkId) -> &'static str {
+        if self.primary_link == Some(link) { "primary" } else { "secondary" }
+    }
+
+    fn switch_primary(&mut self, text: &str) {
+        if self.update_primary_link() {
+            self.say_link(text);
+            self.pending_notices.push((crate::noticeboard::MESSAGE, format!("{}{text}", self.speech_prefix)));
+        }
     }
 
     pub fn note_link(&mut self, link: LinkId, now_ms: u64) {
@@ -1888,7 +1912,10 @@ impl Vehicle {
                 if state.2 {
                     state.2 = false;
                     log::info!("Communication regained on link {link}");
-                    self.update_primary_link();
+                    if self.link_states.len() > 1 {
+                        self.say_link(&format!("Communication regained on {} link", self.link_role(link)));
+                    }
+                    self.switch_primary("Switching communication to new primary link");
                 }
             }
             None => {
@@ -1902,11 +1929,16 @@ impl Vehicle {
         if !self.comm_lost_enabled {
             return;
         }
-        self.link_states.iter_mut().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).for_each(|state| {
-            state.2 = true;
-            log::warn!("Communication lost on link {}", state.0);
+        let silenced: Vec<LinkId> = self.link_states.iter().filter(|(_, last, lost)| !lost && now_ms.saturating_sub(*last) > LINK_SILENT_MS).map(|(link, _, _)| *link).collect();
+        let several = self.link_states.len() > 1;
+        silenced.iter().for_each(|link| {
+            log::warn!("Communication lost on link {link}");
+            if several {
+                self.say_link(&format!("Communication lost on {} link.", self.link_role(*link)));
+            }
         });
-        self.update_primary_link();
+        self.link_states.iter_mut().filter(|(link, _, _)| silenced.contains(link)).for_each(|state| state.2 = true);
+        self.switch_primary("Switching communication to secondary link.");
     }
 
     fn log_extension(&self) -> &'static str {
@@ -2766,7 +2798,7 @@ impl Hub {
     pub fn retain_links(&mut self, open: &[LinkId]) {
         self.vehicles.values_mut().for_each(|v| {
             v.link_states.retain(|(link, _, _)| open.contains(link));
-            v.update_primary_link();
+            let _ = v.update_primary_link();
         });
         let gone: Vec<u8> = self.vehicles.values().filter(|v| !open.contains(&v.link)).map(|v| v.id).collect();
         gone.iter().for_each(|id| self.remove(*id));
@@ -3394,6 +3426,11 @@ mod tests {
         assert_eq!((vehicle.primary_link, vehicle.link_states.iter().map(|(_, _, lost)| *lost).collect::<Vec<_>>()), (Some(2), vec![true, false]), "link 1 was silent past 3.5 s");
         hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 4_100);
         assert_eq!(hub.active().unwrap().primary_link, Some(2), "a regained link does not take the primary back");
+        let spoken = crate::speech::spoken_lines().join("\n");
+        ["communication lost on primary link.", "switching communication to secondary link.", "communication regained on secondary link"]
+            .iter()
+            .for_each(|line| assert!(spoken.contains(line), "{line} was not spoken"));
+        assert!(!spoken.contains("new primary link"), "the held primary did not change on regain");
     }
 
     #[test]
