@@ -50,6 +50,10 @@ enum class AnalyzePage(
         "Geotag Images",
         "Match photographs to where the vehicle was when it took them",
     ),
+    Firmware(
+        "Firmware",
+        "Flash a board through its bootloader over USB",
+    ),
     ;
 }
 
@@ -136,6 +140,7 @@ fun AnalyzeScreen(
                 AnalyzePage.Inspector -> InspectorScreen()
                 AnalyzePage.Vibration -> VibrationScreen()
                 AnalyzePage.GeoTag -> GeoTagScreen()
+                AnalyzePage.Firmware -> FirmwareScreen()
             }
         }
     }
