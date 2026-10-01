@@ -66,10 +66,51 @@ fn image_for(file: &str, contents: &[u8], board: &BoardInfo) -> Result<Vec<u8>, 
     }
 }
 
+pub const PLUG_IN: &str = "Plug in your device via USB.";
+pub const REPLUG: &str = "Now unplug your device and plug it back in to enter bootloader mode.";
+pub const FIND_BOARD_INTERVAL_MS: u64 = 500;
+pub const FIND_BOARD_ATTEMPTS: usize = 240;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sighting {
+    Absent,
+    Running,
+    Bootloader,
+}
+
+pub fn in_bootloader(description: &str) -> bool {
+    description.contains("BL") || description.to_ascii_lowercase().contains("bootloader")
+}
+
+pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn FnMut(), report: &mut dyn FnMut(Event)) -> Result<(), String> {
+    let first = look();
+    if first == Sighting::Bootloader {
+        return Ok(());
+    }
+    let mut must_leave = first == Sighting::Running;
+    report(Event::Status(if must_leave { REPLUG } else { PLUG_IN }.to_string()));
+    let arrived = (0..FIND_BOARD_ATTEMPTS).any(|_| {
+        pause();
+        match (must_leave, look()) {
+            (true, Sighting::Absent) => {
+                must_leave = false;
+                false
+            }
+            (true, _) | (false, Sighting::Absent) => false,
+            (false, _) => true,
+        }
+    });
+    if arrived { Ok(()) } else { Err("Bootloader not found".to_string()) }
+}
+
 pub fn flash<P: Port>(port: P, file: &str, contents: &[u8], report: &mut dyn FnMut(Event)) -> Result<(), String> {
     let mut loader = Bootloader::new(port);
     let board = loader.board_info()?;
     report(Event::Board(board));
+    report(Event::Status("Connected to bootloader:".into()));
+    report(Event::Status(format!("  Version: {}", board.bootloader_version)));
+    report(Event::Status(format!("  Board ID: {}", board.board_id)));
+    report(Event::Status(format!("  Flash size: {}", board.flash_size)));
     let image = image_for(file, contents, &board)?;
     report(Event::Phase(Phase::Erasing));
     report(Event::Status("Erasing previous program...".into()));
@@ -137,6 +178,21 @@ impl Port for Serial {
 }
 
 #[cfg(not(target_os = "android"))]
+fn look_at(port: &str) -> Sighting {
+    let found = serialport::available_ports().unwrap_or_default().into_iter().find(|p| p.port_name == port);
+    match found.map(|p| p.port_type) {
+        None => Sighting::Absent,
+        Some(serialport::SerialPortType::UsbPort(usb)) if in_bootloader(usb.product.as_deref().unwrap_or_default()) => Sighting::Bootloader,
+        Some(_) => Sighting::Running,
+    }
+}
+
+#[cfg(target_os = "android")]
+fn look_at(_port: &str) -> Sighting {
+    Sighting::Absent
+}
+
+#[cfg(not(target_os = "android"))]
 fn open(port: &str) -> Result<Serial, String> {
     serialport::new(port, BAUD)
         .data_bits(serialport::DataBits::Eight)
@@ -182,7 +238,8 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
     std::thread::Builder::new()
         .name("firmware-flash".into())
         .spawn(move || {
-            let outcome = open(&port).and_then(|opened| flash(opened, &file, &contents, &mut apply));
+            let waited = wait_for_bootloader(&mut || look_at(&port), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &mut apply);
+            let outcome = waited.and_then(|()| open(&port)).and_then(|opened| flash(opened, &file, &contents, &mut apply));
             let mut held = job();
             match outcome {
                 Ok(()) => {
@@ -240,7 +297,8 @@ mod tests {
         let phases: Vec<Phase> = events.iter().filter_map(|e| if let Event::Phase(p) = e { Some(*p) } else { None }).collect();
         assert_eq!(phases, [Phase::Erasing, Phase::Programming, Phase::Verifying]);
         let lines: Vec<&str> = events.iter().filter_map(|e| if let Event::Status(s) = e { Some(s.as_str()) } else { None }).collect();
-        assert_eq!(lines, ["Erasing previous program...", "Erase complete", "Programming new version...", "Verifying program...", "Rebooting board"]);
+        assert_eq!(lines[..4], ["Connected to bootloader:", "  Version: 5", "  Board ID: 50", "  Flash size: 1024"]);
+        assert_eq!(lines[4..], ["Erasing previous program...", "Erase complete", "Programming new version...", "Verifying program...", "Rebooting board"]);
         assert!(events.iter().any(|e| matches!(e, Event::Progress(p) if (*p - 1.0).abs() < f64::EPSILON)));
     }
 
@@ -270,6 +328,38 @@ mod tests {
         let flashed = board_side.join().unwrap();
         assert_eq!(&flashed[..firmware.len()], &firmware[..]);
         assert!(flashed[firmware.len()..].iter().all(|b| *b == 0xff));
+    }
+
+    fn watched(sightings: &[Sighting]) -> (Result<(), String>, Vec<String>, usize) {
+        let mut queue = sightings.iter().copied();
+        let mut pauses = 0;
+        let mut lines = Vec::new();
+        let outcome = wait_for_bootloader(&mut || queue.next().unwrap_or(Sighting::Absent), &mut || pauses += 1, &mut |e| {
+            if let Event::Status(s) = e {
+                lines.push(s);
+            }
+        });
+        (outcome, lines, pauses)
+    }
+
+    #[test]
+    fn a_board_already_in_its_bootloader_is_taken_at_once() {
+        assert_eq!(watched(&[Sighting::Bootloader]), (Ok(()), vec![], 0));
+    }
+
+    #[test]
+    fn a_running_board_must_be_replugged_and_its_return_is_taken() {
+        let (outcome, lines, pauses) = watched(&[Sighting::Running, Sighting::Running, Sighting::Absent, Sighting::Absent, Sighting::Running]);
+        assert_eq!((outcome, lines, pauses), (Ok(()), vec![REPLUG.to_string()], 4), "back after the unplug counts even before its description says BL, as Qt's found-board loop does");
+    }
+
+    #[test]
+    fn a_missing_board_is_waited_for_and_then_given_up_on() {
+        let (outcome, lines, _) = watched(&[Sighting::Absent, Sighting::Absent, Sighting::Bootloader]);
+        assert_eq!((outcome, lines), (Ok(()), vec![PLUG_IN.to_string()]));
+        let (outcome, _, pauses) = watched(&[]);
+        assert_eq!((outcome, pauses), (Err("Bootloader not found".to_string()), FIND_BOARD_ATTEMPTS));
+        assert!(in_bootloader("PX4 BL FMU v5.x") && in_bootloader("ArduPilot Bootloader") && !in_bootloader("PX4 FMU v5.x"));
     }
 
     #[test]
