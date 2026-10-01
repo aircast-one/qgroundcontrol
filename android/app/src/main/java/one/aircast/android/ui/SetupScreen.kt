@@ -187,6 +187,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 headPage(open) == FLIGHT_MODES_PAGE -> FlightModesSetup(Modifier.weight(1f))
                 nativePage?.screen == PX4_TUNING_SCREEN -> Px4TuningScreen(Modifier.weight(1f))
                 nativePage?.screen == PX4_AIRFRAME_SCREEN -> Px4AirframeScreen(Modifier.weight(1f))
+                nativePage?.screen == ACTUATORS_SCREEN -> ActuatorsScreen(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",

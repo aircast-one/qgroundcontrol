@@ -108,6 +108,7 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
     match (page, px4) {
         ("Tuning", true) => Some("px4Tuning"),
         ("Frame", true) => Some("px4Airframe"),
+        ("Actuators", true) if crate::vehiclefacade::switched_on() => Some("actuators"),
         _ => None,
     }
 }

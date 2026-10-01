@@ -693,7 +693,6 @@
         "view.setup.groups.1.pages.5.screen",
         "view.setup.groups.1.pages.6.screen",
         "view.setup.groups.1.pages.7.blockedReason",
-        "view.setup.groups.1.pages.7.screen",
         "view.setup.groups.1.pages.8.blockedReason",
         "view.setup.groups.1.pages.8.screen",
         "view.setup.groups.1.pages.9.blockedReason",
@@ -709,6 +708,11 @@
         "view.warnings.armingChecks"
     ],
     "_neverVaried": [
+        "view.actuatorOutputs.available",
+        "view.actuatorOutputs.class",
+        "view.actuatorOutputs.groups.#",
+        "view.actuatorOutputs.kind",
+        "view.actuatorOutputs.reason",
         "view.adsbTraffic.alertUnknown",
         "view.adsbTraffic.alerting",
         "view.adsbTraffic.available",
@@ -6007,7 +6011,6 @@
         "view.setup.groups.1.pages.7.blockedReason",
         "view.setup.groups.1.pages.7.openable",
         "view.setup.groups.1.pages.7.parameterSections",
-        "view.setup.groups.1.pages.7.screen",
         "view.setup.groups.1.pages.8.blockedReason",
         "view.setup.groups.1.pages.8.openable",
         "view.setup.groups.1.pages.8.parameterSections",
@@ -6285,6 +6288,11 @@
         "view.waypointsFile(<checkout>/test/MissionManager/MissionPlanner.waypoints).version"
     ],
     "_observed": [
+        "view.actuatorOutputs.available",
+        "view.actuatorOutputs.class",
+        "view.actuatorOutputs.groups.#",
+        "view.actuatorOutputs.kind",
+        "view.actuatorOutputs.reason",
         "view.adsbTraffic.alertUnknown",
         "view.adsbTraffic.alerting",
         "view.adsbTraffic.available",
@@ -8728,6 +8736,15 @@
         "view.waypointsFile(<checkout>/test/MissionManager/MissionPlanner.waypoints).valid",
         "view.waypointsFile(<checkout>/test/MissionManager/MissionPlanner.waypoints).version"
     ],
+    "view.actuatorOutputs": {
+        "available": "bool",
+        "class": "string",
+        "groups": [
+            "empty"
+        ],
+        "kind": "string",
+        "reason": "string"
+    },
     "view.adsbTraffic": {
         "alertUnknown": "number",
         "alerting": "null",
@@ -9490,6 +9507,7 @@
             "view.px4Tuning",
             "view.px4Airframe",
             "view.autotune",
+            "view.actuatorOutputs",
             "view.remoteIdStatus",
             "view.escs",
             "view.gimbalIndicator",

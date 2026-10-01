@@ -243,6 +243,7 @@ pub struct Vehicle {
     waiting_due: Option<u64>,
     metadata_types: BTreeMap<u8, Uris>,
     parameter_metadata: Option<ComponentParameters>,
+    pub actuators_metadata: Option<Value>,
     fetch: Option<Fetch>,
     ftp_due: Option<u64>,
     ftp_seq: u16,
@@ -371,6 +372,7 @@ impl Vehicle {
             waiting_due: None,
             metadata_types: BTreeMap::new(),
             parameter_metadata: None,
+            actuators_metadata: None,
             fetch: None,
             ftp_due: None,
             ftp_seq: 0,
@@ -720,9 +722,20 @@ impl Vehicle {
         }
     }
 
+    fn after_parameter_metadata(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        match self.metadata_types.get(&compmeta::TYPE_ACTUATORS).map(|u| u.uri.clone()) {
+            Some(uri) => self.start_fetch(compmeta::TYPE_ACTUATORS, &uri, now_ms),
+            None => self.step_done(connect::Step::ComponentInformation, now_ms),
+        }
+    }
+
     fn fetch_failed(&mut self, kind: u8, reason: String, now_ms: u64) -> Vec<Vec<u8>> {
         match kind {
             FETCH_PARAMETER_PACK => self.stream_parameters(now_ms),
+            TYPE_PARAMETER => {
+                self.note(reason);
+                self.after_parameter_metadata(now_ms)
+            }
             _ => {
                 self.note(reason);
                 self.step_done(connect::Step::ComponentInformation, now_ms)
@@ -799,12 +812,19 @@ impl Vehicle {
                     self.step_done(connect::Step::ComponentInformation, now_ms)
                 }
             },
+            (compmeta::TYPE_ACTUATORS, Ok(text)) => {
+                match serde_json::from_str::<Value>(&text) {
+                    Ok(parsed) => self.actuators_metadata = Some(parsed),
+                    Err(reason) => self.note(format!("Actuator metadata could not be parsed: {reason}")),
+                }
+                self.step_done(connect::Step::ComponentInformation, now_ms)
+            }
             (_, Ok(text)) => {
                 match crate::compinfo::parse(&text) {
                     Ok(parsed) => self.parameter_metadata = Some(parsed),
                     Err(reason) => self.note(format!("Parameter metadata could not be parsed: {reason}")),
                 }
-                self.step_done(connect::Step::ComponentInformation, now_ms)
+                self.after_parameter_metadata(now_ms)
             }
         }
     }
