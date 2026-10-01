@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 internal enum class SetupState { NeedsAttention, Done, Neutral, Unavailable }
@@ -130,6 +131,26 @@ internal fun PageTopBar(title: String, backLabel: String, onBack: () -> Unit) {
     ) {
         IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), backLabel) }
         Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
+    }
+}
+
+@Composable
+internal fun EmptyState(@DrawableRes icon: Int, title: String, text: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier.size(96.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(44.dp))
+        }
+        Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        if (text.isNotBlank()) {
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        }
     }
 }
 

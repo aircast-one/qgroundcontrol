@@ -212,18 +212,6 @@ private fun LogRow(entry: LogEntry, enabled: Boolean, onToggle: (Boolean) -> Uni
     }
 }
 
-@Composable
-private fun Message(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        textAlign = TextAlign.Center,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-    )
-}
-
 internal fun savedToText(logs: LogsView?): String? {
     val reading = logs?.takeIf { it.anyDownloaded } ?: return null
     return when {
@@ -250,7 +238,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
     val busy = logs?.busy == true
 
     if (logs?.connected != true) {
-        Message(logs?.emptyText?.ifBlank { null } ?: "Connect a vehicle to download its flight logs.", modifier)
+        EmptyState(R.drawable.ic_description, "No vehicle", logs?.emptyText?.ifBlank { null } ?: "Connect a vehicle to download its flight logs.", modifier)
         return
     }
 
@@ -335,7 +323,9 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         }
 
         when {
-            entries.isEmpty() -> Message(
+            entries.isEmpty() -> EmptyState(
+                R.drawable.ic_description,
+                "No logs yet",
                 logs.emptyText.ifBlank { "This vehicle reports no flight logs." },
             )
             else -> LazyColumn(Modifier.weight(1f)) {

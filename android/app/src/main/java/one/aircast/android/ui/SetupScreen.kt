@@ -178,7 +178,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     if (!hasVehicle) {
-        SetupNotice(setupNoVehicleText(setup?.detail), modifier)
+        EmptyState(R.drawable.ic_build, "No vehicle", setupNoVehicleText(setup?.detail), modifier)
         return
     }
 
