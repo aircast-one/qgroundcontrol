@@ -1955,7 +1955,7 @@ impl Vehicle {
     fn spoken_status(&self, status: &StatusText, now_ms: u64) -> Option<String> {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
         let text = crate::messagelog::admitted(px4, self.events_heard, status.severity, &status.text)?;
-        let repeated = text.starts_with("PreArm") && self.prearm_spoken.get(&text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
+        let repeated = is_prearm(&text, status.severity) && self.prearm_spoken.get(&text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
         let asked = status.text.starts_with('#') || status.severity <= SEVERITY_NOTICE;
         (asked && !repeated).then_some(text)
     }
@@ -4797,6 +4797,8 @@ mod tests {
         vehicle.note_prearm("PreArm: RC not calibrated", 4, 1_000);
         assert_eq!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 5_000), None, "the same PreArm within ten seconds is not repeated");
         assert!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 12_000).is_some());
+        vehicle.note_prearm("Preflight Fail: Accel uncalibrated", 2, 20_000);
+        assert_eq!(vehicle.spoken_status(&status(2, "Preflight Fail: Accel uncalibrated"), 25_000), None, "Vehicle::_handleStatusText limits PX4 preflight repeats the same way");
     }
 
     #[test]
