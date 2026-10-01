@@ -1,5 +1,10 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.Checkbox
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -116,6 +121,7 @@ internal fun parseInspectorFields(view: JSONObject?, messagePath: String): List<
 }
 
 private const val INSPECTOR_SELECTED = "mavlinkInspector.activeSystem.selected"
+private const val CHART_POLL_MS = 200L
 
 internal fun selectedPathFor(messagePath: String): String =
     messagePath.substringBefore(".messages.") + ".selected"
@@ -183,7 +189,19 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
         return
     }
 
+    var charts by remember { mutableStateOf<InspectorCharts?>(null) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            charts = withContext(Dispatchers.Default) { inspectorCharts(Qgc.get(INSPECTOR_CHARTS_VIEW)) }
+            delay(CHART_POLL_MS)
+        }
+    }
+
     LazyColumn(modifier.fillMaxSize()) {
+        charts?.let { shown ->
+            item(key = "chart0") { InspectorChartPanel(0, shown) }
+            item(key = "chart1") { InspectorChartPanel(1, shown) }
+        }
         items(rows) { field ->
             ListItem(
                 headlineContent = {
@@ -191,7 +209,20 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
                 },
                 supportingContent = { Text(field.type) },
                 trailingContent = {
-                    Text(field.value, fontFamily = FontFamily.Monospace)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(field.value, fontFamily = FontFamily.Monospace)
+                        (0..1).forEach { chart ->
+                            val on = charts?.charted?.get(field.name) == chart
+                            Checkbox(
+                                checked = on,
+                                enabled = chartToggleEnabled(charts, field.name, field.type, chart),
+                                onCheckedChange = { wanted ->
+                                    val label = charts?.charts?.getOrNull(chart)?.plots?.firstOrNull { it.field == field.name }?.label.orEmpty()
+                                    toggleChartField(chart, field.name, wanted, label)
+                                },
+                            )
+                        }
+                    }
                 },
             )
             HorizontalDivider()

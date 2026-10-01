@@ -101,6 +101,27 @@ fn integer_text(kind: &str, payload: &[u8], at: usize) -> Option<(String, f64)> 
     })
 }
 
+pub fn field_chartable(msgid: u32, wanted: &str) -> bool {
+    let base = wanted.split_once('[').map_or(wanted, |(base, _)| base);
+    TABLE.get(&msgid).is_some_and(|info| info.fields.iter().any(|f| f.name == base && f.kind != "char"))
+}
+
+pub fn field_number(msgid: u32, payload: &[u8], wanted: &str) -> Option<f64> {
+    let info = TABLE.get(&msgid)?;
+    let (base, element) = match wanted.split_once('[') {
+        Some((base, rest)) => (base, Some(rest.trim_end_matches(']').parse::<usize>().ok()?)),
+        None => (wanted, None),
+    };
+    let field = info.fields.iter().find(|f| f.name == base && f.kind != "char")?;
+    let at = field.offset + element.unwrap_or(0) * size_of(&field.kind);
+    match field.kind.as_str() {
+        "float" => Some(f64::from(f32::from_le_bytes(bytes(payload, at)))),
+        "double" => Some(f64::from_le_bytes(bytes(payload, at))),
+        kind => integer_text(kind, payload, at).map(|(_, value)| value),
+    }
+    .filter(|value| value.is_finite())
+}
+
 pub fn instance_value(msgid: u32, payload: &[u8]) -> String {
     let Some(info) = TABLE.get(&msgid) else { return String::new() };
     let named = |field: &str| info.fields.iter().find(|f| f.name == field);
@@ -318,7 +339,9 @@ impl Inspector {
         if let mavlink::dialects::ardupilotmega::MavMessage::MESSAGE_INTERVAL(interval) = &frame.message {
             self.note_interval(frame.header.system_id, frame.header.component_id, u32::from(interval.message_id), interval.interval_us);
         }
-        self.receive(frame.header.system_id, frame.header.component_id, msgid, payload(&frame.raw, frame.v2));
+        let bytes = payload(&frame.raw, frame.v2);
+        crate::inspectorchart::record(frame.header.system_id, frame.header.component_id, msgid, &bytes, crate::hub::now_ms());
+        self.receive(frame.header.system_id, frame.header.component_id, msgid, bytes);
     }
 
     pub fn tick(&mut self, now_ms: u64) -> bool {
@@ -359,6 +382,11 @@ impl Inspector {
             system.select(index);
             fits
         })
+    }
+
+    pub fn selected_name(&self) -> Option<String> {
+        let system = self.active_system()?;
+        system.messages.get(system.selected).map(|m| m.name.clone())
     }
 
     pub fn selected_target(&self) -> Option<(u8, u8, u32)> {
