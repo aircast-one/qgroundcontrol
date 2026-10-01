@@ -87,6 +87,13 @@ class PlanActionsTest {
     }
 
     @Test
+    fun `download from vehicle follows the core and confirms over unsaved changes`() {
+        assertEquals(true, planActions(org.json.JSONObject("""{"actions":{"download":true}}""")).download)
+        assertEquals(false, planActions(org.json.JSONObject("""{"actions":{"download":false}}""")).download)
+        assertEquals("Plan overwrite", confirmCopy(PlanConfirm.Download).title)
+    }
+
+    @Test
     fun `no answer offers nothing rather than guessing what is allowed`() {
         val none = planActions(null)
         assertEquals(false, none.open)

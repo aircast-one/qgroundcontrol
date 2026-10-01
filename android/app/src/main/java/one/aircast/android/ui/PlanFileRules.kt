@@ -24,6 +24,7 @@ data class PlanActions(
     val exportKml: Boolean,
     val newPlan: Boolean,
     val clearFromVehicle: Boolean,
+    val download: Boolean = false,
 )
 
 // Every one of these was computed here from four watched properties, in the same
@@ -38,6 +39,7 @@ internal fun planActions(view: org.json.JSONObject?): PlanActions {
         exportKml = allowed("exportKml"),
         newPlan = allowed("newPlan"),
         clearFromVehicle = allowed("clearMission"),
+        download = allowed("download"),
     )
 }
 
@@ -72,7 +74,7 @@ internal fun saveBlockedReason(view: org.json.JSONObject?): String? {
     return readiness.optText("reason").ifBlank { "The plan could not be checked for saving." }
 }
 
-enum class PlanConfirm { Open, NewPlan, ClearMission }
+enum class PlanConfirm { Open, NewPlan, ClearMission, Download }
 
 data class ConfirmCopy(
     val title: String,
@@ -91,6 +93,11 @@ internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
         "Discard unsaved changes?",
         "Starting a new plan clears the one you have. Your unsaved changes cannot be recovered.",
         "Discard and start new",
+    )
+    PlanConfirm.Download -> ConfirmCopy(
+        "Plan overwrite",
+        "You have unsaved/unsent changes. Loading from the Vehicle will lose these changes. Are you sure you want to load from the Vehicle?",
+        "Load from vehicle",
     )
     PlanConfirm.ClearMission -> ConfirmCopy(
         "Clear the mission from the vehicle?",

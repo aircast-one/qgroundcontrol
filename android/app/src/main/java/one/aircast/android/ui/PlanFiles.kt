@@ -47,6 +47,7 @@ class PlanFileActions(
     val patternChoice: PatternChoice,
     val newPlan: () -> Unit,
     val clearMission: () -> Unit,
+    val download: () -> Unit,
     val documentName: () -> String?,
 )
 
@@ -127,7 +128,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
 
     fun discard(method: String, success: String, failure: String) {
         scope.launch {
-            // qtpaths: plan.removeAll, plan.removeAllFromVehicle
+            // qtpaths: plan.removeAll, plan.removeAllFromVehicle, plan.loadFromVehicle
             val ok = withContext(Dispatchers.Default) { Qgc.invoke("$PLAN_ROOT.$method") }
             if (ok) {
                 forget()
@@ -291,6 +292,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                     "The clear could not be sent to the vehicle.",
                 )
             },
+            download = { discard("loadFromVehicle", "Loading the plan from the vehicle.", "The plan could not be loaded from the vehicle.") },
             documentName = { name.value },
         )
     }

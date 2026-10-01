@@ -166,6 +166,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "exportKml": !syncing && has_mission_items,
             "newPlan": !syncing,
             "clearMission": !offline && !syncing,
+            "download": !offline && !syncing,
             "addFence": offers_fence && !syncing,
             "addRally": offers_rally && !syncing,
         },

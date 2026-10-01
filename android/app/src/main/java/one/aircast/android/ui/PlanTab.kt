@@ -127,6 +127,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
             PlanConfirm.Open -> files.open
             PlanConfirm.NewPlan -> files.newPlan
             PlanConfirm.ClearMission -> files.clearMission
+            PlanConfirm.Download -> files.download
         }
         AlertDialog(
             onDismissRequest = { pending = null },
@@ -229,6 +230,14 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         onClick = {
                             menuOpen = false
                             if (discardNeedsConfirming(dirty, containsItems)) pending = PlanConfirm.NewPlan else files.newPlan()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Download from Vehicle") },
+                        enabled = can.download,
+                        onClick = {
+                            menuOpen = false
+                            if (dirty) pending = PlanConfirm.Download else files.download()
                         },
                     )
                     DropdownMenuItem(
