@@ -18,7 +18,7 @@ pub struct Kind {
 }
 
 pub const KINDS: &[Kind] = &[
-    Kind { id: "waypoint", title: "Waypoint", invokable: "insertSimpleMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a waypoint" },
+    Kind { id: "waypoint", title: "Waypoint", invokable: "addWaypoint", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a waypoint" },
     Kind { id: "takeoff", title: "Takeoff", invokable: "insertTakeoffItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a takeoff." },
     Kind { id: "land", title: "Land", invokable: "insertLandItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a land." },
     Kind { id: "roi", title: "Region of Interest", invokable: "insertROIMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place the region of interest" },
@@ -163,6 +163,7 @@ pub fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
     match kind.id {
         "takeoff" if !insertable.takeoff => Some(ALREADY_TAKES_OFF),
         "takeoff" => None,
+        "waypoint" => (!insertable.only_takeoff && !insertable.fly_through).then_some(NOT_AFTER_LANDING),
         _ if insertable.only_takeoff => Some(NEEDS_TAKEOFF_FIRST),
         "land" if !insertable.land => Some(LAND_COMES_LAST),
         "land" => None,
@@ -481,13 +482,12 @@ mod offering {
     }
 
     #[test]
-    fn an_empty_ground_mission_offers_only_a_takeoff() {
+    fn an_empty_ground_mission_offers_a_takeoff_or_a_waypoint_that_brings_one() {
         let offered = offering(state(true, true, false, true));
         assert_eq!(named(&offered, "takeoff").1, Some(true), "the one thing that can be added is the one thing offered");
-        assert_eq!(named(&offered, "waypoint").1, Some(false));
-        assert_eq!(named(&offered, "waypoint").2, NEEDS_TAKEOFF_FIRST);
+        assert_eq!(named(&offered, "waypoint").1, Some(true), "PlanView keeps Waypoint enabled while onlyInsertTakeoffValid; addWaypoint inserts the takeoff first");
         assert_eq!(named(&offered, "survey").1, Some(false), "a complex item is no more insertable than a waypoint before a takeoff");
-        assert_eq!(offered.iter().filter(|(_, enabled, _)| *enabled == Some(true)).count(), 1);
+        assert_eq!(offered.iter().filter(|(_, enabled, _)| *enabled == Some(true)).count(), 2);
     }
 
     #[test]

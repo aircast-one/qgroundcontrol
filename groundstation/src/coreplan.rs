@@ -1207,6 +1207,16 @@ fn clear(backend: &dyn Backend) -> Value {
     json!({ "ok": true })
 }
 
+fn takeoff_required_first() -> bool {
+    let state = held();
+    state.document.as_ref().is_some_and(|document| {
+        let spans = visual_spans(document);
+        let sequence = spans.get(usize::try_from(state.selected).unwrap_or(0)).map_or(0, |(first, _)| *first);
+        let rules = crate::missionkinds::Rules { takeoff_not_required: planning_setting("takeoffItemNotRequired", false), multiple_landings: planning_setting("allowMultipleLandingPatterns", true) };
+        crate::missionkinds::insert_state(document, &spans, sequence, &rules).only_takeoff
+    })
+}
+
 fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let kind = given.get(0).and_then(Value::as_str).unwrap_or("");
@@ -1222,6 +1232,16 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
         settle_home_on_terrain(None);
     }
     let answered = match kind {
+        "waypoint" if takeoff_required_first() => {
+            let takeoff = insert_takeoff(backend, &json!([given.get(3)]).to_string());
+            match takeoff.get("ok").and_then(Value::as_bool) {
+                Some(true) => {
+                    let after = given.get(3).and_then(Value::as_i64).filter(|i| *i != -1).map_or(-1, |i| i + 1);
+                    insert_at(backend, &json!([given.get(1), given.get(2), after]).to_string(), false)
+                }
+                _ => takeoff,
+            }
+        }
         "waypoint" => insert_at(backend, &rest, false),
         "land" => {
             let class = held().document.as_ref().map(|d| plandoc::vehicle_class(d.vehicle_type));

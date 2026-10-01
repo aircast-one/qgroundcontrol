@@ -884,7 +884,7 @@ mod tests {
         }
         fn invoke(&self, path: &str, args: &str) -> String {
             self.calls.lock().unwrap().push((path.to_string(), args.to_string()));
-            if path.contains("insert") && self.answer.get("ok").and_then(Value::as_bool) == Some(true) {
+            if (path.contains("insert") || path.ends_with("addWaypoint")) && self.answer.get("ok").and_then(Value::as_bool) == Some(true) {
                 *self.count.lock().unwrap() += 1;
             }
             self.answer.to_string()
@@ -1227,9 +1227,9 @@ mod tests {
     #[test]
     fn an_item_the_plan_has_decided_against_is_refused_before_it_is_inserted() {
         let plan = Plan::new(empty_ground_mission());
-        let refused = run(&plan, "mission.insert", "[\"waypoint\", 47.0, 8.0, -1]");
+        let refused = run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
         assert_eq!(refused["ok"], false);
-        assert_eq!(refused["refused"], "waypoint");
+        assert_eq!(refused["refused"], "survey");
         assert!(refused["reason"].as_str().unwrap().contains("takeoff"));
         let calls = plan.calls.lock().unwrap();
         assert!(calls.iter().all(|(path, _)| path.ends_with("setCurrentPlanViewSeqNum")), "the refusal has to happen before the plan is touched, or a head racing a stale view still gets its item in");
@@ -1256,7 +1256,7 @@ mod tests {
         let plan = Plan::new(flying_mission());
         assert_eq!(run(&plan, "mission.insert", "[\"waypoint\", 47.0, 8.0, -1]")["ok"], true);
         let calls = plan.calls.lock().unwrap();
-        assert_eq!(calls[1].0, "plan.missionController.insertSimpleMissionItem");
+        assert_eq!(calls[1].0, "plan.missionController.addWaypoint", "addWaypoint puts the takeoff in first on an empty plan, as PlanView's map click does");
         let sent: Value = serde_json::from_str(&calls[1].1).unwrap();
         assert_eq!(sent.as_array().unwrap().len(), 3, "a simple item takes a coordinate, an index, and the flag that selects it");
         assert_eq!(sent[0]["longitude"], 8.0);
