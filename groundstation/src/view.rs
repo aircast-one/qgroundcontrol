@@ -63,6 +63,7 @@ use crate::autotune;
 use crate::actuators;
 use crate::apmfollow;
 use crate::apmsubframe;
+use crate::apmsubmotors;
 use crate::apmservos;
 use crate::espbridge;
 use crate::logreplay;
@@ -199,6 +200,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
+    View { path: "view.apmSubMotors", deps: apmsubmotors::DEPS, compute: apmsubmotors::apm_sub_motors_view },
     View { path: "view.apmSubFrameImage", deps: &[], compute: apmsubframe::apm_sub_frame_image_view },
     View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
     View { path: "view.logReplay", deps: logreplay::DEPS, compute: logreplay::log_replay_view },
@@ -557,6 +559,7 @@ mod deps_cover_reads {
             ("actuators", include_str!("actuators.rs")),
             ("apmfollow", include_str!("apmfollow.rs")),
             ("apmsubframe", include_str!("apmsubframe.rs")),
+            ("apmsubmotors", include_str!("apmsubmotors.rs")),
             ("apmservos", include_str!("apmservos.rs")),
             ("logreplay", include_str!("logreplay.rs")),
             ("ntrip", include_str!("ntrip.rs")),
@@ -668,6 +671,7 @@ mod deps_cover_reads {
 
     const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
         "video.gstreamerEnabled",
+        "vehicle.motorCount",
         "vehicle.id",
         "vehicle.flightModeSetAvailable",
         "vehicle.rtlFlightMode",

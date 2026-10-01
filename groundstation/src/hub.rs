@@ -2269,6 +2269,7 @@ impl Vehicle {
                 self.chunk_due = self.status_text.has_pending().then_some(now_ms + CHUNKED_TEXT_TIMEOUT_MS);
                 if let Some(status) = received {
                     self.log_status(&status);
+                    crate::apmsubmotors::on_text(&self.flight_mode(), &status.text);
                     let actions = self.calibrate.on_text(&status.text, now_ms);
                     let bytes = self.follow_calibration(actions, now_ms);
                     self.note_prearm(&status.text, now_ms);

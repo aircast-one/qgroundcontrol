@@ -815,6 +815,9 @@
         "view.apmSubFrameImage(1).class",
         "view.apmSubFrameImage(1).kind",
         "view.apmSubFrameImage(1).png",
+        "view.apmSubMotors.available",
+        "view.apmSubMotors.class",
+        "view.apmSubMotors.kind",
         "view.appLog(1,hub,link,1,0).categories.#",
         "view.appLog(1,hub,link,1,0).categories.0",
         "view.appLog(1,hub,link,1,0).class",
@@ -6623,6 +6626,9 @@
         "view.apmSubFrameImage(1).class",
         "view.apmSubFrameImage(1).kind",
         "view.apmSubFrameImage(1).png",
+        "view.apmSubMotors.available",
+        "view.apmSubMotors.class",
+        "view.apmSubMotors.kind",
         "view.appLog(1,hub,link,1,0).categories.#",
         "view.appLog(1,hub,link,1,0).categories[]",
         "view.appLog(1,hub,link,1,0).class",
@@ -9266,6 +9272,11 @@
         "kind": "string",
         "png": "string"
     },
+    "view.apmSubMotors": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string"
+    },
     "view.appLog(1,hub,link,1,0)": {
         "categories": [
             "string"
@@ -9978,6 +9989,7 @@
             "view.apmServos",
             "view.apmFollow",
             "view.apmSubFrame",
+            "view.apmSubMotors",
             "view.apmSubFrameImage",
             "view.ntrip",
             "view.logReplay",

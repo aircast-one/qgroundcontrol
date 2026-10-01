@@ -8,7 +8,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion"];
-pub const SCREEN: &str = "apmSubFrame";
+pub const SUB_FRAME_SCREEN: &str = "apmSubFrame";
 pub const SET_FRAME: &str = "apmSubFrame.set";
 pub const LOAD_DEFAULTS: &str = "apmSubFrame.loadDefaults";
 const FRAME_CONFIG: &str = "FRAME_CONFIG";
