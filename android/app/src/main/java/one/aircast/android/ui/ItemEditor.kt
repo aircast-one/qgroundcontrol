@@ -83,6 +83,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
     }
 
     val fields = remember(view) { itemFields(view) }
+    val camera = remember(view) { cameraCalc(view) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Row(
@@ -103,6 +104,19 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
             LazyColumn(Modifier.heightIn(max = 480.dp)) {
                 items(fields, key = { it.path }) { fact ->
                     FactRow(fact) { revision++ }
+                }
+                camera?.let { block ->
+                    item(key = "camera") {
+                        CameraCalcHeader(block) { path, value ->
+                            scope.launch {
+                                refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(path, value) }
+                                revision++
+                            }
+                        }
+                    }
+                    items(shownCameraFacts(block), key = { it.path }) { fact ->
+                        FactRow(fact) { revision++ }
+                    }
                 }
                 speedSection(view)?.let { speed ->
                     item(key = "speed") {

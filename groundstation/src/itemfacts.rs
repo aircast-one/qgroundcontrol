@@ -97,6 +97,8 @@ fn camera(backend: &dyn Backend, item: &str) -> Value {
         "customName": text("xlatCustomCameraName"),
         "custom": custom,
         "distanceMode": read.get("distanceMode").cloned().unwrap_or(Value::Null),
+        "valueSetIsDistance": facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some("valueSetIsDistance")).and_then(|fact| fact.get("value")).map_or(true, |value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0))),
+        "valueSetIsDistancePath": format!("{item}.cameraCalc.valueSetIsDistance"),
         "brandPath": format!("{item}.cameraCalc.cameraBrand"),
         "modelPath": format!("{item}.cameraCalc.cameraModel"),
         "facts": shown,
@@ -166,7 +168,7 @@ mod tests {
                 "plan.missionController.visualItems.2.cameraCalc" => json!({
                     "kind": "object", "cameraBrand": "Sony", "cameraModel": "RX100", "cameraBrandList": ["Manual", "Sony"], "cameraModelList": ["RX100"],
                     "xlatManualCameraName": "Manual (no camera specs)", "xlatCustomCameraName": "Custom Camera", "isCustomCamera": self.custom, "distanceMode": 1,
-                    "facts": [fact("SensorWidth", "sensorWidth", 13.2), fact("FrontalOverlap", "frontalOverlap", 70.0), fact("DistanceToSurface", "distanceToSurface", 50.0)],
+                    "facts": [fact("SensorWidth", "sensorWidth", 13.2), fact("FrontalOverlap", "frontalOverlap", 70.0), fact("DistanceToSurface", "distanceToSurface", 50.0), fact("ValueSetIsDistance", "valueSetIsDistance", 0.0)],
                 }),
                 _ => json!({ "kind": "null" }),
             }
@@ -205,6 +207,7 @@ mod tests {
         let shown: Vec<&str> = camera["facts"].as_array().unwrap().iter().map(|f| f["pathSuffix"].as_str().unwrap()).collect();
         assert_eq!(shown, ["cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap"], "a catalogue camera shows only the survey figures, in the head's order");
         assert_eq!(camera["facts"][0]["group"], "Camera");
+        assert_eq!((&camera["valueSetIsDistance"], &camera["valueSetIsDistancePath"]), (&json!(false), &json!("plan.missionController.visualItems.2.cameraCalc.valueSetIsDistance")), "Set by reads the bool fact, which Qt serves as a number");
 
         let custom = item_facts_view(&Plan { simple: false, lists: false, custom: true }, &["2".to_string()]);
         assert_eq!(custom["camera"]["facts"][0]["pathSuffix"], "cameraCalc.sensorWidth", "a custom camera's optics come first, then the survey figures");

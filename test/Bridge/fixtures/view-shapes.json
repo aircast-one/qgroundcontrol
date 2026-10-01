@@ -7236,6 +7236,8 @@
         "view.itemFacts(4).camera.model",
         "view.itemFacts(4).camera.modelPath",
         "view.itemFacts(4).camera.models.#",
+        "view.itemFacts(4).camera.valueSetIsDistance",
+        "view.itemFacts(4).camera.valueSetIsDistancePath",
         "view.itemFacts(4).class",
         "view.itemFacts(4).fields.#",
         "view.itemFacts(4).fields[].applicationRestartRequired",
@@ -10288,7 +10290,9 @@
             "modelPath": "string",
             "models": [
                 "empty"
-            ]
+            ],
+            "valueSetIsDistance": "bool",
+            "valueSetIsDistancePath": "string"
         },
         "class": "string",
         "fields": [

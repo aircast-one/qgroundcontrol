@@ -272,6 +272,8 @@ pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
         "customName": CUSTOM_CAMERA,
         "custom": custom,
         "distanceMode": calc.get("DistanceMode").cloned().unwrap_or(Value::Null),
+        "valueSetIsDistance": calc.get("ValueSetIsDistance").and_then(Value::as_bool).unwrap_or(true),
+        "valueSetIsDistancePath": format!("{item}.cameraCalc.valueSetIsDistance"),
         "brandPath": format!("{item}.cameraCalc.cameraBrand"),
         "modelPath": format!("{item}.cameraCalc.cameraModel"),
         "facts": facts,
@@ -791,6 +793,7 @@ mod tests {
             assert!(differing.is_empty(), "{}: {}", qt["name"], differing.join("; "));
         });
         ["brand", "model", "brands", "models", "custom", "distanceMode", "brandPath", "modelPath"].iter().for_each(|key| assert_eq!(mine["camera"][key], qt["camera"][key], "{key}"));
+        assert_eq!(mine["camera"]["valueSetIsDistance"], json!(survey["TransectStyleComplexItem"]["CameraCalc"]["ValueSetIsDistance"]), "Set by follows the plan's ValueSetIsDistance");
     }
 
     #[test]
