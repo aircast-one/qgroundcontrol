@@ -97,12 +97,18 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val lost = fly?.contactLost == true
     val subtitle = vehicleSubtitle(fly)
     var picking by remember { mutableStateOf(false) }
+    var offline by remember { mutableStateOf(false) }
+    val disconnected = fly?.connected != true
     val scope = rememberCoroutineScope()
     var refusal by remember { mutableStateOf<String?>(null) }
 
     Row(
         modifier = modifier.let {
-            if (choices.ambiguous || taken) it.clickable { picking = true } else it
+            when {
+                choices.ambiguous || taken -> it.clickable { picking = true }
+                disconnected -> it.clickable { offline = true }
+                else -> it
+            }
         },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -143,6 +149,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(CLOSE_VEHICLE) } }
             }) { Text("Disconnect") }
         }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(disconnected) { if (!disconnected) offline = false }
+    if (offline) {
+        OfflineStatusSheet { offline = false }
     }
 
     if (picking) {

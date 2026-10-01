@@ -4074,6 +4074,8 @@
         "view.offlineMaps(Google Satellite,8.5,47.4,8.6,47.35,13,14).sets.#",
         "view.offlineMaps(Google Satellite,8.5,47.4,8.6,47.35,13,14).takenNames.#",
         "view.offlineMaps(Google Satellite,8.5,47.4,8.6,47.35,13,14).uniqueName",
+        "view.offlineStatus.class",
+        "view.offlineStatus.kind",
         "view.operatorControl.class",
         "view.operatorControl.holderSystemId",
         "view.operatorControl.inControl",
@@ -8660,6 +8662,20 @@
         "view.offlineMaps(Google Satellite,8.5,47.4,8.6,47.35,13,14).sets.#",
         "view.offlineMaps(Google Satellite,8.5,47.4,8.6,47.35,13,14).takenNames.#",
         "view.offlineMaps(Google Satellite,8.5,47.4,8.6,47.35,13,14).uniqueName",
+        "view.offlineStatus.busy",
+        "view.offlineStatus.class",
+        "view.offlineStatus.editAddress",
+        "view.offlineStatus.footnote",
+        "view.offlineStatus.kind",
+        "view.offlineStatus.links.#",
+        "view.offlineStatus.links[].connected",
+        "view.offlineStatus.links[].description",
+        "view.offlineStatus.links[].failed",
+        "view.offlineStatus.links[].index",
+        "view.offlineStatus.links[].retry",
+        "view.offlineStatus.links[].text",
+        "view.offlineStatus.noLinks",
+        "view.offlineStatus.title",
         "view.operatorControl.available",
         "view.operatorControl.class",
         "view.operatorControl.holderSystemId",
@@ -10518,6 +10534,7 @@
             "view.inspector",
             "view.inspectorCharts",
             "view.linkStatus",
+            "view.offlineStatus",
             "view.videoStats",
             "view.flightModes",
             "view.settings",
@@ -12532,6 +12549,25 @@
             "empty"
         ],
         "uniqueName": "string"
+    },
+    "view.offlineStatus": {
+        "busy": "bool",
+        "class": "string",
+        "editAddress": "bool",
+        "footnote": "string",
+        "kind": "string",
+        "links": [
+            {
+                "connected": "bool",
+                "description": "string",
+                "failed": "bool",
+                "index": "number",
+                "retry": "bool",
+                "text": "string"
+            }
+        ],
+        "noLinks": "bool",
+        "title": "string"
     },
     "view.operatorControl": {
         "available": "bool",

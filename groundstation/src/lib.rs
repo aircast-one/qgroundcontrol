@@ -170,6 +170,7 @@ pub mod terrainservice;
 pub mod mavinspect;
 pub mod videostats;
 pub mod linkcount;
+pub mod offlinestatus;
 pub mod inspectorchart;
 pub mod rccal;
 pub mod shp;
