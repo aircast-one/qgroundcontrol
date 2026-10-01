@@ -251,6 +251,18 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
     val extras = remember(offers) { moreActions(offers) }
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
+    val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
+    var missionReady by remember { mutableStateOf<Set<String>?>(null) }
+
+    LaunchedEffect(offers) {
+        val popup = missionReady?.let { autoMissionPopup(it, offers, automaticMissionPopups) }
+        missionReady = AUTO_POPUP_ACTIONS.filter { offers[it]?.ready == true }.toSet()
+        if (popup != null && pending == null) {
+            guidedCommand(popup.id, resumeFrom)?.let { command ->
+                pending = GuidedAction(name = popup.title, confirm = popup.prompt, destructive = popup.destructive, run = command)
+            }
+        }
+    }
 
     if (!available) {
         Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp))

@@ -26,6 +26,11 @@ internal fun moreActions(offers: Map<String, GuidedOffer>): List<GuidedOffer> =
         it.shown && it.id !in BAR_ACTIONS && it.id != EMERGENCY_STOP && it.id in SHEET_ACTIONS
     }
 
+internal val AUTO_POPUP_ACTIONS = listOf("startMission", "continueMission")
+
+internal fun autoMissionPopup(wasReady: Set<String>, offers: Map<String, GuidedOffer>, enabled: Boolean): GuidedOffer? =
+    AUTO_POPUP_ACTIONS.mapNotNull { offers[it] }.firstOrNull { enabled && it.ready && it.id !in wasReady }
+
 internal fun guidedCommand(id: String, resumeFrom: Int?): (() -> Unit)? = when (id) {
     "startMission", "continueMission" -> ({ offMainDetached { Qgc.invoke("vehicle.startMission") } })
     "landAbort" -> ({ offMainDetached { Qgc.invoke("vehicle.abortLanding", LAND_ABORT_CLIMB_METERS) } })
