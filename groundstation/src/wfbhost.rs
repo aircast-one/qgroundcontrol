@@ -209,6 +209,31 @@ impl Radio for Native {
     }
 }
 
+pub struct WithoutUsb;
+
+impl Radio for WithoutUsb {
+    fn devices(&self) -> Vec<Adapter> {
+        Vec::new()
+    }
+    fn start(&self, _adapter: &str, _channel: u8, _channel_width: i64, _key_path: &str) -> Result<(), String> {
+        Err("this platform gives the radio no USB access".to_string())
+    }
+    fn stop(&self) {}
+    fn poll(&self) -> Poll {
+        Poll::default()
+    }
+    fn adaptive(&self, _enabled: bool, _tx_power: i64) {}
+    fn rtp_packets(&self) -> i64 {
+        0
+    }
+    fn take_codec(&self) -> Option<String> {
+        None
+    }
+    fn take_stopped(&self) -> bool {
+        false
+    }
+}
+
 struct SettingsStore;
 
 impl Store for SettingsStore {
@@ -235,8 +260,12 @@ pub fn register(native: Native) -> bool {
     NATIVE.set(native).is_ok()
 }
 
-pub fn registered() -> bool {
-    NATIVE.get().is_some()
+fn radio() -> Option<&'static dyn Radio> {
+    match NATIVE.get() {
+        Some(native) => Some(native),
+        None if cfg!(target_os = "android") => Some(&WithoutUsb),
+        None => None,
+    }
 }
 
 fn setting(name: &str) -> Value {
@@ -265,20 +294,20 @@ fn current_settings(default_key: Option<&str>) -> Settings {
 }
 
 pub fn tick(now_ms: u64) {
-    let Some(native) = NATIVE.get() else { return };
+    let Some(radio) = radio() else { return };
     let default_key = default_key_path();
     let settings = current_settings(default_key.as_deref());
-    driver().tick(native, &SettingsStore, &settings, default_key.as_deref(), now_ms);
+    driver().tick(radio, &SettingsStore, &settings, default_key.as_deref(), now_ms);
 }
 
 pub fn refresh() -> Option<Value> {
-    let native = NATIVE.get()?;
-    driver().refresh(native);
+    let radio = radio()?;
+    driver().refresh(radio);
     Some(json!({ "ok": true }))
 }
 
 pub fn snapshot(now_ms: u64) -> Option<Value> {
-    NATIVE.get()?;
+    radio()?;
     let held = driver();
     let mut view = held.machine.snapshot(now_ms);
     view["statusText"] = json!(status_text(held.machine.status(), held.machine.adapter(), held.machine.start_error()));
@@ -367,6 +396,14 @@ mod tests {
         assert_eq!(store.read(VIDEO_SOURCE).as_deref(), Some("RTSP Video Stream"));
         assert_eq!(store.read(VIDEO_UDP_URL), None, "a setting that was never written is forgotten again, not left at the radio's port");
         assert_eq!(radio.calls.borrow().last().map(String::as_str), Some("stop"));
+    }
+
+    #[test]
+    fn a_platform_without_usb_access_reads_no_adapter_as_qt_on_android_does() {
+        let mut driver = Driver::default();
+        driver.tick(&WithoutUsb, &Memory::default(), &enabled(), Some("/k"), 0);
+        assert_eq!(driver.machine.status(), Status::NoAdapter);
+        assert!(driver.machine.retry_armed());
     }
 
     #[test]
