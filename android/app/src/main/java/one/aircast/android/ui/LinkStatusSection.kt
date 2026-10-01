@@ -22,7 +22,7 @@ internal fun linkStatusRows(view: JSONObject?): List<Pair<String, String>> {
 internal fun LinkStatusSection() {
     val json by qgcPath(LINK_STATUS_VIEW)
     val rows = remember(json) { linkStatusRows(json) }
-    SectionHeader("Link Status")
+    SectionHeader("Link Status (Current Vehicle)")
     if (rows.isEmpty()) {
         Text("Not Connected", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp))
     }

@@ -43,6 +43,22 @@ impl LinkCount {
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.mavlinkSentCount", "vehicle.mavlinkReceivedCount", "vehicle.mavlinkLossCount", "vehicle.mavlinkLossPercent"];
 
+fn active_signing() -> crate::signing::Status {
+    let link = crate::hub::lock().active().map(|v| v.link);
+    link.map(|link| crate::signing::lock().status(link)).unwrap_or_default()
+}
+
+fn signing_rows(status: &crate::signing::Status) -> Vec<(&'static str, String)> {
+    let text = match status.state {
+        "enabling" => "Configuring\u{2026}",
+        "disabling" => "Disabling\u{2026}",
+        "on" => "On",
+        _ => "Off",
+    };
+    let key = (status.state == "on").then(|| ("Signing key", if status.key_name.is_empty() { "None".to_string() } else { status.key_name.clone() }));
+    std::iter::once(("Signing", text.to_string())).chain(key).collect()
+}
+
 pub fn link_status_view(backend: &dyn crate::router::Backend, _args: &[String]) -> serde_json::Value {
     use crate::read::{flag, object};
     let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
@@ -54,7 +70,10 @@ pub fn link_status_view(backend: &dyn crate::router::Backend, _args: &[String]) 
         "class": "LinkStatus",
         "connected": connected,
         "rows": match connected {
-            true => vec![("Messages Sent", whole("mavlinkSentCount")), ("Messages Received", whole("mavlinkReceivedCount")), ("Messages Lost", whole("mavlinkLossCount")), ("Loss Rate", format!("{percent:.0}%"))],
+            true => [("Total messages sent (computed)", whole("mavlinkSentCount")), ("Total messages received", whole("mavlinkReceivedCount")), ("Total message loss", whole("mavlinkLossCount")), ("Loss rate", format!("{percent:.0}%"))]
+                .into_iter()
+                .chain(signing_rows(&active_signing()))
+                .collect::<Vec<_>>(),
             false => Vec::new(),
         }.into_iter().map(|(label, value)| serde_json::json!({ "label": label, "value": value })).collect::<Vec<_>>(),
     })
@@ -63,6 +82,14 @@ pub fn link_status_view(backend: &dyn crate::router::Backend, _args: &[String]) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signing_reads_as_mavlink_link_status_spells_it() {
+        let status = |state: &'static str, key: &str| crate::signing::Status { state, key_name: key.to_string() };
+        assert_eq!(signing_rows(&status("off", "")), vec![("Signing", "Off".to_string())]);
+        assert_eq!(signing_rows(&status("enabling", "field")), vec![("Signing", "Configuring\u{2026}".to_string())]);
+        assert_eq!(signing_rows(&status("on", "field")), vec![("Signing", "On".to_string()), ("Signing key", "field".to_string())]);
+    }
 
     #[test]
     fn gaps_in_the_sequence_count_as_lost_and_a_repeat_does_not() {
