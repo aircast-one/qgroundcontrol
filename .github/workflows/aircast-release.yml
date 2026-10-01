@@ -634,6 +634,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.281
+
       - name: Decide what this release can carry
         id: platforms
         env:
@@ -678,6 +681,7 @@ jobs:
           SHORT: ${{ needs.setup.outputs.short_version }}
           IS_PRODUCTION: ${{ needs.setup.outputs.is_production }}
           MISSING: ${{ steps.platforms.outputs.missing }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           if [ -z "$(ls -A assets)" ]; then
             echo "::error::No build produced an artifact, so there is nothing to release."
