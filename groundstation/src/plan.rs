@@ -32,6 +32,8 @@ pub const DEPS: &[&str] = &[
     "settings.appSettings.defaultMissionItemAltitude",
     "settings.appSettings.offlineEditingCruiseSpeed",
     "settings.appSettings.offlineEditingHoverSpeed",
+    "settings.appSettings.offlineEditingAscentSpeed",
+    "settings.appSettings.offlineEditingDescentSpeed",
 ];
 
 pub fn offered_patterns(backend: &dyn Backend) -> Vec<&'static str> {
@@ -99,7 +101,10 @@ fn defaults_json(backend: &dyn Backend) -> Value {
         (None, Some(h)) => json!(h),
         _ => Value::Null,
     };
-    json!({ "altitude": altitude, "cruise": cruise, "hover": hover, "speedUnits": speed_units })
+    let vehicle = planning_for(backend);
+    let climbs = flag(&vehicle, "multiRotor") || flag(&vehicle, "vtol");
+    let vertical = |name: &str| if climbs { plan_default(backend, name) } else { Value::Null };
+    json!({ "altitude": altitude, "cruise": cruise, "hover": hover, "ascent": vertical("offlineEditingAscentSpeed"), "descent": vertical("offlineEditingDescentSpeed"), "speedUnits": speed_units })
 }
 
 fn patterns(mission: &Value) -> Vec<Value> {
@@ -583,6 +588,7 @@ mod tests {
         assert_eq!(view["planningFor"]["type"], "Multi-Rotor", "a plan is edited against a vehicle even with none connected, and a head asking which one had to read the controller object itself");
         assert_eq!(view["planningFor"]["firmware"], "PX4 Pro");
         assert_eq!((view["planningFor"]["multiRotor"].clone(), view["planningFor"]["vtol"].clone(), view["planningFor"]["apmFirmware"].clone()), (json!(true), json!(false), json!(false)), "the reader branches on these three, so serving the names alone left it on plan.controllerVehicle and retired nothing");
+        assert!(view["defaults"]["ascent"].is_null() || view["defaults"]["ascent"].is_object(), "ascent and descent speeds appear only for a vehicle that climbs vertically");
         assert!(view["defaults"]["altitude"]["path"].is_string(), "plan_view has to CARRY the defaults block; a head reads view.plan and never calls defaults_json, so testing that function alone leaves the wiring unpinned");
         assert_eq!(view["planningFor"]["home"]["valid"], true, "LaunchPosition subscripts home[\"valid\"]; serving the coordinate without it answers no-home for every vehicle that has one");
         assert_eq!(view["planningFor"]["home"]["latitude"], 47.397, "the sixth read on that group - five of six is not retirement");

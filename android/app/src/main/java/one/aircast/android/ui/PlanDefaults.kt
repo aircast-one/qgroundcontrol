@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
 import org.json.JSONObject
 
-internal val PLAN_DEFAULT_KEYS = listOf("altitude", "cruise", "hover")
+internal val PLAN_DEFAULT_KEYS = listOf("altitude", "cruise", "hover", "ascent", "descent")
 
 internal fun planDefaults(view: JSONObject?): List<Fact> {
     val served = view?.optJSONObject("defaults") ?: return emptyList()
