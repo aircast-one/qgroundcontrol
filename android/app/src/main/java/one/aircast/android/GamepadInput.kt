@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
@@ -86,7 +87,7 @@ object GamepadInput : InputManager.InputDeviceListener {
                 pads.values.map { pad -> JSONObject().put("name", pad.device.name).put("axes", pad.axes.size).put("buttons", GAMEPAD_BUTTONS.size).put("hats", if (pad.hasHat) 1 else 0) }
             },
         )
-        Qgc.invoke(JOYSTICK_DEVICES, devices)
+        offMainDetached { Qgc.invoke(JOYSTICK_DEVICES, devices) }
     }
 
     fun onMotion(event: MotionEvent): Boolean {
