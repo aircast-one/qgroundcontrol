@@ -157,6 +157,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "globalAltitudeFrame": core.as_ref().map(|c| c.global_mode).or_else(|| mission.get("globalAltitudeFrame").and_then(Value::as_i64)),
         "defaults": defaults_json(backend),
         "applyAltitudePrompt": crate::coreplan::altitude_prompt(),
+        "vehicleChangePrompt": crate::coreplan::vehicle_change_prompt(),
         "readiness": readiness_json(readiness),
         "upload": upload_json(upload),
         "actions": {

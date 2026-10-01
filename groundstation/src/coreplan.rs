@@ -20,7 +20,7 @@ pub const CORE_SET_ALTITUDE_MODE: &str = "core.plan.setAltitudeMode";
 pub const CORE_ITEMS: &str = "core.plan.items";
 pub const APPLY_DEFAULT_ALTITUDE: &str = "core.plan.applyDefaultAltitude";
 pub const DISMISS_ALTITUDE_PROMPT: &str = "core.plan.dismissAltitudePrompt";
-const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE, CORE_INSERT_TAKEOFF, CORE_SET_ALTITUDE_MODE, CORE_ITEMS, APPLY_DEFAULT_ALTITUDE, DISMISS_ALTITUDE_PROMPT];
+const ACTIONS: &[&str] = &[OPEN, SAVE, SEND, FETCH, STATUS, CORE_INSERT_WAYPOINT, CORE_REMOVE, CORE_INSERT_LAND, CORE_SET_COMMAND, CORE_SET_ALTITUDE, CORE_INSERT_TAKEOFF, CORE_SET_ALTITUDE_MODE, CORE_ITEMS, APPLY_DEFAULT_ALTITUDE, DISMISS_ALTITUDE_PROMPT, LOAD_VEHICLE_PLAN, KEEP_CURRENT_PLAN];
 const CMD_NAV_LAND: i64 = 21;
 const CMD_NAV_VTOL_LAND: i64 = 85;
 const APPLY_ALTITUDE_TITLE: &str = "Apply new altitude";
@@ -40,6 +40,36 @@ struct Held {
     redo: Vec<Document>,
     last_change_ms: u64,
     shown_vehicle: Option<u8>,
+    vehicle_prompt: Option<bool>,
+}
+
+pub const LOAD_VEHICLE_PLAN: &str = "core.plan.loadVehiclePlan";
+pub const KEEP_CURRENT_PLAN: &str = "core.plan.keepCurrentPlan";
+const NO_VEHICLE_SHOWN: u8 = u8::MAX;
+
+pub fn vehicle_change_prompt_for(offline: Option<bool>, dirty: bool) -> Value {
+    match offline {
+        None => Value::Null,
+        Some(offline) => json!({
+            "title": if offline { "Plan View - Vehicle Disconnected" } else { "Plan View - Vehicle Changed" },
+            "text": if offline {
+                "The vehicle associated with the plan in the Plan View is no longer available. What would you like to do with that plan?"
+            } else {
+                "The plan being worked on in the Plan View is not from the current vehicle. What would you like to do with that plan?"
+            },
+            "loadText": match (dirty, offline) {
+                (false, _) => "Load New Plan From Vehicle",
+                (true, true) => "Discard Unsaved Changes",
+                (true, false) => "Discard Unsaved Changes, Load New Plan From Vehicle",
+            },
+            "keepText": if offline { "Keep Current Plan" } else { "Keep Current Plan, Don't Update From Vehicle" },
+        }),
+    }
+}
+
+pub fn vehicle_change_prompt() -> Value {
+    let state = held();
+    vehicle_change_prompt_for(state.vehicle_prompt, state.dirty)
 }
 
 const UNDO_DEPTH: usize = 100;
@@ -125,6 +155,22 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         CORE_SET_ALTITUDE_MODE => set_altitude_mode(args),
         CORE_ITEMS => items(backend, args),
         APPLY_DEFAULT_ALTITUDE => apply_default_altitude(backend),
+        LOAD_VEHICLE_PLAN => {
+            {
+                let mut state = held();
+                state.shown_vehicle = state.vehicle_prompt.filter(|offline| *offline).map(|_| NO_VEHICLE_SHOWN);
+                state.vehicle_prompt = None;
+                state.dirty = false;
+            }
+            follow_vehicle();
+            changed();
+            json!({ "ok": true })
+        }
+        KEEP_CURRENT_PLAN => {
+            held().vehicle_prompt = None;
+            changed();
+            json!({ "ok": true })
+        }
         DISMISS_ALTITUDE_PROMPT => {
             ASK_APPLY_ALTITUDE.store(false, std::sync::atomic::Ordering::Relaxed);
             changed();
@@ -668,7 +714,12 @@ fn follow_vehicle() {
             (None, _) if state.shown_vehicle.is_some() => {
                 state.shown_vehicle = None;
                 let has_items = state.document.as_ref().is_some_and(|d| !d.items.is_empty());
+                if state.dirty && has_items {
+                    state.vehicle_prompt = Some(true);
+                }
                 if state.dirty || !has_items {
+                    drop(state);
+                    changed();
                     return;
                 }
                 let before = state.document.clone();
@@ -681,6 +732,10 @@ fn follow_vehicle() {
             }
             (Some(id), Some(vehicle)) if state.shown_vehicle != Some(id) && vehicle.0 == id => {
                 state.shown_vehicle = Some(id);
+                let has_items = state.document.as_ref().is_some_and(|d| !d.items.is_empty());
+                if state.dirty && has_items {
+                    state.vehicle_prompt = Some(false);
+                }
                 (!state.dirty).then_some(vehicle)
             }
             _ => return,
@@ -1609,6 +1664,16 @@ mod tests {
             let differing: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| mine.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}:\n  core {}\n  qt   {v}", mine.get(k.as_str()).unwrap_or(&Value::Null))).collect();
             assert!(differing.is_empty(), "item {index}: {}", differing.join("\n"));
         });
+    }
+
+    #[test]
+    fn a_dirty_plan_asks_what_to_do_when_its_vehicle_goes_or_changes() {
+        assert_eq!(vehicle_change_prompt_for(None, true), Value::Null);
+        let gone = vehicle_change_prompt_for(Some(true), true);
+        assert_eq!((gone["title"].as_str(), gone["loadText"].as_str(), gone["keepText"].as_str()), (Some("Plan View - Vehicle Disconnected"), Some("Discard Unsaved Changes"), Some("Keep Current Plan")));
+        let changed = vehicle_change_prompt_for(Some(false), true);
+        assert_eq!(changed["loadText"], "Discard Unsaved Changes, Load New Plan From Vehicle");
+        assert_eq!(vehicle_change_prompt_for(Some(false), false)["loadText"], "Load New Plan From Vehicle");
     }
 
     #[test]

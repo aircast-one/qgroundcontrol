@@ -43,6 +43,14 @@ internal const val DISMISS_ALTITUDE_PROMPT = "core.plan.dismissAltitudePrompt"
 
 internal data class AltitudePrompt(val title: String, val text: String)
 
+internal const val LOAD_VEHICLE_PLAN = "core.plan.loadVehiclePlan"
+internal const val KEEP_CURRENT_PLAN = "core.plan.keepCurrentPlan"
+
+internal data class VehicleChangePrompt(val title: String, val text: String, val loadText: String, val keepText: String)
+
+internal fun vehicleChangePrompt(view: org.json.JSONObject?): VehicleChangePrompt? =
+    view?.optJSONObject("vehicleChangePrompt")?.let { VehicleChangePrompt(it.optString("title"), it.optString("text"), it.optString("loadText"), it.optString("keepText")) }
+
 internal fun applyAltitudePrompt(view: org.json.JSONObject?): AltitudePrompt? =
     view?.optJSONObject("applyAltitudePrompt")?.let { AltitudePrompt(it.optString("title"), it.optString("text")) }
 
@@ -82,6 +90,21 @@ fun PlanTab(modifier: Modifier = Modifier) {
 
     if (showDefaults) {
         PlanDefaultsDialog(planStatus) { showDefaults = false }
+    }
+
+    vehicleChangePrompt(planStatus)?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(prompt.title) },
+            text = {
+                androidx.compose.foundation.layout.Column {
+                    Text(prompt.text)
+                    TextButton(onClick = { offMainDetached { Qgc.invoke(LOAD_VEHICLE_PLAN) } }) { Text(prompt.loadText) }
+                    TextButton(onClick = { offMainDetached { Qgc.invoke(KEEP_CURRENT_PLAN) } }) { Text(prompt.keepText) }
+                }
+            },
+            confirmButton = {},
+        )
     }
 
     applyAltitudePrompt(planStatus)?.let { prompt ->
