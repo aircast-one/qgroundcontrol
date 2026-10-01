@@ -185,6 +185,10 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
             if (index == 0) {
                 MissionAltitudeFrame()
                 PlanVehicleRows()
+                view?.optJSONObject("launchAltitude")?.let(::factFromControl)?.let { launch ->
+                    Text("Launch Position", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                    FactRow(launch, subtitle = "Actual position is set by the vehicle at flight time.") { revision++ }
+                }
             }
             altitudesRelative(view)?.let { relative ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {

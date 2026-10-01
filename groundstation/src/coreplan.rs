@@ -1254,6 +1254,14 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         Err(reason) => refused(reason),
     };
     let current = held().document.clone()?;
+    if index == 0 && property == LAUNCH_ALTITUDE {
+        let metres = number.map(|shown| crate::read::Unit::vertical(backend).meters(shown));
+        return Some(match (metres, current.home) {
+            (Some(altitude), Some([latitude, longitude, _])) => edit(|doc| Ok(Document { home: Some([latitude, longitude, altitude]), ..doc.clone() })),
+            (None, _) => refused("An altitude is a number."),
+            (_, None) => refused("The plan has no launch position yet."),
+        });
+    }
     if let Some(plandoc::Item::Complex { kind, json: pattern, item_count }) = index.checked_sub(1).and_then(|i| current.items.get(i)).filter(|item| matches!(item, plandoc::Item::Complex { kind, .. } if crate::landingpattern::is_landing(kind))) {
         let at = index - 1;
         let (vertical, horizontal) = (crate::read::Unit::vertical(backend), crate::read::Unit::horizontal(backend));
@@ -1739,6 +1747,13 @@ mod tests {
     }
 
     #[test]
+    fn the_launch_altitude_is_an_editable_field_on_mission_settings() {
+        let field = launch_altitude_field(123.5, "m", "plan.missionController.visualItems.0.plannedHomePositionAltitude");
+        assert_eq!(field["path"], "plan.missionController.visualItems.0.plannedHomePositionAltitude");
+        assert_eq!(field["label"], "Altitude", "MissionSettingsEditor's Launch Position altitude");
+    }
+
+    #[test]
     fn an_item_reads_edited_until_the_plan_it_is_in_is_saved() {
         let saved = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
         let moved = plandoc::set_altitude(&saved, 2, 33.0).unwrap();
@@ -2018,12 +2033,27 @@ fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple]
     })
 }
 
+pub const LAUNCH_ALTITUDE: &str = "plannedHomePositionAltitude";
+
+pub fn launch_altitude_field(shown: f64, units: &str, path: &str) -> Value {
+    let fact = json!({ "kind": "fact", "name": LAUNCH_ALTITUDE, "shortDescription": "Altitude", "longDescription": "Actual position is set by the vehicle at flight time.", "type": "double", "value": shown, "rawValue": shown, "valueString": format!("{shown:.1}"), "units": units, "decimalPlaces": 1, "property": LAUNCH_ALTITUDE });
+    crate::control::decode(&fact, path)
+}
+
+fn vehicle_has_home(backend: &dyn Backend) -> bool {
+    crate::read::flag(&crate::read::object(&backend.get("vehicle.homePosition")), "valid")
+}
+
 pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let document = held().document.clone().unwrap_or_else(empty_document);
     let speed = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
     let (vertical, horizontal) = (crate::read::Unit::vertical(backend), crate::read::Unit::horizontal(backend));
     let facts = document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0), (&vertical, &horizontal));
-    with_previous_coordinate(facts, plandoc::previous_coordinate(&document, index as i64))
+    let launch = (index == 0 && !vehicle_has_home(backend)).then(|| document.home.map(|home| launch_altitude_field(vertical.show(home[2]), &vertical.name, &format!("{ITEM_ROOT}.0.{LAUNCH_ALTITUDE}")))).flatten();
+    match with_previous_coordinate(facts, plandoc::previous_coordinate(&document, index as i64)) {
+        Value::Object(map) => Value::Object(map.into_iter().chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))]).collect()),
+        other => other,
+    }
 }
 
 pub fn with_previous_coordinate(facts: Value, previous: Option<(f64, f64)>) -> Value {

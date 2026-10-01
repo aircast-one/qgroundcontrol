@@ -13,6 +13,7 @@ pub const DEPS: &[&str] = &[
     "plan.dirty",
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",
+    "vehicle.homePosition",
     crate::coreplan::CHANGED,
 ];
 
@@ -197,6 +198,10 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
                 read.get("altitudeFrame").and_then(Value::as_i64),
                 crate::read::fact_property(&read, "amslAltAboveTerrain").and_then(|fact| Some(format!("{} {}", fact.get("valueString")?.as_str()?, fact.get("units").and_then(Value::as_str).unwrap_or_default()).trim().to_string())),
             ),
+            false => None,
+        },
+        "launchAltitude": match index == 0 && !crate::read::flag(&object(&backend.get("vehicle.homePosition")), "valid") {
+            true => crate::read::fact_property(&read, LAUNCH_ALTITUDE).map(|fact| field(fact, &item, LAUNCH_ALTITUDE, "Settings")),
             false => None,
         },
         "rawEdit": simple && flag(&read, "rawEdit"),
