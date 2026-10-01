@@ -95,7 +95,8 @@ const FRAME_APM: &[Section] = &[
 const FLIGHT_MODES_APM: &[Section] = &[
     Section { title: "Mode switch channel", note: "", parameters: &["FLTMODE_CH"] },
     Section { title: "Mode slots", note: "", parameters: &["FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6"] },
-    Section { title: "Options", note: "", parameters: &["SIMPLE", "SUPER_SIMPLE", "INITIAL_MODE"] },
+    Section { title: "Options", note: "", parameters: &["INITIAL_MODE"] },
+    Section { title: "Switch Options", note: "", parameters: &["RC6_OPTION", "RC7_OPTION", "RC8_OPTION", "RC9_OPTION", "RC10_OPTION", "RC11_OPTION", "RC12_OPTION", "RC13_OPTION", "RC14_OPTION", "RC15_OPTION", "RC16_OPTION"] },
 ];
 const FLIGHT_MODES_PX4: &[Section] = &[
     Section { title: "Mode switch channel", note: "", parameters: &["RC_MAP_FLTMODE"] },
@@ -360,6 +361,13 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apm_flight_modes_offers_every_switch_option_and_no_raw_simple_masks() {
+        let parameters: Vec<&str> = FLIGHT_MODES_APM.iter().flat_map(|s| s.parameters.iter().copied()).collect();
+        assert!((6..=16).all(|channel| parameters.contains(&format!("RC{channel}_OPTION").as_str())), "APMFlightModesComponent lists RC6 to RC16 options");
+        assert!(!parameters.contains(&"SIMPLE"), "the Simple Mode choice writes SIMPLE and SUPER_SIMPLE; raw rows beside it disagreed with it");
+    }
 
     #[test]
     fn a_page_only_one_firmware_has_is_offered_only_to_that_firmware() {
