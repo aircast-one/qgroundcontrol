@@ -412,6 +412,11 @@ fn host() -> MutexGuard<'static, Host> {
     HOST.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+pub fn drives(vehicle: u8) -> bool {
+    let has_active = active_name(&host().devices).is_some();
+    has_active && enabled_vehicles().contains(&vehicle.to_string())
+}
+
 pub fn enabled_vehicles() -> Vec<String> {
     crate::settingsstore::stored_text(ENABLED_VEHICLES).unwrap_or_default().split(',').filter(|s| !s.is_empty()).map(str::to_string).collect()
 }

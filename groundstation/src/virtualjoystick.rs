@@ -51,6 +51,10 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     if !sending(backend) {
         return json!({ "ok": false, "reason": "No vehicle has finished connecting." });
     }
+    let active = crate::hub::lock().active_id();
+    if active.is_some_and(crate::joystickhost::drives) {
+        return json!({ "ok": false, "reason": "A joystick is enabled for this vehicle, so the on-screen sticks do not send." });
+    }
     let action = json!({ "action": "virtualJoystick", "roll": roll, "pitch": pitch, "yaw": yaw, "thrust": thrust });
     let dispatched = crate::rcoverride::on_core(backend, action).unwrap_or_else(|| flag(&object(&backend.invoke(JOYSTICK_VALUE, &json!([roll, pitch, yaw, thrust]).to_string())), "ok"));
     json!({ "ok": dispatched })
