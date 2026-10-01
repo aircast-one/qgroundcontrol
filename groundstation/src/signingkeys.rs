@@ -23,6 +23,8 @@ const MAX_KEYS: usize = 64;
 const KEYS_SETTINGS_GROUP: &str = "MAVLinkSigningKeys";
 const KEY_MANIFEST: &str = "manifest";
 const KEY_SUBGROUP: &str = "keys";
+const TIMESTAMP_SUBGROUP: &str = "timestamps";
+const TIMESTAMP_FLUSH_MS: u64 = 5000;
 const ADD_REFUSED: &str = "Could not add key. Name may already exist or input is invalid.";
 
 pub type Key = [u8; KEY_BYTES];
@@ -51,6 +53,7 @@ pub fn random_hex() -> Option<String> {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Keys {
     keys: Vec<(String, Key)>,
+    timestamps: BTreeMap<String, u64>,
 }
 
 impl Keys {
@@ -58,8 +61,20 @@ impl Keys {
         self.keys.iter().map(|(name, _)| name.clone()).collect()
     }
 
-    pub fn all(&self) -> Vec<(String, Key)> {
-        self.keys.clone()
+    pub fn all(&self) -> Vec<(String, Key, u64)> {
+        self.keys.iter().map(|(name, key)| (name.clone(), *key, self.last_timestamp(name))).collect()
+    }
+
+    pub fn last_timestamp(&self, name: &str) -> u64 {
+        self.timestamps.get(name).copied().unwrap_or(0)
+    }
+
+    pub fn record(&mut self, batch: &[(String, u64)]) -> bool {
+        let newer: Vec<&(String, u64)> = batch.iter().filter(|(name, ts)| self.key(name).is_some() && *ts > self.last_timestamp(name)).collect();
+        newer.iter().for_each(|(name, ts)| {
+            self.timestamps.insert(name.clone(), *ts);
+        });
+        !newer.is_empty()
     }
 
     pub fn key(&self, name: &str) -> Option<Key> {
@@ -81,6 +96,7 @@ impl Keys {
     pub fn remove(&mut self, name: &str) -> bool {
         let before = self.keys.len();
         self.keys.retain(|(n, _)| n != name);
+        self.timestamps.remove(name);
         self.keys.len() != before
     }
 
@@ -97,12 +113,20 @@ impl Keys {
                 _ => None,
             })
             .collect();
-        Keys { keys }
+        let timestamps = manifest
+            .iter()
+            .filter_map(|name| match entries.get(&format!("{KEYS_SETTINGS_GROUP}/{TIMESTAMP_SUBGROUP}/{name}")) {
+                Some(Setting::Text(ts)) => ts.parse::<u64>().ok().filter(|ts| *ts > 0).map(|ts| (name.clone(), ts)),
+                _ => None,
+            })
+            .collect();
+        Keys { keys, timestamps }
     }
 
     pub fn entries(&self) -> BTreeMap<String, Setting> {
         std::iter::once((format!("{KEYS_SETTINGS_GROUP}/{KEY_MANIFEST}"), Setting::List(self.names())))
             .chain(self.keys.iter().map(|(name, key)| (format!("{KEYS_SETTINGS_GROUP}/{KEY_SUBGROUP}/{name}"), Setting::Text(to_hex(key)))))
+            .chain(self.timestamps.iter().map(|(name, ts)| (format!("{KEYS_SETTINGS_GROUP}/{TIMESTAMP_SUBGROUP}/{name}"), Setting::Text(ts.to_string()))))
             .collect()
     }
 }
@@ -152,7 +176,10 @@ pub fn run(path: &str, text: &str) -> Value {
             None => json!({ "ok": false, "reason": format!("No key is called {}", arg(0)) }),
         },
         ENABLE_SIGNING => match load().key(arg(0)) {
-            Some(key) => change_signing(|signing, link, target, now_ms| signing.begin_enable(link, target, arg(0), key, now_ms)),
+            Some(key) => {
+                let seed = load().last_timestamp(arg(0));
+                change_signing(|signing, link, target, now_ms| signing.begin_enable(link, target, arg(0), key, seed, now_ms))
+            }
             None => json!({ "ok": false, "reason": format!("No key is called {}", arg(0)) }),
         },
         DISABLE_SIGNING => change_signing(|signing, link, target, now_ms| signing.begin_disable(link, target, now_ms)),
@@ -185,7 +212,26 @@ fn change_signing(begin: impl Fn(&mut crate::signing::Signing, LinkId, (u8, u8),
     }
 }
 
+static LAST_FLUSH_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn flush_timestamps(now_ms: u64) {
+    let last = LAST_FLUSH_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if now_ms.saturating_sub(last) < TIMESTAMP_FLUSH_MS {
+        return;
+    }
+    LAST_FLUSH_MS.store(now_ms, std::sync::atomic::Ordering::Relaxed);
+    let batch = crate::signing::lock().take_timestamps();
+    if batch.is_empty() {
+        return;
+    }
+    let mut keys = load();
+    if keys.record(&batch) {
+        save(&keys);
+    }
+}
+
 pub fn tick(now_ms: u64) {
+    flush_timestamps(now_ms);
     let (resend, notices) = crate::signing::lock().tick(now_ms);
     resend.iter().for_each(|(link, data)| send_setup(*link, data));
     notices.iter().for_each(|notice| {
@@ -254,5 +300,10 @@ mod tests {
         assert!(keys.remove("field"));
         assert_eq!(keys.names(), ["bench"]);
         assert!(!keys.remove("field"));
+        assert!(keys.record(&[("bench".into(), 500), ("gone".into(), 900)]));
+        assert!(!keys.record(&[("bench".into(), 400)]), "a timestamp only moves forward");
+        let restored = Keys::from_entries(&keys.entries());
+        assert_eq!((restored.last_timestamp("bench"), restored.last_timestamp("gone")), (500, 0));
+        assert_eq!(restored.all(), [("bench".to_string(), [3; 32], 500)]);
     }
 }
