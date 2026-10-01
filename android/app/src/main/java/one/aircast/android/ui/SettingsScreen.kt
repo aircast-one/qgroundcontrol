@@ -377,6 +377,7 @@ private fun SettingsControls(
         if (section.group == VIDEO_GROUP && page.showsVideoSources) ExtraVideoSourcesEditor()
         if (section.group == FLY_VIEW_GROUP) RcControlsEditor()
         if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
+        if (section.group == MAVLINK_GROUP) SigningKeysSection()
     }
 }
 

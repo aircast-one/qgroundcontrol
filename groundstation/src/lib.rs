@@ -164,6 +164,7 @@ pub mod actuatortest;
 pub mod apmfollow;
 pub mod apmservos;
 pub mod ntrip;
+pub mod signingkeys;
 pub mod motorassignment;
 pub mod gimbalindicator;
 pub mod gpsresilience;

@@ -63,6 +63,7 @@ use crate::actuators;
 use crate::apmfollow;
 use crate::apmservos;
 use crate::ntrip;
+use crate::signingkeys;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -190,6 +191,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
+    View { path: "view.signingKeys", deps: signingkeys::DEPS, compute: signingkeys::signing_keys_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
     View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
     View { path: "view.gimbalIndicator", deps: gimbalindicator::DEPS, compute: gimbalindicator::indicator_view },
@@ -533,6 +535,7 @@ mod deps_cover_reads {
             ("apmfollow", include_str!("apmfollow.rs")),
             ("apmservos", include_str!("apmservos.rs")),
             ("ntrip", include_str!("ntrip.rs")),
+            ("signingkeys", include_str!("signingkeys.rs")),
             ("actuatortest", include_str!("actuatortest.rs")),
             ("motorassignment", include_str!("motorassignment.rs")),
             ("commandtree", include_str!("commandtree.rs")),

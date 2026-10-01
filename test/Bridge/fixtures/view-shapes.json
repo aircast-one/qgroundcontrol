@@ -6123,6 +6123,12 @@
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).points.9.longitude",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).shape",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).valid",
+        "view.signingKeys.activeKey",
+        "view.signingKeys.available",
+        "view.signingKeys.class",
+        "view.signingKeys.keys.#",
+        "view.signingKeys.kind",
+        "view.signingKeys.minPassphraseLength",
         "view.supportHost(support.ardupilot.org:14550).class",
         "view.supportHost(support.ardupilot.org:14550).error",
         "view.supportHost(support.ardupilot.org:14550).kind",
@@ -8586,6 +8592,13 @@
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).points[].longitude",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).shape",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).valid",
+        "view.signingKeys.activeKey",
+        "view.signingKeys.available",
+        "view.signingKeys.class",
+        "view.signingKeys.keys.#",
+        "view.signingKeys.kind",
+        "view.signingKeys.minPassphraseLength",
+        "view.signingKeys.vehicle",
         "view.supportHost(support.ardupilot.org:14550).class",
         "view.supportHost(support.ardupilot.org:14550).error",
         "view.supportHost(support.ardupilot.org:14550).kind",
@@ -9602,6 +9615,7 @@
             "view.apmServos",
             "view.apmFollow",
             "view.ntrip",
+            "view.signingKeys",
             "view.remoteIdStatus",
             "view.escs",
             "view.gimbalIndicator",
@@ -12237,6 +12251,17 @@
         ],
         "shape": "string",
         "valid": "bool"
+    },
+    "view.signingKeys": {
+        "activeKey": "string",
+        "available": "bool",
+        "class": "string",
+        "keys": [
+            "empty"
+        ],
+        "kind": "string",
+        "minPassphraseLength": "number",
+        "vehicle": "bool"
     },
     "view.supportHost(support.ardupilot.org:14550)": {
         "class": "string",

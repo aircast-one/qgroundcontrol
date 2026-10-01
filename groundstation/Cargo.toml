@@ -46,6 +46,8 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 little_exif = "0.6.23"
 px4-ulog = "0.6.1"
 jni = { version = "0.21.1", optional = true }
+pbkdf2 = { version = "0.13.0", features = ["sha2"] }
+getrandom = "0.4.3"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"
