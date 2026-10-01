@@ -6,6 +6,7 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.objectAvoidance.available",
+    "settings.flyViewSettings.showObstacleDistanceOverlay",
     "vehicle.objectAvoidance.enabled",
     "vehicle.objectAvoidance.distances",
     "vehicle.objectAvoidance.msSinceUpdate",
@@ -64,7 +65,8 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let flag = |key: &str| avoidance.get(key).and_then(Value::as_bool) == Some(true);
     let whole = |key: &str| integer(&avoidance, key);
     let real = |key: &str| avoidance.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
-    let available = flag("available");
+    let overlay = read_flag(&object(&backend.get("settings.flyViewSettings.showObstacleDistanceOverlay.rawValue")), "value");
+    let available = flag("available") && overlay;
     let ready = read_flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
     let supported = ready.then(|| result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, AVOIDANCE_PARAM]).to_string())));
     let ring: Vec<i64> = avoidance.get("distances").and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
@@ -118,7 +120,12 @@ mod tests {
 
     struct Ring(Value);
     impl Backend for Ring {
-        fn get(&self, _p: &str) -> String { String::new() }
+        fn get(&self, path: &str) -> String {
+            match path {
+                "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => json!({ "kind": "value", "value": true }).to_string(),
+                _ => String::new(),
+            }
+        }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "vehicle.objectAvoidance" => self.0.to_string(),
@@ -133,6 +140,19 @@ mod tests {
     fn ring(distances: Vec<i64>) -> Value {
         json!({ "kind": "object", "available": true, "enabled": true, "distances": distances,
                 "increment": 45.0, "minDistance": 100, "maxDistance": 1000, "angleOffset": 0.0, "msSinceUpdate": 200 })
+    }
+
+    #[test]
+    fn the_overlay_stays_off_unless_its_setting_is_on_as_obstacle_distance_overlay_shows_it() {
+        struct Off;
+        impl Backend for Off {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "available": true, "distances": [500], "increment": 5.0, "maxDistance": 1000 }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(obstacle_view(&Off, &[])["available"], false, "showObstacleDistanceOverlay defaults to off");
     }
 
     #[test]
@@ -201,6 +221,7 @@ mod tests {
             fn get(&self, path: &str) -> String {
                 match path {
                     "vehicle.parameterManager.parametersReady" => json!({ "kind": "value", "value": self.ready }).to_string(),
+                    "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => json!({ "kind": "value", "value": true }).to_string(),
                     _ => String::new(),
                 }
             }
@@ -276,7 +297,12 @@ mod tests {
 
         struct Feet(Value);
         impl Backend for Feet {
-            fn get(&self, _p: &str) -> String { String::new() }
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => json!({ "kind": "value", "value": true }).to_string(),
+                    _ => String::new(),
+                }
+            }
             fn get_fields(&self, path: &str, f: &str) -> String {
                 match path {
                     "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "ft" }).to_string(),
