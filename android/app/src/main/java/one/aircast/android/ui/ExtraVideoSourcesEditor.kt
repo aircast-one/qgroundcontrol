@@ -118,6 +118,9 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
                 TextButton(onClick = {
                     undo = entry.name.ifBlank { "Camera ${index + 2}" } to json
                     save(extraSourceRemoved(json, index))
+                    offMainDetached {
+                        activeAfterRemoval(Qgc.get(VIDEO_VIEW)?.optInt("activeSource") ?: 0, index + 1)?.let { Qgc.invoke("video.setActiveVideoSource", it) }
+                    }
                 }) { Text("Remove") }
             }
             HorizontalDivider()

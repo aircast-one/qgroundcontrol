@@ -67,6 +67,12 @@ internal fun extraSources(json: String?): List<ExtraVideoSource> = objects(json)
 internal fun extraSourceAdded(json: String?, name: String, source: String, url: String): String =
     encode(objects(json) + patch(JSONObject(), name, source, url))
 
+internal fun activeAfterRemoval(active: Int, removedSlot: Int): Int? = when {
+    active == removedSlot -> 0
+    active > removedSlot -> active - 1
+    else -> null
+}
+
 internal fun extraSourceRemoved(json: String?, index: Int): String =
     encode(objects(json).filterIndexed { at, _ -> at != index })
 

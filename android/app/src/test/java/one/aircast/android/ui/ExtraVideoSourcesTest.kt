@@ -154,5 +154,11 @@ class ExtraSourcesReadingTest {
         assertEquals(listOf("RTSP Video Stream", "UDP h.264 Video Stream"), videoKinds(control).map { it.raw })
         assertEquals(emptyList<VideoKind>(), videoKinds(null))
     }
-}
 
+    @Test
+    fun `removing a camera moves the live view the way VideoSettings does`() {
+        assertEquals(0, activeAfterRemoval(active = 2, removedSlot = 2))
+        assertEquals(2, activeAfterRemoval(active = 3, removedSlot = 2))
+        org.junit.Assert.assertNull(activeAfterRemoval(active = 1, removedSlot = 2))
+    }
+}
