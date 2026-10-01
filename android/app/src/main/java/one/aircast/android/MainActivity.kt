@@ -280,6 +280,7 @@ fun AircastShell(hostView: android.view.View?) {
     var shownAt by remember { mutableStateOf(emptyMap<String, Long>()) }
 
     BackHandler(enabled = tab != Tab.Fly) { tab = Tab.Fly }
+    one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly)
 
     LaunchedEffect(notices) {
         val batch = one.aircast.android.ui.noticeBatch(notices) ?: return@LaunchedEffect

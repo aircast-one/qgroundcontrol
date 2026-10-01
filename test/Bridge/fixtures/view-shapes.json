@@ -2171,6 +2171,8 @@
         "view.cameraSettings.error",
         "view.cameraSettings.kind",
         "view.cameraSettings.state",
+        "view.closeChecks.class",
+        "view.closeChecks.kind",
         "view.control(settings.appSettings.audioMuted).applicationRestartRequired",
         "view.control(settings.appSettings.audioMuted).bits.#",
         "view.control(settings.appSettings.audioMuted).changedFromDefault",
@@ -7330,6 +7332,11 @@
         "view.cameraSettings.error",
         "view.cameraSettings.kind",
         "view.cameraSettings.state",
+        "view.closeChecks.class",
+        "view.closeChecks.kind",
+        "view.closeChecks.prompts.#",
+        "view.closeChecks.prompts[].id",
+        "view.closeChecks.prompts[].message",
         "view.control(settings.appSettings.audioMuted).applicationRestartRequired",
         "view.control(settings.appSettings.audioMuted).bits.#",
         "view.control(settings.appSettings.audioMuted).changedFromDefault",
@@ -10436,6 +10443,16 @@
         "kind": "string",
         "state": "string"
     },
+    "view.closeChecks": {
+        "class": "string",
+        "kind": "string",
+        "prompts": [
+            {
+                "id": "string",
+                "message": "string"
+            }
+        ]
+    },
     "view.contract": {
         "class": "Contract",
         "enumerations": {
@@ -10751,6 +10768,7 @@
             "view.mapTypes",
             "view.apmFollow",
             "view.setupSummary",
+            "view.closeChecks",
             "view.apmAirframe",
             "view.apmSubFrame",
             "view.apmSubMotors",

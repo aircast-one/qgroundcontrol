@@ -73,6 +73,7 @@ use crate::flowimage;
 use crate::maptypes;
 use crate::presets;
 use crate::apmairframe;
+use crate::closechecks;
 use crate::setupsummary;
 use crate::apmsubframe;
 use crate::apmsubmotors;
@@ -219,6 +220,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.mapTypes", deps: maptypes::DEPS, compute: maptypes::map_types_view },
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.setupSummary", deps: setupsummary::DEPS, compute: setupsummary::setup_summary_view },
+    View { path: "view.closeChecks", deps: closechecks::DEPS, compute: closechecks::close_checks_view },
     View { path: "view.apmAirframe", deps: apmairframe::DEPS, compute: apmairframe::apm_airframe_view },
     View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
     View { path: "view.apmSubMotors", deps: apmsubmotors::DEPS, compute: apmsubmotors::apm_sub_motors_view },
@@ -611,6 +613,7 @@ mod deps_cover_reads {
             ("actuators", include_str!("actuators.rs")),
             ("apmfollow", include_str!("apmfollow.rs")),
             ("apmairframe", include_str!("apmairframe.rs")),
+            ("closechecks", include_str!("closechecks.rs")),
             ("setupsummary", include_str!("setupsummary.rs")),
             ("apmsubframe", include_str!("apmsubframe.rs")),
             ("apmsubmotors", include_str!("apmsubmotors.rs")),

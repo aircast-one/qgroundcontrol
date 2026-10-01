@@ -196,6 +196,7 @@ pub mod actuators;
 pub mod actuatortest;
 pub mod apmfollow;
 pub mod apmairframe;
+pub mod closechecks;
 pub mod setupsummary;
 pub mod apmsubframe;
 pub mod apmsubmotors;

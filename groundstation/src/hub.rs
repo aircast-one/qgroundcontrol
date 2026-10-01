@@ -1074,6 +1074,10 @@ impl Vehicle {
         connect::Vehicle { px4, apm, fence_supported: self.capabilities & connect::CAP_MISSION_FENCE != 0 && proto >= PROTO_MAVLINK2, rally_supported: self.capabilities & connect::CAP_MISSION_RALLY != 0 && proto >= PROTO_MAVLINK2, max_proto_version: proto }
     }
 
+    pub fn pending_parameter_writes(&self) -> bool {
+        self.params.pending_writes()
+    }
+
     pub fn parameters_ready(&self) -> bool {
         self.params.ready()
     }

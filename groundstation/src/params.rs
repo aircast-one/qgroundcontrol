@@ -243,6 +243,10 @@ impl Params {
         self.unanswered
     }
 
+    pub fn pending_writes(&self) -> bool {
+        self.pending_write.values().any(|names| !names.is_empty())
+    }
+
     pub fn ready(&self) -> bool {
         self.ready
     }
