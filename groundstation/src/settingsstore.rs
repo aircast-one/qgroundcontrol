@@ -102,10 +102,20 @@ pub fn hidden_on_this_platform(group: &str, fact: &str) -> bool {
     }
 }
 
+fn text_enums(names: Vec<String>) -> Vec<crate::factmeta::EnumEntry> {
+    names.into_iter().map(|name| crate::factmeta::EnumEntry { label: name.clone(), value: json!(name) }).collect()
+}
+
 fn platform_meta(group: &str, fact: &str, meta: MetaData) -> MetaData {
     match (group, fact) {
         ("App", "indoorPalette") => MetaData { default: Some(json!(if cfg!(target_os = "android") { FOLLOW_SYSTEM_PALETTE } else if cfg!(target_os = "ios") { 0 } else { 1 })), ..meta },
         ("App", "qLocaleLanguage") => MetaData { enums: language_enums(), ..meta },
+        ("FlightMap", "mapProvider") => MetaData { enums: text_enums(crate::maptypes::map_provider_list()), ..meta },
+        ("FlightMap", "mapType") => MetaData {
+            enums: text_enums(crate::maptypes::map_type_list(&raw_setting("settings.flightMapSettings.mapProvider").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default())),
+            ..meta
+        },
+        ("FlightMap", "elevationMapProvider") => MetaData { enums: text_enums(crate::maptypes::ELEVATION_PROVIDERS.iter().map(|p| p.to_string()).collect()), ..meta },
         _ => meta,
     }
 }
@@ -662,6 +672,11 @@ const EU_PUBLIC_OPERATOR_ID_LENGTH: usize = 16;
 
 fn follow_ups(group: &str, fact: &str, new: &Value) -> Vec<(&'static str, String)> {
     match (group, fact) {
+        ("FlightMap", "mapProvider") => new
+            .as_str()
+            .and_then(|provider| crate::maptypes::map_type_list(provider).into_iter().next())
+            .map(|first| vec![("mapType", first)])
+            .unwrap_or_default(),
         ("RemoteID", "region") if new.as_i64() == Some(crate::remoteid::REGION_EU) => vec![("sendOperatorID", "true".to_string())],
         ("RemoteID", "region") if new.as_i64() == Some(crate::remoteid::REGION_FAA) => vec![("locationType", crate::remoteid::LOCATION_LIVE.to_string())],
         ("RemoteID", "operatorIDEU") => new
@@ -803,6 +818,13 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn choosing_a_map_provider_moves_the_map_type_to_its_first() {
+        assert_eq!(follow_ups("FlightMap", "mapProvider", &json!("Bing")), vec![("mapType", "Road".to_string())], "MapSettings sets mapType to mapTypeList(provider)[0]");
+        assert!(follow_ups("FlightMap", "mapProvider", &json!("Nope")).is_empty());
+        assert_eq!(text_enums(vec!["Google".into()])[0].value, json!("Google"));
+    }
 
     struct Silent;
     impl Backend for Silent {

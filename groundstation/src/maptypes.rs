@@ -22,6 +22,16 @@ pub const QGC_ORDER: [&str; 40] = [
     "Copernicus",
 ];
 
+pub const ELEVATION_PROVIDERS: &[&str] = &["Copernicus"];
+
+pub fn map_provider_list() -> Vec<String> {
+    QGC_ORDER
+        .iter()
+        .filter(|name| !ELEVATION_PROVIDERS.contains(name))
+        .map(|name| name.split_once(' ').map_or(name.to_string(), |(provider, _)| provider.to_string()))
+        .fold(Vec::new(), |seen, provider| if seen.contains(&provider) { seen } else { [seen, vec![provider]].concat() })
+}
+
 pub fn map_type_list(provider: &str) -> Vec<String> {
     let matches = |name: &str| regex::Regex::new(provider).map_or_else(|_| name.contains(provider), |pattern| pattern.is_match(name));
     QGC_ORDER
@@ -64,6 +74,14 @@ mod tests {
         assert_eq!(map_type_list("Street"), ["Street Map", "World Street", "Streets", "StreetsBasic", "Map"], "QStringList::filter(QRegularExpression) is a substring match over every full name");
         assert!(map_type_list("Nope").is_empty());
         assert_eq!(map_type_list("OpenAIP"), ["OpenAIP"], "a name without a space is its own type");
+    }
+
+    #[test]
+    fn providers_are_the_first_word_of_each_map_without_the_elevation_ones() {
+        let providers = map_provider_list();
+        assert_eq!(&providers[..3], ["Google", "Bing", "TianDiTu"]);
+        assert!(providers.contains(&"Street".to_string()) && providers.contains(&"OpenAIP".to_string()), "QGCMapEngineManager::mapProviderList keeps the part before the first space");
+        assert!(!providers.contains(&"Copernicus".to_string()));
     }
 
     #[test]
