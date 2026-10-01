@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -117,6 +118,18 @@ internal fun SetupRow(
             }
         }
     }
+    }
+}
+
+@Composable
+internal fun PageTopBar(title: String, backLabel: String, onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), backLabel) }
+        Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
     }
 }
 

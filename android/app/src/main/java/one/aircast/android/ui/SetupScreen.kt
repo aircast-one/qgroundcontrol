@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.input.ImeAction
@@ -17,11 +16,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,13 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import org.json.JSONObject
-import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 import one.aircast.mapspike.optText
 
@@ -213,16 +206,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     if (parametersOpen) {
         Column(modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { parametersOpen = false }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Setup")
-                }
-                Text("Parameters", style = MaterialTheme.typography.titleMedium)
-            }
-            HorizontalDivider()
+            PageTopBar("Parameters", "Back to Setup") { parametersOpen = false }
             ParametersScreen(Modifier.weight(1f), initialSearch = parametersSearch)
         }
         return
@@ -231,16 +215,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val open = openComponent
     if (open != null && headCanOpen(setupPage(setupJson, open.name), open.name)) {
         Column(modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { openComponent = null }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Setup")
-                }
-                Text(open.name, style = MaterialTheme.typography.titleMedium)
-            }
-            HorizontalDivider()
+            PageTopBar(open.name, "Back to Setup") { openComponent = null }
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
             val first = open.prerequisite
