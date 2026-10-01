@@ -260,6 +260,7 @@ internal fun MapSpikeScreen(
     }
 
     var visible by remember { mutableStateOf<List<TrackPoint>>(emptyList()) }
+    var tracing by remember { mutableStateOf<Pair<String, List<TrackPoint>>?>(null) }
     var firstRead by remember { mutableStateOf(true) }
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
@@ -365,6 +366,10 @@ internal fun MapSpikeScreen(
             landings = landingList,
             editable = true,
             onAdd = { lat, lon ->
+                tracing?.let { (path, points) ->
+                    tracing = path to points + TrackPoint(lat, lon)
+                    return@VehicleMap
+                }
                 addMissionItem(
                     KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon),
                     insertAfter(selected, allItems),
@@ -721,6 +726,17 @@ internal fun MapSpikeScreen(
 
                 }
 
+                tracing?.let { (path, points) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Click the map to add points \u00B7 ${points.size} of 3", style = MaterialTheme.typography.labelSmall)
+                        TextButton(enabled = points.size >= 3, onClick = {
+                            tracing = null
+                            onBridge("Tracing shape") { replaceShape(path, points) }
+                        }) { Text("Done") }
+                        TextButton(onClick = { tracing = null }) { Text("Cancel") }
+                    }
+                }
+
                 var cameraMenuFor by remember { mutableStateOf<Int?>(null) }
                 val survey = selectedSurvey(selected, surveyList)
                 val waypoint = (selected as? MapHit.Waypoint)
@@ -903,6 +919,16 @@ internal fun MapSpikeScreen(
                             cornerPosition(hit, fences, surveyList)?.let { at ->
                                 TextButton(onClick = { positioning = hit to at }) { Text("Edit Position") }
                             }
+                        }
+
+                        shapePath(fenceHit?.polygon, survey?.takeIf { surveyHit != null && it.property != CORRIDOR_PROPERTY })?.let { path ->
+                            TextButton(enabled = visible.size == 4, onClick = {
+                                onBridge("Drawing rectangle") { replaceShape(path, defaultRectangle(visible)) }
+                            }) { Text("Rectangle") }
+                            TextButton(enabled = visible.size == 4, onClick = {
+                                onBridge("Drawing circle") { replaceShape(path, defaultCircle(visible)) }
+                            }) { Text("Circle") }
+                            TextButton(onClick = { tracing = path to emptyList() }) { Text("Trace") }
                         }
 
                         fenceHit?.let { hit ->

@@ -1392,6 +1392,11 @@ fn vertex_edit(vertices: &[Value], member: &str, given: &Value, ring: bool) -> O
     let spelled = |(lat, lon): (f64, f64)| json!([lat, lon]);
     match member {
         "appendVertex" => Some(vertices.iter().cloned().chain(std::iter::once(spelled(point_of(given.get(0))?))).collect()),
+        "appendVertices" => {
+            let added: Option<Vec<Value>> = given.get(0)?.as_array()?.iter().map(|point| point_of(Some(point)).map(spelled)).collect();
+            Some(vertices.iter().cloned().chain(added?).collect())
+        }
+        "clear" => Some(Vec::new()),
         "adjustVertex" => {
             let (i, to) = (index()?, point_of(given.get(1))?);
             (i < vertices.len()).then(|| vertices.iter().enumerate().map(|(k, v)| if k == i { spelled(to) } else { v.clone() }).collect())
@@ -1585,6 +1590,10 @@ mod tests {
         assert_eq!(vertex_edit(&line, "splitSegment", &json!([1]), false).map(|v| v.len()), Some(4));
         assert!(vertex_edit(&line, "splitSegment", &json!([2]), false).is_none(), "the last vertex starts no segment on a line");
         assert_eq!(vertex_edit(&line, "splitPolygonSegment", &json!([2]), true).map(|v| v.len()), Some(4), "a ring closes back to its first vertex");
+        assert_eq!(vertex_edit(&line, "clear", &json!([]), false), Some(Vec::new()), "QGCMapPolygon::clear empties the shape before a reset refills it");
+        let refilled = vertex_edit(&[], "appendVertices", &json!([[{ "latitude": 1.0, "longitude": 2.0 }, { "latitude": 3.0, "longitude": 4.0 }]]), true).unwrap();
+        assert_eq!(refilled, vec![json!([1.0, 2.0]), json!([3.0, 4.0])]);
+        assert!(vertex_edit(&[], "appendVertices", &json!([[{ "latitude": 91.0, "longitude": 2.0 }]]), true).is_none(), "one bad coordinate refuses the whole list");
         let two = vertex_edit(&line, "removeVertex", &json!([0]), false).unwrap();
         assert!(vertex_edit(&two, "removeVertex", &json!([0]), false).is_none());
     }
