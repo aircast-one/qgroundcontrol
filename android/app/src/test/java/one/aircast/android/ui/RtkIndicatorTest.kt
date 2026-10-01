@@ -25,4 +25,20 @@ class RtkIndicatorTest {
         assertEquals("RTK Streaming", rtkHeadline(status))
         assertEquals(listOf("Satellites" to "", "Duration" to "0 s"), rtkRows(status))
     }
+
+    @Test
+    fun `the surveyed position is saved as the fixed base only once the survey is valid`() {
+        val surveying = RtkStatus(active = true, valid = false, satellites = 9, durationS = 10.0, accuracyM = 3.0, latitude = 47.1, longitude = 8.5, altitudeM = 400.0)
+        assertNull(basePositionWrites(surveying))
+        assertEquals(
+            listOf(
+                "settings.rtkSettings.fixedBasePositionLatitude" to 47.1,
+                "settings.rtkSettings.fixedBasePositionLongitude" to 8.5,
+                "settings.rtkSettings.fixedBasePositionAltitude" to 400.0,
+                "settings.rtkSettings.fixedBasePositionAccuracy" to 3.0,
+            ),
+            basePositionWrites(surveying.copy(valid = true)),
+        )
+        assertNull(basePositionWrites(surveying.copy(valid = true, latitude = null)))
+    }
 }
