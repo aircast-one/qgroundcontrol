@@ -24,6 +24,9 @@ internal data class VideoReading(
     val activeSource: Int,
     val multipleSources: Boolean,
     val cameras: List<VideoCamera>,
+    val streaming: Boolean = false,
+    val streamEnabled: Boolean = true,
+    val noVideoText: String = "",
 )
 
 internal fun videoReading(view: JSONObject?): VideoReading? {
@@ -40,6 +43,9 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
         summary = view.optText("summary"),
         activeSource = view.optInt("activeSource"),
         multipleSources = view.optBoolean("multipleSources"),
+        streaming = view.optBoolean("streaming"),
+        streamEnabled = view.optBoolean("streamEnabled", true),
+        noVideoText = view.optText("noVideoText"),
         cameras = (0 until (cameras?.length() ?: 0)).mapNotNull { index ->
             cameras?.optJSONObject(index)?.let { camera ->
                 VideoCamera(

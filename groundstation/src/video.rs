@@ -5,7 +5,20 @@ use crate::router::Backend;
 
 pub const VIDEO_DEPS: &[&str] = &[
     "video.isStreamSource",
-    "video.hasMultipleVideoSources","settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
+    "video.hasMultipleVideoSources","settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording", "settings.videoSettings.videoSource", "settings.videoSettings.udpUrl", "settings.videoSettings.rtspUrl", "settings.videoSettings.tcpUrl", "settings.videoSettings.whepUrl", "settings.videoSettings.streamEnabled"];
+
+pub fn no_video_text(source: &str, udp: &str, rtsp: &str, tcp: &str, whep: &str) -> String {
+    if source.contains("UDP") || source.contains("MPEG-TS") {
+        return format!("No video on UDP port {}", udp.rsplit(':').next().unwrap_or(udp));
+    }
+    let url = match () {
+        _ if source.contains("RTSP") => rtsp,
+        _ if source.contains("TCP") => tcp,
+        _ if source.contains("WHEP") => whep,
+        _ => "",
+    };
+    format!("No video from {}", if url.is_empty() { source } else { url })
+}
 pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
@@ -125,6 +138,8 @@ fn extra_sources(backend: &dyn Backend) -> Value {
 }
 
 pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let setting = |name: &str| object(&backend.get(&format!("settings.videoSettings.{name}"))).get("value").cloned().unwrap_or(Value::Null);
+    let setting_text = |name: &str| setting(name).as_str().unwrap_or_default().to_string();
     let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording"));
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
     let flags = |key: &str| -> Vec<bool> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default() };
@@ -170,6 +185,8 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "anyConnecting": any_connecting,
         "configuredCount": configured,
         "summary": video_summary(flag(&video, "gstreamerEnabled"), available, decoding, recording, any_connecting, configured),
+        "streamEnabled": setting("streamEnabled").as_bool().unwrap_or(true),
+        "noVideoText": no_video_text(setting_text("videoSource").as_str(), setting_text("udpUrl").as_str(), setting_text("rtspUrl").as_str(), setting_text("tcpUrl").as_str(), setting_text("whepUrl").as_str()),
         "cameras": cameras,
         "extraSources": extra_sources(backend),
         "nativePipeline": crate::videohost::native_pipeline(),
@@ -336,6 +353,13 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_video_names_the_port_or_url_the_source_listens_on() {
+        assert_eq!(no_video_text("UDP h.264 Video Stream", "0.0.0.0:5600", "", "", ""), "No video on UDP port 5600");
+        assert_eq!(no_video_text("RTSP Video Stream", "", "rtsp://cam/live", "", ""), "No video from rtsp://cam/live");
+        assert_eq!(no_video_text("Herelink", "", "", "", ""), "No video from Herelink");
+    }
 
     struct Fake { video: Value, camera: Value, enabled: Vec<bool>, configured: Vec<bool> }
 

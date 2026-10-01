@@ -286,6 +286,8 @@ pub fn native_recording() -> Option<Value> {
     Some(json!({ "file": file, "format": recording_format() }))
 }
 
+pub static RESTART: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn native_pipeline() -> Option<String> {
     get("video.nativePipeline")?.get("value")?.as_str().map(str::to_string)
 }
@@ -341,6 +343,10 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
+        "video.restart" => {
+            RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
+            Some(json!({ "ok": true }))
+        }
         "video.reportRecording" => {
             let active = given.get(0).and_then(Value::as_bool).unwrap_or(false);
             let outs = host.state.on_recording(MAIN_RECEIVER, active, crate::hub::now_ms() / 1000);

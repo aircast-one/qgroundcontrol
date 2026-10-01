@@ -93,11 +93,7 @@ fun VideoSurface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = video?.summary ?: "No video",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    NoVideoPanel(video)
                 }
             }
         }

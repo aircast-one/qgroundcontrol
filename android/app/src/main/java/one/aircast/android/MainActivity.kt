@@ -61,6 +61,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import one.aircast.android.ui.AppFontScale
+import one.aircast.android.ui.AppNavigation
 import one.aircast.android.ui.OverlayEditBar
 import one.aircast.android.ui.Hideable
 import one.aircast.android.ui.LogReplayBar
@@ -221,6 +222,9 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 @Composable
 fun AircastShell(hostView: android.view.View?) {
     var tab by remember { mutableStateOf(Tab.Fly) }
+    LaunchedEffect(AppNavigation.settingsPage) {
+        if (AppNavigation.settingsPage != null) tab = Tab.Settings
+    }
     var controlsExpanded by remember { mutableStateOf(true) }
     var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }

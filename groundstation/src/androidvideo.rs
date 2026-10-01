@@ -108,6 +108,9 @@ impl Driver {
     }
 
     fn step(&mut self, video: &Video) {
+        if crate::videohost::RESTART.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            self.driven = None;
+        }
         let wanted = crate::videohost::native_pipeline();
         if wanted != self.driven {
             match &wanted {

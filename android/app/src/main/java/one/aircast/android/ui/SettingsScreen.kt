@@ -216,6 +216,12 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 fun SettingsScreen(modifier: Modifier = Modifier) {
     var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
     var open by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(AppNavigation.settingsPage) {
+        AppNavigation.settingsPage?.let { requested ->
+            open = requested
+            AppNavigation.settingsPage = null
+        }
+    }
 
     LaunchedEffect(Unit) {
         pages = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
