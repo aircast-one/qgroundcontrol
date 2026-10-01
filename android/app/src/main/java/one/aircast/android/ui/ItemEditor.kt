@@ -47,6 +47,18 @@ internal fun itemFactsPath(index: Int): String = "view.itemFacts($index)"
 
 internal fun itemCommandPath(index: Int): String = "plan.missionController.visualItems.$index.command"
 
+internal fun itemRawEditPath(index: Int): String = "plan.missionController.visualItems.$index.rawEdit"
+
+internal const val RAW_EDIT_NOTE = "Provides advanced access to all commands/parameters. Be very careful!"
+internal const val RAW_EDIT_STUCK = "You have made changes to the mission item which cannot be shown in Simple Mode"
+
+internal data class RawEdit(val on: Boolean, val friendlyAllowed: Boolean)
+
+internal fun rawEdit(view: JSONObject?): RawEdit? =
+    view?.takeIf { it.optBoolean("simple") }?.let { RawEdit(it.optBoolean("rawEdit"), it.optBoolean("friendlyEditAllowed")) }
+
+internal fun rawEditRefusal(current: RawEdit): String? = RAW_EDIT_STUCK.takeIf { current.on && !current.friendlyAllowed }
+
 internal data class CommandChoice(val id: Int, val name: String, val description: String)
 
 internal fun commandChoices(result: Any?): List<CommandChoice> {
@@ -83,6 +95,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
     }
 
     val fields = remember(view) { itemFields(view) }
+    val raw = remember(view) { rawEdit(view) }
     val camera = remember(view) { cameraCalc(view) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -96,6 +109,20 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                 }
                 if (view?.optBoolean("simple") == true) {
                     TextButton(onClick = { choosing = true }) { Text("Change command") }
+                }
+            }
+            raw?.let { current ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Show All Values", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = current.on, onCheckedChange = { wanted ->
+                        scope.launch {
+                            refusal = rawEditRefusal(current) ?: withContext(Dispatchers.Default) { Qgc.writeRefusal(itemRawEditPath(index), wanted) }
+                            revision++
+                        }
+                    })
+                }
+                if (current.on) {
+                    Text(RAW_EDIT_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
                 }
             }
             refusal?.let {

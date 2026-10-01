@@ -424,6 +424,11 @@ pub fn set_command(doc: &Document, visual_index: usize, command: i64, defaults: 
     }
 }
 
+pub fn set_frame(doc: &Document, visual_index: usize, frame: i64) -> Option<Document> {
+    let (at, current) = simple_at(doc, visual_index)?;
+    Some(replaced(doc, at, Simple { frame, ..current.clone() }))
+}
+
 pub fn set_param(doc: &Document, visual_index: usize, param: usize, value: f64) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     let slot = param.checked_sub(1).filter(|p| *p < 7)?;

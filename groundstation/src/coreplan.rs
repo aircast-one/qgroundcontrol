@@ -1226,11 +1226,32 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             });
         }
     }
+    let commands = crate::cmdinfo::tree(plandoc::firmware(current.firmware_type), plandoc::vehicle_class(current.vehicle_type));
+    let simple = index.checked_sub(1).and_then(|i| current.items.get(i)).and_then(|item| match item {
+        plandoc::Item::Simple(s) => Some(s),
+        plandoc::Item::Complex { .. } => None,
+    });
+    let raw = simple.is_some_and(|s| raw_edit(s, commands.get(&s.command), index));
+    if property == "rawEdit" {
+        let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);
+        let mut chosen = RAW_EDIT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if on { chosen.insert(index) } else { chosen.remove(&index) };
+        drop(chosen);
+        changed();
+        return Some(json!({ "ok": true }));
+    }
+    match (raw, property, number) {
+        (true, "comboboxFacts.0", Some(n)) => return Some(item_edit(backend, &json!([index, n]).to_string(), true)),
+        (true, "comboboxFacts.1", Some(n)) => return Some(answer(plandoc::set_frame(&current, index, n as i64).ok_or_else(|| format!("Item {index} has no frame.")))),
+        _ => {}
+    }
     let field = |group: &str| {
         let at: usize = property.strip_prefix(group)?.parse().ok()?;
-        let plandoc::Item::Simple(s) = current.items.get(index.checked_sub(1)?)? else { return None };
-        let commands = crate::cmdinfo::tree(plandoc::firmware(current.firmware_type), plandoc::vehicle_class(current.vehicle_type));
-        field_params(commands.get(&s.command)?, group == "comboboxFacts.").get(at).map(|(param, _)| usize::from(*param))
+        let s = simple?;
+        match raw {
+            true => (group == "textFieldFacts." && at < RAW_LABELS.len()).then_some(at + 1),
+            false => field_params(commands.get(&s.command)?, group == "comboboxFacts.").get(at).map(|(param, _)| usize::from(*param)),
+        }
     };
     let unknown = || Err(format!("Item {index} has no such field."));
     Some(match property {
@@ -1572,6 +1593,29 @@ mod tests {
     }
 
     #[test]
+    fn an_item_qgc_cannot_show_friendly_is_edited_raw() {
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+        let friendly = document_facts(&doc, 1, 5.0, 15.0, (&metres, &metres));
+        assert_eq!((friendly["rawEdit"].clone(), friendly["friendlyEditAllowed"].clone()), (json!(false), json!(true)));
+        let stuck = Document {
+            items: doc.items.iter().enumerate().map(|(i, item)| match (i, item) {
+                (0, plandoc::Item::Simple(s)) => plandoc::Item::Simple(plandoc::Simple { auto_continue: false, ..s.clone() }),
+                (_, other) => other.clone(),
+            }).collect(),
+            ..doc.clone()
+        };
+        let raw = document_facts(&stuck, 1, 5.0, 15.0, (&metres, &metres));
+        assert_eq!((raw["rawEdit"].clone(), raw["friendlyEditAllowed"].clone()), (json!(true), json!(false)), "autoContinue off cannot be shown in simple mode");
+        let fields = raw["fields"].as_array().unwrap();
+        let names: Vec<&str> = fields.iter().map(|f| f["name"].as_str().unwrap_or_default()).collect();
+        assert_eq!(names, ["Param1", "Param2", "Param3", "Param4", "Lat/X", "Lon/Y", "Alt/Z", "Command", "Frame"]);
+        assert_eq!(fields[8]["pathSuffix"], "comboboxFacts.1");
+        assert_eq!((fields[7]["control"].clone(), fields[7]["display"].clone()), (json!("choice"), json!("MAV_CMD_NAV_WAYPOINT")));
+        assert!(fields[8]["options"].as_array().unwrap().iter().any(|o| o["label"] == "MAV_FRAME_GLOBAL_TERRAIN_ALT" && o["raw"] == "10"));
+    }
+
+    #[test]
     fn an_item_reads_edited_until_the_plan_it_is_in_is_saved() {
         let saved = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
         let moved = plandoc::set_altitude(&saved, 2, 33.0).unwrap();
@@ -1752,6 +1796,53 @@ fn field_params(info: &crate::cmdinfo::Command, combo: bool) -> Vec<(u8, Value)>
         .collect()
 }
 
+static RAW_EDIT: std::sync::Mutex<std::collections::BTreeSet<usize>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+const RAW_LABELS: [&str; 7] = ["Param1", "Param2", "Param3", "Param4", "Lat/X", "Lon/Y", "Alt/Z"];
+const RAW_DECIMAL_PLACES: i64 = 7;
+const MAV_FRAMES: [(&str, i64); 12] = [
+    ("MAV_FRAME_GLOBAL", 0),
+    ("MAV_FRAME_LOCAL_NED", 1),
+    ("MAV_FRAME_MISSION", 2),
+    ("MAV_FRAME_GLOBAL_RELATIVE_ALT", 3),
+    ("MAV_FRAME_LOCAL_ENU", 4),
+    ("MAV_FRAME_GLOBAL_INT", 5),
+    ("MAV_FRAME_GLOBAL_RELATIVE_ALT_INT", 6),
+    ("MAV_FRAME_LOCAL_OFFSET_NED", 7),
+    ("MAV_FRAME_BODY_NED", 8),
+    ("MAV_FRAME_BODY_OFFSET_NED", 9),
+    ("MAV_FRAME_GLOBAL_TERRAIN_ALT", 10),
+    ("MAV_FRAME_GLOBAL_TERRAIN_ALT_INT", 11),
+];
+const FRIENDLY_FRAMES: [i64; 3] = [0, 3, 10];
+
+fn raw_edit_chosen(index: usize) -> bool {
+    RAW_EDIT.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&index)
+}
+
+fn friendly_edit_allowed(simple: &plandoc::Simple, info: Option<&crate::cmdinfo::Command>) -> bool {
+    info.is_some_and(|c| c.friendly_edit) && simple.auto_continue && (simple.altitude.is_none() || FRIENDLY_FRAMES.contains(&simple.frame))
+}
+
+fn raw_edit(simple: &plandoc::Simple, info: Option<&crate::cmdinfo::Command>, index: usize) -> bool {
+    raw_edit_chosen(index) || !friendly_edit_allowed(simple, info)
+}
+
+fn choice(label: &str, choices: impl Iterator<Item = (String, i64)>) -> Value {
+    let (names, values): (Vec<String>, Vec<String>) = choices.map(|(name, value)| (name, value.to_string())).unzip();
+    json!({ "label": label, "enumStrings": names.join(","), "enumValues": values.join(",") })
+}
+
+fn raw_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>, item: &str) -> Vec<Value> {
+    let control = |param: Value, value: f64, suffix: String| match crate::control::decode(&param_fact(&param, value), &format!("{item}.{suffix}")) {
+        Value::Object(fields) => Value::Object(fields.into_iter().chain([("pathSuffix".to_string(), json!(suffix)), ("group".to_string(), json!("Settings"))]).collect()),
+        other => other,
+    };
+    let text = RAW_LABELS.iter().enumerate().map(|(i, label)| control(json!({ "label": label, "decimalPlaces": RAW_DECIMAL_PLACES }), simple.params[i].unwrap_or(f64::NAN), format!("textFieldFacts.{i}")));
+    let command = choice("Command", commands.values().map(|c| (c.raw_name.clone(), c.id)));
+    let frame = choice("Frame", MAV_FRAMES.iter().map(|(name, value)| ((*name).to_string(), *value)));
+    text.chain([control(command, simple.command as f64, "comboboxFacts.0".to_string()), control(frame, simple.frame as f64, "comboboxFacts.1".to_string())]).collect()
+}
+
 fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>, item: &str) -> Vec<Value> {
     let Some(info) = commands.get(&simple.command) else { return Vec::new() };
     let text = field_params(info, false);
@@ -1806,12 +1897,20 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
     };
     match index.checked_sub(1).map(|i| document.items.get(i)) {
         None => base(false, Vec::new(), speed_section(&document, index, &document.settings_sections, true, hover, cruise), None),
-        Some(Some(plandoc::Item::Simple(s))) => base(
-            true,
-            simple_fields(s, &commands, &item),
-            speed_section(&document, index, &s.sections, s.command == 16, hover, cruise),
-            Some(s.altitude.as_ref().map_or(crate::altitudemodes::RELATIVE, |a| a.mode)),
-        ),
+        Some(Some(plandoc::Item::Simple(s))) => {
+            let info = commands.get(&s.command);
+            let raw = raw_edit(s, info, index);
+            let facts = base(
+                true,
+                if raw { raw_fields(s, &commands, &item) } else { simple_fields(s, &commands, &item) },
+                speed_section(&document, index, &s.sections, s.command == 16, hover, cruise),
+                Some(s.altitude.as_ref().map_or(crate::altitudemodes::RELATIVE, |a| a.mode)),
+            );
+            match facts {
+                Value::Object(fields) => Value::Object(fields.into_iter().chain([("rawEdit".to_string(), json!(raw)), ("friendlyEditAllowed".to_string(), json!(friendly_edit_allowed(s, info)))]).collect()),
+                other => other,
+            }
+        }
         Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" => {
             let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };

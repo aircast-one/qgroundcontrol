@@ -142,6 +142,8 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             false => Value::Null,
         },
         "altitudeMode": crate::missionitems::frame(&read).map(|mode| mode as i64),
+        "rawEdit": simple && flag(&read, "rawEdit"),
+        "friendlyEditAllowed": simple && flag(&read, "friendlyEditAllowed"),
     })
 }
 
