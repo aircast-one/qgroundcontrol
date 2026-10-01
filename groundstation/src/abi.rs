@@ -169,10 +169,6 @@ pub unsafe extern "C" fn qgc_core_set_event_handler(handler: EventFn) {
     *crate::detections::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_detections) as std::sync::Arc<dyn Fn() + Send + Sync>);
     *crate::coreplan::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_plan) as std::sync::Arc<dyn Fn() + Send + Sync>);
     *crate::adsb::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_adsb) as std::sync::Arc<dyn Fn() + Send + Sync>);
-    // Deliberately no pump. It exists to service links the core owns and commands it has in
-    // flight, and it can never be stopped once started, so a head that only wants one view pushed
-    // was getting a thread that wakes every hundred milliseconds and holds the hub and the
-    // transports. It starts when there is something for it to service.
     unsafe { qgc_qt_set_event_handler(handler.map(|_| relay as unsafe extern "C" fn(*const c_char, *const c_char))) }
 }
 
@@ -278,8 +274,12 @@ pub(crate) fn start_pump() {
                 if crate::vehiclefacade::switched_on() {
                     crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
                     crate::mavlinklog::tick();
-                    let active = crate::hub::lock().active().map(|vehicle| (vehicle.id, vehicle.armed()));
-                    crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), active, crate::hub::now_ms());
+                    let logged: Vec<crate::csvlog::Logged> = {
+                        let hub = crate::hub::lock();
+                        let count = hub.listed_count().unwrap_or_else(|| hub.vehicle_ids().len());
+                        (0..count).filter_map(|listed| hub.listed(listed).map(|vehicle| crate::csvlog::Logged { id: vehicle.id, listed, armed: vehicle.armed() })).collect()
+                    };
+                    crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), &logged, crate::hub::now_ms());
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
                     crate::joystickhost::tick(crate::hub::now_ms());
