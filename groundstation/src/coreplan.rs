@@ -1231,6 +1231,52 @@ fn takeoff_required_first() -> bool {
     })
 }
 
+fn shape_points(file: &str, polyline: bool) -> Result<Vec<(f64, f64)>, String> {
+    let lower = file.to_lowercase();
+    let (points, found_polyline) = match () {
+        _ if lower.ends_with(".kml") => match crate::kml::parse(&std::fs::read_to_string(file).map_err(|e| format!("Unable to open file: {file} error: {e}"))?)? {
+            crate::kml::Shape::Polygon(points) => (points, false),
+            crate::kml::Shape::Polyline(points) => (points, true),
+        },
+        _ if lower.ends_with(".shp") => crate::shp::parse(file).map(|(kind, _, points)| (points, kind == "polyline"))?,
+        _ => return Err("Unsupported file type. Only .kml and .shp are supported.".to_string()),
+    };
+    match found_polyline == polyline {
+        true => Ok(points),
+        false if polyline => Err("No polyline found in the file.".to_string()),
+        false => Err("No polygon found in the file.".to_string()),
+    }
+}
+
+fn insert_from_shape_file(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let kind = match given.get(0).and_then(Value::as_str).unwrap_or("") {
+        "Survey" | "survey" => "survey",
+        "Corridor Scan" | "CorridorScan" => "corridor",
+        "Structure Scan" | "StructureScan" => "structure",
+        other => return refused(format!("{other} cannot be built from a file.")),
+    };
+    let file = given.get(1).and_then(Value::as_str).unwrap_or("");
+    let points = match shape_points(file, kind == "corridor") {
+        Ok(points) if !points.is_empty() => points,
+        Ok(_) => return refused("The file holds no points."),
+        Err(reason) => return refused(reason),
+    };
+    let count = points.len() as f64;
+    let centre = (points.iter().map(|p| p.0).sum::<f64>() / count, points.iter().map(|p| p.1).sum::<f64>() / count);
+    let inserted = insert_kind(backend, &json!([kind, centre.0, centre.1, given.get(2)]).to_string());
+    let Some(placed) = inserted.get("index").and_then(Value::as_i64).filter(|_| inserted["ok"] == true) else { return inserted };
+    let key = if kind == "corridor" { "polyline" } else { "polygon" };
+    let vertices: Vec<Value> = points.iter().map(|(lat, lon)| json!([lat, lon])).collect();
+    edit(|doc| {
+        let at = usize::try_from(placed - 1).ok().filter(|i| *i < doc.items.len()).ok_or("The imported item is missing.")?;
+        let plandoc::Item::Complex { kind, json, .. } = &doc.items[at] else { return Err("The imported item is missing.".to_string()) };
+        let shaped = crate::surveydoc::regenerate_item(&with_polygon(json, key, vertices.clone()));
+        let item = plandoc::Item::Complex { kind: kind.clone(), item_count: plandoc::complex_count(kind, &shaped).unwrap_or(0), json: shaped };
+        Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })
+    })
+}
+
 fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let kind = given.get(0).and_then(Value::as_str).unwrap_or("");
@@ -1699,6 +1745,7 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "plan.removeAllFromVehicle" => remove_all_from_vehicle(backend),
         "plan.removeAll" => clear(backend),
         "mission.insert" => insert_kind(backend, args),
+        "plan.missionController.insertComplexMissionItemFromKMLOrSHP" => insert_from_shape_file(backend, args),
         "mission.remove" | "plan.missionController.removeVisualItem" => remove(args),
         "plan.missionController.setCurrentPlanViewSeqNum" => select(args),
         "plan.undo" => step(true),
@@ -1722,6 +1769,19 @@ mod tests {
             Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
             other => other,
         }
+    }
+
+    #[test]
+    fn a_boundary_file_gives_the_shape_the_pattern_needs() {
+        let dir = std::env::temp_dir().join(format!("shape-points-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let kml = dir.join("area.kml");
+        std::fs::write(&kml, "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8.0,47.0,0 8.01,47.0,0 8.01,47.01,0 8.0,47.0,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>").unwrap();
+        let path = kml.to_string_lossy().to_string();
+        assert_eq!(shape_points(&path, false).map(|p| p.len()), Ok(3), "the repeated closing vertex is dropped");
+        assert_eq!(shape_points(&path, true), Err("No polyline found in the file.".to_string()), "a corridor needs a polyline");
+        assert!(shape_points("area.gpx", false).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

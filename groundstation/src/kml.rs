@@ -12,10 +12,6 @@ pub enum Shape {
     Polyline(Vec<(f64, f64)>),
 }
 
-fn descendant<'a>(node: Node<'a, 'a>, name: &str) -> Option<Node<'a, 'a>> {
-    node.descendants().find(|n| n.is_element() && n.tag_name().name() == name)
-}
-
 fn child<'a>(node: Node<'a, 'a>, name: &str) -> Option<Node<'a, 'a>> {
     node.children().find(|n| n.is_element() && n.tag_name().name() == name)
 }
@@ -47,18 +43,45 @@ pub fn clockwise(points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
     }
 }
 
+const VERTEX_FILTER_METRES: f64 = 5.0;
+
+fn filter_vertices(points: Vec<(f64, f64)>, minimum: usize) -> Vec<(f64, f64)> {
+    let Some(first) = points.first().copied().filter(|_| points.len() > minimum) else { return points };
+    points
+        .iter()
+        .skip(1)
+        .fold((vec![first], points.len()), |(kept, count), point| match count > minimum && kept.last().is_some_and(|last| crate::surveygrid::distance_between(*last, *point) < VERTEX_FILTER_METRES) {
+            true => (kept, count - 1),
+            false => (kept.into_iter().chain(std::iter::once(*point)).collect(), count),
+        })
+        .0
+}
+
+fn without_closing_vertex(points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
+    match points.len() > 3 && points.first() == points.last() {
+        true => points[..points.len() - 1].to_vec(),
+        false => points,
+    }
+}
+
 pub fn parse(text: &str) -> Result<Shape, String> {
     let document = Document::parse(text).map_err(|e| format!("Unable to parse KML: {e}"))?;
     let root = document.root();
-    if let Some(polygon) = descendant(root, "Polygon") {
-        let node = child(polygon, "outerBoundaryIs").and_then(|b| child(b, "LinearRing")).and_then(|r| child(r, "coordinates")).ok_or("Unable to find coordinates node in KML")?;
-        return Ok(Shape::Polygon(clockwise(coordinates(node)?)));
+    let named = |name: &'static str| root.descendants().filter(move |n| n.is_element() && n.tag_name().name() == name);
+    let polygon = named("Polygon")
+        .filter_map(|polygon| child(polygon, "outerBoundaryIs").and_then(|b| child(b, "LinearRing")).and_then(|r| child(r, "coordinates")))
+        .filter_map(|node| coordinates(node).ok())
+        .find(|points| points.len() >= 3)
+        .map(|points| Shape::Polygon(filter_vertices(clockwise(without_closing_vertex(points)), 3)));
+    if let Some(found) = polygon {
+        return Ok(found);
     }
-    if let Some(line) = descendant(root, "LineString") {
-        let node = child(line, "coordinates").ok_or("Unable to find coordinates node in KML")?;
-        return Ok(Shape::Polyline(coordinates(node)?));
-    }
-    Err("No supported type found in KML file.".to_string())
+    let line = named("LineString")
+        .filter_map(|line| child(line, "coordinates"))
+        .filter_map(|node| coordinates(node).ok())
+        .find(|points| points.len() >= 2)
+        .map(|points| Shape::Polyline(filter_vertices(points, 2)));
+    line.ok_or_else(|| "No supported type found in KML file.".to_string())
 }
 
 pub fn kml_view(_backend: &dyn Backend, args: &[String]) -> Value {
@@ -81,6 +104,14 @@ mod tests {
 
     fn fixture(name: &str) -> String {
         std::fs::read_to_string(format!("{}/../test/MissionManager/{name}", env!("CARGO_MANIFEST_DIR"))).or_else(|_| std::fs::read_to_string(format!("{}/../test/Utilities/Geo/{name}", env!("CARGO_MANIFEST_DIR")))).unwrap()
+    }
+
+    #[test]
+    fn a_polygon_drops_its_closing_vertex_and_vertices_within_five_metres_as_kml_helper_does() {
+        let near = (47.0, 8.00002);
+        assert_eq!(filter_vertices(vec![(47.0, 8.0), near, (47.0, 8.01), (47.01, 8.01)], 3), vec![(47.0, 8.0), (47.0, 8.01), (47.01, 8.01)]);
+        assert_eq!(filter_vertices(vec![(47.0, 8.0), near, (47.0, 8.01)], 3).len(), 3, "never below the minimum");
+        assert_eq!(without_closing_vertex(vec![(1.0, 1.0), (1.0, 2.0), (2.0, 2.0), (1.0, 1.0)]), vec![(1.0, 1.0), (1.0, 2.0), (2.0, 2.0)]);
     }
 
     #[test]
