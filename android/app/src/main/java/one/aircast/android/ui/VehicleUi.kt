@@ -577,109 +577,34 @@ fun FlightActions(modifier: Modifier = Modifier, simple: Boolean = false) {
     }
 
     if (showMore) {
-        AlertDialog(
-            onDismissRequest = { showMore = false },
-            title = { Text("Actions") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    deckRest.filter { it.id != CHECKLIST }.forEach { entry ->
-                        TextButton(
-                            enabled = entry.enabled,
-                            onClick = {
-                                showMore = false
-                                entry.onClick()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = entry.label,
-                                fontWeight = FontWeight.Bold,
-                                color = if (entry.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-                    val checklistPast = checklistOffered(armed)
-                    if (preflightOffered(preflightJson)) TextButton(
-                        onClick = {
-                            showMore = false
-                            showChecklist = true
-                        },
-                        enabled = checklistPast == null,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(Modifier.fillMaxWidth()) {
-                            Text(
-                                text = "Pre-Flight Checklist",
-                                fontWeight = FontWeight.Bold,
-                                color = when (checklistPast) {
-                                    null -> MaterialTheme.colorScheme.primary
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                            Text(
-                                text = checklistPast ?: preflightSummary(checks, checklistTicked),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-
-                    loiter?.let { offer ->
-                        TextButton(
-                            onClick = {
-                                showMore = false
-                                editingLoiter = offer
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(Modifier.fillMaxWidth()) {
-                                Text(offer.title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text(offer.message, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-
-                    FlyViewMavlinkActions { showMore = false }
-
-                    extras.filter { it.id !in deckShown }.forEach { offer ->
-                        TextButton(
-                            enabled = offer.ready,
-                            onClick = {
-                                showMore = false
-                                if (offer.id == PAUSE) {
-                                    openAltitude(true)
-                                } else {
-                                    guidedCommand(offer.id, resumeFrom)?.let { command ->
-                                        pending = GuidedAction(
-                                            name = offer.title,
-                                            confirm = offer.prompt,
-                                            destructive = offer.destructive,
-                                            run = command,
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = offer.title,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (offer.destructive) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.primary,
-                                )
-                                Text(
-                                    text = offer.prompt,
-                                    style = MaterialTheme.typography.bodySmall,
+        val checklistPast = checklistOffered(armed)
+        MoreActionsSheet(
+            tiles = deckRest.filter { it.id != CHECKLIST }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
+                listOfNotNull(
+                    MoreTile("Checklist", R.drawable.ic_check_circle, checklistPast == null) { showChecklist = true }
+                        .takeIf { preflightOffered(preflightJson) },
+                    loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
+                ) +
+                extras.filter { it.id !in deckShown }.map { offer ->
+                    MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
+                        if (offer.id == PAUSE) {
+                            openAltitude(true)
+                        } else {
+                            guidedCommand(offer.id, resumeFrom)?.let { command ->
+                                pending = GuidedAction(
+                                    name = offer.title,
+                                    confirm = offer.prompt,
+                                    destructive = offer.destructive,
+                                    run = command,
                                 )
                             }
                         }
                     }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { showMore = false }) { Text("Close") } },
-        )
+                },
+            onDismiss = { showMore = false },
+        ) {
+            FlyViewMavlinkActions { showMore = false }
+        }
     }
 
     if (showChecklist) {

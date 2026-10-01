@@ -17,7 +17,12 @@ import one.aircast.android.R
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.aircast
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -148,6 +153,74 @@ private fun SimpleButton(entry: DeckEntry, primary: Boolean, modifier: Modifier,
         ) {
             Icon(painterResource(entry.icon), if (iconOnly) entry.label else null, Modifier.size(if (primary) 36.dp else 32.dp))
             if (!iconOnly) Text(entry.label, style = if (primary) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge, maxLines = 1)
+        }
+    }
+}
+
+private const val MORE_COLUMNS = 4
+private val MORE_TILE_HEIGHT = 80.dp
+
+internal class MoreTile(
+    val label: String,
+    @DrawableRes val icon: Int,
+    val enabled: Boolean,
+    val warning: Boolean = false,
+    val onClick: () -> Unit,
+)
+
+internal fun guidedIcon(id: String): Int = when (id) {
+    "startMission", "continueMission", "resumeMission" -> R.drawable.ic_route
+    "cancelRoi" -> R.drawable.ic_close
+    PAUSE -> R.drawable.ic_pause
+    "landAbort" -> R.drawable.ic_flight_takeoff
+    "release", "grab", "hold" -> R.drawable.ic_tune
+    "vtolTransitionToFixedWing", "vtolTransitionToMultiRotor" -> R.drawable.ic_swap_horiz
+    "forceArm" -> R.drawable.ic_bolt
+    else -> R.drawable.ic_send
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun MoreActionsSheet(tiles: List<MoreTile>, onDismiss: () -> Unit, footer: @Composable () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(start = AircastSpace.s4, end = AircastSpace.s4, bottom = AircastSpace.s6),
+            verticalArrangement = Arrangement.spacedBy(AircastSpace.s3),
+        ) {
+            Column(Modifier.padding(horizontal = AircastSpace.s2)) {
+                Text("More actions", style = MaterialTheme.typography.titleLarge)
+                Text("Everything that changes what the drone does", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            tiles.chunked(MORE_COLUMNS).map { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
+                    row.map { tile ->
+                        Surface(
+                            onClick = {
+                                onDismiss()
+                                tile.onClick()
+                            },
+                            enabled = tile.enabled,
+                            modifier = Modifier.weight(1f).height(MORE_TILE_HEIGHT).alpha(if (tile.enabled) 1f else DISABLED_ALPHA),
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = if (tile.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        ) {
+                            Column(
+                                Modifier.padding(horizontal = AircastSpace.s1),
+                                verticalArrangement = Arrangement.spacedBy(AircastSpace.s2, Alignment.CenterVertically),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(painterResource(tile.icon), null, Modifier.size(24.dp))
+                                Text(tile.label, style = MaterialTheme.typography.labelLarge, maxLines = 2, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                    repeat(MORE_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            footer()
         }
     }
 }
