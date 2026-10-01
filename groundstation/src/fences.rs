@@ -616,7 +616,7 @@ mod from_the_document {
 
     #[test]
     fn a_fence_the_core_holds_reads_as_qt_shows_it() {
-        let doc = crate::plandoc::load(include_str!("../tests/fixtures/fence.plan")).unwrap();
+        let doc = crate::plandoc::load(include_str!("../tests/fixtures/fence.plan"), 2).unwrap();
         let mine = document_fences(&Metric, &doc.fence, &doc.rally);
         let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/fences-by-qt.json")).unwrap();
         ["polygons", "circles", "rallyPoints", "count", "breachReturnPoint"].iter().for_each(|key| assert_eq!(by_value(mine[key].clone()), by_value(qt[key].clone()), "{key}"));

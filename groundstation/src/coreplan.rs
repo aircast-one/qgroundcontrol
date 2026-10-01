@@ -544,7 +544,7 @@ fn plan_text(text: &str) -> Result<String, String> {
 }
 
 fn open(file: &str) -> Value {
-    let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| plandoc::load(&plan_text(&text)?));
+    let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| plandoc::load(&plan_text(&text)?, offline_type("offlineEditingVehicleClass")));
     match loaded {
         Ok(document) => {
             let count = document.items.len();
@@ -791,7 +791,7 @@ pub fn on_host_event(backend: &dyn Backend, path: &str, value: &str) -> bool {
     let file = host_file();
     let path = file.to_string_lossy().to_string();
     backend.invoke("plan.saveToFile", &json!([path]).to_string());
-    let adopted = std::fs::read_to_string(&file).map_err(|e| e.to_string()).and_then(|text| plandoc::load(&text));
+    let adopted = std::fs::read_to_string(&file).map_err(|e| e.to_string()).and_then(|text| plandoc::load(&text, offline_type("offlineEditingVehicleClass")));
     {
         let mut state = held();
         state.fetching = false;
@@ -1714,7 +1714,7 @@ mod tests {
     #[test]
     fn a_waypoints_file_opens_as_a_plan_like_load_text_file() {
         let text = "QGC WPL 110\n0\t1\t0\t16\t0\t0\t0\t0\t47.66\t-122.10\t5.2\t1\n1\t0\t3\t22\t0\t0\t0\t0\t47.661\t-122.103\t100\t1\n2\t0\t3\t16\t0\t0\t0\t0\t47.662\t-122.104\t100\t1\n";
-        let doc = plandoc::load(&plan_text(text).unwrap()).unwrap();
+        let doc = plandoc::load(&plan_text(text).unwrap(), 2).unwrap();
         assert_eq!(doc.items.len(), 2);
         assert_eq!(doc.home.map(|h| h[2]), Some(5.2), "the first row of a 110 file is the planned home");
         assert!(plan_text("QGC WPL 110\n0\t1\t0\n").is_err());
@@ -1723,7 +1723,7 @@ mod tests {
 
     #[test]
     fn a_new_default_altitude_lands_on_every_item_like_apply_new_altitude() {
-        let doc = plandoc::load(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let doc = plandoc::load(include_str!("../tests/fixtures/survey-upload.plan"), 2).unwrap();
         let survey = doc.items.iter().find(|i| matches!(i, plandoc::Item::Complex { kind, .. } if kind == "survey")).unwrap();
         let plandoc::Item::Complex { json, .. } = with_new_altitude(survey, 77.0) else { panic!("a survey stays a survey") };
         assert_eq!(json["TransectStyleComplexItem"]["CameraCalc"]["DistanceToSurface"], 77.0);
@@ -1738,7 +1738,7 @@ mod tests {
 
     #[test]
     fn the_editor_fields_of_each_command_are_the_ones_qt_builds() {
-        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan"), 2).unwrap();
         let qt: Vec<Value> = serde_json::from_str(include_str!("../tests/fixtures/itemfacts-commands-by-qt.json")).unwrap();
         qt.iter().enumerate().for_each(|(index, expected)| {
             let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
@@ -1761,7 +1761,7 @@ mod tests {
 
     #[test]
     fn a_landing_lines_up_with_the_takeoff_run_from_home() {
-        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan"), 2).unwrap();
         let takeoff = |lat: f64, lon: f64| plandoc::Item::Simple(plandoc::Simple { command: CMD_NAV_TAKEOFF, frame: 3, params: [Some(0.0), None, None, None, Some(lat), Some(lon), Some(30.0)], auto_continue: true, altitude: None, sections: vec![] });
         let home = doc.home.unwrap();
         let east = Document { items: vec![takeoff(home[0], home[1] + 0.01)], ..doc.clone() };
@@ -1779,7 +1779,7 @@ mod tests {
 
     #[test]
     fn an_item_qgc_cannot_show_friendly_is_edited_raw() {
-        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan"), 2).unwrap();
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let friendly = document_facts(&doc, 1, 5.0, 15.0, (&metres, &metres));
         assert_eq!((friendly["rawEdit"].clone(), friendly["friendlyEditAllowed"].clone()), (json!(false), json!(true)));
@@ -1807,7 +1807,7 @@ mod tests {
         assert_eq!(shown(85), [4], "SimpleItemEditor's nanFacts: VTOL land Yaw, while its advanced Approach Alt stays hidden");
         assert_eq!(shown(187), [1, 2, 3, 4], "each actuator of DO_SET_ACTUATOR is optional");
         assert!(shown(16).is_empty(), "a waypoint's Yaw is advanced and goes to nanFactsAdvanced, which the editor does not show");
-        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan"), 2).unwrap();
         let at = 1;
         let unset = plandoc::set_param(&doc, at, 4, f64::NAN).unwrap();
         let Some(plandoc::Item::Simple(s)) = unset.items.get(at - 1) else { panic!() };
@@ -1823,7 +1823,7 @@ mod tests {
 
     #[test]
     fn an_item_reads_edited_until_the_plan_it_is_in_is_saved() {
-        let saved = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
+        let saved = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan"), 2).unwrap();
         let moved = plandoc::set_altitude(&saved, 2, 33.0).unwrap();
         let rows = json!({ "items": std::iter::repeat_n(json!({}), moved.items.len() + 1).collect::<Vec<_>>() });
         let marked = marked_edited(rows.clone(), &moved, Some(&saved));
@@ -1867,7 +1867,7 @@ mod tests {
 
     #[test]
     fn a_sequence_number_selects_the_row_that_holds_it_as_qt_selects_it() {
-        let doc = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
+        let doc = plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan"), 2).unwrap();
         let rows: Vec<Option<i64>> = (0..8).map(|seq| visual_index_of_sequence(&doc, seq)).collect();
         assert_eq!(rows, vec![Some(0), Some(1), Some(2), Some(3), Some(3), Some(4), None, None], "sequence 4 is the mount control folded into row 3, so selecting it selects row 3");
     }

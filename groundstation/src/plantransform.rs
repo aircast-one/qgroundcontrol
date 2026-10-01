@@ -264,7 +264,7 @@ mod tests {
     }
 
     fn doc() -> Document {
-        let mut doc = crate::plandoc::load(r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":3,"vehicleType":2,"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#).unwrap();
+        let mut doc = crate::plandoc::load(r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":3,"vehicleType":2,"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#, 2).unwrap();
         doc.items = vec![simple(22, (47.0, 8.0), 30.0), simple(16, (47.001, 8.0), 50.0), simple(21, (47.0, 8.001), 0.0)];
         doc
     }

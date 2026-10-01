@@ -66,12 +66,60 @@ pub fn vehicle_class(vehicle_type: i64) -> VehicleClass {
     }
 }
 
-pub fn load(text: &str) -> Result<Document, String> {
-    let root: Value = serde_json::from_str(text).map_err(|e| format!("The plan is not JSON: {e}"))?;
-    if root.get("fileType").and_then(Value::as_str) != Some("Plan") {
-        return Err("The file is not a plan.".to_string());
+fn json_type(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "double",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
     }
-    let mission = root.get("mission").ok_or("The plan has no mission.")?;
+}
+
+fn validate_keys(object: &Value, keys: &[(&str, &str, bool)]) -> Result<(), String> {
+    let missing: Vec<&str> = keys.iter().filter(|(key, _, required)| *required && object.get(key).is_none()).map(|(key, _, _)| *key).collect();
+    if !missing.is_empty() {
+        return Err(format!("The following required keys are missing: {}", missing.join(", ")));
+    }
+    keys.iter()
+        .filter_map(|(key, expected, _)| object.get(key).map(|value| (key, expected, json_type(value))))
+        .find(|(_, expected, actual)| **expected != *actual)
+        .map_or(Ok(()), |(key, expected, actual)| Err(format!("Incorrect value type - key:type:expected {key}:{actual}:{expected}")))
+}
+
+fn validate_plan(root: &Value) -> Result<(), String> {
+    validate_keys(root, &[("groundStation", "string", true), ("fileType", "string", true), ("version", "double", true)])?;
+    let file_type = root["fileType"].as_str().unwrap_or("");
+    if file_type != "Plan" {
+        return Err(format!("Incorrect file type key expected:Plan actual:{file_type}"));
+    }
+    let version = root["version"].as_f64().unwrap_or(0.0) as i64;
+    match version {
+        v if v < 1 => return Err(format!("File version {v} is no longer supported")),
+        v if v > 1 => return Err(format!("File version {v} is newer than current supported version 1")),
+        _ => {}
+    }
+    validate_keys(root, &[("mission", "object", true), ("geoFence", "object", true), ("rallyPoints", "object", true)])?;
+    validate_keys(&root["mission"], &[("plannedHomePosition", "array", true), ("items", "array", true), ("firmwareType", "double", true), ("vehicleType", "double", false), ("cruiseSpeed", "double", false), ("hoverSpeed", "double", false), ("globalPlanAltitudeMode", "double", false)])
+        .map_err(|e| format!("Mission: {e}"))?;
+    validate_section(&root["geoFence"], FENCE_VERSION, &[("circles", "array", true), ("polygons", "array", true), ("breachReturn", "array", false)], "GeoFence supports version", true)?;
+    validate_section(&root["rallyPoints"], RALLY_VERSION, &[("points", "array", true)], "Rally Points supports version", false)
+}
+
+fn validate_section(section: &Value, version: i64, keys: &[(&str, &str, bool)], refusal: &str, unversioned_is_old: bool) -> Result<(), String> {
+    let held = section.get("version").map(|v| v.as_f64().unwrap_or(0.0) as i64);
+    if held == Some(1) || (held.is_none() && unversioned_is_old) {
+        return Ok(());
+    }
+    validate_keys(section, &[&[("version", "double", true)], keys].concat())?;
+    (held == Some(version)).then_some(()).ok_or_else(|| format!("{refusal} {version}"))
+}
+
+pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
+    let root: Value = serde_json::from_str(text).map_err(|e| format!("The plan is not JSON: {e}"))?;
+    validate_plan(&root)?;
+    let mission = &root["mission"];
     let number = |key: &str, default: f64| mission.get(key).and_then(Value::as_f64).unwrap_or(default);
     let integer = |key: &str| mission.get(key).and_then(Value::as_i64).unwrap_or(0);
     let home = mission
@@ -80,7 +128,7 @@ pub fn load(text: &str) -> Result<Document, String> {
         .filter(|h| h.len() >= 3)
         .map(|h| [h[0].as_f64().unwrap_or(0.0), h[1].as_f64().unwrap_or(0.0), h[2].as_f64().unwrap_or(0.0)])
         .ok_or("The plan has no planned home position.")?;
-    let (firmware_type, vehicle_type) = (integer("firmwareType"), integer("vehicleType"));
+    let (firmware_type, vehicle_type) = (integer("firmwareType"), mission.get("vehicleType").and_then(Value::as_f64).map_or(offline_vehicle_type, |v| v as i64));
     let commands = cmdinfo::tree(firmware(firmware_type), vehicle_class(vehicle_type));
     let items = mission
         .get("items")
@@ -898,7 +946,7 @@ mod tests {
     }
 
     fn resaves_as_qt(original: &str, resaved_by_qt: &str) {
-        let doc = load(original).unwrap();
+        let doc = load(original, 2).unwrap();
         let qt: Value = serde_json::from_str(resaved_by_qt).unwrap();
         assert_eq!(without_home_altitude(save(&doc)), without_home_altitude(qt));
     }
@@ -916,13 +964,13 @@ mod tests {
     #[test]
     fn a_loaded_document_flattens_to_the_same_upload_as_the_file() {
         let text = include_str!("../tests/fixtures/survey-upload.plan");
-        let from_doc = crate::planitems::flatten(&save(&load(text).unwrap())).unwrap();
+        let from_doc = crate::planitems::flatten(&save(&load(text, 2).unwrap())).unwrap();
         let from_file = crate::planitems::flatten(&serde_json::from_str(text).unwrap()).unwrap();
         assert_eq!(format!("{from_doc:?}"), format!("{from_file:?}"));
     }
 
     fn section() -> Document {
-        load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap()
+        load(include_str!("../../test/MissionManager/SectionTest.plan"), 2).unwrap()
     }
 
     const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0, map_center: None, vtol_transition_distance: VTOL_TRANSITION_DISTANCE_DEFAULT };
@@ -1103,7 +1151,7 @@ mod tests {
     fn section_commands_fold_into_the_item_before_them_as_qt_shows_them() {
         let qt = qt_view(include_str!("../tests/fixtures/missionitems-sectiontest-by-qt.json"));
         assert_eq!(folded_counts(&section()), qt.iter().map(|i| i["foldedCommands"].as_i64().unwrap()).collect::<Vec<_>>(), "the mount control after the second waypoint is that waypoint's camera section, so Qt shows five rows where the file holds six items");
-        let survey = load(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let survey = load(include_str!("../tests/fixtures/survey-upload.plan"), 2).unwrap();
         let qt = qt_view(include_str!("../tests/fixtures/missionitems-survey-by-qt.json"));
         assert_eq!(folded_counts(&survey), qt.iter().map(|i| i["foldedCommands"].as_i64().unwrap()).collect::<Vec<_>>());
     }
@@ -1111,14 +1159,14 @@ mod tests {
     #[test]
     fn a_speed_change_folds_only_when_it_is_the_kind_the_airframe_flies_by() {
         let speed = |ground: f64| json!({ "type": "SimpleItem", "command": 178, "frame": 2, "doJumpId": 3, "params": [ground, 12, -1, 0, 0, 0, 0] });
-        let plan = |ground: f64, vehicle: i64| json!({ "fileType": "Plan", "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [1, 2, 0], "items": [
+        let plan = |ground: f64, vehicle: i64| json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [1, 2, 0], "items": [
             { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 1.0, 2.0, 30] },
             speed(ground),
         ] } }).to_string();
-        assert_eq!(load(&plan(1.0, 2)).unwrap().items.len(), 1, "a multirotor flies by ground speed");
-        assert_eq!(load(&plan(0.0, 2)).unwrap().items.len(), 2, "an airspeed change on a multirotor stays its own row");
-        assert_eq!(load(&plan(0.0, 1)).unwrap().items.len(), 1, "a plane flies by airspeed");
-        let resaved = save(&load(&plan(1.0, 2)).unwrap());
+        assert_eq!(load(&plan(1.0, 2), 2).unwrap().items.len(), 1, "a multirotor flies by ground speed");
+        assert_eq!(load(&plan(0.0, 2), 2).unwrap().items.len(), 2, "an airspeed change on a multirotor stays its own row");
+        assert_eq!(load(&plan(0.0, 1), 2).unwrap().items.len(), 1, "a plane flies by airspeed");
+        let resaved = save(&load(&plan(1.0, 2), 2).unwrap());
         assert_eq!(resaved["mission"]["items"].as_array().unwrap().len(), 2, "a folded section is still written out after its owner");
         assert_eq!(resaved["mission"]["items"][1]["doJumpId"], 2);
     }
@@ -1130,7 +1178,7 @@ mod tests {
         let written = save(&with);
         let items = written["mission"]["items"].as_array().unwrap();
         assert_eq!((items[2]["command"].as_i64(), items[2]["params"][0].as_f64(), items[2]["params"][2].as_f64()), (Some(178), Some(1.0), Some(-1.0)), "a multirotor's speed section is a ground speed with no throttle change, the shape SpeedSection writes");
-        assert_eq!(load(&written.to_string()).unwrap().items.len(), section().items.len(), "and it folds back into its waypoint on load");
+        assert_eq!(load(&written.to_string(), 2).unwrap().items.len(), section().items.len(), "and it folds back into its waypoint on load");
         assert_eq!(specified_speed(&set_speed(&with, 2, None).unwrap(), 2), None);
         assert!(set_speed(&section(), 1, Some(8.0)).is_none(), "a takeoff has no speed section");
         assert_eq!(specified_speed(&set_speed(&section(), 0, Some(6.0)).unwrap(), 0), Some(6.0), "the settings item carries the plan's opening speed");
@@ -1146,14 +1194,41 @@ mod tests {
 
     #[test]
     fn version_one_fences_and_rally_points_are_dropped_as_qt_drops_them() {
-        let doc = load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
+        let doc = load(include_str!("../../test/MissionManager/SectionTest.plan"), 2).unwrap();
         assert_eq!(doc.fence, json!({ "circles": [], "polygons": [], "version": 2 }));
         assert_eq!(doc.rally, json!({ "points": [], "version": 2 }));
     }
 
     #[test]
     fn an_item_the_core_cannot_hold_refuses_the_whole_plan() {
-        let plan = json!({ "fileType": "Plan", "mission": { "plannedHomePosition": [0, 0, 0], "items": [{ "type": "ComplexItem", "complexItemType": "FWLandingPattern" }] } });
-        assert!(load(&plan.to_string()).unwrap_err().contains("FWLandingPattern"));
+        let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "plannedHomePosition": [0, 0, 0], "items": [{ "type": "ComplexItem", "complexItemType": "FWLandingPattern" }] } });
+        assert!(load(&plan.to_string(), 2).unwrap_err().contains("FWLandingPattern"));
+    }
+
+    #[test]
+    fn a_plan_is_held_to_the_keys_and_versions_plan_master_controller_requires() {
+        let valid = || json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "plannedHomePosition": [0, 0, 0], "items": [] } });
+        let without = |path: &[&str]| {
+            let mut plan = valid();
+            let (last, parents) = path.split_last().unwrap();
+            parents.iter().fold(&mut plan, |at, key| &mut at[*key]).as_object_mut().unwrap().remove(*last);
+            load(&plan.to_string(), 2).unwrap_err()
+        };
+        assert_eq!(without(&["groundStation"]), "The following required keys are missing: groundStation");
+        assert_eq!(without(&["rallyPoints"]), "The following required keys are missing: rallyPoints");
+        assert_eq!(without(&["mission", "firmwareType"]), "Mission: The following required keys are missing: firmwareType");
+        assert_eq!(without(&["geoFence", "polygons"]), "The following required keys are missing: polygons");
+        let with = |path: &[&str], value: Value| {
+            let mut plan = valid();
+            *path.iter().fold(&mut plan, |at, key| &mut at[*key]) = value;
+            load(&plan.to_string(), 2)
+        };
+        assert_eq!(with(&["version"], json!(2)).unwrap_err(), "File version 2 is newer than current supported version 1");
+        assert_eq!(with(&["fileType"], json!("Mission")).unwrap_err(), "Incorrect file type key expected:Plan actual:Mission");
+        assert_eq!(with(&["mission", "items"], json!({})).unwrap_err(), "Mission: Incorrect value type - key:type:expected items:object:array");
+        assert_eq!(with(&["rallyPoints", "version"], json!(3)).unwrap_err(), "Rally Points supports version 2");
+        assert!(with(&["geoFence"], json!({})).is_ok(), "an unversioned fence is old data QGC ignores");
+        assert_eq!(with(&["rallyPoints"], json!({})).unwrap_err(), "The following required keys are missing: version, points", "while an unversioned rally section is not");
+        assert_eq!(with(&["mission", "firmwareType"], json!(3)).unwrap().vehicle_type, 2, "no vehicleType takes the offline vehicle class");
     }
 }

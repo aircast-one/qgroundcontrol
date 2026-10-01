@@ -276,7 +276,7 @@ mod tests {
     fn insert_state_follows_mission_controller_for_the_selected_sequence() {
         let item = |command: i64, seq: i64| json!({ "type": "SimpleItem", "command": command, "frame": 3, "doJumpId": seq, "params": [0, 0, 0, 0, 47.0, 8.0, 30] });
         let plan = |firmware: i64, vehicle: i64, home: bool, items: Vec<Value>| {
-            let loaded = crate::plandoc::load(&json!({ "fileType": "Plan", "mission": { "firmwareType": firmware, "vehicleType": vehicle, "plannedHomePosition": [47.0, 8.0, 0], "items": items } }).to_string()).unwrap();
+            let loaded = crate::plandoc::load(&json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": firmware, "vehicleType": vehicle, "plannedHomePosition": [47.0, 8.0, 0], "items": items } }).to_string(), 2).unwrap();
             crate::plandoc::Document { home: loaded.home.filter(|_| home), ..loaded }
         };
         let rules = Rules { takeoff_not_required: false, multiple_landings: true };

@@ -1086,7 +1086,7 @@ mod from_the_document {
     }
 
     fn agrees(plan: &str, terrain_under_home: f64, qt: &str) {
-        let loaded = crate::plandoc::load(plan).unwrap();
+        let loaded = crate::plandoc::load(plan, 2).unwrap();
         let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
         let (vertical, speed) = metres();
         let mine = by_value(document_view(&doc, 0, &vertical, &speed, false, false).unwrap());
@@ -1107,7 +1107,7 @@ mod from_the_document {
     }
 
     fn status_matches(plan: &str, home_altitude: f64, qt: &str) {
-        let loaded = crate::plandoc::load(plan).unwrap();
+        let loaded = crate::plandoc::load(plan, 2).unwrap();
         let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], home_altitude]), ..loaded };
         let status = flight_status(&doc, &Speeds { hover: 5.0, cruise: 15.0, ascent: 3.0, descent: 1.0 }).unwrap();
         let qt: Value = serde_json::from_str(qt).unwrap();
@@ -1132,7 +1132,7 @@ mod from_the_document {
 
     #[test]
     fn the_rows_of_a_plan_the_core_holds_are_the_rows_qt_shows_for_it() {
-        let loaded = crate::plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap();
+        let loaded = crate::plandoc::load(include_str!("../../test/MissionManager/SectionTest.plan"), 2).unwrap();
         let terrain_under_home = 35.0;
         let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
         let (vertical, speed) = metres();
@@ -1163,7 +1163,7 @@ mod tests {
 
     #[test]
     fn a_vtol_flies_hover_and_cruise_legs_by_its_transitions_as_qt_times_them() {
-        let doc = crate::plandoc::load(include_str!("../tests/fixtures/vtol-transitions.plan")).unwrap();
+        let doc = crate::plandoc::load(include_str!("../tests/fixtures/vtol-transitions.plan"), 2).unwrap();
         let status = flight_status(&doc, &Speeds { hover: 6.0, cruise: 18.0, ascent: 3.0, descent: 1.0 }).unwrap();
         assert!((status.total_time - 561.2644666123344).abs() < 1e-6, "Qt timed this plan at 561.26 s, core {}", status.total_time);
         assert!((status.total_distance - 3546.2558210867846).abs() < 1e-6);
