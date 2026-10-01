@@ -476,6 +476,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.281
+
       - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
@@ -492,6 +495,7 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           REPO: ${{ github.repository }}
           V: ${{ needs.setup.outputs.version }}
           SHORT: ${{ needs.setup.outputs.short_version }}
