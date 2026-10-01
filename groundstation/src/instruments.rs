@@ -17,6 +17,7 @@ pub const DEPS: &[&str] = &[
 
 pub const DEFAULTS: &[&str] = &["vehicle/distanceToHome", "vehicle/altitudeRelative", "vehicle/groundSpeed", "vehicle/climbRate"];
 pub const FORWARD_FLIGHT_DEFAULTS: &[&str] = &["vehicle/airSpeed"];
+const DEFAULT_TEXT: &[(&str, &str)] = &[("vehicle/airSpeed", "AirSpd")];
 
 const ABSENT: &str = "\u{2014}";
 
@@ -91,12 +92,6 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
             let resolves = fact.get("found").and_then(Value::as_bool) != Some(false);
             let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
             let fresh = converted(backend, &fact);
-            // Qt prints "--.--" for a numeric fact whose cooked value is NaN - Fact::_variantToString
-            // does it for valueTypeFloat and valueTypeDouble - and that is a value, not an absence.
-            // JSON cannot carry NaN, so the bridge sends value: null while valueString still holds
-            // the placeholder. Taking the string there put "--.-- ft" on the flight row with
-            // missing: false, which tells every head it is a real reading. distanceToHome on a
-            // vehicle that has sent no HOME_POSITION is the case Android hit.
             let unset = matches!(fact.get("value"), Some(Value::Null));
             let held = (!unset).then(|| crate::read::shown_text(&fact)).flatten();
             let value = fresh.as_ref().map(|(shown, _)| shown.clone()).or_else(|| held.map(crate::read::settled));
@@ -108,7 +103,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 "id": format!("{group}/{name}"),
                 "group": group,
                 "name": name,
-                "label": described.map(str::to_string).unwrap_or_else(|| humanise(name)),
+                "label": args.is_empty().then(|| DEFAULT_TEXT.iter().find(|(id, _)| *id == format!("{group}/{name}")).map(|(_, text)| text.to_string())).flatten().or(described.map(str::to_string)).unwrap_or_else(|| humanise(name)),
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
                 "missing": value.is_none(),
@@ -165,6 +160,23 @@ mod tests {
         assert_eq!(items[2]["missing"], true);
         assert_eq!(items[3]["label"], "Climb Rate");
         assert_eq!(view["available"], true);
+        struct Plane;
+        impl Backend for Plane {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle" => json!({ "kind": "object", "fixedWing": true }),
+                    "vehicle.airSpeed" => json!({ "kind": "fact", "name": "airSpeed", "shortDescription": "Air Speed", "valueString": "18.0", "units": "m/s" }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(instruments_view(&Plane, &[])["items"][4]["label"], "AirSpd", "the default cell carries QGCCorePlugin's own text");
+        assert_eq!(instruments_view(&Plane, &["vehicle/airSpeed".to_string()])["items"][0]["label"], "Air Speed", "a picked cell takes the fact's description");
     }
 
     #[test]
