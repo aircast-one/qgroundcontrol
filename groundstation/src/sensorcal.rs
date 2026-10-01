@@ -139,7 +139,10 @@ pub enum Action {
     Command { command: u16, params: [f64; 7], show_error: bool },
     SetParam { name: &'static str, value: f64 },
     Ack,
+    Notice(&'static str),
 }
+
+pub const FAILED_NOTICE: &str = "Calibration failed. Calibration log will be displayed.";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Inputs {
@@ -356,7 +359,8 @@ impl Calibration {
         let restore = std::mem::take(&mut self.mag_cal_started).then(|| self.compass_fitness.take()).flatten().map(|value| Action::SetParam { name: COMPASS_FITNESS_PARAM, value });
         let learn = (!self.px4 && outcome == Outcome::Success && self.compass_learn).then_some(Action::SetParam { name: COMPASS_LEARN_PARAM, value: 0.0 });
         let cancel = failed_compass.then_some(Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false });
-        restore.into_iter().chain(learn).chain(cancel).collect()
+        let notice = (outcome == Outcome::Failed).then_some(Action::Notice(FAILED_NOTICE));
+        restore.into_iter().chain(learn).chain(cancel).chain(notice).collect()
     }
 
     pub fn on_text(&mut self, raw: &str, now_ms: u64) -> Vec<Action> {
@@ -809,7 +813,7 @@ mod tests {
         cal.start(Kind::LevelHorizon, Inputs::default(), 0).unwrap();
         cal.on_text("[cal] calibration started: 2 level", 0);
         assert!(!cal.snapshot()["showOrientations"].as_bool().unwrap());
-        cal.on_text("[cal] calibration failed", 0);
+        assert_eq!(cal.on_text("[cal] calibration failed", 0), vec![Action::Notice(FAILED_NOTICE)], "SensorsComponentController::_stopCalibration shows the app message on any failure");
         assert_eq!(cal.outcome, Some(Outcome::Failed));
         assert!(cal.on_text("[cal] calibration done: level", 0).is_empty(), "texts outside a run are ignored");
         assert_eq!(cal.outcome, Some(Outcome::Failed));
@@ -890,7 +894,7 @@ mod tests {
         let failed = cal.on_mag_report(0, 5, 99.0, 0);
         assert_eq!(
             failed,
-            vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }],
+            vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }, Action::Notice(FAILED_NOTICE)],
             "_stopCalibration sends MAV_CMD_DO_CANCEL_MAG_CAL on a failed compass cal so the autopilot stops and cannot save a late report"
         );
         assert_eq!(cal.outcome, Some(Outcome::Failed));
@@ -900,7 +904,7 @@ mod tests {
         assert_eq!(refused.len(), 2);
         assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap());
         let aborted = cal.on_ack(CMD_DO_START_MAG_CAL, 2, 0);
-        assert_eq!(aborted, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }], "a refused start restores the threshold and cancels like any failed compass cal");
+        assert_eq!(aborted, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }, Action::Notice(FAILED_NOTICE)], "a refused start restores the threshold and cancels like any failed compass cal");
         cal.start(Kind::Compass, Inputs { compass_mask: 0b001, ..Inputs::default() }, 0).unwrap();
         cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
         let cancelled = cal.cancel().unwrap();
@@ -975,7 +979,7 @@ mod tests {
         assert!(cal.tick(1_000 + STALL_TIMEOUT_MS - 1).is_empty());
         cal.on_accel_position(1, 5_000);
         assert!(cal.tick(5_000 + STALL_TIMEOUT_MS - 1).is_empty(), "every answer from the vehicle restarts the clock");
-        assert!(cal.tick(5_000 + STALL_TIMEOUT_MS).is_empty(), "an accelerometer run writes no parameters when it gives up");
+        assert_eq!(cal.tick(5_000 + STALL_TIMEOUT_MS), vec![Action::Notice(FAILED_NOTICE)], "an accelerometer run writes no parameters when it gives up, and says it failed");
         assert_eq!(cal.outcome, Some(Outcome::Failed));
         assert_eq!(cal.log.last().unwrap(), "The vehicle stopped answering during the calibration");
         assert!(cal.start(Kind::Accelerometer, Inputs::default(), 9_000).is_ok(), "giving up frees the vehicle for another try");

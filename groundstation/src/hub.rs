@@ -540,6 +540,10 @@ impl Vehicle {
                     self.follow_params(actions, now_ms)
                 }
                 sensorcal::Action::Ack => self.encode(&Outbound::AccelCalAck).into_iter().collect(),
+                sensorcal::Action::Notice(text) => {
+                    crate::noticeboard::post(crate::noticeboard::MESSAGE, "", text);
+                    Vec::new()
+                }
             })
             .collect()
     }
@@ -3056,11 +3060,6 @@ impl Hub {
         }
         self.link_counts.insert(origin.link, counted);
         let mut bytes = Vec::new();
-        // adsb::on_message existed with nothing calling it, so a vehicle relaying traffic over
-        // MAVLink reached the module through no path at all. Its SBS-1 feed opens its own socket
-        // and always worked, which is why the gap was invisible: the view answers, from one source
-        // of two. This is the frame sink every message already passes through, so the relay needs
-        // a routing line here rather than a door of its own in the C ABI.
         crate::adsb::on_message(message, now_ms);
         if let MavMessage::HEARTBEAT(h) = message {
             let (kind, autopilot) = (h.mavtype as u8, h.autopilot as u8);
@@ -3505,11 +3504,6 @@ impl Hub {
         json!({
             "kind": "object",
             "class": "CoreVehicle",
-            // available means a vehicle RECORD exists, and the hub deliberately keeps a silent
-            // vehicle exactly as the Qt head does. connectionLost is the liveness answer and was
-            // served only inside `vehicle`, one level below the flag a head reaches for first - so
-            // a head checking availability at the top level never met it and drew a frozen
-            // aircraft as a live one. Both answers now sit at the same level.
             "available": chosen.is_some(),
             "heard": chosen.map(|vehicle| !vehicle.connection_lost),
             "vehicleIds": self.vehicles.keys().collect::<Vec<_>>(),
@@ -4635,9 +4629,6 @@ mod tests {
         assert_eq!(hub.active().unwrap().parameter_meta("CAM_2_MODE", Some(ParamValue::U8(0))).unwrap()["shortDescription"], "Camera 2 mode");
         assert!(hub.active().unwrap().parameter_meta("NOPE", None).is_none());
 
-        // A parameter the vehicle will not honour until it restarts is the one thing a head has to
-        // say out loud after a write, and nothing here covered it: inverting the rule changed no
-        // assertion in the crate.
         let restart = hub.active().unwrap().parameter_meta("SERIAL1_PROTOCOL", Some(ParamValue::I32(0))).unwrap();
         assert_eq!(restart["rebootRequired"], true);
         assert_eq!(restart["vehicleRebootRequired"], true, "the two are served apart because a vehicle reboot and a ground station restart are different asks of the operator");
