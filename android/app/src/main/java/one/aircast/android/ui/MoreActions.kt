@@ -13,12 +13,13 @@ internal val BAR_ACTIONS =
 internal val SHEET_ACTIONS =
     setOf(
         "startMission", "continueMission", "resumeMission", "cancelRoi", PAUSE,
-        "landAbort", "grab", "release", "vtolTransitionToFixedWing",
+        "landAbort", "release", "grab", "hold", "vtolTransitionToFixedWing",
         "vtolTransitionToMultiRotor", "forceArm",
     )
 
 private const val GRIPPER_RELEASE = 0
 private const val GRIPPER_GRAB = 1
+private const val GRIPPER_HOLD = 2
 private const val LAND_ABORT_CLIMB_METERS = 50.0
 
 internal fun moreActions(offers: Map<String, GuidedOffer>): List<GuidedOffer> =
@@ -36,6 +37,7 @@ internal fun guidedCommand(id: String, resumeFrom: Int?): (() -> Unit)? = when (
     "landAbort" -> ({ offMainDetached { Qgc.invoke("vehicle.abortLanding", LAND_ABORT_CLIMB_METERS) } })
     "grab" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_GRAB) } })
     "release" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_RELEASE) } })
+    "hold" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_HOLD) } })
     "cancelRoi" -> ({ offMainDetached { Qgc.invoke("vehicle.stopGuidedModeROI") } })
     "vtolTransitionToFixedWing" -> ({ offMainDetached { Qgc.set("vehicle.vtolInFwdFlight", true) } })
     "vtolTransitionToMultiRotor" -> ({ offMainDetached { Qgc.set("vehicle.vtolInFwdFlight", false) } })

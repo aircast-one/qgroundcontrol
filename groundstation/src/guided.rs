@@ -110,6 +110,7 @@ pub enum Action {
     Disarm,
     Grab,
     Release,
+    Hold,
     EmergencyStop,
     VtolTransitionToFixedWing,
     VtolTransitionToMultiRotor,
@@ -130,8 +131,9 @@ pub const ACTIONS: &[Action] = &[
     Action::Land,
     Action::Rtl,
     Action::Disarm,
-    Action::Grab,
     Action::Release,
+    Action::Grab,
+    Action::Hold,
     Action::EmergencyStop,
     Action::VtolTransitionToFixedWing,
     Action::VtolTransitionToMultiRotor,
@@ -168,6 +170,7 @@ impl Action {
             Action::Disarm => "Disarm",
             Action::Grab => "Grab",
             Action::Release => "Release",
+            Action::Hold => "Hold",
             Action::EmergencyStop => "Emergency Stop",
             Action::VtolTransitionToFixedWing => "Transition to Fixed Wing",
             Action::VtolTransitionToMultiRotor => "Transition to Multi-Rotor",
@@ -192,6 +195,7 @@ impl Action {
             Action::Disarm => "Disarm the vehicle.",
             Action::Grab => "Close the gripper and hold the cargo.",
             Action::Release => "Open the gripper and drop the cargo.",
+            Action::Hold => "Stop the gripper where it is.",
             Action::EmergencyStop => "Stop the motors immediately. The vehicle will fall.",
             Action::VtolTransitionToFixedWing => "Transition VTOL to fixed wing flight.",
             Action::VtolTransitionToMultiRotor => "Transition VTOL to multi-rotor flight.",
@@ -208,7 +212,7 @@ impl Action {
             && match self {
                 Action::Arm => !s.armed,
                 Action::Disarm => s.armed && !s.flying,
-                Action::Grab | Action::Release => s.initial_connect_complete && s.has_gripper,
+                Action::Grab | Action::Release | Action::Hold => s.initial_connect_complete && s.has_gripper,
                 Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl,
                 Action::Takeoff => s.takeoff_supported && !s.flying,
                 Action::Land => s.guided_supported && s.armed && !s.fixed_wing && !s.in_land,
@@ -456,7 +460,7 @@ fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Va
         [Action::CancelRoi] => Some(json!({ "action": "cancelRoi" })),
         [Action::ResumeMission] => given.get(0).and_then(Value::as_i64).map(|index| json!({ "action": "resumeMission", "index": index })),
         [Action::LandAbort] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "abortLanding", "climbOut": metres })),
-        [Action::Grab] | [Action::Release] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip })),
+        [Action::Grab] | [Action::Release] | [Action::Hold] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip })),
         [Action::Takeoff] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "takeoff", "altitude": metres })),
         [Action::ChangeAltitude] | [Action::Pause, Action::ChangeAltitude] => given.get(0).and_then(Value::as_f64).map(|delta| json!({
             "action": "changeAltitude",
@@ -497,6 +501,7 @@ pub enum Valued {
 
 const GRIPPER_RELEASE: i64 = 0;
 const GRIPPER_GRAB: i64 = 1;
+const GRIPPER_HOLD: i64 = 2;
 
 type Checked = Result<(Vec<Action>, String), (&'static str, String)>;
 
@@ -527,7 +532,8 @@ fn valued_check(kind: Valued, args: &Value, s: &GuidedState, takeoff: Option<(f6
         Valued::Gripper => match whole(0) {
             Some(GRIPPER_GRAB) => Ok((vec![Action::Grab], json!([GRIPPER_GRAB]).to_string())),
             Some(GRIPPER_RELEASE) => Ok((vec![Action::Release], json!([GRIPPER_RELEASE]).to_string())),
-            _ => malformed("The gripper is sent 1 to grab or 0 to release."),
+            Some(GRIPPER_HOLD) => Ok((vec![Action::Hold], json!([GRIPPER_HOLD]).to_string())),
+            _ => malformed("The gripper is sent 1 to grab, 0 to release or 2 to hold."),
         },
         Valued::Resume => match whole(0) {
             Some(sequence) if sequence > 0 && sequence == s.resume_from_sequence => Ok((vec![Action::ResumeMission], json!([sequence]).to_string())),
@@ -601,7 +607,8 @@ mod tests {
         assert_eq!(check(Valued::ChangeAltitude, json!([0.0, true])).map(|c| c.0), Ok(vec![Action::Pause, Action::ChangeAltitude]), "the Pause offer is carried out as a change of altitude that pauses first");
         assert_eq!(check(Valued::Gripper, json!([1])).map(|c| c.0), Ok(vec![Action::Grab]));
         assert_eq!(check(Valued::Gripper, json!([0])).map(|c| c.0), Ok(vec![Action::Release]));
-        assert_eq!(check(Valued::Gripper, json!([2])).map_err(|e| e.0), Err("malformed"));
+        assert_eq!(check(Valued::Gripper, json!([2])).map(|c| c.0), Ok(vec![Action::Hold]));
+        assert_eq!(check(Valued::Gripper, json!([3])).map_err(|e| e.0), Err("malformed"));
         assert_eq!(check(Valued::Resume, json!([7])).map(|c| c.1), Ok("[7]".to_string()));
         assert_eq!(check(Valued::Resume, json!([4])).map_err(|e| e.0), Err("moved"), "a resume from an item the vehicle has since moved past regenerates the mission from the wrong place");
         assert_eq!(check(Valued::Pause, json!([])).map(|c| c.0), Ok(vec![Action::Pause]));

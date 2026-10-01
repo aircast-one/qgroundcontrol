@@ -20,7 +20,7 @@ pub const NOTICE_KINDS: [&str; 3] = crate::noticeboard::KINDS;
 pub fn enumerations() -> Value {
     json!({
         "view.guidedActions.actions[].offer": ["hidden", "ready", "blocked"],
-        "view.guidedActions.actions[].id": ["arm", "takeoff", "startMission", "continueMission", "resumeMission", "cancelRoi", "pause", "changeAltitude", "changeSpeed", "landAbort", "land", "rtl", "disarm", "grab", "release", "emergencyStop", "vtolTransitionToFixedWing", "vtolTransitionToMultiRotor", "forceArm"],
+        "view.guidedActions.actions[].id": ["arm", "takeoff", "startMission", "continueMission", "resumeMission", "cancelRoi", "pause", "changeAltitude", "changeSpeed", "landAbort", "land", "rtl", "disarm", "release", "grab", "hold", "emergencyStop", "vtolTransitionToFixedWing", "vtolTransitionToMultiRotor", "forceArm"],
         "view.battery.level": ["normal", "caution", "warning", "critical"],
         "view.battery.packs[].level": ["normal", "caution", "warning", "critical"],
         "view.preflight.groups[].checks[].verdict": ["manual", "passing", "failing", "overridable"],
