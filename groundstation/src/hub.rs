@@ -2682,6 +2682,27 @@ impl Hub {
         }).collect()
     }
 
+    pub fn gcs_moved(&mut self, latitude: f64, longitude: f64, altitude: f64, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
+        let enabled = crate::settingsstore::raw_setting("settings.flyViewSettings.updateHomePosition").and_then(|v| v.as_bool()).unwrap_or(false);
+        self.home_follows_gcs(enabled, (latitude, longitude, altitude), now_ms)
+    }
+
+    fn home_follows_gcs(&mut self, enabled: bool, (latitude, longitude, altitude): (f64, f64, f64), now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
+        if !enabled {
+            return Vec::new();
+        }
+        self.vehicles
+            .values_mut()
+            .filter(|vehicle| vehicle.facts.coordinate.is_some() && matches!(vehicle.autopilot, crate::modes::AUTOPILOT_PX4 | crate::modes::AUTOPILOT_ARDUPILOT) && !vehicle.replay)
+            .flat_map(|vehicle| {
+                let params = [0.0, 0.0, 0.0, 0.0, latitude, longitude, altitude];
+                let outs = vehicle.commands.send(Command { component: vehicle.component, command: guidedcmd::CMD_DO_SET_HOME, command_int: false, frame: 0, params, show_error: false, tag: 0 }, now_ms);
+                let link = vehicle.link;
+                vehicle.handle(outs, now_ms).into_iter().map(move |bytes| (link, bytes))
+            })
+            .collect()
+    }
+
     pub fn set_remote_inputs(&mut self, settings: remoteid::Settings, fix: GcsFix, now_ms: u64) {
         self.remote_inputs = Some(RemoteInputs { settings, fix, pushed_ms: now_ms });
     }
@@ -4103,6 +4124,20 @@ mod tests {
         assert!(hub.mission_request(None, &json!({ "plan": "fence", "action": "write", "polygons": [{ "vertices": [[47.0, 8.0], [47.1, 8.0]] }] }), 22_000).is_err(), "two vertices are not a polygon");
         assert!(hub.mission_request(None, &json!({ "plan": "fence", "action": "write", "breachReturn": [47.0, 8.0] }), 22_000).is_err(), "a breach return point needs its altitude");
         assert!(hub.mission_request(None, &json!({ "plan": "walls", "action": "load" }), 22_000).is_err());
+    }
+
+    #[test]
+    fn home_follows_the_ground_station_only_when_asked_and_once_the_vehicle_has_a_position() {
+        use mavlink::dialects::ardupilotmega::{GLOBAL_POSITION_INT_DATA, MavCmd};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        assert!(hub.home_follows_gcs(true, (47.5, 8.5, 400.0), 40_000).is_empty(), "no vehicle position, nothing to compare against");
+        let position = MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA { lat: 474000000, lon: 85000000, alt: 500_000, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &position, 41_000_000, 41_000);
+        assert!(hub.home_follows_gcs(false, (47.5, 8.5, 400.0), 41_100).is_empty());
+        let sent = hub.home_follows_gcs(true, (47.5, 8.5, 400.0), 41_200);
+        assert!(sent.iter().any(|(_, b)| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_SET_HOME && c.param5 == 47.5 && c.param7 == 400.0)), "{sent:?}");
     }
 
     #[test]
