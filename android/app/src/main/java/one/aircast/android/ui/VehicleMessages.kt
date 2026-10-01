@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,9 +52,17 @@ internal fun bannerText(blocker: String?, messages: List<VehicleMessage>): Strin
     if (messages.isEmpty()) return null
     val worst = messages.lastOrNull { it.level == MessageSeverity.Error }
         ?: messages.lastOrNull { it.level == MessageSeverity.Warning }
-    val count = "${messages.size} message${if (messages.size == 1) "" else "s"} from the vehicle"
+    val count = messageCountText(messages.size)
     return worst?.text?.takeIf { it.isNotBlank() }?.let { "$it · $count" } ?: count
 }
+
+internal fun messageCountText(count: Int): String = "$count message${if (count == 1) "" else "s"} from the vehicle"
+
+internal fun unreadMessages(messages: List<VehicleMessage>, seenThrough: Int): List<VehicleMessage> =
+    messages.filter { it.index > seenThrough }
+
+internal fun seenThroughFor(messages: List<VehicleMessage>, seenThrough: Int): Int =
+    seenThrough.takeIf { seen -> messages.any { it.index >= seen } } ?: -1
 
 internal fun levelOf(name: String): MessageSeverity = when (name) {
     "error" -> MessageSeverity.Error
@@ -114,14 +123,16 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     val messages = remember(messagesJson) { vehicleMessages(messagesJson) }
 
     var showing by remember { mutableStateOf(false) }
+    var seenThrough by remember { mutableIntStateOf(-1) }
+    val seen = seenThroughFor(messages, seenThrough)
+    val unread = unreadMessages(messages, seen)
 
     val blocker = armingBlocker(warnings)
     val checks = remember(warnings) { armingChecks(warnings).orEmpty() }
-    val count = messages.size
-    val hasError = messages.any { it.level == MessageSeverity.Error }
-    val hasWarning = messages.any { it.level == MessageSeverity.Warning }
+    val hasError = unread.any { it.level == MessageSeverity.Error }
+    val hasWarning = unread.any { it.level == MessageSeverity.Warning }
 
-    if (blocker == null && count == 0) return
+    if (blocker == null && messages.isEmpty()) return
 
     val urgent = blocker != null || hasError
     val tint = when {
@@ -133,7 +144,10 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     Row(
         modifier
             .fillMaxWidth()
-            .clickable { showing = true }
+            .clickable {
+                showing = true
+                seenThrough = messages.maxOfOrNull { it.index } ?: -1
+            }
             .heightIn(min = 48.dp)
             .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -143,7 +157,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
             Icon(Icons.Filled.Warning, contentDescription = null, tint = tint)
         }
         Text(
-            text = bannerText(blocker, messages).orEmpty(),
+            text = bannerText(blocker, unread) ?: messageCountText(messages.size),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,

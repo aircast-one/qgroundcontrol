@@ -167,4 +167,19 @@ class VehicleMessagesContractTest {
             vehicleMessages(JSONObject("""{"class":"VehicleMessages","messages":[{"text":"x"}]}""")).isEmpty(),
         )
     }
+
+    @Test
+    fun `opening the log marks what was there as read, as resetAllMessages does`() {
+        val messages = listOf(
+            VehicleMessage(0, "", "error", MessageSeverity.Error, "EKF variance"),
+            VehicleMessage(1, "", "info", MessageSeverity.Normal, "Armed"),
+        )
+        assertEquals(2, unreadMessages(messages, -1).size)
+        assertEquals("an old error no longer turns the banner red", emptyList<VehicleMessage>(), unreadMessages(messages, 1))
+        val newer = messages + VehicleMessage(2, "", "warning", MessageSeverity.Warning, "Low battery")
+        assertEquals(listOf("Low battery"), unreadMessages(newer, 1).map { it.text })
+        assertEquals("a cleared log starts unread again", -1, seenThroughFor(listOf(VehicleMessage(0, "", "info", MessageSeverity.Normal, "x")), 5))
+        assertEquals("2 messages from the vehicle", messageCountText(2))
+    }
+
 }
