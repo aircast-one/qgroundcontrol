@@ -611,6 +611,78 @@ fn control(backend: &dyn Backend, param: &Param, name: &str, bit: i64) -> Option
     Some(decoded)
 }
 
+type FunctionEnumInfo = (std::collections::BTreeMap<i64, String>, std::collections::BTreeSet<i64>);
+
+fn function_enum_info(metadata: &Metadata, mixer: &MixerState, label_of: &dyn Fn(i64) -> String) -> FunctionEnumInfo {
+    let used: std::collections::BTreeMap<i64, String> = mixer_functions(mixer, false).into_iter().map(|f| (f, label_of(f))).collect();
+    let removed = metadata.actuator_types.iter().filter(|t| t.name != "DEFAULT").flat_map(|t| t.function_min..=t.function_max).filter(|f| !used.contains_key(f)).collect();
+    (used, removed)
+}
+
+pub fn output_function_fact(backend: &dyn Backend, path: &str, fact: Value) -> Value {
+    if !path.starts_with("vehicle.parameterManager.getParameter(-1,") {
+        return fact;
+    }
+    let metadata = crate::hub::lock().active().and_then(|v| v.actuators_metadata.clone()).and_then(|m| parse(&m).ok());
+    let Some(metadata) = metadata else { return fact };
+    let exists = |name: &str| self::fact(backend, name).is_some();
+    let is_function = kept_outputs(&metadata, &exists).iter().any(|output| function_params(output).iter().any(|name| parameter_path(name) == path));
+    if !is_function {
+        return fact;
+    }
+    let value_of = |name: &str| integer(backend, name);
+    let mixer = mixer_state(&metadata, &value_of);
+    let enum_text = |name: &str| Some((integer(backend, name)?, self::fact(backend, name)?.get("valueString").and_then(Value::as_str).unwrap_or("").to_string()));
+    let label_of = |function: i64| specific_label(&metadata, &mixer, function, &enum_text);
+    let (used, removed) = function_enum_info(&metadata, &mixer, &label_of);
+    function_fact(fact, &used, &removed)
+}
+
+pub fn rewrite_function_enum(strings: &[String], values: &[i64], used: &std::collections::BTreeMap<i64, String>, removed: &std::collections::BTreeSet<i64>) -> (Vec<String>, Vec<i64>) {
+    let entries: Vec<(i64, String)> = values.iter().copied().zip(strings.iter().cloned()).collect();
+    let with_used = used.iter().fold(entries, |entries, (function, label)| match entries.iter().position(|(v, _)| v == function) {
+        Some(at) => entries.into_iter().enumerate().map(|(i, e)| if i == at { (e.0, label.clone()) } else { e }).collect(),
+        None => {
+            let at = entries.iter().position(|(v, _)| v > function).unwrap_or(entries.len());
+            entries[..at].iter().cloned().chain(std::iter::once((*function, label.clone()))).chain(entries[at..].iter().cloned()).collect()
+        }
+    });
+    with_used.into_iter().filter(|(v, _)| !removed.contains(v)).map(|(v, l)| (l, v)).unzip()
+}
+
+fn function_fact(read: Value, used: &std::collections::BTreeMap<i64, String>, removed: &std::collections::BTreeSet<i64>) -> Value {
+    let strings: Vec<String> = read.get("enumStrings").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+    if strings.is_empty() {
+        return read;
+    }
+    let values: Vec<i64> = read.get("enumValues").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)).or_else(|| v.as_str()?.parse().ok())).collect()).unwrap_or_default();
+    let (labels, numbers) = rewrite_function_enum(&strings, &values, used, removed);
+    let current = read.get("rawValue").or_else(|| read.get("value")).and_then(Value::as_f64).map(|v| v as i64);
+    let index = current.and_then(|c| numbers.iter().position(|n| *n == c));
+    let mut rewritten = read;
+    rewritten["enumStrings"] = json!(labels);
+    rewritten["enumValues"] = json!(numbers);
+    if let Some(index) = index {
+        rewritten["enumIndex"] = json!(index);
+        rewritten["valueString"] = json!(labels[index]);
+        rewritten["enumStringValue"] = json!(labels[index]);
+    }
+    rewritten
+}
+
+fn function_control(backend: &dyn Backend, param: &Param, name: &str, bit: i64, used: &std::collections::BTreeMap<i64, String>, removed: &std::collections::BTreeSet<i64>) -> Option<Value> {
+    if param.function != "function" {
+        return control(backend, param, name, bit);
+    }
+    let read = function_fact(fact(backend, name)?, used, removed);
+    let mut decoded = decode(&read, &parameter_path(name));
+    decoded["label"] = json!(param.label);
+    decoded["showAs"] = json!(param.show_as);
+    decoded["bit"] = json!(bit);
+    decoded["advanced"] = json!(param.advanced);
+    Some(decoded)
+}
+
 fn params_json(backend: &dyn Backend, params: &[Param]) -> Vec<Value> {
     params.iter().filter_map(|p| control(backend, p, &p.name, 0)).collect()
 }
@@ -630,6 +702,7 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
     let label_of = |function: i64| specific_label(metadata, &mixer, function, &enum_text);
     let testing = test_actuators(metadata, &value_of, &label_of);
     let configured = configured_functions(metadata, &value_of);
+    let (used_labels, removed_functions) = function_enum_info(metadata, &mixer, &label_of);
     let held = crate::hub::lock().active().map(|v| (v.actuator_test.had_failure, v.motor_assignment.active(), v.motor_assignment.message.clone(), v.motor_assignment.highlighted()));
     let (had_failure, assigning, assignment_message, highlighted) = held.unwrap_or_default();
     let motors_drawn = !motor_geometry(metadata, &mixer, &|name| number_of(backend, name)).is_empty();
@@ -668,7 +741,7 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
                 "columns": subgroup.channel_configs.iter().map(|c| json!({ "label": c.label, "advanced": c.advanced, "visible": c.show_if.evaluate(&value_of), "function": c.function })).collect::<Vec<_>>(),
                 "channels": subgroup.channels.iter().map(|channel| json!({
                     "label": channel.label,
-                    "configs": subgroup.channel_configs.iter().map(|config| control(backend, config, &channel_param(config, channel), channel.param_index + config.index_offset)).collect::<Vec<_>>(),
+                    "configs": subgroup.channel_configs.iter().map(|config| function_control(backend, config, &channel_param(config, channel), channel.param_index + config.index_offset, &used_labels, &removed_functions)).collect::<Vec<_>>(),
                 })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
@@ -969,6 +1042,19 @@ mod tests {
         ]);
         let tilt = |name: &str| (name == "CA_AIRFRAME").then_some(5);
         assert!(motor_geometry(&parsed, &mixer_state(&parsed, &tilt), &|_| None).is_empty(), "fixed X and Y but no Z is not a full position, so nothing is drawn");
+    }
+
+    #[test]
+    fn the_function_dropdown_names_used_motors_specifically_and_drops_unused_ones() {
+        let strings: Vec<String> = ["Disabled", "Motor 1", "Motor 2", "Motor 3", "Servo 1"].iter().map(|s| s.to_string()).collect();
+        let values = [0, 101, 102, 103, 201];
+        let used: std::collections::BTreeMap<i64, String> = [(101, "Front Left Motor".to_string()), (102, "Front Right Motor".to_string()), (202, "Right Elevon".to_string())].into_iter().collect();
+        let removed: std::collections::BTreeSet<i64> = [103, 104, 201].into_iter().collect();
+        let (labels, numbers) = rewrite_function_enum(&strings, &values, &used, &removed);
+        assert_eq!(numbers, [0, 101, 102, 202]);
+        assert_eq!(labels, ["Disabled", "Front Left Motor", "Front Right Motor", "Right Elevon"], "a used function missing from the list is inserted in order");
+        let read = function_fact(json!({ "kind": "fact", "rawValue": 102, "value": 102, "enumStrings": strings, "enumValues": values, "enumIndex": 2, "valueString": "Motor 2" }), &used, &removed);
+        assert_eq!((read["enumIndex"].clone(), read["valueString"].clone()), (json!(2), json!("Front Right Motor")));
     }
 
     #[test]

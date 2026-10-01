@@ -162,6 +162,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         return answered;
     }
     let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let fact = crate::actuators::output_function_fact(backend, path, fact);
     let control = decode(&fact, path);
     if let Some((token, reason)) = refusal(&control, &fact, &asked).filter(|_| !unchanged(&fact, &asked)) {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": path });
