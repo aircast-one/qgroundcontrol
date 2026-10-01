@@ -3073,17 +3073,25 @@ impl Hub {
 
     pub fn link_closed(&mut self, link: LinkId) {
         crate::signing::lock().closed(link);
-        let gone: Vec<u8> = self.vehicles.values().filter(|v| v.link == link).map(|v| v.id).collect();
-        gone.iter().for_each(|id| self.remove(*id));
+        self.keep_vehicles_on(|candidate| candidate != link);
     }
 
     pub fn retain_links(&mut self, open: &[LinkId]) {
         self.link_counts.retain(|link, _| open.contains(link));
+        self.keep_vehicles_on(|candidate| open.contains(&candidate));
+    }
+
+    fn keep_vehicles_on(&mut self, still_open: impl Fn(LinkId) -> bool) {
         self.vehicles.values_mut().for_each(|v| {
-            v.link_states.retain(|(link, _, _)| open.contains(link));
+            v.link_states.retain(|(link, _, _)| still_open(*link));
             let _ = v.update_primary_link();
+            if !still_open(v.link) {
+                if let Some(next) = v.primary_link.or_else(|| v.link_states.first().map(|(link, _, _)| *link)) {
+                    v.link = next;
+                }
+            }
         });
-        let gone: Vec<u8> = self.vehicles.values().filter(|v| !open.contains(&v.link)).map(|v| v.id).collect();
+        let gone: Vec<u8> = self.vehicles.values().filter(|v| !still_open(v.link)).map(|v| v.id).collect();
         gone.iter().for_each(|id| self.remove(*id));
     }
 
@@ -3750,6 +3758,19 @@ mod tests {
         hub.check_links(4_000, &[11]);
         assert_eq!(hub.vehicles[&7].primary_link, Some(12));
         assert!(crate::speech::spoken_lines().iter().any(|line| line == "switching communication back to the direct link."));
+    }
+
+    #[test]
+    fn closing_one_of_two_links_keeps_the_vehicle_on_the_other() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 100);
+        hub.link_closed(1);
+        let vehicle = hub.active().expect("MultiVehicleManager removes a vehicle only when allLinksRemoved fires");
+        assert_eq!((vehicle.link, vehicle.primary_link), (2, Some(2)), "it is now reached on the link that is still open");
+        hub.retain_links(&[]);
+        assert!(hub.active().is_none(), "with no link left it goes");
     }
 
     #[test]
