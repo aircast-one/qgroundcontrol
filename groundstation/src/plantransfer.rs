@@ -36,6 +36,7 @@ pub enum Out {
     SendCount(u16),
     SendItem(Item),
     SendAck,
+    ClearAll,
     StartTimer(u64),
     StopTimer,
     Progress(f64),
@@ -48,12 +49,14 @@ enum Expect {
     Count,
     Item,
     Request,
+    ClearAck,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transaction {
     Read,
     Write,
+    RemoveAll,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -229,6 +232,22 @@ impl Transfer {
         out
     }
 
+    pub fn remove_all(&mut self) -> Vec<Out> {
+        if self.in_progress() {
+            return Vec::new();
+        }
+        self.items.clear();
+        self.retries = 0;
+        self.transaction = Some(Transaction::RemoveAll);
+        self.clear_all()
+    }
+
+    fn clear_all(&mut self) -> Vec<Out> {
+        let mut out = vec![Out::ClearAll];
+        out.extend(self.expecting(Expect::ClearAck));
+        out
+    }
+
     pub fn write(&mut self, items: Vec<Item>) -> Vec<Out> {
         if self.in_progress() {
             return Vec::new();
@@ -282,6 +301,11 @@ impl Transfer {
                 self.write_count()
             }
             Some(Expect::Request) => self.finish(false, "Vehicle did not request all items from ground station: MISSION_REQUEST"),
+            Some(Expect::ClearAck) if self.retries > MAX_RETRY => self.finish(false, "Mission remove all, maximum retries exceeded."),
+            Some(Expect::ClearAck) => {
+                self.retries += 1;
+                self.clear_all()
+            }
         }
     }
 
@@ -359,6 +383,8 @@ impl Transfer {
         match (expected, result, self.to_write.is_empty()) {
             (Expect::Request, RESULT_ACCEPTED, true) => self.finish(true, ""),
             (Expect::Request, RESULT_ACCEPTED, false) => self.finish(false, "Vehicle acknowledged the mission before requesting every item."),
+            (Expect::ClearAck, RESULT_ACCEPTED, _) => self.finish(true, ""),
+            (Expect::ClearAck, failed, _) => self.finish(false, &format!("Vehicle remove all failed. Error: {}", result_text(failed))),
             _ => self.finish(false, &result_text(result)),
         }
     }
@@ -374,6 +400,26 @@ mod tests {
 
     fn timer(out: &[Out]) -> Option<u64> {
         out.iter().find_map(|o| match o { Out::StartTimer(ms) => Some(*ms), _ => None })
+    }
+
+    #[test]
+    fn remove_all_clears_the_vehicle_like_plan_manager_remove_all() {
+        let mut transfer = Transfer::new(true, PLAN_MISSION);
+        transfer.items = vec![waypoint(0, 47.0)];
+        let started = transfer.remove_all();
+        assert_eq!((started[0].clone(), timer(&started)), (Out::ClearAll, Some(ACK_TIMEOUT_MS)));
+        assert!(transfer.items.is_empty(), "_clearAndDeleteMissionItems runs before the vehicle answers");
+        assert!(transfer.remove_all().is_empty(), "one transaction at a time");
+        assert_eq!(transfer.on_timeout()[0], Out::ClearAll, "a lost ack is retried");
+        assert!(matches!(transfer.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: true, .. })));
+        assert!(!transfer.in_progress() && !transfer.wrote);
+        let mut refused = Transfer::new(true, PLAN_FENCE);
+        refused.remove_all();
+        assert!(matches!(refused.on_ack(1).last(), Some(Out::Done { success: false, error }) if error == "Vehicle remove all failed. Error: Unspecified error"));
+        let mut lost = Transfer::new(true, PLAN_RALLY);
+        lost.remove_all();
+        (0..=MAX_RETRY).for_each(|_| { lost.on_timeout(); });
+        assert!(matches!(lost.on_timeout().last(), Some(Out::Done { success: false, error }) if error == "Mission remove all, maximum retries exceeded."));
     }
 
     #[test]

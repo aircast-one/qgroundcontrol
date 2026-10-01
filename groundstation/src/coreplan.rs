@@ -194,8 +194,15 @@ pub fn apply(change: impl FnOnce(&Document) -> Result<Document, String>) -> Valu
     edit(change)
 }
 
+static MAP_CENTER_HINT: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+pub fn set_map_center_hint(latitude: f64, longitude: f64) {
+    *MAP_CENTER_HINT.lock().unwrap_or_else(PoisonError::into_inner) = Some((latitude, longitude));
+}
+
 fn edit_defaults(backend: &dyn Backend) -> Option<plandoc::EditDefaults> {
-    crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude })
+    let map_center = *MAP_CENTER_HINT.lock().unwrap_or_else(PoisonError::into_inner);
+    crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude, map_center })
 }
 
 fn insert_at(backend: &dyn Backend, args: &str, land: bool) -> Value {
@@ -1094,6 +1101,27 @@ pub fn history() -> Option<(bool, bool)> {
     })
 }
 
+fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
+    let Some((fence, rally)) = crate::hub::lock().active().map(crate::hub::Vehicle::plans_supported) else {
+        return refused("No vehicle is connected through the core.");
+    };
+    let kinds = ["mission"].into_iter().chain(fence.then_some("fence")).chain(rally.then_some("rally"));
+    let refusals: Vec<String> = kinds
+        .filter_map(|kind| match crate::hub::lock().mission_request(None, &json!({ "action": "removeAll", "plan": kind }), crate::hub::now_ms()) {
+            Ok(outbound) => {
+                deliver(outbound);
+                None
+            }
+            Err(reason) => Some(reason),
+        })
+        .collect();
+    clear(backend);
+    match refusals.first() {
+        None => json!({ "ok": true }),
+        Some(reason) => refused(reason.clone()),
+    }
+}
+
 fn clear(backend: &dyn Backend) -> Value {
     let fresh = held().document.is_none().then(|| fresh_document(backend));
     {
@@ -1481,6 +1509,8 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "plan.loadFromVehicle" if !carried() => fetch_through_host(backend),
         "plan.sendToVehicle" => send(),
         "plan.loadFromVehicle" => fetch(),
+        "plan.removeAllFromVehicle" if !carried() => return None,
+        "plan.removeAllFromVehicle" => remove_all_from_vehicle(backend),
         "plan.removeAll" => clear(backend),
         "mission.insert" => insert_kind(backend, args),
         "mission.remove" | "plan.missionController.removeVisualItem" => remove(args),

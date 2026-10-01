@@ -605,6 +605,7 @@ impl Vehicle {
                 plantransfer::Out::SendItem(item) => self.encode(&Outbound::MissionItemInt { target, plan: kind, item }).into_iter().collect(),
                 plantransfer::Out::SendAck => self.encode(&Outbound::MissionAck { target, plan: kind, result: plantransfer::RESULT_ACCEPTED }).into_iter().collect(),
                 plantransfer::Out::ClearAll => self.encode(&Outbound::MissionClearAll { target, plan: kind }).into_iter().collect(),
+                plantransfer::Out::ClearAll => self.encode(&Outbound::MissionClearAll { target, plan: kind }).into_iter().collect(),
                 plantransfer::Out::StartTimer(ms) => {
                     self.plans[plan].due = Some(now_ms + ms);
                     Vec::new()
@@ -701,6 +702,13 @@ impl Vehicle {
         }
         match request.get("action").and_then(Value::as_str).unwrap_or("") {
             "load" => Ok(self.load_plan(kind, now_ms)),
+            "removeAll" => {
+                if kind == PLAN_MISSION {
+                    (self.mission_current, self.mission_last_current) = (-1, -1);
+                }
+                let outs = self.plans[kind as usize].transfer.remove_all();
+                Ok(self.follow_plan(kind, outs, now_ms))
+            }
             "removeAll" => {
                 if kind == PLAN_MISSION {
                     (self.mission_current, self.mission_last_current) = (-1, -1);

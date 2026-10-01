@@ -619,6 +619,17 @@ fn activate(backend: &dyn Backend, args: &str) -> Value {
     let Some(wanted) = args.as_array().and_then(|args| args.first()).and_then(Value::as_i64) else {
         return json!({ "ok": false, "reason": "vehicles.setActive takes the id of the vehicle to command" });
     };
+    if !crate::qthost::present() {
+        let mut hub = crate::hub::lock();
+        let known = u8::try_from(wanted).ok().filter(|id| hub.vehicle_ids().contains(id));
+        return match known {
+            Some(id) => {
+                hub.set_active(Some(id));
+                json!({ "ok": true, "activating": wanted })
+            }
+            None => json!({ "ok": false, "reason": format!("no vehicle {wanted} is connected") }),
+        };
+    }
     let count = serde_json::from_str::<Value>(&backend.get("vehicles.vehicles.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64)).unwrap_or(0);
     let found = (0..count).find(|index| {
         crate::read::integer(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), "id")), "id") == Some(wanted)

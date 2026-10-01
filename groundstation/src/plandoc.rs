@@ -214,6 +214,7 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
 
 pub struct EditDefaults {
     pub mission_item_altitude: f64,
+    pub map_center: Option<(f64, f64)>,
 }
 
 const CMD_NAV_WAYPOINT: i64 = 16;
@@ -266,9 +267,11 @@ fn with_command_defaults(doc: &Document, commands: &std::collections::BTreeMap<i
     let coordinate = info.is_some_and(|c| c.specifies_coordinate || c.standalone_coordinate);
     let specifies_altitude = info.is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
     let listed = param_defaults(info);
-    let (latitude, longitude) = match coordinate {
-        true => (kept[4], kept[5]),
-        false => (Some(0.0), Some(0.0)),
+    let unplaced = kept[4].unwrap_or(0.0) == 0.0 && kept[5].unwrap_or(0.0) == 0.0;
+    let (latitude, longitude) = match (coordinate, unplaced.then_some(defaults.map_center).flatten()) {
+        (true, Some((latitude, longitude))) => (Some(latitude), Some(longitude)),
+        (true, None) => (kept[4], kept[5]),
+        (false, _) => (Some(0.0), Some(0.0)),
     };
     let takeoff = info.is_some_and(|c| c.is_takeoff);
     let mode = match takeoff {
@@ -751,7 +754,22 @@ mod tests {
         load(include_str!("../../test/MissionManager/SectionTest.plan")).unwrap()
     }
 
-    const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0 };
+    const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0, map_center: None };
+
+    #[test]
+    fn a_command_that_gains_a_coordinate_lands_on_the_map_centre_hint() {
+        let rtl = Simple { command: 20, frame: FRAME_MISSION, params: [Some(0.0); 7], auto_continue: true, altitude: None, sections: Vec::new() };
+        let doc = Document { items: vec![Item::Simple(rtl.clone())], ..section() };
+        let hinted = EditDefaults { map_center: Some((47.39, 8.54)), ..QT_DEFAULTS };
+        let moved = |defaults: &EditDefaults| match &set_command(&doc, 1, CMD_NAV_WAYPOINT, defaults).unwrap().items[0] {
+            Item::Simple(s) => (s.params[4], s.params[5]),
+            Item::Complex { .. } => panic!("a waypoint is simple"),
+        };
+        assert_eq!(moved(&hinted), (Some(47.39), Some(8.54)), "SimpleMissionItem::_setDefaultsForCommand uses _mapCenterHint");
+        assert_eq!(moved(&QT_DEFAULTS), (Some(0.0), Some(0.0)), "without a hint it keeps the zeros it had");
+        let placed = Document { items: vec![Item::Simple(Simple { params: [Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(1.0), Some(2.0), Some(0.0)], ..rtl })], ..section() };
+        assert!(matches!(&set_command(&placed, 1, CMD_NAV_WAYPOINT, &hinted).unwrap().items[0], Item::Simple(s) if (s.params[4], s.params[5]) == (Some(1.0), Some(2.0))), "an item that already has a place keeps it");
+    }
 
     fn matches_qt(doc: &Document, qt: &str) {
         let qt: Value = serde_json::from_str(qt).unwrap();

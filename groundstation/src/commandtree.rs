@@ -164,6 +164,14 @@ pub fn hint(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let Some((latitude, longitude)) = crate::fenceedit::point(given.get(0)) else {
         return refused("badCoordinate", "The map centre needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string());
     };
+    if crate::coreplan::enabled() {
+        let simple = crate::coreplan::current_document().items.get(index.wrapping_sub(1)).is_some_and(|item| matches!(item, crate::plandoc::Item::Simple(_)));
+        if !simple {
+            return refused("noCommand", format!("Item {index} has no command to change."));
+        }
+        crate::coreplan::set_map_center_hint(latitude, longitude);
+        return json!({ "ok": true, "refusal": Value::Null, "reason": Value::Null });
+    }
     let item = object(&backend.get_fields(&format!("{ITEM_COMMANDS}{index}"), "command"));
     if item.get("command").and_then(Value::as_i64).is_none() {
         return refused("noCommand", format!("Item {index} has no command to change."));
