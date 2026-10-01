@@ -115,6 +115,22 @@ fn apm_power(facts: Facts) -> Rows {
         .collect()
 }
 
+fn px4_power(facts: Facts) -> Rows {
+    let count = (1..).take_while(|index| facts(&format!("BAT{index}_SOURCE")).is_some()).count();
+    let label = |index: usize, numbered: &str, single: &str| if count > 1 { format!("Battery {index} {numbered}") } else { single.to_string() };
+    let or_na = |name: String, show: fn(&Value) -> String| facts(&name).map_or_else(|| NOT_AVAILABLE.to_string(), |f| show(&f));
+    (1..=count)
+        .flat_map(|index| {
+            [
+                row(&label(index, "Source", "Battery Source"), enum_of(facts, &format!("BAT{index}_SOURCE"))),
+                row(&label(index, "Full", "Battery Full"), or_na(format!("BAT{index}_V_CHARGED"), with_units)),
+                row(&label(index, "Empty", "Battery Empty"), or_na(format!("BAT{index}_V_EMPTY"), with_units)),
+                row(&label(index, "Number of Cells", "Number of Cells"), or_na(format!("BAT{index}_N_CELLS"), |f| text(f, "valueString"))),
+            ]
+        })
+        .collect()
+}
+
 fn apm_esc(facts: Facts) -> Rows {
     let prefix = if facts("MOT_PWM_TYPE").is_none() && facts("Q_M_PWM_TYPE").is_some() { "Q_M_" } else { "MOT_" };
     let pwm = facts(&format!("{prefix}PWM_TYPE"));
@@ -294,6 +310,7 @@ pub fn rows(class: &str, facts: Facts, vehicle: &Vehicle) -> Option<Rows> {
         "FlightModesComponent" => px4_flight_modes(facts),
         "APMPowerComponent" => apm_power(facts),
         "APMESCComponent" => apm_esc(facts),
+        "PowerComponent" => px4_power(facts),
         "APMAirspeedComponent" => apm_airspeed(facts),
         "APMFollowComponent" => apm_follow(facts),
         "APMFailsafesComponent" => apm_failsafes(facts, vehicle),
@@ -367,6 +384,18 @@ mod tests {
         let map = HashMap::from([("BATT_MONITOR", fact(4.0, "4", "Analog Voltage and Current", "")), ("BATT_CAPACITY", fact(5000.0, "5000", "", "mAh")), ("BATT2_MONITOR", fact(0.0, "0", "Disabled", "")), ("BATT4_MONITOR", fact(4.0, "4", "x", ""))]);
         assert_eq!(rows("APMPowerComponent", &lookup(&map), &copter()).unwrap(), [row("Batt1 monitor", "Analog Voltage and Current"), row("Batt1 capacity", "5000 mAh")]);
         assert_eq!((battery_prefix(0), battery_prefix(8), battery_prefix(9), battery_label(15)), ("BATT_".into(), "BATT9_".into(), "BATTA_".into(), "G".into()));
+    }
+
+    #[test]
+    fn px4_power_numbers_its_batteries_only_when_there_are_several() {
+        let one = HashMap::from([("BAT1_SOURCE", fact(0.0, "0", "Power Module", "")), ("BAT1_V_CHARGED", fact(4.2, "4.20", "", "V"))]);
+        assert_eq!(
+            rows("PowerComponent", &lookup(&one), &copter()).unwrap(),
+            [row("Battery Source", "Power Module"), row("Battery Full", "4.20 V"), row("Battery Empty", NOT_AVAILABLE), row("Number of Cells", NOT_AVAILABLE)]
+        );
+        let two = HashMap::from([("BAT1_SOURCE", fact(0.0, "0", "Power Module", "")), ("BAT2_SOURCE", fact(1.0, "1", "External", ""))]);
+        let shown = rows("PowerComponent", &lookup(&two), &copter()).unwrap();
+        assert_eq!((shown.len(), shown[4].clone()), (8, row("Battery 2 Source", "External")));
     }
 
     #[test]
