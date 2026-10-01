@@ -133,7 +133,7 @@ internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
+fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, onDismiss: () -> Unit) {
     var revision by remember(index) { mutableIntStateOf(0) }
     var view by remember(index) { mutableStateOf<JSONObject?>(null) }
     var choosing by remember(index) { mutableStateOf(false) }
@@ -188,6 +188,17 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                 view?.optJSONObject("launchAltitude")?.let(::factFromControl)?.let { launch ->
                     Text("Launch Position", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                     FactRow(launch, subtitle = "Actual position is set by the vehicle at flight time.") { revision++ }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Position", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton(enabled = mapCentre != null, onClick = {
+                            val (latitude, longitude) = mapCentre ?: return@TextButton
+                            scope.launch {
+                                val moved = withContext(Dispatchers.Default) { PlanBridge.moveItem(0, latitude, longitude) }
+                                refusal = if (moved) null else "The launch position could not be moved there."
+                                revision++
+                            }
+                        }) { Text("Set To Map Center") }
+                    }
                 }
             }
             altitudesRelative(view)?.let { relative ->

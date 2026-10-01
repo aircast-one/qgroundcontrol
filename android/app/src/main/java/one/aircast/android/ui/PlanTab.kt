@@ -181,7 +181,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
         PlanMapScreen(
             Modifier.fillMaxSize(),
             onCentre = { lat, lon -> centre = lat to lon },
-            itemEditor = { index, at, close -> ItemEditor(index, at, close) },
+            itemEditor = { index, at, close -> ItemEditor(index, at, centre, close) },
             header = { upload ->
                 Column {
                     Row(
