@@ -1,24 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# =============================================================================
-# release.sh - Create and push version tags for the Aircast QGroundControl fork
-# =============================================================================
-# The aircast-release workflow (.github/workflows/aircast-release.yml) builds
-# and publishes on these tag patterns, so the types below map to those triggers.
-# Tags are prefixed `aircast-v` because bare vX.Y.Z is upstream QGC's tag
-# namespace and collides on fetch.
-#
-#   patch    - Bump patch version   (aircast-v5.0.8 -> aircast-v5.0.9)   [production]
-#   minor    - Bump minor version   (aircast-v5.0.8 -> aircast-v5.1.0)   [production]
-#   major    - Bump major version   (aircast-v5.0.8 -> aircast-v6.0.0)   [production]
-#   dev      - Development release  (aircast-v5.0.8 -> aircast-v5.0.9-dev.1)
-#   staging  - Staging release      (aircast-v5.0.8 -> aircast-v5.0.8-staging.1)
-#
-# Usage:
-#   ./scripts/release.sh <patch|minor|major|dev|staging>
-# =============================================================================
-
 TYPE="${1:?Usage: $0 <patch|minor|major|dev|staging>}"
 
 GREEN='\033[0;32m'
@@ -29,7 +11,7 @@ log_info() { echo -e "${GREEN}▶${NC} $1"; }
 log_warn() { echo -e "${YELLOW}▶${NC} $1" >&2; }
 
 get_current_version() {
-    git tag -l 'aircast-v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^aircast-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "aircast-v0.0.0"
+    git tag -l 'aircast-v[0-9]*.[0-9]*.[0-9]*' --merged HEAD --sort=-v:refname | grep -E '^aircast-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "aircast-v0.0.0"
 }
 
 tag_exists() {
