@@ -14,6 +14,7 @@ internal fun parametersReady(view: JSONObject?): Boolean =
 internal data class SetupPage(
     val name: String,
     val parameterSections: Boolean,
+    val screen: String = "",
 )
 
 internal data class SetupGroup(val title: String, val pages: List<SetupPage>)
@@ -30,6 +31,7 @@ internal fun setupGroups(view: JSONObject?): List<SetupGroup> {
                         SetupPage(
                             name = it.optText("name"),
                             parameterSections = it.optBoolean("parameterSections"),
+                            screen = it.optText("screen"),
                         )
                     }
                 },

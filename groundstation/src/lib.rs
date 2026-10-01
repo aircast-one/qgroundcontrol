@@ -155,6 +155,7 @@ pub mod offlinemaps;
 pub mod virtualjoystick;
 pub mod plantemplates;
 pub mod plantransform;
+pub mod px4tuning;
 pub mod gimbalindicator;
 pub mod gpsresilience;
 pub mod paramfile;

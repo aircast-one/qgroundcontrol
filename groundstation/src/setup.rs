@@ -104,6 +104,10 @@ const FLIGHT_BEHAVIOR_PX4: &[Section] = &[
     Section { title: "Responsiveness", note: "", parameters: &["SYS_VEHICLE_RESP", "MPC_XY_VEL_ALL", "MPC_Z_VEL_ALL"] },
 ];
 
+pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
+    (page == "Tuning" && px4).then_some("px4Tuning")
+}
+
 pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     match (page, px4) {
         ("Frame", false) => Some(FRAME_APM),
@@ -260,7 +264,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             "title": title,
             "pages": pages.iter().filter(|p| page_exists(p, px4)).map(|p| {
                 let blocked = page_block(p, &components);
-                json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() || crate::vehicleconfig::has(p, px4), "openable": blocked.is_none(), "blockedReason": blocked })
+                json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() || crate::vehicleconfig::has(p, px4), "screen": screen_for(p, px4), "openable": blocked.is_none(), "blockedReason": blocked })
             }).collect::<Vec<_>>(),
             "omitted": pages.iter().filter(|p| !page_exists(p, px4)).map(|p| json!({ "name": p, "reason": page_absence(px4) })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
