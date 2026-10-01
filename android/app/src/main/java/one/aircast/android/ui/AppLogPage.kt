@@ -134,6 +134,7 @@ fun AppLogPage(modifier: Modifier = Modifier) {
     var cleared by remember { mutableStateOf(0) }
     var notice by remember { mutableStateOf<String?>(null) }
     var following by remember { mutableStateOf(true) }
+    var showCategories by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
 
     LaunchedEffect(filter, cleared) {
@@ -194,6 +195,7 @@ fun AppLogPage(modifier: Modifier = Modifier) {
             filter = filter,
             read = read,
             onFilter = { filter = it },
+            onCategories = { showCategories = true },
             onSave = { saver.launch(APP_LOG_FILE_NAME) },
             onClear = {
                 scope.launch {
@@ -206,6 +208,7 @@ fun AppLogPage(modifier: Modifier = Modifier) {
             Text(it, color = MaterialTheme.aircast.alert, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         }
     }
+    if (showCategories) LoggingCategoriesDialog(onDismiss = { showCategories = false })
 }
 
 @Composable
@@ -247,6 +250,7 @@ private fun AppLogFilterBar(
     filter: AppLogFilter,
     read: AppLogRead?,
     onFilter: (AppLogFilter) -> Unit,
+    onCategories: () -> Unit,
     onSave: () -> Unit,
     onClear: () -> Unit,
 ) {
@@ -267,6 +271,7 @@ private fun AppLogFilterBar(
             Picker(filter.category.ifEmpty { "All Categories" }, categories) { index ->
                 onFilter(filter.copy(category = if (index == 0) "" else categories[index]))
             }
+            OutlinedButton(onClick = onCategories) { Text("Categories") }
             OutlinedButton(onClick = onSave) { Text("Save") }
             OutlinedButton(onClick = onClear) { Text("Clear") }
         }

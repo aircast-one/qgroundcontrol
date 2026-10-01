@@ -9,6 +9,10 @@ use crate::router::Backend;
 
 pub const LOG_CLEAR: &str = "appLog.clear";
 pub const LOG_SAVE: &str = "appLog.save";
+pub const SET_CATEGORY: &str = "appLog.setCategory";
+pub const RESET_CATEGORIES: &str = "appLog.resetCategories";
+const FILTER_GROUP: &str = "LoggingFilters";
+const CATEGORY_SEPARATOR: &str = "::";
 const MAX_LOG_ENTRIES: usize = 100_000;
 const LEVEL_LABELS: [&str; 5] = ["D", "I", "W", "C", "F"];
 const LEVEL_NAMES: [&str; 6] = ["All Levels", "Debug", "Info", "Warning", "Critical", "Fatal"];
@@ -33,6 +37,8 @@ struct Store {
 
 static STORE: Mutex<Store> = Mutex::new(Store { next: 0, entries: VecDeque::new() });
 static INSTALL: Once = Once::new();
+static ENABLED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+static SEEN: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 struct CoreLogger;
 
@@ -42,6 +48,16 @@ impl log::Log for CoreLogger {
     }
 
     fn log(&self, record: &log::Record) {
+        let target = record.target();
+        if let Ok(mut seen) = SEEN.lock()
+            && !seen.contains(target)
+        {
+            seen.insert(target.to_string());
+        }
+        let debug = record.level() >= log::Level::Debug;
+        if debug && !ENABLED.lock().is_ok_and(|enabled| category_enabled(&enabled, target)) {
+            return;
+        }
         record_entry(level_of(record.level()), record.target(), &record.args().to_string(), record.file().unwrap_or_default(), record.line().unwrap_or(0));
     }
 
@@ -54,6 +70,71 @@ pub fn install() {
             log::set_max_level(log::LevelFilter::Debug);
         }
     });
+}
+
+pub fn category_enabled(enabled: &BTreeSet<String>, target: &str) -> bool {
+    enabled.iter().any(|category| target.strip_prefix(category.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with(CATEGORY_SEPARATOR)))
+}
+
+pub fn load_categories() {
+    let stored: BTreeSet<String> = crate::settingsstore::entries_under(FILTER_GROUP)
+        .into_iter()
+        .filter(|(_, value)| matches!(value, crate::settingsini::Setting::Text(text) if text == "true"))
+        .filter_map(|(key, _)| key.strip_prefix(&format!("{FILTER_GROUP}/")).map(str::to_string))
+        .collect();
+    *ENABLED.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = stored;
+}
+
+fn filter_key(category: &str) -> String {
+    format!("{FILTER_GROUP}/{category}")
+}
+
+pub fn set_category(args: &str) -> Value {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let (Some(category), Some(on)) = (args.get(0).and_then(Value::as_str).filter(|c| !c.is_empty()), args.get(1).and_then(Value::as_bool)) else {
+        return json!({ "ok": false, "reason": "appLog.setCategory takes a category name and whether its debug output is on" });
+    };
+    let mut enabled = ENABLED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    match on {
+        true => {
+            enabled.insert(category.to_string());
+            crate::settingsstore::written(&filter_key(category), "true");
+        }
+        false => {
+            enabled.remove(category);
+            crate::settingsstore::forgotten(&filter_key(category));
+        }
+    }
+    json!({ "ok": true })
+}
+
+pub fn reset_categories() -> Value {
+    let mut enabled = ENABLED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    enabled.iter().for_each(|category| crate::settingsstore::forgotten(&filter_key(category)));
+    enabled.clear();
+    json!({ "ok": true })
+}
+
+fn with_ancestors(target: &str) -> Vec<String> {
+    let parts: Vec<&str> = target.split(CATEGORY_SEPARATOR).collect();
+    (1..=parts.len()).map(|depth| parts[..depth].join(CATEGORY_SEPARATOR)).collect()
+}
+
+pub fn categories_view(_backend: &dyn Backend, _args: &[String]) -> Value {
+    let enabled = ENABLED.lock().map(|enabled| enabled.clone()).unwrap_or_default();
+    let seen = SEEN.lock().map(|seen| seen.clone()).unwrap_or_default();
+    let all: BTreeSet<String> = seen.iter().chain(enabled.iter()).flat_map(|target| with_ancestors(target)).collect();
+    json!({
+        "kind": "object",
+        "class": "LoggingCategories",
+        "active": enabled,
+        "categories": all.iter().map(|name| json!({
+            "name": name,
+            "shortName": name.rsplit(CATEGORY_SEPARATOR).next().unwrap_or(name),
+            "depth": name.matches(CATEGORY_SEPARATOR).count(),
+            "enabled": enabled.contains(name),
+        })).collect::<Vec<_>>(),
+    })
 }
 
 fn level_of(level: log::Level) -> usize {
@@ -237,6 +318,18 @@ mod tests {
             String::new()
         }
         fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn a_category_turns_on_its_own_debug_output_and_everything_under_it() {
+        let enabled: BTreeSet<String> = ["groundstation::hub".to_string(), "ureq".to_string()].into();
+        assert!(category_enabled(&enabled, "groundstation::hub"));
+        assert!(category_enabled(&enabled, "groundstation::hub::links"));
+        assert!(category_enabled(&enabled, "ureq::unversioned"));
+        assert!(!category_enabled(&enabled, "groundstation::hubble"), "a name that only starts the same is another category");
+        assert!(!category_enabled(&enabled, "groundstation"));
+        assert_eq!(with_ancestors("groundstation::hub::links"), ["groundstation", "groundstation::hub", "groundstation::hub::links"]);
+        assert_eq!(set_category(r#"["groundstation::hub"]"#)["ok"], false);
     }
 
     fn entry(level: usize, category: &str, message: &str, file: &str, line: u32) -> Entry {

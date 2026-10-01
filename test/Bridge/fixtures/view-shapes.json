@@ -3478,6 +3478,10 @@
         "view.links.serialPorts.4.label",
         "view.links.serialPorts.4.port",
         "view.links.supportForwarding",
+        "view.logCategories.active.#",
+        "view.logCategories.categories.#",
+        "view.logCategories.class",
+        "view.logCategories.kind",
         "view.logReplay.available",
         "view.logReplay.class",
         "view.logReplay.error",
@@ -7164,19 +7168,25 @@
         "view.flightModes.everyday.#",
         "view.flightModes.everyday[].advanced",
         "view.flightModes.everyday[].current",
+        "view.flightModes.everyday[].hidden",
         "view.flightModes.everyday[].name",
         "view.flightModes.everyday[].needsConfirm",
         "view.flightModes.everyday[].summary",
         "view.flightModes.folded.#",
         "view.flightModes.folded[].advanced",
         "view.flightModes.folded[].current",
+        "view.flightModes.folded[].hidden",
         "view.flightModes.folded[].name",
         "view.flightModes.folded[].needsConfirm",
         "view.flightModes.folded[].summary",
+        "view.flightModes.hidden.#",
+        "view.flightModes.hiddenSetting",
+        "view.flightModes.hidden[]",
         "view.flightModes.kind",
         "view.flightModes.modes.#",
         "view.flightModes.modes[].advanced",
         "view.flightModes.modes[].current",
+        "view.flightModes.modes[].hidden",
         "view.flightModes.modes[].name",
         "view.flightModes.modes[].needsConfirm",
         "view.flightModes.modes[].summary",
@@ -7840,6 +7850,10 @@
         "view.links.serialPorts[].label",
         "view.links.serialPorts[].port",
         "view.links.supportForwarding",
+        "view.logCategories.active.#",
+        "view.logCategories.categories.#",
+        "view.logCategories.class",
+        "view.logCategories.kind",
         "view.logReplay.available",
         "view.logReplay.canLoad",
         "view.logReplay.class",
@@ -10039,6 +10053,7 @@
             "view.gpsResilience",
             "view.gcsBattery",
             "view.appLog",
+            "view.logCategories",
             "view.offlineMaps",
             "view.virtualJoystick",
             "view.planTransform",
@@ -10437,6 +10452,7 @@
             {
                 "advanced": "bool",
                 "current": "bool",
+                "hidden": "bool",
                 "name": "string",
                 "needsConfirm": "bool",
                 "summary": "string"
@@ -10446,16 +10462,22 @@
             {
                 "advanced": "bool",
                 "current": "bool",
+                "hidden": "bool",
                 "name": "string",
                 "needsConfirm": "bool",
                 "summary": "string"
             }
         ],
+        "hidden": [
+            "string"
+        ],
+        "hiddenSetting": "null|string",
         "kind": "string",
         "modes": [
             {
                 "advanced": "bool",
                 "current": "bool",
+                "hidden": "bool",
                 "name": "string",
                 "needsConfirm": "bool",
                 "summary": "string"
@@ -11347,6 +11369,16 @@
             }
         ],
         "supportForwarding": "bool"
+    },
+    "view.logCategories": {
+        "active": [
+            "empty"
+        ],
+        "categories": [
+            "empty"
+        ],
+        "class": "string",
+        "kind": "string"
     },
     "view.logReplay": {
         "available": "bool",

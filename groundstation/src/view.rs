@@ -194,6 +194,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.gpsResilience", deps: gpsresilience::DEPS, compute: gpsresilience::resilience_view },
     View { path: "view.gcsBattery", deps: &[], compute: gcsbattery::gcs_battery_view },
     View { path: "view.appLog", deps: &[], compute: applog::log_view },
+    View { path: "view.logCategories", deps: &[], compute: applog::categories_view },
     View { path: "view.offlineMaps", deps: offlinemaps::DEPS, compute: offlinemaps::offline_maps_view },
     View { path: "view.virtualJoystick", deps: virtualjoystick::DEPS, compute: virtualjoystick::virtual_joystick_view },
     View { path: "view.planTransform", deps: plantransform::DEPS, compute: plantransform::transform_view },
