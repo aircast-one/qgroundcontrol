@@ -1,0 +1,54 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "sections": [
+        {
+            "title": "Low Voltage Failsafe",
+            "showWhen": "controller.parameterExists(-1, \"BATT_MONITOR\") && controller.getParameterFact(-1, \"BATT_MONITOR\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "BATT_FS_LOW_ACT",
+                    "label": "Vehicle Action",
+                    "control": "combobox",
+                    "optional": true
+                },
+                {
+                    "param": "BATT_LOW_VOLT",
+                    "label": "Voltage Trigger",
+                    "control": "slider",
+                    "optional": true
+                },
+                {
+                    "param": "BATT_LOW_MAH",
+                    "label": "mAh Trigger",
+                    "control": "slider",
+                    "optional": true
+                }
+            ]
+        },
+        {
+            "title": "Critical Voltage Failsafe",
+            "showWhen": "controller.parameterExists(-1, \"BATT_MONITOR\") && controller.getParameterFact(-1, \"BATT_MONITOR\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "BATT_FS_CRT_ACT",
+                    "label": "Vehicle Action",
+                    "control": "combobox",
+                    "optional": true
+                },
+                {
+                    "param": "BATT_CRT_VOLT",
+                    "label": "Voltage Trigger",
+                    "control": "slider",
+                    "optional": true
+                },
+                {
+                    "param": "BATT_CRT_MAH",
+                    "label": "mAh Trigger",
+                    "control": "slider",
+                    "optional": true
+                }
+            ]
+        }
+    ]
+}

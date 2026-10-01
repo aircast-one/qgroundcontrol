@@ -10,6 +10,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -94,6 +95,7 @@ private fun gpsColour(fix: FixLevel): Color = when (fix) {
     FixLevel.Good -> Color.Unspecified
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val available = hasVehicle()
@@ -115,6 +117,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val fix = fixLevel(gps?.lock ?: Double.NaN)
     val satellites = gps?.satellites?.toString() ?: ""
     var detail by remember { mutableStateOf<StripDetail?>(null) }
+    var batterySettings by remember { mutableStateOf(false) }
 
     Row(
         modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
@@ -156,13 +159,24 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
                 linksJson?.optText("primary"),
             )
         }
-        InstrumentSheet(instrumentTitle(shown), rows, action = if (shown == StripDetail.Battery && batteryReturnOffered(batteryJson)) {
-            { BatteryReturnButton { detail = null } }
+        InstrumentSheet(instrumentTitle(shown), rows, action = if (shown == StripDetail.Battery) {
+            {
+                if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
+                TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery Failsafes") }
+            }
         } else {
             null
         }) { detail = null }
     }
+
+    if (batterySettings) {
+        ModalBottomSheet(onDismissRequest = { batterySettings = false }) {
+            ParameterForm(BATTERY_SETTINGS_PAGE)
+        }
+    }
 }
+
+internal const val BATTERY_SETTINGS_PAGE = "Battery Settings"
 
 internal enum class StripDetail { Battery, Gps, Links, Telemetry }
 

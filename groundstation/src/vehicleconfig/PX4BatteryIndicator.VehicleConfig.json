@@ -1,0 +1,31 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "sections": [
+        {
+            "title": "Low Battery Failsafe",
+            "controls": [
+                {
+                    "param": "COM_LOW_BAT_ACT",
+                    "label": "Vehicle Action",
+                    "control": "combobox"
+                },
+                {
+                    "param": "BAT_LOW_THR",
+                    "label": "Warning Level",
+                    "control": "slider"
+                },
+                {
+                    "param": "BAT_CRIT_THR",
+                    "label": "Critical Level",
+                    "control": "slider"
+                },
+                {
+                    "param": "BAT_EMERGEN_THR",
+                    "label": "Emergency Level",
+                    "control": "slider"
+                }
+            ]
+        }
+    ]
+}
