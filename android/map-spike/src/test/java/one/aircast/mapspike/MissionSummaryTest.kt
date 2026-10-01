@@ -44,4 +44,12 @@ class MissionSummaryTest {
         assertEquals("", missionSummaryText(JSONObject("""{"rows":[]}""")))
         assertEquals("", missionSummaryText(null))
     }
+
+    @Test
+    fun `the furthest point from launch reads as QGC's max telem`() {
+        assertEquals(
+            "4.82 km · 19:37 · max telem 1.2 km",
+            missionSummaryText(view("Distance" to "4.82 km", "Time" to "19:37", "Furthest from launch" to "1.2 km")),
+        )
+    }
 }

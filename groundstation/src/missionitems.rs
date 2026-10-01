@@ -705,6 +705,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "azimuthText": number(read, "azimuth").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
         "distance": number(read, "distance"),
         "distanceText": number(read, "distance").map(|metres| crate::missionsummary::distance_text(metres, imperial)),
+        "gradientText": gradient_text(number(read, "altDifference"), number(read, "distance")),
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
         "incomplete": flag(read, "isIncomplete"),
@@ -751,6 +752,11 @@ pub(crate) fn speed_section(backend: &dyn Backend, index: i64) -> Value {
         "path": value_path,
         "specifyPath": format!("{path}.specifyFlightSpeed"),
     })
+}
+
+pub fn gradient_text(alt_difference: Option<f64>, distance: Option<f64>) -> Option<String> {
+    let (rise, run) = (alt_difference?, distance.filter(|d| *d > 0.0)?);
+    Some(format!("{:.0} deg", (rise / run).atan().to_degrees()))
 }
 
 const LEG_FIGURES: [&str; 6] = ["distance", "distanceText", "distanceFromStart", "azimuth", "azimuthText", "altitudeChangeText"];
@@ -1103,6 +1109,14 @@ mod from_the_document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_leg_gradient_is_the_climb_angle_qgc_shows_and_needs_a_leg() {
+        assert_eq!(gradient_text(Some(100.0), Some(100.0)).as_deref(), Some("45 deg"));
+        assert_eq!(gradient_text(Some(-10.0), Some(1000.0)).as_deref(), Some("-1 deg"));
+        assert_eq!(gradient_text(Some(10.0), Some(0.0)), None);
+        assert_eq!(gradient_text(None, Some(10.0)), None);
+    }
 
     #[test]
     fn a_vtol_flies_hover_and_cruise_legs_by_its_transitions_as_qt_times_them() {

@@ -94,6 +94,7 @@ fun legText(item: MissionItem): String? {
         item.distanceText.takeIf { travelled }.orEmpty(),
         item.azimuthText.takeIf { travelled }.orEmpty(),
         item.altitudeChangeText.takeIf { climbed }.orEmpty(),
+        item.gradientText.takeIf { travelled && climbed && it.isNotBlank() }?.let { "$it gradient" }.orEmpty(),
     )
         .filter { it.isNotBlank() }
         .takeIf { it.isNotEmpty() }

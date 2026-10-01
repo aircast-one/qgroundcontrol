@@ -336,6 +336,14 @@ class LegTextTest {
     }
 
     @Test
+    fun `a climbing leg also gives the gradient QGC's plan stats show`() {
+        assertEquals(
+            "449 m · 47° · +12.0 m · 2 deg gradient",
+            legText(item(449.0, altitudeChange = 12.0, altitudeChangeText = "+12.0 m").copy(gradientText = "2 deg")),
+        )
+    }
+
+    @Test
     fun `a climbing leg says how much it climbs, signed and in the vertical unit`() {
         assertEquals(
             "449 m · 47° · +12.0 m",

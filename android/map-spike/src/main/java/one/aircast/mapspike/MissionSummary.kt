@@ -24,5 +24,6 @@ fun missionSummaryText(view: JSONObject?): String =
     listOfNotNull(
         summaryRow(view, "Distance"),
         summaryRow(view, "Time"),
+        summaryRow(view, "Furthest from launch")?.let { "max telem $it" },
         batteriesText(view),
     ).joinToString(" · ")
