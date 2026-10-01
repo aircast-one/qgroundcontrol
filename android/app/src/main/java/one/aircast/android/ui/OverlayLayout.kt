@@ -34,9 +34,30 @@ private const val LAYOUT_STORE = "fly-overlay-layout"
 private const val HIDDEN_PREFIX = "OverlayRigHidden-"
 private const val HIDDEN_ALPHA = 0.35f
 
+private const val INDICATOR_ORDER = "FlyViewIndicatorOrder"
+
 internal object OverlayLayout {
     var editing by mutableStateOf(false)
     var hidden by mutableStateOf(emptySet<String>())
+    var indicatorOrder by mutableStateOf(emptyList<String>())
+}
+
+internal fun orderedKeys(available: List<String>, order: List<String>): List<String> =
+    order.filter { it in available } + available.filter { it !in order }
+
+internal fun movedKey(keys: List<String>, key: String, delta: Int): List<String>? {
+    val from = keys.indexOf(key)
+    val to = from + delta
+    return if (from < 0 || to !in keys.indices) null else keys.filterIndexed { i, _ -> i != from }.let { rest -> rest.take(to) + key + rest.drop(to) }
+}
+
+internal fun loadIndicatorOrder(context: Context) {
+    OverlayLayout.indicatorOrder = store(context).getString(INDICATOR_ORDER, "").orEmpty().split(",").filter { it.isNotBlank() }
+}
+
+internal fun saveIndicatorOrder(context: Context, keys: List<String>) {
+    store(context).edit().putString(INDICATOR_ORDER, keys.joinToString(",")).apply()
+    OverlayLayout.indicatorOrder = keys
 }
 
 internal fun hiddenKeys(stored: Map<String, *>): Set<String> =
@@ -54,6 +75,7 @@ private fun setHidden(context: Context, key: String, hide: Boolean) {
 private fun resetLayout(context: Context) {
     store(context).edit().clear().apply()
     OverlayLayout.hidden = emptySet()
+    OverlayLayout.indicatorOrder = emptyList()
 }
 
 private fun Modifier.onHold(action: () -> Unit): Modifier = pointerInput(Unit) {

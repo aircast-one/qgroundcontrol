@@ -13,6 +13,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -120,6 +121,8 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val satellites = gps?.satellites?.toString() ?: ""
     var detail by remember { mutableStateOf<StripDetail?>(null) }
     var batterySettings by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) { loadIndicatorOrder(context) }
     val setupJson by qgcPath(SETUP)
     val hasPowerSetup = remember(setupJson) { setupComponents(setupJson).any { it.name == POWER_SETUP_PAGE } }
 
@@ -128,29 +131,38 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        battery?.let {
-            InlineCell(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery }
-        }
-        fix?.let { level ->
-            satsText(level, satellites).ifBlank { null }?.let {
-                InlineCell(it, gpsColour(level)) { detail = StripDetail.Gps }
+        val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
+            "battery" to { battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery } } },
+            "gps" to {
+                fix?.let { level ->
+                    satsText(level, satellites).ifBlank { null }?.let { InlineCell(it, gpsColour(level)) { detail = StripDetail.Gps } }
+                }
+            },
+            "rc" to { rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified) } },
+            "rcOverride" to { overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) { offMainDetached { Qgc.invoke(CLEAR_RC_OVERRIDES) } } } },
+            "telemetry" to { telemetryCell(state)?.let { InlineCell(it, Color.Unspecified) { detail = StripDetail.Telemetry } } },
+            "links" to { links?.let { InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified) { detail = StripDetail.Links } } },
+            "aircastLink" to { AircastLinkCell() },
+            "esc" to { EscIndicatorCell() },
+            "joystick" to { JoystickIndicatorCell() },
+            "remoteId" to { RemoteIdIndicatorCell() },
+            "gpsResilience" to { GpsResilienceCell() },
+            "rtk" to { RtkIndicatorCell() },
+            "gcsBattery" to { GcsBatteryCell() },
+            "gimbal" to { GimbalIndicatorCell() },
+            "supportForwarding" to { SupportForwardingCell() },
+        )
+        val byKey = cells.toMap()
+        val keys = orderedKeys(cells.map { it.first }, OverlayLayout.indicatorOrder)
+        keys.forEach { key ->
+            Hideable("indicator-$key") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (OverlayLayout.editing) TextButton(onClick = { movedKey(keys, key, -1)?.let { saveIndicatorOrder(context, it) } }) { Text("\u2039") }
+                    byKey[key]?.invoke()
+                    if (OverlayLayout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { saveIndicatorOrder(context, it) } }) { Text("\u203A") }
+                }
             }
         }
-        rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified) }
-        overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) { offMainDetached { Qgc.invoke(CLEAR_RC_OVERRIDES) } } }
-        telemetryCell(state)?.let { InlineCell(it, Color.Unspecified) { detail = StripDetail.Telemetry } }
-        links?.let {
-            InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified) { detail = StripDetail.Links }
-        }
-        AircastLinkCell()
-        EscIndicatorCell()
-        JoystickIndicatorCell()
-        RemoteIdIndicatorCell()
-        GpsResilienceCell()
-        RtkIndicatorCell()
-        GcsBatteryCell()
-        GimbalIndicatorCell()
-        SupportForwardingCell()
     }
 
     detail?.let { shown ->
