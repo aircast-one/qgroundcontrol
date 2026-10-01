@@ -1,0 +1,82 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "params": {
+        "_resp": {
+            "name": "SYS_VEHICLE_RESP",
+            "required": false
+        },
+        "_xy": {
+            "name": "MPC_XY_VEL_ALL",
+            "required": false
+        },
+        "_z": {
+            "name": "MPC_Z_VEL_ALL",
+            "required": false
+        }
+    },
+    "sections": [
+        {
+            "title": "Responsiveness",
+            "showWhen": "controller.parameterExists(-1, \"SYS_VEHICLE_RESP\")",
+            "controls": [
+                {
+                    "param": "SYS_VEHICLE_RESP",
+                    "label": "Responsiveness",
+                    "control": "slider",
+                    "enableCheckbox": {
+                        "checked": "_resp.value >= 0",
+                        "onClicked": "{ _resp.value = enableCheckBoxChecked ? (_resp.value < 0 ? -_resp.value : _resp.value) : (_resp.value > 0 ? -_resp.value : _resp.value) }"
+                    }
+                },
+                {
+                    "control": "label",
+                    "label": "Warning: a high responsiveness requires a vehicle with large thrust-to-weight ratio. The vehicle might lose altitude otherwise.",
+                    "warning": true,
+                    "showWhen": "_resp.value > 0.8"
+                }
+            ]
+        },
+        {
+            "title": "Horizontal velocity (m/s)",
+            "showWhen": "controller.parameterExists(-1, \"MPC_XY_VEL_ALL\")",
+            "controls": [
+                {
+                    "param": "MPC_XY_VEL_ALL",
+                    "label": "Horizontal velocity (m/s)",
+                    "control": "slider",
+                    "enableCheckbox": {
+                        "checked": "_xy.value >= 0",
+                        "onClicked": "{ _xy.value = enableCheckBoxChecked ? (_xy.value < 0 ? -_xy.value : _xy.value) : (_xy.value > 0 ? -_xy.value : _xy.value) }"
+                    }
+                }
+            ]
+        },
+        {
+            "title": "Vertical velocity (m/s)",
+            "showWhen": "controller.parameterExists(-1, \"MPC_Z_VEL_ALL\")",
+            "controls": [
+                {
+                    "param": "MPC_Z_VEL_ALL",
+                    "label": "Vertical velocity (m/s)",
+                    "control": "slider",
+                    "enableCheckbox": {
+                        "checked": "_z.value >= 0",
+                        "onClicked": "{ _z.value = enableCheckBoxChecked ? (_z.value < 0 ? -_z.value : _z.value) : (_z.value > 0 ? -_z.value : _z.value) }"
+                    }
+                }
+            ]
+        },
+        {
+            "title": "Mission Turning Radius",
+            "controls": [
+                {
+                    "param": "NAV_ACC_RAD",
+                    "label": "Mission Turning Radius",
+                    "control": "slider",
+                    "optional": true
+                }
+            ]
+        }
+    ]
+}

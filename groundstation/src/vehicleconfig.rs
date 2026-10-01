@@ -28,6 +28,7 @@ const APM_MAIN_STATUS: &str = include_str!("vehicleconfig/APMMainStatusIndicator
 const PX4_MAIN_STATUS: &str = include_str!("vehicleconfig/PX4MainStatusIndicator.VehicleConfig.json");
 pub const STATUS_SETTINGS: &str = "Status Settings";
 const APM_LIGHTS: &str = include_str!("vehicleconfig/APMLights.VehicleConfig.json");
+const PX4_FLIGHT_BEHAVIOR: &str = include_str!("vehicleconfig/PX4FlightBehavior.VehicleConfig.json");
 pub const FLIGHT_MODE_SETTINGS: &str = "Flight Mode Settings";
 
 const CONFIGS: &[(&str, bool, &str)] = &[
@@ -49,6 +50,7 @@ const CONFIGS: &[(&str, bool, &str)] = &[
     (STATUS_SETTINGS, false, APM_MAIN_STATUS),
     (STATUS_SETTINGS, true, PX4_MAIN_STATUS),
     ("Lights", false, APM_LIGHTS),
+    ("Flight Behavior", true, PX4_FLIGHT_BEHAVIOR),
 ];
 
 const ROW_PREFIX: &str = "vehicleConfig(";
@@ -1182,6 +1184,18 @@ mod tests {
         assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", lights1["path"].as_str().unwrap()), r#"{"value":2}"#)["ok"], true);
         assert_eq!((fake.params.borrow()["SERVO9_FUNCTION"], fake.params.borrow()["SERVO6_FUNCTION"]), (0.0, 59.0), "setRCFunction clears the old channel first");
         assert!(rows.iter().any(|r| r["label"] == "Brightness Steps"));
+    }
+
+    #[test]
+    fn flight_behavior_switches_a_slider_off_by_making_its_value_negative() {
+        let fake = Fake { px4: true, ..Fake::new(&[("SYS_VEHICLE_RESP", 0.9), ("MPC_XY_VEL_ALL", -5.0), ("MPC_Z_VEL_ALL", 2.0), ("NAV_ACC_RAD", 3.0)]) };
+        let rows: Vec<Value> = page(&fake, "Flight Behavior", true)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
+        assert!(rows.iter().any(|r| r["control"] == "label" && r["label"].as_str().unwrap_or_default().starts_with("Warning: a high responsiveness")), "PX4FlightBehaviorCopter warns above 0.8");
+        let horizontal = rows.iter().find(|r| r["control"] == "toggle" && r["label"] == "Horizontal velocity (m/s)").unwrap().clone();
+        assert_eq!(horizontal["value"], false, "a negative MPC_XY_VEL_ALL is the slider switched off");
+        assert_eq!(write(&fake, horizontal["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
+        assert_eq!(fake.params.borrow()["MPC_XY_VEL_ALL"], 5.0, "switching it on keeps the magnitude");
+        assert!(rows.iter().any(|r| r["label"] == "Mission Turning Radius"));
     }
 
     #[test]

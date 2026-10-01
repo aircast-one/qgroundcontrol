@@ -118,9 +118,6 @@ const HELI_APM: &[Section] = &[
     Section { title: "Stabilize Collective Curve", note: "", parameters: &["IM_STB_COL_1", "IM_STB_COL_2", "IM_STB_COL_3", "IM_STB_COL_4"] },
     Section { title: "Tail & Gyros", note: "", parameters: &["H_TAIL_TYPE", "H_TAIL_SPEED", "H_GYR_GAIN", "H_GYR_GAIN_ACRO", "H_COLYAW"] },
 ];
-const FLIGHT_BEHAVIOR_PX4: &[Section] = &[
-    Section { title: "Responsiveness", note: "", parameters: &["SYS_VEHICLE_RESP", "MPC_XY_VEL_ALL", "MPC_Z_VEL_ALL"] },
-];
 
 pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
     match (page, px4) {
@@ -143,7 +140,6 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
         ("Flight Modes", true) => Some(FLIGHT_MODES_PX4),
         ("Flight Modes", false) => Some(FLIGHT_MODES_APM),
         ("Heli", false) => Some(HELI_APM),
-        ("Flight Behavior", true) => Some(FLIGHT_BEHAVIOR_PX4),
         _ => None,
     }
 }
@@ -418,7 +414,7 @@ mod tests {
         assert!(crate::vehicleconfig::has("Tuning", false), "APMTuningComponent reads APMTuningCopter.VehicleConfig.json");
         assert!(!crate::vehicleconfig::has("Tuning", true) && sections_for("Tuning", true).is_none());
         assert!(crate::vehicleconfig::has("Safety", true) && crate::vehicleconfig::has("Flight Safety", false));
-        assert!(sections_for("Flight Behavior", true).is_some());
+        assert!(crate::vehicleconfig::has("Flight Behavior", true), "PX4FlightBehaviorCopter is a VehicleConfig page with enable switches");
     }
 
     #[test]
