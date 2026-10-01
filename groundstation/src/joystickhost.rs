@@ -421,14 +421,29 @@ pub fn active_name(devices: &[Device]) -> Option<String> {
     devices.iter().find(|d| d.name == stored).or_else(|| devices.first()).map(|d| d.name.clone())
 }
 
-fn active_vehicle() -> Option<(u8, u32, u8, bool)> {
-    crate::hub::lock().active().map(|v| (v.id, v.link, v.autopilot, crate::hub::Vehicle::armed(v)))
+fn active_vehicle() -> Option<(u8, u32, u8, bool, u8)> {
+    crate::hub::lock().active().map(|v| (v.id, v.link, v.autopilot, crate::hub::Vehicle::armed(v), v.vehicle_type))
 }
 
-fn support_for(autopilot: Option<u8>) -> Support {
-    match autopilot {
-        Some(crate::modes::AUTOPILOT_ARDUPILOT) => Support { throttle_mode_center_zero: false, negative_thrust: false, ..Support::default() },
+const MAV_TYPE_GROUND_ROVER: u8 = 10;
+const MAV_TYPE_SURFACE_BOAT: u8 = 11;
+const MAV_TYPE_SUBMARINE: u8 = 12;
+const ARDUSUB_TRANSMITTER_MODE: u8 = 3;
+
+fn support_for(vehicle: Option<(u8, u8)>) -> Support {
+    match vehicle {
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, default_transmitter_mode: ARDUSUB_TRANSMITTER_MODE, ..Support::default() },
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SURFACE_BOAT)) => Support { negative_thrust: true, ..Support::default() },
+        Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
         _ => Support::default(),
+    }
+}
+
+fn setting_visible(name: &str, center_zero: &Value, support: Support) -> bool {
+    match name {
+        "throttleSmoothing" => center_zero.as_bool() == Some(true),
+        "negativeThrust" => support.negative_thrust,
+        _ => true,
     }
 }
 
@@ -521,7 +536,7 @@ fn input(backend: &dyn Backend, text: &str) -> Value {
     let buttons: Vec<bool> = list(2).iter().map(|v| v.as_bool().unwrap_or(false)).collect();
     let hats: Vec<u8> = list(3).iter().filter_map(Value::as_u64).map(|v| v as u8).collect();
     let vehicle = active_vehicle();
-    let support = support_for(vehicle.map(|v| v.2));
+    let support = support_for(vehicle.map(|v| (v.2, v.4)));
     let settings = settings_for(name);
     let now_ms = crate::hub::now_ms();
     let outs = {
@@ -531,7 +546,7 @@ fn input(backend: &dyn Backend, text: &str) -> Value {
         }
         host.joysticks.get_mut(name).map(|j| j.on_input(Input { axes: &axes, buttons: &buttons, hats: &hats }, &settings, support, now_ms)).unwrap_or_default()
     };
-    if let Some((id, link, _, armed)) = vehicle {
+    if let Some((id, link, _, armed, _)) = vehicle {
         let actions: Vec<(String, ButtonEvent)> = outs.iter().filter_map(|o| match o {
             Out::Action { action, event } => Some((action.clone(), *event)),
             _ => None,
@@ -670,7 +685,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = active_vehicle();
     let modes = settable_modes();
     let custom: Vec<String> = crate::mavlinkactions::joystick_actions(backend).into_iter().map(|a| a.label).collect();
-    let support = support_for(vehicle.map(|v| v.2));
+    let support = support_for(vehicle.map(|v| (v.2, v.4)));
     let host = host();
     let active = active_name(&host.devices);
     let enabled = vehicle.is_some_and(|(id, ..)| enabled_vehicles().contains(&id.to_string()));
@@ -696,6 +711,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "min": m.min,
             "max": m.max,
             "value": setting_value(name, &m.name),
+            "visible": setting_visible(&m.name, &setting_value(name, "throttleModeCenterZero"), support),
         })).collect::<Vec<_>>()).unwrap_or_default(),
         "state": state,
         "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(name, cal)| match cal.json() {
@@ -712,6 +728,26 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
 mod tests {
     use super::*;
     use crate::joystick::{Function, OPTIONAL};
+
+    #[test]
+    fn smoothing_and_negative_thrust_show_only_when_joystick_component_settings_shows_them() {
+        let plain = Support::default();
+        assert!(!setting_visible("throttleSmoothing", &json!(false), plain));
+        assert!(setting_visible("throttleSmoothing", &json!(true), plain));
+        assert!(!setting_visible("negativeThrust", &json!(true), plain));
+        assert!(setting_visible("negativeThrust", &json!(true), Support { negative_thrust: true, ..plain }));
+        assert!(setting_visible("exponentialPct", &Value::Null, plain));
+    }
+
+    #[test]
+    fn throttle_support_follows_each_firmware_plugin() {
+        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).throttle_mode_center_zero, "FirmwarePlugin supports centre-zero throttle and no ArduPilot plugin turns it off");
+        assert!(!support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).negative_thrust);
+        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER))).negative_thrust, "ArduRoverFirmwarePlugin");
+        assert_eq!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE))).default_transmitter_mode, 3, "ArduSubFirmwarePlugin");
+        assert!(support_for(Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_SUBMARINE))).negative_thrust);
+        assert!(!support_for(Some((crate::modes::AUTOPILOT_PX4, 2))).negative_thrust);
+    }
 
     #[test]
     fn the_settings_metadata_comes_from_qgcs_group_with_its_defaults() {

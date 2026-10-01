@@ -51,4 +51,10 @@ class JoystickScreenTest {
         org.junit.Assert.assertEquals(listOf(0, 1, 0, 0), cal.stickPositions)
         org.junit.Assert.assertEquals(listOf(0, 0, 0, 0), joystickCalibration(null).stickPositions)
     }
+
+    @Test
+    fun a_setting_the_core_hides_is_not_listed() {
+        val page = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","settings":[{"name":"negativeThrust","type":"bool","label":"Negative thrust","units":"","value":false,"visible":false},{"name":"exponentialPct","type":"double","label":"Exponential","units":"%","value":0}]}"""))!!
+        assertEquals(listOf("exponentialPct"), page.settings.map { it.name })
+    }
 }

@@ -109,7 +109,7 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
         enabled = it.optBoolean("enabled"),
         calibrated = it.optBoolean("calibrated"),
         settings = (0 until (settings?.length() ?: 0)).mapNotNull { at ->
-            settings!!.optJSONObject(at)?.let { s -> JoystickSetting(s.optText("name"), s.optText("type"), s.optText("label"), s.optText("units"), s.opt("value")) }
+            settings!!.optJSONObject(at)?.takeIf { s -> s.optBoolean("visible", true) }?.let { s -> JoystickSetting(s.optText("name"), s.optText("type"), s.optText("label"), s.optText("units"), s.opt("value")) }
         },
         axes = (0 until (axes?.length() ?: 0)).mapNotNull { at ->
             axes!!.optJSONObject(at)?.let { a -> JoystickAxis(a.optInt("index"), if (a.isNull("raw")) null else a.optInt("raw"), a.optText("function")) }
