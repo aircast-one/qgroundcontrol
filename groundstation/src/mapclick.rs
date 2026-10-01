@@ -50,27 +50,64 @@ pub const DEPS: &[&str] = &[
 
 const ORBIT_DEFAULT_RADIUS_METRES: f64 = 30.0;
 
-static LAST_GOTO: std::sync::Mutex<Option<(f64, f64)>> = std::sync::Mutex::new(None);
-
-fn last_goto() -> Option<(f64, f64)> {
-    *LAST_GOTO.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct GotoMark {
+    latitude: f64,
+    longitude: f64,
+    radius: f64,
 }
 
-fn remember_goto(at: Option<(f64, f64)>) {
-    *LAST_GOTO.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = at;
+struct GotoState {
+    mark: Option<GotoMark>,
+    in_goto_mode: bool,
+}
+
+static LAST_GOTO: std::sync::Mutex<GotoState> = std::sync::Mutex::new(GotoState { mark: None, in_goto_mode: false });
+
+fn goto_state() -> std::sync::MutexGuard<'static, GotoState> {
+    LAST_GOTO.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn remember_goto(mark: GotoMark) {
+    goto_state().mark = Some(mark);
+}
+
+fn goto_shown(in_goto_mode: bool) -> Option<GotoMark> {
+    let mut state = goto_state();
+    if state.in_goto_mode && !in_goto_mode {
+        state.mark = None;
+    }
+    state.in_goto_mode = in_goto_mode;
+    state.mark
+}
+
+fn goto_vehicle(backend: &dyn Backend) -> (Value, bool) {
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode"));
+    let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
+    (vehicle, in_goto_mode)
+}
+
+fn loiter_circle_shown(backend: &dyn Backend, vehicle: &Value) -> bool {
+    !flag(vehicle, "px4Firmware") && !flag(vehicle, "orbitActive") && crate::guided::forward_flight(backend)
 }
 
 fn loiter_offer(backend: &dyn Backend) -> Option<(f64, f64)> {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode"));
-    let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
-    if !in_goto_mode {
-        remember_goto(None);
-        return None;
-    }
+    let (vehicle, in_goto_mode) = goto_vehicle(backend);
+    let mark = goto_shown(in_goto_mode).filter(|_| in_goto_mode)?;
     let guided = flag(&object(&backend.get_fields("vehicle.supports", "guidedMode")), "guidedMode");
-    let shown = flag(&vehicle, "armed") && flag(&vehicle, "flying") && guided && !flag(&vehicle, "px4Firmware") && !flag(&vehicle, "orbitActive")
-        && crate::guided::forward_flight(backend) && !crate::guided::mission_active(backend);
-    last_goto().filter(|_| shown)
+    let shown = flag(&vehicle, "armed") && flag(&vehicle, "flying") && guided && loiter_circle_shown(backend, &vehicle) && !crate::guided::mission_active(backend);
+    shown.then_some((mark.latitude, mark.longitude))
+}
+
+fn goto_location(backend: &dyn Backend) -> Option<Value> {
+    let (vehicle, in_goto_mode) = goto_vehicle(backend);
+    goto_shown(in_goto_mode).map(|mark| {
+        json!({
+            "latitude": mark.latitude,
+            "longitude": mark.longitude,
+            "loiterRadiusMetres": loiter_circle_shown(backend, &vehicle).then_some(mark.radius.abs()),
+        })
+    })
 }
 
 struct Offer {
@@ -131,6 +168,7 @@ pub fn map_click_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "defaultRadius": unit.show(crate::guided::goto_loiter_radius(backend)),
             "clockwise": true,
         })),
+        "gotoLocation": goto_location(backend),
         "orbitDefaultRadius": unit.show(ORBIT_DEFAULT_RADIUS_METRES),
         "orbitRadiusUnit": unit.name,
         "orbitMetresPerUnit": 1.0 / unit.factor,
@@ -212,7 +250,7 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
     };
     let sent = crate::guided::dispatch(backend, core, crate::guided::active_id(backend), path, &forwarded.to_string());
     if click == Click::GoTo && flag(&sent, "ok") {
-        remember_goto(Some((latitude, longitude)));
+        remember_goto(GotoMark { latitude, longitude, radius: forwarded[1].as_f64().unwrap_or(0.0) });
     }
     sent
 }
@@ -305,7 +343,20 @@ mod tests {
         assert_eq!(send(&vehicle, Click::Roi, "vehicle.guidedModeROI", r#"[{"latitude":99,"longitude":8.5}]"#)["refusal"], "badCoordinate");
         assert_eq!(send(&vehicle, Click::EstimatorOrigin, "vehicle.setEstimatorOrigin", r#"[{"latitude":47.4,"longitude":8.5}]"#)["refusal"], "hasGps");
         assert_eq!(vehicle.0.borrow().as_slice(), &[r#"[{"altitude":0.0,"latitude":47.4,"longitude":8.5},25.0]"#.to_string()]);
-        assert_eq!(last_goto(), Some((47.4, 8.5)), "a goto that went out is the point a loiter radius change re-sends");
+        assert_eq!(goto_state().mark, Some(GotoMark { latitude: 47.4, longitude: 8.5, radius: 25.0 }), "a goto that went out is the point a loiter radius change re-sends");
         assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5},-40]"#)["ok"], true, "the sign of the radius is the loiter direction, as QGC sends it");
+        assert_eq!(goto_state().mark.map(|m| m.radius), Some(-40.0), "a loiter radius change is the radius the circle now draws");
+    }
+
+    #[test]
+    fn the_go_here_marker_stays_until_the_vehicle_leaves_the_goto_mode() {
+        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mark = GotoMark { latitude: 47.4, longitude: 8.5, radius: 0.0 };
+        goto_shown(false);
+        remember_goto(mark);
+        assert_eq!(goto_shown(false), Some(mark), "a goto sent from Loiter shows before the vehicle has switched to Guided");
+        assert_eq!(goto_shown(true), Some(mark));
+        assert_eq!(goto_shown(false), None, "onInGotoFlightModeChanged hides the item when the goto mode is left");
+        assert_eq!(goto_shown(true), None);
     }
 }

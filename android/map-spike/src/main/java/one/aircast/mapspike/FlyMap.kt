@@ -38,6 +38,7 @@ private data class FlownPlan(
     val traffic: List<TrafficMark> = emptyList(),
     val gimbals: List<GimbalAzimuth> = emptyList(),
     val roi: TrackPoint? = null,
+    val goto: GotoLocation? = null,
 )
 
 @Composable
@@ -82,6 +83,7 @@ fun FlyMap(
                         traffic = TrafficBridge.read(),
                         gimbals = GimbalBridge.read(),
                         roi = RoiBridge.read(),
+                        goto = GotoBridge.read(),
                     )
                 }
                 plan = next
@@ -114,6 +116,7 @@ fun FlyMap(
             onMissionItemClick = onMissionItemClick,
             roi = plan.roi,
             onRoiClick = onRoiClick,
+            goto = plan.goto,
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level

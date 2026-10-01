@@ -401,7 +401,6 @@ ACCEPTED = {
     "loadProgress": "ActiveVehicle.kt reads Vehicle's loadProgress and initialConnectComplete properties straight through get_fields(vehicle), not through a recorded view; vehiclefacade.rs serves both in the core flavor",
     "keepText": "view.plan carries vehicleChangePrompt only after the active vehicle changes under a dirty plan, which the recording rig never does; coreplan.rs vehicle_change_prompt serves these",
     "loadText": "view.plan carries vehicleChangePrompt only after the active vehicle changes under a dirty plan, which the recording rig never does; coreplan.rs vehicle_change_prompt serves these",
-    "prerequisite": "view.setup names a prerequisite only while an airframe or radio component is unfinished, and the PX4 SITL rig records a configured vehicle, so it records null; setup.rs prerequisite serves it",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
