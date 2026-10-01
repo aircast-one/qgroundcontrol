@@ -698,6 +698,7 @@ fn rebuilt(transect: &Value, calc: &Value, transects: &[Vec<Coord>], trigger_dis
         altitude_mode: calc.get("DistanceMode").and_then(Value::as_i64).unwrap_or(crate::altitudemodes::RELATIVE),
         images_in_turnaround: in_turnaround,
         hover_and_capture: flag(transect, "HoverAndCapture"),
+        condition_gate_supported: surveyitems::CONDITION_GATE_SUPPORTED.load(std::sync::atomic::Ordering::Relaxed),
     };
     let follows_terrain = plan.altitude_mode == crate::altitudemodes::CALC_ABOVE_TERRAIN;
     let adjust = terrain_adjust(transect, plan.altitude);

@@ -221,6 +221,8 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
             return refused("There is no plan to edit.");
         };
         let before = home_of(Some(current));
+        let gate = plandoc::firmware(current.firmware_type) == crate::cmdinfo::Firmware::Px4 && crate::settingsstore::raw_setting("settings.planViewSettings.useConditionGate").and_then(|v| v.as_bool()).unwrap_or(false);
+        crate::surveyitems::CONDITION_GATE_SUPPORTED.store(gate, std::sync::atomic::Ordering::Relaxed);
         match change(current) {
             Ok(changed) => {
                 let count = changed.items.len();
