@@ -17,6 +17,9 @@ const PX4_POWER: &str = include_str!("../../src/AutoPilotPlugins/PX4/VehicleConf
 const APM_GIMBAL: &str = include_str!("vehicleconfig/APMGimbal.VehicleConfig.json");
 const APM_AIRSPEED: &str = include_str!("vehicleconfig/APMAirspeed.VehicleConfig.json");
 const APM_ESC: &str = include_str!("vehicleconfig/APMESC.VehicleConfig.json");
+const APM_FLIGHT_MODE: &str = include_str!("vehicleconfig/APMFlightMode.VehicleConfig.json");
+const PX4_FLIGHT_MODE: &str = include_str!("vehicleconfig/PX4FlightMode.VehicleConfig.json");
+pub const FLIGHT_MODE_SETTINGS: &str = "Flight Mode Settings";
 
 const CONFIGS: &[(&str, bool, &str)] = &[
     ("Gimbal", false, APM_GIMBAL),
@@ -29,6 +32,8 @@ const CONFIGS: &[(&str, bool, &str)] = &[
     ("Tuning", false, APM_TUNING_COPTER),
     ("Safety", true, PX4_SAFETY),
     ("Power", true, PX4_POWER),
+    (FLIGHT_MODE_SETTINGS, false, APM_FLIGHT_MODE),
+    (FLIGHT_MODE_SETTINGS, true, PX4_FLIGHT_MODE),
 ];
 
 const ROW_PREFIX: &str = "vehicleConfig(";
@@ -1048,6 +1053,19 @@ mod tests {
         let rows: Vec<Value> = served["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().unwrap().clone()).collect();
         assert!(rows.iter().any(|r| r["label"] == "Gimbal settings will be available after rebooting the vehicle."));
         assert_eq!(served["sections"].as_array().unwrap().len(), 1, "until the mount's parameters appear only its type is offered");
+    }
+
+    #[test]
+    fn the_px4_flight_mode_menu_edits_rtl_altitude_and_the_geofence() {
+        let fake = Fake { px4: true, ..Fake::new(&[("RTL_RETURN_ALT", 60.0), ("GF_ACTION", 1.0), ("GF_MAX_HOR_DIST", 0.0), ("GF_MAX_VER_DIST", 120.0)]) };
+        let served = page(&fake, FLIGHT_MODE_SETTINGS, true);
+        let rows: Vec<Value> = served["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
+        let labels: Vec<&str> = rows.iter().filter_map(|r| r["label"].as_str()).collect();
+        assert_eq!(labels, ["RTL Altitude", "Breach Action", "Max Distance", "Max Distance", "Max Altitude", "Max Altitude"], "PX4FlightModeIndicator pairs each fence limit with its checkbox");
+        let distance = rows.iter().find(|r| r["label"] == "Max Distance" && r["control"] == "toggle").unwrap().clone();
+        assert_eq!(distance["value"], false);
+        assert_eq!(write(&fake, distance["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
+        assert_eq!(fake.params.borrow()["GF_MAX_HOR_DIST"], 1000.0, "switching the limit on starts it at the go-to distance limit");
     }
 
     #[test]

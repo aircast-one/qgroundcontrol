@@ -756,6 +756,9 @@ internal fun withdrawn(shown: String?, late: String): String? = if (shown == lat
 internal fun commandRefusal(action: String, confirmed: Boolean): String? =
     if (confirmed) null else "$action was not confirmed by the aircraft."
 
+internal const val FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) -> Unit) {
     val json by qgcPath(FLIGHT_MODES)
@@ -764,6 +767,7 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
     var showFolded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf<FlightModeOption?>(null) }
+    var settings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     if (modes == null) {
@@ -784,6 +788,12 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
         expanded = false
         showFolded = false
         if (mode.needsConfirm) confirming = mode else send(mode)
+    }
+
+    if (settings) {
+        ModalBottomSheet(onDismissRequest = { settings = false }) {
+            ParameterForm(FLIGHT_MODE_SETTINGS_PAGE)
+        }
     }
 
     confirming?.let { mode ->
@@ -865,6 +875,13 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
                     onClick = { showFolded = true },
                 )
             }
+            DropdownMenuItem(
+                text = { Text("Flight Mode Settings") },
+                onClick = {
+                    expanded = false
+                    settings = true
+                },
+            )
             if (modes.hiddenSetting != null) {
                 DropdownMenuItem(
                     text = { Text("Edit Displayed Flight Modes") },

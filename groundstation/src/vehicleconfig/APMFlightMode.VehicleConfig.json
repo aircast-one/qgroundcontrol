@@ -1,0 +1,47 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "constants": {
+        "_rtlAltParamValueCurrentAltitude": 0
+    },
+    "params": {
+        "_rtlAltIsMeters": {
+            "name": "noremap.RTL_ALT_M",
+            "existsOnly": true
+        },
+        "_rtlAltFact": "RTL_ALT_M"
+    },
+    "bindings": {
+        "_rtlAltParamValueDefaultSpecified": "(_rtlAltIsMeters ? 15 : 1500)"
+    },
+    "sections": [
+        {
+            "title": "Return to Launch",
+            "showWhen": "controller.vehicle.multiRotor",
+            "controls": [
+                {
+                    "param": "RTL_ALT_M",
+                    "label": "Return At",
+                    "control": "radiogroup",
+                    "options": [
+                        {
+                            "label": "Current altitude",
+                            "value": "_rtlAltParamValueCurrentAltitude",
+                            "checked": "_rtlAltFact.value === _rtlAltParamValueCurrentAltitude"
+                        },
+                        {
+                            "label": "Specified altitude",
+                            "value": "_rtlAltParamValueDefaultSpecified",
+                            "checked": "_rtlAltFact.value !== _rtlAltParamValueCurrentAltitude"
+                        }
+                    ]
+                },
+                {
+                    "param": "RTL_ALT_M",
+                    "label": "Return altitude",
+                    "enableWhen": "_rtlAltFact && _rtlAltFact.value !== _rtlAltParamValueCurrentAltitude"
+                }
+            ]
+        }
+    ]
+}

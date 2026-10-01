@@ -1,0 +1,54 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "params": {
+        "_fenceRadius": {
+            "name": "GF_MAX_HOR_DIST",
+            "required": true
+        },
+        "_fenceAlt": {
+            "name": "GF_MAX_VER_DIST",
+            "required": true
+        }
+    },
+    "sections": [
+        {
+            "title": "",
+            "controls": [
+                {
+                    "param": "RTL_RETURN_ALT",
+                    "label": "RTL Altitude",
+                    "control": "slider"
+                }
+            ]
+        },
+        {
+            "title": "GeoFence",
+            "controls": [
+                {
+                    "param": "GF_ACTION",
+                    "label": "Breach Action",
+                    "control": "combobox"
+                },
+                {
+                    "param": "GF_MAX_HOR_DIST",
+                    "label": "Max Distance",
+                    "control": "slider",
+                    "enableCheckbox": {
+                        "checked": "_fenceRadius.value > 0",
+                        "onClicked": "{ _fenceRadius.value = enableCheckBoxChecked ? 1000 : 0 }"
+                    }
+                },
+                {
+                    "param": "GF_MAX_VER_DIST",
+                    "label": "Max Altitude",
+                    "control": "slider",
+                    "enableCheckbox": {
+                        "checked": "_fenceAlt.value > 0",
+                        "onClicked": "{ _fenceAlt.value = enableCheckBoxChecked ? 121.92 : 0 }"
+                    }
+                }
+            ]
+        }
+    ]
+}
