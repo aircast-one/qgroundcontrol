@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -261,11 +262,18 @@ private fun CalibrationStart(
     }
 }
 
+internal const val RADIO_SWITCHES_PAGE = "Radio Switches"
+
 @Composable
 fun RadioScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(RADIO_VIEW)
     val view = radioView(json)
     LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke(radioCalAction("start")) } }
+    var switchReads by remember { mutableIntStateOf(0) }
+    var switches by remember { mutableStateOf(emptyList<ParameterRows>()) }
+    LaunchedEffect(switchReads, view?.connected) {
+        switches = withContext(Dispatchers.Default) { readPage(RADIO_SWITCHES_PAGE) }
+    }
 
     if (view == null || !view.connected) {
         RadioNotice("Connect a vehicle to check its radio.", modifier)
@@ -306,6 +314,13 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         item(key = "attitudeheader") { SectionHeader("Attitude controls") }
         items(view.sticks.size, key = { "att${view.sticks[it].title}" }) { index ->
             AttitudeRow(view.sticks[index])
+        }
+
+        switches.forEach { section ->
+            item(key = "switches:${section.title}") { SectionHeader(section.title) }
+            items(section.facts.size, key = { "switch:${section.facts[it].path}" }) { index ->
+                FactRow(section.facts[index]) { switchReads++ }
+            }
         }
 
         item(key = "monitorheader") { SectionHeader("Channel monitor") }

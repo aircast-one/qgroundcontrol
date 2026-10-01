@@ -133,7 +133,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val setupJson by qgcPath(SETUP)
     val setup = remember(setupJson) { setupReadiness(setupJson) }
     val hasVehicle = setup?.connected == true
-    val isPx4 = isPx4(setup)
     val firmwareJson by qgcPath(FIRMWARE)
     val line = remember(firmwareJson) { firmwareLine(firmwareJson) }
     val vehicleType = line.vehicleType
@@ -313,7 +312,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 SetupRow(
                     title = component.name,
                     status = blocked?.let { "Not while $it" }
-                        ?: setupBadge(component.name, headCanOpen(page, component.name), isPx4),
+                        ?: NEEDS_SETUP_BADGE,
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
                     onClick = if (blocked == null && headCanOpen(page, component.name)) {
                         { openComponent = component }
@@ -340,7 +339,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     title = component.name,
                     status = when {
                         blocked != null -> "Not while $blocked"
-                        component.needsAttention -> setupBadge(component.name, openable, isPx4)
+                        component.needsAttention -> NEEDS_SETUP_BADGE
                         !openable -> "On desktop"
                         else -> ""
                     },

@@ -29,6 +29,8 @@ const PX4_MAIN_STATUS: &str = include_str!("vehicleconfig/PX4MainStatusIndicator
 pub const STATUS_SETTINGS: &str = "Status Settings";
 const APM_LIGHTS: &str = include_str!("vehicleconfig/APMLights.VehicleConfig.json");
 const PX4_FLIGHT_BEHAVIOR: &str = include_str!("vehicleconfig/PX4FlightBehavior.VehicleConfig.json");
+const PX4_RADIO_SWITCHES: &str = include_str!("vehicleconfig/PX4RadioSwitches.VehicleConfig.json");
+pub const RADIO_SWITCHES: &str = "Radio Switches";
 pub const FLIGHT_MODE_SETTINGS: &str = "Flight Mode Settings";
 
 const CONFIGS: &[(&str, bool, &str)] = &[
@@ -51,6 +53,7 @@ const CONFIGS: &[(&str, bool, &str)] = &[
     (STATUS_SETTINGS, true, PX4_MAIN_STATUS),
     ("Lights", false, APM_LIGHTS),
     ("Flight Behavior", true, PX4_FLIGHT_BEHAVIOR),
+    (RADIO_SWITCHES, true, PX4_RADIO_SWITCHES),
 ];
 
 const ROW_PREFIX: &str = "vehicleConfig(";
@@ -594,7 +597,9 @@ fn row_path(page: &str, id: &str) -> String {
 }
 
 fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
-    decoded["label"] = control["label"].clone();
+    if !control["label"].is_null() {
+        decoded["label"] = control["label"].clone();
+    }
     if let Some(description) = control["description"].as_str() {
         decoded["description"] = json!(description);
     }
@@ -1272,5 +1277,13 @@ mod tests {
         let served = page(&quad, "ESC", false);
         assert_eq!(section(&served, "Configuration")["controls"][0]["name"], "Q_M_PWM_TYPE");
         assert!(section(&served, "Calibration")["controls"].as_array().unwrap().iter().any(|c| c["name"] == "Q_ESC_CAL"));
+    }
+
+    #[test]
+    fn px4_radio_switches_hide_flaps_on_a_multirotor() {
+        let params = [("RC_MAP_FLAPS", 0.0), ("RC_MAP_AUX1", 6.0), ("RC_MAP_PAY_SW", 0.0)];
+        let names = |fake: &Fake| -> Vec<String> { page(fake, RADIO_SWITCHES, true)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).filter_map(|c| c["name"].as_str().map(str::to_string)).collect() };
+        assert_eq!(names(&Fake { px4: true, ..Fake::new(&params) }), ["RC_MAP_AUX1", "RC_MAP_PAY_SW"]);
+        assert_eq!(names(&Fake { px4: true, multi_rotor: false, ..Fake::new(&params) }), ["RC_MAP_FLAPS", "RC_MAP_AUX1", "RC_MAP_PAY_SW"]);
     }
 }

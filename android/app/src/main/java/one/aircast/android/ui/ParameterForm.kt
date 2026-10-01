@@ -93,7 +93,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
     )
 }
 
-private fun readPage(page: String): List<ParameterRows> {
+internal fun readPage(page: String): List<ParameterRows> {
     val sections = Qgc.get(setupPagePath(page)).optJSONArray("sections") ?: return emptyList()
     return (0 until sections.length()).mapNotNull { index ->
         sections.optJSONObject(index)?.let { section ->

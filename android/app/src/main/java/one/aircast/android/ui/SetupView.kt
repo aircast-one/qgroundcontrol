@@ -68,10 +68,4 @@ internal fun setupPage(view: JSONObject?, name: String): SetupPage? =
 
 internal fun setupPagePath(name: String): String = "$SETUP($name)"
 
-private val PX4_ONLY_REMAINDER = setOf(RADIO)
-
-internal fun headFinishes(page: String, px4: Boolean): Boolean =
-    !px4 || page !in PX4_ONLY_REMAINDER
-
-internal fun setupBadge(page: String, openable: Boolean, px4: Boolean): String =
-    if (openable && !headFinishes(page, px4)) "Finish on desktop" else "Needs setup"
+internal const val NEEDS_SETUP_BADGE = "Needs setup"

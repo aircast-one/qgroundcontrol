@@ -1,0 +1,18 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "sections": [
+        {
+            "title": "Switch Settings",
+            "controls": [
+                { "param": "RC_MAP_FLAPS", "control": "combobox", "showWhen": "!controller.vehicle.multiRotor" },
+                { "param": "RC_MAP_AUX1", "control": "combobox" },
+                { "param": "RC_MAP_AUX2", "control": "combobox" },
+                { "param": "RC_MAP_PARAM1", "control": "combobox" },
+                { "param": "RC_MAP_PARAM2", "control": "combobox" },
+                { "param": "RC_MAP_PARAM3", "control": "combobox" },
+                { "param": "RC_MAP_PAY_SW", "control": "combobox" }
+            ]
+        }
+    ]
+}

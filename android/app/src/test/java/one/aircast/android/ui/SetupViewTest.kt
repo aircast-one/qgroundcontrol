@@ -67,34 +67,6 @@ class SetupViewTest {
     }
 
     @Test
-    fun `radio is unfinished only on px4, whose aux mappings this head has no control for`() {
-        assertFalse(headFinishes(RADIO, px4 = true))
-        assertTrue(headFinishes(SENSORS, px4 = true))
-        assertTrue(headFinishes("Safety", px4 = true))
-        assertTrue("calibration, trims and both binds are all here for apm", headFinishes(RADIO, px4 = false))
-    }
-
-    @Test
-    fun `an apm radio page carries no desktop promise`() {
-        assertEquals("Needs setup", setupBadge(RADIO, openable = true, px4 = false))
-    }
-
-    @Test
-    fun `a page that watches but cannot finish says so before the tap`() {
-        assertEquals("Finish on desktop", setupBadge(RADIO, openable = true, px4 = true))
-    }
-
-    @Test
-    fun `a page the head can finish keeps the plain badge`() {
-        assertEquals("Needs setup", setupBadge(SENSORS, openable = true, px4 = true))
-    }
-
-    @Test
-    fun `a page this head cannot open is not promised a desktop finish`() {
-        assertEquals("Needs setup", setupBadge(RADIO, openable = false, px4 = true))
-    }
-
-    @Test
     fun `a page opens on what this head has, not on a field the core may stop serving`() {
         val served = JSONObject(
             """{"groups":[{"title":"S","pages":[{"name":"Radio","parameterSections":false}]}]}""",
@@ -102,7 +74,6 @@ class SetupViewTest {
         val page = setupPage(served, RADIO)
 
         assertTrue("Radio has a screen here, so no flag from the core decides it", headCanOpen(page, RADIO))
-        assertEquals("Finish on desktop", setupBadge(RADIO, headCanOpen(page, RADIO), px4 = true))
     }
 
     @Test
