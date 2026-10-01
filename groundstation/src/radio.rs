@@ -98,6 +98,8 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "cancelEnabled": cancel_enabled,
         "skipEnabled": truthy(&cal, "skipEnabled"),
         "transmitterMode": integer(&cal, "transmitterMode").unwrap_or(2),
+        "centeredThrottle": truthy(&cal, "centeredThrottle"),
+        "joystickMode": truthy(&cal, "joystickMode"),
         "channels": channels,
         "sticks": sticks,
     })
@@ -171,6 +173,17 @@ pub fn write_transmitter_mode(backend: &dyn Backend, path: &str, value: &str) ->
         "mode": mode,
         "reason": match answered { true => Value::Null, false => json!("The radio calibration did not take the transmitter mode.") },
     })
+}
+
+pub fn write_centered_throttle(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let Some(centered) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
+        return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "Centered throttle is on or off." });
+    };
+    if calibration(&object(&backend.get("radioCal"))).calibrating {
+        return json!({ "ok": false, "result": false, "refusal": "calibrating", "reason": "Finish or cancel the calibration before changing the throttle position." });
+    }
+    let answered = crate::read::flag(&object(&backend.set(path, &json!({ "value": centered }).to_string())), "ok");
+    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "centeredThrottle": centered })
 }
 
 #[cfg(test)]
@@ -296,5 +309,14 @@ mod tests {
         assert_eq!(write_transmitter_mode(&running, "radioCal.transmitterMode", r#"{"value":3}"#)["refusal"], "calibrating");
         assert!(running.1.borrow().is_empty());
         assert_eq!(act(&running, Action::Cancel, "radioCal.cancelButtonClicked")["ok"], true);
+    }
+
+    #[test]
+    fn centered_throttle_is_a_switch_held_still_while_calibrating() {
+        let idle = Fake(json!({ "kind": "object", "cancelEnabled": false }));
+        assert_eq!(write_centered_throttle(&idle, "radioCal.centeredThrottle", r#"{"value":"yes"}"#)["refusal"], "malformed");
+        assert_eq!(write_centered_throttle(&idle, "radioCal.centeredThrottle", r#"{"value":true}"#)["centeredThrottle"], true);
+        let running = Fake(json!({ "kind": "object", "cancelEnabled": true }));
+        assert_eq!(write_centered_throttle(&running, "radioCal.centeredThrottle", r#"{"value":true}"#)["refusal"], "calibrating");
     }
 }

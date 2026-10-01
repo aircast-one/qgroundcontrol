@@ -3183,6 +3183,10 @@ impl Hub {
         self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.rccal.transmitter_mode = if (1..=4).contains(&mode) { mode as i32 } else { 2 }).is_some()
     }
 
+    pub fn set_centered_throttle(&mut self, centered: bool) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.rccal.set_centered_throttle(centered)).is_some()
+    }
+
     pub fn clear_message_log(&mut self) {
         if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
             vehicle.message_log.clear();

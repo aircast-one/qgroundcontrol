@@ -37,6 +37,8 @@ internal data class RadioView(
     val calibration: RadioCalibration,
     val transmitterMode: Int,
     val enoughChannels: Boolean,
+    val centeredThrottle: Boolean = false,
+    val joystickMode: Boolean = false,
     val sticks: List<RadioStick>,
     val channels: List<RadioChannel>,
     val startPrompt: Pair<String, String>? = null,
@@ -56,6 +58,8 @@ internal fun radioView(view: JSONObject?): RadioView? {
         shortfall = view.optText("shortfall"),
         transmitterMode = view.optInt("transmitterMode", 2),
         enoughChannels = view.optBoolean("enoughChannels"),
+        centeredThrottle = view.optBoolean("centeredThrottle"),
+        joystickMode = view.optBoolean("joystickMode"),
         startPrompt = view.optJSONObject("startPrompt")?.let { it.optText("title") to it.optText("message") },
         calibration = RadioCalibration(
             running = view.optBoolean("calibrating"),

@@ -1399,6 +1399,12 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "ok": held }).to_string();
             }
         }
+        if path == "radioCal.centeredThrottle" && switched_on() {
+            let centered = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(held) = centered.map(|c| crate::hub::lock().set_centered_throttle(c)).filter(|held| *held) {
+                return json!({ "ok": held }).to_string();
+            }
+        }
         if path == "vehicle.checkListState" && switched_on() {
             let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
             if let Some(state) = state {

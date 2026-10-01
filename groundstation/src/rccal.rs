@@ -158,6 +158,10 @@ impl RcCal {
         RcCal { centered_throttle: vehicle.rover, transmitter_mode: if (1..=4).contains(&transmitter_mode) { transmitter_mode } else { 2 }, ..RcCal::default() }
     }
 
+    pub fn set_centered_throttle(&mut self, centered: bool) {
+        self.centered_throttle = centered;
+    }
+
     pub fn calibrating(&self) -> bool {
         self.step.is_some()
     }

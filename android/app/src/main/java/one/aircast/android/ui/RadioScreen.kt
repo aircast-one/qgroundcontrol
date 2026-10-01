@@ -2,6 +2,8 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Surface
@@ -137,21 +140,28 @@ private fun CalibrationStep(cal: RadioCalibration, onAction: (String) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ModeRow(mode: Int, onPick: (Int) -> Unit) {
+private fun ModeRow(mode: Int, centeredThrottle: Boolean?, onPick: (Int) -> Unit, onCentered: (Boolean) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
         Text(
             "Transmitter mode — which stick is the throttle",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(bottom = 4.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            (1..2).forEach { choice ->
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            (1..4).forEach { choice ->
                 FilterChip(
                     selected = choice == mode,
                     onClick = { onPick(choice) },
                     label = { Text("Mode $choice") },
                 )
+            }
+        }
+        centeredThrottle?.let { centered ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = centered, onCheckedChange = onCentered)
+                Text("Centered Throttle", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -222,6 +232,7 @@ private fun CalibrationStart(
     view: RadioView,
     onAction: (String) -> Unit,
     onMode: (Int) -> Unit,
+    onCentered: (Boolean) -> Unit,
     onInvoke: (String, Int?) -> Unit,
 ) {
     var prompting by remember { mutableStateOf(false) }
@@ -234,7 +245,7 @@ private fun CalibrationStart(
         )
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        ModeRow(view.transmitterMode, onMode)
+        ModeRow(view.transmitterMode, view.centeredThrottle.takeUnless { view.joystickMode }, onMode, onCentered)
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -299,6 +310,7 @@ fun RadioScreen(modifier: Modifier = Modifier) {
                     view = view,
                     onAction = { action -> offMainDetached { Qgc.invoke(radioCalAction(action)) } },
                     onMode = { mode -> offMainDetached { Qgc.set("$RADIO_CAL.transmitterMode", mode) } },
+                    onCentered = { centered -> offMainDetached { Qgc.set("$RADIO_CAL.centeredThrottle", centered) } },
                     onInvoke = { action, choice ->
                         offMainDetached {
                             when (choice) {

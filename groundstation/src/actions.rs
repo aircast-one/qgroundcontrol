@@ -24,6 +24,7 @@ const RADIO_NEXT: &str = "radioCal.nextButtonClicked";
 const RADIO_CANCEL: &str = "radioCal.cancelButtonClicked";
 const RADIO_SKIP: &str = "radioCal.skipButtonClicked";
 const TRANSMITTER_MODE: &str = "radioCal.transmitterMode";
+const CENTERED_THROTTLE: &str = "radioCal.centeredThrottle";
 const SENSOR_NEXT: &str = "sensorsCal.nextClicked";
 const SENSOR_CANCEL: &str = "sensorsCal.cancelCalibration";
 const CAL_ACCEL: &str = "sensorsCal.calibrateAccel";
@@ -127,7 +128,7 @@ pub fn owns(path: &str) -> bool {
 // A write had no route to the core at all: router.set refused view paths and passed everything
 // else straight to the backend, and owns() was consulted only by invoke. A write is not a read
 // going the other way, so it needs its own door rather than either of the two that existed.
-pub const OWNED_WRITES: &[&str] = &[ZOOM, CURRENT_CAMERA, TRANSMITTER_MODE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
+pub const OWNED_WRITES: &[&str] = &[ZOOM, CURRENT_CAMERA, TRANSMITTER_MODE, CENTERED_THROTTLE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
 
 pub fn owns_write(path: &str) -> bool {
     OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path) || crate::vehicleconfig::owns(path)
@@ -138,6 +139,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         ZOOM => zoom(backend, value),
         CURRENT_CAMERA => crate::cameratrack::select_camera(backend, path, value),
         TRANSMITTER_MODE => crate::radio::write_transmitter_mode(backend, path, value),
+        CENTERED_THROTTLE => crate::radio::write_centered_throttle(backend, path, value),
         BREACH_ALTITUDE => crate::factwrite::write(backend, path, value),
         INSPECTOR_SELECTED => crate::inspector::write_selected(backend, value),
         _ if crate::logs::selection_index(path).is_some() => crate::logs::write_selected(backend, path, value),
