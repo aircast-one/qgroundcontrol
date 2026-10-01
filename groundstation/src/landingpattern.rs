@@ -252,6 +252,7 @@ pub fn edit(pattern: &Value, suffix: &str, value: &Value) -> Option<Value> {
         }
         "finalApproachSpeed" => Some(with("finalApproachSpeed", json!(number?))),
         "useDoChangeSpeed" => Some(with("useDoChangeSpeed", json!(on?))),
+        "altitudesAreRelative" => Some(with("altitudesAreRelative", json!(on?))),
         "stopTakingPhotos" => Some(with("stopTakingPhotos", json!(on?))),
         "stopTakingVideo" => Some(with("stopVideoPhotos", json!(on?))),
         "valueSetIsDistance" if !is_vtol(pattern) => Some(with("valueSetIsDistance", json!(on?))),
@@ -460,6 +461,14 @@ pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Ite
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn altitudes_relative_to_launch_is_a_checkbox_the_core_edits() {
+        let built = fresh(&Fresh { vtol: false, land: (-35.37, 149.172), ardupilot: true, relative: true, transition_distance: None });
+        let absolute = edit(&built, "altitudesAreRelative", &json!(false)).unwrap();
+        assert_eq!(absolute["altitudesAreRelative"], false, "FWLandingPatternEditor's Altitudes relative to launch");
+        assert_eq!(edit(&absolute, "altitudesAreRelative", &json!(true)).unwrap()["altitudesAreRelative"], true);
+    }
 
     #[test]
     fn a_downloaded_landing_sequence_folds_back_into_the_pattern_it_came_from() {

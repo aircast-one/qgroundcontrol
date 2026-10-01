@@ -18,4 +18,10 @@ class PreviousCoordinateTest {
         assertEquals("Actual AMSL alt sent: 512.3 m", altitudeHint(JSONObject("""{"altitudeHint":"Actual AMSL alt sent: 512.3 m"}""")))
         assertNull(altitudeHint(JSONObject("""{"altitudeHint":null}""")))
     }
+
+    @Test
+    fun `a landing pattern offers altitudes relative to launch`() {
+        assertEquals(false, altitudesRelative(JSONObject("""{"landing":true,"altitudesAreRelative":false}""")))
+        assertNull(altitudesRelative(JSONObject("""{"landing":false,"altitudesAreRelative":null}""")))
+    }
 }

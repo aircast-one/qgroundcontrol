@@ -101,6 +101,9 @@ internal fun categoryNames(result: Any?): List<String> {
     return (0 until listed.length()).map { listed.optText(it) }
 }
 
+internal fun altitudesRelative(view: JSONObject?): Boolean? =
+    view?.takeIf { it.optBoolean("landing") && it.has("altitudesAreRelative") && !it.isNull("altitudesAreRelative") }?.optBoolean("altitudesAreRelative")
+
 internal fun altitudeHint(view: JSONObject?): String? =
     view?.takeIf { it.has("altitudeHint") && !it.isNull("altitudeHint") }?.optString("altitudeHint")?.ifBlank { null }
 
@@ -164,6 +167,17 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                 }
             }
             if (index == 0) MissionAltitudeFrame()
+            altitudesRelative(view)?.let { relative ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Altitudes relative to launch", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = relative, onCheckedChange = { wanted ->
+                        scope.launch {
+                            refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal("plan.missionController.visualItems.$index.altitudesAreRelative", wanted) }
+                            revision++
+                        }
+                    })
+                }
+            }
             altitudeHint(view)?.let { hint ->
                 Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             }

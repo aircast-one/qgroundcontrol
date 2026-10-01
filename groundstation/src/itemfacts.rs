@@ -171,6 +171,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         "areaHelp": (available && !simple).then(|| qt_area_help(backend, &item, &read)).flatten(),
         "entryPoint": qt_entry_point(&item, &read),
         "landing": matches!(read.get("class").and_then(Value::as_str), Some("FixedWingLandingComplexItem" | "VTOLLandingComplexItem")),
+        "altitudesAreRelative": matches!(read.get("class").and_then(Value::as_str), Some("FixedWingLandingComplexItem" | "VTOLLandingComplexItem")).then(|| read.get("altitudesAreRelative").and_then(Value::as_bool)).flatten(),
         "camera": match available && !simple {
             true => camera(backend, &item),
             false => Value::Null,
