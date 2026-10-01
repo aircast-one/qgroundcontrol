@@ -15,9 +15,11 @@ const PX4_SAFETY: &str = include_str!("../../src/AutoPilotPlugins/PX4/VehicleCon
 const PX4_POWER: &str = include_str!("../../src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json");
 
 const APM_GIMBAL: &str = include_str!("vehicleconfig/APMGimbal.VehicleConfig.json");
+const APM_AIRSPEED: &str = include_str!("vehicleconfig/APMAirspeed.VehicleConfig.json");
 
 const CONFIGS: &[(&str, bool, &str)] = &[
     ("Gimbal", false, APM_GIMBAL),
+    ("Airspeed", false, APM_AIRSPEED),
     ("Flight Safety", false, APM_FLIGHT_SAFETY),
     ("Failsafes", false, APM_FAILSAFES),
     ("Logging", false, APM_LOGGING),
@@ -78,6 +80,7 @@ fn from_json(value: &Value) -> Val {
         Value::Bool(b) => Val::Bool(*b),
         Value::Number(n) => n.as_f64().map_or(Val::Null, Val::Num),
         Value::String(s) => Val::Str(s.clone()),
+        Value::Array(items) => Val::List(items.iter().map(from_json).collect()),
         _ => Val::Null,
     }
 }
@@ -1050,5 +1053,22 @@ mod tests {
         assert_eq!(fence["controls"][2]["enabled"], false, "the radius is inert until its checkbox is on");
         assert_eq!(write(&fake, enable["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["GF_MAX_HOR_DIST"], 100.0);
+    }
+
+    #[test]
+    fn airspeed_shows_pitot_rows_only_for_pitot_sensors() {
+        let fake = Fake::new(&[("ARSPD_TYPE", 1.0), ("ARSPD_USE", 1.0), ("ARSPD_RATIO", 2.0), ("ARSPD_AUTOCAL", 0.0), ("ARSPD_BUS", 1.0), ("ARSPD_PIN", 15.0), ("ARSPD2_TYPE", 13.0), ("ARSPD2_USE", 0.0), ("ARSPD2_RATIO", 2.0), ("ARSPD_PRIMARY", 0.0), ("AIRSPEED_CRUISE", 18.0), ("ARSPD_WIND_MAX", 0.0)]);
+        let served = page(&fake, "Airspeed", false);
+        let section = |title: &str| served["sections"].as_array().unwrap().iter().find(|s| s["title"] == title).cloned();
+        let labels = |title: &str| section(title).map(|s| s["controls"].as_array().unwrap().iter().map(|c| c["label"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();
+        assert_eq!(labels("Primary Airspeed Sensor"), ["Sensor type", "Use airspeed", "Airspeed ratio", "Auto calibrate ratio in flight"]);
+        assert_eq!(labels("Second Airspeed Sensor"), ["Sensor type", "Use airspeed"], "NMEA is not a pitot sensor");
+        assert_eq!(labels("Sensor Settings: Primary Sensor"), ["I2C bus"], "an I2C pitot has neither an analog pin nor a PSI range");
+        assert!(section("Multi-Sensor Options").is_some());
+        assert!(section("Airspeed Limits").is_some());
+        let off = Fake::new(&[("ARSPD_TYPE", 0.0), ("ARSPD_USE", 1.0), ("AIRSPEED_CRUISE", 18.0)]);
+        let served = page(&off, "Airspeed", false);
+        let titles: Vec<&str> = served["sections"].as_array().unwrap().iter().map(|s| s["title"].as_str().unwrap()).collect();
+        assert_eq!(titles, ["Primary Airspeed Sensor"], "a disabled sensor offers only its type");
     }
 }

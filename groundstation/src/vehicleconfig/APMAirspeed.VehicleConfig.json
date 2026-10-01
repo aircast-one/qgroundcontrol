@@ -1,0 +1,262 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "constants": {
+        "nonI2CTypes": [
+            0,
+            2,
+            8,
+            13,
+            14,
+            16
+        ],
+        "nonPitotTypes": [
+            0,
+            13,
+            14,
+            16
+        ],
+        "psiRangeTypes": [
+            7,
+            9,
+            10,
+            11,
+            12,
+            17,
+            18,
+            19
+        ]
+    },
+    "sections": [
+        {
+            "title": "Primary Airspeed Sensor",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD_TYPE\")",
+            "controls": [
+                {
+                    "param": "ARSPD_TYPE",
+                    "label": "Sensor type",
+                    "control": "combobox"
+                },
+                {
+                    "param": "ARSPD_USE",
+                    "label": "Use airspeed",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0"
+                },
+                {
+                    "param": "ARSPD_RATIO",
+                    "label": "Airspeed ratio",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD_AUTOCAL",
+                    "label": "Auto calibrate ratio in flight",
+                    "control": "checkbox",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue)"
+                }
+            ]
+        },
+        {
+            "title": "Second Airspeed Sensor",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD2_TYPE\")",
+            "controls": [
+                {
+                    "param": "ARSPD2_TYPE",
+                    "label": "Sensor type",
+                    "control": "combobox"
+                },
+                {
+                    "param": "ARSPD2_USE",
+                    "label": "Use airspeed",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue !== 0"
+                },
+                {
+                    "param": "ARSPD2_RATIO",
+                    "label": "Airspeed ratio",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD2_AUTOCAL",
+                    "label": "Auto calibrate ratio in flight",
+                    "control": "checkbox",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue)"
+                }
+            ]
+        },
+        {
+            "title": "Multi-Sensor Options",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD_TYPE\") && controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0 && controller.parameterExists(-1, \"ARSPD2_TYPE\") && controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "ARSPD_PRIMARY",
+                    "label": "Primary sensor",
+                    "control": "combobox",
+                    "optional": true
+                }
+            ]
+        },
+        {
+            "title": "Airspeed Limits",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD_TYPE\") && controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "AIRSPEED_CRUISE",
+                    "label": "Cruise airspeed",
+                    "optional": true
+                },
+                {
+                    "param": "AIRSPEED_MIN",
+                    "label": "Minimum airspeed",
+                    "optional": true
+                },
+                {
+                    "param": "AIRSPEED_MAX",
+                    "label": "Maximum airspeed",
+                    "optional": true
+                },
+                {
+                    "param": "AIRSPEED_STALL",
+                    "label": "Stall airspeed",
+                    "optional": true
+                }
+            ]
+        },
+        {
+            "title": "Sensor Settings: Primary Sensor",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD_TYPE\") && controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0 && controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "ARSPD_OFFSET",
+                    "label": "Airspeed offset",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD_SKIP_CAL",
+                    "label": "Skip calibration",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD_TUBE_ORDR",
+                    "label": "Pitot tube order",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD_PIN",
+                    "label": "Analog pin",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue === 2"
+                },
+                {
+                    "param": "ARSPD_BUS",
+                    "label": "I2C bus",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!nonI2CTypes.includes(controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD_PSI_RANGE",
+                    "label": "PSI range",
+                    "optional": true,
+                    "showWhen": "psiRangeTypes.includes(controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue)"
+                }
+            ]
+        },
+        {
+            "title": "Sensor Settings: Second Sensor",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD2_TYPE\") && controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue !== 0 && controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "ARSPD2_OFFSET",
+                    "label": "Airspeed offset",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD2_SKIP_CAL",
+                    "label": "Skip calibration",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD2_TUBE_ORDR",
+                    "label": "Pitot tube order",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!nonPitotTypes.includes(controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD2_PIN",
+                    "label": "Analog pin",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue === 2"
+                },
+                {
+                    "param": "ARSPD2_BUS",
+                    "label": "I2C bus",
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "!nonI2CTypes.includes(controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue)"
+                },
+                {
+                    "param": "ARSPD2_PSI_RANGE",
+                    "label": "PSI range",
+                    "optional": true,
+                    "showWhen": "psiRangeTypes.includes(controller.getParameterFact(-1, \"ARSPD2_TYPE\").rawValue)"
+                }
+            ]
+        },
+        {
+            "title": "Health Monitoring",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD_TYPE\") && controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "ARSPD_WIND_MAX",
+                    "label": "Max airspeed/groundspeed difference",
+                    "optional": true
+                },
+                {
+                    "param": "ARSPD_WIND_WARN",
+                    "label": "Warning threshold",
+                    "optional": true
+                },
+                {
+                    "param": "ARSPD_WIND_GATE",
+                    "label": "Re-enable gate size",
+                    "optional": true
+                },
+                {
+                    "param": "ARSPD_OFF_PCNT",
+                    "label": "Offset calibration error warning",
+                    "optional": true
+                }
+            ]
+        },
+        {
+            "title": "Airspeed Options",
+            "showWhen": "controller.parameterExists(-1, \"ARSPD_TYPE\") && controller.getParameterFact(-1, \"ARSPD_TYPE\").rawValue !== 0",
+            "controls": [
+                {
+                    "param": "ARSPD_OPTIONS",
+                    "label": "Options",
+                    "control": "bitmask",
+                    "optional": true
+                }
+            ]
+        }
+    ]
+}
