@@ -49,6 +49,84 @@ const COMPASS_TYPES: [(u32, &str); 23] = [
     (0x18, "IIS2MDC"),
 ];
 
+const IMU_TYPES: [(u32, &str); 36] = [
+    (0x09, "BMI160"),
+    (0x10, "L3G4200D"),
+    (0x11, "ACC_LSM303D"),
+    (0x12, "ACC_BMA180"),
+    (0x13, "ACC_MPU6000"),
+    (0x16, "ACC_MPU9250"),
+    (0x17, "ACC_IIS328DQ"),
+    (0x18, "ACC_LSM9DS1"),
+    (0x21, "GYR_MPU6000"),
+    (0x22, "GYR_L3GD20"),
+    (0x24, "GYR_MPU9250"),
+    (0x25, "GYR_I3G4250D"),
+    (0x26, "GYR_LSM9DS1"),
+    (0x27, "INS_ICM20789"),
+    (0x28, "INS_ICM20689"),
+    (0x29, "INS_BMI055"),
+    (0x2A, "SITL"),
+    (0x2B, "INS_BMI088"),
+    (0x2C, "INS_ICM20948"),
+    (0x2D, "INS_ICM20648"),
+    (0x2E, "INS_ICM20649"),
+    (0x2F, "INS_ICM20602"),
+    (0x30, "INS_ICM20601"),
+    (0x31, "INS_ADIS1647X"),
+    (0x32, "SERIAL"),
+    (0x33, "INS_ICM40609"),
+    (0x34, "INS_ICM42688"),
+    (0x35, "INS_ICM42605"),
+    (0x36, "INS_ICM40605"),
+    (0x37, "INS_IIM42652"),
+    (0x38, "BMI270"),
+    (0x39, "INS_BMI085"),
+    (0x3A, "INS_ICM42670"),
+    (0x3B, "INS_ICM45686"),
+    (0x3C, "INS_SCHA63T"),
+    (0x3D, "INS_IIM42653"),
+];
+const BARO_TYPES: [(u32, &str); 24] = [
+    (0x01, "SITL"),
+    (0x02, "BMP085"),
+    (0x03, "BMP280"),
+    (0x04, "BMP388"),
+    (0x05, "DPS280"),
+    (0x06, "DPS310"),
+    (0x07, "FBM320"),
+    (0x08, "ICM20789"),
+    (0x09, "KELLERLD"),
+    (0x0A, "LPS2XH"),
+    (0x0B, "MS5611"),
+    (0x0C, "SPL06"),
+    (0x0D, "UAVCAN"),
+    (0x0E, "MSP"),
+    (0x0F, "ICP101XX"),
+    (0x10, "ICP201XX"),
+    (0x11, "MS5607"),
+    (0x12, "MS5837_30BA"),
+    (0x13, "MS5637"),
+    (0x14, "BMP390"),
+    (0x15, "BMP581"),
+    (0x16, "SPA06"),
+    (0x17, "AUAV"),
+    (0x18, "MS5837_02BA"),
+];
+
+pub fn decode_device_id(param: &str, devid: u32) -> String {
+    if devid == 0 {
+        return String::new();
+    }
+    if param.starts_with("COMPASS") {
+        return decode_compass_id(devid);
+    }
+    let bus_type = BUS_TYPES.get((devid & 0x07) as usize).copied().unwrap_or("undefined");
+    let table: &[(u32, &str)] = if param.starts_with("INS") { &IMU_TYPES } else { &BARO_TYPES };
+    let name = table.iter().find(|(id, _)| *id == devid >> 16).map_or("?", |(_, name)| name);
+    format!("{name} ({bus_type}{})", (devid >> 3) & 0x1F)
+}
+
 pub fn decode_compass_id(devid: u32) -> String {
     if devid == 0 {
         return String::new();
@@ -202,6 +280,9 @@ mod tests {
     #[test]
     fn device_ids_decode_like_the_qml_decoder() {
         assert_eq!(decode_compass_id(0), "");
+        assert_eq!(decode_device_id("INS_ACC_ID", (0x34 << 16) | (1 << 3) | 2), "INS_ICM42688 (SPI1)");
+        assert_eq!(decode_device_id("BARO1_DEVID", (0x0B << 16) | 1), "MS5611 (I2C0)");
+        assert_eq!(decode_device_id("COMPASS_PRIO1_ID", (0x0A << 16) | (1 << 3) | 1), "IST8310 (I2C1)");
         let ist8310_i2c1_addr12 = (0x0A << 16) | (0x0C << 8) | (1 << 3) | 1;
         assert_eq!(decode_compass_id(ist8310_i2c1_addr12), "IST8310 (I2C1)");
         assert_eq!(decode_compass_id((0x7D << 16) | 3), "UAVCAN (UAVCAN0)");

@@ -125,6 +125,42 @@ fn apm_power(facts: Facts) -> Rows {
         .collect()
 }
 
+const COMPASS_IDS: [&str; 3] = ["COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3"];
+const COMPASS_PRIOS: [&str; 3] = ["COMPASS_PRIO1_ID", "COMPASS_PRIO2_ID", "COMPASS_PRIO3_ID"];
+const COMPASS_EXTERNALS: [&str; 3] = ["COMPASS_EXTERNAL", "COMPASS_EXTERN2", "COMPASS_EXTERN3"];
+const COMPASS_OFFSETS: [&str; 3] = ["COMPASS_OFS", "COMPASS_OFS2", "COMPASS_OFS3"];
+const PRIORITY_NAMES: [&str; 3] = ["Primary", "Secondary", "Tertiary"];
+const INS_IDS: [&str; 3] = ["INS_ACC_ID", "INS_ACC2_ID", "INS_ACC3_ID"];
+const BARO_IDS: [&str; 3] = ["BARO1_DEVID", "BARO2_DEVID", "BARO3_DEVID"];
+
+fn device(facts: Facts, name: &str) -> String {
+    facts(name).map(|f| crate::sensorsettings::decode_device_id(name, number(&f) as u32)).unwrap_or_default()
+}
+
+fn compass_text(facts: Facts, index: usize) -> String {
+    let id = facts(COMPASS_IDS[index]).map_or(0.0, |f| number(&f));
+    let calibrated = ["X", "Y", "Z"].iter().all(|axis| facts(&format!("{}_{axis}", COMPASS_OFFSETS[index])).is_some_and(|f| number(&f) != 0.0));
+    let priority = COMPASS_PRIOS.iter().position(|name| facts(name).is_some_and(|f| number(&f) == id)).map_or("Unused", |at| PRIORITY_NAMES[at]);
+    let placement = facts(COMPASS_EXTERNALS[index]).map(|f| if number(&f) != 0.0 { ", External" } else { ", Internal" }).unwrap_or("");
+    match (id > 0.0, calibrated) {
+        (false, _) => "Not installed".to_string(),
+        (true, false) => SETUP_REQUIRED.to_string(),
+        (true, true) => format!("{priority}{placement}"),
+    }
+}
+
+fn apm_sensors(facts: Facts) -> Rows {
+    let accel_needed = ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"].iter().all(|name| facts(name).is_none_or(|f| number(&f) == 0.0));
+    let decoded = |names: &[&str; 3]| names.iter().map(|name| device(facts, name)).filter(|text| !text.is_empty()).map(|text| row("", text)).collect::<Vec<_>>();
+    std::iter::once(row("Compasses:", ""))
+        .chain((0..COMPASS_IDS.len()).map(|index| row(&compass_text(facts, index), device(facts, COMPASS_PRIOS[index]))))
+        .chain(std::iter::once(row("Accelerometer(s):", if accel_needed { SETUP_REQUIRED } else { READY })))
+        .chain(decoded(&INS_IDS))
+        .chain(std::iter::once(row("Barometer(s):", if facts(BARO_IDS[0]).is_some() { "" } else { "Not Supported(Over APM 4.1)" })))
+        .chain(decoded(&BARO_IDS))
+        .collect()
+}
+
 fn px4_power(facts: Facts) -> Rows {
     let count = (1..).take_while(|index| facts(&format!("BAT{index}_SOURCE")).is_some()).count();
     let label = |index: usize, numbered: &str, single: &str| if count > 1 { format!("Battery {index} {numbered}") } else { single.to_string() };
@@ -342,6 +378,7 @@ pub fn rows(class: &str, facts: Facts, vehicle: &Vehicle) -> Option<Rows> {
         "APMPowerComponent" => apm_power(facts),
         "APMESCComponent" => apm_esc(facts),
         "PowerComponent" => px4_power(facts),
+        "APMSensorsComponent" => apm_sensors(facts),
         "APMAirspeedComponent" => apm_airspeed(facts),
         "APMFollowComponent" => apm_follow(facts),
         "APMFailsafesComponent" if vehicle.sub => sub_failsafes(facts, vehicle),
@@ -444,6 +481,25 @@ mod tests {
         assert!(shown.contains(&row("Loiter Alt", "30 m")));
         assert!(!shown.iter().any(|(label, _)| label == "Land Delay"), "a negative delay never lands");
         assert_eq!(clean_behavior("Warning"), "Warning");
+    }
+
+    #[test]
+    fn apm_sensors_name_each_compass_by_its_priority_and_decode_the_devices() {
+        let ist = f64::from((0x0A << 16) | (1 << 3) | 1);
+        let map = HashMap::from([
+            ("COMPASS_DEV_ID", fact(ist, "", "", "")),
+            ("COMPASS_OFS_X", fact(1.0, "", "", "")),
+            ("COMPASS_OFS_Y", fact(1.0, "", "", "")),
+            ("COMPASS_OFS_Z", fact(1.0, "", "", "")),
+            ("COMPASS_EXTERNAL", fact(1.0, "", "", "")),
+            ("COMPASS_PRIO1_ID", fact(ist, "", "", "")),
+            ("COMPASS_DEV_ID2", fact(5.0, "", "", "")),
+            ("INS_ACCOFFS_X", fact(0.1, "", "", "")),
+        ]);
+        let shown = rows("APMSensorsComponent", &lookup(&map), &copter()).unwrap();
+        assert_eq!(shown[..4], [row("Compasses:", ""), row("Primary, External", "IST8310 (I2C1)"), row(SETUP_REQUIRED, ""), row("Not installed", "")]);
+        assert_eq!(shown[4], row("Accelerometer(s):", READY));
+        assert_eq!(shown.last(), Some(&row("Barometer(s):", "Not Supported(Over APM 4.1)")));
     }
 
     #[test]
