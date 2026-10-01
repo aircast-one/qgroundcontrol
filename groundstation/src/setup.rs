@@ -5,7 +5,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
 const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Scripting", "Lights", "Remote Support"];
@@ -200,6 +200,26 @@ pub struct Component {
     pub known: Option<String>,
     pub needs_attention: bool,
     pub blocked_reason: Option<&'static str>,
+    pub setup_complete: bool,
+}
+
+const AIRFRAME_CLASSES: [&str; 2] = ["APMAirframeComponent", "AirframeComponent"];
+const RADIO_CLASSES: [&str; 2] = ["APMRadioComponent", "PX4RadioComponent"];
+const NEEDS_AIRFRAME: [&str; 12] = [
+    "APMFlightModesComponent", "APMRadioComponent", "APMPowerComponent", "APMESCComponent", "APMFlightSafetyComponent", "APMTuningComponent", "APMSensorsComponent", "APMAirspeedComponent",
+    "PX4TuningComponent", "PowerComponent", "SafetyComponent", "SensorsComponent",
+];
+const RC_IN_MODE_NO_RC: i64 = 1;
+
+pub fn prerequisite(component: &Component, all: &[Component], rc_in_mode: Option<i64>) -> Option<String> {
+    let unfinished = |classes: &[&str]| all.iter().find(|c| classes.contains(&c.class_name.as_str()) && !c.setup_complete).map(|c| c.name.clone());
+    match component.class_name.as_str() {
+        "APMFlightModesComponent" => unfinished(&AIRFRAME_CLASSES).or_else(|| unfinished(&RADIO_CLASSES)),
+        "FlightModesComponent" if rc_in_mode == Some(RC_IN_MODE_NO_RC) => None,
+        "FlightModesComponent" => unfinished(&AIRFRAME_CLASSES).or_else(|| unfinished(&RADIO_CLASSES)),
+        class if NEEDS_AIRFRAME.contains(&class) => unfinished(&AIRFRAME_CLASSES),
+        _ => None,
+    }
 }
 
 fn known_component(component: &Value) -> Option<String> {
@@ -251,6 +271,7 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
                 known: known_component(&component),
                 needs_attention: flag(&component, "requiresSetup") && !flag(&component, "setupComplete"),
                 blocked_reason: blocked_by(&component, armed, flying, rover),
+                setup_complete: flag(&component, "setupComplete"),
             })
         })
         .collect()
@@ -271,6 +292,7 @@ fn parameter_state(backend: &dyn Backend, connected: bool) -> (bool, &'static st
 
 fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let components = vehicle_components(backend);
+    let rc_in_mode = px4.then(|| crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue")).map(|m| m as i64)).flatten();
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), c.needs_attention)).collect();
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
@@ -295,6 +317,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             "needsAttention": c.needs_attention,
             "openable": c.blocked_reason.is_none(),
             "blockedReason": c.blocked_reason,
+            "prerequisite": prerequisite(c, &components, rc_in_mode),
         })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
@@ -452,6 +475,19 @@ mod tests {
 #[cfg(test)]
 mod components {
     use super::*;
+
+    #[test]
+    fn an_unfinished_airframe_or_radio_comes_first() {
+        let part = |class: &str, name: &str, done: bool| Component { name: name.into(), class_name: class.into(), known: None, needs_attention: !done, blocked_reason: None, setup_complete: done };
+        let all = vec![part("APMAirframeComponent", "Frame", false), part("APMRadioComponent", "Radio", false), part("APMFlightModesComponent", "Flight Modes", false), part("APMSensorsComponent", "Sensors", false)];
+        assert_eq!(prerequisite(&all[2], &all, None).as_deref(), Some("Frame"));
+        assert_eq!(prerequisite(&all[3], &all, None).as_deref(), Some("Frame"));
+        let framed = vec![part("APMAirframeComponent", "Frame", true), part("APMRadioComponent", "Radio", false), part("APMFlightModesComponent", "Flight Modes", false)];
+        assert_eq!(prerequisite(&framed[2], &framed, None).as_deref(), Some("Radio"));
+        let px4 = vec![part("AirframeComponent", "Airframe", true), part("PX4RadioComponent", "Radio", false), part("FlightModesComponent", "Flight Modes", false)];
+        assert_eq!(prerequisite(&px4[2], &px4, Some(1)), None, "no RC input, no radio needed");
+        assert_eq!(prerequisite(&px4[2], &px4, Some(0)).as_deref(), Some("Radio"));
+    }
     use crate::router::Backend;
 
     struct Vehicle {

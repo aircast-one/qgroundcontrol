@@ -48,7 +48,10 @@ internal data class SetupComponent(
     val known: String? = null,
     val needsAttention: Boolean,
     val blockedReason: String? = null,
+    val prerequisite: String? = null,
 )
+
+internal fun prerequisiteText(first: String, wanted: String): String = "$first has to be set up before $wanted."
 
 internal data class ParameterWait(val title: String, val body: String, val downloadOffered: Boolean = false)
 
@@ -87,6 +90,7 @@ internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
             needsAttention = element.optBoolean("needsAttention"),
             blockedReason = element.optText("blockedReason")
                 .takeIf { !element.isNull("blockedReason") && it.isNotBlank() },
+            prerequisite = element.optText("prerequisite").takeIf { !element.isNull("prerequisite") && it.isNotBlank() },
         )
     }
 }
@@ -184,11 +188,19 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             HorizontalDivider()
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
+            val first = open.prerequisite
             when {
                 blocked != null -> SetupNotice(
                     "${open.name} cannot be set up while the vehicle is $blocked.",
                     Modifier.weight(1f),
                 )
+                first != null -> androidx.compose.foundation.layout.Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$first first", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
+                    SetupNotice(prerequisiteText(first, open.name))
+                    androidx.compose.material3.Button(onClick = {
+                        openComponent = setupComponents(setupJson).firstOrNull { it.name == first }
+                    }) { Text("Set Up $first") }
+                }
                 headPage(open) == SENSORS -> SensorsScreen(Modifier.weight(1f))
                 headPage(open) == RADIO -> RadioScreen(Modifier.weight(1f))
                 headPage(open) == REMOTE_SUPPORT -> RemoteSupportScreen(Modifier.weight(1f))

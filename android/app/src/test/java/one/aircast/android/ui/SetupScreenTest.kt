@@ -122,4 +122,11 @@ class SetupScreenTest {
         org.junit.Assert.assertEquals(true, wait?.downloadOffered)
         org.junit.Assert.assertEquals("Parameter download was skipped because the vehicle is flying.", wait?.title)
     }
+
+    @Test
+    fun `a component with an unfinished prerequisite says which one`() {
+        val view = org.json.JSONObject("""{"components":[{"name":"Flight Modes","needsAttention":true,"blockedReason":null,"prerequisite":"Frame"}]}""")
+        org.junit.Assert.assertEquals("Frame", setupComponents(view).first().prerequisite)
+        org.junit.Assert.assertEquals("Frame has to be set up before Flight Modes.", prerequisiteText("Frame", "Flight Modes"))
+    }
 }
