@@ -3,7 +3,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::joystick::{AdditionalAxes, AxisCalibration, FUNCTIONS, Input, Joystick, Out, Polling, Settings, Support, ThrottleMode};
+use crate::joystick::{ACTION_NONE, ACTIONS, AdditionalAxes, AxisCalibration, ButtonEvent, FUNCTIONS, Input, Joystick, Out, Polling, Settings, Support, ThrottleMode};
 use crate::settingsini::Setting;
 use crate::stickcal::{Outcome as CalOutcome, StickCal};
 use crate::mavout::Outbound;
@@ -16,6 +16,9 @@ pub const SELECT: &str = "joystick.select";
 pub const ENABLE_JOYSTICK: &str = "joystick.enable";
 pub const SET_SETTING: &str = "joystick.setting";
 pub const CALIBRATION: &str = "joystick.calibration";
+pub const BUTTON_ACTION: &str = "joystick.buttonAction";
+pub const BUTTON_REPEAT: &str = "joystick.buttonRepeat";
+const BUTTON_GROUP: &str = "JoystickButtonActionSettingsArray";
 const AXIS_GROUP: &str = "JoystickAxisSettingsArray";
 const STORED_TRANSMITTER_MODE: u8 = 2;
 const SETTINGS_JSON: &str = include_str!("../../src/Settings/Joystick.SettingsGroup.json");
@@ -170,6 +173,109 @@ pub fn axis_entries(joystick: &str, model: &Joystick) -> BTreeMap<String, Settin
         .collect()
 }
 
+fn button_group(joystick: &str) -> String {
+    format!("{SETTINGS_PREFIX}/{joystick}/{BUTTON_GROUP}")
+}
+
+pub fn load_buttons(joystick: &str, model: &mut Joystick, entries: &BTreeMap<String, Setting>) {
+    let group = button_group(joystick);
+    (0..model.total_button_count()).for_each(|button| {
+        if let Some(Setting::Text(action)) = entries.get(&format!("{group}/{button}/actionName")).filter(|a| !matches!(a, Setting::Text(t) if t.is_empty())) {
+            model.set_button_action(button, Some(action));
+            let repeat = matches!(entries.get(&format!("{group}/{button}/repeat")), Some(Setting::Text(t)) if t == "true");
+            model.set_button_repeat(button, repeat, false);
+        }
+    });
+}
+
+pub fn button_entries(joystick: &str, model: &Joystick) -> BTreeMap<String, Setting> {
+    let group = button_group(joystick);
+    (0..model.total_button_count())
+        .filter_map(|button| model.binding(button).map(|b| (button, b.clone())))
+        .flat_map(|(button, binding)| [(format!("{group}/{button}/actionName"), Setting::Text(binding.action)), (format!("{group}/{button}/repeat"), Setting::Text(binding.repeat.to_string()))])
+        .collect()
+}
+
+pub fn assignable_actions(flight_modes: &[String], assigned: &[String]) -> Vec<(String, bool)> {
+    let fixed = |range: std::ops::Range<usize>| ACTIONS[range].iter().map(|(_, name, _, repeat)| (name.to_string(), *repeat)).collect::<Vec<_>>();
+    let listed: Vec<(String, bool)> = std::iter::once((ACTION_NONE.to_string(), false))
+        .chain(fixed(0..3))
+        .chain(flight_modes.iter().map(|mode| (mode.clone(), false)))
+        .chain(fixed(3..ACTIONS.len()))
+        .collect();
+    let extra: Vec<(String, bool)> = assigned.iter().filter(|a| !listed.iter().any(|(name, _)| name == *a)).map(|a| (a.clone(), false)).collect();
+    listed.into_iter().chain(extra).collect()
+}
+
+fn settable_modes() -> Vec<String> {
+    crate::hub::lock().active().map(|v| v.flight_modes.iter().filter(|m| m.can_be_set).map(|m| m.name.clone()).collect()).unwrap_or_default()
+}
+
+fn guided(id: u8, action: Value) {
+    let sent = crate::hub::lock().guided(Some(id), &action, crate::hub::now_ms());
+    match sent {
+        Ok(frames) => frames.iter().for_each(|(link, bytes)| {
+            crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+        }),
+        Err(reason) => log::warn!("joystick action {action} was refused: {reason}"),
+    }
+}
+
+pub fn execute(backend: &dyn Backend, id: u8, armed: bool, action: &str, event: ButtonEvent) {
+    let modes = settable_modes();
+    let recording = || crate::read::flag(&crate::video::camera_view(backend, &[]), "recording");
+    let toggle_recording = || {
+        crate::actions::run(backend, "camera.toggleRecording", "[]");
+    };
+    match (action, event) {
+        ("Arm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": true })),
+        ("Disarm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": false })),
+        ("Toggle Arm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": !armed })),
+        ("VTOL: Fixed Wing", ButtonEvent::Down) => guided(id, json!({ "action": "vtolTransition", "forward": true })),
+        ("VTOL: Multi-Rotor", ButtonEvent::Down) => guided(id, json!({ "action": "vtolTransition", "forward": false })),
+        ("Trigger Camera", ButtonEvent::Down) => guided(id, json!({ "action": "triggerCamera" })),
+        ("Start Recording Video", ButtonEvent::Down) if !recording() => toggle_recording(),
+        ("Stop Recording Video", ButtonEvent::Down) if recording() => toggle_recording(),
+        ("Toggle Recording Video", ButtonEvent::Down) => toggle_recording(),
+        ("Gimbal Center", ButtonEvent::Down) => guided(id, json!({ "action": "gimbal", "op": "center" })),
+        ("Gimbal Yaw Lock", ButtonEvent::Down) => guided(id, json!({ "action": "gimbal", "op": "yawLock", "lock": true })),
+        ("Gimbal Yaw Follow", ButtonEvent::Down) => guided(id, json!({ "action": "gimbal", "op": "yawLock", "lock": false })),
+        ("Emergency Stop", ButtonEvent::Down) => guided(id, json!({ "action": "emergencyStop" })),
+        ("Gripper Grab", ButtonEvent::Down) => guided(id, json!({ "action": "gripper", "gripAction": 1 })),
+        ("Gripper Release", ButtonEvent::Down) => guided(id, json!({ "action": "gripper", "gripAction": 0 })),
+        ("Gripper Hold", ButtonEvent::Down) => guided(id, json!({ "action": "gripper", "gripAction": 2 })),
+        ("Landing gear deploy", ButtonEvent::Down) => guided(id, json!({ "action": "landingGear", "retract": false })),
+        ("Landing gear retract", ButtonEvent::Down) => guided(id, json!({ "action": "landingGear", "retract": true })),
+        ("Motor Interlock enable", ButtonEvent::Down) => guided(id, json!({ "action": "motorInterlock", "enable": true })),
+        ("Motor Interlock disable", ButtonEvent::Down) => guided(id, json!({ "action": "motorInterlock", "enable": false })),
+        (mode, ButtonEvent::Down) if modes.iter().any(|m| m == mode) => guided(id, json!({ "action": "setMode", "mode": mode })),
+        (other, _) => log::info!("joystick action {other} has no executor in the core yet"),
+    }
+}
+
+fn save_buttons(joystick: &str, model: &Joystick) {
+    crate::settingsstore::replace_group(&button_group(joystick), button_entries(joystick, model));
+}
+
+fn button_change(text: &str, repeat: bool) -> Value {
+    let args = serde_json::from_str::<Vec<Value>>(text).unwrap_or_default();
+    let Some(button) = args.first().and_then(Value::as_u64).map(|b| b as usize) else { return json!({ "ok": false, "reason": "A button index is required." }) };
+    let mut host = host();
+    let Some(active) = active_name(&host.devices) else { return json!({ "ok": false, "reason": "No joystick is connected." }) };
+    let Some(model) = host.joysticks.get_mut(&active) else { return json!({ "ok": false, "reason": "No joystick is connected." }) };
+    let changed = match repeat {
+        false => {
+            let action = args.get(1).and_then(Value::as_str).filter(|a| *a != ACTION_NONE);
+            model.set_button_action(button, action)
+        }
+        true => model.set_button_repeat(button, args.get(1).and_then(Value::as_bool).unwrap_or(false), false),
+    };
+    if changed {
+        save_buttons(&active, model);
+    }
+    json!({ "ok": changed, "reason": if changed { Value::Null } else { json!("That button cannot take this setting.") } })
+}
+
 fn apply_calibration(joystick: &str, model: &mut Joystick, channels: &[crate::stickcal::Channel]) {
     model.reset_calibration();
     channels.iter().enumerate().for_each(|(axis, channel)| {
@@ -276,7 +382,9 @@ fn devices(text: &str) -> Value {
         let fresh: Vec<&Device> = parsed.iter().filter(|d| !host.joysticks.contains_key(&d.name)).collect();
         fresh.iter().for_each(|d| {
             let mut model = Joystick::new(d.axes, d.buttons, d.hats);
-            load_axes(&d.name, &mut model, &crate::settingsstore::entries_under(&format!("{SETTINGS_PREFIX}/{}", d.name)));
+            let stored = crate::settingsstore::entries_under(&format!("{SETTINGS_PREFIX}/{}", d.name));
+            load_axes(&d.name, &mut model, &stored);
+            load_buttons(&d.name, &mut model, &stored);
             host.joysticks.insert(d.name.clone(), model);
         });
         if host.calibration.as_ref().is_some_and(|(name, _)| !parsed.iter().any(|d| &d.name == name)) {
@@ -288,7 +396,7 @@ fn devices(text: &str) -> Value {
     json!({ "ok": true })
 }
 
-fn input(text: &str) -> Value {
+fn input(backend: &dyn Backend, text: &str) -> Value {
     let args = serde_json::from_str::<Vec<Value>>(text).unwrap_or_default();
     let Some(name) = args.first().and_then(Value::as_str) else { return json!({ "ok": false, "reason": "joystick.input takes the joystick name" }) };
     let list = |at: usize| args.get(at).and_then(Value::as_array).cloned().unwrap_or_default();
@@ -306,8 +414,13 @@ fn input(text: &str) -> Value {
         }
         host.joysticks.get_mut(name).map(|j| j.on_input(Input { axes: &axes, buttons: &buttons, hats: &hats }, &settings, support, now_ms)).unwrap_or_default()
     };
-    if let Some((id, link, ..)) = vehicle {
+    if let Some((id, link, _, armed)) = vehicle {
+        let actions: Vec<(String, ButtonEvent)> = outs.iter().filter_map(|o| match o {
+            Out::Action { action, event } => Some((action.clone(), *event)),
+            _ => None,
+        }).collect();
         send((id, link), outs);
+        actions.iter().for_each(|(action, event)| execute(backend, id, armed, action, *event));
     }
     json!({ "ok": true })
 }
@@ -391,10 +504,10 @@ fn calibration(text: &str) -> Value {
     answer
 }
 
-pub fn run(path: &str, text: &str) -> Value {
+pub fn run(backend: &dyn Backend, path: &str, text: &str) -> Value {
     match path {
         DEVICES => devices(text),
-        INPUT => input(text),
+        INPUT => input(backend, text),
         SELECT => match serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_str).map(str::to_string)) {
             Some(name) => {
                 crate::settingsstore::written(ACTIVE_NAME, &name);
@@ -406,12 +519,14 @@ pub fn run(path: &str, text: &str) -> Value {
         ENABLE_JOYSTICK => enable(serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_bool)).unwrap_or(false)),
         SET_SETTING => set_setting(text),
         CALIBRATION => calibration(text),
+        BUTTON_ACTION => button_change(text, false),
+        BUTTON_REPEAT => button_change(text, true),
         _ => json!({ "ok": false, "reason": format!("{path} is not a joystick action") }),
     }
 }
 
 pub fn owns(path: &str) -> bool {
-    [DEVICES, INPUT, SELECT, ENABLE_JOYSTICK, SET_SETTING, CALIBRATION].contains(&path)
+    [DEVICES, INPUT, SELECT, ENABLE_JOYSTICK, SET_SETTING, CALIBRATION, BUTTON_ACTION, BUTTON_REPEAT].contains(&path)
 }
 
 pub fn tick(now_ms: u64) {
@@ -420,12 +535,15 @@ pub fn tick(now_ms: u64) {
 
 pub fn joystick_state_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = active_vehicle();
+    let modes = settable_modes();
     let support = support_for(vehicle.map(|v| v.2));
     let host = host();
     let active = active_name(&host.devices);
     let enabled = vehicle.is_some_and(|(id, ..)| enabled_vehicles().contains(&id.to_string()));
     let now_ms = crate::hub::now_ms();
     let state = active.as_ref().and_then(|name| host.joysticks.get(name).map(|j| j.snapshot(&settings_for(name), support, now_ms)));
+    let assigned: Vec<String> = active.as_ref().and_then(|name| host.joysticks.get(name)).map(|j| (0..j.total_button_count()).filter_map(|b| j.binding(b).map(|binding| binding.action.clone())).collect()).unwrap_or_default();
+    let assignable: Vec<Value> = assignable_actions(&modes, &assigned).into_iter().map(|(action, repeat)| json!({ "action": action, "canRepeat": repeat })).collect();
     json!({
         "kind": "object",
         "class": "Joystick",
@@ -448,6 +566,7 @@ pub fn joystick_state_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "state": state,
         "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(_, cal)| cal.json()),
         "transmitterMode": active.as_ref().map(|name| transmitter_mode(name)),
+        "assignableActions": assignable,
     })
 }
 
@@ -488,5 +607,21 @@ mod tests {
         let mut restored = Joystick::new(4, 0, 0);
         load_axes("Pad", &mut restored, &entries);
         assert_eq!((restored.axis_for(Function::Throttle), restored.calibration(1)), (Some(1), Some(calibration)));
+    }
+
+    #[test]
+    fn buttons_round_trip_and_the_action_list_follows_joystick_cc() {
+        let mut model = Joystick::new(4, 6, 0);
+        assert!(model.set_button_action(2, Some("Step Zoom In")));
+        assert!(model.set_button_repeat(2, true, false));
+        let entries = button_entries("Pad", &model);
+        assert_eq!(entries.get("JoystickSettingsV2/Pad/JoystickButtonActionSettingsArray/2/actionName"), Some(&Setting::Text("Step Zoom In".into())));
+        let mut restored = Joystick::new(4, 6, 0);
+        load_buttons("Pad", &mut restored, &entries);
+        assert_eq!(restored.binding(2).map(|b| (b.action.clone(), b.repeat)), Some(("Step Zoom In".to_string(), true)));
+        let list = assignable_actions(&["Loiter".to_string()], &["Old Mode".to_string()]);
+        let names: Vec<&str> = list.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names[..6], ["No Action", "Arm", "Disarm", "Toggle Arm", "Loiter", "VTOL: Fixed Wing"]);
+        assert_eq!(names.last(), Some(&"Old Mode"), "an assignment that is not available right now stays listed");
     }
 }

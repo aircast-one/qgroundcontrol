@@ -46,12 +46,19 @@ internal const val JOYSTICK_SELECT = "joystick.select"
 internal const val JOYSTICK_ENABLE = "joystick.enable"
 internal const val JOYSTICK_SETTING = "joystick.setting"
 internal const val JOYSTICK_CALIBRATION = "joystick.calibration"
+internal const val JOYSTICK_BUTTON_ACTION = "joystick.buttonAction"
+internal const val JOYSTICK_BUTTON_REPEAT = "joystick.buttonRepeat"
+internal const val NO_ACTION = "No Action"
 private const val JOYSTICK_POLL_MS = 100L
 private const val AXIS_RANGE = 32767f
 
 internal data class JoystickSetting(val name: String, val type: String, val label: String, val units: String, val value: Any?)
 
 internal data class JoystickAxis(val index: Int, val raw: Int?, val function: String)
+
+internal data class JoystickButton(val index: Int, val action: String, val repeat: Boolean, val pressed: Boolean)
+
+internal data class AssignableAction(val action: String, val canRepeat: Boolean)
 
 internal data class JoystickCalibration(
     val calibrating: Boolean,
@@ -82,6 +89,8 @@ internal data class JoystickPage(
     val armed: Boolean = false,
     val calibration: JoystickCalibration = joystickCalibration(null),
     val transmitterMode: Int = 2,
+    val buttons: List<JoystickButton> = emptyList(),
+    val actions: List<AssignableAction> = emptyList(),
 )
 
 internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.optBoolean("available") }?.let {
@@ -103,6 +112,14 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
         armed = it.optBoolean("armed"),
         calibration = joystickCalibration(it.optJSONObject("calibration")),
         transmitterMode = it.optInt("transmitterMode", 2),
+        buttons = it.optJSONObject("state")?.optJSONArray("buttons")?.let { list ->
+            (0 until list.length()).mapNotNull { at ->
+                list.optJSONObject(at)?.let { b -> JoystickButton(b.optInt("index"), if (b.isNull("action")) NO_ACTION else b.optText("action"), b.optBoolean("repeat"), b.optText("event").let { e -> e == "down" || e == "repeat" }) }
+            }
+        }.orEmpty(),
+        actions = it.optJSONArray("assignableActions")?.let { list ->
+            (0 until list.length()).mapNotNull { at -> list.optJSONObject(at)?.let { a -> AssignableAction(a.optText("action"), a.optBoolean("canRepeat")) } }
+        }.orEmpty(),
     )
 }
 
@@ -166,6 +183,12 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        SectionHeader("Buttons")
+        Text("Multiple buttons that have the same action must be pressed simultaneously to invoke the action.", style = MaterialTheme.typography.bodySmall)
+        read.buttons.forEach { button ->
+            ButtonRow(button, read.actions, read.calibrated, onAction = { act(JOYSTICK_BUTTON_ACTION, button.index, it) }, onRepeat = { act(JOYSTICK_BUTTON_REPEAT, button.index, it) })
+        }
+
         SectionHeader("Settings")
         BASIC_SETTINGS.mapNotNull(setting).forEach { SettingRow(it) { value -> act(JOYSTICK_SETTING, it.name, value) } }
         OutlinedButton(onClick = { advanced = !advanced }) { Text("Advanced Settings") }
@@ -204,6 +227,33 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { offerEnable = null }) { Text("No") } },
         )
+    }
+}
+
+@Composable
+private fun ButtonRow(button: JoystickButton, actions: List<AssignableAction>, calibrated: Boolean, onAction: (String) -> Unit, onRepeat: (Boolean) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val canRepeat = actions.find { it.action == button.action }?.canRepeat == true
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            button.index.toString(),
+            color = if (button.pressed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.width(32.dp),
+        )
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) { Text(button.action, maxLines = 1) }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                actions.forEach { option ->
+                    DropdownMenuItem(text = { Text(option.action) }, onClick = {
+                        open = false
+                        onAction(option.action)
+                    })
+                }
+            }
+        }
+        Checkbox(checked = button.repeat, enabled = canRepeat && calibrated, onCheckedChange = onRepeat)
+        Text("Repeat", style = MaterialTheme.typography.bodySmall)
     }
 }
 

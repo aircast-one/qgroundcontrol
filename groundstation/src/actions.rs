@@ -220,7 +220,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         _ if crate::plantransform::owns(path) => crate::plantransform::run(backend, path, args),
         _ if crate::apmfollow::owns(path) => crate::apmfollow::run(backend, path, args),
         _ if crate::signingkeys::owns(path) => crate::signingkeys::run(path, args),
-        _ if crate::joystickhost::owns(path) => crate::joystickhost::run(path, args),
+        _ if crate::joystickhost::owns(path) => crate::joystickhost::run(backend, path, args),
         _ if crate::scripting::owns(path) => crate::scripting::run(backend, path, args),
         _ if crate::logreplay::owns(path) => crate::logreplay::run(backend, path, args),
         crate::ntrip::FETCH_MOUNTPOINTS => crate::ntrip::fetch_mountpoints(),

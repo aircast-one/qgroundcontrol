@@ -321,8 +321,26 @@ pub fn abort_landing(climb_out: f64) -> Plan {
 
 pub fn gripper(action: f64) -> Plan {
     match action {
-        0.0 | 1.0 => Plan::Steps(vec![Step::Command { command: CMD_DO_GRIPPER, params: [0.0, action, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
-        _ => Plan::Refused("The gripper is sent 1 to grab or 0 to release.".into()),
+        0.0..=2.0 if action.fract() == 0.0 => Plan::Steps(vec![Step::Command { command: CMD_DO_GRIPPER, params: [0.0, action, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+        _ => Plan::Refused("The gripper is sent 1 to grab, 0 to release or 2 to hold.".into()),
+    }
+}
+
+pub const CMD_AIRFRAME_CONFIGURATION: u16 = 2520;
+pub const CMD_DO_AUX_FUNCTION: u16 = 218;
+const APM_AUX_MOTOR_INTERLOCK: f64 = 32.0;
+const AUX_SWITCH_HIGH: f64 = 2.0;
+const AUX_SWITCH_LOW: f64 = 0.0;
+const ALL_GEARS: f64 = -1.0;
+
+pub fn landing_gear(retract: bool) -> Plan {
+    Plan::Steps(vec![Step::Command { command: CMD_AIRFRAME_CONFIGURATION, params: [ALL_GEARS, if retract { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
+}
+
+pub fn motor_interlock(state: &VehicleState, enable: bool) -> Plan {
+    match state.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
+        true => Plan::Steps(vec![Step::Command { command: CMD_DO_AUX_FUNCTION, params: [APM_AUX_MOTOR_INTERLOCK, if enable { AUX_SWITCH_HIGH } else { AUX_SWITCH_LOW }, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+        false => Plan::Steps(Vec::new()),
     }
 }
 
@@ -400,7 +418,10 @@ mod tests {
         assert_eq!(command(&steps[0]).1, [3.0, 0.0, 20.0, 5.0, 0.0, 2.0, 0.0], "Vehicle::motorTest sends a throttle percent in board order");
         let Plan::Steps(steps) = vtol_transition(true) else { panic!("a transition is always sent") };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[0]), (CMD_DO_VTOL_TRANSITION, f64::from(VTOL_STATE_FW)), "setVtolInFwdFlight sends MAV_VTOL_STATE_FW for forward flight");
-        assert!(matches!(gripper(2.0), Plan::Refused(_)));
+        assert!(matches!(gripper(2.0), Plan::Steps(_)), "GRIPPER_ACTION_HOLD is 2, which the joystick's Gripper Hold sends");
+        assert!(matches!(gripper(3.0), Plan::Refused(_)));
+        let Plan::Steps(steps) = landing_gear(true) else { panic!() };
+        assert_eq!(command(&steps[0]), (CMD_AIRFRAME_CONFIGURATION, [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], false), "Vehicle::landingGearRetract: all gears, up");
         let Plan::Steps(steps) = set_current_mission(&px4(), 3.0) else { panic!() };
         assert_eq!(command(&steps[0]).0, CMD_DO_SET_MISSION_CURRENT);
         assert!(matches!(steps[0], Step::Command { params, .. } if params[0] == 2.0), "PX4 does not count home, so Vehicle::setCurrentMissionSequence steps back one");

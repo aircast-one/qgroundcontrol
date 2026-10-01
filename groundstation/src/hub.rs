@@ -1193,6 +1193,8 @@ impl Vehicle {
             ),
             "estimatorOrigin" => guidedcmd::estimator_origin(number("latitude"), number("longitude"), action.get("altitude").and_then(Value::as_f64).unwrap_or(0.0)),
             "triggerCamera" => guidedcmd::trigger_camera(),
+            "landingGear" => guidedcmd::landing_gear(flag("retract")),
+            "motorInterlock" => guidedcmd::motor_interlock(&state, flag("enable")),
             "motorTest" => guidedcmd::motor_test(number("motor"), number("percent"), number("seconds")),
             "vtolTransition" => guidedcmd::vtol_transition(action.get("forward").and_then(Value::as_bool).unwrap_or(false)),
             "setMode" => guidedcmd::set_mode(&state, action.get("mode").and_then(Value::as_str).unwrap_or("")).map(Plan::Steps).unwrap_or_else(|| Plan::Refused("Unknown flight mode".to_string())),

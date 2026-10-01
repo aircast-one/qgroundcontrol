@@ -35,4 +35,13 @@ class JoystickScreenTest {
         val step = joystickCalibration(JSONObject("""{"calibrating":true,"statusText":"Move the Throttle stick","nextText":"Next","nextEnabled":false,"cancelEnabled":true,"oneSidedVisible":true}"""))
         assertEquals(JoystickCalibration(true, "Move the Throttle stick", "Next", false, true, true), step)
     }
+
+    @Test
+    fun buttons_show_their_action_and_whether_they_are_held() {
+        val page = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","vehicle":true,"enabled":true,"calibrated":true,"settings":[],
+            "state":{"axes":[],"buttons":[{"index":0,"action":null,"repeat":false,"event":"none"},{"index":1,"action":"Step Zoom In","repeat":true,"event":"repeat"}]},
+            "assignableActions":[{"action":"No Action","canRepeat":false},{"action":"Step Zoom In","canRepeat":true}]}"""))!!
+        assertEquals(listOf(JoystickButton(0, "No Action", false, false), JoystickButton(1, "Step Zoom In", true, true)), page.buttons)
+        assertEquals(AssignableAction("Step Zoom In", true), page.actions[1])
+    }
 }
