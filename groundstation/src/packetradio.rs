@@ -219,12 +219,12 @@ pub struct PacketRadio {
 }
 
 impl PacketRadio {
-    pub fn reported(status: Status, status_text: Option<&str>, adapter: Option<&str>, reading: Option<Reading>, video_packets: Option<i64>, start_error: Option<&str>) -> Self {
+    pub fn reported(status: Status, status_text: Option<&str>, adapter: Option<&str>, adapters: Vec<String>, reading: Option<Reading>, video_packets: Option<i64>, start_error: Option<&str>) -> Self {
         PacketRadio {
             status,
             status_text: status_text.filter(|text| !text.is_empty()).map(str::to_string),
             adapter: adapter.map(str::to_string),
-            adapters: adapter.map(str::to_string).into_iter().collect(),
+            adapters: if adapters.is_empty() { adapter.map(str::to_string).into_iter().collect() } else { adapters },
             start_error: start_error.filter(|error| !error.is_empty()).map(str::to_string),
             reading,
             video_packets,
@@ -485,10 +485,6 @@ impl PacketRadio {
             "kind": "object",
             "class": "PacketRadio",
             "status": self.status.token(),
-            // The token is the state a head keys on; this is the sentence it shows. QGC composes
-            // it - several statuses interpolate the adapter name or a driver error, and all are
-            // translated - so a head given only the token has to invent wording for eight states
-            // and two heads then spell the same status differently.
             "statusText": self.status_text,
             "linkActive": self.link_active(),
             "running": self.running,
@@ -511,6 +507,7 @@ impl PacketRadio {
             "keyPath": self.opened.as_ref().and_then(|opened| opened.key.path()),
             "rejectedKeyPath": &self.rejected_key,
             "antennaRssi": fresh.map(|reading| reading.rssi_dbm()),
+            "antennaRssiRaw": fresh.map(|reading| reading.rssi_raw),
             "antennaSnr": fresh.map(|reading| reading.snr),
             "antennaScore": fresh.map(|reading| reading.antenna_scores()),
             "haveSignal": fresh.map(|reading| reading.have_signal()),
@@ -570,10 +567,7 @@ fn reported_snapshot(args: &[String]) -> Result<Value, String> {
             })
         })
         .transpose()?;
-    // No statusText: this path builds a radio from positional arguments and QGC is not composing
-    // anything for it, so there is no sentence to carry. Serving the token's own name here would
-    // be the core inventing wording, which is the thing statusText exists to avoid.
-    Ok(PacketRadio::reported(status, None, present(args, 1), reading, whole(args, 6)?, present(args, 7)).snapshot(0))
+    Ok(PacketRadio::reported(status, None, present(args, 1), Vec::new(), reading, whole(args, 6)?, present(args, 7)).snapshot(0))
 }
 
 static HOST_REPORT: LazyLock<Mutex<Option<PacketRadio>>> = LazyLock::new(|| Mutex::new(None));
@@ -604,6 +598,7 @@ pub fn host_report(report: &Value) -> bool {
         status,
         report.get("statusText").and_then(Value::as_str),
         report.get("adapter").and_then(Value::as_str).filter(|name| !name.is_empty()),
+        report.get("adapters").and_then(Value::as_array).map(|names| names.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
         reading,
         report.get("videoPackets").and_then(Value::as_i64),
         report.get("startError").and_then(Value::as_str),
@@ -668,6 +663,15 @@ mod tests {
 
     fn strings(args: &[&str]) -> Vec<String> {
         args.iter().map(|arg| arg.to_string()).collect()
+    }
+
+    #[test]
+    fn the_host_reports_every_adapter_and_the_raw_signal() {
+        let _host = holding_the_reported_host();
+        assert!(host_report(&json!({ "status": "receiving", "adapter": "ALFA [1]", "adapters": ["ALFA [1]", "RTL [2]"], "antennaRssi": [60, 70], "antennaSnr": [20, 25] })));
+        let view = packet_radio_view(&Nothing, &[]);
+        assert_eq!(view["adapters"], json!(["ALFA [1]", "RTL [2]"]), "PacketRadioSettings.qml lists them under Automatic");
+        assert_eq!(view["antennaRssiRaw"], json!([60, 70]), "QGC shows the raw 0-126 signal per antenna");
     }
 
     #[test]

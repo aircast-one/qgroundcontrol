@@ -195,7 +195,6 @@ ACCEPTED_ON = {
     ("view.plan", "valueMeters"): "the geometry half of value. MEASURED: no consumer on this head feeds a "
         "control value into geometry - settings round-trip through Qgc.set, which is cooked and correct",
     ("view.settings", "valueMeters"): "see view.plan",
-    ("view.settings", "showsPacketRadio"): "this head has no packet radio screen at all",
     ("view.mavlinkConsole", "last"): "the console draws every line; last is for a head that shows one",
     ("view.vehicleLinks", "watching"): "the reason sentence the core serves alongside says the same thing",
     ("view.vehicleLinks", "autoDisconnect"): "contact loss reaches the operator through view.flyState",

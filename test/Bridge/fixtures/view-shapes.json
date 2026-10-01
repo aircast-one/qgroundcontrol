@@ -336,6 +336,7 @@
         "view.opticalFlow.image",
         "view.packetRadio(receiving).adapter",
         "view.packetRadio(receiving).antennaRssi",
+        "view.packetRadio(receiving).antennaRssiRaw",
         "view.packetRadio(receiving).antennaScore",
         "view.packetRadio(receiving).antennaSnr",
         "view.packetRadio(receiving).channel",
@@ -3910,6 +3911,7 @@
         "view.packetRadio(receiving).adapters.#",
         "view.packetRadio(receiving).antennaCount",
         "view.packetRadio(receiving).antennaRssi",
+        "view.packetRadio(receiving).antennaRssiRaw",
         "view.packetRadio(receiving).antennaScore",
         "view.packetRadio(receiving).antennaSnr",
         "view.packetRadio(receiving).channel",
@@ -3952,6 +3954,9 @@
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssi.#",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssi.0",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssi.1",
+        "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssiRaw.#",
+        "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssiRaw.0",
+        "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssiRaw.1",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaScore.#",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaScore.0",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaScore.1",
@@ -3998,6 +4003,9 @@
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssi.#",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssi.0",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssi.1",
+        "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssiRaw.#",
+        "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssiRaw.0",
+        "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssiRaw.1",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaScore.#",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaScore.0",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaScore.1",
@@ -8297,6 +8305,7 @@
         "view.packetRadio(receiving).adapters.#",
         "view.packetRadio(receiving).antennaCount",
         "view.packetRadio(receiving).antennaRssi",
+        "view.packetRadio(receiving).antennaRssiRaw",
         "view.packetRadio(receiving).antennaScore",
         "view.packetRadio(receiving).antennaSnr",
         "view.packetRadio(receiving).channel",
@@ -8337,6 +8346,8 @@
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).adapters[]",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaCount",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssi.#",
+        "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssiRaw.#",
+        "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssiRaw[]",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaRssi[]",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaScore.#",
         "view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0).antennaScore[]",
@@ -8380,6 +8391,8 @@
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).adapters[]",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaCount",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssi.#",
+        "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssiRaw.#",
+        "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssiRaw[]",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaRssi[]",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaScore.#",
         "view.packetRadio(receiving,wfb0,38/26,12/6,1800/2500,0).antennaScore[]",
@@ -11946,6 +11959,7 @@
         ],
         "antennaCount": "number",
         "antennaRssi": "null",
+        "antennaRssiRaw": "null",
         "antennaScore": "null",
         "antennaSnr": "null",
         "channel": "null",
@@ -11992,6 +12006,9 @@
         "antennaCount": "number",
         "antennaRssi": [
             "null"
+        ],
+        "antennaRssiRaw": [
+            "number"
         ],
         "antennaScore": [
             "null|number"
@@ -12042,6 +12059,9 @@
         ],
         "antennaCount": "number",
         "antennaRssi": [
+            "number"
+        ],
+        "antennaRssiRaw": [
             "number"
         ],
         "antennaScore": [

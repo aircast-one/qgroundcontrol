@@ -105,6 +105,7 @@ internal data class SettingsPageEntry(
     val showsAbout: Boolean = false,
     val showsConsole: Boolean = false,
     val showsNtrip: Boolean = false,
+    val showsPacketRadio: Boolean = false,
     val helpLinks: List<HelpLink> = emptyList(),
 )
 
@@ -159,6 +160,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
                 showsAbout = page.optBoolean("showsAbout"),
                 showsConsole = page.optBoolean("showsConsole"),
                 showsNtrip = page.optBoolean("showsNtrip"),
+                showsPacketRadio = page.optBoolean("showsPacketRadio"),
                 helpLinks = page.optJSONArray("helpLinks")?.let { links ->
                     (0 until links.length()).mapNotNull { i ->
                         links.optJSONObject(i)?.let { HelpLink(it.optText("name"), it.optText("url"), it.optText("host")) }
@@ -357,6 +359,7 @@ private fun SettingsControls(
     onWrite: () -> Unit,
 ) {
     if (page.showsNtrip) NtripStatusSection(onWrite)
+    if (page.showsPacketRadio) PacketRadioSection(onWrite)
     sections.forEach { section ->
         if (section.group == UNITS_GROUP) {
             SectionHeader(section.title)
