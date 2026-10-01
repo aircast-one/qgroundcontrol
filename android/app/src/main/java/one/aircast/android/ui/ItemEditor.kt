@@ -101,6 +101,9 @@ internal fun categoryNames(result: Any?): List<String> {
     return (0 until listed.length()).map { listed.optText(it) }
 }
 
+internal fun altitudeHint(view: JSONObject?): String? =
+    view?.takeIf { it.has("altitudeHint") && !it.isNull("altitudeHint") }?.optString("altitudeHint")?.ifBlank { null }
+
 internal fun previousCoordinate(view: JSONObject?): Pair<Double, Double>? =
     view?.optJSONObject("previousCoordinate")?.let { it.optDouble("latitude") to it.optDouble("longitude") }?.takeIf { !it.first.isNaN() && !it.second.isNaN() }
 
@@ -159,6 +162,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
                 if (view?.optBoolean("simple") == true) {
                     TextButton(onClick = { choosing = true }) { Text("Change command") }
                 }
+            }
+            altitudeHint(view)?.let { hint ->
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             }
             raw?.let { current ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {

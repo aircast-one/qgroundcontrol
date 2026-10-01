@@ -132,6 +132,16 @@ fn camera(backend: &dyn Backend, item: &str) -> Value {
     })
 }
 
+pub const LAND_ALTITUDE_HINT: &str = "Altitude is the approximate ground altitude. Normally 0 when landing back at the launch location.";
+
+pub fn altitude_hint(land: bool, mode: Option<i64>, amsl_sent: Option<String>) -> Option<String> {
+    match (land, mode) {
+        (true, _) => Some(LAND_ALTITUDE_HINT.to_string()),
+        (false, Some(crate::altitudemodes::CALC_ABOVE_TERRAIN)) => amsl_sent.map(|sent| format!("Actual AMSL alt sent: {sent}")),
+        _ => None,
+    }
+}
+
 pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else {
         return refused("view.itemFacts needs the index of the item in the plan, as view.itemFacts(3)");
@@ -172,6 +182,14 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             false => Value::Null,
         },
         "altitudeMode": crate::missionitems::frame(&read).map(|mode| mode as i64),
+        "altitudeHint": match simple && flag(&read, "specifiesAltitude") {
+            true => altitude_hint(
+                flag(&read, "isLandCommand"),
+                read.get("altitudeFrame").and_then(Value::as_i64),
+                crate::read::fact_property(&read, "amslAltAboveTerrain").and_then(|fact| Some(format!("{} {}", fact.get("valueString")?.as_str()?, fact.get("units").and_then(Value::as_str).unwrap_or_default()).trim().to_string())),
+            ),
+            false => None,
+        },
         "rawEdit": simple && flag(&read, "rawEdit"),
         "friendlyEditAllowed": simple && flag(&read, "friendlyEditAllowed"),
         "previousCoordinate": match available {
@@ -193,6 +211,13 @@ fn qt_previous_coordinate(backend: &dyn Backend, index: usize) -> Option<(f64, f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_altitude_card_explains_land_and_calculated_terrain_altitudes() {
+        assert_eq!(altitude_hint(true, Some(crate::altitudemodes::RELATIVE), None).as_deref(), Some(LAND_ALTITUDE_HINT));
+        assert_eq!(altitude_hint(false, Some(crate::altitudemodes::CALC_ABOVE_TERRAIN), Some("512.3 m".into())).as_deref(), Some("Actual AMSL alt sent: 512.3 m"));
+        assert_eq!(altitude_hint(false, Some(crate::altitudemodes::RELATIVE), Some("512.3 m".into())), None);
+    }
 
     #[test]
     fn an_unfinished_shape_names_the_tool_that_finishes_it() {

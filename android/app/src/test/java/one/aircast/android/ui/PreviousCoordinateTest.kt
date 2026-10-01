@@ -12,4 +12,10 @@ class PreviousCoordinateTest {
         assertNull(previousCoordinate(JSONObject("""{"previousCoordinate":null}""")))
         assertNull(previousCoordinate(null))
     }
+
+    @Test
+    fun `the altitude hint is the core's sentence or nothing`() {
+        assertEquals("Actual AMSL alt sent: 512.3 m", altitudeHint(JSONObject("""{"altitudeHint":"Actual AMSL alt sent: 512.3 m"}""")))
+        assertNull(altitudeHint(JSONObject("""{"altitudeHint":null}""")))
+    }
 }

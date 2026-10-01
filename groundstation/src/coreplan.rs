@@ -2045,7 +2045,13 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
                 Some(s.altitude.as_ref().map_or(crate::altitudemodes::RELATIVE, |a| a.mode)),
             );
             match facts {
-                Value::Object(fields) => Value::Object(fields.into_iter().chain([("rawEdit".to_string(), json!(raw)), ("friendlyEditAllowed".to_string(), json!(friendly_edit_allowed(s, info)))]).collect()),
+                Value::Object(fields) => {
+                    let land = info.is_some_and(|c| c.is_land);
+                    let hint = s.altitude.as_ref().and_then(|a| {
+                        crate::itemfacts::altitude_hint(land, Some(a.mode), a.amsl_above_terrain.filter(|v| v.is_finite()).map(|metres| units.0.label(metres)))
+                    });
+                    Value::Object(fields.into_iter().chain([("rawEdit".to_string(), json!(raw)), ("friendlyEditAllowed".to_string(), json!(friendly_edit_allowed(s, info))), ("altitudeHint".to_string(), json!(hint))]).collect())
+                }
                 other => other,
             }
         }
