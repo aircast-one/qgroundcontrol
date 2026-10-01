@@ -358,3 +358,37 @@ pub extern "system" fn Java_one_aircast_android_BluetoothLinks_nativeClosed(mut 
     let message = text_of(&mut env, &message).to_string_lossy().into_owned();
     crate::platformbluetooth::closed(pointer as u32, &message);
 }
+
+fn reading(value: f64) -> Option<f64> {
+    value.is_finite().then_some(value)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_one_aircast_android_GcsLocation_nativeSource(mut env: JNIEnv, _class: JClass, token: JString) {
+    let token = text_of(&mut env, &token).to_string_lossy().into_owned();
+    crate::gcsposition::lock().host_source(crate::gcsposition::Source::from_token(&token));
+}
+
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_one_aircast_android_GcsLocation_nativeUpdate(
+    _env: JNIEnv,
+    _class: JClass,
+    latitude: f64,
+    longitude: f64,
+    altitude: f64,
+    horizontal_accuracy_m: f64,
+    vertical_accuracy_m: f64,
+    direction_deg: f64,
+    direction_accuracy_deg: f64,
+) {
+    crate::gcsposition::report(crate::gcsposition::Update {
+        latitude: reading(latitude),
+        longitude: reading(longitude),
+        altitude: reading(altitude),
+        horizontal_accuracy_m: reading(horizontal_accuracy_m),
+        vertical_accuracy_m: reading(vertical_accuracy_m),
+        direction_deg: reading(direction_deg),
+        direction_accuracy_deg: reading(direction_accuracy_deg),
+    });
+}

@@ -587,17 +587,7 @@ pub extern "C" fn qgc_core_gcs_position_update(latitude: f64, longitude: f64, al
         direction_deg: Some(direction_deg),
         direction_accuracy_deg: Some(direction_accuracy_deg),
     };
-    let coordinate = {
-        let mut position = crate::gcsposition::lock();
-        position.on_update(update, crate::gcsposition::wall_now());
-        position.coordinate()
-    };
-    if let (Some(latitude), Some(longitude), altitude) = coordinate {
-        let outbound = crate::hub::lock().gcs_moved(latitude, longitude, altitude.unwrap_or(f64::NAN), crate::hub::now_ms());
-        outbound.iter().for_each(|(link, bytes)| {
-            crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
-        });
-    }
+    crate::gcsposition::report(update);
 }
 
 #[unsafe(no_mangle)]

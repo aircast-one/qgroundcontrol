@@ -433,6 +433,20 @@ fn live_vehicle(backend: &dyn Backend) -> Option<(f64, f64)> {
     read("vehicle.latitude").zip(read("vehicle.longitude")).filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
 }
 
+pub fn report(update: Update) {
+    let coordinate = {
+        let mut position = lock();
+        position.on_update(update, wall_now());
+        position.coordinate()
+    };
+    if let (Some(latitude), Some(longitude), altitude) = coordinate {
+        let outbound = crate::hub::lock().gcs_moved(latitude, longitude, altitude.unwrap_or(f64::NAN), crate::hub::now_ms());
+        outbound.iter().for_each(|(link, bytes)| {
+            crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
