@@ -5,7 +5,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
 const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Scripting", "Lights", "Remote Support"];
@@ -260,9 +260,10 @@ fn parameter_state(backend: &dyn Backend, connected: bool) -> (bool, &'static st
     if !connected {
         return (false, "noVehicle", "");
     }
-    let manager = object(&backend.get_fields("vehicle.parameterManager", "parametersReady,requestUnanswered"));
+    let manager = object(&backend.get_fields("vehicle.parameterManager", "parametersReady,requestUnanswered,parameterDownloadSkipped"));
     match (flag(&manager, "parametersReady"), flag(&manager, "requestUnanswered")) {
         (true, _) => (true, "", ""),
+        _ if flag(&manager, "parameterDownloadSkipped") => (false, "skipped", "Parameter download was skipped because the vehicle is flying. Configuration pages will be available after parameters are downloaded."),
         (false, true) => (false, "unanswered", "This vehicle has not answered the request for its parameters, and the retries are finished."),
         (false, false) => (false, "loading", ""),
     }

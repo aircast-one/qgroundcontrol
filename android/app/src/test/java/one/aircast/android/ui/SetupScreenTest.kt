@@ -115,4 +115,11 @@ class SetupScreenTest {
         val bare = JSONObject("""{"parametersReady":false,"parametersReason":"refused","parametersText":""}""")
         assertEquals("This vehicle has not sent its parameters (refused).", parameterWait(bare)?.title)
     }
+
+    @Test
+    fun `a download skipped in flight offers to fetch the parameters`() {
+        val wait = parameterWait(org.json.JSONObject("""{"parametersReady":false,"parametersReason":"skipped","parametersText":"Parameter download was skipped because the vehicle is flying."}"""))
+        org.junit.Assert.assertEquals(true, wait?.downloadOffered)
+        org.junit.Assert.assertEquals("Parameter download was skipped because the vehicle is flying.", wait?.title)
+    }
 }

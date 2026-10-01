@@ -50,7 +50,9 @@ internal data class SetupComponent(
     val blockedReason: String? = null,
 )
 
-internal data class ParameterWait(val title: String, val body: String)
+internal data class ParameterWait(val title: String, val body: String, val downloadOffered: Boolean = false)
+
+internal const val PARAMETER_REFRESH = "parameterTools.refresh"
 
 internal const val PARAMETERS_STOPPED = "Setup needs them. Disconnect and connect the link to ask again."
 
@@ -60,6 +62,7 @@ internal fun parameterWait(view: JSONObject?): ParameterWait? {
         "" -> null
         "noVehicle" -> null
         "loading" -> ParameterWait("Loading parameters from the vehicle.", "")
+        "skipped" -> ParameterWait(view.optText("parametersText"), "", downloadOffered = true)
         else -> ParameterWait(
             view.optText("parametersText").ifBlank {
                 "This vehicle has not sent its parameters ($reason)."
@@ -138,6 +141,12 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 )
+            }
+            if (waiting.downloadOffered) {
+                androidx.compose.material3.Button(
+                    onClick = { one.aircast.android.bridge.offMainDetached { Qgc.invoke(PARAMETER_REFRESH) } },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) { Text("Download Parameters") }
             }
         }
         return

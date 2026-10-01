@@ -131,7 +131,6 @@ pub mod planitems;
 pub mod plankml;
 pub mod platformbluetooth;
 pub mod paramremap;
-pub mod libevents;
 pub mod platformserial;
 pub mod presets;
 pub mod rctoparam;
