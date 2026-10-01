@@ -168,6 +168,7 @@ fun VehicleMap(
     gimbals: List<GimbalAzimuth> = emptyList(),
     breachReturn: TrackPoint? = null,
     proximityRadar: Boolean = false,
+    tracePoints: List<TrackPoint> = emptyList(),
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
@@ -263,6 +264,7 @@ fun VehicleMap(
                 installShotLayer(loadedStyle)
                 installFenceLayers(loadedStyle)
                 installMissionLayers(loadedStyle)
+                installTraceLayer(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
                 installVehicleLayer(loadedStyle)
                 installTrafficLayer(loadedStyle)
@@ -304,6 +306,11 @@ fun VehicleMap(
     LaunchedEffect(style, latitude, longitude, heading, radarJson) {
         val radarStyle = style ?: return@LaunchedEffect
         renderProximityRadar(radarStyle, latitude, longitude, heading, radarReading(radarJson))
+    }
+
+    LaunchedEffect(style, tracePoints) {
+        val traceStyle = style ?: return@LaunchedEffect
+        renderTrace(traceStyle, tracePoints)
     }
 
     LaunchedEffect(style, latitude, longitude, gimbals) {

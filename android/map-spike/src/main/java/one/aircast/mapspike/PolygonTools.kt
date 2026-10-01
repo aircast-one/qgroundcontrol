@@ -4,6 +4,16 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import org.json.JSONObject
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiPoint
+import org.maplibre.geojson.Point
 import org.mavlink.qgroundcontrol.QGCBridge
 import java.io.File
 import kotlin.math.cos
@@ -13,6 +23,10 @@ private const val DEFAULT_SHAPE_FRACTION = 0.75
 private const val DEFAULT_SHAPE_MAX_METRES = 3000.0
 private const val DEFAULT_CIRCLE_SEGMENTS = 16
 private const val METRES_PER_DEGREE = 111_320.0
+private const val TRACE_SOURCE = "aircast-polygon-trace"
+private const val TRACE_LINE_LAYER = "aircast-polygon-trace-line"
+private const val TRACE_DOT_LAYER = "aircast-polygon-trace-dots"
+private const val TRACE_COLOUR = "#FFFFFF"
 
 private fun offset(centre: TrackPoint, northMetres: Double, eastMetres: Double) = TrackPoint(
     centre.latitude + northMetres / METRES_PER_DEGREE,
@@ -88,4 +102,33 @@ fun importPolygonFile(context: Context, uri: Uri, path: String): String? {
         replaceShape(path, vertices) -> null
         else -> NO_POLYGON_IN_FILE
     }
+}
+
+fun traceOutline(points: List<TrackPoint>): List<TrackPoint> =
+    if (points.size >= 3) points + points.first() else points
+
+fun installTraceLayer(style: Style) {
+    if (style.getSource(TRACE_SOURCE) != null) return
+    style.addSource(GeoJsonSource(TRACE_SOURCE))
+    style.addLayer(
+        LineLayer(TRACE_LINE_LAYER, TRACE_SOURCE).withProperties(
+            PropertyFactory.lineColor(TRACE_COLOUR),
+            PropertyFactory.lineWidth(2f),
+        ),
+    )
+    style.addLayer(
+        CircleLayer(TRACE_DOT_LAYER, TRACE_SOURCE).withProperties(
+            PropertyFactory.circleColor(TRACE_COLOUR),
+            PropertyFactory.circleRadius(4f),
+        ),
+    )
+}
+
+fun renderTrace(style: Style, points: List<TrackPoint>) {
+    val lngLats = traceOutline(points).map { Point.fromLngLat(it.longitude, it.latitude) }
+    val features = listOfNotNull(
+        lngLats.takeIf { it.size >= 2 }?.let { Feature.fromGeometry(LineString.fromLngLats(it)) },
+        lngLats.takeIf { it.isNotEmpty() }?.let { Feature.fromGeometry(MultiPoint.fromLngLats(it)) },
+    )
+    (style.getSource(TRACE_SOURCE) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(features))
 }

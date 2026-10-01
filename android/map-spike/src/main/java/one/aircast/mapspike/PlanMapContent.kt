@@ -406,6 +406,7 @@ internal fun MapSpikeScreen(
             },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onViewChanged = { visible = it },
+            tracePoints = tracing?.second.orEmpty(),
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level

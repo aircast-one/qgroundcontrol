@@ -55,4 +55,10 @@ class PolygonToolsTest {
         assertEquals("bad coordinate: x", filePolygon(JSONObject("""{"valid":false,"error":"bad coordinate: x"}""")).second)
         assertEquals(NO_POLYGON_IN_FILE, filePolygon(null).second)
     }
+
+    @Test
+    fun `a trace closes once it is a polygon`() {
+        assertEquals(small.take(2), traceOutline(small.take(2)))
+        assertEquals(small.take(3) + small[0], traceOutline(small.take(3)))
+    }
 }
