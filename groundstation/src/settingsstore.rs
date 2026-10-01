@@ -702,7 +702,7 @@ fn operator_id_valid_for_region() -> bool {
     raw_setting(&format!("settings.remoteIDSettings.{fact}")).and_then(|id| id.as_str().map(|id| !id.is_empty())).unwrap_or(false)
 }
 
-const VIDEO_DISABLED: &str = "Video Stream Disabled";
+pub const VIDEO_DISABLED: &str = "Video Stream Disabled";
 const URL_SOURCES: [(&str, &str); 6] = [
     ("UDP h.264 Video Stream", "udpUrl"),
     ("UDP h.265 Video Stream", "udpUrl"),

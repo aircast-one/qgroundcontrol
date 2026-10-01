@@ -354,6 +354,16 @@ struct Fetch {
 
 const SEVERITY_CRITICAL: u8 = 2;
 
+const TYPE_SUBMARINE: u8 = 12;
+
+fn sub_video_defaults() {
+    let source = crate::settingsstore::raw_setting("settings.videoSettings.videoSource").and_then(|v| v.as_str().map(str::to_string));
+    if source.as_deref() == Some(crate::settingsstore::VIDEO_DISABLED) {
+        crate::settingsstore::written("Video/videoSource", crate::videostate::SOURCE_UDP_H264);
+        crate::settingsstore::written("Video/lowLatencyMode", "true");
+    }
+}
+
 fn transfer_failed(kind: u8, error: &str) -> String {
     let name = match kind {
         plantransfer::PLAN_FENCE => "GeoFence",
@@ -3126,6 +3136,9 @@ impl Hub {
             let excluded_type = matches!(kind, TYPE_GCS | TYPE_ONBOARD_CONTROLLER | TYPE_GIMBAL | TYPE_ADSB);
             if header.component_id == COMP_AUTOPILOT1 && !excluded_type && autopilot != AUTOPILOT_INVALID && header.system_id != 0 && !self.vehicles.contains_key(&header.system_id) {
                 let mut vehicle = Vehicle::new(header.system_id, header.component_id, autopilot, kind, origin.link, origin.replay);
+                if kind == TYPE_SUBMARINE && !origin.replay && !crate::qthost::present() {
+                    sub_video_defaults();
+                }
                 if origin.v2 {
                     vehicle.max_proto_version = Some(PROTO_MAVLINK2);
                 }
