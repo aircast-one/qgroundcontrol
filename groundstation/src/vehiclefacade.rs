@@ -187,6 +187,10 @@ pub fn mav_type_text(mav_type: u8) -> &'static str {
     }
 }
 
+fn sub_frame(frame_config: Option<f64>, parameters_ready: bool) -> Option<f64> {
+    frame_config.or(parameters_ready.then_some(0.0))
+}
+
 fn motor_count(mav_type: u8, sub_frame: Option<f64>) -> Option<i64> {
     Some(match mav_type {
         4 => 1,
@@ -514,7 +518,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "vehicleTypeString": mav_type_text(v.vehicle_type),
         "airship": v.vehicle_type == 7,
     });
-    let motors = motor_count(v.vehicle_type, v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64())).map(|count| ("motorCount".to_string(), json!(count)));
+    let motors = motor_count(v.vehicle_type, sub_frame(v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64()), v.parameters_ready())).map(|count| ("motorCount".to_string(), json!(count)));
     let object = |value: Value| value.as_object().cloned().unwrap_or_default();
     let prearm = Some(("prearmError".to_string(), json!(v.prearm_error(crate::hub::now_ms()))));
     let fields = Value::Object(
@@ -1544,6 +1548,7 @@ mod tests {
         assert_eq!((mav_type_text(2), mav_type_text(45), mav_type_text(99)), ("Quadrotor", "Spacecraft, orbiter", "MAV_TYPE_UNKNOWN"));
         assert_eq!((motor_count(2, None), motor_count(10, None), motor_count(12, Some(4.0)), motor_count(12, Some(9.0))), (Some(4), Some(-1), Some(3), Some(-1)));
         assert_eq!(motor_count(12, None), None, "a sub's count waits for FRAME_CONFIG");
+        assert_eq!(motor_count(12, sub_frame(None, true)), Some(6), "a sub with no FRAME_CONFIG, as PX4 sends, reads frame 0 the way Qt's missing parameter does");
         let unknown = firmware_fields(3, None);
         assert_eq!((unknown["firmwareMajorVersion"].as_i64(), unknown["firmwareVersionTypeString"].as_str(), unknown["firmwareTypeString"].as_str()), (Some(-1), Some(""), Some("ArduPilot")));
         let beta = firmware_fields(12, Some(crate::connect::Firmware { version: Some((1, 15, 2, 128)), custom: None, git_hash: String::new() }));
