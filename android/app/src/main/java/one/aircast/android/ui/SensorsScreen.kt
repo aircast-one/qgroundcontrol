@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +81,19 @@ private fun SensorsNotice(text: String, modifier: Modifier = Modifier) {
 }
 
 internal const val ACCEL_ROUTINE = "accelerometer"
+internal const val CALIBRATION_COMPLETE = "Calibration complete"
+private const val MUST_REBOOT = "YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION."
+private const val COMPASS_QUALITY = "Shown in the indicator bars is the quality of the calibration for each compass.\n\n" +
+    "- Green indicates a well functioning compass.\n" +
+    "- Yellow indicates a questionable compass or calibration.\n" +
+    "- Red indicates a compass which should not be used.\n\n"
+
+internal fun postCalibrationPrompt(routine: String?, helpText: String, px4: Boolean): String? = when {
+    px4 || helpText != CALIBRATION_COMPLETE -> null
+    routine == COMPASS_ROUTINE -> COMPASS_QUALITY + MUST_REBOOT
+    routine == ACCEL_ROUTINE -> MUST_REBOOT
+    else -> null
+}
 
 @Composable
 private fun StartDialog(
@@ -257,7 +271,9 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     var showSettings by remember { mutableStateOf(false) }
     var confirmFactoryReset by remember { mutableStateOf(false) }
     var runningName by remember { mutableStateOf("") }
-    var rebootOffered by remember { mutableStateOf(false) }
+    var ranRoutine by remember { mutableStateOf<String?>(null) }
+    var rebootPrompt by remember { mutableStateOf<String?>(null) }
+    var wasInProgress by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     val flyJson by qgcPath(FLY_STATE)
     val aloft = remember(flyJson) { flyState(flyJson)?.state == "flying" }
@@ -271,6 +287,28 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     if (state == null) {
         SensorsNotice("Reading the vehicle's calibration state.", modifier)
         return
+    }
+
+    LaunchedEffect(state.inProgress) {
+        if (wasInProgress && !state.inProgress) {
+            rebootPrompt = postCalibrationPrompt(ranRoutine, state.helpText, state.px4)
+        }
+        wasInProgress = state.inProgress
+    }
+
+    rebootPrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = { rebootPrompt = null },
+            title = { Text(CALIBRATION_COMPLETE) },
+            text = { Text(prompt) },
+            confirmButton = {
+                TextButton(onClick = {
+                    rebootPrompt = null
+                    scope.launch { withContext(Dispatchers.Default) { Qgc.invoke(REBOOT_VEHICLE) } }
+                }) { Text("Reboot Vehicle") }
+            },
+            dismissButton = { TextButton(onClick = { rebootPrompt = null }) { Text("Close") } },
+        )
     }
 
     if (showSettings) {
@@ -303,7 +341,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
             fast = state.fastCompass,
             onConfirm = { invocation, arguments ->
                 runningName = calibration.title
-                rebootOffered = rebootOffered || calibration.id == COMPASS_ROUTINE
+                ranRoutine = calibration.id
                 notice = null
                 scope.launch {
                     val before = withContext(Dispatchers.Default) { calibrationStatus() }
@@ -418,17 +456,6 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.padding(horizontal = 20.dp),
                     )
-                    if (rebootOffered) {
-                        Button(
-                            onClick = {
-                                rebootOffered = false
-                                scope.launch {
-                                    withContext(Dispatchers.Default) { Qgc.invoke(REBOOT_VEHICLE) }
-                                }
-                            },
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                        ) { Text("Reboot Vehicle") }
-                    }
                 }
             }
         }
