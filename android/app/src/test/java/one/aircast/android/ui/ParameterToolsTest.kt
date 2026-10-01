@@ -24,9 +24,9 @@ class ParameterToolsTest {
 
     @Test
     fun `the modified filter keeps only parameters changed from stock`() {
-        assertTrue(parameterShown("RTL_ALT", "", "", modifiedOnly = true, modified = setOf("RTL_ALT")))
-        assertFalse(parameterShown("RTL_SPEED", "", "", modifiedOnly = true, modified = setOf("RTL_ALT")))
-        assertTrue(parameterShown("RTL_SPEED", "", "rtl", modifiedOnly = false, modified = emptySet()))
+        assertTrue(parameterShown("RTL_ALT", emptyList(), "", modifiedOnly = true, modified = setOf("RTL_ALT")))
+        assertFalse(parameterShown("RTL_SPEED", emptyList(), "", modifiedOnly = true, modified = setOf("RTL_ALT")))
+        assertTrue(parameterShown("RTL_SPEED", emptyList(), "rtl", modifiedOnly = false, modified = emptySet()))
     }
 
     @Test

@@ -44,7 +44,7 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
     val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     var search by remember { mutableStateOf(initialSearch) }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
-    var descriptions by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var descriptions by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var modified by remember { mutableStateOf<Set<String>>(emptySet()) }
     var modifiedOnly by remember { mutableStateOf(false) }
     var reads by remember { mutableStateOf(0) }
@@ -138,13 +138,13 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
     }
 }
 
-internal fun parameterShown(name: String, description: String, search: String, modifiedOnly: Boolean, modified: Set<String>): Boolean =
-    parameterMatches(name, description, search) && (!modifiedOnly || name in modified)
+internal fun parameterShown(name: String, descriptions: List<String>, search: String, modifiedOnly: Boolean, modified: Set<String>): Boolean =
+    parameterMatches(name, descriptions, search) && (!modifiedOnly || name in modified)
 
-internal fun parameterMatches(name: String, description: String, search: String): Boolean =
+internal fun parameterMatches(name: String, descriptions: List<String>, search: String): Boolean =
     search.split(' ').filter { it.isNotEmpty() }.all { word ->
         val pattern = runCatching { Regex(word, RegexOption.IGNORE_CASE) }.getOrNull()
-        listOf(name, description).any { text ->
+        (listOf(name) + descriptions).any { text ->
             pattern?.containsMatchIn(text) ?: text.contains(word, ignoreCase = true)
         }
     }
@@ -158,12 +158,12 @@ private fun parameterNames(): List<String> {
     return (0 until result.length()).map { result.optText(it) }.sorted()
 }
 
-internal data class ParameterSummary(val descriptions: Map<String, String>, val modified: Set<String>)
+internal data class ParameterSummary(val descriptions: Map<String, List<String>>, val modified: Set<String>)
 
 private fun parameterSummary(names: List<String>): ParameterSummary {
     val facts = names.mapNotNull { name -> parameterFact(name)?.let { name to it } }
     return ParameterSummary(
-        descriptions = facts.filter { it.second.description.isNotBlank() }.associate { it.first to it.second.description },
+        descriptions = facts.associate { (name, fact) -> name to listOf(fact.description, fact.longDescription).filter { it.isNotBlank() } },
         modified = facts.filter { it.second.changedFromDefault }.map { it.first }.toSet(),
     )
 }

@@ -42,6 +42,7 @@ data class Fact(
     val warning: Boolean = false,
     val changedFromDefault: Boolean = false,
     val optional: Boolean = false,
+    val longDescription: String = "",
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
@@ -217,6 +218,7 @@ object Qgc {
             path = if (groupPath.isEmpty()) name else "$groupPath.$name",
             name = name,
             description = json.text("shortDescription"),
+            longDescription = json.text("longDescription"),
             units = json.text("units"),
             valueString = json.text("valueString"),
             value = json.opt("value"),
