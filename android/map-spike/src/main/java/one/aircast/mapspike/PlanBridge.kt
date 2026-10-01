@@ -244,6 +244,8 @@ fun placeLandingIfUnplaced(index: Int, latitude: Double, longitude: Double): Boo
     if (!moveLandingPlace(index, LANDING_PLACE_TOUCHDOWN, latitude, longitude)) {
         return false
     }
+    // qtpaths: plan.missionController.visualItems.0.setLandingHeadingToTakeoffHeading
+    invokeOk("$PLAN_ITEMS.$index.setLandingHeadingToTakeoffHeading")
     return leaveWizardMode(index)
 }
 

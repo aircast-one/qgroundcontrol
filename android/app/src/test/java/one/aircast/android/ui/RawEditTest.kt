@@ -30,4 +30,13 @@ class RawEditTest {
         assertEquals(EntryPoint("Start from", "top left", "p.rotateEntryPoint"), entryPoint(JSONObject("""{"entryPoint":{"label":"Start from","value":"top left","path":"p.rotateEntryPoint"}}""")))
         assertNull(entryPoint(JSONObject("""{"entryPoint":null}""")))
     }
+
+    @Test
+    fun `a landing pattern takes the vehicle heading and position`() {
+        assertEquals(true, isLandingPattern(JSONObject("""{"landing":true}""")))
+        assertEquals(87.5, vehicleHeading(JSONObject("""{"value":87.5}""")))
+        assertNull(vehicleHeading(JSONObject("""{"value":null}""")))
+        assertEquals(47.4, vehicleCoordinate(JSONObject("""{"latitude":47.4,"longitude":8.5,"valid":true}"""))?.optDouble("latitude"))
+        assertNull(vehicleCoordinate(JSONObject("""{"latitude":0,"longitude":0,"valid":false}""")))
+    }
 }

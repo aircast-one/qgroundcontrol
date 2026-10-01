@@ -1517,6 +1517,16 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
     if let Some(answer) = fence_invoke(backend, path, args) {
         return Some(answer);
     }
+    if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|rest| rest.strip_suffix(".setLandingHeadingToTakeoffHeading")).and_then(|i| i.parse::<usize>().ok()) {
+        return Some(edit(|doc| {
+            let at = index.checked_sub(1).filter(|i| *i < doc.items.len()).ok_or("No such item.")?;
+            let plandoc::Item::Complex { kind, json, item_count } = &doc.items[at] else { return Err("Only a landing pattern has a landing heading.".to_string()) };
+            let Some(heading) = takeoff_heading(doc) else { return Ok(doc.clone()) };
+            let turned = crate::landingpattern::edit(json, "landingHeading", &json!(heading)).ok_or("Only a landing pattern has a landing heading.")?;
+            let item = plandoc::Item::Complex { kind: kind.clone(), item_count: plandoc::complex_count(kind, &turned).unwrap_or(*item_count), json: turned };
+            Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { item.clone() } else { it.clone() }).collect(), ..doc.clone() })
+        }));
+    }
     if let Some(index) = path.strip_prefix("plan.missionController.visualItems.").and_then(|rest| rest.strip_suffix(".rotateEntryPoint")).and_then(|i| i.parse::<usize>().ok()) {
         return Some(edit(|doc| {
             let at = index.checked_sub(1).filter(|i| *i < doc.items.len()).ok_or("No such item.")?;
@@ -1599,6 +1609,16 @@ mod tests {
             let differing: Vec<String> = expected.as_object().unwrap().iter().filter(|(k, v)| mine.get(k.as_str()) != Some(v)).map(|(k, v)| format!("{k}:\n  core {}\n  qt   {v}", mine.get(k.as_str()).unwrap_or(&Value::Null))).collect();
             assert!(differing.is_empty(), "item {index}: {}", differing.join("\n"));
         });
+    }
+
+    #[test]
+    fn a_landing_lines_up_with_the_takeoff_run_from_home() {
+        let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan")).unwrap();
+        let takeoff = |lat: f64, lon: f64| plandoc::Item::Simple(plandoc::Simple { command: CMD_NAV_TAKEOFF, frame: 3, params: [Some(0.0), None, None, None, Some(lat), Some(lon), Some(30.0)], auto_continue: true, altitude: None, sections: vec![] });
+        let home = doc.home.unwrap();
+        let east = Document { items: vec![takeoff(home[0], home[1] + 0.01)], ..doc.clone() };
+        assert!(takeoff_heading(&east).is_some_and(|h| (h - 90.0).abs() < 0.5));
+        assert_eq!(takeoff_heading(&Document { items: Vec::new(), ..doc.clone() }), None, "no takeoff, no heading to copy");
     }
 
     #[test]
@@ -1905,6 +1925,17 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0), (&vertical, &horizontal))
 }
 
+const CMD_NAV_TAKEOFF: i64 = 22;
+const CMD_NAV_VTOL_TAKEOFF_ID: i64 = 84;
+
+fn takeoff_heading(doc: &Document) -> Option<f64> {
+    let home = doc.home?;
+    let plandoc::Item::Simple(takeoff) = doc.items.first()? else { return None };
+    [CMD_NAV_TAKEOFF, CMD_NAV_VTOL_TAKEOFF_ID].contains(&takeoff.command).then_some(())?;
+    let at = takeoff.params[4].zip(takeoff.params[5])?;
+    Some(crate::surveygrid::azimuth_to((home[0], home[1]), at))
+}
+
 fn shape_complete(kind: &str, pattern: &Value) -> bool {
     let (key, least) = if kind == "CorridorScan" { ("polyline", 2) } else { ("polygon", 3) };
     pattern.get(key).and_then(Value::as_array).is_some_and(|vertices| vertices.len() >= least)
@@ -1940,7 +1971,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
         }
         Some(Some(plandoc::Item::Complex { kind, json: pattern, .. })) if crate::landingpattern::is_landing(kind) => {
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
-            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::landingpattern::fields(pattern, &item, &units), "camera": Value::Null, "speedSection": Value::Null, "altitudeMode": Value::Null })
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::landingpattern::fields(pattern, &item, &units), "camera": Value::Null, "speedSection": Value::Null, "altitudeMode": Value::Null, "landing": true })
         }
         Some(Some(plandoc::Item::Complex { kind, .. })) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index, "reason": format!("The core cannot edit a {kind} item yet.") }),
         Some(None) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index }),

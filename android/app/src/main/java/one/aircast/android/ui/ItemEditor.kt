@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -57,6 +58,21 @@ internal data class EntryPoint(val label: String, val value: String, val path: S
 internal fun entryPoint(view: JSONObject?): EntryPoint? =
     view?.optJSONObject("entryPoint")?.let { EntryPoint(it.optText("label"), it.optText("value"), it.optText("path")) }?.takeIf { it.path.isNotBlank() }
 
+internal fun isLandingPattern(view: JSONObject?): Boolean = view?.optBoolean("landing") == true
+
+internal fun vehicleHeading(fact: JSONObject?): Double? = fact?.optDouble("value")?.takeIf { !it.isNaN() }
+
+internal fun vehicleCoordinate(coordinate: JSONObject?): JSONObject? =
+    coordinate?.takeIf { it.optBoolean("valid", true) && it.has("latitude") && it.has("longitude") }
+        ?.let { JSONObject().put("latitude", it.optDouble("latitude")).put("longitude", it.optDouble("longitude")).put("altitude", 0) }
+
+private fun setToVehicleHeading(index: Int): String? =
+    vehicleHeading(Qgc.get("vehicle.heading"))?.let { Qgc.writeRefusal("plan.missionController.visualItems.$index.landingHeading", it) } ?: "The vehicle has not reported its heading."
+
+private fun setToVehicleLocation(index: Int): String? =
+    vehicleCoordinate(Qgc.get("vehicle.coordinate")?.let { it.optJSONObject("value") ?: it })
+        ?.let { Qgc.writeRefusal("plan.missionController.visualItems.$index.landingCoordinate", it) } ?: "The vehicle has no position yet."
+
 internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
 
 internal data class RawEdit(val on: Boolean, val friendlyAllowed: Boolean)
@@ -103,6 +119,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
 
     val fields = remember(view) { itemFields(view) }
     val raw = remember(view) { rawEdit(view) }
+    val connected = hasVehicle()
     val camera = remember(view) { cameraCalc(view) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -134,6 +151,12 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
             }
             refusal?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp))
+            }
+            if (isLandingPattern(view) && connected) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { setToVehicleHeading(index) }; revision++ } }) { Text("Set to vehicle heading") }
+                    TextButton(onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { setToVehicleLocation(index) }; revision++ } }) { Text("Set to vehicle location") }
+                }
             }
             areaHelp(view)?.let { help ->
                 Text(help, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
