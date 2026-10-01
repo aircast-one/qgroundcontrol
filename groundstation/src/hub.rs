@@ -1043,7 +1043,7 @@ impl Vehicle {
                 .iter()
                 .filter_map(|(stream, name, default)| {
                     let rate = crate::settingsstore::raw_setting(&format!("settings.apmMavlinkStreamRateSettings.{name}")).and_then(|v| v.as_i64()).unwrap_or(*default);
-                    (rate >= 0).then(|| Outbound::RequestDataStream { target, stream: *stream, rate: rate as u16 })
+                    (rate >= 0).then_some(Outbound::RequestDataStream { target, stream: *stream, rate: rate as u16 })
                 })
                 .collect(),
             false => Vec::new(),
