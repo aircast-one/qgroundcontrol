@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -55,6 +56,16 @@ internal data class SetupComponent(
     val blockedReason: String? = null,
     val prerequisite: String? = null,
 )
+
+internal fun setupIcon(known: String?): Int = when (known) {
+    "radio", "joystick" -> R.drawable.ic_gamepad
+    "flightModes" -> R.drawable.ic_toggle_on
+    "sensors" -> R.drawable.ic_sensors
+    "safety" -> R.drawable.ic_shield
+    "power" -> R.drawable.ic_bolt
+    "esc" -> R.drawable.ic_tune
+    else -> R.drawable.ic_build
+}
 
 internal fun prerequisiteText(first: String, wanted: String): String = "$first has to be set up before $wanted."
 
@@ -305,7 +316,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         if (needSetup.isNotEmpty()) {
-            item(key = "attention") { SectionHeader("Needs setup before flight") }
+            item(key = "attention") { SectionHeader("Needs attention") }
             items(needSetup, key = { "a${it.index}" }) { component ->
                 val blocked = component.blockedReason
                 val page = setupPage(setupJson, component.name)
@@ -320,6 +331,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         null
                     },
                     summary = summaries[component.name].orEmpty(),
+                    icon = setupIcon(component.known),
                 )
             }
         }
@@ -355,16 +367,18 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         null
                     },
                     summary = summaries[component.name].orEmpty(),
+                    icon = setupIcon(component.known),
                 )
             }
         }
 
         if (setupMatches("Parameters", setupSearch)) item(key = "parameters") {
-            SectionHeader("Everything else")
+            SectionHeader("Advanced")
             SetupRow(
                 title = "Parameters",
                 status = "Every setting the vehicle has",
                 state = SetupState.Neutral,
+                icon = R.drawable.ic_tune,
                 onClick = {
                     parametersSearch = ""
                     parametersOpen = true
@@ -386,14 +400,14 @@ private fun ReadinessHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 16.dp)
             .padding(top = 20.dp, bottom = 8.dp),
     ) {
+        Text("Vehicle setup", style = MaterialTheme.typography.headlineMedium)
         ready?.let { verdict ->
             Text(
                 text = if (verdict) "Ready to fly" else "Not ready to fly",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
                 color = if (verdict) {
                     MaterialTheme.colorScheme.primary
                 } else {
