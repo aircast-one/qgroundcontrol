@@ -1133,7 +1133,7 @@ impl Vehicle {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
         let apm = self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
         let proto = self.max_proto_version.unwrap_or(0);
-        connect::Vehicle { px4, apm, fence_supported: self.capabilities & connect::CAP_MISSION_FENCE != 0 && proto >= PROTO_MAVLINK2, rally_supported: self.capabilities & connect::CAP_MISSION_RALLY != 0 && proto >= PROTO_MAVLINK2, max_proto_version: proto }
+        connect::Vehicle { px4, apm, fence_supported: self.capabilities & connect::CAP_MISSION_FENCE != 0, rally_supported: self.capabilities & connect::CAP_MISSION_RALLY != 0, max_proto_version: proto }
     }
 
     pub fn pending_parameter_writes(&self) -> bool {

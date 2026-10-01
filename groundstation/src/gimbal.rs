@@ -580,7 +580,7 @@ impl Gimbals {
             true => Out::StartRateRepeat,
             false => Out::StopRateRepeat,
         };
-        control.into_iter().chain([self.rate_command(pair, FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | lock, pitch, yaw), repeat]).collect()
+        control.into_iter().chain([self.rate_command(pair, FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME | lock, pitch, yaw), repeat]).collect()
     }
 
     pub fn on_screen_control(&mut self, pan_pct: f32, tilt_pct: f32, screen: Screen, now_ms: u64) -> Vec<Out> {
@@ -1399,8 +1399,8 @@ mod tests {
         assert!(sent[0].is_nan() && sent[1].is_nan(), "a rate command leaves both angles unset, which is what NaN means in these two parameters");
         assert_eq!(
             (sent[2], sent[3], sent[4], sent[5], sent[6]),
-            (30.0, 0.0, 12.0, 0.0, DEVICE as f64),
-            "the rate rides in parameters three and four in degrees per second, under roll lock and pitch lock alone"
+            (30.0, 0.0, 44.0, 0.0, DEVICE as f64),
+            "the rate rides in parameters three and four in degrees per second, under roll lock, pitch lock and the vehicle frame GimbalController::_sendGimbalAttitudeRates sets"
         );
         assert_eq!(started.last(), Some(&Out::StartRateRepeat));
         assert!(gimbals.set_rates(None, Some(-15.0), 3000).contains(&Out::StartRateRepeat), "one axis still moving keeps the repeat alive");
@@ -1408,8 +1408,8 @@ mod tests {
         gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 5000);
         let locked = gimbals.set_rates(Some(5.0), None, 5000);
         assert!(
-            matches!(locked.first(), Some(Out::Command { params, .. }) if params[4] == 28.0),
-            "a rate carries roll lock, pitch lock and the yaw lock the gimbal is already in - and no frame flag, because a yaw locked to North and a yaw relative to the airframe are contradictory instructions and the gimbal honours the frame"
+            matches!(locked.first(), Some(Out::Command { params, .. }) if params[4] == 60.0),
+            "a rate carries roll lock, pitch lock, the vehicle frame and the yaw lock the gimbal is already in, as GimbalController::_sendGimbalAttitudeRates sends them, though the MAVLink spec reads yaw lock and vehicle frame as contradictory"
         );
     }
 
