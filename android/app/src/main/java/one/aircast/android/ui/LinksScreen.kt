@@ -773,7 +773,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
         text = { Text("Add Link…") },
         containerColor = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Add Link…" },
     )
     }
 

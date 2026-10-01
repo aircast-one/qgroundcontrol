@@ -1,5 +1,9 @@
 package one.aircast.mapspike
 
+import androidx.compose.ui.semantics.semantics
+
+import androidx.compose.ui.semantics.contentDescription
+
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -541,7 +545,8 @@ internal fun MapSpikeScreen(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = with(density) { controlsHeightPx.toDp() } + 16.dp),
+                    .padding(end = 16.dp, bottom = with(density) { controlsHeightPx.toDp() } + 16.dp)
+                    .semantics { contentDescription = "Add waypoint" },
             )
         }
 
