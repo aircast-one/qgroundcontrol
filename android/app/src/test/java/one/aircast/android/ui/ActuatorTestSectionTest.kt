@@ -25,3 +25,13 @@ class ActuatorTestSectionTest {
         assertEquals(-1.0, snapped(servo, -1.0), 1e-9)
     }
 }
+
+class ActuatorActionsTest {
+    @Test
+    fun `action groups read from the outputs view`() {
+        val groups = actuatorActions(
+            org.json.JSONObject("""{"actions":[{"label":"Set Spin Direction 1","type":4,"actions":[{"label":"Motor 1","function":101}]}]}"""),
+        )
+        assertEquals(listOf(ActuatorActionGroup("Set Spin Direction 1", 4, listOf(ActuatorActionChoice("Motor 1", 101)))), groups)
+    }
+}

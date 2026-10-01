@@ -67,6 +67,7 @@ internal data class ActuatorOutputs(
     val testing: ActuatorTesting? = null,
     val geometry: Geometry? = null,
     val hasUnsetRequiredFunctions: Boolean = false,
+    val actions: List<ActuatorActionGroup> = emptyList(),
 )
 
 private fun <T> JSONArray?.objects(read: (JSONObject) -> T?): List<T> =
@@ -114,6 +115,7 @@ internal fun actuatorOutputs(view: JSONObject?): ActuatorOutputs? =
             testing = actuatorTesting(read),
             geometry = geometry(read.optJSONObject("geometry")),
             hasUnsetRequiredFunctions = read.optBoolean("hasUnsetRequiredFunctions"),
+            actions = actuatorActions(read),
             groups = read.optJSONArray("groups").objects { group ->
                 ActuatorGroup(
                     label = group.optText("label"),
@@ -181,7 +183,7 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
             Text("Advanced")
         }
         outputs.geometry?.let { Column(Modifier.padding(16.dp)) { GeometrySection(it, advanced, ::write) { revision++ } } }
-        outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it) } }
+        outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it, outputs.actions) } }
         Text("Actuator Outputs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
         if (outputs.hasUnsetRequiredFunctions) {
             Text("One or more actuator still needs to be assigned to an output.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))

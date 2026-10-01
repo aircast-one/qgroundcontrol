@@ -89,7 +89,16 @@ pub struct Channel {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SupportedAction {
+    pub kind: i64,
+    pub label: &'static str,
+    pub condition: Condition,
+    pub actuator_types: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Subgroup {
+    pub actions: Vec<SupportedAction>,
     pub label: String,
     pub primary: Option<Param>,
     pub params: Vec<Param>,
@@ -174,6 +183,9 @@ pub struct TestActuator {
     pub is_motor: bool,
 }
 
+const ACTION_KINDS: [(&str, i64, &str); 5] = [("beep", 1, "Beep"), ("3d-mode-on", 2, "3D mode: On"), ("3d-mode-off", 3, "3D mode: Off"), ("set-spin-direction1", 4, "Set Spin Direction 1"), ("set-spin-direction2", 5, "Set Spin Direction 2")];
+pub const ACTION_TRIGGER: &str = "actuatorAction.trigger";
+
 pub const TEST_ACTIVE: &str = "actuatorTest.setActive";
 pub const TEST_SET: &str = "actuatorTest.setChannelTo";
 pub const TEST_STOP: &str = "actuatorTest.stopControl";
@@ -195,6 +207,16 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
                     .map(|subgroup| {
                         let config: Vec<Param> = list(subgroup, "parameters").map(Param::parse).collect();
                         Subgroup {
+                            actions: subgroup
+                                .get("supported-actions")
+                                .and_then(Value::as_object)
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|(name, action)| {
+                                    let (kind, label) = ACTION_KINDS.iter().find(|(known, _, _)| known == name).map(|(_, kind, label)| (*kind, *label))?;
+                                    Some(SupportedAction { kind, label, condition: Condition::parse(&text(action, "supported-if")), actuator_types: list(action, "actuator-types").filter_map(Value::as_str).map(str::to_string).collect() })
+                                })
+                                .collect(),
                             label: text(subgroup, "label"),
                             primary: config.iter().rev().find(|p| p.function == "primary").cloned(),
                             params: config.iter().filter(|p| p.function != "primary").cloned().collect(),
@@ -448,6 +470,46 @@ fn function_params(output: &Output) -> Vec<String> {
         .collect()
 }
 
+pub fn function_type(metadata: &Metadata, function: i64) -> Option<&str> {
+    metadata.actuator_types.iter().filter(|t| t.name != "DEFAULT" && (t.function_min..=t.function_max).contains(&function)).last().map(|t| t.name.as_str())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionGroup {
+    pub kind: i64,
+    pub label: &'static str,
+    pub actions: Vec<(String, i64)>,
+}
+
+pub fn action_groups(metadata: &Metadata, outputs: &[&Output], value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<ActionGroup> {
+    let candidates: Vec<(i64, &Subgroup)> = outputs
+        .iter()
+        .flat_map(|output| output.subgroups.iter().flat_map(move |subgroup| subgroup.channels.iter().flat_map(move |channel| subgroup.channel_configs.iter().filter(|c| c.function == "function").map(move |c| (channel_param(c, channel), subgroup)))))
+        .filter_map(|(name, subgroup)| Some((value_of(&name)?, subgroup)))
+        .filter(|(function, _)| *function != 0)
+        .collect();
+    let (groups, _) = candidates.into_iter().fold((Vec::<ActionGroup>::new(), std::collections::BTreeSet::new()), |(groups, added), (function, subgroup)| {
+        let Some(known) = metadata.functions.get(&function).filter(|_| !added.contains(&function)) else { return (groups, added) };
+        let kind = function_type(metadata, function);
+        let usable: Vec<&SupportedAction> = subgroup
+            .actions
+            .iter()
+            .filter(|action| action.condition.evaluate(value_of))
+            .filter(|action| action.actuator_types.is_empty() || kind.is_some_and(|k| action.actuator_types.iter().any(|t| t == k)))
+            .collect();
+        let added = match usable.is_empty() {
+            true => added,
+            false => added.into_iter().chain(std::iter::once(function)).collect(),
+        };
+        let groups = usable.into_iter().fold(groups, |groups, action| match groups.iter().position(|g| g.kind == action.kind) {
+            Some(at) => groups.into_iter().enumerate().map(|(i, g)| if i == at { ActionGroup { actions: g.actions.into_iter().chain(std::iter::once((known.label.clone(), function))).collect(), ..g } } else { g }).collect(),
+            None => groups.into_iter().chain(std::iter::once(ActionGroup { kind: action.kind, label: action.label, actions: vec![(known.label.clone(), function)] })).collect(),
+        });
+        (groups, added)
+    });
+    groups
+}
+
 pub fn kept_outputs<'a>(metadata: &'a Metadata, exists: &dyn Fn(&str) -> bool) -> Vec<&'a Output> {
     metadata.outputs.iter().filter(|output| output.enable.is_some() || function_params(output).iter().any(|name| exists(name))).collect()
 }
@@ -528,6 +590,11 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
             "allMotors": all_motors.as_ref().map(actuator_json),
             "hadFailure": crate::hub::lock().active().is_some_and(|v| v.actuator_test.had_failure),
         },
+        "actions": action_groups(metadata, &kept_outputs(metadata, &exists), &value_of).iter().map(|group| json!({
+            "label": group.label,
+            "type": group.kind,
+            "actions": group.actions.iter().map(|(label, function)| json!({ "label": label, "function": function })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
         "hasUnsetRequiredFunctions": mixer_functions(&mixer, true).iter().any(|f| !configured.contains(f)),
         "geometry": geometry_json(backend, &mixer, &value_of),
         "groups": kept_outputs(metadata, &exists).into_iter().map(|output| json!({
@@ -694,6 +761,11 @@ pub fn test_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
     match path {
         MIXER_SET => return mixer_set(backend, args),
         MIXER_AXIS => return mixer_axis(backend, args),
+        ACTION_TRIGGER => {
+            let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+            let action = json!({ "action": "actuatorAction", "type": given.get(0), "function": given.get(1) });
+            return crate::guided::dispatch(backend, Some(action), crate::guided::active_id(backend), path, args);
+        }
         _ => {}
     }
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
@@ -706,7 +778,7 @@ pub fn test_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [TEST_ACTIVE, TEST_SET, TEST_STOP, MIXER_SET, MIXER_AXIS].contains(&path)
+    [TEST_ACTIVE, TEST_SET, TEST_STOP, MIXER_SET, MIXER_AXIS, ACTION_TRIGGER].contains(&path)
 }
 
 #[cfg(test)]
@@ -748,6 +820,25 @@ mod tests {
         let values = |name: &str| (name == "CA_SV_CS0_TYPE").then_some(1);
         let pitch = &channel.cells[2];
         assert!(rule_item(channel, pitch, &values).is_some_and(|item| item.hidden));
+    }
+
+    #[test]
+    fn actions_group_by_type_and_list_each_configured_function_once() {
+        let parsed = parse(&example()).unwrap();
+        let aux = &parsed.outputs[1].subgroups[0];
+        assert_eq!(aux.actions.iter().map(|a| (a.kind, a.label)).collect::<Vec<_>>(), [(4, "Set Spin Direction 1"), (5, "Set Spin Direction 2")]);
+        let outputs: Vec<&Output> = parsed.outputs.iter().collect();
+        let dshot = |name: &str| match name {
+            "PWM_AUX_TIM0" => Some(-5),
+            "PWM_AUX_FUNC1" => Some(101),
+            "PWM_AUX_FUNC2" => Some(201),
+            "PWM_AUX_FUNC3" => Some(101),
+            _ => Some(0),
+        };
+        let groups = action_groups(&parsed, &outputs, &dshot);
+        assert_eq!(groups.iter().map(|g| (g.label, g.actions.clone())).collect::<Vec<_>>(), [("Set Spin Direction 1", vec![("Motor 1".to_string(), 101)]), ("Set Spin Direction 2", vec![("Motor 1".to_string(), 101)])], "the servo is not a motor and Motor 1 is listed once");
+        let pwm = |name: &str| if name == "PWM_AUX_TIM0" { Some(400) } else { dshot(name) };
+        assert!(action_groups(&parsed, &outputs, &pwm).is_empty(), "supported-if holds only on DShot");
     }
 
     #[test]

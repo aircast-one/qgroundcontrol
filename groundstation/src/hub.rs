@@ -38,6 +38,8 @@ const MANUAL_CONTROL_SCALE: f32 = 1000.0;
 const AIRFRAME_PARAMS: [&str; 2] = ["SYS_AUTOSTART", "SYS_AUTOCONFIG"];
 const AIRFRAME_REBOOT_DELAY_MS: u64 = 800;
 const CMD_SET_MESSAGE_INTERVAL: u16 = 511;
+const CMD_CONFIGURE_ACTUATOR: u16 = 311;
+const ACTUATOR_ACTION_TIMEOUT_MS: u64 = 3000;
 const MAV_STATE_ACTIVE: u8 = 4;
 const SEVERITY_ERROR: u8 = 3;
 const COMMAND_LONG_ID: u32 = 76;
@@ -169,6 +171,7 @@ pub struct Vehicle {
     stream: crate::streamconfig::StreamConfig,
     pub autotune: crate::autotune::Autotune,
     pub actuator_test: crate::actuatortest::ActuatorTest,
+    actuator_action_pending: Option<u64>,
     autotune_due: Option<u64>,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
@@ -325,6 +328,7 @@ impl Vehicle {
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
             actuator_test: crate::actuatortest::ActuatorTest::default(),
+            actuator_action_pending: None,
             autotune_due: None,
             rc_due: None,
             temperature: TemperatureFacts::default(),
@@ -1249,6 +1253,17 @@ impl Vehicle {
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("changeAutostart") => return self.change_autostart(action, now_ms),
+            Some("actuatorAction") => {
+                let number = |key: &str| action.get(key).and_then(Value::as_f64);
+                let (Some(kind), Some(function)) = (number("type"), number("function")) else { return Err("An actuator action takes its type and output function.".to_string()) };
+                if self.actuator_action_pending.is_some_and(|until| now_ms < until) {
+                    return Ok(Vec::new());
+                }
+                self.actuator_action_pending = Some(now_ms + ACTUATOR_ACTION_TIMEOUT_MS);
+                let target = (self.id, COMP_AUTOPILOT1);
+                let params = [kind, 0.0, 0.0, 0.0, (crate::actuatortest::FUNCTION_OFFSET as f64) + function, 0.0, 0.0];
+                return Ok(self.encode(&Outbound::CommandLong { target, command: CMD_CONFIGURE_ACTUATOR, params }).into_iter().collect());
+            }
             Some("actuatorTest") => {
                 let number = |key: &str| action.get(key).and_then(Value::as_f64);
                 let request = match action.get("op").and_then(Value::as_str) {
@@ -1883,6 +1898,12 @@ impl Vehicle {
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
                 let announced = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
+                if a.command as u32 as u16 == CMD_CONFIGURE_ACTUATOR {
+                    self.actuator_action_pending = None;
+                    if a.result as u8 != RESULT_ACCEPTED {
+                        self.pending_notices.push((crate::noticeboard::MESSAGE, "Actuator action command failed".to_string()));
+                    }
+                }
                 let tested = match a.command as u32 as u16 == crate::actuatortest::CMD_ACTUATOR_TEST {
                     true => {
                         let (next, message) = self.actuator_test.on_ack(a.result as u8, now_ms);
@@ -3342,6 +3363,23 @@ mod tests {
         assert_eq!(interval(&next), Some((31.0, 10_000.0)));
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
         assert!(vehicle.start_guided(&json!({ "action": "pidTuningMode", "mode": 7 }), 20_200).is_err());
+    }
+
+    #[test]
+    fn an_actuator_action_configures_one_function_and_waits_for_its_ack() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let sent = vehicle.start_guided(&json!({ "action": "actuatorAction", "type": 4, "function": 101 }), 50_000).unwrap();
+        assert!(sent.iter().any(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_CONFIGURE_ACTUATOR && c.param1 == 4.0 && c.param5 == 1101.0)));
+        assert!(vehicle.start_guided(&json!({ "action": "actuatorAction", "type": 4, "function": 101 }), 50_100).unwrap().is_empty(), "one action in flight at a time");
+        let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_CONFIGURE_ACTUATOR, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &denied, 50_200_000, 50_200);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        assert!(vehicle.pending_notices.iter().any(|(_, text)| text == "Actuator action command failed"));
+        assert!(!vehicle.start_guided(&json!({ "action": "actuatorAction", "type": 5, "function": 101 }), 50_300).unwrap().is_empty(), "the ack frees the next action");
     }
 
     #[test]

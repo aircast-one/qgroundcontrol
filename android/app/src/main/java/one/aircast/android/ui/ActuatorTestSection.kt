@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -42,6 +44,24 @@ internal data class TestChannel(val label: String, val function: Int, val min: D
 }
 
 internal data class ActuatorTesting(val actuators: List<TestChannel>, val allMotors: TestChannel?, val hadFailure: Boolean)
+internal data class ActuatorActionChoice(val label: String, val function: Int)
+internal data class ActuatorActionGroup(val label: String, val type: Int, val actions: List<ActuatorActionChoice>)
+
+internal const val ACTUATOR_ACTION_TRIGGER = "actuatorAction.trigger"
+
+internal fun actuatorActions(view: JSONObject?): List<ActuatorActionGroup> {
+    val groups = view?.optJSONArray("actions") ?: return emptyList()
+    return (0 until groups.length()).mapNotNull { index ->
+        groups.optJSONObject(index)?.let { group ->
+            val actions = group.optJSONArray("actions")
+            ActuatorActionGroup(
+                group.optText("label"),
+                group.optInt("type"),
+                (0 until (actions?.length() ?: 0)).mapNotNull { at -> actions?.optJSONObject(at)?.let { ActuatorActionChoice(it.optText("label"), it.optInt("function")) } },
+            )
+        }
+    }
+}
 
 private fun testChannel(json: JSONObject?): TestChannel? = json?.let {
     TestChannel(it.optText("label"), it.optInt("function"), it.optDouble("min"), it.optDouble("max"), if (it.isNull("default")) null else it.optDouble("default"), it.optBoolean("isMotor"))
@@ -68,7 +88,7 @@ internal fun sentValue(channel: TestChannel, value: Double): Double? =
     if (value < channel.min - channel.snapRange / 2) channel.default else value
 
 @Composable
-internal fun ActuatorTestSection(testing: ActuatorTesting) {
+internal fun ActuatorTestSection(testing: ActuatorTesting, actions: List<ActuatorActionGroup> = emptyList()) {
     var enabled by remember { mutableStateOf(false) }
     var values by remember(testing.actuators) { mutableStateOf(testing.actuators.associate { it.function to it.rest }) }
     var moved by remember(testing.actuators) { mutableStateOf(emptySet<Int>()) }
@@ -88,6 +108,11 @@ internal fun ActuatorTestSection(testing: ActuatorTesting) {
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Actuator Testing", style = MaterialTheme.typography.titleMedium)
+        if (actions.isNotEmpty()) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                actions.forEach { group -> ActionGroupButton(group, enabled = !enabled) }
+            }
+        }
         if (testing.actuators.isEmpty()) {
             Text("Configure some outputs in order to test them.")
             return@Column
@@ -114,6 +139,22 @@ internal fun ActuatorTestSection(testing: ActuatorTesting) {
                     values = values + (channel.function to channel.rest)
                     moved = moved - channel.function
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionGroupButton(group: ActuatorActionGroup, enabled: Boolean) {
+    var open by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        androidx.compose.material3.OutlinedButton(onClick = { open = true }, enabled = enabled) { Text(group.label) }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            group.actions.forEach { action ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(action.label) }, onClick = {
+                    open = false
+                    offMainDetached { Qgc.invoke(ACTUATOR_ACTION_TRIGGER, group.type, action.function) }
+                })
             }
         }
     }
