@@ -956,6 +956,7 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str, vertical: &Unit) -
             "property": shape.1,
             "vertices": listed,
             "transects": transects,
+            "turnaround": fact_number(&item, "turnAroundDistance").is_some_and(|distance| distance != 0.0),
             "flightLoop": (!flown_loop.is_empty()).then_some(flown_loop),
             "layers": layers,
             "layerAltitudesMetres": stack.clone(),

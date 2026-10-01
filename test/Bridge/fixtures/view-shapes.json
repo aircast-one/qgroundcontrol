@@ -8443,6 +8443,7 @@
         "view.missionItems(geometry).items[].geometry.transects.#",
         "view.missionItems(geometry).items[].geometry.transects[].latitude",
         "view.missionItems(geometry).items[].geometry.transects[].longitude",
+        "view.missionItems(geometry).items[].geometry.turnaround",
         "view.missionItems(geometry).items[].geometry.vertices.#",
         "view.missionItems(geometry).items[].geometry.vertices[].latitude",
         "view.missionItems(geometry).items[].geometry.vertices[].longitude",
@@ -12375,6 +12376,7 @@
                             "longitude": "number"
                         }
                     ],
+                    "turnaround": "bool",
                     "vertices": [
                         {
                             "latitude": "number",

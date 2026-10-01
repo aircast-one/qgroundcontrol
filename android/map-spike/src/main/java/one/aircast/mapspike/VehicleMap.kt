@@ -270,6 +270,7 @@ fun VehicleMap(
             loaded.setStyle(builder) { loadedStyle ->
                 installLayers(loadedStyle)
                 installSurveyLayers(loadedStyle)
+                installTransectMarks(loadedStyle)
                     installLandingLayers(loadedStyle)
                     installMidpointLayer(loadedStyle)
                 installShotLayer(loadedStyle)
@@ -463,6 +464,7 @@ fun VehicleMap(
     ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
+        renderTransectMarks(currentStyle, surveys, selectedWaypoint)
         renderLandings(currentStyle, landings)
         renderMidpoints(currentStyle, fencePolygons, surveys, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
