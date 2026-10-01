@@ -271,6 +271,8 @@ private fun CameraDetailsSheet(
             }
         }
 
+        CameraDefinitionSettings()
+
         destructive.forEach { action ->
             var confirming by remember(action.id) { mutableStateOf(false) }
 

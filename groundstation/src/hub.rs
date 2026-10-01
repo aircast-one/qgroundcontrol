@@ -1928,6 +1928,10 @@ impl Vehicle {
                 self.cameras.on_video_stream_information(compid, report, now_ms);
                 Vec::new()
             }
+            MavMessage::PARAM_EXT_ACK(d) => {
+                crate::camsettings::on_ack(self.id, compid, &crate::camsettings::parameter_name(&d.param_id[..]), d.param_type as u8, &d.param_value[..], d.param_result as u8, now_ms);
+                Vec::new()
+            }
             MavMessage::PARAM_EXT_VALUE(d) => {
                 crate::camsettings::on_value(self.id, compid, &crate::camsettings::parameter_name(&d.param_id[..]), d.param_type as u8, &d.param_value[..], now_ms);
                 Vec::new()

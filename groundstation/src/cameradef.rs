@@ -324,6 +324,26 @@ pub fn mav_param_ext_type(value_type: ValueType) -> u8 {
     }
 }
 
+pub fn encode_param_value(param_type: u8, value: &Value) -> Option<[u8; PARAM_VALUE_BYTES]> {
+    let whole = || value.as_i64().or_else(|| value.as_u64().map(|v| v as i64)).or_else(|| value.as_bool().map(i64::from)).or_else(|| value.as_f64().map(|v| v as i64));
+    let real = || value.as_f64().or_else(|| value.as_bool().map(|b| f64::from(u8::from(b))));
+    let bytes: Vec<u8> = match param_type {
+        PARAM_EXT_TYPE_UINT8 => vec![whole()? as u8],
+        PARAM_EXT_TYPE_INT8 => (whole()? as i8).to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_UINT16 => (whole()? as u16).to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_INT16 => (whole()? as i16).to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_UINT32 => (whole()? as u32).to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_INT32 => (whole()? as i32).to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_UINT64 => value.as_u64().map_or_else(|| whole().map(|v| v as u64), Some)?.to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_INT64 => whole()?.to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_REAL32 => (real()? as f32).to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_REAL64 => real()?.to_le_bytes().to_vec(),
+        PARAM_EXT_TYPE_CUSTOM => value.as_str()?.as_bytes().to_vec(),
+        _ => return None,
+    };
+    Some(std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0)))
+}
+
 pub fn decode_param_value(param_type: u8, bytes: &[u8]) -> Option<Value> {
     let eight = |n: usize| -> Option<[u8; 8]> { bytes.get(..n).map(|slice| std::array::from_fn(|i| slice.get(i).copied().unwrap_or(0))) };
     match param_type {
@@ -739,6 +759,7 @@ fn parameter_json(parameters: &CameraParameters, parameter: &Parameter, now_ms: 
     json!({
         "name": meta.name,
         "type": mav_param_ext_type(meta.value_type),
+        "isBool": meta.value_type == ValueType::Bool,
         "control": meta.has_control,
         "readOnly": meta.read_only,
         "writeOnly": parameter.write_only,
