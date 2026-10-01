@@ -646,6 +646,7 @@ mod deps_cover_reads {
             ("plankml", include_str!("plankml.rs")),
             ("platformbluetooth", include_str!("platformbluetooth.rs")),
             ("paramremap", include_str!("paramremap.rs")),
+            ("libevents", include_str!("libevents.rs")),
             ("settingsorder", include_str!("settingsorder.rs")),
             ("platformserial", include_str!("platformserial.rs")),
             ("presets", include_str!("presets.rs")),

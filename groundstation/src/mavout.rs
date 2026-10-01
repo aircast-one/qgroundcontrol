@@ -1,5 +1,5 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_CLEAR_ALL_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_EXT_REQUEST_LIST_DATA, PARAM_MAP_RC_DATA, PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, MavParamExtType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_CLEAR_ALL_DATA, REQUEST_EVENT_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_EXT_REQUEST_LIST_DATA, PARAM_MAP_RC_DATA, PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, MavParamExtType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -38,6 +38,7 @@ pub enum Outbound {
     Ftp { target: (u8, u8), payload: [u8; 251] },
     MissionRequestList { target: (u8, u8), plan: u8 },
     MissionClearAll { target: (u8, u8), plan: u8 },
+    RequestEvent { target: (u8, u8), sequence: u16 },
     MissionRequestInt { target: (u8, u8), plan: u8, seq: u16 },
     MissionCount { target: (u8, u8), plan: u8, count: u16 },
     MissionItemInt { target: (u8, u8), plan: u8, item: crate::plantransfer::Item },
@@ -173,6 +174,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
         Outbound::ParamRequestRead { target, name, index } => Some(MavMessage::PARAM_REQUEST_READ(PARAM_REQUEST_READ_DATA { param_index: if name.is_some() { -1 } else { *index }, target_system: target.0, target_component: target.1, param_id: param_id(name.as_deref().unwrap_or("")) })),
         Outbound::MissionRequestList { target, plan } => Some(MavMessage::MISSION_REQUEST_LIST(MISSION_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)? })),
         Outbound::MissionClearAll { target, plan } => Some(MavMessage::MISSION_CLEAR_ALL(MISSION_CLEAR_ALL_DATA { target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)? })),
+        Outbound::RequestEvent { target, sequence } => Some(MavMessage::REQUEST_EVENT(REQUEST_EVENT_DATA { first_sequence: *sequence, last_sequence: *sequence, target_system: target.0, target_component: target.1 })),
         Outbound::MissionRequestInt { target, plan, seq } => Some(MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq: *seq, target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)? })),
         Outbound::MissionCount { target, plan, count } => Some(MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count: *count, target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)?, opaque_id: 0 })),
         Outbound::MissionAck { target, plan, result } => Some(MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: target.0, target_component: target.1, mavtype: MavMissionResult::from_u8(*result)?, mission_type: plan_type(*plan)?, opaque_id: 0 })),
