@@ -60,6 +60,9 @@ internal const val OFFLINE_START = "offlineMaps.startDownload"
 internal const val OFFLINE_RESUME = "offlineMaps.resume"
 internal const val OFFLINE_CANCEL = "offlineMaps.cancel"
 internal const val OFFLINE_DELETE = "offlineMaps.delete"
+internal const val OFFLINE_RENAME = "offlineMaps.rename"
+
+internal fun renameWanted(current: String, typed: String): String? = typed.trim().takeIf { it.isNotEmpty() && it != current }
 private const val OFFLINE_POLL_MS = 1000L
 private const val MIN_ZOOM_PATH = "settings.offlineMapsSettings.minZoomLevelDownload"
 private const val MAX_ZOOM_PATH = "settings.offlineMapsSettings.maxZoomLevelDownload"
@@ -211,6 +214,12 @@ fun OfflineMapsSection() {
         OfflineSetDialog(
             set = current,
             onDismiss = { shown = null },
+            onRename = { name ->
+                scope.launch {
+                    refusal = act(OFFLINE_RENAME, current.id, name)
+                    polls++
+                }
+            },
             onAction = { path ->
                 scope.launch {
                     refusal = act(path, current.id)
@@ -244,8 +253,9 @@ private fun InfoLine(label: String, value: String) {
 }
 
 @Composable
-private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onAction: (String) -> Unit) {
+private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (String) -> Unit, onAction: (String) -> Unit) {
     var confirming by remember { mutableStateOf(false) }
+    var typedName by remember(set.id) { mutableStateOf(set.name) }
     if (confirming) {
         AlertDialog(
             onDismissRequest = { confirming = false },
@@ -278,6 +288,7 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onAction: (
                     InfoLine("Size:", set.sizeText)
                     InfoLine("Tile Count:", set.tileCountText)
                 } else {
+                    OutlinedTextField(value = typedName, onValueChange = { typedName = it }, label = { Text("Name") }, singleLine = true)
                     Text(set.mapType, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     InfoLine("Zoom Levels:", set.zoomText)
                     InfoLine("Total:", set.totalText)
@@ -296,7 +307,13 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onAction: (
                     TextButton(onClick = { onAction(OFFLINE_CANCEL) }) { Text("Cancel Download") }
                 }
                 TextButton(onClick = { confirming = true }) { Text("Delete") }
-                TextButton(onClick = onDismiss) { Text(if (set.defaultSet) "Close" else "Ok") }
+                if (!set.defaultSet) {
+                    TextButton(enabled = typedName.isNotBlank(), onClick = {
+                        renameWanted(set.name, typedName)?.let(onRename)
+                        onDismiss()
+                    }) { Text("Ok") }
+                }
+                TextButton(onClick = onDismiss) { Text(if (set.defaultSet) "Close" else "Cancel") }
             }
         },
     )

@@ -34,4 +34,11 @@ class OfflineMapsTest {
         assertEquals("Tile Set 001", read.uniqueName)
         assertEquals(OfflineEstimate("1,234", "5.0MB", false), read.estimate)
     }
+
+    @Test
+    fun `ok renames only to a new non-blank name`() {
+        org.junit.Assert.assertEquals("Valley", renameWanted("Set 1", " Valley "))
+        org.junit.Assert.assertNull(renameWanted("Set 1", "Set 1"))
+        org.junit.Assert.assertNull(renameWanted("Set 1", "  "))
+    }
 }
