@@ -135,4 +135,14 @@ class ConsoleEmptyReasonTest {
         assertEquals(emptyList<String>(), consoleLines(JSONObject("{}")))
         assertEquals(emptyList<String>(), consoleLines(null))
     }
+
+    @Test
+    fun `a leading WARN or ERROR is coloured, as MAVLinkConsoleController marks it`() {
+        val warn = androidx.compose.ui.graphics.Color.Yellow
+        val error = androidx.compose.ui.graphics.Color.Red
+        val warned = consoleLineStyled("WARN  [sensors] no baro", warn, error)
+        assertEquals(listOf(Triple(0, 4, warn)), warned.spanStyles.map { Triple(it.start, it.end, it.item.color) })
+        assertEquals(listOf(Triple(0, 5, error)), consoleLineStyled("ERROR x", warn, error).spanStyles.map { Triple(it.start, it.end, it.item.color) })
+        assertTrue("case sensitive, and only at the start", consoleLineStyled("warn: an INFO WARN", warn, error).spanStyles.isEmpty())
+    }
 }

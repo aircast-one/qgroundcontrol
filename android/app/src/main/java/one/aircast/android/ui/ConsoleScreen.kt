@@ -30,6 +30,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMain
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
 
 private const val CONSOLE_ROOT = "mavlinkConsole"
@@ -92,11 +97,9 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
 
     fun send() {
         val toSend = command
-        if (toSend.isNotBlank()) {
-            command = ""
-            sentAnything = true
-            scope.offMain { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
-        }
+        command = ""
+        sentAnything = true
+        scope.offMain { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
     }
 
     val following by remember {
@@ -153,8 +156,10 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = 12.dp),
         ) {
             items(lines) { line ->
+                val warning = MaterialTheme.aircast.warning
+                val error = MaterialTheme.colorScheme.error
                 Text(
-                    text = line,
+                    text = consoleLineStyled(line, warning, error),
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -183,8 +188,16 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
                     scope.launch { command = withContext(Dispatchers.Default) { Qgc.invokeResult("$CONSOLE_ROOT.$step", current) as? String } ?: current }
                 }) { Text(arrow) }
             }
-            Button(onClick = { send() }, enabled = command.isNotBlank()) { Text("Send") }
+            Button(onClick = { send() }) { Text("Send") }
         }
+    }
+}
+
+internal fun consoleLineStyled(line: String, warning: Color, error: Color): AnnotatedString {
+    val marked = listOf("WARN" to warning, "ERROR" to error).firstOrNull { (prefix, _) -> line.startsWith(prefix) }
+    return buildAnnotatedString {
+        append(line)
+        marked?.let { (prefix, color) -> addStyle(SpanStyle(color = color), 0, prefix.length) }
     }
 }
 
