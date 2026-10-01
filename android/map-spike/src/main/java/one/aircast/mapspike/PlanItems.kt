@@ -3,7 +3,8 @@ package one.aircast.mapspike
 
 const val NO_POSITION = "no position"
 const val AFTER_THE_ROUTE_ENDS = "after the route ends"
-const val PLAN_ITEMS_HEADING = "Plan items"
+
+fun itemCountText(count: Int): String = if (count == 1) "1 item" else "$count items"
 
 data class ItemRow(
     val index: Int,

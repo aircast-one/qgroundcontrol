@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -1136,13 +1137,15 @@ internal fun MapSpikeScreen(
 
         if (listOpen) {
             ModalBottomSheet(onDismissRequest = { listOpen = false }) {
-                Text(
-                    PLAN_ITEMS_HEADING,
-                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.titleSmall,
-                )
+                val rows = itemRows(allItems, surveyStatsMap)
+                Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                    Text(itemCountText(rows.count { it.index != HOME_ITEM }), style = MaterialTheme.typography.titleMedium)
+                    missionSummaryText(missionSummaryView).ifBlank { null }?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                    items(itemRows(allItems, surveyStatsMap), key = { it.index }) { row ->
+                    items(rows, key = { it.index }) { row ->
                         ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) {
                             selected = MapHit.Waypoint(row.index)
                             items.firstOrNull { it.index == row.index }?.let { placed ->
@@ -1172,42 +1175,34 @@ private const val SHORT_ALTITUDE_LABEL = 10
 private fun altitudeFieldWidth(item: MissionItem) =
     if (altitudeFieldLabel(item).length > SHORT_ALTITUDE_LABEL) 180.dp else 120.dp
 
-private val ITEM_NUMBER_WIDTH = 48.dp
+private val ITEM_MARKER_SIZE = 40.dp
 
 @Composable
 private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-
-        color = if (selected) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(14.dp).background(
-                    Color(android.graphics.Color.parseColor(row.colour)),
-                    CircleShape,
-                ),
-            )
-            Text(
-                row.number,
-                Modifier.widthIn(min = ITEM_NUMBER_WIDTH),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Text(row.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                row.detail,
-                Modifier.weight(DETAIL_SHARE),
-                style = MaterialTheme.typography.labelSmall,
-                textAlign = TextAlign.End,
-            )
+                Modifier.size(ITEM_MARKER_SIZE).background(Color(android.graphics.Color.parseColor(row.colour)), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(row.number, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.surface, maxLines = 1)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(row.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                row.detail.ifBlank { null }?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                }
+            }
+            if (selected) Text("Selected", style = MaterialTheme.typography.labelMedium)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
