@@ -1183,7 +1183,10 @@ impl Vehicle {
         let flag = |key: &str| action.get(key).and_then(Value::as_bool).unwrap_or(false);
         match action.get("action").and_then(Value::as_str).unwrap_or("") {
             "takeoff" => guidedcmd::takeoff(&state, number("altitude")),
-            "goto" => guidedcmd::goto(&state, number("latitude"), number("longitude"), action.get("loiterRadius").and_then(Value::as_f64).unwrap_or(0.0)),
+            "goto" => match guidedcmd::too_far_refusal(self.facts.coordinate.map(|(lat, lon, _)| (lat, lon)), (number("latitude"), number("longitude")), guidedcmd::max_goto_meters()) {
+                Some(reason) => Plan::Refused(reason),
+                None => guidedcmd::goto(&state, number("latitude"), number("longitude"), action.get("loiterRadius").and_then(Value::as_f64).unwrap_or(0.0)),
+            },
             "changeAltitude" => guidedcmd::change_altitude(&state, number("delta"), flag("pause")),
             "pause" => guidedcmd::pause(&state),
             "rtl" => guidedcmd::rtl(&state, flag("smart")),
@@ -3481,8 +3484,9 @@ mod tests {
         let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_NAV_TAKEOFF, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &denied, 3_100_000, 3100);
         assert_eq!(hub.guided_snapshot(None)["guided"]["errors"][0], "MAV_CMD 22 command denied");
-        let goto = hub.guided(None, &json!({ "action": "goto", "latitude": 47.5, "longitude": 8.6 }), 3_200).unwrap();
-        assert!(matches!(decode(&goto[0].1), MavMessage::COMMAND_INT(c) if c.command == MavCmd::MAV_CMD_DO_REPOSITION && c.x == 475000000));
+        let goto = hub.guided(None, &json!({ "action": "goto", "latitude": 47.405, "longitude": 8.505 }), 3_200).unwrap();
+        assert!(matches!(decode(&goto[0].1), MavMessage::COMMAND_INT(c) if c.command == MavCmd::MAV_CMD_DO_REPOSITION && c.x == 474050000));
+        assert!(hub.guided(None, &json!({ "action": "goto", "latitude": 47.5, "longitude": 8.6 }), 3_300).is_err(), "13 km is past the 1000 m Max Go To distance");
         assert!(matches!(decode(&goto[1].1), MavMessage::MISSION_ITEM(i) if i.current == 2));
         let unsupported = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_REPOSITION, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &unsupported, 3_300_000, 3300);
