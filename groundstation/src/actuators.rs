@@ -186,6 +186,11 @@ pub struct TestActuator {
 
 const ACTION_KINDS: [(&str, i64, &str); 5] = [("beep", 1, "Beep"), ("3d-mode-on", 2, "3D mode: On"), ("3d-mode-off", 3, "3D mode: Off"), ("set-spin-direction1", 4, "Set Spin Direction 1"), ("set-spin-direction2", 5, "Set Spin Direction 2")];
 pub const ACTION_TRIGGER: &str = "actuatorAction.trigger";
+pub const MOTOR_INIT: &str = "motorAssignment.init";
+pub const MOTOR_START: &str = "motorAssignment.start";
+pub const MOTOR_SELECT: &str = "motorAssignment.selectMotor";
+pub const MOTOR_SPIN: &str = "motorAssignment.spinCurrentMotor";
+pub const MOTOR_ABORT: &str = "motorAssignment.abort";
 
 pub const TEST_ACTIVE: &str = "actuatorTest.setActive";
 pub const TEST_SET: &str = "actuatorTest.setChannelTo";
@@ -465,7 +470,47 @@ pub fn mixer_functions(mixer: &MixerState, required_only: bool) -> std::collecti
     mixer.groups.iter().filter(|g| !required_only || g.group.required).flat_map(|g| g.channels.iter().map(|c| c.function)).filter(|f| *f != 0).collect()
 }
 
-fn function_params(output: &Output) -> Vec<String> {
+pub struct AssignmentPlan {
+    pub assign_motors: bool,
+    pub message: String,
+}
+
+pub fn assignment_plan(groups: &[Vec<String>], labels: &[String], selected: usize, first: i64, count: i64, value_of: &dyn Fn(&str) -> Option<i64>) -> Result<AssignmentPlan, String> {
+    let motor = |name: &String| value_of(name).filter(|f| (first..first + count).contains(f));
+    let assigned_in = |wanted: &dyn Fn(usize) -> bool| -> std::collections::BTreeSet<i64> { groups.iter().enumerate().filter(|(i, _)| wanted(*i)).flat_map(|(_, g)| g.iter().filter_map(motor)).collect() };
+    let on_selected = assigned_in(&|i| i == selected);
+    let anywhere: std::collections::BTreeSet<i64> = on_selected.union(&assigned_in(&|i| i != selected)).copied().collect();
+    let fits = groups.get(selected).is_some_and(|g| g.len() as i64 >= count);
+    let output = labels.get(selected).cloned().unwrap_or_default();
+    let extra = match (anywhere.len(), on_selected.len(), fits) {
+        (0, _, true) => Some(format!("<br />No motors are assigned yet.\nBy saying yes, all motors will be assigned to the first {count} channels of the selected output ({output})\n (you can also first assign all motors, then start the identification).<br />")),
+        (n, 0, true) if n > 0 => Some(format!("<br />Motors are currently assigned to a different output.\nBy saying yes, all motors will be reassigned to the first {count} channels of the selected output ({output}).<br />")),
+        (n, _, _) if (n as i64) < count => return Err("Not all motors are assigned yet. Either clear all existing assignments or assign all motors to an output.".to_string()),
+        _ => None,
+    };
+    let message = format!("This will automatically spin individual motors at 15% thrust.<br /><br />\n<b>Warning: Only proceed if you removed all propellers</b>.<br />\n{}\n<br />\nThe procedure is as following:<br />\n- After confirming, the first motor starts to spin for 0.5 seconds.<br />\n- Then click on the motor that was spinning.<br />\n- The above steps are repeated for all motors.<br />\n- The motor output functions will automatically be reassigned by the selected order.<br />\n<br />\nDo you wish to proceed?", extra.clone().unwrap_or_default());
+    Ok(AssignmentPlan { assign_motors: extra.is_some(), message })
+}
+
+pub fn assignment_start_writes(groups: &[Vec<String>], selected: usize, first: i64, count: i64, value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<(String, i64)> {
+    let cleared = groups.iter().flatten().filter(|name| value_of(name).is_some_and(|f| (first..first + count).contains(&f))).map(|name| (name.clone(), 0));
+    let assigned = groups.get(selected).into_iter().flatten().take(count.max(0) as usize).enumerate().map(|(i, name)| (name.clone(), first + i as i64));
+    cleared.chain(assigned).collect()
+}
+
+pub fn assignment_finish_writes(groups: &[Vec<String>], first: i64, selected_motors: &[i64], value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<(String, i64)> {
+    let count = selected_motors.len() as i64;
+    groups
+        .iter()
+        .flatten()
+        .filter_map(|name| {
+            let function = value_of(name).filter(|f| (first..first + count).contains(f))?;
+            Some((name.clone(), first + selected_motors[(function - first) as usize]))
+        })
+        .collect()
+}
+
+pub fn function_params(output: &Output) -> Vec<String> {
     output
         .subgroups
         .iter()
@@ -585,19 +630,29 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
     let label_of = |function: i64| specific_label(metadata, &mixer, function, &enum_text);
     let testing = test_actuators(metadata, &value_of, &label_of);
     let configured = configured_functions(metadata, &value_of);
+    let held = crate::hub::lock().active().map(|v| (v.actuator_test.had_failure, v.motor_assignment.active(), v.motor_assignment.message.clone(), v.motor_assignment.highlighted()));
+    let (had_failure, assigning, assignment_message, highlighted) = held.unwrap_or_default();
+    let motors_drawn = !motor_geometry(metadata, &mixer, &|name| number_of(backend, name)).is_empty();
     let all_motors = testing.iter().rev().find(|a| a.is_motor).map(|motor| TestActuator { label: "All Motors".to_string(), ..motor.clone() });
     json!({
         "showUi": metadata.show_ui_if.evaluate(&value_of),
         "testing": {
             "actuators": testing.iter().map(actuator_json).collect::<Vec<_>>(),
             "allMotors": all_motors.as_ref().map(actuator_json),
-            "hadFailure": crate::hub::lock().active().is_some_and(|v| v.actuator_test.had_failure),
+            "hadFailure": had_failure,
         },
         "actions": action_groups(metadata, &kept_outputs(metadata, &exists), &value_of).iter().map(|group| json!({
             "label": group.label,
             "type": group.kind,
             "actions": group.actions.iter().map(|(label, function)| json!({ "label": label, "function": function })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
+        "motorAssignment": {
+            "multirotor": mixer.option.as_ref().is_some_and(|o| o.kind == "multirotor"),
+            "enabled": motors_drawn,
+            "active": assigning,
+            "message": assignment_message,
+            "highlighted": highlighted,
+        },
         "hasUnsetRequiredFunctions": mixer_functions(&mixer, true).iter().any(|f| !configured.contains(f)),
         "geometry": geometry_json(backend, metadata, &mixer, &value_of),
         "groups": kept_outputs(metadata, &exists).into_iter().map(|output| json!({
@@ -796,6 +851,17 @@ pub fn test_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
     match path {
         MIXER_SET => return mixer_set(backend, args),
         MIXER_AXIS => return mixer_axis(backend, args),
+        MOTOR_INIT | MOTOR_START | MOTOR_SELECT | MOTOR_SPIN | MOTOR_ABORT => {
+            let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+            let action = match path {
+                MOTOR_INIT => json!({ "action": "motorAssignment", "op": "init", "output": given.get(0) }),
+                MOTOR_START => json!({ "action": "motorAssignment", "op": "start" }),
+                MOTOR_SELECT => json!({ "action": "motorAssignment", "op": "select", "motor": given.get(0) }),
+                MOTOR_SPIN => json!({ "action": "motorAssignment", "op": "spinAgain" }),
+                _ => json!({ "action": "motorAssignment", "op": "abort" }),
+            };
+            return crate::guided::dispatch(backend, Some(action), crate::guided::active_id(backend), path, args);
+        }
         ACTION_TRIGGER => {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
             let action = json!({ "action": "actuatorAction", "type": given.get(0), "function": given.get(1) });
@@ -813,7 +879,7 @@ pub fn test_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [TEST_ACTIVE, TEST_SET, TEST_STOP, MIXER_SET, MIXER_AXIS, ACTION_TRIGGER].contains(&path)
+    [TEST_ACTIVE, TEST_SET, TEST_STOP, MIXER_SET, MIXER_AXIS, ACTION_TRIGGER, MOTOR_INIT, MOTOR_START, MOTOR_SELECT, MOTOR_SPIN, MOTOR_ABORT].contains(&path)
 }
 
 #[cfg(test)]

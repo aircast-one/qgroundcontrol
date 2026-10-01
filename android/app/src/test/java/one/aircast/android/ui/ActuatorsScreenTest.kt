@@ -58,3 +58,13 @@ class ActuatorMixerCellTest {
         assertTrue(hidden!!.hidden)
     }
 }
+
+class MotorAssignmentHeadTest {
+    @Test
+    fun `the assignment message loses its markup and the highlighted motors read as a set`() {
+        assertEquals("a\n\nWarning\nb", plainMessage("a<br /><br /><b>Warning</b><br />b"))
+        val state = motorAssignment(JSONObject("""{"multirotor":true,"enabled":true,"active":true,"message":"m","highlighted":[1,3]}"""))
+        assertEquals(setOf(1, 3), state.highlighted)
+        assertTrue(state.active)
+    }
+}

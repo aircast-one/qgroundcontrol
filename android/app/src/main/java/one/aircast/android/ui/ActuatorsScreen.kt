@@ -59,6 +59,35 @@ internal const val ACTUATOR_MIXER_AXIS = "actuatorMixer.setAxis"
 internal data class GeometryChannel(val label: String, val cells: List<GeometryCell?>)
 internal data class GeometryGroup(val label: String, val count: Fact?, val channels: List<GeometryChannel>, val params: List<ActuatorFact>)
 internal data class Geometry(val title: String, val helpUrl: String, val groups: List<GeometryGroup>, val motors: List<GeometryMotor> = emptyList())
+internal data class MotorAssignmentState(
+    val multirotor: Boolean = false,
+    val enabled: Boolean = false,
+    val active: Boolean = false,
+    val message: String = "",
+    val highlighted: Set<Int> = emptySet(),
+)
+
+internal const val MOTOR_ASSIGNMENT_INIT = "motorAssignment.init"
+internal const val MOTOR_ASSIGNMENT_START = "motorAssignment.start"
+internal const val MOTOR_ASSIGNMENT_SELECT = "motorAssignment.selectMotor"
+internal const val MOTOR_ASSIGNMENT_SPIN = "motorAssignment.spinCurrentMotor"
+internal const val MOTOR_ASSIGNMENT_ABORT = "motorAssignment.abort"
+private const val ASSIGNMENT_POLL_MS = 300L
+private val TAG = Regex("<[^>]+>")
+
+internal fun plainMessage(html: String): String = html.replace("<br />", "\n").replace(TAG, "").lines().joinToString("\n") { it.trimEnd() }
+
+internal fun motorAssignment(json: JSONObject?): MotorAssignmentState = json?.let { read ->
+    val highlighted = read.optJSONArray("highlighted")
+    MotorAssignmentState(
+        multirotor = read.optBoolean("multirotor"),
+        enabled = read.optBoolean("enabled"),
+        active = read.optBoolean("active"),
+        message = read.optText("message"),
+        highlighted = (0 until (highlighted?.length() ?: 0)).map { highlighted!!.optInt(it) }.toSet(),
+    )
+} ?: MotorAssignmentState()
+
 internal data class ActuatorOutputs(
     val available: Boolean,
     val reason: String,
@@ -67,6 +96,7 @@ internal data class ActuatorOutputs(
     val testing: ActuatorTesting? = null,
     val geometry: Geometry? = null,
     val hasUnsetRequiredFunctions: Boolean = false,
+    val assignment: MotorAssignmentState = MotorAssignmentState(),
     val actions: List<ActuatorActionGroup> = emptyList(),
 )
 
@@ -116,6 +146,7 @@ internal fun actuatorOutputs(view: JSONObject?): ActuatorOutputs? =
             testing = actuatorTesting(read),
             geometry = geometry(read.optJSONObject("geometry")),
             hasUnsetRequiredFunctions = read.optBoolean("hasUnsetRequiredFunctions"),
+            assignment = motorAssignment(read.optJSONObject("motorAssignment")),
             actions = actuatorActions(read),
             groups = read.optJSONArray("groups").objects { group ->
                 ActuatorGroup(
@@ -155,10 +186,19 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
     var tab by remember { mutableIntStateOf(0) }
     var advanced by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    var confirming by remember { mutableStateOf<String?>(null) }
+    var failure by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(revision) {
         read = withContext(Dispatchers.Default) { actuatorOutputs(Qgc.get(ACTUATOR_OUTPUTS_VIEW)) }
+    }
+    LaunchedEffect(read?.assignment?.active) {
+        while (read?.assignment?.active == true) {
+            kotlinx.coroutines.delay(ASSIGNMENT_POLL_MS)
+            revision++
+        }
     }
     val outputs = read ?: run {
         Text("Reading actuator metadata.", modifier.padding(16.dp))
@@ -183,11 +223,70 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
             Checkbox(checked = advanced, onCheckedChange = { advanced = it })
             Text("Advanced")
         }
-        outputs.geometry?.let { Column(Modifier.padding(16.dp)) { GeometrySection(it, advanced, ::write) { revision++ } } }
-        outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it, outputs.actions) } }
+        outputs.geometry?.let { geometry ->
+            Column(Modifier.padding(16.dp)) {
+                GeometrySection(geometry, advanced, ::write, outputs.assignment.highlighted, onMotor = { motor ->
+                    scope.launch {
+                        withContext(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_SELECT, motor) }
+                        revision++
+                    }
+                }) { revision++ }
+            }
+        }
+        outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it, outputs.actions, testing, outputs.assignment.active) { on -> testing = on } } }
         Text("Actuator Outputs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
         if (outputs.hasUnsetRequiredFunctions) {
             Text("One or more actuator still needs to be assigned to an output.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        if (outputs.assignment.multirotor) {
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!outputs.assignment.active && group.groupsVisible) {
+                    androidx.compose.material3.Button(
+                        onClick = {
+                            scope.launch {
+                                val refused = withContext(Dispatchers.IO) { Qgc.refusalOf(MOTOR_ASSIGNMENT_INIT, outputs.groups.indexOf(group)) }
+                                val message = withContext(Dispatchers.Default) { actuatorOutputs(Qgc.get(ACTUATOR_OUTPUTS_VIEW))?.assignment?.message.orEmpty() }
+                                if (refused == null) confirming = plainMessage(message) else failure = plainMessage(refused)
+                            }
+                        },
+                        enabled = outputs.assignment.enabled && !testing,
+                    ) { Text("Identify & Assign Motors") }
+                }
+                if (outputs.assignment.active) {
+                    androidx.compose.material3.OutlinedButton(onClick = { scope.launch(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_SPIN) } }) { Text("Spin Motor Again") }
+                    androidx.compose.material3.OutlinedButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_ABORT) }
+                            revision++
+                        }
+                    }) { Text("Abort") }
+                }
+            }
+        }
+        confirming?.let { message ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { confirming = null },
+                title = { Text("Motor Order Identification and Assignment") },
+                text = { Text(message) },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        confirming = null
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_START) }
+                            revision++
+                        }
+                    }) { Text("Yes") }
+                },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { confirming = null }) { Text("No") } },
+            )
+        }
+        failure?.let { message ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { failure = null },
+                title = { Text("Error") },
+                text = { Text(message) },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = { failure = null }) { Text("Ok") } },
+            )
         }
         ScrollableTabRow(selectedTabIndex = outputs.groups.indexOf(group)) {
             outputs.groups.forEachIndexed { index, each -> Tab(selected = each == group, onClick = { tab = index }, text = { Text(each.label) }) }
@@ -222,14 +321,14 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (String, Any) -> Unit, onWrite: () -> Unit) {
+private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (String, Any) -> Unit, highlighted: Set<Int> = emptySet(), onMotor: (Int) -> Unit = {}, onWrite: () -> Unit) {
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(geometry.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             if (geometry.helpUrl.isNotEmpty()) androidx.compose.material3.TextButton(onClick = { uri.openUri(geometry.helpUrl) }) { Text("?") }
         }
-        if (geometry.motors.size > 1) GeometryImage(geometry.motors)
+        if (geometry.motors.size > 1) GeometryImage(geometry.motors, highlighted = highlighted, onMotor = onMotor)
         geometry.groups.forEach { group ->
             Text(group.label, style = MaterialTheme.typography.titleSmall)
             group.count?.let { FactRow(it, onWrite = onWrite) }

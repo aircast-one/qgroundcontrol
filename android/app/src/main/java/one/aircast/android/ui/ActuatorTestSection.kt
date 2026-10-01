@@ -88,8 +88,13 @@ internal fun sentValue(channel: TestChannel, value: Double): Double? =
     if (value < channel.min - channel.snapRange / 2) channel.default else value
 
 @Composable
-internal fun ActuatorTestSection(testing: ActuatorTesting, actions: List<ActuatorActionGroup> = emptyList()) {
-    var enabled by remember { mutableStateOf(false) }
+internal fun ActuatorTestSection(
+    testing: ActuatorTesting,
+    actions: List<ActuatorActionGroup> = emptyList(),
+    enabled: Boolean,
+    assigning: Boolean = false,
+    onEnabled: (Boolean) -> Unit,
+) {
     var values by remember(testing.actuators) { mutableStateOf(testing.actuators.associate { it.function to it.rest }) }
     var moved by remember(testing.actuators) { mutableStateOf(emptySet<Int>()) }
     var allMotors by remember(testing.allMotors) { mutableStateOf(testing.allMotors?.rest ?: 0.0) }
@@ -97,7 +102,7 @@ internal fun ActuatorTestSection(testing: ActuatorTesting, actions: List<Actuato
     DisposableEffect(Unit) { onDispose { offMainDetached { Qgc.invoke(ACTUATOR_TEST_ACTIVE, false) } } }
 
     fun setEnabled(on: Boolean) {
-        enabled = on
+        onEnabled(on)
         if (!on) {
             values = testing.actuators.associate { it.function to it.rest }
             moved = emptySet()
@@ -110,7 +115,7 @@ internal fun ActuatorTestSection(testing: ActuatorTesting, actions: List<Actuato
         Text("Actuator Testing", style = MaterialTheme.typography.titleMedium)
         if (actions.isNotEmpty()) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                actions.forEach { group -> ActionGroupButton(group, enabled = !enabled) }
+                actions.forEach { group -> ActionGroupButton(group, enabled = !enabled && !assigning) }
             }
         }
         if (testing.actuators.isEmpty()) {
@@ -118,7 +123,7 @@ internal fun ActuatorTestSection(testing: ActuatorTesting, actions: List<Actuato
             return@Column
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Switch(checked = enabled && !testing.hadFailure, onCheckedChange = ::setEnabled, enabled = !testing.hadFailure)
+            Switch(checked = enabled && !testing.hadFailure, onCheckedChange = ::setEnabled, enabled = !testing.hadFailure && !assigning)
             Text(if (enabled) "Careful: Actuator sliders are enabled" else "Propellers are removed - Enable sliders")
         }
         testing.allMotors?.let { motors ->

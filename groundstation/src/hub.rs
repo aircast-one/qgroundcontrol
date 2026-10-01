@@ -172,6 +172,7 @@ pub struct Vehicle {
     pub autotune: crate::autotune::Autotune,
     pub actuator_test: crate::actuatortest::ActuatorTest,
     actuator_action_pending: Option<u64>,
+    pub motor_assignment: crate::motorassignment::MotorAssignment,
     autotune_due: Option<u64>,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
@@ -329,6 +330,7 @@ impl Vehicle {
             autotune: crate::autotune::Autotune::default(),
             actuator_test: crate::actuatortest::ActuatorTest::default(),
             actuator_action_pending: None,
+            motor_assignment: crate::motorassignment::MotorAssignment::default(),
             autotune_due: None,
             rc_due: None,
             temperature: TemperatureFacts::default(),
@@ -1147,6 +1149,66 @@ impl Vehicle {
         Ok(self.follow_params(actions, now_ms))
     }
 
+    fn param_integer(&self, name: &str) -> Option<i64> {
+        self.parameter(self.component, name).map(ParamValue::as_f64).filter(|v| v.fract() == 0.0).map(|v| v as i64)
+    }
+
+    fn write_function_params(&mut self, writes: crate::motorassignment::Writes, now_ms: u64) -> Vec<Vec<u8>> {
+        let typed: Vec<(String, ParamValue)> = writes
+            .into_iter()
+            .filter_map(|(name, value)| {
+                let held = self.params.value(self.component, &name)?;
+                Some((name, ParamValue::from_f64(held.param_type(), value as f64)?))
+            })
+            .collect();
+        let component = self.component;
+        let actions: Vec<_> = typed.into_iter().flat_map(|(name, value)| self.params.write(component, &name, value)).collect();
+        self.follow_params(actions, now_ms)
+    }
+
+    fn motor_spin(&mut self, function: Option<i64>) -> Vec<Vec<u8>> {
+        self.actuator_request(function.map(|function| crate::actuatortest::Request { function, value: crate::motorassignment::SPIN_VALUE, timeout: crate::motorassignment::SPIN_TIMEOUT }))
+    }
+
+    fn motor_assignment_action(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        let metadata = self.actuators_metadata.as_ref().and_then(|m| crate::actuators::parse(m).ok()).ok_or("This vehicle sent no actuator metadata.")?;
+        let mut assignment = std::mem::take(&mut self.motor_assignment);
+        let integer = |name: &str| self.param_integer(name);
+        let (answer, writes, spin) = match action.get("op").and_then(Value::as_str) {
+            Some("init") => {
+                let selected = action.get("output").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let exists = |name: &str| self.parameter(self.component, name).is_some();
+                let outputs = crate::actuators::kept_outputs(&metadata, &exists);
+                let groups: Vec<Vec<String>> = outputs.iter().map(|o| crate::actuators::function_params(o).into_iter().filter(|n| exists(n)).collect()).collect();
+                let labels: Vec<String> = outputs.iter().map(|o| o.label.clone()).collect();
+                let mixer = crate::actuators::mixer_state(&metadata, &integer);
+                let count = crate::actuators::motor_geometry(&metadata, &mixer, &|name| self.parameter(self.component, name).map(ParamValue::as_f64)).len() as i64;
+                match metadata.actuator_types.iter().find(|t| t.name == "motor").map(|t| t.function_min) {
+                    None => (Err("Actuator type 'motor' not found".to_string()), Vec::new(), None),
+                    Some(first) => match assignment.init(groups, &labels, selected, first, count, &integer) {
+                        true => (Ok(()), Vec::new(), None),
+                        false => (Err(assignment.message.clone()), Vec::new(), None),
+                    },
+                }
+            }
+            Some("start") => (Ok(()), assignment.start(now_ms, &integer), None),
+            Some("select") => match action.get("motor").and_then(Value::as_i64) {
+                Some(motor) => (Ok(()), assignment.select(motor, now_ms, &integer), None),
+                None => (Err("Select which motor spun.".to_string()), Vec::new(), None),
+            },
+            Some("spinAgain") => (Ok(()), Vec::new(), assignment.spin_again(now_ms)),
+            Some("abort") => {
+                assignment.abort();
+                (Ok(()), Vec::new(), None)
+            }
+            _ => (Err("Motor assignment is init, start, select, spinAgain or abort.".to_string()), Vec::new(), None),
+        };
+        self.motor_assignment = assignment;
+        answer?;
+        let written = self.write_function_params(writes, now_ms);
+        Ok(written.into_iter().chain(self.motor_spin(spin)).collect())
+    }
+
     fn actuator_request(&mut self, request: Option<crate::actuatortest::Request>) -> Vec<Vec<u8>> {
         let Some(request) = request else { return Vec::new() };
         let target = (self.id, COMP_AUTOPILOT1);
@@ -1253,6 +1315,7 @@ impl Vehicle {
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("changeAutostart") => return self.change_autostart(action, now_ms),
+            Some("motorAssignment") => return self.motor_assignment_action(action, now_ms),
             Some("actuatorAction") => {
                 let number = |key: &str| action.get(key).and_then(Value::as_f64);
                 let (Some(kind), Some(function)) = (number("type"), number("function")) else { return Err("An actuator action takes its type and output function.".to_string()) };
@@ -1465,6 +1528,8 @@ impl Vehicle {
         bytes.extend(self.tick_autotune(now_ms));
         let actuator = self.actuator_test.tick(now_ms);
         bytes.extend(self.actuator_request(actuator));
+        let spin = self.motor_assignment.tick(now_ms);
+        bytes.extend(self.motor_spin(spin));
         let camera_due = self.cameras.tick(now_ms);
         bytes.extend(self.camera_commands(camera_due));
         let was_busy = self.onboard_logs.busy();
@@ -1905,6 +1970,12 @@ impl Vehicle {
                     }
                 }
                 let tested = match a.command as u32 as u16 == crate::actuatortest::CMD_ACTUATOR_TEST {
+                    true if self.motor_assignment.awaiting_ack() => {
+                        if let Some(text) = self.motor_assignment.on_ack(a.result as u8) {
+                            self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
+                        }
+                        Vec::new()
+                    }
                     true => {
                         let (next, message) = self.actuator_test.on_ack(a.result as u8, now_ms);
                         if let Some(text) = message {

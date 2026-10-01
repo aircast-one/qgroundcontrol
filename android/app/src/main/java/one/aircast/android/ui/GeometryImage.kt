@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -81,10 +83,19 @@ internal fun geometryLayout(motors: List<GeometryMotor>, width: Float, height: F
 }
 
 @Composable
-internal fun GeometryImage(motors: List<GeometryMotor>, modifier: Modifier = Modifier) {
+internal fun GeometryImage(motors: List<GeometryMotor>, modifier: Modifier = Modifier, highlighted: Set<Int> = emptySet(), onMotor: (Int) -> Unit = {}) {
     val measurer = rememberTextMeasurer()
     val ink = MaterialTheme.colorScheme.onSurface
-    Canvas(modifier.fillMaxWidth().aspectRatio(IMAGE_ASPECT)) {
+    val latestHighlighted = androidx.compose.runtime.rememberUpdatedState(highlighted)
+    val latestOnMotor = androidx.compose.runtime.rememberUpdatedState(onMotor)
+    Canvas(
+        modifier.fillMaxWidth().aspectRatio(IMAGE_ASPECT).pointerInput(motors) {
+            detectTapGestures { at ->
+                val layout = geometryLayout(motors, size.width.toFloat(), size.height.toFloat()) ?: return@detectTapGestures
+                motorAt(layout, at, latestHighlighted.value)?.let { latestOnMotor.value(it) }
+            }
+        },
+    ) {
         val layout = geometryLayout(motors, size.width, size.height) ?: return@Canvas
         layout.motors.filter { !it.coax }.forEach { drawLine(FRAME, layout.origin, it.center, strokeWidth = FRAME_WIDTH) }
         val centerSize = layout.rotorDiameter * 0.8f
@@ -101,15 +112,16 @@ internal fun GeometryImage(motors: List<GeometryMotor>, modifier: Modifier = Mod
             FRAME_ARROW,
         )
         drawAxisIndicator(Offset(AXIS_INDICATOR_SIZE / 2f, size.height - AXIS_INDICATOR_SIZE / 2f), ink, measurer)
-        (layout.motors.filter { it.coax } + layout.motors.filter { !it.coax }).forEach { drawMotor(it, layout, ink, measurer) }
+        (layout.motors.filter { it.coax } + layout.motors.filter { !it.coax }).forEach { drawMotor(it, layout, ink, measurer, it.motor.index in highlighted) }
     }
 }
 
-private fun DrawScope.drawMotor(drawn: DrawnMotor, layout: GeometryLayout, ink: Color, measurer: TextMeasurer) {
+private fun DrawScope.drawMotor(drawn: DrawnMotor, layout: GeometryLayout, ink: Color, measurer: TextMeasurer, highlight: Boolean) {
     val fill = if (drawn.motor.counterClockwise) COUNTER_CLOCKWISE else CLOCKWISE
     val arrowColor = fill.copy(alpha = 1f)
     val radius = layout.rotorDiameter / 2f
     drawCircle(fill, radius, drawn.center)
+    if (highlight) drawCircle(FRAME_ARROW, if (drawn.coax) layout.fontSize / 2f else radius, drawn.textCenter)
     val label = measurer.measure((drawn.motor.label).toString(), TextStyle(color = ink, fontSize = (layout.fontSize / density).sp))
     drawText(label, topLeft = drawn.textCenter - Offset(label.size.width / 2f, label.size.height / 2f))
     val offsets = if (drawn.coax) listOf(30f, 150f) else listOf(0f, 180f)
