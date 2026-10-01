@@ -45,12 +45,31 @@ internal const val JOYSTICK_SCREEN = "joystick"
 internal const val JOYSTICK_SELECT = "joystick.select"
 internal const val JOYSTICK_ENABLE = "joystick.enable"
 internal const val JOYSTICK_SETTING = "joystick.setting"
+internal const val JOYSTICK_CALIBRATION = "joystick.calibration"
 private const val JOYSTICK_POLL_MS = 100L
 private const val AXIS_RANGE = 32767f
 
 internal data class JoystickSetting(val name: String, val type: String, val label: String, val units: String, val value: Any?)
 
 internal data class JoystickAxis(val index: Int, val raw: Int?, val function: String)
+
+internal data class JoystickCalibration(
+    val calibrating: Boolean,
+    val statusText: String,
+    val nextText: String,
+    val nextEnabled: Boolean,
+    val cancelEnabled: Boolean,
+    val oneSidedVisible: Boolean,
+)
+
+internal fun joystickCalibration(json: JSONObject?): JoystickCalibration = JoystickCalibration(
+    calibrating = json?.optBoolean("calibrating") == true,
+    statusText = json?.optText("statusText").orEmpty(),
+    nextText = json?.optText("nextText")?.ifBlank { null } ?: "Calibrate",
+    nextEnabled = json?.optBoolean("nextEnabled", true) ?: true,
+    cancelEnabled = json?.optBoolean("cancelEnabled") == true,
+    oneSidedVisible = json?.optBoolean("oneSidedVisible") == true,
+)
 
 internal data class JoystickPage(
     val names: List<String>,
@@ -60,6 +79,9 @@ internal data class JoystickPage(
     val calibrated: Boolean,
     val settings: List<JoystickSetting>,
     val axes: List<JoystickAxis>,
+    val armed: Boolean = false,
+    val calibration: JoystickCalibration = joystickCalibration(null),
+    val transmitterMode: Int = 2,
 )
 
 internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.optBoolean("available") }?.let {
@@ -78,6 +100,9 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
         axes = (0 until (axes?.length() ?: 0)).mapNotNull { at ->
             axes!!.optJSONObject(at)?.let { a -> JoystickAxis(a.optInt("index"), if (a.isNull("raw")) null else a.optInt("raw"), a.optText("function")) }
         },
+        armed = it.optBoolean("armed"),
+        calibration = joystickCalibration(it.optJSONObject("calibration")),
+        transmitterMode = it.optInt("transmitterMode", 2),
     )
 }
 
@@ -92,6 +117,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
     var page by remember { mutableStateOf<JoystickPage?>(null) }
     var refusal by remember { mutableStateOf<String?>(null) }
     var advanced by remember { mutableStateOf(false) }
+    var offerEnable by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(revision) {
@@ -119,6 +145,18 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
         }
         Text(if (read.calibrated) "Calibrated" else "Requires Calibration", color = if (read.calibrated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+        if (!read.armed) {
+            SectionHeader("Calibration")
+            CalibrationPanel(read) { op ->
+                scope.launch {
+                    val answer = withContext(Dispatchers.Default) { Qgc.call(JOYSTICK_CALIBRATION, op) }
+                    refusal = answer?.takeIf { !it.optBoolean("ok") }?.optText("reason")
+                    if (answer?.optBoolean("completed") == true && !read.enabled) offerEnable = answer.optText("name")
+                }
+            }
+            TransmitterModeRow(read.transmitterMode) { act(JOYSTICK_SETTING, "transmitterMode", it) }
+        }
 
         SectionHeader("Axis Monitor")
         read.axes.forEach { axis ->
@@ -150,6 +188,50 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             }
             ADDITIONAL_SETTINGS.mapNotNull(setting).forEachIndexed { index, s ->
                 SettingRow(s.copy(label = if (viaRc) "Channel ${index + 5}" else "Aux${index + 1}")) { value -> act(JOYSTICK_SETTING, s.name, value) }
+            }
+        }
+    }
+    offerEnable?.let { name ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { offerEnable = null },
+            title = { Text("Enable Joystick") },
+            text = { Text("$name calibration is complete. Enable it now?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    offerEnable = null
+                    act(JOYSTICK_ENABLE, true)
+                }) { Text("Yes") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { offerEnable = null }) { Text("No") } },
+        )
+    }
+}
+
+@Composable
+private fun CalibrationPanel(page: JoystickPage, onStep: (String) -> Unit) {
+    val cal = page.calibration
+    if (cal.statusText.isNotBlank()) Text(cal.statusText, style = MaterialTheme.typography.bodyMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(enabled = cal.cancelEnabled, onClick = { onStep("cancel") }) { Text("Cancel") }
+        if (cal.oneSidedVisible) OutlinedButton(onClick = { onStep("oneSided") }) { Text("One-Sided") }
+        androidx.compose.material3.Button(enabled = cal.nextEnabled, onClick = { onStep("next") }) { Text(cal.nextText) }
+    }
+}
+
+@Composable
+private fun TransmitterModeRow(mode: Int, onPick: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Mode", modifier = Modifier.weight(1f))
+        Box {
+            OutlinedButton(onClick = { open = true }) { Text("Mode $mode") }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                (1..4).forEach { m ->
+                    DropdownMenuItem(text = { Text("Mode $m") }, onClick = {
+                        open = false
+                        onPick(m)
+                    })
+                }
             }
         }
     }

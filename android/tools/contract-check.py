@@ -340,6 +340,8 @@ ACCEPTED = {
     "waiting": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
     "inUse": "view.signingKeys lists the core key store, which the desktop recording rig has no keys in, so its list is empty; signingkeys.rs signing_keys_view serves it",
     "activeOnVehicle": "view.signingKeys lists the core key store, which the desktop recording rig has no keys in, so its list is empty; signingkeys.rs signing_keys_view serves it",
+    "completed": "joystick.calibration's action answer, not a view; joystickhost.rs calibration() serves it",
+    "oneSidedVisible": "view.joystick's calibration block exists only while a stick is being calibrated, and the desktop rig has no gamepad; stickcal.rs json serves it",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
     "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",

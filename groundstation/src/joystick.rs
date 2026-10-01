@@ -500,7 +500,7 @@ struct Sample {
     at_ms: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Joystick {
     axis_count: usize,
     button_count: usize,

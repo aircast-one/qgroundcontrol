@@ -508,6 +508,7 @@ mod deps_cover_reads {
         ("itemfacts", include_str!("itemfacts.rs")),
             ("joystick", include_str!("joystick.rs")),
             ("joystickhost", include_str!("joystickhost.rs")),
+            ("stickcal", include_str!("stickcal.rs")),
             ("kml", include_str!("kml.rs")),
             ("label", include_str!("label.rs")),
             ("landing", include_str!("landing.rs")),

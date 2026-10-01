@@ -27,4 +27,12 @@ class JoystickScreenTest {
         assertEquals(0x04 or 0x02, hatBits(1f, 1f))
         assertEquals(0, hatBits(0.2f, -0.2f))
     }
+
+    @Test
+    fun the_calibration_panel_reads_the_core_wizard() {
+        val idle = joystickCalibration(null)
+        assertEquals("Calibrate", idle.nextText)
+        val step = joystickCalibration(JSONObject("""{"calibrating":true,"statusText":"Move the Throttle stick","nextText":"Next","nextEnabled":false,"cancelEnabled":true,"oneSidedVisible":true}"""))
+        assertEquals(JoystickCalibration(true, "Move the Throttle stick", "Next", false, true, true), step)
+    }
 }

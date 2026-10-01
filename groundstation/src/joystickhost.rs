@@ -3,7 +3,9 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::joystick::{AdditionalAxes, Input, Joystick, OPTIONAL, Out, Polling, Settings, Support, ThrottleMode};
+use crate::joystick::{AdditionalAxes, AxisCalibration, FUNCTIONS, Input, Joystick, Out, Polling, Settings, Support, ThrottleMode};
+use crate::settingsini::Setting;
+use crate::stickcal::{Outcome as CalOutcome, StickCal};
 use crate::mavout::Outbound;
 use crate::router::Backend;
 
@@ -13,6 +15,9 @@ pub const INPUT: &str = "joystick.input";
 pub const SELECT: &str = "joystick.select";
 pub const ENABLE_JOYSTICK: &str = "joystick.enable";
 pub const SET_SETTING: &str = "joystick.setting";
+pub const CALIBRATION: &str = "joystick.calibration";
+const AXIS_GROUP: &str = "JoystickAxisSettingsArray";
+const STORED_TRANSMITTER_MODE: u8 = 2;
 const SETTINGS_JSON: &str = include_str!("../../src/Settings/Joystick.SettingsGroup.json");
 const ACTIVE_NAME: &str = "JoystickManager/activeJoystickName";
 const ENABLED_VEHICLES: &str = "JoystickManager/joystickEnabledVehiclesIds";
@@ -117,6 +122,65 @@ pub struct Device {
 struct Host {
     devices: Vec<Device>,
     joysticks: BTreeMap<String, Joystick>,
+    calibration: Option<(String, StickCal)>,
+}
+
+fn axis_group(joystick: &str) -> String {
+    format!("{SETTINGS_PREFIX}/{joystick}/{AXIS_GROUP}")
+}
+
+fn transmitter_mode(joystick: &str) -> u8 {
+    setting_value(joystick, "transmitterMode").as_u64().and_then(|m| u8::try_from(m).ok()).filter(|m| (1..=4).contains(m)).unwrap_or(STORED_TRANSMITTER_MODE)
+}
+
+pub fn load_axes(joystick: &str, model: &mut Joystick, entries: &BTreeMap<String, Setting>) {
+    let group = axis_group(joystick);
+    let read = |axis: usize, key: &str| match entries.get(&format!("{group}/{axis}/{key}")) {
+        Some(Setting::Text(text)) => text.parse::<i64>().ok().or_else(|| (text == "true").then_some(1)).or_else(|| (text == "false").then_some(0)),
+        _ => None,
+    };
+    (0..model.axis_count()).for_each(|axis| {
+        let function = read(axis, "function").and_then(|f| FUNCTIONS.get(f as usize)).map(|(f, _)| *f);
+        if let (Some(function), Some(min), Some(max), Some(center)) = (function, read(axis, "min"), read(axis, "max"), read(axis, "center")) {
+            let calibration = AxisCalibration { min: min as i32, max: max as i32, center: center as i32, deadband: read(axis, "deadband").unwrap_or(0) as i32, reversed: read(axis, "reversed").unwrap_or(0) != 0 };
+            model.set_calibration(axis, calibration);
+            model.set_axis_function(function, axis);
+        }
+    });
+    model.set_transmitter_mode(transmitter_mode(joystick));
+}
+
+pub fn axis_entries(joystick: &str, model: &Joystick) -> BTreeMap<String, Setting> {
+    let mut stored = model.clone();
+    stored.set_transmitter_mode(STORED_TRANSMITTER_MODE);
+    let group = axis_group(joystick);
+    (0..stored.axis_count())
+        .filter_map(|axis| Some((axis, stored.function_for(axis)?, stored.calibration(axis)?)))
+        .flat_map(|(axis, function, c)| {
+            let key = |name: &str| format!("{group}/{axis}/{name}");
+            [
+                (key("center"), Setting::Text(c.center.to_string())),
+                (key("min"), Setting::Text(c.min.to_string())),
+                (key("max"), Setting::Text(c.max.to_string())),
+                (key("deadband"), Setting::Text(c.deadband.to_string())),
+                (key("reversed"), Setting::Text(c.reversed.to_string())),
+                (key("function"), Setting::Text(function.index().to_string())),
+            ]
+        })
+        .collect()
+}
+
+fn apply_calibration(joystick: &str, model: &mut Joystick, channels: &[crate::stickcal::Channel]) {
+    model.reset_calibration();
+    channels.iter().enumerate().for_each(|(axis, channel)| {
+        model.set_calibration(axis, StickCal::calibration(channel));
+        if let Some(function) = channel.function {
+            model.set_axis_function(function, axis);
+        }
+    });
+    crate::settingsstore::replace_group(&axis_group(joystick), axis_entries(joystick, model));
+    crate::settingsstore::written(&setting_key(joystick, "calibrated"), "true");
+    crate::settingsstore::written(&setting_key(joystick, "transmitterMode"), &model.transmitter_mode().to_string());
 }
 
 static HOST: LazyLock<Mutex<Host>> = LazyLock::new(|| Mutex::new(Host::default()));
@@ -180,7 +244,9 @@ fn sync_polling(now_ms: u64) {
     let outs: Vec<Out> = names
         .iter()
         .flat_map(|name| {
+            let configuring = host.calibration.as_ref().is_some_and(|(calibrating, _)| calibrating == name);
             let wanted = match (&active, vehicle) {
+                _ if configuring => Polling { vehicle: false, configuration: true },
                 (Some(active), Some((id, ..))) if active == name => polling(enabled.contains(&id.to_string()), true, settings_for(name).calibrated),
                 _ => Polling::default(),
             };
@@ -207,9 +273,15 @@ fn devices(text: &str) -> Value {
     {
         let mut host = host();
         host.joysticks.retain(|name, _| parsed.iter().any(|d| &d.name == name));
-        parsed.iter().for_each(|d| {
-            host.joysticks.entry(d.name.clone()).or_insert_with(|| Joystick::new(d.axes, d.buttons, d.hats));
+        let fresh: Vec<&Device> = parsed.iter().filter(|d| !host.joysticks.contains_key(&d.name)).collect();
+        fresh.iter().for_each(|d| {
+            let mut model = Joystick::new(d.axes, d.buttons, d.hats);
+            load_axes(&d.name, &mut model, &crate::settingsstore::entries_under(&format!("{SETTINGS_PREFIX}/{}", d.name)));
+            host.joysticks.insert(d.name.clone(), model);
         });
+        if host.calibration.as_ref().is_some_and(|(name, _)| !parsed.iter().any(|d| &d.name == name)) {
+            host.calibration = None;
+        }
         host.devices = parsed;
     }
     sync_polling(crate::hub::now_ms());
@@ -227,7 +299,13 @@ fn input(text: &str) -> Value {
     let support = support_for(vehicle.map(|v| v.2));
     let settings = settings_for(name);
     let now_ms = crate::hub::now_ms();
-    let outs = host().joysticks.get_mut(name).map(|j| j.on_input(Input { axes: &axes, buttons: &buttons, hats: &hats }, &settings, support, now_ms)).unwrap_or_default();
+    let outs = {
+        let mut host = host();
+        if let Some((_, cal)) = host.calibration.as_mut().filter(|(calibrating, _)| calibrating == name) {
+            cal.channel_values(&axes, now_ms);
+        }
+        host.joysticks.get_mut(name).map(|j| j.on_input(Input { axes: &axes, buttons: &buttons, hats: &hats }, &settings, support, now_ms)).unwrap_or_default()
+    };
     if let Some((id, link, ..)) = vehicle {
         send((id, link), outs);
     }
@@ -255,11 +333,62 @@ fn set_setting(text: &str) -> Value {
     match args.get(1).and_then(|v| coerce(meta, v)) {
         Some(text) => {
             crate::settingsstore::written(&setting_key(&active, name), &text);
+            if name == "transmitterMode"
+                && let Some(model) = host().joysticks.get_mut(&active)
+            {
+                model.set_transmitter_mode(transmitter_mode(&active));
+            }
             sync_polling(crate::hub::now_ms());
             json!({ "ok": true })
         }
         None => json!({ "ok": false, "reason": format!("That value is out of range for {}.", meta.label) }),
     }
+}
+
+fn calibration(text: &str) -> Value {
+    let op = serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
+    if active_vehicle().is_some_and(|v| v.3) {
+        return json!({ "ok": false, "reason": "Calibration is not available while the vehicle is armed." });
+    }
+    let answer = {
+        let mut host = host();
+        let Some(active) = active_name(&host.devices) else { return json!({ "ok": false, "reason": "No joystick is connected." }) };
+        let axes = host.devices.iter().find(|d| d.name == active).map_or(0, |d| d.axes);
+        let fresh = host.calibration.as_ref().is_none_or(|(name, _)| *name != active);
+        if fresh {
+            host.calibration = Some((active.clone(), StickCal::new(crate::stickcal::JOYSTICK, axes, settings_for(&active).optional_enabled)));
+        }
+        let (_, cal) = host.calibration.as_mut().expect("calibration was just created");
+        let outcome = match op.as_str() {
+            "next" => cal.next(),
+            "oneSided" => {
+                cal.one_sided();
+                CalOutcome::None
+            }
+            "cancel" => {
+                cal.cancel();
+                CalOutcome::None
+            }
+            _ => CalOutcome::Refused(format!("{op} is not a calibration step")),
+        };
+        let idle = !cal.calibrating();
+        let answer = match outcome {
+            CalOutcome::None => json!({ "ok": true }),
+            CalOutcome::Refused(reason) => json!({ "ok": false, "reason": reason }),
+            CalOutcome::Save(channels) => {
+                if let Some(model) = host.joysticks.get_mut(&active) {
+                    apply_calibration(&active, model, &channels);
+                }
+                json!({ "ok": true, "completed": true, "name": active })
+            }
+        };
+        if idle {
+            host.calibration = None;
+        }
+        answer
+    };
+    sync_polling(crate::hub::now_ms());
+    answer
 }
 
 pub fn run(path: &str, text: &str) -> Value {
@@ -276,12 +405,13 @@ pub fn run(path: &str, text: &str) -> Value {
         },
         ENABLE_JOYSTICK => enable(serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_bool)).unwrap_or(false)),
         SET_SETTING => set_setting(text),
+        CALIBRATION => calibration(text),
         _ => json!({ "ok": false, "reason": format!("{path} is not a joystick action") }),
     }
 }
 
 pub fn owns(path: &str) -> bool {
-    [DEVICES, INPUT, SELECT, ENABLE_JOYSTICK, SET_SETTING].contains(&path)
+    [DEVICES, INPUT, SELECT, ENABLE_JOYSTICK, SET_SETTING, CALIBRATION].contains(&path)
 }
 
 pub fn tick(now_ms: u64) {
@@ -316,12 +446,15 @@ pub fn joystick_state_view(_backend: &dyn Backend, _args: &[String]) -> Value {
             "value": setting_value(name, &m.name),
         })).collect::<Vec<_>>()).unwrap_or_default(),
         "state": state,
+        "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(_, cal)| cal.json()),
+        "transmitterMode": active.as_ref().map(|name| transmitter_mode(name)),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::joystick::{Function, OPTIONAL};
 
     #[test]
     fn the_settings_metadata_comes_from_qgcs_group_with_its_defaults() {
@@ -341,5 +474,19 @@ mod tests {
         assert_eq!(active_name(&[]), None);
         assert_eq!(polling(true, true, false), Polling::default(), "an uncalibrated stick never commands");
         assert_eq!(polling(true, true, true), Polling { vehicle: true, configuration: false });
+    }
+
+    #[test]
+    fn axes_round_trip_through_qgcs_axis_settings_array_in_mode_two() {
+        let mut model = Joystick::new(4, 0, 0);
+        let calibration = AxisCalibration { min: -30000, max: 31000, center: 50, deadband: 400, reversed: true };
+        assert!(model.set_calibration(1, calibration));
+        assert!(model.set_axis_function(Function::Throttle, 1));
+        let entries = axis_entries("Pad", &model);
+        assert_eq!(entries.get("JoystickSettingsV2/Pad/JoystickAxisSettingsArray/1/function"), Some(&Setting::Text("3".into())), "QGC stores throttleFunction as 3");
+        assert_eq!(entries.get("JoystickSettingsV2/Pad/JoystickAxisSettingsArray/1/reversed"), Some(&Setting::Text("true".into())));
+        let mut restored = Joystick::new(4, 0, 0);
+        load_axes("Pad", &mut restored, &entries);
+        assert_eq!((restored.axis_for(Function::Throttle), restored.calibration(1)), (Some(1), Some(calibration)));
     }
 }

@@ -169,6 +169,7 @@ pub mod logreplay;
 pub mod ntrip;
 pub mod scripting;
 pub mod signingkeys;
+pub mod stickcal;
 pub mod motorassignment;
 pub mod gimbalindicator;
 pub mod gpsresilience;
