@@ -41,6 +41,7 @@ struct Held {
     last_change_ms: u64,
     shown_vehicle: Option<u8>,
     vehicle_prompt: Option<bool>,
+    breach_altitude: Option<f64>,
 }
 
 pub const LOAD_VEHICLE_PLAN: &str = "core.plan.loadVehiclePlan";
@@ -1463,7 +1464,7 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     Some(match path {
         "plan.geoFenceController.breachReturnPoint" => match point_of(Some(&given)) {
             Some(at) => {
-                let default = crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue")));
+                let default = held().breach_altitude.or_else(|| crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))));
                 fence_edit(
                     |f, r| {
                         let kept = f.get("breachReturn").and_then(|b| b.get(2)).and_then(Value::as_f64).or(default);
@@ -1476,8 +1477,18 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             None => refused("A breach return point needs a latitude and a longitude."),
         },
         "plan.geoFenceController.breachReturnAltitude" => {
-            let vertical = crate::read::Unit::vertical(backend);
-            fence_edit(|f, r| Some((crate::fencedoc::set_breach_altitude(f, vertical.meters(given.as_f64()?))?, r.clone())), "Set a breach return point before its altitude.")
+            let Some(metres) = given.as_f64().filter(|a| a.is_finite()).map(|shown| crate::read::Unit::vertical(backend).meters(shown)) else {
+                return Some(refused("A breach return altitude is a number."));
+            };
+            held().breach_altitude = Some(metres);
+            let placed = held().document.as_ref().is_some_and(|d| d.fence.get("breachReturn").and_then(Value::as_array).is_some_and(|b| b.len() >= 2));
+            match placed {
+                true => fence_edit(|f, r| Some((crate::fencedoc::set_breach_altitude(f, metres)?, r.clone())), ""),
+                false => {
+                    changed();
+                    json!({ "ok": true })
+                }
+            }
         }
         _ => {
             if let Some((index, member)) = indexed(path, "plan.geoFenceController.polygons.") {
@@ -2208,14 +2219,21 @@ fn speed_in_force(document: &Document, before: usize, hover: f64, cruise: f64) -
 }
 
 const BREACH_RETURN_META: &str = include_str!("../../src/MissionManager/BreachReturn.FactMetaData.json");
-const BREACH_RETURN_DEFAULT_ALTITUDE: f64 = 75.0;
+fn breach_altitude_now() -> Option<f64> {
+    let (fence, pending) = {
+        let state = held();
+        (state.document.as_ref().map(|d| d.fence.clone()).unwrap_or(Value::Null), state.breach_altitude)
+    };
+    fence.get("breachReturn").and_then(Value::as_array).and_then(|b| b.get(2)).and_then(Value::as_f64)
+        .or(pending)
+        .or_else(|| crate::settingsstore::raw_setting(DEFAULT_ALTITUDE).and_then(|v| v.as_f64()))
+}
 
 pub fn breach_altitude_fact() -> Option<Value> {
     if !enabled() {
         return None;
     }
-    let fence = held().document.as_ref().map(|d| d.fence.clone()).unwrap_or(Value::Null);
-    let altitude = fence.get("breachReturn").and_then(Value::as_array).and_then(|b| b.get(2)).and_then(Value::as_f64).unwrap_or(BREACH_RETURN_DEFAULT_ALTITUDE);
+    let altitude = breach_altitude_now()?;
     let meta = crate::factmeta::from_file(BREACH_RETURN_META).ok()?.remove("Altitude")?;
     let mut fact = crate::settingsstore::fact_json(&meta, &json!(altitude), crate::units::cooking("vertical m"));
     ["defaultValueString", "userVisible", "visible"].iter().for_each(|key| fact[*key] = Value::Null);
