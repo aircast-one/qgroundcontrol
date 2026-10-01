@@ -475,9 +475,25 @@ fun midpointFeatures(shapes: List<EditableShape?>): FeatureCollection =
         },
     )
 
-fun renderMidpoints(style: Style, polygons: List<FencePolygon>, surveys: List<Survey>) {
-    (style.getSource(MIDPOINT_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(midpointFeatures(polygons.map { it.editable } + surveys.map { it.editable }))
+const val MISSION_SPLIT_PATH = "plan.missionController"
+const val MISSION_SPLIT_INVOKABLE = "insertSimpleMissionItem"
+
+fun legSplit(items: List<MissionItem>, selected: Int?): TrackPoint? {
+    val current = items.firstOrNull { it.index == selected } ?: return null
+    val previous = items.filter { it.index < current.index }.maxByOrNull { it.index } ?: return null
+    return TrackPoint((previous.latitude + current.latitude) / 2, (previous.longitude + current.longitude) / 2)
+}
+
+fun renderMidpoints(style: Style, polygons: List<FencePolygon>, surveys: List<Survey>, items: List<MissionItem> = emptyList(), selected: Int? = null) {
+    val split = legSplit(items, selected)?.let { at ->
+        Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
+            addStringProperty(SHAPE_PATH_PROPERTY, MISSION_SPLIT_PATH)
+            addStringProperty(SPLIT_INVOKABLE_PROPERTY, MISSION_SPLIT_INVOKABLE)
+            addNumberProperty(VERTEX_INDEX_PROPERTY, selected ?: 0)
+        }
+    }
+    val shapes = midpointFeatures(polygons.map { it.editable } + surveys.map { it.editable }).features().orEmpty()
+    (style.getSource(MIDPOINT_SOURCE) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(shapes + listOfNotNull(split)))
 }
 
 fun installLandingLayers(style: Style) {

@@ -436,7 +436,7 @@ fun VehicleMap(
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
         renderLandings(currentStyle, landings)
-        renderMidpoints(currentStyle, fencePolygons, surveys)
+        renderMidpoints(currentStyle, fencePolygons, surveys, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
         (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings)

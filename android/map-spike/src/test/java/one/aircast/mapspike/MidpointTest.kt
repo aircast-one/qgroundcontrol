@@ -85,4 +85,13 @@ class MidpointTest {
             ),
         )
     }
+
+    @Test
+    fun `the leg into the selected item splits at its middle`() {
+        val item = { index: Int, lat: Double, lon: Double -> MissionItem(index, index, lat, lon, "Waypoint", false, 50.0) }
+        val items = listOf(item(1, 47.0, 8.0), item(2, 47.2, 8.4))
+        org.junit.Assert.assertEquals(TrackPoint(47.1, 8.2), legSplit(items, 2))
+        org.junit.Assert.assertNull(legSplit(items, 1))
+        org.junit.Assert.assertNull(legSplit(items, null))
+    }
 }

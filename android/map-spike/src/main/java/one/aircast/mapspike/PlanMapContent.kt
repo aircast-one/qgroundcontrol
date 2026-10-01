@@ -395,7 +395,9 @@ internal fun MapSpikeScreen(
             onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally) } },
             onWaypointSelected = { hit ->
                 when (hit) {
-                    is MapHit.Midpoint -> onBridge("Adding a corner") {
+                    is MapHit.Midpoint -> if (hit.path == MISSION_SPLIT_PATH) {
+                        addMissionItem(KIND_WAYPOINT, "Adding a waypoint", legSplit(allItems.filter { it.placed }, hit.segment), hit.segment)
+                    } else onBridge("Adding a corner") {
                         // qtpaths: plan.geoFenceController.polygons.0.splitPolygonSegment, plan.missionController.visualItems.0.surveyAreaPolygon.splitPolygonSegment, plan.missionController.visualItems.0.corridorPolyline.splitSegment
                         invokeOk("${hit.path}.${hit.invokable}", "[${hit.segment}]")
                     }
