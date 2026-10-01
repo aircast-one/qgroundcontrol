@@ -346,6 +346,7 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
 
     Column(modifier.verticalScroll(rememberScrollState())) {
         SettingsControls(page, sections) { reloads++ }
+        if (page.title == GENERAL_PAGE) ResetAllSettingsRow()
     }
 }
 

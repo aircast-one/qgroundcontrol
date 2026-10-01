@@ -324,8 +324,13 @@ pub fn forgotten(key: &str) {
     persist();
 }
 
+pub fn cleared_on_boot(values: BTreeMap<String, Setting>) -> BTreeMap<String, Setting> {
+    let asked = matches!(values.get(&key("App", "clearSettingsNextBoot")), Some(Setting::Text(text)) if text == "true" || text == "1");
+    if asked { BTreeMap::new() } else { values }
+}
+
 pub fn open(path: &std::path::Path) {
-    *stored() = Some(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default()));
+    *stored() = Some(cleared_on_boot(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default())));
     *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());
 }
 
@@ -791,6 +796,14 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn asking_to_clear_settings_empties_them_on_the_next_start() {
+        let asked: BTreeMap<String, Setting> = [(key("App", "clearSettingsNextBoot"), Setting::Text("true".into())), ("App/audioMuted".to_string(), Setting::Text("true".into()))].into_iter().collect();
+        assert!(cleared_on_boot(asked).is_empty());
+        let kept: BTreeMap<String, Setting> = [(key("App", "clearSettingsNextBoot"), Setting::Text("false".into())), ("App/audioMuted".to_string(), Setting::Text("true".into()))].into_iter().collect();
+        assert_eq!(cleared_on_boot(kept.clone()), kept);
+    }
 
     fn by_value(value: &Value) -> Value {
         match value {
