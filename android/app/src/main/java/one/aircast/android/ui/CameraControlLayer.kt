@@ -1,6 +1,18 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import one.aircast.android.R
+import one.aircast.mapspike.aircast
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
@@ -41,7 +53,8 @@ private const val ZOOM_TICK = 10.0
 
 private const val MANAGER = "vehicle.cameraManager"
 
-private val SHUTTER_RING = Color(0xFFF5F5F5)
+private const val CAMERA_SCRIM_ALPHA = 0.55f
+private val SHUTTER_SIZE = 40.dp
 
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
@@ -66,92 +79,98 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
 
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA),
+        contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
+        Column {
         Row(
-            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(
-                onClick = {
-                    offMainDetached { refused = Qgc.refusalOf(shutter.action) }
-                },
+            Surface(
+                onClick = { offMainDetached { refused = Qgc.refusalOf(shutter.action) } },
                 enabled = shutter.enabled,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (shutter.recording) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        Color.Transparent
-                    },
-                    contentColor = if (shutter.recording) {
-                        MaterialTheme.colorScheme.onError
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                ),
-                border = if (shutter.recording) null else BorderStroke(2.dp, SHUTTER_RING),
-            ) { Text(shutter.label) }
-
-            if (!camera.isVideoMode && camera.canPhoto) PhotoCount()
-
-            FilterChip(
-                selected = false,
-                onClick = { details = true },
-                label = {
-                    Text(camera.labels.getOrElse(camera.selected ?: 0) { camera.title.ifBlank { "Camera" } })
-                },
-            )
-
-            if (camera.hasModes) {
-                camera.modeText.ifBlank { null }?.let { label ->
-                    FilterChip(
-                        selected = false,
-                        enabled = camera.canChangeMode,
-                        onClick = {
-                            offMainDetached {
-                                refused = Qgc.refusalOf(
-                                    CAMERA_SET_MODE,
-                                    if (camera.isVideoMode) "photo" else "video",
-                                )
-                            }
-                        },
-                        label = { Text(label) },
+                modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
+                shape = CircleShape,
+                color = Color.Transparent,
+                border = BorderStroke(3.dp, MaterialTheme.aircast.outdoorForeground),
+            ) {
+                Box(Modifier.padding(5.dp), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .size(if (shutter.recording) 14.dp else SHUTTER_SIZE)
+                            .background(
+                                if (shutter.recording || camera.isVideoMode) MaterialTheme.colorScheme.error else MaterialTheme.aircast.outdoorForeground,
+                                if (shutter.recording) MaterialTheme.shapes.extraSmall else CircleShape,
+                            ),
                     )
                 }
             }
 
+            if (!camera.isVideoMode && camera.canPhoto) PhotoCount()
+
+            if (camera.hasModes) {
+                Row(
+                    Modifier.background(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA), CircleShape).padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    listOf(false to R.drawable.ic_photo_camera, true to R.drawable.ic_videocam).map { (video, icon) ->
+                        val selected = camera.isVideoMode == video
+                        Surface(
+                            onClick = {
+                                if (!selected) offMainDetached {
+                                    refused = Qgc.refusalOf(CAMERA_SET_MODE, if (video) "video" else "photo")
+                                }
+                            },
+                            enabled = camera.canChangeMode,
+                            shape = CircleShape,
+                            color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                            contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.aircast.outdoorForeground,
+                        ) {
+                            Icon(
+                                painterResource(icon),
+                                if (video) "Video" else "Photo",
+                                Modifier.padding(6.dp).size(20.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
             zoomText(camera)?.let { label ->
-                FilterChip(
-                    selected = false,
-                    enabled = zoomStep(camera, -ZOOM_TICK) != null,
+                IconButton(
                     onClick = {
                         zoomStep(camera, -ZOOM_TICK)?.let { level ->
                             offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
                         }
                     },
-                    label = { Text("\u2212") },
-                )
-                Text(label, style = MaterialTheme.typography.labelSmall)
-                FilterChip(
-                    selected = false,
-                    enabled = zoomStep(camera, ZOOM_TICK) != null,
+                    enabled = zoomStep(camera, -ZOOM_TICK) != null,
+                    modifier = Modifier.size(32.dp),
+                ) { Text("\u2212", style = MaterialTheme.typography.titleMedium) }
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                IconButton(
                     onClick = {
                         zoomStep(camera, ZOOM_TICK)?.let { level ->
                             offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
                         }
                     },
-                    label = { Text("+") },
+                    enabled = zoomStep(camera, ZOOM_TICK) != null,
+                    modifier = Modifier.size(32.dp),
+                ) { Text("+", style = MaterialTheme.typography.titleMedium) }
+            }
+
+            TextButton(onClick = { details = true }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.aircast.outdoorForeground)) {
+                Text(
+                    camera.labels.getOrElse(camera.selected ?: 0) { camera.title.ifBlank { "Camera" } },
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
                 )
             }
 
-
             lapsePlan(camera)?.let { plan ->
-                Text(
-                    text = plan,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(text = plan, style = MaterialTheme.typography.labelSmall)
             }
         }
 
@@ -177,6 +196,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
+        }
         }
     }
 }
