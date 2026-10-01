@@ -85,4 +85,12 @@ class ModeHeadingTest {
         assertNull(modeHeading(modes("\"\"", "\"Something\"")))
         assertNull(modeHeading(null))
     }
+
+    @Test
+    fun `hiding a mode appends it to the list and showing it takes it out, the way QGC writes the setting`() {
+        assertEquals("Manual,Offboard,Acro", hiddenModesAfter(listOf("Manual", "Offboard"), "Acro", hide = true))
+        assertEquals("Offboard", hiddenModesAfter(listOf("Manual", "Offboard"), "Manual", hide = false))
+        assertEquals("", hiddenModesAfter(listOf("Manual"), "Manual", hide = false))
+        assertEquals("Manual", hiddenModesAfter(listOf("Manual"), "Manual", hide = true))
+    }
 }

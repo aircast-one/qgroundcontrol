@@ -10,6 +10,7 @@ internal data class FlightModeOption(
     val summary: String,
     val current: Boolean,
     val needsConfirm: Boolean,
+    val hidden: Boolean,
 )
 
 internal data class FlightModesView(
@@ -18,6 +19,9 @@ internal data class FlightModesView(
     val currentSummary: String,
     val everyday: List<FlightModeOption>,
     val folded: List<FlightModeOption>,
+    val all: List<FlightModeOption>,
+    val hidden: List<String>,
+    val hiddenSetting: String?,
 )
 
 private fun options(view: JSONObject?, key: String): List<FlightModeOption> {
@@ -29,6 +33,7 @@ private fun options(view: JSONObject?, key: String): List<FlightModeOption> {
                 summary = mode.optText("summary"),
                 current = mode.optBoolean("current"),
                 needsConfirm = mode.optBoolean("needsConfirm"),
+                hidden = mode.optBoolean("hidden"),
             )
         }
     }
@@ -42,8 +47,14 @@ internal fun flightModesView(view: JSONObject?): FlightModesView? {
         currentSummary = view.optText("currentSummary"),
         everyday = options(view, "everyday"),
         folded = options(view, "folded"),
+        all = options(view, "modes"),
+        hidden = view.optJSONArray("hidden")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
+        hiddenSetting = view.optText("hiddenSetting").ifBlank { null },
     )
 }
+
+internal fun hiddenModesAfter(hidden: List<String>, mode: String, hide: Boolean): String =
+    (hidden.filter { it != mode } + listOfNotNull(mode.takeIf { hide })).joinToString(",")
 
 internal fun modeHeading(modes: FlightModesView?): String? {
     val summary = modes?.currentSummary?.ifBlank { null } ?: return null

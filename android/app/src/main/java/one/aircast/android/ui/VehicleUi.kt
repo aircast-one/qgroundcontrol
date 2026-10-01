@@ -41,6 +41,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -720,6 +721,7 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
     val modes = remember(json) { flightModesView(json) }
     var expanded by remember { mutableStateOf(false) }
     var showFolded by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf<FlightModeOption?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -766,7 +768,7 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
         Icon(Icons.Default.KeyboardArrowDown, null)
         DropdownMenu(
             expanded = expanded,
-            onDismissRequest = { expanded = false; showFolded = false },
+            onDismissRequest = { expanded = false; showFolded = false; editing = false },
         ) {
             modeHeading(modes)?.let { heading ->
                 Text(
@@ -776,7 +778,24 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            val shown = if (showFolded) modes.everyday + modes.folded else modes.everyday
+            val setting = modes.hiddenSetting
+            if (editing && setting != null) {
+                modes.all.forEach { mode ->
+                    DropdownMenuItem(
+                        text = { Text(mode.name, style = MaterialTheme.typography.bodyMedium) },
+                        trailingIcon = { Switch(checked = !mode.hidden, onCheckedChange = null) },
+                        onClick = {
+                            val value = hiddenModesAfter(modes.hidden, mode.name, !mode.hidden)
+                            scope.launch(Dispatchers.Default) { Qgc.set(setting, value) }
+                        },
+                    )
+                }
+            }
+            val shown = when {
+                editing && setting != null -> emptyList()
+                showFolded -> modes.everyday + modes.folded
+                else -> modes.everyday
+            }
             shown.forEach { mode ->
                 DropdownMenuItem(
                     text = {
@@ -799,10 +818,17 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit, onWithdraw: (String) 
                     onClick = { choose(mode) },
                 )
             }
-            if (modes.folded.isNotEmpty() && !showFolded) {
+            if (modes.folded.isNotEmpty() && !showFolded && !editing) {
                 DropdownMenuItem(
                     text = { Text("More modes") },
                     onClick = { showFolded = true },
+                )
+            }
+            if (modes.hiddenSetting != null) {
+                DropdownMenuItem(
+                    text = { Text("Edit Displayed Flight Modes") },
+                    trailingIcon = { Switch(checked = editing, onCheckedChange = null) },
+                    onClick = { editing = !editing },
                 )
             }
         }

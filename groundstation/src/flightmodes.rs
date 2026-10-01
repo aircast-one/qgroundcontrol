@@ -3,7 +3,35 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.flightMode", "vehicle.flightModes", "vehicle.advancedFlightModes", "vehicle.flying"];
+pub const DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.flightMode",
+    "vehicle.flightModes",
+    "vehicle.advancedFlightModes",
+    "vehicle.flying",
+    "vehicle.px4Firmware",
+    "vehicle.apmFirmware",
+    "vehicle.vtol",
+    "vehicle.fixedWing",
+    "vehicle.multiRotor",
+    "vehicle.rover",
+    "vehicle.sub",
+    "vehicle.airship",
+    "settings.flightModeSettings.px4HiddenFlightModesMultiRotor",
+    "settings.flightModeSettings.px4HiddenFlightModesFixedWing",
+    "settings.flightModeSettings.px4HiddenFlightModesVTOL",
+    "settings.flightModeSettings.px4HiddenFlightModesRoverBoat",
+    "settings.flightModeSettings.px4HiddenFlightModesSub",
+    "settings.flightModeSettings.px4HiddenFlightModesAirship",
+    "settings.flightModeSettings.apmHiddenFlightModesMultiRotor",
+    "settings.flightModeSettings.apmHiddenFlightModesFixedWing",
+    "settings.flightModeSettings.apmHiddenFlightModesVTOL",
+    "settings.flightModeSettings.apmHiddenFlightModesRoverBoat",
+    "settings.flightModeSettings.apmHiddenFlightModesSub",
+    "settings.flightModeSettings.apmHiddenFlightModesAirship",
+];
+
+const VEHICLE_CLASSES: &[(&str, &str)] = &[("vtol", "VTOL"), ("fixedWing", "FixedWing"), ("multiRotor", "MultiRotor"), ("rover", "RoverBoat"), ("sub", "Sub"), ("airship", "Airship")];
 
 const DESCRIPTIONS: &[(&str, &str)] = &[
     ("Stabilize", "You fly it by hand, it only levels itself"),
@@ -81,8 +109,25 @@ pub fn needs_confirming(mode: &str, flying: bool, rtl: &str, land: &str) -> bool
     flying && !mode.is_empty() && (mode == rtl || mode == land)
 }
 
+pub fn hidden_modes_setting(vehicle: &Value) -> Option<String> {
+    let firmware = match (flag(vehicle, "px4Firmware"), flag(vehicle, "apmFirmware")) {
+        (true, _) => "px4",
+        (false, true) => "apm",
+        _ => return None,
+    };
+    let class = VEHICLE_CLASSES.iter().find(|(field, _)| flag(vehicle, field)).map(|(_, class)| *class)?;
+    Some(format!("settings.flightModeSettings.{firmware}HiddenFlightModes{class}"))
+}
+
+fn hidden_modes(backend: &dyn Backend, setting: Option<&str>) -> Vec<String> {
+    let listed = setting.map(|path| text(&object(&backend.get(path)), "value")).unwrap_or_default();
+    listed.split(',').filter(|mode| !mode.is_empty()).map(str::to_string).collect()
+}
+
 pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "flightMode,flightModes,advancedFlightModes,flying,rtlFlightMode,landFlightMode,flightModeSetAvailable"));
+    let vehicle = object(&backend.get_fields("vehicle", "flightMode,flightModes,advancedFlightModes,flying,rtlFlightMode,landFlightMode,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship"));
+    let hidden_setting = hidden_modes_setting(&vehicle);
+    let hidden = hidden_modes(backend, hidden_setting.as_deref());
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let strings = |key: &str| -> Vec<String> { vehicle.get(key).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default() };
     let (all, advanced) = (strings("flightModes"), strings("advancedFlightModes"));
@@ -95,6 +140,7 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
             json!({
                 "name": name,
                 "advanced": advanced.contains(name),
+                "hidden": hidden.contains(name),
                 "current": *name == current,
                 "summary": description(name),
                 "needsConfirm": needs_confirming(name, flying, &rtl, &land),
@@ -108,10 +154,16 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canSet": connected && flag(&vehicle, "flightModeSetAvailable"),
         "current": current,
         "currentSummary": description(&current),
-        "everyday": modes.iter().filter(|m| m["advanced"] == false || m["current"] == true).cloned().collect::<Vec<_>>(),
-        "folded": modes.iter().filter(|m| m["advanced"] == true && m["current"] == false).cloned().collect::<Vec<_>>(),
+        "everyday": modes.iter().filter(|m| !folded(m)).cloned().collect::<Vec<_>>(),
+        "folded": modes.iter().filter(|m| folded(m)).cloned().collect::<Vec<_>>(),
+        "hiddenSetting": hidden_setting,
+        "hidden": hidden,
         "modes": modes,
     })
+}
+
+fn folded(mode: &Value) -> bool {
+    mode["current"] == false && (mode["advanced"] == true || mode["hidden"] == true)
 }
 
 fn mode_refusal(view: &Value, asked: Option<&str>) -> Option<(&'static str, String)> {
@@ -181,6 +233,32 @@ mod tests {
         let changed = write_mode(&vehicle, "vehicle.flightMode", r#"{"value":"Position"}"#);
         assert_eq!((&changed["ok"], &changed["result"]), (&json!(true), &json!(true)));
         assert_eq!(vehicle.0.borrow().as_slice(), &[r#"{"value":"Position"}"#.to_string()]);
+    }
+
+    #[test]
+    fn modes_hidden_for_this_firmware_and_vehicle_class_fold_unless_current() {
+        struct Px4Copter;
+        impl Backend for Px4Copter {
+            fn get(&self, p: &str) -> String {
+                assert_eq!(p, "settings.flightModeSettings.px4HiddenFlightModesMultiRotor");
+                json!({ "value": "Manual,Offboard,Hold" }).to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "flightMode": "Hold", "flightModes": ["Hold", "Position", "Manual", "Offboard"], "advancedFlightModes": [], "flying": false, "flightModeSetAvailable": true, "px4Firmware": true, "multiRotor": true }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = flight_modes_view(&Px4Copter, &[]);
+        let names = |key: &str| view[key].as_array().unwrap().iter().map(|m| m["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(names("everyday"), ["Hold", "Position"], "the current mode stays listed even when hidden");
+        assert_eq!(names("folded"), ["Manual", "Offboard"]);
+        assert_eq!(view["hiddenSetting"], "settings.flightModeSettings.px4HiddenFlightModesMultiRotor");
+
+        assert_eq!(hidden_modes_setting(&json!({ "apmFirmware": true, "vtol": true, "fixedWing": true })).as_deref(), Some("settings.flightModeSettings.apmHiddenFlightModesVTOL"));
+        assert_eq!(hidden_modes_setting(&json!({ "px4Firmware": true })), None, "a generic vehicle has no list to edit, so QGC turns editing off");
+        assert_eq!(hidden_modes_setting(&json!({ "multiRotor": true })), None);
     }
 
     #[test]
