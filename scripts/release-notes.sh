@@ -3,13 +3,15 @@ set -euo pipefail
 
 TAG="${1:?Usage: $0 <tag>}"
 REPO="${GITHUB_REPOSITORY:-aircast-one/qgroundcontrol}"
+REF="$TAG"
+git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || REF=HEAD
 
 if [[ "$TAG" =~ ^aircast-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    PREVIOUS=$(git tag -l 'aircast-v*' --merged "$TAG^" --sort=-v:refname | grep -E '^aircast-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+    PREVIOUS=$(git tag -l 'aircast-v*' --merged "$REF^" --sort=-v:refname | grep -E '^aircast-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
 else
-    PREVIOUS=$(git describe --tags --abbrev=0 --match 'aircast-v*' "$TAG^" 2>/dev/null || true)
+    PREVIOUS=$(git describe --tags --abbrev=0 --match 'aircast-v*' "$REF^" 2>/dev/null || true)
 fi
-RANGE="${PREVIOUS:+$PREVIOUS..}$TAG"
+RANGE="${PREVIOUS:+$PREVIOUS..}$REF"
 
 read -r -d '' SYSTEM_PROMPT <<'EOF' || true
 You write GitHub release notes for Aircast QGC, a fork of the QGroundControl ground control station used by drone pilots and operators. You receive the git commit messages of one release.

@@ -634,9 +634,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code@2.1.281
-
       - name: Decide what this release can carry
         id: platforms
         env:
@@ -681,7 +678,6 @@ jobs:
           SHORT: ${{ needs.setup.outputs.short_version }}
           IS_PRODUCTION: ${{ needs.setup.outputs.is_production }}
           MISSING: ${{ steps.platforms.outputs.missing }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           if [ -z "$(ls -A assets)" ]; then
             echo "::error::No build produced an artifact, so there is nothing to release."
@@ -691,11 +687,17 @@ jobs:
           if [ "$IS_PRODUCTION" != "true" ]; then
             PRE="--prerelease"
           fi
+          git fetch --force origin "refs/tags/$V:refs/tags/$V"
+          TAG_NOTES=$(git cat-file tag "$V" | sed '1,/^$/d; /^-----BEGIN PGP SIGNATURE-----$/,$d')
           {
             if [ -n "$MISSING" ]; then
               printf '> **This release is incomplete.** No build was produced for: %s.\n\n' "$MISSING"
             fi
-            scripts/release-notes.sh "$V"
+            if [ "$(printf '%s\n' "$TAG_NOTES" | wc -l)" -gt 1 ]; then
+              printf '%s\n' "$TAG_NOTES"
+            else
+              scripts/release-notes.sh "$V"
+            fi
           } > release-notes.md
           if gh release view "$V" -R "$REPO" >/dev/null 2>&1; then
             gh release upload "$V" -R "$REPO" --clobber assets/*
