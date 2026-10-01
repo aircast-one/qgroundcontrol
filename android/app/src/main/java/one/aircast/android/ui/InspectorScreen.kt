@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import org.json.JSONObject
+import androidx.compose.foundation.layout.Arrangement
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
@@ -66,6 +67,14 @@ internal data class InspectorMessage(
 )
 
 internal data class InspectorRate(val rate: Int, val title: String)
+
+internal data class InspectorChoice(val id: Int, val title: String)
+
+internal fun inspectorChoices(view: JSONObject?, key: String): List<InspectorChoice> =
+    view?.optJSONArray(key)?.let { list -> (0 until list.length()).mapNotNull { list.optJSONObject(it) }.map { InspectorChoice(it.optInt("id"), it.optText("title")) } }.orEmpty()
+
+internal fun inspectorShown(messages: List<InspectorMessage>, filter: String, component: Int?): List<InspectorMessage> =
+    messages.filter { it.name.contains(filter, ignoreCase = true) && (component == null || it.compId == component) }
 
 internal fun inspectorRateChoices(view: JSONObject?): List<InspectorRate> {
     val items = view?.optJSONArray("rateChoices") ?: return emptyList()
@@ -230,11 +239,17 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun InspectorScreen(modifier: Modifier = Modifier) {
     val inspectorJson by qgcPath(INSPECTOR_VIEW)
     var openPath by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf("") }
+    var component by rememberSaveable { mutableStateOf<Int?>(null) }
+    val systems = inspectorChoices(inspectorJson, "systems")
+    val components = inspectorChoices(inspectorJson, "components")
+    val activeSystem = inspectorJson?.takeIf { !it.isNull("systemId") }?.optInt("systemId")
+    androidx.compose.runtime.LaunchedEffect(activeSystem) { component = null }
     val messages = inspectorMessages(inspectorJson)
     val open = openMessageIn(messages, openPath)
 
@@ -276,7 +291,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
 
 
 
-    val shown = messages.filter { it.name.contains(filter, ignoreCase = true) }
+    val shown = inspectorShown(messages, filter, component)
 
     Column(modifier.fillMaxSize()) {
         inspectorSystemText(inspectorJson)?.let { line ->
@@ -286,6 +301,24 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
+        }
+        if (systems.size > 1 || components.size > 1) {
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (systems.size > 1) systems.forEach { system ->
+                    androidx.compose.material3.FilterChip(
+                        selected = system.id == activeSystem,
+                        onClick = { one.aircast.android.bridge.offMainDetached { Qgc.invoke("mavlinkInspector.setActiveSystem", system.id) } },
+                        label = { Text(system.title) },
+                    )
+                }
+                if (components.size > 1) (listOf(InspectorChoice(-1, "Comp All")) + components).forEach { choice ->
+                    androidx.compose.material3.FilterChip(
+                        selected = (component ?: -1) == choice.id,
+                        onClick = { component = choice.id.takeIf { it >= 0 } },
+                        label = { Text(choice.title) },
+                    )
+                }
+            }
         }
         OutlinedTextField(
             value = filter,

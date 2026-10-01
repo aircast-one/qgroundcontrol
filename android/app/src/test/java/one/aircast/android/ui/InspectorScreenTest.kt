@@ -243,4 +243,13 @@ class InspectorSystemTest {
             inspectorEmptyText(waiting),
         )
     }
+
+    @Test
+    fun `the component filter narrows the list the way the inspector combo does`() {
+        val heartbeat = InspectorMessage(0, 0, "HEARTBEAT", "", 1, "p0", 1, "HEARTBEAT")
+        val camera = InspectorMessage(1, 262, "CAMERA_CAPTURE_STATUS", "", 1, "p1", 100, "CAMERA_CAPTURE_STATUS")
+        org.junit.Assert.assertEquals(listOf(camera), inspectorShown(listOf(heartbeat, camera), "", 100))
+        org.junit.Assert.assertEquals(listOf(heartbeat, camera), inspectorShown(listOf(heartbeat, camera), "", null))
+        org.junit.Assert.assertEquals(listOf(InspectorChoice(2, "System 2")), inspectorChoices(org.json.JSONObject("""{"systems":[{"id":2,"title":"System 2"}]}"""), "systems"))
+    }
 }

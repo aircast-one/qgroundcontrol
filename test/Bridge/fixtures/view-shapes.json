@@ -7837,6 +7837,9 @@
         "view.hostNotices.unseen[].title",
         "view.inspector.available",
         "view.inspector.class",
+        "view.inspector.components.#",
+        "view.inspector.components[].id",
+        "view.inspector.components[].title",
         "view.inspector.emptyText",
         "view.inspector.fields.#",
         "view.inspector.fields[].name",
@@ -7860,6 +7863,9 @@
         "view.inspector.rateChoices[].rate",
         "view.inspector.rateChoices[].title",
         "view.inspector.systemId",
+        "view.inspector.systems.#",
+        "view.inspector.systems[].id",
+        "view.inspector.systems[].title",
         "view.inspectorCharts.charts.#",
         "view.inspectorCharts.charts[].plots.#",
         "view.inspectorCharts.charts[].rangeX",
@@ -11460,6 +11466,12 @@
     "view.inspector": {
         "available": "bool",
         "class": "string",
+        "components": [
+            {
+                "id": "number",
+                "title": "string"
+            }
+        ],
         "emptyText": "string",
         "fields": [
             {
@@ -11491,7 +11503,13 @@
                 "title": "string"
             }
         ],
-        "systemId": "null|number"
+        "systemId": "null|number",
+        "systems": [
+            {
+                "id": "number",
+                "title": "string"
+            }
+        ]
     },
     "view.inspectorCharts": {
         "charts": [

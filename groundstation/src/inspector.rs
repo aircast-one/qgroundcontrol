@@ -9,7 +9,7 @@ use crate::router::Backend;
 // have both received no messages serialise to the same JSON, the poll sees no change, nothing emits,
 // and the view keeps serving the previous system's id beside the new system's empty message list.
 pub const DEPS: &[&str] =
-    &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages", "mavlinkInspector@activeSystemChanged", crate::mavinspect::INSPECTOR_CHANGED];
+    &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages", "mavlinkInspector@systemsChanged", "mavlinkInspector@activeSystemChanged", crate::mavinspect::INSPECTOR_CHANGED];
 const FIELDS: &str = "id,compId,name,count,actualRateHz,targetRateHz,selected";
 const RATE_DISABLED: i64 = -1;
 const RATE_DEFAULT: i64 = 0;
@@ -83,6 +83,12 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .unwrap_or_default();
     let available = model.get("kind").and_then(Value::as_str) == Some("object");
+    let systems: Vec<Value> = object(&backend.get_fields("mavlinkInspector.systems", "id"))
+        .get("elements")
+        .and_then(Value::as_array)
+        .map(|elements| elements.iter().filter_map(|e| e.get("id").and_then(Value::as_i64)).map(|id| json!({ "id": id, "title": format!("System {id}") })).collect())
+        .unwrap_or_default();
+    let components: std::collections::BTreeSet<i64> = messages.iter().filter_map(|m| m["compId"].as_i64()).collect();
     let fields = messages.iter().find(|m| m["selected"] == true).map_or_else(Vec::new, |m| selected_fields(backend, m["index"].as_u64().unwrap_or(0)));
     json!({
         "kind": "object",
@@ -90,6 +96,8 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "available": available,
         "emptyText": empty_text(available, !messages.is_empty()),
         "systemId": system,
+        "systems": systems,
+        "components": components.iter().map(|id| json!({ "id": id, "title": format!("Comp {id}") })).collect::<Vec<_>>(),
         "messages": messages,
         "fields": fields,
         "rateChoices": RATE_CHOICES.iter().map(|r| json!({ "rate": r, "title": rate_title(*r) })).collect::<Vec<_>>(),
@@ -252,7 +260,10 @@ mod tests {
         struct Fake;
         impl Backend for Fake {
             fn get(&self, _p: &str) -> String { String::new() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String {
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                if p == "mavlinkInspector.systems" {
+                    return json!({ "kind": "object", "elements": [{ "id": 1 }, { "id": 2 }] }).to_string();
+                }
                 json!({ "kind": "object", "elements": [
                     { "id": 0, "compId": 1, "name": "HEARTBEAT", "count": 12, "actualRateHz": 1.0, "targetRateHz": 0, "selected": true },
                     { "id": 30, "compId": 1, "name": "", "count": 1 },
@@ -273,6 +284,8 @@ mod tests {
         assert_eq!(view["messages"][0]["rateText"], "1.0 Hz");
         assert_eq!(view["messages"][0]["path"], "mavlinkInspector.activeSystem.messages.0");
         assert_eq!(view["rateChoices"].as_array().unwrap().len(), 15);
+        assert_eq!(view["systems"], json!([{ "id": 1, "title": "System 1" }, { "id": 2, "title": "System 2" }]), "MAVLinkInspectorController::systemNames");
+        assert_eq!(view["components"].as_array().unwrap().iter().map(|c| c["title"].as_str().unwrap()).collect::<Vec<_>>(), ["Comp 1", "Comp 100", "Comp 101"]);
     }
 
     #[test]

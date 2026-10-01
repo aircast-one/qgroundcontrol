@@ -1519,6 +1519,13 @@ impl<B: Backend> Backend for Facade<B> {
             let started = self.0.core_guided(&json!({ "action": "requestControl", "vehicle": vehicle, "allowTakeover": allow, "timeout": timeout, "safeTimeout": safe }));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
+        if path == "mavlinkInspector.setActiveSystem" && inspector_owned() {
+            let id = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0)?.as_u64()).and_then(|id| u8::try_from(id).ok());
+            if let Some(id) = id {
+                crate::mavinspect::lock().set_active(id);
+                return json!({ "ok": true }).to_string();
+            }
+        }
         if path == "mavlinkInspector.setMessageInterval" && inspector_owned() {
             let rate = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0)?.as_i64());
             let target = crate::mavinspect::lock().selected_target();

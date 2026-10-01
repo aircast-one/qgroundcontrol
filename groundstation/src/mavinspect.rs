@@ -354,6 +354,9 @@ impl Inspector {
     }
 
     pub fn get(&self, path: &str) -> Option<Value> {
+        if path == "mavlinkInspector.systems" {
+            return Some(list_json(self.systems.iter().map(|s| json!({ "kind": "object", "id": s.id })).collect()));
+        }
         let rest = path.strip_prefix("mavlinkInspector.activeSystem")?;
         let system = self.active_system();
         let value = |v: Value| Some(json!({ "kind": "value", "value": v }));
