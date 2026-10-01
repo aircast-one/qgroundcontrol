@@ -192,7 +192,7 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
     review?.let { shown ->
         AlertDialog(
             onDismissRequest = { review = null },
-            title = { Text("Parameter Load") },
+            title = { Text("Load Parameters") },
             text = {
                 Column {
                     reviewWarnings(shown).forEach { Text(it, color = MaterialTheme.aircast.warning) }

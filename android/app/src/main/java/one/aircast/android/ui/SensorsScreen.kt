@@ -427,7 +427,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                                 }
                             },
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                        ) { Text("Reboot vehicle") }
+                        ) { Text("Reboot Vehicle") }
                     }
                 }
             }

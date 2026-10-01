@@ -287,7 +287,7 @@ private fun LinkRowItem(
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
-                    text = { Text("Edit link") },
+                    text = { Text("Edit Link") },
                     enabled = linkIsEditable(row),
                     onClick = {
                         menuOpen = false
@@ -295,7 +295,7 @@ private fun LinkRowItem(
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text("Remove link") },
+                    text = { Text("Delete Link") },
                     onClick = {
                         menuOpen = false
                         onRemove()
@@ -492,7 +492,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add a link") },
+        title = { Text("Add Link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
@@ -732,7 +732,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
         item(key = "add") {
             Row(Modifier.fillMaxWidth().padding(20.dp)) {
                 Button(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Add a link")
+                    Text("Add Link…")
                 }
             }
         }

@@ -253,11 +253,11 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
         TextButton(
             enabled = choices.canSelectAll,
             onClick = { scope.launch { withContext(Dispatchers.Default) { FleetBridge.selectAll(choices) } } },
-        ) { Text("Select all") }
+        ) { Text("Select All") }
         TextButton(
             enabled = choices.canDeselectAll,
             onClick = { scope.launch { withContext(Dispatchers.Default) { FleetBridge.deselectAll() } } },
-        ) { Text("Deselect all") }
+        ) { Text("Deselect All") }
     }
     actions.forEach { action ->
         ListItem(

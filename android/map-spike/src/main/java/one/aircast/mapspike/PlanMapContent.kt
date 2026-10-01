@@ -978,7 +978,7 @@ internal fun MapSpikeScreen(
                                         FenceBridge.removeVertex(hit.polygon, hit.vertex)
                                     }
                                     selected = null
-                                }) { Text("Remove corner") }
+                                }) { Text("Remove vertex") }
                             }
                             TextButton(onClick = {
                                 onBridge { FenceBridge.deletePolygon(hit.polygon) }

@@ -377,9 +377,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 pending = GuidedAction(
                     name = armAction?.title ?: if (armed) "Disarm" else "Arm",
                     confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
-                        "Disarming cuts the motors. In flight the aircraft will fall."
+                        "Disarm the vehicle"
                     } else {
-                        "Arming spins the propellers. Stand clear of the aircraft."
+                        "Arm the vehicle."
                     },
                     destructive = armAction?.destructive ?: true,
                 ) {
@@ -411,8 +411,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
             }.takeIf { offers[PAUSE]?.shown == true },
             DeckEntry("rtl", "Return", R.drawable.ic_home, offers["rtl"]?.ready == true) {
                 pending = GuidedAction(
-                    name = "Return",
-                    confirm = "The aircraft will fly back to its launch point and land.",
+                    name = offers["rtl"]?.title ?: "Return",
+                    confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
                     destructive = false,
                 ) {
                     offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
@@ -422,7 +422,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 pending = GuidedAction(
                     name = offers["land"]?.title ?: "Land",
                     confirm = offers["land"]?.prompt?.ifBlank { null }
-                        ?: "The aircraft will descend and land where it is now.",
+                        ?: "Land the vehicle at the current position",
                     destructive = false,
                 ) {
                     offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
@@ -557,7 +557,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
             }
         }
         GuidedValuePanel(
-            title = if (altitudePauses) "Pause" else "Change altitude",
+            title = if (altitudePauses) "Pause" else "Change Altitude",
             sentence = probe?.sentence ?: "",
             commitLabel = if (altitudePauses) "Pause" else "Change",
             commitEnabled = probe?.sends == true,

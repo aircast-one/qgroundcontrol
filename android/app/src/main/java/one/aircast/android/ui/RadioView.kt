@@ -110,20 +110,19 @@ internal data class RadioPrompt(
 internal val RADIO_PROMPTS = listOf(
     RadioPrompt(
         title = "Spektrum Bind",
-        body = "Places your Spektrum receiver in bind mode. Pick the receiver type.",
+        body = "Click Ok to place your Spektrum receiver in the bind mode.\n\nSelect the specific receiver type below:",
         action = "spektrumBindMode",
         choices = listOf("DSM2", "DSMX (7 channels or less)", "DSMX (8 channels or more)"),
     ),
     RadioPrompt(
         title = "CRSF Bind",
-        body = "Places your CRSF receiver in bind mode.",
+        body = "Click Ok to place your CRSF receiver in the bind mode.",
         action = "crsfBindMode",
         choices = emptyList(),
     ),
     RadioPrompt(
         title = "Copy Trims",
-        body = "Centre the sticks and hold the throttle all the way down, then confirm. " +
-            "The trims your transmitter is applying are copied to the vehicle.",
+        body = "Center your sticks and move throttle all the way down, then press Ok to copy trims. After pressing Ok, reset the trims on your radio back to zero.",
         action = "copyTrims",
         choices = emptyList(),
     ),

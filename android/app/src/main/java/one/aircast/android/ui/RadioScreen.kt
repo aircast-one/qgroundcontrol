@@ -91,7 +91,7 @@ private fun AttitudeRow(stick: RadioStick) {
         )
         if (!stick.mapped) {
             Text(
-                text = "Not mapped",
+                text = "Not Mapped",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.weight(1f),
@@ -323,7 +323,7 @@ fun RadioScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        item(key = "attitudeheader") { SectionHeader("Attitude controls") }
+        item(key = "attitudeheader") { SectionHeader("Attitude Controls") }
         items(view.sticks.size, key = { "att${view.sticks[it].title}" }) { index ->
             AttitudeRow(view.sticks[index])
         }
@@ -335,7 +335,7 @@ fun RadioScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        item(key = "monitorheader") { SectionHeader("Channel monitor") }
+        item(key = "monitorheader") { SectionHeader("Channel Monitor") }
         items(view.channels.size, key = { "ch${view.channels[it].label}" }) { index ->
             val channel = view.channels[index]
             Row(

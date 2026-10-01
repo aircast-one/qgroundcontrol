@@ -155,7 +155,7 @@ private fun RatePicker(messagePath: String, current: String, choices: List<Inspe
     if (choices.isEmpty()) return
     Box {
         TextButton(onClick = { open = true }) {
-            Text(if (current.isBlank()) "Set rate" else "Rate: $current")
+            Text(if (current.isBlank()) "Set Rate:" else "Rate: $current")
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             choices.forEach { choice ->

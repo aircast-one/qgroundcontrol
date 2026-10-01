@@ -199,7 +199,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         onClick = { menuOpen = false; files.save() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Save as…") },
+                        text = { Text("Save As…") },
                         enabled = can.save,
                         onClick = { menuOpen = false; files.saveAs() },
                     )
@@ -225,7 +225,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                     )
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Text("New plan") },
+                        text = { Text("New Plan…") },
                         enabled = can.newPlan,
                         onClick = {
                             menuOpen = false
@@ -241,7 +241,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Clear mission") },
+                        text = { Text("Clear Mission") },
                         enabled = can.clearFromVehicle,
                         colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error),
                         onClick = { menuOpen = false; pending = PlanConfirm.ClearMission },

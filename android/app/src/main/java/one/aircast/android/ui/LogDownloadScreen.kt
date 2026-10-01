@@ -62,8 +62,8 @@ internal fun logLocalTime(raw: String): LocalDateTime? =
 
 internal fun logTimeText(raw: String, state: String, format: (LocalDateTime) -> String): String = when (state) {
     TIME_UNRECEIVED -> ""
-    TIME_UNKNOWN -> "Date unknown"
-    else -> logLocalTime(raw)?.let(format) ?: "Date unknown"
+    TIME_UNKNOWN -> "Date Unknown"
+    else -> logLocalTime(raw)?.let(format) ?: "Date Unknown"
 }
 
 internal data class LogEntry(
@@ -134,8 +134,8 @@ internal fun logsView(view: JSONObject?): LogsView? {
 }
 
 internal enum class EraseKind(val action: String, val title: String, val text: String, val confirm: String) {
-    All("eraseAll", "Erase all logs?", "This permanently deletes every log on the vehicle. It cannot be undone.", "Erase all"),
-    Selected("eraseSelected", "Delete Selected Onboard Log Files", "The selected onboard log files will be erased permanently. Is this really what you want?", "Erase selected"),
+    All("eraseAll", "Delete All Onboard Log Files", "All onboard log files will be erased permanently. Is this really what you want?", "Erase All"),
+    Selected("eraseSelected", "Delete Selected Onboard Log Files", "The selected onboard log files will be erased permanently. Is this really what you want?", "Erase Selected"),
 }
 
 @Composable
@@ -286,7 +286,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                     onCheckedChange = null,
                 )
                 Text(
-                    text = if (selectedCount < selectable.size) "Select all" else "Clear selection",
+                    text = if (selectedCount < selectable.size) "Select All" else "Deselect All",
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.padding(start = 8.dp),
                 )
@@ -317,7 +317,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                                 contentColor = MaterialTheme.colorScheme.error,
                             ),
                             modifier = Modifier.padding(horizontal = 12.dp),
-                        ) { Text("Erase selected logs from the vehicle") }
+                        ) { Text("Erase Selected") }
                     }
                     if (!busy) {
                         TextButton(
@@ -327,7 +327,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                                 contentColor = MaterialTheme.colorScheme.error,
                             ),
                             modifier = Modifier.padding(horizontal = 12.dp),
-                        ) { Text("Erase all logs from the vehicle") }
+                        ) { Text("Erase All") }
                     }
                 }
             }

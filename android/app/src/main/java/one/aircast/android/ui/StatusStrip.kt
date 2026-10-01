@@ -282,7 +282,7 @@ private fun BatteryReturnButton(onClosed: () -> Unit) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirming = false },
             title = { Text("Return") },
-            text = { Text("The aircraft will fly back to its launch point and land.") },
+            text = { Text("Return to the launch position of the vehicle") },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     confirming = false

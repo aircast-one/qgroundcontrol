@@ -34,7 +34,7 @@ internal fun ConfirmTrack(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SlideToConfirm(
-                label = "Slide to ${action.name.lowercase()}",
+                label = "Slide to confirm",
                 destructive = action.destructive,
                 modifier = Modifier.weight(1f),
             ) {

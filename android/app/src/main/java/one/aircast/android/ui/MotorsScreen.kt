@@ -92,7 +92,7 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
         Text("Motor test", style = MaterialTheme.typography.titleMedium)
         Text(
             "Each motor spins for $TIMEOUT_SECONDS seconds at the throttle below. " +
-                "Take the propellers off first — a spinning propeller will cut you.",
+                "Make sure you remove all props.",
             style = MaterialTheme.typography.bodySmall,
         )
         motorCountNotice(reported)?.let {
@@ -111,7 +111,7 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
                 if (!it) throttle = 0f
             })
             Text(
-                if (propsOff) "Motors are live" else "Propellers are off — turn on to enable",
+                if (propsOff) "Careful : Motors are enabled" else "Propellers are removed - Enable slider and motors",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
