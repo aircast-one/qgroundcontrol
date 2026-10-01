@@ -3464,6 +3464,14 @@
         "view.mapScale(120).imperial",
         "view.mapScale(120).kind",
         "view.mapScale(120).text",
+        "view.mavlinkActions.actions.#",
+        "view.mavlinkActions.class",
+        "view.mavlinkActions.files.#",
+        "view.mavlinkActions.flyViewFile",
+        "view.mavlinkActions.flyViewPath",
+        "view.mavlinkActions.joystickFile",
+        "view.mavlinkActions.joystickPath",
+        "view.mavlinkActions.kind",
         "view.mavlinkConsole.class",
         "view.mavlinkConsole.count",
         "view.mavlinkConsole.kind",
@@ -7766,6 +7774,14 @@
         "view.mapScale(120).imperial",
         "view.mapScale(120).kind",
         "view.mapScale(120).text",
+        "view.mavlinkActions.actions.#",
+        "view.mavlinkActions.class",
+        "view.mavlinkActions.files.#",
+        "view.mavlinkActions.flyViewFile",
+        "view.mavlinkActions.flyViewPath",
+        "view.mavlinkActions.joystickFile",
+        "view.mavlinkActions.joystickPath",
+        "view.mavlinkActions.kind",
         "view.mavlinkConsole.class",
         "view.mavlinkConsole.connected",
         "view.mavlinkConsole.count",
@@ -9814,6 +9830,7 @@
             "view.apmFollow",
             "view.ntrip",
             "view.logReplay",
+            "view.mavlinkActions",
             "view.scripting",
             "view.signingKeys",
             "view.remoteIdStatus",
@@ -11152,6 +11169,20 @@
         "imperial": "bool",
         "kind": "string",
         "text": "string"
+    },
+    "view.mavlinkActions": {
+        "actions": [
+            "empty"
+        ],
+        "class": "string",
+        "files": [
+            "empty"
+        ],
+        "flyViewFile": "string",
+        "flyViewPath": "string",
+        "joystickFile": "string",
+        "joystickPath": "string",
+        "kind": "string"
     },
     "view.mavlinkConsole": {
         "class": "string",

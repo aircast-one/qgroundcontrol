@@ -64,6 +64,7 @@ use crate::actuators;
 use crate::apmfollow;
 use crate::apmservos;
 use crate::logreplay;
+use crate::mavlinkactions;
 use crate::ntrip;
 use crate::scripting;
 use crate::signingkeys;
@@ -195,6 +196,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
     View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
     View { path: "view.logReplay", deps: logreplay::DEPS, compute: logreplay::log_replay_view },
+    View { path: "view.mavlinkActions", deps: mavlinkactions::DEPS, compute: mavlinkactions::mavlink_actions_view },
     View { path: "view.scripting", deps: scripting::DEPS, compute: scripting::scripting_view },
     View { path: "view.signingKeys", deps: signingkeys::DEPS, compute: signingkeys::signing_keys_view },
     View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },

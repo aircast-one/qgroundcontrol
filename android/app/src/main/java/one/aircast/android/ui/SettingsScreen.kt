@@ -378,6 +378,7 @@ private fun SettingsControls(
         if (section.group == FLY_VIEW_GROUP) RcControlsEditor()
         if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
         if (section.group == MAVLINK_GROUP) SigningKeysSection()
+        if (section.group == MAVLINK_ACTIONS_GROUP) MavlinkActionsSection(onWrite)
     }
 }
 

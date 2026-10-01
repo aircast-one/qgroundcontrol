@@ -600,6 +600,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         }
                     }
 
+                    FlyViewMavlinkActions { showMore = false }
+
                     extras.forEach { offer ->
                         TextButton(
                             enabled = offer.ready,
