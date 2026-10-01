@@ -341,6 +341,7 @@ ACCEPTED = {
     "unsupportedText": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
     "waiting": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
     "inUse": "view.signingKeys lists the core key store, which the desktop recording rig has no keys in, so its list is empty; signingkeys.rs signing_keys_view serves it",
+    "activeOnVehicle": "view.signingKeys lists the core key store, which the desktop recording rig has no keys in, so its list is empty; signingkeys.rs signing_keys_view serves it",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
     "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",

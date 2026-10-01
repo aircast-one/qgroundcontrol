@@ -332,6 +332,8 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
     if bytes.is_empty() {
         return false;
     }
+    let signed = crate::signing::lock().outbound(id, bytes);
+    let bytes = signed.as_slice();
     let (owned, writer, shared) = {
         let guard = transports.lock().unwrap();
         (guard.owned.get(&id).cloned(), guard.writer.clone(), guard.shared.clone())

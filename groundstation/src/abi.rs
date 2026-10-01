@@ -265,6 +265,7 @@ pub(crate) fn start_pump() {
                 });
                 announce_notices();
                 crate::corelinks::tick(crate::hub::now_ms());
+                crate::signingkeys::tick(crate::hub::now_ms());
                 if crate::vehiclefacade::switched_on() {
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
@@ -371,6 +372,15 @@ pub unsafe extern "C" fn qgc_core_guided(action_json: *const c_char) -> *mut c_c
 fn install_hub_sink() {
     HUB_SINK.get_or_init(|| {
         let sink: crate::linkhost::FrameSink = std::sync::Arc::new(|frame: &crate::transport::Frame| {
+            if !frame.replay {
+                let verdict = crate::signing::lock().inbound(frame.link, frame.header.system_id, &frame.raw, &frame.message, &|| crate::signingkeys::load().all(), crate::hub::now_ms());
+                verdict.notices.iter().for_each(|notice| {
+                    crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, notice);
+                });
+                if !verdict.accept {
+                    return;
+                }
+            }
             let outbound = crate::hub::lock().on_frame(crate::hub::Origin { link: frame.link, replay: frame.replay, v2: frame.v2 }, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
             deliver(outbound);
             if crate::vehiclefacade::switched_on() {

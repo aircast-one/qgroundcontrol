@@ -45,14 +45,20 @@ internal const val SIGNING_ADD_RAW = "signingKeys.addRaw"
 internal const val SIGNING_GENERATE = "signingKeys.generate"
 internal const val SIGNING_REMOVE = "signingKeys.remove"
 internal const val SIGNING_EXPORT = "signingKeys.export"
+internal const val SIGNING_ENABLE = "signing.enable"
+internal const val SIGNING_DISABLE = "signing.disable"
+private const val SIGNING_POLL_MS = 500L
 internal const val RAW_KEY_HEX_LENGTH = 64
 private const val CLIPBOARD_WIPE_MS = 30_000L
 
-internal data class SigningKeyRow(val name: String, val inUse: Boolean)
+internal data class SigningKeyRow(val name: String, val inUse: Boolean, val activeOnVehicle: Boolean = false)
 
 internal data class SigningKeys(
     val available: Boolean,
     val vehicle: Boolean,
+    val armed: Boolean,
+    val state: String,
+    val linkName: String,
     val activeKey: String,
     val minPassphraseLength: Int,
     val keys: List<SigningKeyRow>,
@@ -63,9 +69,24 @@ internal fun signingKeys(view: JSONObject?): SigningKeys? = view?.takeIf { it.op
     SigningKeys(
         available = true,
         vehicle = it.optBoolean("vehicle"),
+        armed = it.optBoolean("armed"),
+        state = it.optText("state"),
+        linkName = it.optText("linkName"),
         activeKey = it.optText("activeKey"),
         minPassphraseLength = it.optInt("minPassphraseLength", 8),
-        keys = (0 until (rows?.length() ?: 0)).mapNotNull { at -> rows!!.optJSONObject(at)?.let { row -> SigningKeyRow(row.optText("name"), row.optBoolean("inUse")) } },
+        keys = (0 until (rows?.length() ?: 0)).mapNotNull { at -> rows!!.optJSONObject(at)?.let { row -> SigningKeyRow(row.optText("name"), row.optBoolean("inUse"), row.optBoolean("activeOnVehicle")) } },
+    )
+}
+
+internal data class KeyButtons(val enable: Boolean, val disable: Boolean, val otherActive: Boolean, val pending: Boolean)
+
+internal fun keyButtons(keys: SigningKeys, row: SigningKeyRow): KeyButtons {
+    val anyActive = keys.vehicle && keys.activeKey != "None"
+    return KeyButtons(
+        enable = !anyActive,
+        disable = keys.vehicle && row.activeOnVehicle,
+        otherActive = anyActive && !row.activeOnVehicle,
+        pending = keys.state == "enabling" || keys.state == "disabling",
     )
 }
 
@@ -85,8 +106,22 @@ internal fun SigningKeysSection() {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    var confirmEnable by remember { mutableStateOf<String?>(null) }
+    var armedWarning by remember { mutableStateOf(false) }
+    var refusal by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(revision) {
         read = withContext(Dispatchers.Default) { signingKeys(Qgc.get(SIGNING_KEYS_VIEW)) }
+        if (read?.state == "enabling" || read?.state == "disabling") {
+            delay(SIGNING_POLL_MS)
+            revision++
+        }
+    }
+
+    fun change(path: String, vararg args: Any) {
+        scope.launch {
+            refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) }
+            revision++
+        }
     }
     LaunchedEffect(wipeAfterExport) {
         if (wipeAfterExport > 0) {
@@ -106,7 +141,16 @@ internal fun SigningKeysSection() {
         }
         keys.keys.forEach { key ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(key.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                val buttons = keyButtons(keys, key)
+                Text(key.name, style = MaterialTheme.typography.bodyLarge)
+                if (buttons.otherActive) Text(" (another key active)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.weight(1f)) {}
+                if (buttons.enable) {
+                    TextButton(enabled = keys.vehicle && !buttons.pending, onClick = { confirmEnable = key.name }) { Text(if (buttons.pending) "Configuring…" else "Enable") }
+                }
+                if (buttons.disable) {
+                    TextButton(enabled = !buttons.pending, onClick = { if (keys.armed) armedWarning = true else change(SIGNING_DISABLE) }) { Text(if (buttons.pending) "Disabling…" else "Disable") }
+                }
                 if (!key.inUse) {
                     TextButton(onClick = {
                         scope.launch {
@@ -122,10 +166,33 @@ internal fun SigningKeysSection() {
                 }
             }
         }
+        refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (keys.keys.isEmpty()) Text("No keys configured", color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { adding = true }) { Text("Add Key") }
     }
 
+    confirmEnable?.let { name ->
+        AlertDialog(
+            onDismissRequest = { confirmEnable = null },
+            title = { Text("Send Signing Key") },
+            text = { Text("This will transmit key '$name' to the vehicle over '${read?.linkName.orEmpty()}'. Only proceed if this link is secure (USB or trusted local network).") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmEnable = null
+                    change(SIGNING_ENABLE, name)
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { confirmEnable = null }) { Text("Cancel") } },
+        )
+    }
+    if (armedWarning) {
+        AlertDialog(
+            onDismissRequest = { armedWarning = false },
+            title = { Text("Disable Signing While Armed?") },
+            text = { Text("Vehicle is armed. ArduPilot will refuse to disable signing while armed and PX4 will not accept the disable packet without a valid signature. The disable attempt will likely time out and leave the link in an inconsistent state.\n\nDisarm the vehicle first.") },
+            confirmButton = { TextButton(onClick = { armedWarning = false }) { Text("Cancel") } },
+        )
+    }
     if (adding) {
         AddKeyDialog(keys.minPassphraseLength, onDone = { adding = false; revision++ })
     }

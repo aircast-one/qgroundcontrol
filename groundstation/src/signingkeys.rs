@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use crate::router::Backend;
 use crate::settingsini::Setting;
+use crate::transport::LinkId;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable"];
 pub const ADD_PASSPHRASE_KEY: &str = "signingKeys.addPassphrase";
@@ -11,6 +12,8 @@ pub const ADD_RAW_KEY: &str = "signingKeys.addRaw";
 pub const GENERATE_KEY: &str = "signingKeys.generate";
 pub const REMOVE_KEY: &str = "signingKeys.remove";
 pub const EXPORT_KEY: &str = "signingKeys.export";
+pub const ENABLE_SIGNING: &str = "signing.enable";
+pub const DISABLE_SIGNING: &str = "signing.disable";
 
 pub const KEY_BYTES: usize = 32;
 pub const MIN_PASSPHRASE_LENGTH: usize = 8;
@@ -53,6 +56,10 @@ pub struct Keys {
 impl Keys {
     pub fn names(&self) -> Vec<String> {
         self.keys.iter().map(|(name, _)| name.clone()).collect()
+    }
+
+    pub fn all(&self) -> Vec<(String, Key)> {
+        self.keys.clone()
     }
 
     pub fn key(&self, name: &str) -> Option<Key> {
@@ -144,26 +151,72 @@ pub fn run(path: &str, text: &str) -> Value {
             Some(key) => json!({ "ok": true, "result": to_hex(&key) }),
             None => json!({ "ok": false, "reason": format!("No key is called {}", arg(0)) }),
         },
+        ENABLE_SIGNING => match load().key(arg(0)) {
+            Some(key) => change_signing(|signing, link, target, now_ms| signing.begin_enable(link, target, arg(0), key, now_ms)),
+            None => json!({ "ok": false, "reason": format!("No key is called {}", arg(0)) }),
+        },
+        DISABLE_SIGNING => change_signing(|signing, link, target, now_ms| signing.begin_disable(link, target, now_ms)),
         _ => json!({ "ok": false, "reason": format!("{path} is not a signing key action") }),
     }
 }
 
+fn active_link() -> Option<(LinkId, (u8, u8))> {
+    crate::hub::lock().active().map(|v| (v.link, (v.id, v.component)))
+}
+
+fn send_setup(link: LinkId, data: &mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA) {
+    (0..crate::signing::SETUP_COPIES).for_each(|_| {
+        if let Some(bytes) = crate::mavout::encode_next(&crate::mavout::Outbound::SetupSigning { data: data.clone() }) {
+            crate::linkhost::write(&crate::linkhost::TRANSPORTS, link, &bytes);
+        }
+    });
+}
+
+
+fn change_signing(begin: impl Fn(&mut crate::signing::Signing, LinkId, (u8, u8), u64) -> Result<mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA, String>) -> Value {
+    let Some((link, target)) = active_link() else { return json!({ "ok": false, "reason": "No vehicle is connected." }) };
+    let begun = begin(&mut crate::signing::lock(), link, target, crate::hub::now_ms());
+    match begun {
+        Ok(data) => {
+            send_setup(link, &data);
+            json!({ "ok": true })
+        }
+        Err(reason) => json!({ "ok": false, "reason": reason }),
+    }
+}
+
+pub fn tick(now_ms: u64) {
+    let (resend, notices) = crate::signing::lock().tick(now_ms);
+    resend.iter().for_each(|(link, data)| send_setup(*link, data));
+    notices.iter().for_each(|notice| {
+        crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, notice);
+    });
+}
+
 pub fn owns(path: &str) -> bool {
-    [ADD_PASSPHRASE_KEY, ADD_RAW_KEY, GENERATE_KEY, REMOVE_KEY, EXPORT_KEY].contains(&path)
+    [ADD_PASSPHRASE_KEY, ADD_RAW_KEY, GENERATE_KEY, REMOVE_KEY, EXPORT_KEY, ENABLE_SIGNING, DISABLE_SIGNING].contains(&path)
 }
 
 pub fn signing_keys_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = crate::read::flag(&crate::read::object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
     let available = crate::vehiclefacade::switched_on();
     let names = if available { load().names() } else { Vec::new() };
+    let armed = crate::hub::lock().active().is_some_and(crate::hub::Vehicle::armed);
+    let link = active_link().map(|(link, _)| link);
+    let link_name = link.and_then(|link| crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).describe(link)).map_or_else(|| "active link".to_string(), |(name, _, _)| name);
+    let signing = crate::signing::lock();
+    let status = link.map(|link| signing.status(link)).unwrap_or_default();
     json!({
         "kind": "object",
         "class": "SigningKeys",
         "available": available,
-        "vehicle": vehicle,
-        "activeKey": "None",
+        "vehicle": vehicle && link.is_some(),
+        "armed": armed,
+        "state": if status.state.is_empty() { "off" } else { status.state },
+        "linkName": link_name,
+        "activeKey": if status.key_name.is_empty() { "None".to_string() } else { status.key_name.clone() },
         "minPassphraseLength": MIN_PASSPHRASE_LENGTH,
-        "keys": names.iter().map(|name| json!({ "name": name, "inUse": false })).collect::<Vec<_>>(),
+        "keys": names.iter().map(|name| json!({ "name": name, "inUse": signing.key_in_use(name), "activeOnVehicle": status.key_name == *name })).collect::<Vec<_>>(),
     })
 }
 

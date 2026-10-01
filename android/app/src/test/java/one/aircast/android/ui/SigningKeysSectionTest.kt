@@ -24,4 +24,13 @@ class SigningKeysSectionTest {
         val keys = signingKeys(JSONObject("""{"available":true,"vehicle":true,"activeKey":"None","minPassphraseLength":8,"keys":[{"name":"field","inUse":false}]}"""))!!
         assertEquals(listOf(SigningKeyRow("field", false)), keys.keys)
     }
+
+    @Test
+    fun only_the_active_key_offers_disable_and_others_say_another_key_is_active() {
+        val keys = signingKeys(JSONObject("""{"available":true,"vehicle":true,"armed":false,"state":"on","linkName":"USB","activeKey":"field","keys":[{"name":"field","inUse":true,"activeOnVehicle":true},{"name":"bench","inUse":false,"activeOnVehicle":false}]}"""))!!
+        assertEquals(KeyButtons(enable = false, disable = true, otherActive = false, pending = false), keyButtons(keys, keys.keys[0]))
+        assertEquals(KeyButtons(enable = false, disable = false, otherActive = true, pending = false), keyButtons(keys, keys.keys[1]))
+        val off = keys.copy(activeKey = "None", state = "off")
+        assertTrue(keyButtons(off, off.keys[1]).enable)
+    }
 }

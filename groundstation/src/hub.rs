@@ -2421,6 +2421,7 @@ impl Hub {
     }
 
     pub fn link_closed(&mut self, link: LinkId) {
+        crate::signing::lock().closed(link);
         let gone: Vec<u8> = self.vehicles.values().filter(|v| v.link == link).map(|v| v.id).collect();
         gone.iter().for_each(|id| self.remove(*id));
     }
