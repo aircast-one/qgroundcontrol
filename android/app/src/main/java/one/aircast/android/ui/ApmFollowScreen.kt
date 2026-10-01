@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.Offset
@@ -140,7 +141,10 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
             if (!follow.rover) Choice("Point Vehicle", follow.pointOptions, follow.pointIndex) { act(APM_FOLLOW_POINT, it) }
             if (follow.positionIndex == 1) {
                 Text("Vehicle Offsets", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-                OffsetGraphic(follow) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
+                androidx.compose.foundation.layout.Row {
+                    OffsetGraphic(follow) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
+                    if (!follow.rover) HeightGraphic(follow.height)
+                }
                 NumberEntry("Angle", "deg", follow.angle) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
                 NumberEntry("Distance", "m", follow.distance) { act(APM_FOLLOW_OFFSETS, follow.angle, it) }
                 if (!follow.rover) NumberEntry("Height", "m", follow.height) { act(APM_FOLLOW_HEIGHT, it) }
@@ -231,5 +235,19 @@ private fun OffsetGraphic(follow: ApmFollow, onAngle: (Double) -> Unit) {
                 }, ink)
             }
         }
+    }
+}
+
+@Composable
+private fun HeightGraphic(heightMetres: Double) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    androidx.compose.foundation.layout.Box(Modifier.size(width = 56.dp, height = OFFSET_GRAPHIC), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.size(width = 56.dp, height = OFFSET_GRAPHIC)) {
+            val tick = 8.dp.toPx()
+            drawLine(ink.copy(alpha = 0.4f), Offset(center.x, 0f), Offset(center.x, size.height), strokeWidth = 2.dp.toPx())
+            drawLine(ink, Offset(center.x - tick, 1f), Offset(center.x + tick, 1f), strokeWidth = 2.dp.toPx())
+            drawLine(ink, Offset(center.x - tick, size.height - 1f), Offset(center.x + tick, size.height - 1f), strokeWidth = 2.dp.toPx())
+        }
+        Text("${oneDecimal(heightMetres)} m", style = MaterialTheme.typography.labelSmall, modifier = Modifier.background(MaterialTheme.colorScheme.surface))
     }
 }
