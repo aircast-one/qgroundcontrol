@@ -241,6 +241,15 @@ fun circleRing(
     return (0 until segments).map { step -> pointAt(centre, radiusMetres, 360.0 * step / segments) }
 }
 
+fun azimuthBetween(from: TrackPoint, to: TrackPoint): Double {
+    val fromLat = Math.toRadians(from.latitude)
+    val toLat = Math.toRadians(to.latitude)
+    val deltaLon = Math.toRadians(to.longitude - from.longitude)
+    val y = kotlin.math.sin(deltaLon) * kotlin.math.cos(toLat)
+    val x = kotlin.math.cos(fromLat) * kotlin.math.sin(toLat) - kotlin.math.sin(fromLat) * kotlin.math.cos(toLat) * kotlin.math.cos(deltaLon)
+    return (Math.toDegrees(kotlin.math.atan2(y, x)) + 360) % 360
+}
+
 fun pointAt(centre: TrackPoint, metres: Double, bearingDegrees: Double): TrackPoint {
     val angular = metres / EARTH_RADIUS_M
     val lat = Math.toRadians(centre.latitude)

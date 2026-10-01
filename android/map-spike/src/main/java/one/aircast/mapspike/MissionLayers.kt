@@ -481,7 +481,9 @@ const val MISSION_SPLIT_INVOKABLE = "insertSimpleMissionItem"
 fun legSplit(items: List<MissionItem>, selected: Int?): TrackPoint? {
     val current = items.firstOrNull { it.index == selected } ?: return null
     val previous = items.filter { it.index < current.index }.maxByOrNull { it.index } ?: return null
-    return TrackPoint((previous.latitude + current.latitude) / 2, (previous.longitude + current.longitude) / 2)
+    val from = TrackPoint(previous.latitude, previous.longitude)
+    val to = TrackPoint(current.latitude, current.longitude)
+    return pointAt(from, metresBetween(from, to) / 2, azimuthBetween(from, to))
 }
 
 fun renderMidpoints(style: Style, polygons: List<FencePolygon>, surveys: List<Survey>, items: List<MissionItem> = emptyList(), selected: Int? = null) {

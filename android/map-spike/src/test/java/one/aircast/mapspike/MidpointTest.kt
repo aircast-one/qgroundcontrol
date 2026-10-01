@@ -90,7 +90,10 @@ class MidpointTest {
     fun `the leg into the selected item splits at its middle`() {
         val item = { index: Int, lat: Double, lon: Double -> MissionItem(index, index, lat, lon, "Waypoint", false, 50.0) }
         val items = listOf(item(1, 47.0, 8.0), item(2, 47.2, 8.4))
-        org.junit.Assert.assertEquals(TrackPoint(47.1, 8.2), legSplit(items, 2))
+        val split = legSplit(items, 2) ?: error("split")
+        org.junit.Assert.assertEquals(metresBetween(TrackPoint(47.0, 8.0), split), metresBetween(split, TrackPoint(47.2, 8.4)), 0.5)
+        org.junit.Assert.assertEquals(47.1, split.latitude, 0.01)
+        org.junit.Assert.assertEquals(90.0, azimuthBetween(TrackPoint(0.0, 0.0), TrackPoint(0.0, 1.0)), 1e-9)
         org.junit.Assert.assertNull(legSplit(items, 1))
         org.junit.Assert.assertNull(legSplit(items, null))
     }
