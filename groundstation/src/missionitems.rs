@@ -133,7 +133,7 @@ struct Survey {
 
 fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     let flight = crate::structurescan::saved_flight(json)?;
-    let entry = *flight.first().ok_or("A structure scan without an outline has no rows to describe.")?;
+    let entry = *flight.get(crate::structurescan::entry_vertex(json) % flight.len().max(1)).ok_or("A structure scan without an outline has no rows to describe.")?;
     let plan = crate::structurescan::saved_plan(json);
     let (top, bottom) = crate::structurescan::top_and_bottom(&plan);
     Ok(Survey {

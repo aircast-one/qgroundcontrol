@@ -605,6 +605,9 @@ pub fn entry_point(kind: &str, item: &Value) -> i64 {
 }
 
 pub fn rotated_entry(kind: &str, item: &Value) -> Option<Value> {
+    if kind == "StructureScan" {
+        return crate::structurescan::rotated_entry(item);
+    }
     let entry = entry_point(kind, item);
     let (key, next) = match kind {
         "survey" => ("entryLocation", if entry >= 3 { 0 } else { entry + 1 }),

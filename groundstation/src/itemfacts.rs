@@ -67,6 +67,7 @@ fn qt_entry_point(item: &str, read: &Value) -> Option<Value> {
     let kind = match read.get("class").and_then(Value::as_str)? {
         "SurveyComplexItem" => "survey",
         "CorridorScanComplexItem" => "CorridorScan",
+        "StructureScanComplexItem" => return Some(json!({ "label": "Entry vertex", "value": (read.get("entryVertex")?.as_i64()? + 1).to_string(), "path": format!("{item}.rotateEntryPoint") })),
         _ => return None,
     };
     let name = crate::surveydoc::entry_point_name(kind, read.get("entryPoint")?.as_i64()?)?;

@@ -2001,6 +2001,14 @@ fn takeoff_heading(doc: &Document) -> Option<f64> {
     Some(crate::surveygrid::azimuth_to((home[0], home[1]), at))
 }
 
+fn entry_row(kind: &str, pattern: &Value, item: &str) -> Value {
+    let path = format!("{item}.rotateEntryPoint");
+    match kind {
+        "StructureScan" => json!({ "label": "Entry vertex", "value": (crate::structurescan::entry_vertex(pattern) + 1).to_string(), "path": path }),
+        _ => crate::surveydoc::entry_point_name(kind, crate::surveydoc::entry_point(kind, pattern)).map_or(Value::Null, |name| json!({ "label": "Start from", "value": name, "path": path })),
+    }
+}
+
 fn shape_complete(kind: &str, pattern: &Value) -> bool {
     let (key, least) = if kind == "CorridorScan" { ("polyline", 2) } else { ("polygon", 3) };
     pattern.get(key).and_then(Value::as_array).is_some_and(|vertices| vertices.len() >= least)
@@ -2032,7 +2040,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
         Some(Some(plandoc::Item::Complex { kind, json: survey, .. })) if kind == "survey" || kind == "CorridorScan" || kind == "StructureScan" => {
             let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
-            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null, "presetKind": crate::presets::settings_group(kind).map(|_| kind.clone()), "areaHelp": crate::itemfacts::area_help(kind, shape_complete(kind, survey)), "entryPoint": crate::surveydoc::entry_point_name(kind, crate::surveydoc::entry_point(kind, survey)).map(|name| json!({ "label": "Start from", "value": name, "path": format!("{item}.rotateEntryPoint") })) })
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::surveydoc::fields(survey, &item, multirotor, &units), "camera": crate::surveydoc::camera(survey, &item, &units), "speedSection": Value::Null, "altitudeMode": Value::Null, "presetKind": crate::presets::settings_group(kind).map(|_| kind.clone()), "areaHelp": crate::itemfacts::area_help(kind, shape_complete(kind, survey)), "entryPoint": entry_row(kind, survey, &item) })
         }
         Some(Some(plandoc::Item::Complex { kind, json: pattern, .. })) if crate::landingpattern::is_landing(kind) => {
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };

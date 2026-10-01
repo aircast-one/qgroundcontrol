@@ -112,8 +112,22 @@ pub fn saved_plan(scan: &serde_json::Value) -> Plan {
         layers: number(scan, "Layers").unwrap_or(1.0) as i64,
         start_from_top: scan.get("StartFromTop").and_then(serde_json::Value::as_bool).unwrap_or(true),
         gimbal_pitch: number(scan, "GimbalPitch").unwrap_or(0.0),
-        entry_vertex: 0,
+        entry_vertex: scan.get(ENTRY_VERTEX).and_then(serde_json::Value::as_u64).unwrap_or(0) as usize,
     }
+}
+
+pub const ENTRY_VERTEX: &str = "entryVertex";
+
+pub fn entry_vertex(scan: &serde_json::Value) -> usize {
+    saved_plan(scan).entry_vertex
+}
+
+pub fn rotated_entry(scan: &serde_json::Value) -> Option<serde_json::Value> {
+    let count = saved_flight(scan).ok()?.len();
+    let next = if entry_vertex(scan) + 1 >= count { 0 } else { entry_vertex(scan) + 1 };
+    let mut rotated = scan.clone();
+    rotated[ENTRY_VERTEX] = serde_json::json!(next);
+    Some(rotated)
 }
 
 pub fn saved_items(scan: &serde_json::Value) -> Result<Vec<Item>, String> {
@@ -306,6 +320,16 @@ mod tests {
         let falling = heights(&items(&flown, &Plan { start_from_top: true, ..plan() }));
         assert_eq!(falling[0], 40.0, "starting from the top begins half a camera height below the structure");
         assert_eq!(falling[flown.len() + 1], 20.0);
+    }
+
+    #[test]
+    fn rotating_the_entry_vertex_walks_the_flight_ring_and_wraps() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
+        let scan = fixture["structure"].clone();
+        let count = saved_flight(&scan).unwrap().len();
+        let walked = (0..count).fold(scan.clone(), |at, _| rotated_entry(&at).unwrap());
+        assert_eq!(entry_vertex(&rotated_entry(&scan).unwrap()), 1);
+        assert_eq!(entry_vertex(&walked), 0, "a full turn comes back to the first vertex");
     }
 
     #[test]
