@@ -104,6 +104,14 @@ pub fn set_breach_return(fence: &Value, at: Point, altitude: Option<f64>) -> Val
     changed
 }
 
+pub fn clear_breach_return(fence: &Value) -> Value {
+    let mut changed = fence.clone();
+    if let Value::Object(map) = &mut changed {
+        map.remove("breachReturn");
+    }
+    changed
+}
+
 pub fn set_breach_altitude(fence: &Value, altitude: f64) -> Option<Value> {
     let back = fence.get("breachReturn").and_then(Value::as_array).filter(|b| b.len() >= 2)?;
     let mut changed = fence.clone();
@@ -132,6 +140,15 @@ pub fn move_rally(rally: &Value, index: usize, at: Point, altitude: Option<f64>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_breach_return_point_is_set_raised_and_removed() {
+        let fence = json!({ "version": 2, "polygons": [], "circles": [] });
+        let set = set_breach_return(&fence, (47.4, 8.5), Some(30.0));
+        assert_eq!(set_breach_altitude(&set, 45.0).unwrap()["breachReturn"], json!([47.4, 8.5, 45.0]));
+        assert!(set_breach_altitude(&fence, 45.0).is_none(), "no point, no altitude to set");
+        assert!(clear_breach_return(&set).get("breachReturn").is_none());
+    }
 
     fn empty_fence() -> Value {
         json!({ "circles": [], "polygons": [], "version": 2 })

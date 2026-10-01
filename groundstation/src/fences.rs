@@ -13,6 +13,8 @@ pub const DEPS: &[&str] = &[
     "plan.geoFenceController@loadComplete",
     "plan.geoFenceController.supported",
     "plan.geoFenceController.breachReturnPoint",
+    "plan.geoFenceController.breachReturnAltitude",
+    "settings.appSettings.defaultMissionItemAltitude",
     "plan.rallyPointController.supported",
     "plan.managerVehicle.capabilitiesKnown",
     "plan.geoFenceController.paramCircularFence",
@@ -23,6 +25,11 @@ pub const DEPS: &[&str] = &[
     crate::coreplan::CHANGED,
 ];
 const METRES_PER_DEGREE: f64 = 111_320.0;
+const BREACH_ALTITUDE_PATH: &str = "plan.geoFenceController.breachReturnAltitude";
+
+fn breach_altitude_json(value: Option<f64>, units: &str) -> Value {
+    json!({ "value": value, "units": units, "path": BREACH_ALTITUDE_PATH })
+}
 
 fn point(json: &Value) -> Option<(f64, f64)> {
     let lat = json.get("latitude")?.as_f64().filter(|v| v.is_finite())?;
@@ -200,6 +207,10 @@ fn document_fences(backend: &dyn Backend, fence: &Value, rally: &Value) -> Value
         "rallySupported": crate::plan::capability(backend, "rallyPointController"),
         "firmwareFence": firmware_fence(backend),
         "breachReturnPoint": fence.get("breachReturn").and_then(pair).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+        "breachReturnAltitude": fence.get("breachReturn").and_then(pair).map(|_| {
+            let metres = fence["breachReturn"].get(2).and_then(Value::as_f64).or_else(|| crate::read::value_number(&backend.get("settings.appSettings.defaultMissionItemAltitude.rawValue")));
+            breach_altitude_json(metres.map(|m| vertical.show(m)), &vertical.name)
+        }),
     })
 }
 
@@ -259,6 +270,10 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // point is an invalid QGeoCoordinate, whose NaN latitude arrives as null, so it is served
         // as null rather than as a point at the null island.
         "breachReturnPoint": controller.get("breachReturnPoint").and_then(point).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+        "breachReturnAltitude": controller.get("breachReturnPoint").and_then(point).map(|_| {
+            let fact = object(&backend.get(BREACH_ALTITUDE_PATH));
+            breach_altitude_json(fact.get("value").and_then(Value::as_f64), fact.get("units").and_then(Value::as_str).unwrap_or(""))
+        }),
     })
 }
 

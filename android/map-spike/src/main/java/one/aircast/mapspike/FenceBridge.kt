@@ -148,6 +148,21 @@ fun rallyMovePayload(latitude: Double, longitude: Double, altitudeMetres: Double
 fun rallyAltitudeFor(rally: List<RallyPoint>, index: Int): Double =
     rally.firstOrNull { it.index == index }?.altitudeMetres ?: 0.0
 
+const val BREACH_RETURN_PATH = "$FENCE_ROOT.breachReturnPoint"
+
+data class BreachReturn(val point: TrackPoint, val altitude: Double?, val units: String, val altitudePath: String)
+
+fun breachReturn(json: JSONObject?): BreachReturn? {
+    val point = coordinate(json?.optJSONObject("breachReturnPoint")) ?: return null
+    val altitude = json?.optJSONObject("breachReturnAltitude")
+    return BreachReturn(
+        point = point,
+        altitude = altitude?.takeIf { !it.isNull("value") }?.optDouble("value")?.takeIf { it.isFinite() },
+        units = altitude?.optText("units").orEmpty(),
+        altitudePath = altitude?.optText("path").orEmpty(),
+    )
+}
+
 object FenceBridge {
     fun read(): JSONObject? =
         runCatching { JSONObject(QGCBridge.get(FENCES_VIEW)) }.getOrNull()
@@ -177,6 +192,12 @@ object FenceBridge {
         setOk("$FENCE_CIRCLES.$index.radius", settingJson("$shown"))
 
     fun deletePolygon(index: Int): Boolean = invokeOk("$FENCE_ROOT.deletePolygon", "[$index]")
+
+    fun setBreachReturn(at: TrackPoint): Boolean = setOk(BREACH_RETURN_PATH, settingJson(coordinateJson(at)))
+
+    fun clearBreachReturn(): Boolean = setOk(BREACH_RETURN_PATH, settingJson("null"))
+
+    fun setBreachAltitude(path: String, shown: Double): Boolean = setOk(path, settingJson("$shown"))
 
     fun deleteCircle(index: Int): Boolean = invokeOk("$FENCE_ROOT.deleteCircle", "[$index]")
 

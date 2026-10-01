@@ -144,6 +144,8 @@ internal fun MapSpikeScreen(
     var operator by remember { mutableStateOf<TrackPoint?>(null) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
     var firmware by remember { mutableStateOf<FirmwareFence?>(null) }
+    var breach by remember { mutableStateOf<BreachReturn?>(null) }
+    var editingBreach by remember { mutableStateOf(false) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
     var landingList by remember { mutableStateOf<List<LandingPattern>>(emptyList()) }
     var surveyStatsMap by remember { mutableStateOf<Map<Int, SurveyStats>>(emptyMap()) }
@@ -284,6 +286,7 @@ internal fun MapSpikeScreen(
             val nextOperator = operatorPoint(OperatorBridge.read())
             val nextCircles = fenceCircles(fenceView)
             val nextFirmware = firmwareFence(fenceView)
+            val nextBreach = breachReturn(fenceView)
             val nextSurveys = SurveyBridge.surveysFrom(plan)
             val nextLandings = landingPatterns(nextAll)
             val nextStats = surveyStatsFor(nextAll)
@@ -310,6 +313,7 @@ internal fun MapSpikeScreen(
                 }
                 circles = nextCircles
                 firmware = nextFirmware
+                breach = nextBreach
                 surveyList = nextSurveys
                 landingList = nextLandings
                 surveyStatsMap = nextStats
@@ -351,6 +355,7 @@ internal fun MapSpikeScreen(
             fencePolygons = fences,
             fenceCircles = circles,
             firmwareFence = firmware,
+            breachReturn = breach?.point,
             rallyPoints = rally,
             operator = operator,
             surveys = surveyList,
@@ -610,6 +615,32 @@ internal fun MapSpikeScreen(
                             )
                         }
                     }) { Text("Circle") }
+
+                    TextButton(enabled = support.fence, onClick = {
+                        if (breach != null) {
+                            editingBreach = true
+                        } else {
+                            val at = placeAt()
+                            onBridge("Adding breach return point", done = support.reason.ifBlank { null }) {
+                                at != null && FenceBridge.setBreachReturn(at)
+                            }
+                        }
+                    }) { Text("Breach") }
+
+                    breach?.takeIf { editingBreach }?.let { current ->
+                        BreachReturnDialog(
+                            breach = current,
+                            onDismiss = { editingBreach = false },
+                            onAltitude = { shown ->
+                                editingBreach = false
+                                onBridge("Setting breach return altitude") { FenceBridge.setBreachAltitude(current.altitudePath, shown) }
+                            },
+                            onRemove = {
+                                editingBreach = false
+                                onBridge("Removing breach return point") { FenceBridge.clearBreachReturn() }
+                            },
+                        )
+                    }
 
                     TextButton(enabled = support.rally, onClick = {
                         val at = placeAt()

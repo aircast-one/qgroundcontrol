@@ -1191,9 +1191,13 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                     "",
                 )
             }
+            None if given.is_null() => fence_edit(|f, r| Some((crate::fencedoc::clear_breach_return(f), r.clone())), ""),
             None => refused("A breach return point needs a latitude and a longitude."),
         },
-        "plan.geoFenceController.breachReturnAltitude" => fence_edit(|f, r| Some((crate::fencedoc::set_breach_altitude(f, given.as_f64()?)?, r.clone())), "Set a breach return point before its altitude."),
+        "plan.geoFenceController.breachReturnAltitude" => {
+            let vertical = crate::read::Unit::vertical(backend);
+            fence_edit(|f, r| Some((crate::fencedoc::set_breach_altitude(f, vertical.meters(given.as_f64()?))?, r.clone())), "Set a breach return point before its altitude.")
+        }
         _ => {
             if let Some((index, member)) = indexed(path, "plan.geoFenceController.polygons.") {
                 return (member == "inclusion").then(|| fence_edit(|f, r| Some((crate::fencedoc::set_inclusion(f, "polygons", index, given.as_bool()?)?, r.clone())), "A polygon is an inclusion (true) or an exclusion (false)."));

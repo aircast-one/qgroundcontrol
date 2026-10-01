@@ -248,6 +248,27 @@ fun installFenceLayers(style: Style) {
         )
     }
 
+    if (style.getSource(BREACH_SOURCE) == null) {
+        style.addSource(GeoJsonSource(BREACH_SOURCE))
+        style.addLayer(
+            CircleLayer(BREACH_LAYER, BREACH_SOURCE).withProperties(
+                PropertyFactory.circleColor(KEEP_IN_COLOUR),
+                PropertyFactory.circleRadius(10f),
+                PropertyFactory.circleStrokeColor("#000000"),
+                PropertyFactory.circleStrokeWidth(2f),
+            ),
+        )
+        style.addLayer(
+            SymbolLayer(BREACH_LABEL_LAYER, BREACH_SOURCE).withProperties(
+                PropertyFactory.textField("B"),
+                PropertyFactory.textSize(12f),
+                PropertyFactory.textColor("#000000"),
+                PropertyFactory.textAllowOverlap(true),
+                PropertyFactory.textIgnorePlacement(true),
+            ),
+        )
+    }
+
     if (style.getSource(RALLY_SOURCE) == null) {
         style.addSource(GeoJsonSource(RALLY_SOURCE))
         style.addLayer(
@@ -260,6 +281,13 @@ fun installFenceLayers(style: Style) {
         )
     }
 }
+
+const val BREACH_SOURCE = "aircast-breach-return"
+const val BREACH_LAYER = "aircast-breach-return-layer"
+const val BREACH_LABEL_LAYER = "aircast-breach-return-label"
+
+fun breachFeatures(point: TrackPoint?): FeatureCollection =
+    FeatureCollection.fromFeatures(listOfNotNull(point).map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) })
 
 const val GCS_SOURCE = "aircast-gcs"
 const val GCS_LAYER = "aircast-gcs-layer"
@@ -319,7 +347,9 @@ fun renderFences(
     rally: List<RallyPoint>,
     circles: List<FencePolygon> = emptyList(),
     firmware: FirmwareFence? = null,
+    breach: TrackPoint? = null,
 ) {
+    (style.getSource(BREACH_SOURCE) as? GeoJsonSource)?.setGeoJson(breachFeatures(breach))
     (style.getSource(FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(fenceFeatures(polygons, circles))
     (style.getSource(RALLY_SOURCE) as? GeoJsonSource)?.setGeoJson(rallyFeatures(rally))
     (style.getSource(FIRMWARE_FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(firmwareFenceFeatures(firmware))

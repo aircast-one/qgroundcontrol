@@ -109,6 +109,11 @@ pub fn delete(backend: &dyn Backend, shape: Shape, path: &str, args: &str) -> Va
 
 pub fn write_breach_return(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let given = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    if given.is_null() {
+        let answered = flag(&object(&backend.set(path, &json!({ "value": Value::Null }).to_string())), "ok");
+        let cleared = answered && crate::read::nested_coordinate_at(&object(&backend.get_fields(FENCE_CONTROLLER, "breachReturnPoint")), "breachReturnPoint").is_none();
+        return json!({ "ok": cleared, "result": cleared, "refusal": Value::Null, "reason": match cleared { true => Value::Null, false => json!("The geofence kept its breach return point.") } });
+    }
     let Some((latitude, longitude)) = point(Some(&given)) else {
         return json!({ "ok": false, "result": false, "refusal": "badCoordinate", "reason": "A breach return point needs a latitude from -90 to 90 and a longitude from -180 to 180." });
     };
@@ -281,7 +286,9 @@ mod tests {
         fn set(&self, _p: &str, v: &str) -> String {
             if self.obeys {
                 let mut held = object(v)["value"].clone();
-                held["valid"] = json!(true);
+                if !held.is_null() {
+                    held["valid"] = json!(true);
+                }
                 *self.breach.borrow_mut() = held;
             }
             json!({ "ok": true }).to_string()
@@ -307,6 +314,8 @@ mod tests {
         let written = write_breach_return(&controller, "plan.geoFenceController.breachReturnPoint", r#"{"value":{"latitude":47.4,"longitude":8.5,"altitude":60}}"#);
         assert_eq!((&written["ok"], &written["result"]), (&json!(true), &json!(true)));
         assert_eq!(write_breach_return(&controller, "plan.geoFenceController.breachReturnPoint", r#"{"value":{"latitude":147.4,"longitude":8.5}}"#)["refusal"], "badCoordinate", "setBreachReturnPoint stores whatever coordinate it is given and marks the plan dirty for it");
+        assert_eq!(write_breach_return(&controller, "plan.geoFenceController.breachReturnPoint", r#"{"value":null}"#)["ok"], true, "a null removes the point, as the editor sets an invalid QGeoCoordinate");
+        assert_eq!(*controller.breach.borrow(), Value::Null);
 
         let deaf = Controller { polygons: RefCell::new(1), obeys: false, breach: RefCell::new(Value::Null) };
         assert_eq!(add(&deaf, Shape::Polygon, "plan.geoFenceController.addInclusionPolygon", window)["ok"], false);
