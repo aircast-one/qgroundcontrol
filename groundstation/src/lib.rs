@@ -62,6 +62,7 @@ pub mod telemetrylog;
 pub mod proximity;
 pub mod powercalc;
 pub mod mavlinklog;
+pub mod escal;
 pub mod csvlog;
 pub mod sbfbase;
 pub mod rtkbase;

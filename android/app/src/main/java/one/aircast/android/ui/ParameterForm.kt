@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -124,6 +125,7 @@ internal fun ParameterForm(
     var loaded by remember { mutableStateOf(false) }
     var reloads by remember { mutableIntStateOf(0) }
     var calculating by remember { mutableStateOf<PowerCalculator?>(null) }
+    var calibratingEscs by remember { mutableStateOf(false) }
 
     LaunchedEffect(page, reloads) {
         rows = withContext(Dispatchers.Default) { readPage(page) }
@@ -158,7 +160,9 @@ internal fun ParameterForm(
             }
             items(section.facts.size, key = { section.facts[it].path }) { index ->
                 val fact = section.facts[index]
-                if (fact.controlKind == LABEL_CONTROL) {
+                if (fact.controlKind == DIALOG_CONTROL) {
+                    OutlinedButton(enabled = fact.enabled, onClick = { calibratingEscs = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(fact.title) }
+                } else if (fact.controlKind == LABEL_CONTROL) {
                     Text(
                         text = fact.title,
                         style = MaterialTheme.typography.bodyMedium,
@@ -177,6 +181,8 @@ internal fun ParameterForm(
             FootNote("Values refresh after each change.")
         }
     }
+
+    if (calibratingEscs) EscCalibrationDialog { calibratingEscs = false }
 
     calculating?.let { calculator ->
         PowerCalcDialog(calculator) {
@@ -201,7 +207,7 @@ internal fun bitmaskSummary(fact: Fact): String {
 
 internal const val LABEL_CONTROL = "label"
 
-internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number", LABEL_CONTROL)
+internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number", LABEL_CONTROL, DIALOG_CONTROL)
 
 internal fun controlIsUnderstood(kind: String): Boolean =
     kind.isBlank() || kind in KNOWN_CONTROL_KINDS

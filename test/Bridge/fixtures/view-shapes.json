@@ -146,6 +146,8 @@
         "view.detections.error",
         "view.detections.host",
         "view.detections.track",
+        "view.escCalibration.highlight",
+        "view.escCalibration.text",
         "view.fences.breachReturnAltitude",
         "view.fences.breachReturnPoint",
         "view.firstRun.vehiclePreferences.0.maximum",
@@ -2465,6 +2467,13 @@
         "view.detections.kind",
         "view.detections.stale",
         "view.detections.track",
+        "view.escCalibration.class",
+        "view.escCalibration.highlight",
+        "view.escCalibration.kind",
+        "view.escCalibration.open",
+        "view.escCalibration.running",
+        "view.escCalibration.text",
+        "view.escCalibration.warnings.#",
         "view.escs.class",
         "view.escs.kind",
         "view.espBridge.available",
@@ -7313,6 +7322,13 @@
         "view.detections.kind",
         "view.detections.stale",
         "view.detections.track",
+        "view.escCalibration.class",
+        "view.escCalibration.highlight",
+        "view.escCalibration.kind",
+        "view.escCalibration.open",
+        "view.escCalibration.running",
+        "view.escCalibration.text",
+        "view.escCalibration.warnings.#",
         "view.escs.class",
         "view.escs.healthText",
         "view.escs.healthy",
@@ -10174,7 +10190,8 @@
                 "bitmask",
                 "text",
                 "number",
-                "label"
+                "label",
+                "dialog"
             ],
             "view.coreCalibration.calibration.last": [
                 "accelerometer",
@@ -10518,6 +10535,7 @@
             "view.gimbalAzimuth",
             "view.powerCalc",
             "view.mavlinkLog",
+            "view.escCalibration",
             "view.videoSource",
             "view.kmlFile",
             "view.shapeFile",
@@ -10643,6 +10661,17 @@
         "kind": "string",
         "stale": "bool",
         "track": "null"
+    },
+    "view.escCalibration": {
+        "class": "string",
+        "highlight": "null",
+        "kind": "string",
+        "open": "bool",
+        "running": "bool",
+        "text": "null",
+        "warnings": [
+            "empty"
+        ]
     },
     "view.escs": {
         "class": "string",

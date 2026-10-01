@@ -57,6 +57,7 @@ use crate::speech;
 use crate::proximity;
 use crate::powercalc;
 use crate::mavlinklog;
+use crate::escal;
 use crate::firstrun;
 use crate::applog;
 use crate::offlinemaps;
@@ -301,6 +302,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.gimbalAzimuth", deps: gimbalindicator::AZIMUTH_DEPS, compute: gimbalindicator::azimuth_view },
     View { path: "view.powerCalc", deps: powercalc::DEPS, compute: powercalc::power_calc_view },
     View { path: "view.mavlinkLog", deps: &[], compute: mavlinklog::mavlink_log_view },
+    View { path: "view.escCalibration", deps: &[], compute: escal::esc_calibration_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
@@ -575,6 +577,7 @@ mod deps_cover_reads {
             ("proximity", include_str!("proximity.rs")),
             ("powercalc", include_str!("powercalc.rs")),
             ("mavlinklog", include_str!("mavlinklog.rs")),
+            ("escal", include_str!("escal.rs")),
             ("csvlog", include_str!("csvlog.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),

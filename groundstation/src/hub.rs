@@ -2442,6 +2442,7 @@ impl Vehicle {
                         crate::speech::say(&spoken.to_lowercase());
                     }
                     self.log_status(&status);
+                    crate::escal::on_text(self.id, &status.text);
                     crate::apmsubmotors::on_text(&self.flight_mode(), &status.text);
                     let actions = self.calibrate.on_text(&status.text, now_ms);
                     let bytes = self.follow_calibration(actions, now_ms);

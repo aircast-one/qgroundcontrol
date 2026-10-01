@@ -585,6 +585,9 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
     if kind == "label" {
         return vec![json!({ "control": "label", "name": name, "label": label, "warning": flag(control, "warning"), "path": path })];
     }
+    if kind == "dialogButton" && control["dialogButton"]["dialogComponent"] == "ESCCalibrationDialog" {
+        return vec![json!({ "control": "dialog", "name": name, "label": control["dialogButton"]["text"], "dialog": "escCalibration", "enabled": enabled, "path": path })];
+    }
     if kind == "channelFunction" {
         let template = control["channelParam"].as_str().unwrap_or_default();
         let listed = channels(scope, template);
