@@ -240,13 +240,37 @@ pub fn mission_flight_mode(autopilot: u8, vehicle_type: u8, available: &[crate::
     mode_fields(autopilot, vehicle_type, available).get("missionFlightMode").and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
+pub fn px4_mode_airframes(custom_mode: u32, given: (bool, bool)) -> (bool, bool) {
+    use crate::modes::px4;
+    const MULTI_ROTOR: [u32; 18] = [px4(1, 0), px4(7, 0), px4(5, 0), px4(8, 0), px4(2, 0), px4(6, 0), px4(9, 0), px4(3, 0), px4(4, 3), px4(4, 4), px4(4, 5), px4(4, 8), px4(4, 6), px4(4, 9), px4(4, 1), px4(4, 2), px4(3, 2), px4(10, 0)];
+    const NOT_MULTI_ROTOR: [u32; 4] = [px4(3, 1), px4(11, 0), px4(4, 10), px4(4, 19)];
+    const NOT_FIXED_WING: [u32; 5] = [px4(9, 0), px4(3, 1), px4(4, 8), px4(4, 9), px4(3, 2)];
+    const FIXED_WING: [u32; 17] = [px4(6, 0), px4(1, 0), px4(7, 0), px4(5, 0), px4(8, 0), px4(2, 0), px4(3, 0), px4(4, 3), px4(4, 4), px4(4, 5), px4(4, 6), px4(4, 1), px4(4, 2), px4(11, 0), px4(10, 0), px4(4, 10), px4(4, 19)];
+    let fixed_wing = if FIXED_WING.contains(&custom_mode) { true } else if NOT_FIXED_WING.contains(&custom_mode) { false } else { given.0 };
+    let multi_rotor = if MULTI_ROTOR.contains(&custom_mode) { true } else if NOT_MULTI_ROTOR.contains(&custom_mode) { false } else { given.1 };
+    (fixed_wing, multi_rotor)
+}
+
+fn px4_offered(listed: &[(String, u32, bool, bool, (bool, bool))], class: crate::modes::VehicleClass) -> Vec<String> {
+    use crate::modes::VehicleClass::{FixedWing, MultiRotor};
+    listed
+        .iter()
+        .filter(|(_, custom, can_be_set, _, given)| {
+            let (fixed_wing, multi_rotor) = px4_mode_airframes(*custom, *given);
+            *can_be_set && ((class == FixedWing && fixed_wing) || (class == MultiRotor && multi_rotor) || !matches!(class, FixedWing | MultiRotor))
+        })
+        .map(|m| m.0.clone())
+        .collect()
+}
+
 fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> serde_json::Map<String, Value> {
     use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4, VehicleClass, px4};
-    let listed: Vec<(String, u32, bool, bool)> = if available.is_empty() {
-        crate::modes::table(autopilot, vehicle_type).iter().map(|m| (m.name.to_string(), m.custom_mode, m.can_be_set, m.advanced)).collect()
+    let flagged: Vec<(String, u32, bool, bool, (bool, bool))> = if available.is_empty() {
+        crate::modes::table(autopilot, vehicle_type).iter().map(|m| (m.name.to_string(), m.custom_mode, m.can_be_set, m.advanced, (false, true))).collect()
     } else {
-        available.iter().map(|m| (m.name.clone(), m.custom_mode, m.can_be_set, m.advanced)).collect()
+        available.iter().map(|m| (m.name.clone(), m.custom_mode, m.can_be_set, m.advanced, (m.fixed_wing, m.multi_rotor))).collect()
     };
+    let listed: Vec<(String, u32, bool, bool)> = flagged.iter().map(|m| (m.0.clone(), m.1, m.2, m.3)).collect();
     let named = |custom: Option<u32>, fallback: &str| custom.and_then(|c| listed.iter().find(|m| m.1 == c)).map_or_else(|| fallback.to_string(), |m| m.0.clone());
     let names = |advanced_only: bool| listed.iter().filter(|m| m.2 && (!advanced_only || m.3)).map(|m| m.0.clone()).collect::<Vec<_>>();
     let apm = |guided: u32, rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str), stabilized: (u32, &str)| {
@@ -270,7 +294,9 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
         (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(15, Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow"), (0, "Manual")),
         (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(4, None, None, Some(3), (None, ""), (None, ""), (None, ""), (0, "Stabilize")),
         (AUTOPILOT_PX4, _) => json!({
+            "flightModes": px4_offered(&flagged, crate::modes::vehicle_class(vehicle_type)),
             "advancedFlightModes": names(true),
+            "flightModeSetAvailable": true,
             "rtlFlightMode": named(Some(px4(4, 5)), ""),
             "smartRTLFlightMode": "",
             "missionFlightMode": named(Some(px4(4, 4)), ""),
@@ -470,7 +496,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
     });
     let motors = motor_count(v.vehicle_type, v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64())).map(|count| ("motorCount".to_string(), json!(count)));
     let object = |value: Value| value.as_object().cloned().unwrap_or_default();
-    let prearm = (v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then(|| ("prearmError".to_string(), json!(v.prearm_error(crate::hub::now_ms()))));
+    let prearm = Some(("prearmError".to_string(), json!(v.prearm_error(crate::hub::now_ms()))));
     let fields = Value::Object(
         object(fields)
             .into_iter()
@@ -850,7 +876,8 @@ fn answer_parameter(path: &str) -> Option<Value> {
     let (component, name) = call.split_once(',')?;
     let hub = crate::hub::lock();
     let vehicle = hub.active()?;
-    (vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT).then_some(())?;
+    let ardupilot = vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
+    (ardupilot || vehicle.autopilot == crate::modes::AUTOPILOT_PX4).then_some(())?;
     let component = match component.trim().parse::<i64>().ok()? {
         -1 => vehicle.component,
         id => u8::try_from(id).ok()?,
@@ -861,15 +888,21 @@ fn answer_parameter(path: &str) -> Option<Value> {
         return vehicle.parameters_ready().then(|| field_of(absent_parameter(), rest)).flatten();
     };
     let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
-    let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
-    let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
+    let definition = match ardupilot {
+        true => {
+            let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
+            let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
+            crate::apmmeta::json_metadata(&definitions, name, value_type)
+        }
+        false => vehicle.parameter_definition(name, value_type),
+    };
     let number = |value: crate::params::ParamValue| match value {
         crate::params::ParamValue::F32(v) => json!(f64::from(v)),
         other => json!(other.as_f64() as i64),
     };
     let raw = number(value);
     let firmware_default = (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name).copied()).flatten();
-    let meta = crate::factmeta::MetaData { default: firmware_default.map(number), ..crate::apmmeta::json_metadata(&definitions, name, value_type) };
+    let meta = crate::factmeta::MetaData { default: firmware_default.map(number).or(definition.default.clone()), ..definition };
     let mut described = crate::vehiclefact::fact(&meta, &raw, None);
     described["mavType"] = json!(value.param_type());
     described["componentId"] = json!(component);
@@ -1497,7 +1530,11 @@ mod tests {
         let renamed = crate::standardmodes::FlightMode { name: "Return Home".into(), standard_mode: 0, custom_mode: 6, can_be_set: true, advanced: false, fixed_wing: false, multi_rotor: true };
         let announced = mode_fields(3, 2, &[renamed]);
         assert_eq!((announced["rtlFlightMode"].as_str(), announced["pauseFlightMode"].as_str()), (Some("Return Home"), Some("Brake")), "an announced list replaces the table and a missing mode falls back");
-        assert!(mode_fields(12, 2, &[]).get("flightModes").is_none(), "PX4's list filters by airframe flags the core does not keep yet");
+        let quad = mode_fields(12, 2, &[]);
+        assert!(quad["flightModes"].as_array().unwrap().contains(&json!("Position")) && !quad["flightModes"].as_array().unwrap().contains(&json!("Land")), "a mode is offered when it can be set and suits the airframe");
+        let fixed = mode_fields(12, 1, &[]);
+        assert!(!fixed["flightModes"].as_array().unwrap().contains(&json!("Precision Land")), "PX4FirmwarePlugin::updateAvailableFlightModes takes precision land off fixed wings");
+        assert!(quad["flightModes"].as_array().unwrap().contains(&json!("Precision Land")));
         assert!(mode_fields(0, 2, &[]).is_empty());
     }
 

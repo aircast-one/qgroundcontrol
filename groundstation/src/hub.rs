@@ -313,6 +313,12 @@ struct Fetch {
     progress: f64,
 }
 
+const SEVERITY_CRITICAL: u8 = 2;
+
+pub fn is_prearm(text: &str, severity: u8) -> bool {
+    text.starts_with("PreArm") || (text.get(..9).is_some_and(|head| head.eq_ignore_ascii_case("preflight")) && severity >= SEVERITY_CRITICAL)
+}
+
 impl Vehicle {
     fn new(id: u8, component: u8, autopilot: u8, vehicle_type: u8, link: LinkId, replay: bool) -> Vehicle {
         Vehicle {
@@ -1740,7 +1746,7 @@ impl Vehicle {
             let expired = self.status_text.expire_pending();
             expired.iter().for_each(|status| {
                 self.log_status(status);
-                self.note_prearm(&status.text, now_ms);
+                self.note_prearm(&status.text, status.severity, now_ms);
             });
             self.recent.extend(expired);
             let excess = self.recent.len().saturating_sub(MAX_MESSAGES);
@@ -1867,8 +1873,8 @@ impl Vehicle {
         self.announced = (if mode.is_empty() { last_mode } else { Some(mode) }, armed, lost);
     }
 
-    fn note_prearm(&mut self, text: &str, now_ms: u64) {
-        if self.autopilot != crate::modes::AUTOPILOT_ARDUPILOT || !text.starts_with("PreArm") {
+    fn note_prearm(&mut self, text: &str, severity: u8, now_ms: u64) {
+        if !is_prearm(text, severity) || self.events_heard {
             return;
         }
         let recently = self.prearm_spoken.get(text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
@@ -2485,7 +2491,7 @@ impl Vehicle {
                     crate::apmsubmotors::on_text(&self.flight_mode(), &status.text);
                     let actions = self.calibrate.on_text(&status.text, now_ms);
                     let bytes = self.follow_calibration(actions, now_ms);
-                    self.note_prearm(&status.text, now_ms);
+                    self.note_prearm(&status.text, status.severity, now_ms);
                     self.recent.push(status);
                     if self.recent.len() > MAX_MESSAGES {
                         self.recent.remove(0);
@@ -3261,6 +3267,15 @@ pub fn core_parameter_view(_backend: &dyn crate::router::Backend, args: &[String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_prearm_text_is_recognised_as_vehicle_handle_status_text_does() {
+        assert!(is_prearm("PreArm: RC not calibrated", 4));
+        assert!(is_prearm("Preflight Fail: No connection to the GCS", 4), "PX4 words it preflight, in any case");
+        assert!(is_prearm("PREFLIGHT FAIL", 2), "critical is severe enough");
+        assert!(!is_prearm("Preflight Fail", 1), "an alert is more severe than the rule admits");
+        assert!(!is_prearm("Takeoff detected", 6));
+    }
 
     #[test]
     fn the_sample_log_builds_one_vehicle_with_its_facts_and_counts() {
@@ -4364,7 +4379,7 @@ mod tests {
         assert_eq!(vehicle.spoken_status(&status(4, "Low battery"), 0).as_deref(), Some("Low battery"), "warning is at or above notice");
         assert_eq!(vehicle.spoken_status(&status(6, "Waypoint 3 reached"), 0), None, "info is not read aloud");
         assert_eq!(vehicle.spoken_status(&status(6, "#Payload released"), 0).as_deref(), Some("Payload released"), "a leading hash asks for speech");
-        vehicle.note_prearm("PreArm: RC not calibrated", 1_000);
+        vehicle.note_prearm("PreArm: RC not calibrated", 4, 1_000);
         assert_eq!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 5_000), None, "the same PreArm within ten seconds is not repeated");
         assert!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 12_000).is_some());
     }
