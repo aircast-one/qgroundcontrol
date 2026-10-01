@@ -236,6 +236,11 @@ fn number_json(value: f64, whole: bool) -> Value {
     }
 }
 
+fn elapsed_text(seconds: f64) -> String {
+    let whole = (seconds.trunc() as i64).rem_euclid(24 * 3600);
+    format!("{:02}:{:02}:{:02}", whole / 3600, whole / 60 % 60, whole % 60)
+}
+
 pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conversion>) -> Value {
     let whole = integer(&meta.value_type);
     let limits = type_limits(&meta.value_type);
@@ -268,7 +273,10 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         _ => given.clone(),
     };
     let value = cook(raw);
-    let value_string = spelled(&value, decimals, whole);
+    let value_string = match (meta.value_type == ValueType::ElapsedSeconds, value.as_f64()) {
+        (true, Some(seconds)) => elapsed_text(seconds),
+        _ => spelled(&value, decimals, whole),
+    };
     let units = unit.map_or_else(|| raw_units.clone(), |u| u.name.to_string());
     let is_number = raw.is_number() || raw.is_null();
     let raw_default = default_of(meta);

@@ -751,8 +751,8 @@ pub fn trigger_points_part(points: &[(f64, f64, f64)], part: &str) -> Option<Val
 const CLOCK_META: &str = include_str!("../../src/Vehicle/FactGroups/ClockFact.json");
 const AIRCAST_LINK_META: &str = include_str!("../../src/Vehicle/FactGroups/AircastLinkFact.json");
 const GPS_PROPERTIES: [&str; 17] = ["lat", "lon", "mgrs", "hdop", "vdop", "courseOverGround", "yaw", "count", "lock", "systemErrors", "spoofingState", "jammingState", "authenticationState", "correctionsQuality", "systemQuality", "gnssSignalQuality", "postProcessingQuality"];
-const VEHICLE_PROPERTIES: [&str; 31] = [
-    "roll", "pitch", "heading", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "airSpeedSetpoint", "climbRate", "altitudeRelative", "altitudeAMSL", "altitudeAboveTerr", "altitudeTuning", "altitudeTuningSetpoint", "xTrackError", "rangeFinderDist", "flightDistance", "distanceToHome", "timeToHome", "missionItemIndex", "headingToNextWP", "distanceToNextWP", "headingToHome", "headingFromHome", "headingFromGCS", "distanceToGCS", "hobbs", "throttlePct", "imuTemp", "rcRSSI",
+const VEHICLE_PROPERTIES: [&str; 32] = [
+    "roll", "pitch", "heading", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "airSpeedSetpoint", "climbRate", "altitudeRelative", "altitudeAMSL", "altitudeAboveTerr", "altitudeTuning", "altitudeTuningSetpoint", "xTrackError", "rangeFinderDist", "flightDistance", "flightTime", "distanceToHome", "timeToHome", "missionItemIndex", "headingToNextWP", "distanceToNextWP", "headingToHome", "headingFromHome", "headingFromGCS", "distanceToGCS", "hobbs", "throttlePct", "imuTemp", "rcRSSI",
 ];
 
 fn listing<'a>(meta: &str, properties: impl IntoIterator<Item = (&'a str, &'a str)>) -> Value {
@@ -910,6 +910,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn flight_time_is_an_elapsed_seconds_fact_as_vehicle_publishes_it() {
+        let fact = vehicle_fact("flightTime", &serde_json::json!(75.0)).unwrap();
+        assert_eq!(fact["name"], "flightTime");
+        assert_eq!(fact["rawValue"], 75.0);
+        assert_eq!(fact["valueString"], "00:01:15", "Fact formats elapsedSeconds as hh:mm:ss");
+    }
+
+    #[test]
     fn an_unknown_reading_reads_as_dashes_and_a_known_one_in_its_decimals() {
         let battery = BatteryFacts { voltage: Some(12.6), charge_state: 1, ..BatteryFacts::default() };
         let voltage = battery_fact(0, &battery, "voltage", None).unwrap();
@@ -937,7 +945,7 @@ mod tests {
         assert_eq!(groups.first().map(|(g, _)| *g), Some("orbitMapCircle"));
         let aggregate = &groups.iter().find(|(g, _)| *g == "gpsAggregate").unwrap().1["facts"];
         assert_eq!((aggregate[0]["shortDescription"].as_str(), aggregate[3]["shortDescription"].as_str()), (Some("Signal Spoofing State"), Some("")), "isStale has no metadata in GPSFact.json, so its label falls back to its name");
-        assert_eq!(vehicle["facts"].as_array().map(Vec::len), Some(31));
+        assert_eq!(vehicle["facts"].as_array().map(Vec::len), Some(32));
     }
 
     #[test]

@@ -506,6 +506,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "distanceToHome": crate::vehiclefact::vehicle_fact("distanceToHome", &json!(home_facts(v.facts.coordinate, v.home).0)),
         "headingToHome": crate::vehiclefact::vehicle_fact("headingToHome", &json!(home_facts(v.facts.coordinate, v.home).1)),
         "headingFromHome": crate::vehiclefact::vehicle_fact("headingFromHome", &json!(home_facts(v.facts.coordinate, v.home).2)),
+        "flightTime": crate::vehiclefact::vehicle_fact("flightTime", &json!(v.flight_time(crate::hub::now_ms()))),
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "isROIEnabled": v.roi_enabled,

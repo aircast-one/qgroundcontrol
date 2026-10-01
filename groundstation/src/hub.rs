@@ -338,6 +338,8 @@ pub struct Vehicle {
     log_denied: bool,
     log_error: Option<String>,
     was_armed: bool,
+    flight_started_ms: Option<u64>,
+    flight_seconds: f64,
     calibrate: Calibration,
 }
 
@@ -508,6 +510,8 @@ impl Vehicle {
             log_denied: false,
             log_error: None,
             was_armed: false,
+            flight_started_ms: None,
+            flight_seconds: 0.0,
             calibrate: Calibration::new(autopilot == crate::modes::AUTOPILOT_PX4),
         }
     }
@@ -2492,6 +2496,10 @@ impl Vehicle {
         self.prearm.as_ref().filter(|(_, at)| now_ms.saturating_sub(*at) < PREARM_SHOWN_MS).map_or_else(String::new, |(text, _)| text.clone())
     }
 
+    pub fn flight_time(&self, now_ms: u64) -> f64 {
+        self.flight_started_ms.map_or(self.flight_seconds, |started| now_ms.saturating_sub(started) as f64 / 1000.0)
+    }
+
     pub fn armed(&self) -> bool {
         self.armed_now
     }
@@ -2788,6 +2796,10 @@ impl Vehicle {
         self.obstacle.apply(message, now_ms);
         if !was_armed && self.armed_now {
             self.clear_trigger_points();
+            (self.flight_started_ms, self.flight_seconds) = (Some(now_ms), 0.0);
+        }
+        if was_armed && !self.armed_now {
+            (self.flight_seconds, self.flight_started_ms) = (self.flight_time(now_ms), None);
         }
         self.note_trigger_point(message);
         self.note_mission_index(message);
