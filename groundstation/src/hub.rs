@@ -57,6 +57,7 @@ const CMD_CONFIGURE_ACTUATOR: u16 = 311;
 const ACTUATOR_ACTION_TIMEOUT_MS: u64 = 3000;
 const MAV_STATE_ACTIVE: u8 = 4;
 const SEVERITY_ERROR: u8 = 3;
+const SEVERITY_NOTICE: u8 = 5;
 const COMMAND_LONG_ID: u32 = 76;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const LINK_SILENT_MS: u64 = 3500;
@@ -229,6 +230,7 @@ pub struct Vehicle {
     pub orbit_circle: Option<(f32, i32, i32)>,
     pub prearm: Option<(String, u64)>,
     prearm_spoken: BTreeMap<String, u64>,
+    announced: (Option<String>, bool, bool),
     pub distance: DistanceSensorFacts,
     pub local: LocalPositionFacts,
     pub local_setpoint: LocalPositionFacts,
@@ -368,6 +370,7 @@ impl Vehicle {
             orbit_circle: None,
             prearm: None,
             prearm_spoken: BTreeMap::new(),
+            announced: (None, false, false),
             distance: DistanceSensorFacts::default(),
             local: LocalPositionFacts::default(),
             local_setpoint: LocalPositionFacts::default(),
@@ -601,6 +604,7 @@ impl Vehicle {
                 plantransfer::Out::SendCount(count) => self.encode(&Outbound::MissionCount { target, plan: kind, count }).into_iter().collect(),
                 plantransfer::Out::SendItem(item) => self.encode(&Outbound::MissionItemInt { target, plan: kind, item }).into_iter().collect(),
                 plantransfer::Out::SendAck => self.encode(&Outbound::MissionAck { target, plan: kind, result: plantransfer::RESULT_ACCEPTED }).into_iter().collect(),
+                plantransfer::Out::ClearAll => self.encode(&Outbound::MissionClearAll { target, plan: kind }).into_iter().collect(),
                 plantransfer::Out::StartTimer(ms) => {
                     self.plans[plan].due = Some(now_ms + ms);
                     Vec::new()
@@ -697,6 +701,13 @@ impl Vehicle {
         }
         match request.get("action").and_then(Value::as_str).unwrap_or("") {
             "load" => Ok(self.load_plan(kind, now_ms)),
+            "removeAll" => {
+                if kind == PLAN_MISSION {
+                    (self.mission_current, self.mission_last_current) = (-1, -1);
+                }
+                let outs = self.plans[kind as usize].transfer.remove_all();
+                Ok(self.follow_plan(kind, outs, now_ms))
+            }
             "write" => {
                 let items = match kind {
                     PLAN_FENCE => plantransfer::fence_items(&Self::fence_from(request).ok_or_else(|| "A fence write needs polygons with [lat, lon] vertices, circles with a center and radius, and an optional breachReturn.".to_string())?),
@@ -1766,6 +1777,29 @@ impl Vehicle {
         snapshot
     }
 
+    fn spoken_status(&self, status: &StatusText, now_ms: u64) -> Option<String> {
+        let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
+        let text = crate::messagelog::admitted(px4, self.events_heard, status.severity, &status.text)?;
+        let repeated = text.starts_with("PreArm") && self.prearm_spoken.get(&text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
+        let asked = status.text.starts_with('#') || status.severity <= SEVERITY_NOTICE;
+        (asked && !repeated).then_some(text)
+    }
+
+    pub fn announce(&mut self, prefix: &str) {
+        let (mode, armed, lost) = (self.flight_mode(), self.armed(), self.connection_lost);
+        let (last_mode, last_armed, last_lost) = self.announced.clone();
+        if !mode.is_empty() && last_mode.as_deref() != Some(mode.as_str()) {
+            crate::speech::say(&format!("{prefix} {mode} flight mode").to_lowercase());
+        }
+        if armed != last_armed {
+            crate::speech::say(&format!("{prefix} {}", if armed { "armed" } else { "disarmed" }).to_lowercase());
+        }
+        if lost != last_lost {
+            crate::speech::say(&format!("{prefix}{}", if lost { "Communication lost" } else { "Communication regained" }).to_lowercase());
+        }
+        self.announced = (if mode.is_empty() { last_mode } else { Some(mode) }, armed, lost);
+    }
+
     fn note_prearm(&mut self, text: &str, now_ms: u64) {
         if self.autopilot != crate::modes::AUTOPILOT_ARDUPILOT || !text.starts_with("PreArm") {
             return;
@@ -2346,6 +2380,9 @@ impl Vehicle {
                 let received = self.status_text.receive(header.component_id, t.severity as u8, t.id, t.chunk_seq, &t.text[..end]);
                 self.chunk_due = self.status_text.has_pending().then_some(now_ms + CHUNKED_TEXT_TIMEOUT_MS);
                 if let Some(status) = received {
+                    if let Some(spoken) = self.spoken_status(&status, now_ms) {
+                        crate::speech::say(&spoken.to_lowercase());
+                    }
                     self.log_status(&status);
                     crate::apmsubmotors::on_text(&self.flight_mode(), &status.text);
                     let actions = self.calibrate.on_text(&status.text, now_ms);
@@ -2690,6 +2727,11 @@ impl Hub {
     }
 
     pub fn tick_with(&mut self, now_ms: u64, now_s: u64) -> Vec<(LinkId, Vec<u8>)> {
+        let count = self.vehicles.len();
+        self.vehicles.values_mut().filter(|vehicle| !vehicle.replay).for_each(|vehicle| {
+            let prefix = crate::speech::vehicle_prefix(vehicle.id, count);
+            vehicle.announce(&prefix);
+        });
         let inputs = self.remote_inputs.as_ref();
         self.vehicles.values_mut().flat_map(|vehicle| {
             let (link, replay) = (vehicle.link, vehicle.replay);
@@ -4153,6 +4195,21 @@ mod tests {
         assert!(hub.home_follows_gcs(false, (47.5, 8.5, 400.0), 41_100).is_empty());
         let sent = hub.home_follows_gcs(true, (47.5, 8.5, 400.0), 41_200);
         assert!(sent.iter().any(|(_, b)| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_SET_HOME && c.param5 == 47.5 && c.param7 == 400.0)), "{sent:?}");
+    }
+
+    #[test]
+    fn status_texts_are_spoken_by_severity_or_a_leading_hash() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let status = |severity: u8, text: &str| StatusText { component: 1, severity, text: text.into() };
+        assert_eq!(vehicle.spoken_status(&status(4, "Low battery"), 0).as_deref(), Some("Low battery"), "warning is at or above notice");
+        assert_eq!(vehicle.spoken_status(&status(6, "Waypoint 3 reached"), 0), None, "info is not read aloud");
+        assert_eq!(vehicle.spoken_status(&status(6, "#Payload released"), 0).as_deref(), Some("Payload released"), "a leading hash asks for speech");
+        vehicle.note_prearm("PreArm: RC not calibrated", 1_000);
+        assert_eq!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 5_000), None, "the same PreArm within ten seconds is not repeated");
+        assert!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 12_000).is_some());
     }
 
     #[test]

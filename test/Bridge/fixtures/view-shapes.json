@@ -6436,6 +6436,10 @@
         "view.signingKeys.minPassphraseLength",
         "view.signingKeys.state",
         "view.signingKeys.vehicle",
+        "view.speech(0).class",
+        "view.speech(0).kind",
+        "view.speech(0).last",
+        "view.speech(0).lines.#",
         "view.supportHost(support.ardupilot.org:14550).class",
         "view.supportHost(support.ardupilot.org:14550).error",
         "view.supportHost(support.ardupilot.org:14550).kind",
@@ -9111,6 +9115,10 @@
         "view.signingKeys.minPassphraseLength",
         "view.signingKeys.state",
         "view.signingKeys.vehicle",
+        "view.speech(0).class",
+        "view.speech(0).kind",
+        "view.speech(0).last",
+        "view.speech(0).lines.#",
         "view.supportHost(support.ardupilot.org:14550).class",
         "view.supportHost(support.ardupilot.org:14550).error",
         "view.supportHost(support.ardupilot.org:14550).kind",
@@ -10254,6 +10262,7 @@
             "view.itemFacts",
             "view.gpsRtkBase",
             "view.gpsRtk",
+            "view.speech",
             "view.videoSource",
             "view.kmlFile",
             "view.shapeFile",
@@ -13074,6 +13083,14 @@
         "minPassphraseLength": "number",
         "state": "string",
         "vehicle": "bool"
+    },
+    "view.speech(0)": {
+        "class": "string",
+        "kind": "string",
+        "last": "number",
+        "lines": [
+            "empty"
+        ]
     },
     "view.supportHost(support.ardupilot.org:14550)": {
         "class": "string",

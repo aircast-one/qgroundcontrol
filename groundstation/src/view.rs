@@ -53,6 +53,7 @@ use crate::escview;
 use crate::gcsbattery;
 use crate::gpsresilience;
 use crate::rtkbase;
+use crate::speech;
 use crate::firstrun;
 use crate::applog;
 use crate::offlinemaps;
@@ -162,6 +163,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.positionForms", "<latitude>,<longitude>"),
     ("view.gcsBattery", "<percent>,<charging>"),
     ("view.appLog", "<level>,<category>,<text>,<regex>,<after>"),
+    ("view.speech", "<after>"),
     ("view.offlineMaps", "<mapType>,<topLeftLon>,<topLeftLat>,<bottomRightLon>,<bottomRightLat>,<minZoom>,<maxZoom>"),
     ("view.mgrsToGeo", "<mgrs>"),
     ("view.coreVehicle", "<vehicle id>"),
@@ -290,6 +292,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.itemFacts", deps: itemfacts::DEPS, compute: itemfacts::item_facts_view },
     View { path: "view.gpsRtkBase", deps: gpsrtk::DEPS, compute: gpsrtk::base_view },
     View { path: "view.gpsRtk", deps: &[], compute: rtkbase::rtk_view },
+    View { path: "view.speech", deps: &[], compute: speech::speech_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
@@ -559,6 +562,7 @@ mod deps_cover_reads {
             ("ubxbase", include_str!("ubxbase.rs")),
             ("rtkbase", include_str!("rtkbase.rs")),
             ("sbfbase", include_str!("sbfbase.rs")),
+            ("speech", include_str!("speech.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),

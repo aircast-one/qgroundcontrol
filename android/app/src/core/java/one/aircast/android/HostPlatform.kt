@@ -35,12 +35,14 @@ object HostPlatform {
         val tileCache = File(mapCache, "qgcMapCache.db").absolutePath
         MapTileHost.fetch = { mapType, x, y, zoom -> QGCBridge.mapTile(mapType, x, y, zoom, tileCache) }
         GcsLocation.start(activity)
+        SpeechOut.start(activity)
         return null
     }
 
     fun stop(activity: Activity) {
         if (!activity.isFinishing) return
         GcsLocation.stop()
+        SpeechOut.stop()
         QGCBridge.shutdown()
         QGCUsbSerialManager.cleanup(activity)
     }

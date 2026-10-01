@@ -379,6 +379,7 @@ ACCEPTED = {
     "verificationUrl": "the account object is the core flavor's AircastAccount port (account.rs object()), served only without a Qt host, so the Qt-hosted recording rig never sees it",
     "depth": "view.logCategories lists the log targets the core logger has seen, and the Qt-hosted rig records it before any core target has logged, so the list records empty; applog.rs categories_view serves it",
     "shortName": "view.logCategories lists the log targets the core logger has seen, and the Qt-hosted rig records it before any core target has logged, so the list records empty; applog.rs categories_view serves it",
+    "volume": "view.speech lists lines spoken since the given sequence, and the recording rig has said nothing when it records, so the list records empty; speech.rs speech_view serves volume per line",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
