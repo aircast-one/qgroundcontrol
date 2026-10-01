@@ -14,6 +14,7 @@ object SpeechOut {
     private const val SPEECH_VIEW = "view.speech"
 
     private var engine: TextToSpeech? = null
+    @Volatile private var initialised = false
     private var ready = false
     private var poller: ScheduledExecutorService? = null
     private var after: Long? = null
@@ -21,8 +22,7 @@ object SpeechOut {
     fun start(context: Context) {
         if (engine != null) return
         engine = TextToSpeech(context.applicationContext) { status ->
-            ready = status == TextToSpeech.SUCCESS
-            if (ready) engine?.language = Locale.US
+            initialised = status == TextToSpeech.SUCCESS
         }
         poller = Executors.newSingleThreadScheduledExecutor().apply {
             scheduleWithFixedDelay(::poll, POLL_MS, POLL_MS, TimeUnit.MILLISECONDS)
@@ -30,6 +30,10 @@ object SpeechOut {
     }
 
     private fun poll() {
+        if (initialised && !ready) {
+            engine?.language = Locale.US
+            ready = true
+        }
         val view = runCatching { Qgc.get(after?.let { "$SPEECH_VIEW($it)" } ?: SPEECH_VIEW) }.getOrNull() ?: return
         val seen = after
         after = view.optLong("last", seen ?: 0L)
@@ -46,6 +50,7 @@ object SpeechOut {
         poller = null
         engine?.shutdown()
         engine = null
+        initialised = false
         ready = false
         after = null
     }
