@@ -84,7 +84,11 @@ impl Job {
     }
 
     pub fn download(component: u8, path: &str, seq: u16) -> Result<(Job, Vec<Step>), String> {
-        let (download, outs) = Download::start_from(component, path, false, seq)?;
+        Self::download_sized(component, path, seq, false)
+    }
+
+    pub fn download_sized(component: u8, path: &str, seq: u16, check_size: bool) -> Result<(Job, Vec<Step>), String> {
+        let (download, outs) = Download::start_from(component, path, check_size, seq)?;
         Ok((Job { machine: Machine::Download(download), path: path.to_string() }, outs.into_iter().map(from_download).collect()))
     }
 

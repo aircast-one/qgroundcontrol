@@ -2123,7 +2123,7 @@ impl Vehicle {
             (true, _) => Err(FILES_BUSY.to_string()),
             (false, LogFileJob::List(path)) if self.ftp_list_time_unsupported => crate::filejobs::Job::list(component, path, seq),
             (false, LogFileJob::List(path)) => crate::filejobs::Job::list_with_time(component, path, seq),
-            (false, LogFileJob::Download(path, _)) => crate::filejobs::Job::download(component, path, seq),
+            (false, LogFileJob::Download(path, _)) => crate::filejobs::Job::download_sized(component, path, seq, true),
             (false, LogFileJob::Delete(path)) => crate::filejobs::Job::delete(component, path, seq),
         };
         match started {
