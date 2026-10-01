@@ -95,6 +95,7 @@ fun FlyMap(
             follow = true,
             keepCentered = keepCentered,
             gimbals = plan.gimbals,
+            proximityRadar = true,
             cameraBottomPx = cameraBottomPx,
             missionItems = plan.items,
             linkStartToHome = plan.linkStartToHome,

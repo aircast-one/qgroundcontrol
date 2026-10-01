@@ -12,14 +12,28 @@ pub const DEPS: &[&str] = &[
     "vehicle.distanceSensors.rotationYaw225",
     "vehicle.distanceSensors.rotationYaw270",
     "vehicle.distanceSensors.rotationYaw315",
+    "vehicle.distanceSensors.maxDistance",
 ];
 
 const SECTORS: [&str; 8] = ["rotationNone", "rotationYaw45", "rotationYaw90", "rotationYaw135", "rotationYaw180", "rotationYaw225", "rotationYaw270", "rotationYaw315"];
 const NO_VALUE: &str = "–.––";
 const RANGE_METERS: f64 = 6.0;
 
+fn facts(group: &Value) -> Vec<Value> {
+    group.get("facts").and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+pub fn max_meters(group: &Value) -> Option<f64> {
+    facts(group)
+        .iter()
+        .find(|fact| fact.get("property").or(fact.get("name")).and_then(Value::as_str) == Some("maxDistance"))
+        .and_then(|fact| fact.get("rawValue").or(fact.get("value")))
+        .and_then(Value::as_f64)
+        .filter(|m| m.is_finite() && *m > 0.0)
+}
+
 pub fn sectors(group: &Value) -> Vec<Value> {
-    let facts = group.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+    let facts = facts(group);
     SECTORS
         .iter()
         .enumerate()
@@ -42,6 +56,7 @@ pub fn proximity_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "ProximityRadar",
         "shown": group.get("telemetryAvailable").and_then(Value::as_bool).unwrap_or(false),
         "rangeMeters": RANGE_METERS,
+        "maxMeters": max_meters(&group),
         "sectors": sectors(&group),
     })
 }
@@ -62,5 +77,8 @@ mod tests {
         assert_eq!((read[0]["bearing"].clone(), read[0]["meters"].clone(), read[0]["text"].clone()), (json!(0), json!(2.5), json!("2.50")));
         assert_eq!((read[2]["meters"].clone(), read[2]["text"].clone()), (Value::Null, json!(NO_VALUE)));
         assert_eq!(read[7]["bearing"], 315);
+        assert_eq!(max_meters(&group), None);
+        assert_eq!(max_meters(&json!({ "facts": [{ "name": "maxDistance", "rawValue": 40.0 }] })), Some(40.0));
+        assert_eq!(max_meters(&json!({ "facts": [{ "name": "maxDistance", "rawValue": 0.0 }] })), None);
     }
 }

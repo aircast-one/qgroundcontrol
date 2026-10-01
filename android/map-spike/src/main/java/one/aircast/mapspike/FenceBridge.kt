@@ -238,22 +238,23 @@ fun circleRing(
         return emptyList()
     }
 
-    val angular = radiusMetres / EARTH_RADIUS_M
+    return (0 until segments).map { step -> pointAt(centre, radiusMetres, 360.0 * step / segments) }
+}
+
+fun pointAt(centre: TrackPoint, metres: Double, bearingDegrees: Double): TrackPoint {
+    val angular = metres / EARTH_RADIUS_M
     val lat = Math.toRadians(centre.latitude)
     val lon = Math.toRadians(centre.longitude)
-
-    return (0 until segments).map { step ->
-        val bearing = 2 * Math.PI * step / segments
-        val pointLat = kotlin.math.asin(
-            kotlin.math.sin(lat) * kotlin.math.cos(angular) +
-                kotlin.math.cos(lat) * kotlin.math.sin(angular) * kotlin.math.cos(bearing),
-        )
-        val pointLon = lon + kotlin.math.atan2(
-            kotlin.math.sin(bearing) * kotlin.math.sin(angular) * kotlin.math.cos(lat),
-            kotlin.math.cos(angular) - kotlin.math.sin(lat) * kotlin.math.sin(pointLat),
-        )
-        TrackPoint(Math.toDegrees(pointLat), Math.toDegrees(pointLon))
-    }
+    val bearing = Math.toRadians(bearingDegrees)
+    val pointLat = kotlin.math.asin(
+        kotlin.math.sin(lat) * kotlin.math.cos(angular) +
+            kotlin.math.cos(lat) * kotlin.math.sin(angular) * kotlin.math.cos(bearing),
+    )
+    val pointLon = lon + kotlin.math.atan2(
+        kotlin.math.sin(bearing) * kotlin.math.sin(angular) * kotlin.math.cos(lat),
+        kotlin.math.cos(angular) - kotlin.math.sin(lat) * kotlin.math.sin(pointLat),
+    )
+    return TrackPoint(Math.toDegrees(pointLat), Math.toDegrees(pointLon))
 }
 
 fun circlesAsPolygons(circles: List<FenceCircle>): List<FencePolygon> =

@@ -167,6 +167,7 @@ fun VehicleMap(
     traffic: List<TrafficMark> = emptyList(),
     gimbals: List<GimbalAzimuth> = emptyList(),
     breachReturn: TrackPoint? = null,
+    proximityRadar: Boolean = false,
 ) {
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
@@ -297,6 +298,12 @@ fun VehicleMap(
     LaunchedEffect(style, traffic) {
         val trafficStyle = style ?: return@LaunchedEffect
         (trafficStyle.getSource(TRAFFIC_SOURCE) as? GeoJsonSource)?.setGeoJson(trafficFeatures(traffic))
+    }
+
+    val radarJson = if (proximityRadar) mapPath(PROXIMITY_RADAR_VIEW).value else null
+    LaunchedEffect(style, latitude, longitude, heading, radarJson) {
+        val radarStyle = style ?: return@LaunchedEffect
+        renderProximityRadar(radarStyle, latitude, longitude, heading, radarReading(radarJson))
     }
 
     LaunchedEffect(style, latitude, longitude, gimbals) {
@@ -467,6 +474,7 @@ private fun installLayers(style: Style) {
 }
 
 private fun installVehicleLayer(style: Style) {
+    installProximityRadarLayer(style)
     installGimbalLayer(style)
     if (style.getSource(VEHICLE_SOURCE) == null) {
         style.addSource(GeoJsonSource(VEHICLE_SOURCE))
