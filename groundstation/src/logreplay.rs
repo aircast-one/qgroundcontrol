@@ -51,6 +51,10 @@ struct Controller {
 
 static CONTROLLER: LazyLock<Mutex<Controller>> = LazyLock::new(|| Mutex::new(Controller::default()));
 
+pub fn playing() -> bool {
+    lock().session.as_ref().is_some_and(|s| s.replay.is_playing())
+}
+
 fn lock() -> MutexGuard<'static, Controller> {
     CONTROLLER.lock().unwrap_or_else(PoisonError::into_inner)
 }

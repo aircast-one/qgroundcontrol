@@ -556,7 +556,7 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
 }
 
 pub fn tick(now_ms: u64) {
-    if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) {
+    if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) || crate::logreplay::playing() {
         return;
     }
     {
