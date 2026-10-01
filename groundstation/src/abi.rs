@@ -254,17 +254,18 @@ pub(crate) fn start_pump() {
             .name("groundstation-pump".to_string())
             .spawn(|| loop {
                 std::thread::sleep(PUMP_PERIOD);
-                let (open, cloud, high_latency) = {
+                let (open, kinds) = {
                     let transports = crate::linkhost::TRANSPORTS.lock().unwrap();
                     let open = transports.open_ids();
                     let cloud: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(c.kind, crate::linkconfig::Kind::AircastCloud { .. }))).collect();
                     let high_latency: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| c.high_latency)).collect();
-                    (open, cloud, high_latency)
+                    let usb_direct: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(c.kind, crate::linkconfig::Kind::Serial { .. }))).collect();
+                    (open, crate::hub::LinkKinds { cloud, high_latency, usb_direct })
                 };
                 let outbound = {
                     let mut hub = crate::hub::lock();
                     hub.retain_links(&open);
-                    hub.check_links(crate::hub::now_ms(), &cloud, &high_latency);
+                    hub.check_links(crate::hub::now_ms(), &kinds);
                     hub.tick_with(crate::hub::now_ms(), crate::hub::now_us() / 1_000_000)
                 };
                 deliver(outbound);

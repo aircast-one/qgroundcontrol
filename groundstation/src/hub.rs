@@ -249,6 +249,7 @@ pub struct Vehicle {
     pub comm_lost_enabled: bool,
     pub link_states: Vec<(LinkId, u64, bool)>,
     pub primary_link: Option<LinkId>,
+    pub link_kinds: LinkKinds,
     pub auto_disconnect: bool,
     pub check_list_state: i64,
     pub mission_last_current: i32,
@@ -401,6 +402,7 @@ impl Vehicle {
             comm_lost_enabled: true,
             link_states: Vec::new(),
             primary_link: None,
+            link_kinds: LinkKinds::default(),
             auto_disconnect: false,
             check_list_state: 0,
             mission_last_current: -1,
@@ -2009,13 +2011,31 @@ impl Vehicle {
         }
     }
 
+    fn direct_link_alive(&self) -> bool {
+        self.link_states.iter().any(|(link, _, lost)| !lost && !self.link_kinds.cloud.contains(link) && !self.link_kinds.high_latency.contains(link))
+    }
+
+    fn best_primary_link(&self) -> Option<LinkId> {
+        let kinds = &self.link_kinds;
+        let live: Vec<LinkId> = self.link_states.iter().filter(|(_, _, lost)| !lost).map(|(link, _, _)| *link).collect();
+        let normal = |cloud: bool| live.iter().copied().find(|link| kinds.cloud.contains(link) == cloud && !kinds.high_latency.contains(link));
+        let held_high_latency = self.primary_link.filter(|link| kinds.high_latency.contains(link) && self.link_states.iter().any(|(id, _, _)| id == link));
+        live.iter().copied().find(|link| kinds.usb_direct.contains(link))
+            .or_else(|| normal(false))
+            .or_else(|| normal(true))
+            .or(held_high_latency)
+            .or_else(|| live.iter().copied().find(|link| kinds.high_latency.contains(link)))
+    }
+
     fn update_primary_link(&mut self) -> bool {
-        let held = self.primary_link.and_then(|id| self.link_states.iter().find(|(link, _, _)| *link == id));
-        if held.is_some_and(|(_, _, lost)| !lost) {
+        let held = self.primary_link.and_then(|id| self.link_states.iter().find(|(link, _, _)| *link == id)).copied();
+        let kinds = &self.link_kinds;
+        let keep = held.is_some_and(|(link, _, lost)| !lost && !kinds.high_latency.contains(&link) && !(kinds.cloud.contains(&link) && self.direct_link_alive()));
+        if keep {
             return false;
         }
-        let best = self.link_states.iter().find(|(_, _, lost)| !lost).map(|(link, _, _)| *link);
-        if held.is_some() && best.is_none() {
+        let best = self.best_primary_link();
+        if held.is_some() && best.is_none() || best == self.primary_link {
             return false;
         }
         let switched = held.is_some() && best != self.primary_link;
@@ -2059,10 +2079,12 @@ impl Vehicle {
         }
     }
 
-    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId], high_latency: &[LinkId]) {
+    pub fn check_links(&mut self, now_ms: u64) {
         if !self.comm_lost_enabled {
             return;
         }
+        let high_latency = self.link_kinds.high_latency.clone();
+        let cloud = self.link_kinds.cloud.clone();
         let silenced: Vec<LinkId> = self.link_states.iter().filter(|(link, last, lost)| !lost && !high_latency.contains(link) && now_ms.saturating_sub(*last) > LINK_SILENT_MS).map(|(link, _, _)| *link).collect();
         let several = self.link_states.len() > 1;
         silenced.iter().for_each(|link| {
@@ -2979,6 +3001,13 @@ impl Vehicle {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LinkKinds {
+    pub cloud: Vec<LinkId>,
+    pub high_latency: Vec<LinkId>,
+    pub usb_direct: Vec<LinkId>,
+}
+
 #[derive(Debug, Default)]
 pub struct Hub {
     vehicles: BTreeMap<u8, Vehicle>,
@@ -3339,8 +3368,11 @@ impl Hub {
         }
     }
 
-    pub fn check_links(&mut self, now_ms: u64, cloud: &[LinkId], high_latency: &[LinkId]) {
-        self.vehicles.values_mut().for_each(|v| v.check_links(now_ms, cloud, high_latency));
+    pub fn check_links(&mut self, now_ms: u64, kinds: &LinkKinds) {
+        self.vehicles.values_mut().for_each(|v| {
+            v.link_kinds = kinds.clone();
+            v.check_links(now_ms);
+        });
     }
 
     pub fn remove(&mut self, id: u8) {
@@ -3750,7 +3782,7 @@ mod tests {
         let header = MavHeader { system_id: 7, component_id: 1, sequence: 0 };
         hub.on_frame(Origin { link: 11, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
         hub.on_frame(Origin { link: 12, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_000);
-        hub.check_links(4_000, &[11], &[]);
+        hub.check_links(4_000, &LinkKinds { cloud: vec![11], ..LinkKinds::default() });
         assert_eq!(hub.vehicles[&7].primary_link, Some(12));
         assert!(crate::speech::spoken_lines().iter().any(|line| line == "switching communication back to the direct link."));
     }
@@ -3776,7 +3808,7 @@ mod tests {
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 100);
         assert_eq!(hub.active().unwrap().primary_link, Some(1), "the first link heard is primary and a second one does not take over");
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_000);
-        hub.check_links(4_000, &[], &[]);
+        hub.check_links(4_000, &LinkKinds::default());
         let vehicle = hub.active().unwrap();
         assert_eq!((vehicle.primary_link, vehicle.link_states.iter().map(|(_, _, lost)| *lost).collect::<Vec<_>>()), (Some(2), vec![true, false]), "link 1 was silent past 3.5 s");
         hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 4_100);
@@ -3789,18 +3821,34 @@ mod tests {
     }
 
     #[test]
+    fn a_live_direct_link_takes_the_primary_from_the_cloud_relay() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let kinds = LinkKinds { cloud: vec![1], high_latency: vec![3], usb_direct: vec![4] };
+        hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.check_links(100, &kinds);
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 200);
+        assert_eq!(hub.active().unwrap().primary_link, Some(2), "_updatePrimaryLink leaves a cloud primary once a direct link is alive");
+        hub.on_frame(Origin { link: 4, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 300);
+        assert_eq!(hub.active().unwrap().primary_link, Some(2), "a live direct primary is kept");
+        hub.check_links(3_000, &kinds);
+        hub.on_frame(Origin { link: 3, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_100);
+        assert_eq!(hub.active().unwrap().primary_link, Some(2), "a high-latency link never displaces a live normal one");
+    }
+
+    #[test]
     fn any_traffic_keeps_a_link_alive_and_a_high_latency_link_never_times_out() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
         hub.on_frame(origin(0), &header, &MavMessage::ATTITUDE(Default::default()), 0, 3_000);
-        hub.check_links(5_000, &[], &[]);
+        hub.check_links(5_000, &LinkKinds::default());
         assert!(!hub.active().unwrap().connection_lost, "VehicleLinkManager restarts a link's timer on any message, not only HEARTBEAT");
-        hub.check_links(7_000, &[], &[]);
+        hub.check_links(7_000, &LinkKinds::default());
         assert!(hub.active().unwrap().connection_lost);
         hub.on_frame(origin(0), &header, &MavMessage::ATTITUDE(Default::default()), 0, 7_100);
         assert!(!hub.active().unwrap().connection_lost, "any traffic on a lost link regains it");
-        hub.check_links(60_000, &[], &[0]);
+        hub.check_links(60_000, &LinkKinds { high_latency: vec![0], ..LinkKinds::default() });
         assert!(!hub.active().unwrap().connection_lost, "a high-latency link is never counted lost");
     }
 
@@ -3810,10 +3858,10 @@ mod tests {
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
         hub.set_link_flag("communicationLostEnabled", false);
-        hub.check_links(10 * LINK_SILENT_MS, &[], &[]);
+        hub.check_links(10 * LINK_SILENT_MS, &LinkKinds::default());
         assert!(!hub.active().unwrap().connection_lost, "Qt's check returns early while the check is off");
         hub.set_link_flag("communicationLostEnabled", true);
-        hub.check_links(10 * LINK_SILENT_MS, &[], &[]);
+        hub.check_links(10 * LINK_SILENT_MS, &LinkKinds::default());
         assert!(hub.active().unwrap().connection_lost);
     }
 
@@ -4020,9 +4068,9 @@ mod tests {
         hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 5, 0);
         let snapshot = hub.snapshot();
         assert_eq!((snapshot["vehicle"]["armed"].as_bool(), snapshot["vehicle"]["autopilot"].as_u64(), snapshot["vehicle"]["heartbeats"].as_u64()), (Some(true), Some(12), Some(1)));
-        hub.check_links(LINK_SILENT_MS, &[], &[]);
+        hub.check_links(LINK_SILENT_MS, &LinkKinds::default());
         assert!(!hub.snapshot()["vehicle"]["connectionLost"].as_bool().unwrap());
-        hub.check_links(LINK_SILENT_MS + 1, &[], &[]);
+        hub.check_links(LINK_SILENT_MS + 1, &LinkKinds::default());
         assert_eq!((hub.snapshot()["available"].as_bool(), hub.snapshot()["vehicle"]["connectionLost"].as_bool()), (Some(true), Some(true)), "a silent vehicle is kept and flagged, as the Qt head keeps it until its link closes");
         assert_eq!(hub.snapshot()["heard"], false, "a head reading only the top-level flags drew a frozen aircraft as a live one, because the liveness answer sat a level below the one it reached for");
         hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 3_500_007, 0);
