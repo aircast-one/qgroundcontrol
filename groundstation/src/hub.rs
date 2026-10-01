@@ -1693,6 +1693,14 @@ impl Vehicle {
             Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("ftp") => return self.file_job(action, now_ms),
             Some("camera") => return self.camera_action(action, now_ms),
+            Some("paramSetRaw") => {
+                let component = action.get("component").and_then(Value::as_u64).and_then(|c| u8::try_from(c).ok()).unwrap_or(self.component);
+                let name = action.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).ok_or("A parameter is set by name.")?.to_string();
+                let param_type = action.get("type").and_then(Value::as_u64).and_then(|t| u8::try_from(t).ok()).ok_or("A parameter missing on the vehicle is sent with its MAVLink type.")?;
+                let value = action.get("value").and_then(Value::as_f64).and_then(|v| ParamValue::from_f64(param_type, v)).ok_or("That value does not fit the parameter's type.")?;
+                let bits = if self.ardupilot_components.contains(&component) { value.encode_cast() } else { value.encode() };
+                return Ok(self.encode(&Outbound::ParamSet { target: (self.id, component), name, bits, param_type: value.param_type() }).into_iter().collect());
+            }
             Some("mavlinkCommand") => {
                 let command = action.get("command").and_then(Value::as_u64).and_then(|c| u16::try_from(c).ok()).ok_or("A MAVLink action needs its command id.")?;
                 let component = action.get("component").and_then(Value::as_u64).and_then(|c| u8::try_from(c).ok()).unwrap_or(self.component);

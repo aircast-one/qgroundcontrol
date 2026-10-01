@@ -177,7 +177,7 @@ pub fn review(backend: &dyn Backend, args: &str) -> Value {
                     }))
                 }
                 None if p.mission_planner => Some(json!({ "componentId": p.component, "name": p.name, "fileValue": p.value, "fileRaw": number, "vehicleValue": "", "units": "", "noVehicleValue": true, "cannotSend": true })),
-                None => number.map(|file| json!({ "componentId": p.component, "name": p.name, "fileValue": p.value, "fileRaw": file, "vehicleValue": "", "units": "", "noVehicleValue": true, "cannotSend": true })),
+                None => number.map(|file| json!({ "componentId": p.component, "name": p.name, "fileValue": p.value, "fileRaw": file, "vehicleValue": "", "units": "", "noVehicleValue": true, "cannotSend": p.mav_type.is_none(), "mavType": p.mav_type })),
             }
         })
         .collect();
@@ -204,8 +204,16 @@ pub fn apply(backend: &dyn Backend, args: &str) -> Value {
             let name = row.get("name")?.as_str()?.to_string();
             let component = row.get("componentId").and_then(Value::as_i64).unwrap_or(-1);
             let value = row.get("fileRaw").and_then(Value::as_f64)?;
-            let sendable = !flag(row, "cannotSend") && fact(backend, component, &name).is_some();
-            let written = sendable && flag(&crate::factwrite::write(backend, &parameter_path(component, &name), &json!({ "value": value }).to_string()), "ok");
+            let sendable = !flag(row, "cannotSend");
+            let written = match (sendable, fact(backend, component, &name).is_some()) {
+                (false, _) => false,
+                (true, true) => flag(&crate::factwrite::write(backend, &parameter_path(component, &name), &json!({ "value": value }).to_string()), "ok"),
+                (true, false) => {
+                    let vehicle = crate::hub::lock().active_id();
+                    let raw = json!({ "action": "paramSetRaw", "vehicle": vehicle, "component": component, "name": name, "value": value, "type": row.get("mavType") });
+                    vehicle.and_then(|_| backend.core_guided(&raw)).is_some_and(|sent| sent.is_ok())
+                }
+            };
             Some((name, written))
         })
         .collect();
@@ -284,6 +292,7 @@ mod tests {
         assert_eq!(rows.iter().map(|r| r["name"].as_str().unwrap()).collect::<Vec<_>>(), ["RTL_ALT", "NEW_PARAM", "MP_ONLY"]);
         assert_eq!(rows[0]["fileValue"], "2000");
         assert_eq!(rows[2]["cannotSend"], true);
+        assert_eq!((rows[1]["noVehicleValue"].clone(), rows[1]["cannotSend"].clone(), rows[1]["mavType"].clone()), (json!(true), json!(false), json!(6)), "ParameterEditorController keeps a QGC-format row the vehicle lacks sendable, typed from its own column");
         assert_eq!(review(&vehicle(), &json!(["# nothing"]).to_string())["ok"], false);
     }
 
