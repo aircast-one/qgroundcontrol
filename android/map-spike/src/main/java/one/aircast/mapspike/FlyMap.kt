@@ -45,13 +45,10 @@ private data class FlownPlan(
     val roi: TrackPoint? = null,
     val goto: GotoLocation? = null,
     val orbit: OrbitCircle? = null,
-    val currentSequence: Int = -1,
+    val current: Int? = null,
 )
 
-private const val FLY_MISSION = "planFly.missionController"
-
-internal fun currentItemIndex(items: List<MissionItem>, sequence: Int): Int? =
-    items.firstOrNull { it.sequence == sequence && sequence > 0 }?.index
+private const val FLY_MISSION_ITEMS = "view.flyMissionItems(geometry)"
 
 internal fun <T> missionArrived(before: List<T>, after: List<T>): Boolean = before.isEmpty() && after.isNotEmpty()
 
@@ -80,7 +77,7 @@ fun FlyMap(
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 val next = withContext(Dispatchers.Default) {
-                    val raw = PlanBridge.rawItems()
+                    val raw = runCatching { JSONObject(QGCBridge.get(FLY_MISSION_ITEMS)) }.getOrNull()
                     val fences = FenceBridge.read()
                     if (raw != null) {
                         MapBridge.markReachable()
@@ -102,7 +99,7 @@ fun FlyMap(
                         roi = RoiBridge.read(),
                         goto = GotoBridge.read(),
                         orbit = OrbitBridge.read(),
-                        currentSequence = runCatching { JSONObject(QGCBridge.getFields(FLY_MISSION, "currentMissionIndex")).optInt("currentMissionIndex", -1) }.getOrDefault(-1),
+                        current = raw?.optInt("selected", -1)?.takeIf { it > 0 },
                     )
                 }
                 if (missionArrived(plan.items, next.items)) fitRequest++
@@ -140,7 +137,7 @@ fun FlyMap(
             onRoiClick = onRoiClick,
             goto = plan.goto,
             orbit = plan.orbit,
-            selectedWaypoint = currentItemIndex(plan.items, plan.currentSequence),
+            selectedWaypoint = plan.current,
             fitRequest = fitRequest,
             onCentreChanged = { at, level ->
                 centre = at

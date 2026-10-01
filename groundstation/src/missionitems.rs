@@ -23,6 +23,13 @@ const AWAITING_TERRAIN: i64 = 1;
 const NOT_READY_FOR_SAVE: i64 = 2;
 const RETURN_TO_LAUNCH: i64 = 20;
 
+pub fn fly_items_view(backend: &dyn Backend, args: &[String]) -> Value {
+    match crate::coreplan::enabled() {
+        true => crate::coreplan::fly_view(backend),
+        false => items_view(backend, args),
+    }
+}
+
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     if crate::coreplan::enabled() {
         return crate::coreplan::view(backend);

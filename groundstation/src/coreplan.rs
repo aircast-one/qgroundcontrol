@@ -990,6 +990,25 @@ fn marked_edited(view: Value, document: &Document, clean: Option<&Document>) -> 
     marked
 }
 
+pub fn fly_view(backend: &dyn Backend) -> Value {
+    let vehicle_mission = {
+        let hub = crate::hub::lock();
+        hub.active().map(|v| {
+            let items: Vec<Downloaded> = v.mission_items().iter().map(|i| Downloaded { frame: i64::from(i.frame), command: i64::from(i.command), params: i.params, auto_continue: i.auto_continue }).collect();
+            (items, v.sends_home(), (i64::from(v.autopilot), i64::from(v.vehicle_type)), i64::from(v.current_mission_index()))
+        })
+    };
+    let Some((items, sends_home, types, current)) = vehicle_mission.filter(|(items, _, _, _)| !items.is_empty()) else {
+        return json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": "The vehicle holds no mission." });
+    };
+    let template = Document { firmware_type: types.0, vehicle_type: types.1, ..empty_document() };
+    let document = plandoc::from_vehicle(&items, sends_home, &template);
+    let rover = plandoc::vehicle_class(types.1) == crate::cmdinfo::VehicleClass::Rover;
+    let selected = visual_index_of_sequence(&document, current).filter(|index| *index > 0).unwrap_or(-1);
+    crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
+        .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
+}
+
 pub fn view(backend: &dyn Backend) -> Value {
     let (document, selected, clean) = {
         let state = held();
