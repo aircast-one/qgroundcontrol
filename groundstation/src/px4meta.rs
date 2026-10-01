@@ -19,6 +19,11 @@ fn number(value_type: ValueType, raw: &str) -> Option<Value> {
     })
 }
 
+pub fn bundled() -> &'static BTreeMap<String, MetaData> {
+    static PARSED: std::sync::LazyLock<BTreeMap<String, MetaData>> = std::sync::LazyLock::new(|| parse(BUNDLED).unwrap_or_default());
+    &PARSED
+}
+
 pub fn bare(value_type: ValueType) -> MetaData {
     MetaData {
         bits: Vec::new(),
