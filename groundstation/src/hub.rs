@@ -2317,6 +2317,29 @@ impl Vehicle {
                     None => Err(crate::cameraproto::Refusal::UnknownStream),
                 }
             }
+            "takePhoto" => {
+                let interval = action.get("interval").and_then(Value::as_f64);
+                let count = action.get("count").and_then(Value::as_u64).and_then(|c| u32::try_from(c).ok()).unwrap_or(1);
+                self.cameras.take_photo(interval, count, now_ms)
+            }
+            "stopTakePhoto" => self.cameras.stop_take_photo(now_ms),
+            "startRecording" => self.cameras.start_recording(now_ms),
+            "stopRecording" => self.cameras.stop_recording(now_ms),
+            "toggleRecording" => match self.cameras.selected().is_some_and(|camera| camera.recording()) {
+                true => self.cameras.stop_recording(now_ms),
+                false => self.cameras.start_recording(now_ms),
+            },
+            "setMode" => self.cameras.set_mode(action.get("mode").and_then(Value::as_u64).and_then(|m| u8::try_from(m).ok()).unwrap_or(crate::cameraproto::MODE_PHOTO), now_ms),
+            "toggleMode" => {
+                let next = match self.cameras.selected().and_then(|camera| camera.mode) {
+                    Some(crate::cameraproto::MODE_VIDEO) => crate::cameraproto::MODE_PHOTO,
+                    _ => crate::cameraproto::MODE_VIDEO,
+                };
+                self.cameras.set_mode(next, now_ms)
+            }
+            "level" => self.cameras.set_level(axis, action.get("percent").and_then(Value::as_f64).unwrap_or(0.0), now_ms),
+            "reset" => self.cameras.reset_settings(now_ms),
+            "format" => self.cameras.format_storage(action.get("storage").and_then(Value::as_u64).and_then(|s| u8::try_from(s).ok()).unwrap_or(1), now_ms),
             other => return Err(format!("Unknown camera action {other:?}")),
         };
         commands.map(|c| self.camera_commands(c)).map_err(|refusal| format!("The camera refused: {}", refusal.token()))

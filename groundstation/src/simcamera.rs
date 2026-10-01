@@ -11,7 +11,7 @@ const CAPTURE_IDLE: i64 = 1;
 const CAPTURE_SINGLE_PHOTO: i64 = 2;
 const CAPTURE_VIDEO_CAPTURING: i64 = 2;
 const STORAGE_NOT_SUPPORTED: i64 = 3;
-const PHOTO_CAPTURE_SINGLE: i64 = 0;
+pub const PHOTO_CAPTURE_SINGLE: i64 = 0;
 const PHOTO_IN_PROGRESS_MS: u64 = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

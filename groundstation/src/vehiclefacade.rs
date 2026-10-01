@@ -580,6 +580,25 @@ fn onboard_log_get(path: &str) -> Option<Value> {
     }
 }
 
+fn real_camera_op(name: &str, args: &str) -> Option<Value> {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let timelapse = stored_number("PhotoCaptureMode").is_some_and(|mode| mode as i64 != crate::simcamera::PHOTO_CAPTURE_SINGLE);
+    Some(match name {
+        "takePhoto" if timelapse => json!({ "op": "takePhoto", "interval": stored_number("PhotoLapse").unwrap_or(1.0), "count": stored_number("PhotoLapseCount").unwrap_or(0.0) as u64 }),
+        "takePhoto" => json!({ "op": "takePhoto", "count": 1 }),
+        "stopTakePhoto" => json!({ "op": "stopTakePhoto" }),
+        "startVideoRecording" => json!({ "op": "startRecording" }),
+        "stopVideoRecording" => json!({ "op": "stopRecording" }),
+        "toggleVideoRecording" => json!({ "op": "toggleRecording" }),
+        "setCameraModePhoto" => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_PHOTO }),
+        "setCameraModeVideo" => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO }),
+        "toggleCameraMode" => json!({ "op": "toggleMode" }),
+        "resetSettings" => json!({ "op": "reset" }),
+        "formatCard" => json!({ "op": "format", "storage": given.get(0).and_then(Value::as_u64).unwrap_or(1) }),
+        _ => return None,
+    })
+}
+
 fn simulated_camera() -> Option<(u8, crate::simcamera::Inputs)> {
     (switched_on() && !crate::qthost::present()).then_some(())?;
     let vehicle = {
@@ -1074,6 +1093,19 @@ impl<B: Backend> Facade<B> {
     }
 }
 
+impl<B: Backend> Facade<B> {
+    fn real_camera_invoke(&self, name: &str, args: &str) -> Option<String> {
+        let vehicle = switched_on().then(|| crate::hub::lock().active().filter(|v| v.cameras.selected().is_some()).map(|v| v.id)).flatten()?;
+        let mut action = real_camera_op(name, args)?;
+        action["action"] = json!("camera");
+        action["vehicle"] = json!(vehicle);
+        Some(match self.0.core_guided(&action)? {
+            Ok(()) => json!({ "ok": true, "result": true }).to_string(),
+            Err(reason) => json!({ "ok": false, "result": false, "error": reason }).to_string(),
+        })
+    }
+}
+
 impl<B: Backend> Backend for Facade<B> {
     fn get(&self, path: &str) -> String {
         if path == "core.qtReads" {
@@ -1385,6 +1417,16 @@ impl<B: Backend> Backend for Facade<B> {
                 None => json!({ "ok": false, "error": "A camera setting is a number." }).to_string(),
             };
         }
+        if path == "vehicle.cameraManager.currentCameraInstance.zoomLevel" && switched_on() {
+            let percent = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
+            let vehicle = crate::hub::lock().active().filter(|v| v.cameras.selected().is_some()).map(|v| v.id);
+            if let Some(zoomed) = percent.zip(vehicle).and_then(|(percent, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent, "vehicle": vehicle }))) {
+                return match zoomed {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
+                };
+            }
+        }
         if path == "vehicle.cameraManager.currentCameraInstance.currentStream" && switched_on() {
             let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
             let vehicle = crate::hub::lock().active_id();
@@ -1460,6 +1502,9 @@ impl<B: Backend> Backend for Facade<B> {
                     return json!({ "ok": true, "result": took }).to_string();
                 }
             }
+        }
+        if let Some(answer) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.").and_then(|name| self.real_camera_invoke(name, args)) {
+            return answer;
         }
         if path == "vehicle.motorTest" && switched_on() {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
@@ -1621,6 +1666,14 @@ impl<B: Backend> Backend for Facade<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_real_camera_takes_vehicle_camera_controls_invokables_as_core_camera_ops() {
+        assert_eq!(real_camera_op("toggleVideoRecording", "[]"), Some(json!({ "op": "toggleRecording" })));
+        assert_eq!(real_camera_op("setCameraModeVideo", "[]"), Some(json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO })));
+        assert_eq!(real_camera_op("formatCard", "[2]"), Some(json!({ "op": "format", "storage": 2 })), "formatCard takes the storage id, 1 for the first");
+        assert_eq!(real_camera_op("startTracking", "[]"), None, "anything else is left to the host");
+    }
+
     #[test]
     fn camera_local_settings_are_kept_under_qgcs_own_keys() {
         assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.photoCaptureMode"), Some("PhotoCaptureMode"));
