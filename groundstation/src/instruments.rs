@@ -106,6 +106,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
                 "missing": value.is_none(),
+                "raw": fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|r| r.is_finite()),
                 "missingReason": match (value.is_none(), resolves) {
                     (false, _) => Value::Null,
                     (true, false) => json!("noSuchFact"),

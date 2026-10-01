@@ -44,6 +44,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -78,7 +79,7 @@ internal data class GuidedAction(
 )
 
 
-internal data class Instrument(val label: String, val reading: String)
+internal data class Instrument(val label: String, val reading: String, val id: String = "", val value: String = reading, val units: String = "", val raw: Double? = null)
 
 internal fun rowWidth(count: Int): Int = when {
     count <= 4 -> count
@@ -106,7 +107,16 @@ internal fun instruments(view: JSONObject?): List<Instrument> {
     val items = view?.optJSONArray("items") ?: return emptyList()
     return (0 until items.length()).mapNotNull { index ->
         items.optJSONObject(index)?.let { item ->
-            instrumentReading(item)?.let { Instrument(label = item.optText("label"), reading = it) }
+            instrumentReading(item)?.let {
+                Instrument(
+                    label = item.optText("label"),
+                    reading = it,
+                    id = item.optText("id"),
+                    value = if (item.optBoolean("missing")) it else item.optText("value"),
+                    units = if (item.optBoolean("missing")) "" else item.optText("units"),
+                    raw = if (item.isNull("raw")) null else item.optDouble("raw").takeIf { r -> !r.isNaN() },
+                )
+            }
         }
     }
 }
@@ -138,6 +148,8 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var chosen by remember { mutableStateOf(readChosen(context)) }
     var choosing by remember { mutableStateOf(false) }
+    var displays by remember { mutableStateOf(readDisplays(context)) }
+    var styling by remember { mutableStateOf<Instrument?>(null) }
     val view by qgcPath(instrumentsPath(chosen))
     val gcsJson by qgcPath(GCS_POSITION)
     val shown = remember(view, gcsJson, chosen) {
@@ -155,6 +167,19 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        )
+    }
+
+    styling?.let { instrument ->
+        ValueDisplayDialog(
+            label = instrument.label,
+            initial = displays[instrument.id] ?: ValueDisplay(),
+            onDismiss = { styling = null },
+            onDone = { display ->
+                writeDisplay(context, instrument.id, display)
+                displays = displays + (instrument.id to display)
+                styling = null
+            },
         )
     }
 
@@ -179,16 +204,20 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
         maxItemsInEachRow = rowWidth(shown.size + 1),
     ) {
         shown.forEach { instrument ->
+            val display = displays[instrument.id] ?: ValueDisplay()
             Column(
-                Modifier.padding(horizontal = 6.dp),
+                Modifier
+                    .padding(horizontal = 6.dp)
+                    .then(if (instrument.id.isBlank()) Modifier else Modifier.clickable { styling = instrument }),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    instrument.reading,
+                    displayReading(display, instrument.value, instrument.units),
                     style = TelemetryNumber,
+                    color = displayColour(display, instrument.raw)?.let { Color(it) } ?: Color.Unspecified,
                 )
                 Text(
-                    instrument.label,
+                    display.text.ifBlank { instrument.label },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
